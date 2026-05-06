@@ -87,4 +87,36 @@ describe('RunManager', () => {
     expect(manager.resolve('gemini', { appChatId: 'missing-chat' })).toBeUndefined()
     expect(manager.resolve('gemini')).toBe(manager.get('run-1'))
   })
+
+  it('emits lifecycle changes for persistence adapters', () => {
+    const manager = new RunManager()
+    const events: string[] = []
+    const dispose = manager.onChange((event) => {
+      events.push(`${event.type}:${event.session.runId}:${event.session.status}`)
+    })
+
+    manager.create({ runId: 'run-1', provider: 'codex' })
+    manager.attachProcess('run-1', { kill: vi.fn() })
+    manager.finish('run-1', 'completed')
+    manager.remove('run-1')
+    dispose()
+    manager.create({ runId: 'run-2', provider: 'codex' })
+
+    expect(events).toEqual([
+      'created:run-1:starting',
+      'updated:run-1:running',
+      'updated:run-1:completed',
+      'removed:run-1:completed'
+    ])
+  })
+
+  it('keeps the first terminal status when late process events arrive', () => {
+    const manager = new RunManager()
+    manager.create({ runId: 'run-1', provider: 'gemini', status: 'running' })
+
+    manager.finish('run-1', 'cancelled')
+    manager.finish('run-1', 'failed')
+
+    expect(manager.get('run-1')?.status).toBe('cancelled')
+  })
 })

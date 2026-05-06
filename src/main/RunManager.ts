@@ -42,6 +42,11 @@ export interface CreateRunSessionInput<TState = unknown> {
   status?: RunSessionStatus
 }
 
+export interface RunSessionChangeEvent<TState = unknown> {
+  type: 'created' | 'updated' | 'removed'
+  session: RunSession<TState>
+}
+
 export interface RunRoute {
   appRunId?: string
   appChatId?: string
@@ -59,11 +64,23 @@ function sessionGrantKey(
   return `${provider}:${service}:${workspacePath || 'global'}`
 }
 
+function isTerminalRunSessionStatus(status: RunSessionStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
+}
+
 export class RunManager<TState = unknown> {
   private sessionsByRunId = new Map<string, RunSession<TState>>()
   private runIdsByProvider = new Map<ProviderId, Set<string>>()
   private runIdByProviderSession = new Map<string, string>()
   private approvalIdToRunId = new Map<string, string>()
+  private listeners = new Set<(event: RunSessionChangeEvent<TState>) => void>()
+
+  onChange(listener: (event: RunSessionChangeEvent<TState>) => void): () => void {
+    this.listeners.add(listener)
+    return () => {
+      this.listeners.delete(listener)
+    }
+  }
 
   create(input: CreateRunSessionInput<TState>): RunSession<TState> {
     const existing = this.sessionsByRunId.get(input.runId)
@@ -93,6 +110,7 @@ export class RunManager<TState = unknown> {
     this.sessionsByRunId.set(session.runId, session)
     this.indexProviderRun(session.provider, session.runId)
     this.indexProviderSession(session)
+    this.emit({ type: 'created', session })
     return session
   }
 
@@ -163,6 +181,7 @@ export class RunManager<TState = unknown> {
       }
       this.indexProviderSession(session)
     }
+    this.emit({ type: 'updated', session })
     return session
   }
 
@@ -229,6 +248,14 @@ export class RunManager<TState = unknown> {
 
   finish(runId: string | undefined, status: RunSessionStatus): RunSession<TState> | undefined {
     if (!runId) return undefined
+    const session = this.sessionsByRunId.get(runId)
+    if (
+      session &&
+      isTerminalRunSessionStatus(session.status) &&
+      isTerminalRunSessionStatus(status)
+    ) {
+      return session
+    }
     return this.update(runId, { status, process: undefined, abortController: undefined })
   }
 
@@ -246,6 +273,7 @@ export class RunManager<TState = unknown> {
     for (const approvalId of session.approvalIds) {
       this.approvalIdToRunId.delete(approvalId)
     }
+    this.emit({ type: 'removed', session })
   }
 
   cancel(runId: string): boolean {
@@ -262,6 +290,12 @@ export class RunManager<TState = unknown> {
     this.runIdsByProvider.clear()
     this.runIdByProviderSession.clear()
     this.approvalIdToRunId.clear()
+  }
+
+  private emit(event: RunSessionChangeEvent<TState>): void {
+    for (const listener of this.listeners) {
+      listener(event)
+    }
   }
 
   private indexProviderRun(provider: ProviderId, runId: string): void {

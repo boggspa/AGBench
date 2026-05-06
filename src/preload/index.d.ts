@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -164,6 +164,10 @@ declare global {
       saveScheduledTask: (task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>) => Promise<ScheduledTask>
       updateScheduledTask: (id: string, partial: Partial<ScheduledTask>) => Promise<ScheduledTask | null>
       deleteScheduledTask: (id: string) => Promise<void>
+      getRunQueueJobs: (filter?: RunQueueJobFilter) => Promise<RunQueueJob[]>
+      saveRunQueueJob: (job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'workspacePath' | 'source'>) => Promise<RunQueueJob>
+      updateRunQueueJob: (runIdOrId: string, partial: Partial<RunQueueJob>) => Promise<RunQueueJob | null>
+      deleteRunQueueJob: (runIdOrId: string) => Promise<void>
 
       onGeminiOutput: (callback: (data: GeminiStreamPayload) => void) => void
       onGeminiError: (callback: (error: GeminiStreamPayload) => void) => void
@@ -171,6 +175,7 @@ declare global {
       onAgentOutput: (callback: (payload: { provider: ProviderId, data: string, appRunId?: string, appChatId?: string }) => void) => void
       onAgentError: (callback: (payload: { provider: ProviderId, error: string, appRunId?: string, appChatId?: string }) => void) => void
       onAgentExit: (callback: (payload: { provider: ProviderId, code: number | null, appRunId?: string, appChatId?: string }) => void) => void
+      onRunQueueChanged: (callback: (jobs: RunQueueJob[]) => void) => void
       onAgentApprovalRequest: (callback: (payload: AgentApprovalRequest) => void) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void

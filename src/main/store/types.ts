@@ -312,6 +312,87 @@ export interface ScheduledTask {
   lastError?: string;
 }
 
+export type RunQueueJobStatus =
+  | 'queued'
+  | 'starting'
+  | 'active'
+  | 'paused'
+  | 'cancelling'
+  | 'cancelled'
+  | 'failed'
+  | 'completed';
+
+export type RunQueueJobSource =
+  | 'manual'
+  | 'scheduled'
+  | 'retry'
+  | 'permission_retry'
+  | 'review'
+  | 'host_rerun'
+  | 'system';
+
+export interface RunQueueImageAttachmentSnapshot {
+  id?: string;
+  path: string;
+  name?: string;
+}
+
+export interface RunQueueRequestSnapshot {
+  prompt: string;
+  displayPrompt?: string;
+  selectedModelType: string;
+  customModel: string;
+  approvalMode: string;
+  sessionTrust: boolean;
+  imageAttachments: RunQueueImageAttachmentSnapshot[];
+  externalPathGrants?: ExternalPathGrant[];
+  geminiWorktree?: GeminiWorktreeConfig;
+  codexNativeReview?: boolean;
+  codexReasoningEffort?: string | null;
+  codexServiceTier?: string | null;
+  scheduledTaskId?: string;
+  preserveComposer?: boolean;
+}
+
+export interface RunQueueJob {
+  id: string;
+  runId: string;
+  provider: ProviderId;
+  workspaceId?: string;
+  workspacePath: string;
+  chatId?: string;
+  source: RunQueueJobSource;
+  status: RunQueueJobStatus;
+  priority: number;
+  attempt: number;
+  promptPreview?: string;
+  request?: RunQueueRequestSnapshot;
+  providerSessionId?: string;
+  providerRunId?: string;
+  processPid?: number;
+  parentRunId?: string;
+  createdAt: string;
+  updatedAt: string;
+  enqueuedAt?: string;
+  startedAt?: string;
+  pausedAt?: string;
+  endedAt?: string;
+  cancelledAt?: string;
+  failedAt?: string;
+  completedAt?: string;
+  statusReason?: string;
+  lastError?: string;
+  recoveryReason?: string;
+}
+
+export interface RunQueueJobFilter {
+  workspaceId?: string;
+  chatId?: string;
+  provider?: ProviderId;
+  statuses?: RunQueueJobStatus[];
+  includeTerminal?: boolean;
+}
+
 export type RunStatus = 'success' | 'success_with_warnings' | 'failed' | 'cancelled' | 'running';
 
 export interface RunWarning {

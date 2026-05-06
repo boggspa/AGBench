@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -2383,6 +2383,11 @@ const isGeminiWorktreeDiffUnavailable = (worktree?: GeminiWorktreeConfig | null)
 const getDiffWorkspacePath = (workspace: WorkspaceRecord, worktree?: GeminiWorktreeConfig | null): string =>
   worktree?.enabled && worktree.effectivePath ? worktree.effectivePath : workspace.path
 
+const createAppRunId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+const isTerminalRunQueueStatus = (status?: RunQueueJobStatus): boolean =>
+  status === 'completed' || status === 'failed' || status === 'cancelled'
+
 type SettingsPanelUpdate = {
   mode?: AppSettings['appearanceMode']
   visualEffectStyle?: AppSettings['visualEffectStyle']
@@ -2414,6 +2419,7 @@ function App(): React.JSX.Element {
   const [prompt, setPrompt] = useState('')
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
+  const [runQueueJobs, setRunQueueJobs] = useState<RunQueueJob[]>([])
   
   // Model & Mode Selectors
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini')
@@ -2533,6 +2539,8 @@ function App(): React.JSX.Element {
   const activeRunDiffUnavailableRef = useRef(false)
   const activeRunUsageResetHintsRef = useRef<Map<string, { resetAt?: string; resetText?: string }>>(new Map())
   const latestRunRequestRef = useRef<QueuedRunRequest | null>(null)
+  const runQueueJobsRef = useRef<RunQueueJob[]>([])
+  const rehydratedRunQueueRef = useRef(false)
   const runSchedulerBusyRef = useRef(false)
   const persistentSessionActiveRef = useRef(false)
   const activeScheduledTaskIdRef = useRef<string | null>(null)
@@ -2964,6 +2972,10 @@ function App(): React.JSX.Element {
     return () => window.clearTimeout(timeout)
   }, [chatContextNotice])
 
+  useEffect(() => {
+    runQueueJobsRef.current = runQueueJobs
+  }, [runQueueJobs])
+
   const loadInitialData = async () => {
     const s = await window.api.getSettings()
     setSettings(s)
@@ -2983,6 +2995,7 @@ function App(): React.JSX.Element {
     }
     const wsList = await window.api.getWorkspaces()
     setWorkspaces(wsList)
+    void rehydrateQueuedRuns(wsList)
     if (wsList.length > 0) {
       // Sort by lastOpenedAt descending
       const sorted = [...wsList].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
@@ -3949,6 +3962,12 @@ function App(): React.JSX.Element {
       const completedWorkspacePath = completedRunDiffUnavailable ? null : context.workspacePath
       const completedRunStartedAt = context.startedAt
       const isVisibleCompletedRun = () => !completedRunChatId || currentChatIdRef.current === completedRunChatId
+      updateRunQueueJobStatus(
+        completedRunId,
+        exitCode === 0 ? 'completed' : 'failed',
+        exitCode === 0 ? 'Provider run completed.' : `Provider run exited with code ${exitCode}.`,
+        exitCode === 0 ? undefined : `Run exited with code ${exitCode}`
+      )
       if (isVisibleCompletedRun()) {
         setIsThinking(false)
       }
@@ -4095,6 +4114,12 @@ function App(): React.JSX.Element {
       })
     }
 
+    if (typeof window.api.onRunQueueChanged === 'function') {
+      window.api.onRunQueueChanged((jobs) => {
+        setRunQueueJobs(jobs)
+      })
+    }
+
     return () => {
       window.api.removeListeners()
     }
@@ -4123,6 +4148,131 @@ function App(): React.JSX.Element {
     ? { type: 'changes', summaries: runDiff }
     : diff;
 
+  const getRunQueueSource = (request: QueuedRunRequest): RunQueueJobSource => {
+    if (request.scheduledTaskId) return 'scheduled'
+    if (request.codexNativeReview) return 'review'
+    if (request.existingPrompt) return 'retry'
+    return 'manual'
+  }
+
+  const createRunQueueRequestSnapshot = (request: QueuedRunRequest): RunQueueRequestSnapshot => ({
+    prompt: request.prompt,
+    ...(request.displayPrompt ? { displayPrompt: request.displayPrompt } : {}),
+    selectedModelType: request.selectedModelType,
+    customModel: request.customModel,
+    approvalMode: request.approvalMode,
+    sessionTrust: request.sessionTrust,
+    imageAttachments: request.imageAttachments.map((attachment) => ({
+      id: attachment.id,
+      path: attachment.path,
+      name: attachment.name
+    })),
+    ...(request.externalPathGrants?.length ? { externalPathGrants: request.externalPathGrants } : {}),
+    ...(request.geminiWorktree ? { geminiWorktree: request.geminiWorktree } : {}),
+    ...(request.codexNativeReview ? { codexNativeReview: true } : {}),
+    ...(request.codexReasoningEffort !== undefined ? { codexReasoningEffort: request.codexReasoningEffort } : {}),
+    ...(request.codexServiceTier !== undefined ? { codexServiceTier: request.codexServiceTier } : {}),
+    ...(request.scheduledTaskId ? { scheduledTaskId: request.scheduledTaskId } : {}),
+    ...(request.preserveComposer ? { preserveComposer: true } : {})
+  })
+
+  const persistRunQueueJobForRequest = (
+    request: QueuedRunRequest,
+    status: RunQueueJobStatus,
+    statusReason?: string
+  ) => {
+    const workspace = request.workspaceRecord || getWorkspaceForChat(request.chatRecord) || currentWorkspace
+    const chat = request.chatRecord || currentChat
+    const runId = request.appRunId
+    if (!runId || !workspace) return
+    window.api.saveRunQueueJob({
+      id: runId,
+      runId,
+      provider: request.provider,
+      workspaceId: workspace.id,
+      workspacePath: workspace.path,
+      chatId: chat?.appChatId,
+      source: getRunQueueSource(request),
+      status,
+      promptPreview: request.displayPrompt || request.prompt,
+      request: createRunQueueRequestSnapshot(request),
+      ...(statusReason ? { statusReason } : {})
+    }).catch(() => {})
+  }
+
+  const updateRunQueueJobStatus = (
+    runId: string | undefined,
+    status: RunQueueJobStatus,
+    statusReason?: string,
+    lastError?: string
+  ) => {
+    if (!runId) return
+    const existing = runQueueJobsRef.current.find((job) => job.runId === runId || job.id === runId)
+    if (existing && isTerminalRunQueueStatus(existing.status) && isTerminalRunQueueStatus(status)) {
+      return
+    }
+    window.api.updateRunQueueJob(runId, {
+      status,
+      ...(statusReason ? { statusReason } : {}),
+      ...(lastError ? { lastError } : {})
+    }).catch(() => {})
+  }
+
+  const queuedRunRequestFromJob = (
+    job: RunQueueJob,
+    workspaceList: WorkspaceRecord[],
+    chatList: ChatRecord[]
+  ): QueuedRunRequest | null => {
+    if (job.status !== 'queued' || !job.request) return null
+    const workspaceRecord = workspaceList.find((workspace) => workspace.id === job.workspaceId || workspace.path === job.workspacePath)
+    const chatRecord = chatList.find((chat) => chat.appChatId === job.chatId)
+    if (!workspaceRecord || !chatRecord) return null
+    const request = job.request
+    return {
+      appRunId: job.runId,
+      provider: job.provider,
+      prompt: request.prompt,
+      displayPrompt: request.displayPrompt,
+      selectedModelType: request.selectedModelType,
+      customModel: request.customModel,
+      approvalMode: request.approvalMode,
+      sessionTrust: request.sessionTrust,
+      imageAttachments: request.imageAttachments.map((attachment, index) => ({
+        id: attachment.id || `${job.runId}-attachment-${index}`,
+        path: attachment.path,
+        name: attachment.name || getImageName(attachment.path)
+      })),
+      externalPathGrants: request.externalPathGrants,
+      geminiWorktree: request.geminiWorktree,
+      codexNativeReview: request.codexNativeReview,
+      codexReasoningEffort: request.codexReasoningEffort,
+      codexServiceTier: request.codexServiceTier,
+      scheduledTaskId: request.scheduledTaskId,
+      workspaceRecord,
+      chatRecord,
+      preserveComposer: request.preserveComposer
+    }
+  }
+
+  const rehydrateQueuedRuns = async (workspaceList: WorkspaceRecord[]) => {
+    if (rehydratedRunQueueRef.current || typeof window.api.getRunQueueJobs !== 'function') return
+    rehydratedRunQueueRef.current = true
+    const [jobs, chatList] = await Promise.all([
+      window.api.getRunQueueJobs({ statuses: ['queued'] }),
+      window.api.getChats()
+    ])
+    setRunQueueJobs(jobs)
+    const restoredRuns = jobs
+      .map((job) => queuedRunRequestFromJob(job, workspaceList, chatList))
+      .filter((request): request is QueuedRunRequest => Boolean(request))
+    if (restoredRuns.length > 0) {
+      setQueuedRuns((current) => {
+        const knownRunIds = new Set(current.map((request) => request.appRunId))
+        return [...current, ...restoredRuns.filter((request) => !knownRunIds.has(request.appRunId))]
+      })
+    }
+  }
+
   const buildRunRequest = (overrideModel?: string, existingPrompt?: string): QueuedRunRequest => {
     const selectedChat = (currentChatIdRef.current ? chatByIdRef.current.get(currentChatIdRef.current) : null) || currentChat
     const selectedWorkspace = getWorkspaceForChat(selectedChat) || currentWorkspace
@@ -4144,7 +4294,7 @@ function App(): React.JSX.Element {
       : []
 
     return {
-      appRunId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      appRunId: createAppRunId(),
       provider,
       prompt: existingPrompt || prompt,
       overrideModel,
@@ -4164,11 +4314,13 @@ function App(): React.JSX.Element {
   }
 
   const queueRunRequest = (request: QueuedRunRequest, reason = 'Another task is currently active.') => {
+    const queuedRequest = request.appRunId ? request : { ...request, appRunId: createAppRunId() }
     const queuedAt = new Date().toISOString()
-    const targetChatId = request.chatRecord?.appChatId
-    const targetProvider = request.provider
+    const targetChatId = queuedRequest.chatRecord?.appChatId
+    const targetProvider = queuedRequest.provider
     const queuePosition = queuedRuns.length + 1
-    setQueuedRuns(prev => [...prev, request])
+    persistRunQueueJobForRequest(queuedRequest, 'queued', reason)
+    setQueuedRuns(prev => [...prev, queuedRequest])
     appendThreadRawLog(targetChatId, {
       type: 'info',
       content: `${getProviderLabel(targetProvider)} run queued (${queuePosition} waiting). ${reason}`
@@ -4217,7 +4369,8 @@ function App(): React.JSX.Element {
   }
 
   const executeRun = async (runRequest?: QueuedRunRequest) => {
-    const request = runRequest ?? buildRunRequest()
+    const baseRequest = runRequest ?? buildRunRequest()
+    const request = baseRequest.appRunId ? baseRequest : { ...baseRequest, appRunId: createAppRunId() }
     const finalPrompt = `${request.prompt}${attachmentPromptAppendix(request.imageAttachments)}${request.provider === 'codex' ? externalPathGrantPromptAppendix(request.externalPathGrants || []) : ''}`
     const displayFinalPrompt = request.displayPrompt
       ? request.displayPrompt
@@ -4231,6 +4384,7 @@ function App(): React.JSX.Element {
       return
     }
 
+    persistRunQueueJobForRequest(request, 'starting', 'Provider runner is preparing this task.')
     runSchedulerBusyRef.current = true
 
     errorCountRef.current = 0
@@ -4657,6 +4811,7 @@ function App(): React.JSX.Element {
       } catch (error) {
         clearActiveRunContext(runContext)
         const message = `Failed to start ${getProviderLabel(runProvider)}: ${redactLog(String(error))}`
+        updateRunQueueJobStatus(currentRunId, 'failed', 'Provider process failed before startup completed.', message)
         appendThreadRawLog(runChatId, { type: 'stderr', content: message })
         updateChatById(runChatId, (source) => ({
           ...source,
@@ -4680,6 +4835,7 @@ function App(): React.JSX.Element {
       } catch (error) {
         clearActiveRunContext(runContext)
         const message = `Failed to start Gemini: ${redactLog(String(error))}`
+        updateRunQueueJobStatus(currentRunId, 'failed', 'Gemini process failed before startup completed.', message)
         appendThreadRawLog(runChatId, { type: 'stderr', content: message })
         updateChatById(runChatId, (source) => ({
           ...source,
@@ -5195,6 +5351,7 @@ function App(): React.JSX.Element {
     const nextRun = queuedRuns[nextIndex]
     const remainingRuns = queuedRuns.filter((_, index) => index !== nextIndex)
     setQueuedRuns(remainingRuns)
+    persistRunQueueJobForRequest(nextRun, 'starting', 'Dequeued by AgentBench scheduler.')
     appendThreadRawLog(nextRun.chatRecord?.appChatId, {
       type: 'info',
       content: `Starting queued ${getProviderLabel(nextRun.provider)} run. ${remainingRuns.length} queued task${remainingRuns.length === 1 ? '' : 's'} remain.`
@@ -5472,6 +5629,7 @@ function App(): React.JSX.Element {
   const currentAgentMcpStatus = currentProvider === 'codex' ? codexMcpStatus : agentMcpStatusByProvider[currentProvider]
   const currentProviderCapabilities = providerCapabilitiesByProvider[currentProvider]
   const currentProviderCapabilityWarning = currentProviderCapabilities?.warnings.find((warning) => warning.severity !== 'info')
+  const queuedRunQueueCount = runQueueJobs.filter((job) => job.status === 'queued').length
   const providerSessionLabel = currentChat?.linkedProviderSessionId
     ? `${currentProviderLabel} session linked`
     : currentProvider === 'codex'
@@ -6025,6 +6183,11 @@ function App(): React.JSX.Element {
                 {currentProviderCapabilityWarning && (
                   <span className="composer-chip warning" title={currentProviderCapabilityWarning.message}>
                     {currentProviderCapabilityWarning.title}
+                  </span>
+                )}
+                {queuedRunQueueCount > 0 && (
+                  <span className="composer-chip" title="Durable queued tasks are persisted by AgentBench.">
+                    {queuedRunQueueCount} queued
                   </span>
                 )}
                 {isCurrentChatProviderLocked && (

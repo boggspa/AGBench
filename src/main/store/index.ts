@@ -1,14 +1,16 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter } from './types';
 import { randomUUID } from 'crypto';
+import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
 const workspacesPath = path.join(userDataPath, 'workspaces.json');
 const usagePath = path.join(userDataPath, 'usage.json');
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
+const runQueuePath = path.join(userDataPath, 'run-queue.json');
 const chatsDir = path.join(userDataPath, 'chats');
 
 const defaultSettings: AppSettings = {
@@ -263,5 +265,55 @@ export class AppStore {
       const runAtMs = new Date(task.runAt).getTime();
       return Number.isFinite(runAtMs) && runAtMs <= nowMs;
     });
+  }
+
+  // Run queue
+  static getRunQueueJobs(filter: RunQueueJobFilter = {}): RunQueueJob[] {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    return sortRunQueueJobs(filterRunQueueJobs(jobs, filter));
+  }
+
+  static getRunQueueJob(runIdOrId: string): RunQueueJob | null {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    return jobs.find((job) => job.id === runIdOrId || job.runId === runIdOrId) || null;
+  }
+
+  static saveRunQueueJob(input: RunQueueJobInput): RunQueueJob {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    const index = jobs.findIndex((job) => job.id === input.id || job.runId === input.runId);
+    const now = new Date().toISOString();
+    const record = index >= 0
+      ? updateRunQueueJobRecord(jobs[index], input, now)
+      : createRunQueueJob(input, now);
+
+    if (index >= 0) {
+      jobs[index] = record;
+    } else {
+      jobs.push(record);
+    }
+    writeJson(runQueuePath, sortRunQueueJobs(jobs));
+    return record;
+  }
+
+  static updateRunQueueJob(runIdOrId: string, partial: Partial<RunQueueJob>): RunQueueJob | null {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    const index = jobs.findIndex((job) => job.id === runIdOrId || job.runId === runIdOrId);
+    if (index < 0) return null;
+    const updated = updateRunQueueJobRecord(jobs[index], partial);
+    jobs[index] = updated;
+    writeJson(runQueuePath, sortRunQueueJobs(jobs));
+    return updated;
+  }
+
+  static deleteRunQueueJob(runIdOrId: string) {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    writeJson(runQueuePath, jobs.filter((job) => job.id !== runIdOrId && job.runId !== runIdOrId));
+  }
+
+  static recoverInterruptedRunQueueJobs(): RunQueueJob[] {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    const recovered = recoverInterruptedQueueJobs(jobs);
+    writeJson(runQueuePath, sortRunQueueJobs(recovered));
+    return recovered;
   }
 }

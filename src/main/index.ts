@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -276,6 +276,58 @@ function providerDisplayName(provider: ProviderId): string {
   if (provider === 'kimi') return 'Kimi'
   return 'Gemini'
 }
+
+function emitRunQueueChanged(): void {
+  mainWindow?.webContents.send('run-queue-changed', AppStore.getRunQueueJobs({ includeTerminal: true }))
+}
+
+function mapRunSessionStatusToQueueStatus(status: string): RunQueueJobStatus {
+  if (status === 'completed') return 'completed'
+  if (status === 'failed') return 'failed'
+  if (status === 'cancelled') return 'cancelled'
+  if (status === 'starting') return 'starting'
+  return 'active'
+}
+
+function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>): void {
+  if (!session) return
+  const status = mapRunSessionStatusToQueueStatus(session.status)
+  const existing = AppStore.getRunQueueJob(session.runId)
+  const processLike = session.process as unknown as { pid?: unknown } | undefined
+  const processPid = typeof processLike?.pid === 'number'
+    ? processLike.pid
+    : undefined
+  const partial: Partial<RunQueueJob> = {
+    provider: session.provider,
+    chatId: session.appChatId,
+    workspacePath: session.workspacePath || existing?.workspacePath || '',
+    providerSessionId: session.providerSessionId,
+    providerRunId: session.providerRunId,
+    processPid,
+    status
+  }
+
+  if (existing) {
+    AppStore.updateRunQueueJob(session.runId, partial)
+  } else if (partial.workspacePath) {
+    AppStore.saveRunQueueJob({
+      id: session.runId,
+      runId: session.runId,
+      provider: session.provider,
+      chatId: session.appChatId,
+      workspacePath: partial.workspacePath,
+      source: 'system',
+      status,
+      promptPreview: `${providerDisplayName(session.provider)} run`
+    })
+  }
+  emitRunQueueChanged()
+}
+
+runManager.onChange((event) => {
+  if (event.type === 'removed') return
+  persistRunSessionQueueState(event.session)
+})
 
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
@@ -4544,6 +4596,7 @@ if (isGeminiMcpBridgeProcess) {
 } else {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
+  AppStore.recoverInterruptedRunQueueJobs()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -4590,6 +4643,23 @@ app.whenReady().then(() => {
     AppStore.deleteScheduledTask(id)
     mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
     scheduleNextTaskTimer()
+  })
+
+  // Durable run queue
+  ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => AppStore.getRunQueueJobs(filter || {}))
+  ipcMain.handle('save-run-queue-job', (_, job: any) => {
+    const saved = AppStore.saveRunQueueJob(job)
+    emitRunQueueChanged()
+    return saved
+  })
+  ipcMain.handle('update-run-queue-job', (_, runIdOrId: string, partial: Partial<RunQueueJob>) => {
+    const updated = AppStore.updateRunQueueJob(runIdOrId, partial)
+    emitRunQueueChanged()
+    return updated
+  })
+  ipcMain.handle('delete-run-queue-job', (_, runIdOrId: string) => {
+    AppStore.deleteRunQueueJob(runIdOrId)
+    emitRunQueueChanged()
   })
 
   ipcMain.handle('set-appearance-mode', (_, payload: { mode?: string; reduceTransparency?: boolean } | string) => {
@@ -4967,6 +5037,15 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('cancel-agent-run', async (_, provider: ProviderId = 'gemini', runId?: string) => {
+    const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
+    if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
+      AppStore.updateRunQueueJob(queuedJob.runId, {
+        status: 'cancelled',
+        statusReason: 'Cancelled before the queued run started.'
+      })
+      emitRunQueueChanged()
+      return
+    }
     const session = runManager.get(runId) || runManager.getLatestByProvider(provider)
     if (session) {
       session.abortController?.abort()
@@ -5235,6 +5314,15 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('cancel-gemini', async (_, runId?: string) => {
+    const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
+    if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
+      AppStore.updateRunQueueJob(queuedJob.runId, {
+        status: 'cancelled',
+        statusReason: 'Cancelled before the queued run started.'
+      })
+      emitRunQueueChanged()
+      return
+    }
     const session = runManager.get(runId) || runManager.getLatestByProvider('gemini')
     if (session?.process) {
       session.process.kill()
