@@ -93,10 +93,10 @@
   --font-compact: "SF Compact", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif;
   --font-serif: "New York", "Times New Roman", Georgia, serif;
   --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Monaco, "Courier New", ui-monospace, monospace;
-  --font-size-xs: 0.936rem;
-  --font-size-sm: 1.066rem;
-  --font-size-md: 1.196rem;
-  --font-size-lg: 1.365rem;
+  --font-size-xs: calc(0.936rem * 1.3);
+  --font-size-sm: calc(1.066rem * 1.3);
+  --font-size-md: calc(1.196rem * 1.3);
+  --font-size-lg: calc(1.365rem * 1.3);
 
   /* Scrollbar */
   --scrollbar-track: transparent;

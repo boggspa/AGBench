@@ -1791,6 +1791,23 @@ button.sidebar-item {
 
 .sidebar-provider-label {
   font-weight: 720;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sidebar-provider-icon {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+
+.sidebar-provider-icon svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 
 .sidebar-provider-label.provider-gemini {
