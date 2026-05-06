@@ -1,0 +1,13 @@
+extends: electron-builder.yml
+appId: com.chrisizatt.agentbench
+productName: AgentBench Debug
+directories:
+  output: dist-debug
+mac:
+  category: public.app-category.developer-tools
+  notarize: false
+  extendInfo:
+    - NSCameraUsageDescription: AgentBench Debug requests access to the device's camera.
+    - NSMicrophoneUsageDescription: AgentBench Debug requests access to the device's microphone.
+    - NSDocumentsFolderUsageDescription: AgentBench Debug requests access to the user's Documents folder.
+    - NSDownloadsFolderUsageDescription: AgentBench Debug requests access to the user's Downloads folder.

@@ -2759,6 +2759,15 @@ button.sidebar-item {
     0 0 42px rgba(82, 170, 255, 0.12);
 }
 
+.app-transcript.provider-gemini .composer-surface:focus-within {
+  border-color: rgba(105, 157, 255, 0.56);
+  box-shadow:
+    var(--composer-shadow),
+    0 0 0 1px rgba(74, 132, 255, 0.22),
+    0 0 24px rgba(54, 121, 255, 0.24),
+    0 0 46px rgba(20, 62, 154, 0.2);
+}
+
 .app-transcript.provider-codex .composer-surface:focus-within {
   border-color: rgba(111, 99, 232, 0.5);
   box-shadow:
@@ -2796,6 +2805,13 @@ button.sidebar-item {
   opacity: 1;
   box-shadow: inset 36px 0 44px -28px rgba(17, 41, 89, 0.168), inset -36px 0 44px -28px rgba(17, 41, 89, 0.168);
   z-index: 0;
+}
+
+.app-transcript.provider-gemini .composer-surface::before {
+  background: linear-gradient(90deg, rgba(7, 18, 48, 0.32), rgba(35, 91, 184, 0.2) 18%, transparent 36%, transparent 64%, rgba(28, 80, 172, 0.2) 82%, rgba(5, 13, 36, 0.34));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(16, 52, 122, 0.34),
+    inset -42px 0 52px -30px rgba(40, 92, 190, 0.3);
 }
 
 .app-transcript.provider-codex .composer-surface::before {
