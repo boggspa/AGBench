@@ -9,9 +9,9 @@ const api = {
   selectExternalPathGrant: (access: 'read' | 'write' = 'read') => ipcRenderer.invoke('select-external-path-grant', access),
   runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust: boolean = false, imagePaths: string[] = [], resumeSessionId: string | null = null, worktree: GeminiWorktreeLaunchOption = null, route: any = null) =>
     ipcRenderer.invoke('run-gemini', workspace, prompt, model, approvalMode, sessionTrust, imagePaths, resumeSessionId, worktree, route),
-  cancelGemini: () => ipcRenderer.invoke('cancel-gemini'),
+  cancelGemini: (runId?: string) => ipcRenderer.invoke('cancel-gemini', runId),
   runAgent: (payload: any) => ipcRenderer.invoke('run-agent', payload),
-  cancelAgentRun: (provider: ProviderId = 'gemini') => ipcRenderer.invoke('cancel-agent-run', provider),
+  cancelAgentRun: (provider: ProviderId = 'gemini', runId?: string) => ipcRenderer.invoke('cancel-agent-run', provider, runId),
   getAgentStatus: (provider: ProviderId) => ipcRenderer.invoke('get-agent-status', provider),
   getAgentModels: (provider: ProviderId) => ipcRenderer.invoke('get-agent-models', provider),
   getAgentRateLimits: (provider: ProviderId) => ipcRenderer.invoke('get-agent-rate-limits', provider),

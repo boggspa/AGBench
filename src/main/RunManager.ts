@@ -1,0 +1,281 @@
+import type { AgenticServiceId, ProviderId } from './store/types'
+
+export type RunSessionStatus = 'starting' | 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface KillableProcess {
+  kill(signal?: unknown): unknown
+}
+
+export interface AbortableController {
+  abort(reason?: unknown): unknown
+}
+
+export interface RunSession<TState = unknown> {
+  runId: string
+  provider: ProviderId
+  appChatId?: string
+  workspacePath?: string
+  providerSessionId?: string
+  providerRunId?: string
+  sender?: unknown
+  process?: KillableProcess
+  abortController?: AbortableController
+  state?: TState
+  status: RunSessionStatus
+  startedAt: number
+  updatedAt: number
+  approvalIds: Set<string>
+  sessionGrants: Set<string>
+}
+
+export interface CreateRunSessionInput<TState = unknown> {
+  runId: string
+  provider: ProviderId
+  appChatId?: string
+  workspacePath?: string
+  providerSessionId?: string
+  providerRunId?: string
+  sender?: unknown
+  process?: KillableProcess
+  abortController?: AbortableController
+  state?: TState
+  status?: RunSessionStatus
+}
+
+export interface RunRoute {
+  appRunId?: string
+  appChatId?: string
+}
+
+function providerSessionKey(provider: ProviderId, providerSessionId: string): string {
+  return `${provider}:${providerSessionId}`
+}
+
+function sessionGrantKey(
+  provider: ProviderId,
+  workspacePath: string | undefined,
+  service: AgenticServiceId
+): string {
+  return `${provider}:${service}:${workspacePath || 'global'}`
+}
+
+export class RunManager<TState = unknown> {
+  private sessionsByRunId = new Map<string, RunSession<TState>>()
+  private runIdsByProvider = new Map<ProviderId, Set<string>>()
+  private runIdByProviderSession = new Map<string, string>()
+  private approvalIdToRunId = new Map<string, string>()
+
+  create(input: CreateRunSessionInput<TState>): RunSession<TState> {
+    const existing = this.sessionsByRunId.get(input.runId)
+    if (existing) {
+      this.remove(input.runId)
+    }
+
+    const now = Date.now()
+    const session: RunSession<TState> = {
+      runId: input.runId,
+      provider: input.provider,
+      appChatId: input.appChatId,
+      workspacePath: input.workspacePath,
+      providerSessionId: input.providerSessionId,
+      providerRunId: input.providerRunId,
+      sender: input.sender,
+      process: input.process,
+      abortController: input.abortController,
+      state: input.state,
+      status: input.status || 'starting',
+      startedAt: now,
+      updatedAt: now,
+      approvalIds: new Set(),
+      sessionGrants: new Set()
+    }
+
+    this.sessionsByRunId.set(session.runId, session)
+    this.indexProviderRun(session.provider, session.runId)
+    this.indexProviderSession(session)
+    return session
+  }
+
+  get(runId?: string | null): RunSession<TState> | undefined {
+    return runId ? this.sessionsByRunId.get(runId) : undefined
+  }
+
+  getByProvider(provider: ProviderId): RunSession<TState>[] {
+    return [...(this.runIdsByProvider.get(provider) || [])]
+      .map((runId) => this.sessionsByRunId.get(runId))
+      .filter((session): session is RunSession<TState> => Boolean(session))
+  }
+
+  getActiveByProvider(provider: ProviderId): RunSession<TState>[] {
+    return this.getByProvider(provider).filter(
+      (session) => session.status === 'starting' || session.status === 'running'
+    )
+  }
+
+  getLatestByProvider(provider: ProviderId): RunSession<TState> | undefined {
+    const sessions = this.getActiveByProvider(provider)
+    return sessions.sort((a, b) => b.updatedAt - a.updatedAt)[0]
+  }
+
+  getByProviderSession(
+    provider: ProviderId,
+    providerSessionId?: string | null
+  ): RunSession<TState> | undefined {
+    if (!providerSessionId) return undefined
+    return this.get(
+      this.runIdByProviderSession.get(providerSessionKey(provider, providerSessionId))
+    )
+  }
+
+  resolve(provider: ProviderId, route?: RunRoute | null): RunSession<TState> | undefined {
+    const byRunId = this.get(route?.appRunId)
+    if (byRunId && byRunId.provider === provider) return byRunId
+    if (route?.appRunId) return undefined
+
+    if (route?.appChatId) {
+      const activeChatSessions = this.getActiveByProvider(provider)
+        .filter((session) => session.appChatId === route.appChatId)
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+      if (activeChatSessions[0]) return activeChatSessions[0]
+      return undefined
+    }
+
+    return this.getLatestByProvider(provider)
+  }
+
+  update(
+    runId: string,
+    partial: Partial<Omit<RunSession<TState>, 'runId' | 'approvalIds' | 'sessionGrants'>>
+  ): RunSession<TState> | undefined {
+    const session = this.sessionsByRunId.get(runId)
+    if (!session) return undefined
+
+    const previousProviderSessionId = session.providerSessionId
+    Object.assign(session, partial, { updatedAt: Date.now() })
+    if (
+      partial.providerSessionId !== undefined &&
+      partial.providerSessionId !== previousProviderSessionId
+    ) {
+      if (previousProviderSessionId) {
+        this.runIdByProviderSession.delete(
+          providerSessionKey(session.provider, previousProviderSessionId)
+        )
+      }
+      this.indexProviderSession(session)
+    }
+    return session
+  }
+
+  setState(runId: string, state: TState): RunSession<TState> | undefined {
+    return this.update(runId, { state })
+  }
+
+  attachProcess(runId: string, process: KillableProcess): RunSession<TState> | undefined {
+    return this.update(runId, { process, status: 'running' })
+  }
+
+  attachAbortController(
+    runId: string,
+    abortController: AbortableController
+  ): RunSession<TState> | undefined {
+    return this.update(runId, { abortController, status: 'running' })
+  }
+
+  registerProviderSession(
+    runId: string,
+    providerSessionId: string
+  ): RunSession<TState> | undefined {
+    return this.update(runId, { providerSessionId })
+  }
+
+  registerProviderRun(runId: string, providerRunId: string): RunSession<TState> | undefined {
+    return this.update(runId, { providerRunId })
+  }
+
+  registerApproval(runId: string | undefined, approvalId: string): void {
+    if (!runId || !approvalId) return
+    const session = this.sessionsByRunId.get(runId)
+    if (!session) return
+    session.approvalIds.add(approvalId)
+    this.approvalIdToRunId.set(approvalId, runId)
+  }
+
+  resolveApproval(approvalId: string): RunSession<TState> | undefined {
+    return this.get(this.approvalIdToRunId.get(approvalId))
+  }
+
+  clearApproval(approvalId: string): void {
+    const runId = this.approvalIdToRunId.get(approvalId)
+    if (runId) {
+      this.sessionsByRunId.get(runId)?.approvalIds.delete(approvalId)
+    }
+    this.approvalIdToRunId.delete(approvalId)
+  }
+
+  addSessionGrant(runId: string | undefined, service: AgenticServiceId): void {
+    if (!runId) return
+    const session = this.sessionsByRunId.get(runId)
+    if (!session) return
+    session.sessionGrants.add(sessionGrantKey(session.provider, session.workspacePath, service))
+  }
+
+  hasSessionGrant(runId: string | undefined, service: AgenticServiceId): boolean {
+    const session = this.get(runId)
+    if (!session) return false
+    return session.sessionGrants.has(
+      sessionGrantKey(session.provider, session.workspacePath, service)
+    )
+  }
+
+  finish(runId: string | undefined, status: RunSessionStatus): RunSession<TState> | undefined {
+    if (!runId) return undefined
+    return this.update(runId, { status, process: undefined, abortController: undefined })
+  }
+
+  remove(runId: string): void {
+    const session = this.sessionsByRunId.get(runId)
+    if (!session) return
+
+    this.sessionsByRunId.delete(runId)
+    this.runIdsByProvider.get(session.provider)?.delete(runId)
+    if (session.providerSessionId) {
+      this.runIdByProviderSession.delete(
+        providerSessionKey(session.provider, session.providerSessionId)
+      )
+    }
+    for (const approvalId of session.approvalIds) {
+      this.approvalIdToRunId.delete(approvalId)
+    }
+  }
+
+  cancel(runId: string): boolean {
+    const session = this.sessionsByRunId.get(runId)
+    if (!session) return false
+    session.abortController?.abort()
+    session.process?.kill()
+    this.finish(runId, 'cancelled')
+    return true
+  }
+
+  clear(): void {
+    this.sessionsByRunId.clear()
+    this.runIdsByProvider.clear()
+    this.runIdByProviderSession.clear()
+    this.approvalIdToRunId.clear()
+  }
+
+  private indexProviderRun(provider: ProviderId, runId: string): void {
+    const runIds = this.runIdsByProvider.get(provider) || new Set<string>()
+    runIds.add(runId)
+    this.runIdsByProvider.set(provider, runIds)
+  }
+
+  private indexProviderSession(session: RunSession<TState>): void {
+    if (session.providerSessionId) {
+      this.runIdByProviderSession.set(
+        providerSessionKey(session.provider, session.providerSessionId),
+        session.runId
+      )
+    }
+  }
+}

@@ -4619,7 +4619,10 @@ function App(): React.JSX.Element {
           await window.api.startAgentReview('codex', resumeSessionId, {
             model: modelToPass,
             target: { type: 'uncommittedChanges' },
-            delivery: 'inline'
+            delivery: 'inline',
+            cwd: runWorkspace.path,
+            appRunId: currentRunId,
+            appChatId: runChatId
           })
         } else {
           await window.api.runAgent({
@@ -5102,10 +5105,11 @@ function App(): React.JSX.Element {
   }
 
   const handleCancel = async () => {
+    const runId = currentRun?.runId
     if (currentProvider !== 'gemini' && typeof window.api.cancelAgentRun === 'function') {
-      await window.api.cancelAgentRun(currentProvider)
+      await window.api.cancelAgentRun(currentProvider, runId)
     } else {
-      await window.api.cancelGemini()
+      await window.api.cancelGemini(runId)
     }
     syncRunningState()
   }

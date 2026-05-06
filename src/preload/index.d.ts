@@ -97,9 +97,9 @@ declare global {
       selectImageFiles: () => Promise<string[]>
       selectExternalPathGrant: (access?: 'read' | 'write') => Promise<ExternalPathGrant | null>
       runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust?: boolean, imagePaths?: string[], resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption, route?: AgentRunRoute | null) => Promise<void>
-      cancelGemini: () => Promise<void>
+      cancelGemini: (runId?: string) => Promise<void>
       runAgent: (payload: AgentRunPayload) => Promise<void>
-      cancelAgentRun: (provider?: ProviderId) => Promise<void>
+      cancelAgentRun: (provider?: ProviderId, runId?: string) => Promise<void>
       getAgentStatus: (provider: ProviderId) => Promise<any>
       getAgentModels: (provider: ProviderId) => Promise<Array<{ id: string, label?: string, description?: string, isDefault?: boolean, supportedReasoningEfforts?: Array<{ reasoningEffort: string, description?: string }>, defaultReasoningEffort?: string | null, additionalSpeedTiers?: string[] }>>
       getAgentRateLimits: (provider: ProviderId) => Promise<any>
