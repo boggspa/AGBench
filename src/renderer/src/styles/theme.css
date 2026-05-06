@@ -1,0 +1,365 @@
+/* Gemini Local Workbench — Theme System */
+
+:root {
+  /* App surface */
+  --app-bg: #141414;
+  --app-bg-elevated: #1c1c1c;
+  --app-bg-sunken: #0e0e0e;
+
+  /* Sidebar */
+  --sidebar-bg: rgba(30, 30, 34, 0.72);
+  --sidebar-bg-solid: #1e1e22;
+  --sidebar-border: rgba(255, 255, 255, 0.06);
+  --sidebar-text: rgba(255, 255, 255, 0.85);
+  --sidebar-text-secondary: rgba(255, 255, 255, 0.5);
+  --sidebar-accent: #5a8cff;
+  --sidebar-pill-bg: rgba(90, 140, 255, 0.15);
+  --sidebar-pill-border: rgba(90, 140, 255, 0.25);
+
+  /* Panel / Inspector */
+  --panel-bg: rgba(28, 28, 32, 0.82);
+  --panel-bg-solid: #1c1c20;
+  --panel-border: rgba(255, 255, 255, 0.06);
+  --panel-elevated-bg: rgba(38, 38, 44, 0.88);
+
+  /* Content / Transcript */
+  --content-bg: transparent;
+  --content-max-width: 780px;
+
+  /* Composer */
+  --composer-bg: rgba(7, 16, 36, 0.92);
+  --composer-bg-solid: #071024;
+  --composer-border: rgba(124, 158, 255, 0.16);
+  --composer-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --composer-glass-bg: rgba(6, 14, 34, 0.48);
+  --composer-glass-border: rgba(124, 158, 255, 0.22);
+  --composer-glass-highlight: rgba(145, 174, 255, 0.14);
+  --composer-glass-vignette: rgba(0, 6, 24, 0.20);
+
+  /* Text */
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.55);
+  --text-tertiary: rgba(255, 255, 255, 0.35);
+  --text-muted: rgba(255, 255, 255, 0.25);
+
+  /* Accents */
+  --accent: #5a8cff;
+  --accent-hover: #3a72f0;
+  --warning: #f5a623;
+  --success: #4cc38a;
+  --danger: #e54d4d;
+  --info: #5a8cff;
+  --focus-ring: color-mix(in srgb, var(--accent) 82%, white);
+  --focus-glow: color-mix(in srgb, var(--accent) 28%, transparent);
+
+  /* Diff */
+  --diff-add-bg: rgba(76, 195, 138, 0.10);
+  --diff-add-text: #6ddfa8;
+  --diff-del-bg: rgba(229, 77, 77, 0.10);
+  --diff-del-text: #f08080;
+  --diff-hunk: #5a8cff;
+
+  /* Tool Activity */
+  --tool-running: #5a8cff;
+  --tool-success: #4cc38a;
+  --tool-warning: #f5a623;
+  --tool-error: #e54d4d;
+
+  /* Surfaces */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.25);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.30);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,0.40);
+
+  /* Sizing */
+  --sidebar-width: 260px;
+  --inspector-width: 380px;
+  --header-height: 44px;
+  --composer-min-height: 120px;
+  --control-hit-sm: 28px;
+  --control-hit-md: 36px;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+
+  /* Typography */
+  --font-sans: "SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif;
+  --font-compact: "SF Compact", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif;
+  --font-serif: "New York", "Times New Roman", Georgia, serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Monaco, "Courier New", ui-monospace, monospace;
+  --font-size-xs: 0.72rem;
+  --font-size-sm: 0.82rem;
+  --font-size-md: 0.92rem;
+  --font-size-lg: 1.05rem;
+
+  /* Scrollbar */
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: rgba(255,255,255,0.12);
+  --scrollbar-thumb-hover: rgba(255,255,255,0.22);
+}
+
+/* Theme palettes ported from the Swift shared theme choices */
+[data-theme="light"],
+[data-theme="citrus"] {
+  --app-bg: #f4f6f8;
+  --app-bg-elevated: #ffffff;
+  --app-bg-sunken: #e9edf2;
+  --content-bg: rgba(246, 248, 251, 0.92);
+  --sidebar-bg: rgba(238, 242, 247, 0.64);
+  --sidebar-bg-solid: #eef2f7;
+  --panel-bg: rgba(239, 243, 248, 0.68);
+  --panel-bg-solid: #eef2f7;
+  --panel-elevated-bg: rgba(255, 255, 255, 0.72);
+  --composer-bg: rgba(255, 255, 255, 0.78);
+  --composer-bg-solid: #ffffff;
+  --composer-glass-bg: rgba(255, 255, 255, 0.46);
+  --composer-glass-border: rgba(80, 88, 105, 0.18);
+  --composer-glass-highlight: rgba(255, 255, 255, 0.74);
+  --composer-glass-vignette: rgba(120, 134, 156, 0.08);
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.62);
+  --text-tertiary: rgba(18, 21, 27, 0.45);
+  --text-muted: rgba(18, 21, 27, 0.32);
+  --sidebar-text: rgba(18, 21, 27, 0.82);
+  --sidebar-text-secondary: rgba(18, 21, 27, 0.52);
+  --sidebar-border: rgba(18, 21, 27, 0.10);
+  --panel-border: rgba(18, 21, 27, 0.10);
+  --composer-border: rgba(18, 21, 27, 0.12);
+  --shadow-lg: 0 14px 44px rgba(80, 96, 120, 0.18);
+}
+
+[data-theme="midnight"] {
+  --app-bg: #020308;
+  --app-bg-elevated: #080b14;
+  --app-bg-sunken: #010207;
+  --content-bg: rgba(3, 5, 12, 0.92);
+  --sidebar-bg: rgba(5, 8, 18, 0.46);
+  --panel-bg: rgba(5, 8, 18, 0.52);
+  --panel-elevated-bg: rgba(20, 28, 46, 0.60);
+  --composer-bg: rgba(10, 15, 28, 0.58);
+  --composer-glass-bg: rgba(7, 11, 22, 0.30);
+  --composer-glass-border: rgba(135, 164, 255, 0.24);
+  --accent: #6f93ff;
+  --accent-hover: #89a7ff;
+}
+
+[data-theme="blue"],
+[data-theme="ocean"] {
+  --app-bg: #030b10;
+  --app-bg-elevated: #07161d;
+  --content-bg: rgba(5, 13, 18, 0.91);
+  --sidebar-bg: rgba(7, 25, 32, 0.46);
+  --panel-bg: rgba(8, 25, 34, 0.52);
+  --panel-elevated-bg: rgba(15, 45, 58, 0.62);
+  --composer-bg: rgba(10, 31, 42, 0.58);
+  --composer-glass-bg: rgba(7, 27, 38, 0.30);
+  --composer-glass-border: rgba(73, 201, 226, 0.22);
+  --accent: #41c7e5;
+  --accent-hover: #62d8ef;
+}
+
+[data-theme="green"],
+[data-theme="forest"] {
+  --app-bg: #030c07;
+  --app-bg-elevated: #071610;
+  --content-bg: rgba(5, 13, 9, 0.91);
+  --sidebar-bg: rgba(8, 28, 16, 0.46);
+  --panel-bg: rgba(8, 28, 16, 0.52);
+  --panel-elevated-bg: rgba(22, 54, 32, 0.60);
+  --composer-bg: rgba(12, 34, 20, 0.58);
+  --composer-glass-bg: rgba(8, 30, 18, 0.30);
+  --composer-glass-border: rgba(86, 207, 129, 0.22);
+  --accent: #4fd17d;
+  --accent-hover: #70df97;
+}
+
+[data-theme="sunset"],
+[data-theme="orange"],
+[data-theme="red"] {
+  --app-bg: #130609;
+  --app-bg-elevated: #1d0d0d;
+  --content-bg: rgba(18, 8, 10, 0.91);
+  --sidebar-bg: rgba(38, 14, 14, 0.46);
+  --panel-bg: rgba(42, 16, 14, 0.52);
+  --panel-elevated-bg: rgba(72, 30, 21, 0.60);
+  --composer-bg: rgba(45, 19, 18, 0.58);
+  --composer-glass-bg: rgba(42, 17, 17, 0.30);
+  --composer-glass-border: rgba(255, 144, 86, 0.22);
+  --accent: #ff9b54;
+  --accent-hover: #ffb071;
+}
+
+[data-theme="purple"],
+[data-theme="pink"],
+[data-theme="nebula"],
+[data-theme="candy"] {
+  --app-bg: #090510;
+  --app-bg-elevated: #12091d;
+  --content-bg: rgba(11, 7, 18, 0.91);
+  --sidebar-bg: rgba(27, 13, 42, 0.46);
+  --panel-bg: rgba(30, 14, 46, 0.52);
+  --panel-elevated-bg: rgba(50, 24, 72, 0.60);
+  --composer-bg: rgba(32, 16, 48, 0.58);
+  --composer-glass-bg: rgba(30, 14, 46, 0.30);
+  --composer-glass-border: rgba(213, 121, 255, 0.22);
+  --accent: #d889ff;
+  --accent-hover: #e2a5ff;
+}
+
+[data-theme="yellow"],
+[data-theme="citrus"] {
+  --accent: #d8a900;
+  --accent-hover: #efbf1d;
+}
+
+[data-theme="graphite"] {
+  --app-bg: #111216;
+  --app-bg-elevated: #1b1d22;
+  --content-bg: rgba(18, 19, 24, 0.92);
+  --sidebar-bg: rgba(42, 44, 52, 0.58);
+  --panel-bg: rgba(43, 45, 52, 0.62);
+  --panel-elevated-bg: rgba(58, 60, 68, 0.68);
+  --composer-bg: rgba(37, 39, 46, 0.66);
+  --composer-glass-bg: rgba(38, 40, 48, 0.34);
+  --composer-glass-border: rgba(220, 224, 235, 0.16);
+  --accent: #9da6b8;
+  --accent-hover: #b7bfce;
+}
+
+[data-theme="rainbow"],
+[data-theme="twilight"],
+[data-theme="cyber"] {
+  --app-bg: #05070d;
+  --app-bg-elevated: #10131d;
+  --content-bg: rgba(7, 9, 16, 0.90);
+  --sidebar-bg: rgba(19, 23, 38, 0.50);
+  --panel-bg: rgba(18, 22, 36, 0.56);
+  --panel-elevated-bg: rgba(31, 36, 56, 0.64);
+  --composer-bg: rgba(20, 24, 38, 0.60);
+  --composer-glass-bg: rgba(18, 22, 36, 0.32);
+  --composer-glass-border: rgba(101, 210, 255, 0.22);
+  --accent: #62d8ff;
+  --accent-hover: #8be2ff;
+}
+
+/* Accent overrides */
+[data-accent="blue"] { --accent: #5a8cff; --accent-hover: #79a2ff; }
+[data-accent="purple"] { --accent: #bf7cff; --accent-hover: #d09aff; }
+[data-accent="pink"] { --accent: #ff5fa2; --accent-hover: #ff84b8; }
+[data-accent="orange"] { --accent: #ff9b54; --accent-hover: #ffb071; }
+[data-accent="green"] { --accent: #4cc38a; --accent-hover: #6ddfa8; }
+[data-accent="red"] { --accent: #e65b62; --accent-hover: #f17b81; }
+[data-accent="yellow"] { --accent: #f2c94c; --accent-hover: #ffd968; }
+
+[data-accent] {
+  --info: var(--accent);
+  --sidebar-accent: var(--accent);
+  --sidebar-pill-bg: color-mix(in srgb, var(--accent) 18%, transparent);
+  --sidebar-pill-border: color-mix(in srgb, var(--accent) 32%, transparent);
+  --diff-hunk: var(--accent);
+  --tool-running: var(--accent);
+}
+
+[data-corners="hard"] {
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 7px;
+}
+
+[data-visual-effect="classic"] {
+  --composer-glass-bg: color-mix(in srgb, var(--composer-bg) 78%, transparent);
+  --composer-glass-border: rgba(255, 255, 255, 0.18);
+}
+
+[data-visual-effect="liquid_glass"] {
+  --composer-glass-border: color-mix(in srgb, var(--accent) 18%, rgba(255, 255, 255, 0.16));
+}
+
+/* Soft Glass mode: use backdrop-filter on sidebar/panel */
+[data-appearance="soft_glass"] {
+  --sidebar-bg: rgba(30, 30, 34, 0.42);
+  --panel-bg: rgba(28, 28, 32, 0.50);
+  --panel-elevated-bg: rgba(38, 38, 44, 0.62);
+  --composer-bg: rgba(34, 34, 40, 0.64);
+}
+
+/* Native Glass mode: lighter for OS vibrancy to show through */
+[data-appearance="native_glass"] {
+  --app-bg: transparent;
+  --app-bg-elevated: rgba(255, 255, 255, 0.06);
+  --app-bg-sunken: transparent;
+  --sidebar-bg: transparent;
+  --panel-bg: transparent;
+  --panel-elevated-bg: rgba(255, 255, 255, 0.024);
+  --composer-bg: rgba(34, 34, 40, 0.40);
+  --content-bg: rgba(22, 23, 27, 0.90);
+  --composer-border: rgba(255, 255, 255, 0.16);
+  --sidebar-border: rgba(255, 255, 255, 0.20);
+  --panel-border: rgba(255, 255, 255, 0.20);
+}
+
+/* Solid mode: fully opaque */
+[data-appearance="solid"] {
+  --sidebar-bg: var(--sidebar-bg-solid);
+  --panel-bg: var(--panel-bg-solid);
+  --panel-elevated-bg: #2a2a30;
+  --composer-bg: var(--composer-bg-solid);
+}
+
+/* Reduce Transparency */
+[data-reduce-transparency="true"] {
+  --sidebar-bg: var(--sidebar-bg-solid);
+  --panel-bg: var(--panel-bg-solid);
+  --panel-elevated-bg: #2a2a30;
+  --composer-bg: var(--composer-bg-solid);
+}
+
+/* Compact density */
+[data-compact="true"] {
+  --space-xs: 2px;
+  --space-sm: 4px;
+  --space-md: 8px;
+  --space-lg: 10px;
+  --space-xl: 16px;
+  --header-height: 36px;
+}
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+/* Selection */
+::selection { background: rgba(90, 140, 255, 0.30); color: #fff; }
+
+/* Reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+[data-reduce-motion="true"] {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* High contrast / increased contrast */
+@media (prefers-contrast: more) {
+  :root {
+    --sidebar-border: rgba(255,255,255,0.20);
+    --panel-border: rgba(255,255,255,0.20);
+    --composer-border: rgba(255,255,255,0.25);
+    --text-primary: #fff;
+    --text-secondary: rgba(255,255,255,0.75);
+  }
+}
