@@ -228,6 +228,11 @@ body {
   position: relative;
 }
 
+.sidebar-workspace-list > .sidebar-workspace-group > .sidebar-item,
+.sidebar-chat-item {
+  font-size: var(--sidebar-row-font-size);
+}
+
 button.sidebar-item {
   appearance: none;
   -webkit-appearance: none;
@@ -342,7 +347,7 @@ button.sidebar-item {
 }
 
 .sidebar-chat-item .sidebar-item-text {
-  font-size: var(--font-size-sm);
+  font-size: var(--sidebar-row-font-size);
 }
 
 .sidebar-chat-busy {
@@ -360,7 +365,7 @@ button.sidebar-item {
   flex: 0 0 auto;
   margin-left: auto;
   color: var(--sidebar-text-secondary);
-  font-size: var(--font-size-xs);
+  font-size: var(--sidebar-row-meta-font-size);
   font-weight: 500;
   line-height: 1;
   opacity: 0.78;
