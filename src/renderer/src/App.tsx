@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -2427,6 +2427,7 @@ function App(): React.JSX.Element {
   const [agentStatusByProvider, setAgentStatusByProvider] = useState<Partial<Record<ProviderId, any>>>({})
   const [agentMcpStatusByProvider, setAgentMcpStatusByProvider] = useState<Partial<Record<ProviderId, any>>>({})
   const [agentModelsByProvider, setAgentModelsByProvider] = useState<Partial<Record<ProviderId, CodexModelOption[]>>>({})
+  const [providerCapabilitiesByProvider, setProviderCapabilitiesByProvider] = useState<Partial<Record<ProviderId, ProviderCapabilityContract>>>({})
   const [codexReasoningEffort, setCodexReasoningEffort] = useState<string>('medium')
   const [codexServiceTier, setCodexServiceTier] = useState<string>('')
   const [approvalMode, setApprovalMode] = useState<string>('default')
@@ -2797,7 +2798,16 @@ function App(): React.JSX.Element {
     }
   }
 
-  const refreshProviderMetadata = async (provider: ProviderId) => {
+  const refreshProviderMetadata = async (provider: ProviderId, workspacePath: string | undefined = currentWorkspace?.path) => {
+    if (typeof window.api.getProviderCapabilities === 'function') {
+      window.api.getProviderCapabilities(provider, workspacePath, approvalMode)
+        .then((capabilities) => {
+          setProviderCapabilitiesByProvider(prev => ({ ...prev, [provider]: capabilities }))
+        })
+        .catch(() => {
+          setProviderCapabilitiesByProvider(prev => ({ ...prev, [provider]: undefined }))
+        })
+    }
     if (provider === 'gemini' || typeof window.api.getAgentStatus !== 'function') {
       return
     }
@@ -3060,6 +3070,7 @@ function App(): React.JSX.Element {
       const normalizedServices = { ...DEFAULT_AGENTIC_SERVICES, ...next.agenticServices }
       setAgenticServices(normalizedServices)
       settingsPatch.agenticServices = normalizedServices
+      providersToRefresh.push(currentProvider)
     }
     if (next.geminiMcpBridgeEnabled !== undefined) {
       const enabled = Boolean(next.geminiMcpBridgeEnabled)
@@ -3067,7 +3078,10 @@ function App(): React.JSX.Element {
       settingsPatch.geminiMcpBridgeEnabled = enabled
       if (typeof window.api.setGeminiMcpBridgeEnabled === 'function') {
         window.api.setGeminiMcpBridgeEnabled(enabled)
-          .then((status) => setGeminiMcpBridgeStatus(status))
+          .then((status) => {
+            setGeminiMcpBridgeStatus(status)
+            void refreshProviderMetadata('gemini')
+          })
           .catch((error) => {
             setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to update Gemini MCP bridge: ${redactLog(String(error))}` }])
           })
@@ -3273,7 +3287,7 @@ function App(): React.JSX.Element {
     }
     await refreshUsageSummary(ws.id, selectedProvider)
     setDiff(selectedProvider === 'gemini' && isGeminiWorktreeDiffUnavailable(resolveGeminiWorktreeConfig(ws)) ? createWorktreeDiffUnavailable() : null)
-    void refreshProviderMetadata(selectedProvider)
+    void refreshProviderMetadata(selectedProvider, ws.path)
     setRunDiff(null)
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
@@ -5456,6 +5470,8 @@ function App(): React.JSX.Element {
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const currentAgentStatus = currentProvider === 'codex' ? codexStatus : agentStatusByProvider[currentProvider]
   const currentAgentMcpStatus = currentProvider === 'codex' ? codexMcpStatus : agentMcpStatusByProvider[currentProvider]
+  const currentProviderCapabilities = providerCapabilitiesByProvider[currentProvider]
+  const currentProviderCapabilityWarning = currentProviderCapabilities?.warnings.find((warning) => warning.severity !== 'info')
   const providerSessionLabel = currentChat?.linkedProviderSessionId
     ? `${currentProviderLabel} session linked`
     : currentProvider === 'codex'
@@ -6005,6 +6021,11 @@ function App(): React.JSX.Element {
                 )}
                 {currentProvider === 'gemini' && persistentSessionNeedsRestart && (
                   <span className="composer-chip warning">{sessionRestartReason}</span>
+                )}
+                {currentProviderCapabilityWarning && (
+                  <span className="composer-chip warning" title={currentProviderCapabilityWarning.message}>
+                    {currentProviderCapabilityWarning.title}
+                  </span>
                 )}
                 {isCurrentChatProviderLocked && (
                   <span className="composer-chip composer-chat-lock-chip">{currentProviderLabel} chat locked</span>
@@ -6801,6 +6822,7 @@ function App(): React.JSX.Element {
               codexStatus={currentAgentStatus}
               codexModels={currentProvider === 'codex' ? codexModels : currentProviderModelOptions}
               codexMcpStatus={currentAgentMcpStatus}
+              providerCapabilities={currentProviderCapabilities}
               codexThreads={codexThreads}
               codexExternalPathGrants={codexExternalPathGrants}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
@@ -6861,6 +6883,8 @@ function App(): React.JSX.Element {
               kimiBinaryPath={kimiBinaryPath}
               agenticServices={agenticServices}
               agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
+              activeProvider={currentProvider}
+              providerCapabilities={currentProviderCapabilities}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
               codexSandboxFallback={codexSandboxFallback}

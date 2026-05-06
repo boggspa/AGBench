@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -101,6 +101,7 @@ declare global {
       runAgent: (payload: AgentRunPayload) => Promise<void>
       cancelAgentRun: (provider?: ProviderId, runId?: string) => Promise<void>
       getAgentStatus: (provider: ProviderId) => Promise<any>
+      getProviderCapabilities: (provider: ProviderId, workspace?: string, approvalMode?: string) => Promise<ProviderCapabilityContract>
       getAgentModels: (provider: ProviderId) => Promise<Array<{ id: string, label?: string, description?: string, isDefault?: boolean, supportedReasoningEfforts?: Array<{ reasoningEffort: string, description?: string }>, defaultReasoningEffort?: string | null, additionalSpeedTiers?: string[] }>>
       getAgentRateLimits: (provider: ProviderId) => Promise<any>
       importCodexUsageCredential: (filePath?: string) => Promise<any>

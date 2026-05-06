@@ -10,12 +10,13 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
 import { isPathInsideWorkspace, resolveAgenticPermission } from './AgenticPolicy'
 import { RunManager } from './RunManager'
+import { buildProviderCapabilityContract } from './ProviderCapabilities'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -801,6 +802,133 @@ function getCliProviderMcpStatus(provider: ProviderId) {
   }
 }
 
+async function getAgentStatusSnapshot(provider: ProviderId): Promise<any> {
+  if (provider === 'codex') {
+    let accountStatus: any = null
+    let rateLimitStatus: any = null
+    let codexUsage: any = null
+    try {
+      const client = getCodexClient()
+      await client.ensureStarted(app.getVersion())
+      accountStatus = await client.request('account/read', { refreshToken: false }, 15_000)
+      rateLimitStatus = await client.request('account/rateLimits/read', {}, 15_000)
+    } catch (error) {
+      accountStatus = { error: error instanceof Error ? error.message : String(error) }
+    }
+    try {
+      codexUsage = await fetchCodexUsageSnapshot()
+    } catch (error) {
+      codexUsage = {
+        configured: Boolean(AppStore.getSettings().codexUsageCredential?.accountId),
+        source: 'chatgpt-wham',
+        error: error instanceof Error ? error.message : String(error)
+      }
+    }
+    const account = accountStatus?.account || null
+    return {
+      provider,
+      version: await readCliVersion('codex'),
+      appServer: codexClient ? 'started' : 'lazy',
+      authState: account ? account.type : accountStatus?.requiresOpenaiAuth ? 'missing' : 'not-required',
+      planType: account?.planType || null,
+      account,
+      requiresOpenaiAuth: Boolean(accountStatus?.requiresOpenaiAuth),
+      rateLimits: rateLimitStatus?.rateLimits || null,
+      rateLimitsByLimitId: rateLimitStatus?.rateLimitsByLimitId || null,
+      codexUsage,
+      error: accountStatus?.error
+    }
+  }
+  if (provider === 'claude' || provider === 'kimi') {
+    return getCliProviderStatus(provider)
+  }
+  const geminiStatus = await getCliProviderStatus('gemini')
+  return {
+    ...geminiStatus,
+    appServer: 'unsupported',
+    supportsMcpStatus: false
+  }
+}
+
+async function getAgentMcpStatusSnapshot(provider: ProviderId): Promise<any> {
+  if (provider === 'claude' || provider === 'kimi') {
+    return getCliProviderMcpStatus(provider)
+  }
+  if (provider !== 'codex') {
+    return null
+  }
+  const client = getCodexClient()
+  await client.ensureStarted(app.getVersion())
+  return client.request('mcpServerStatus/list', {
+    detail: 'toolsAndAuthOnly',
+    limit: 100
+  }, 20_000)
+}
+
+async function getProviderCapabilityContract(
+  provider: ProviderId,
+  workspacePath?: string,
+  approvalMode?: string
+): Promise<ProviderCapabilityContract> {
+  const settings = AppStore.getSettings()
+  const [status, mcpStatus, geminiBridgeStatus] = await Promise.all([
+    getAgentStatusSnapshot(provider).catch((error) => ({
+      provider,
+      available: false,
+      setupRequired: true,
+      error: error instanceof Error ? error.message : String(error)
+    })),
+    getAgentMcpStatusSnapshot(provider).catch((error) => ({
+      provider,
+      available: false,
+      error: error instanceof Error ? error.message : String(error)
+    })),
+    provider === 'gemini' ? getGeminiMcpBridgeStatus().catch((error) => ({
+      checkedAt: new Date().toISOString(),
+      enabled: Boolean(settings.geminiMcpBridgeEnabled),
+      installed: false,
+      available: false,
+      serverName: GEMINI_MCP_SERVER_NAME,
+      error: error instanceof Error ? error.message : String(error),
+      message: 'Gemini MCP bridge status check failed.'
+    } satisfies GeminiMcpBridgeStatus)) : Promise.resolve(null)
+  ])
+
+  return buildProviderCapabilityContract({
+    provider,
+    settings,
+    workspacePath,
+    approvalMode,
+    status,
+    mcpStatus,
+    geminiMcpBridgeStatus: geminiBridgeStatus
+  })
+}
+
+async function emitProviderCapabilityWarnings(
+  sender: Electron.WebContents,
+  provider: ProviderId,
+  workspacePath: string | undefined,
+  approvalMode: string | undefined,
+  route?: AgentRunRoute | null,
+  options: { excludeIds?: string[] } = {}
+): Promise<void> {
+  const excluded = new Set(options.excludeIds || [])
+  const contract = await getProviderCapabilityContract(provider, workspacePath, approvalMode)
+  for (const capabilityWarning of contract.warnings) {
+    if (excluded.has(capabilityWarning.id)) continue
+    if (capabilityWarning.severity === 'info') continue
+    sendAgentCompatLine(sender, provider, {
+      type: 'provider_warning',
+      provider,
+      severity: capabilityWarning.severity,
+      title: capabilityWarning.title,
+      message: capabilityWarning.message,
+      capabilityWarning
+    }, route)
+  }
+}
+
 function redactAccountId(accountId?: string | null): string | null {
   const raw = String(accountId || '').trim()
   if (!raw) return null
@@ -1255,6 +1383,7 @@ function runCliProviderProcess(
     ...route
   }
   registerRunSession(provider, event.sender, route, payload.workspace, state, payload.providerSessionId || null)
+  void emitProviderCapabilityWarnings(event.sender, provider, payload.workspace, payload.approvalMode, state)
 
   if (options.warning) {
     sendAgentCompatLine(event.sender, provider, {
@@ -1371,6 +1500,7 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
   }
   registerRunSession('claude', event.sender, route, payload.workspace, state, payload.providerSessionId || null)
   runManager.attachAbortController(route.appRunId!, controller)
+  void emitProviderCapabilityWarnings(event.sender, 'claude', payload.workspace, payload.approvalMode, state)
   sendAgentCompatLine(event.sender, 'claude', {
     type: 'init',
     session_id: state.providerSessionId || '',
@@ -1466,6 +1596,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     ...route
   }
   registerRunSession('kimi', event.sender, route, payload.workspace, state, payload.providerSessionId || null)
+  void emitProviderCapabilityWarnings(event.sender, 'kimi', payload.workspace, payload.approvalMode, state)
 
   sendAgentCompatLine(event.sender, 'kimi', {
     type: 'init',
@@ -2640,6 +2771,7 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   const codexState = createCodexRunState(event.sender, threadId, threadResponse?.model || model, payload.workspace, route)
   registerRunSession('codex', event.sender, codexState, payload.workspace, codexState, threadId)
   setActiveCodexRunState(codexState)
+  void emitProviderCapabilityWarnings(event.sender, 'codex', payload.workspace, payload.approvalMode, codexState)
 
   sendAgentCompatLine(event.sender, 'codex', {
     type: 'init',
@@ -2679,6 +2811,7 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
   args.push(payload.prompt)
 
   registerRunSession('codex', event.sender, route, payload.workspace, undefined)
+  void emitProviderCapabilityWarnings(event.sender, 'codex', payload.workspace, payload.approvalMode, route)
 
   sendAgentCompatError(event.sender, 'codex', `Codex app-server unavailable; falling back to codex exec --json for this one-shot run. Rich thread resume and approvals are unavailable. Reason: ${reason}`, route)
   if (normalizeExternalPathGrants(payload.externalPathGrants).length > 0) {
@@ -4660,51 +4793,7 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-agent-status', async (_, provider: ProviderId) => {
-    if (provider === 'codex') {
-      let accountStatus: any = null
-      let rateLimitStatus: any = null
-      let codexUsage: any = null
-      try {
-        const client = getCodexClient()
-        await client.ensureStarted(app.getVersion())
-        accountStatus = await client.request('account/read', { refreshToken: false }, 15_000)
-        rateLimitStatus = await client.request('account/rateLimits/read', {}, 15_000)
-      } catch (error) {
-        accountStatus = { error: error instanceof Error ? error.message : String(error) }
-      }
-      try {
-        codexUsage = await fetchCodexUsageSnapshot()
-      } catch (error) {
-        codexUsage = {
-          configured: Boolean(AppStore.getSettings().codexUsageCredential?.accountId),
-          source: 'chatgpt-wham',
-          error: error instanceof Error ? error.message : String(error)
-        }
-      }
-      const account = accountStatus?.account || null
-      return {
-        provider,
-        version: await readCliVersion('codex'),
-        appServer: codexClient ? 'started' : 'lazy',
-        authState: account ? account.type : accountStatus?.requiresOpenaiAuth ? 'missing' : 'not-required',
-        planType: account?.planType || null,
-        account,
-        requiresOpenaiAuth: Boolean(accountStatus?.requiresOpenaiAuth),
-        rateLimits: rateLimitStatus?.rateLimits || null,
-        rateLimitsByLimitId: rateLimitStatus?.rateLimitsByLimitId || null,
-        codexUsage,
-        error: accountStatus?.error
-      }
-    }
-    if (provider === 'claude' || provider === 'kimi') {
-      return getCliProviderStatus(provider)
-    }
-    return {
-      provider: 'gemini',
-      version: await readCliVersion('gemini'),
-      appServer: 'unsupported',
-      authState: 'unknown'
-    }
+    return getAgentStatusSnapshot(provider)
   })
 
   ipcMain.handle('get-agent-rate-limits', async (_, provider: ProviderId) => {
@@ -4730,18 +4819,11 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-agent-mcp-status', async (_, provider: ProviderId) => {
-    if (provider === 'claude' || provider === 'kimi') {
-      return getCliProviderMcpStatus(provider)
-    }
-    if (provider !== 'codex') {
-      return null
-    }
-    const client = getCodexClient()
-    await client.ensureStarted(app.getVersion())
-    return client.request('mcpServerStatus/list', {
-      detail: 'toolsAndAuthOnly',
-      limit: 100
-    }, 20_000)
+    return getAgentMcpStatusSnapshot(provider)
+  })
+
+  ipcMain.handle('get-provider-capabilities', async (_, provider: ProviderId, workspacePath?: string, approvalMode?: string) => {
+    return getProviderCapabilityContract(provider, workspacePath, approvalMode)
   })
 
   ipcMain.handle('list-agent-threads', async (_, provider: ProviderId, params: any = {}) => {
@@ -5048,6 +5130,9 @@ app.whenReady().then(() => {
     runRoute: AgentRunRoute | null = null
   ) => {
     const route = routeWithRunId('gemini', runRoute)
+    void emitProviderCapabilityWarnings(event.sender, 'gemini', workspace, approvalMode, route, {
+      excludeIds: ['gemini-bridge-unavailable']
+    })
 
     const args: string[] = []
     const settings = AppStore.getSettings()

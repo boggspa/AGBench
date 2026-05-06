@@ -13,6 +13,8 @@ const api = {
   runAgent: (payload: any) => ipcRenderer.invoke('run-agent', payload),
   cancelAgentRun: (provider: ProviderId = 'gemini', runId?: string) => ipcRenderer.invoke('cancel-agent-run', provider, runId),
   getAgentStatus: (provider: ProviderId) => ipcRenderer.invoke('get-agent-status', provider),
+  getProviderCapabilities: (provider: ProviderId, workspace?: string, approvalMode?: string) =>
+    ipcRenderer.invoke('get-provider-capabilities', provider, workspace, approvalMode),
   getAgentModels: (provider: ProviderId) => ipcRenderer.invoke('get-agent-models', provider),
   getAgentRateLimits: (provider: ProviderId) => ipcRenderer.invoke('get-agent-rate-limits', provider),
   importCodexUsageCredential: (filePath?: string) => ipcRenderer.invoke('import-codex-usage-credential', filePath),

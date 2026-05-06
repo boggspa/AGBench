@@ -5,6 +5,8 @@ import type {
   AppearanceMode,
   CodexSandboxFallbackMode,
   GeminiMcpBridgeStatus,
+  ProviderCapabilityContract,
+  ProviderId,
   PromptSurfaceStyle,
   ThemeAccentStyle,
   ThemeAppearance,
@@ -28,6 +30,8 @@ interface SettingsPanelProps {
   kimiBinaryPath: string;
   agenticServices: AgenticServicesSettings;
   agenticWorkspaceGrantCount: number;
+  activeProvider: ProviderId;
+  providerCapabilities?: ProviderCapabilityContract | null;
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeStatus: GeminiMcpBridgeStatus | null;
   codexSandboxFallback: CodexSandboxFallbackMode;
@@ -131,6 +135,8 @@ export function SettingsPanel({
   kimiBinaryPath,
   agenticServices,
   agenticWorkspaceGrantCount,
+  activeProvider,
+  providerCapabilities,
   geminiMcpBridgeEnabled,
   geminiMcpBridgeStatus,
   codexSandboxFallback,
@@ -352,6 +358,17 @@ export function SettingsPanel({
           </label>
         </div>
         <p className="settings-hint">{agenticWorkspaceGrantCount} workspace permission {agenticWorkspaceGrantCount === 1 ? 'grant' : 'grants'} saved.</p>
+
+        {providerCapabilities && (
+          <div className="settings-hint">
+            Active provider contract: {providerCapabilities.label} shell is {providerCapabilities.tools.shellCommands.state}, files are {providerCapabilities.tools.fileChanges.state}, MCP is {providerCapabilities.mcp.state}.
+          </div>
+        )}
+        {!providerCapabilities && (
+          <div className="settings-hint">
+            Active provider contract for {activeProvider} will appear after the next capability refresh.
+          </div>
+        )}
 
         <label className="settings-service-row">
           <span>Codex sandbox fallback</span>

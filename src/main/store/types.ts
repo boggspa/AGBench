@@ -75,6 +75,71 @@ export interface GeminiMcpBridgeStatus {
   error?: string;
 }
 
+export type ProviderCapabilityState = 'available' | 'gated' | 'blocked' | 'delegated' | 'unavailable';
+export type ProviderCapabilityWarningSeverity = 'info' | 'warning' | 'error';
+export type ProviderToolingCapabilityId = AgenticServiceId | 'networkAccess';
+
+export interface ProviderCapabilityWarning {
+  id: string;
+  severity: ProviderCapabilityWarningSeverity;
+  title: string;
+  message: string;
+}
+
+export interface ProviderToolingCapability {
+  id: ProviderToolingCapabilityId;
+  label: string;
+  state: ProviderCapabilityState;
+  source: 'agentbench' | 'provider' | 'bridge' | 'settings';
+  policy?: AgenticServicePolicy | AgenticNetworkPolicy;
+  requiresApproval: boolean;
+  tools: string[];
+  details?: string;
+}
+
+export interface ProviderApprovalCapability {
+  requestedMode: string;
+  effectiveMode: string;
+  providerMode: string;
+  inAppApprovals: boolean;
+  supportsWorkspaceGrants: boolean;
+  notes: string[];
+}
+
+export interface ProviderMcpCapability {
+  state: ProviderCapabilityState;
+  source: 'agentbench' | 'provider' | 'bridge' | 'unsupported';
+  available: boolean;
+  enabled?: boolean;
+  installed?: boolean;
+  serverName?: string;
+  tools: string[];
+  message?: string;
+}
+
+export interface ProviderAvailabilityCapability {
+  available: boolean;
+  setupRequired?: boolean;
+  binaryPath?: string | null;
+  binarySource?: string;
+  version?: string;
+  authState?: string;
+  appServer?: string;
+  error?: string;
+}
+
+export interface ProviderCapabilityContract {
+  provider: ProviderId;
+  label: string;
+  refreshedAt: string;
+  workspacePath?: string;
+  availability: ProviderAvailabilityCapability;
+  tools: Record<ProviderToolingCapabilityId, ProviderToolingCapability>;
+  approvals: ProviderApprovalCapability;
+  mcp: ProviderMcpCapability;
+  warnings: ProviderCapabilityWarning[];
+}
+
 export interface AppSettings {
   activeProvider?: ProviderId;
   claudeBinaryPath?: string;

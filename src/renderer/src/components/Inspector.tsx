@@ -1,7 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { TerminalPanel } from './TerminalPanel';
-import type { DiffFileSummary, ProviderId, ExternalPathGrant, GeminiMcpBridgeStatus } from '../../../main/store/types';
+import type { DiffFileSummary, ProviderId, ExternalPathGrant, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderToolingCapability } from '../../../main/store/types';
 
 type InspectorTab = 'diff' | 'raw' | 'safety' | 'capabilities';
 type CapabilityKind = 'mcp' | 'extensions' | 'skills';
@@ -77,6 +77,7 @@ interface InspectorProps {
   codexStatus?: any;
   codexModels?: Array<{ id: string; label?: string; defaultReasoningEffort?: string | null; additionalSpeedTiers?: string[]; supportedReasoningEfforts?: Array<{ reasoningEffort: string }> }>;
   codexMcpStatus?: any;
+  providerCapabilities?: ProviderCapabilityContract | null;
   codexThreads?: any[];
   codexExternalPathGrants?: ExternalPathGrant[];
   geminiMcpBridgeEnabled?: boolean;
@@ -284,10 +285,73 @@ function truncateRawOutput(value: string, maxLength: number = 1800): string {
   return `${value.slice(0, maxLength)}\n[preview truncated]`;
 }
 
+function toolingStateColor(state: ProviderToolingCapability['state']): string {
+  if (state === 'available') return 'var(--success)';
+  if (state === 'gated' || state === 'delegated') return 'var(--warning)';
+  if (state === 'blocked' || state === 'unavailable') return 'var(--danger)';
+  return 'var(--text-secondary)';
+}
+
+function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContract | null }) {
+  if (!contract) {
+    return (
+      <div className="safety-card">
+        <h4>Tooling contract</h4>
+        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+          Provider capability state has not been loaded yet.
+        </p>
+      </div>
+    );
+  }
+
+  const tools = [contract.tools.shellCommands, contract.tools.fileChanges, contract.tools.mcpTools, contract.tools.networkAccess];
+  return (
+    <div className="safety-card">
+      <h4>{contract.label} tooling contract</h4>
+      <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-md) 0' }}>
+        Shared AgentBench view of shell, file, MCP, approval, and unavailable-tool behavior for this provider.
+      </p>
+      <div className="safety-row"><span>Availability</span><span style={{ color: contract.availability.available ? 'var(--success)' : 'var(--danger)' }}>{contract.availability.available ? 'available' : 'unavailable'}</span></div>
+      <div className="safety-row"><span>Version</span><span>{contract.availability.version || 'unknown'}</span></div>
+      <div className="safety-row"><span>Approval mode</span><span>{contract.approvals.providerMode}</span></div>
+      <div className="safety-row"><span>In-app approvals</span><span>{contract.approvals.inAppApprovals ? 'yes' : 'provider-managed'}</span></div>
+      <div className="safety-row"><span>MCP</span><span style={{ color: toolingStateColor(contract.mcp.state) }}>{contract.mcp.state}</span></div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginTop: 'var(--space-md)' }}>
+        {tools.map((tool) => (
+          <div key={tool.id} style={{ borderTop: '1px solid var(--panel-border)', paddingTop: 'var(--space-sm)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
+              <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>{tool.label}</span>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: toolingStateColor(tool.state), whiteSpace: 'nowrap' }}>{tool.state}</span>
+            </div>
+            <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', marginTop: 2 }}>
+              {tool.details || `${tool.source}${tool.policy ? ` · ${tool.policy}` : ''}`}
+            </div>
+            {tool.tools.length > 0 && (
+              <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                {tool.tools.join(', ')}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {contract.warnings.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', marginTop: 'var(--space-md)' }}>
+          {contract.warnings.slice(0, 4).map((item) => (
+            <div key={item.id} style={{ fontSize: 'var(--font-size-xs)', color: item.severity === 'error' ? 'var(--danger)' : item.severity === 'warning' ? 'var(--warning)' : 'var(--text-secondary)' }}>
+              <strong>{item.title}</strong>: {item.message}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CapabilitiesTab(props: InspectorProps) {
   if (props.provider === 'codex') {
     return (
       <div className="safety-panel">
+        <ToolingContractCard contract={props.providerCapabilities} />
         <div className="safety-card">
           <h4>Codex capabilities</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-md) 0' }}>
@@ -362,6 +426,7 @@ function CapabilitiesTab(props: InspectorProps) {
     const label = providerLabel(props.provider);
     return (
       <div className="safety-panel">
+        <ToolingContractCard contract={props.providerCapabilities} />
         <div className="safety-card">
           <h4>{label} capabilities</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-md) 0' }}>
@@ -408,6 +473,8 @@ function CapabilitiesTab(props: InspectorProps) {
           {isLoading ? 'Refreshing...' : 'Refresh'}
         </button>
       </div>
+
+      <ToolingContractCard contract={props.providerCapabilities} />
 
       <div className="safety-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', alignItems: 'center' }}>
