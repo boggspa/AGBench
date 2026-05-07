@@ -257,6 +257,63 @@ export interface ChatRecord {
   };
 }
 
+export type RunEventKind =
+  | 'provider_raw'
+  | 'provider_error'
+  | 'provider_exit'
+  | 'timeline'
+  | 'tool'
+  | 'approval_request'
+  | 'approval_response'
+  | 'diff'
+  | 'final_message'
+  | 'lifecycle';
+
+export type RunEventPhase = 'raw' | 'normalized' | 'control' | 'artifact';
+
+export interface RunEventRecord {
+  schemaVersion: 1;
+  id: string;
+  sequence: number;
+  runId: string;
+  chatId?: string;
+  workspaceId?: string;
+  workspacePath?: string;
+  provider?: ProviderId;
+  providerSessionId?: string;
+  providerRunId?: string;
+  kind: RunEventKind;
+  phase: RunEventPhase;
+  source: 'main' | 'renderer' | 'provider' | 'replay';
+  timestamp: string;
+  summary?: string;
+  payload?: unknown;
+}
+
+export type RunEventInput = Omit<RunEventRecord, 'schemaVersion' | 'id' | 'sequence' | 'timestamp'> &
+  Partial<Pick<RunEventRecord, 'id' | 'sequence' | 'timestamp'>>;
+
+export interface RunEventFilter {
+  runId?: string;
+  chatId?: string;
+  workspaceId?: string;
+  provider?: ProviderId;
+  kinds?: RunEventKind[];
+  phases?: RunEventPhase[];
+  fromSequence?: number;
+  limit?: number;
+}
+
+export interface RunEventReplay {
+  runId: string;
+  events: RunEventRecord[];
+  count: number;
+  lastSequence: number;
+  countsByKind: Partial<Record<RunEventKind, number>>;
+  startedAt?: string;
+  endedAt?: string;
+}
+
 export interface UsageRecord {
   id: string;
   provider?: ProviderId;

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -2595,6 +2595,52 @@ function App(): React.JSX.Element {
     setThreadRawLogs(chatId, [...previous, log])
   }
 
+  const appendDurableRunEvent = (event: RunEventInput) => {
+    if (typeof window.api.appendRunEvent !== 'function') return
+    window.api.appendRunEvent(event).catch?.(() => {})
+  }
+
+  const rawLogFromRunEvent = (event: RunEventRecord): RawLogEntry | null => {
+    const payload = event.payload
+    const payloadRecord = payload && typeof payload === 'object'
+      ? payload as Record<string, unknown>
+      : {}
+    const payloadText =
+      typeof payload === 'string'
+        ? payload
+        : typeof payloadRecord.data === 'string'
+          ? payloadRecord.data
+          : typeof payloadRecord.error === 'string'
+            ? payloadRecord.error
+            : typeof payloadRecord.preview === 'string'
+              ? payloadRecord.preview
+              : event.summary || ''
+    if (!payloadText.trim()) return null
+    if (event.kind === 'provider_error') return { type: 'stderr', content: redactLog(payloadText) }
+    if (event.kind === 'provider_raw') return { type: 'stdout', content: redactLog(payloadText) }
+    if (event.kind === 'tool') return { type: 'tool', content: redactLog(payloadText) }
+    if (event.kind === 'approval_request' || event.kind === 'approval_response' || event.kind === 'provider_exit' || event.kind === 'lifecycle') {
+      return { type: 'info', content: redactLog(payloadText) }
+    }
+    return null
+  }
+
+  const hydrateThreadRawLogsFromEvents = (chatId: string) => {
+    if (rawLogsByChatIdRef.current.has(chatId) || typeof window.api.getRunEvents !== 'function') return
+    window.api.getRunEvents({ chatId, limit: 1000 })
+      .then((events: RunEventRecord[]) => {
+        if (!Array.isArray(events) || rawLogsByChatIdRef.current.has(chatId)) return
+        const logs = events
+          .map(rawLogFromRunEvent)
+          .filter((log): log is RawLogEntry => Boolean(log))
+          .slice(-1000)
+        if (logs.length > 0) {
+          setThreadRawLogs(chatId, logs)
+        }
+      })
+      .catch(() => {})
+  }
+
   const syncRunningState = () => {
     const activeRuns = activeRunsRef.current
     runSchedulerBusyRef.current = activeRuns.size > 0
@@ -3304,6 +3350,7 @@ function App(): React.JSX.Element {
     setRunDiff(null)
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
     setShowFallbackUX(false)
     setImageAttachments([])
     clearImagePermissions()
@@ -3715,6 +3762,7 @@ function App(): React.JSX.Element {
     setRunDiff(null)
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(chat.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(chat.appChatId)
     setShowFallbackUX(false)
     setImageAttachments([])
     clearImagePermissions()
@@ -3968,6 +4016,23 @@ function App(): React.JSX.Element {
         exitCode === 0 ? 'Provider run completed.' : `Provider run exited with code ${exitCode}.`,
         exitCode === 0 ? undefined : `Run exited with code ${exitCode}`
       )
+      appendDurableRunEvent({
+        runId: completedRunId,
+        chatId: completedRunChatId,
+        workspaceId: chatByIdRef.current.get(completedRunChatId)?.workspaceId,
+        workspacePath: completedWorkspacePath || context.workspacePath || undefined,
+        provider,
+        kind: 'lifecycle',
+        phase: 'control',
+        source: 'renderer',
+        summary: `Renderer observed provider exit: ${exitCode}`,
+        payload: {
+          exitCode,
+          hasToolCalls,
+          diffUnavailable: completedRunDiffUnavailable,
+          scheduledTaskId: completedScheduledTaskId
+        }
+      })
       if (isVisibleCompletedRun()) {
         setIsThinking(false)
       }
@@ -4017,6 +4082,18 @@ function App(): React.JSX.Element {
         const completedPreSnapshot = context.preSnapshot
         window.api.captureSnapshot(completedWorkspacePath).then(postSnapshot => {
           window.api.computeRunDiff(completedRunId, completedPreSnapshot, postSnapshot).then(runDiffResult => {
+            appendDurableRunEvent({
+              runId: completedRunId,
+              chatId: completedRunChatId,
+              workspaceId: chatByIdRef.current.get(completedRunChatId)?.workspaceId,
+              workspacePath: completedWorkspacePath,
+              provider,
+              kind: 'diff',
+              phase: 'artifact',
+              source: 'renderer',
+              summary: `Run diff: ${runDiffResult.createdFiles.length} created, ${runDiffResult.modifiedFiles.length} modified, ${runDiffResult.deletedFiles.length} deleted`,
+              payload: runDiffResult
+            })
             updateChatById(completedRunChatId, (source) => {
               const runs = [...(source.runs || [])]
               const targetIndex = runs.findIndex((run) => run.runId === completedRunId)
@@ -4420,12 +4497,15 @@ function App(): React.JSX.Element {
     }
 
     let runStartedAt = new Date().toISOString()
+    let promptMessageId: string | undefined
     if (!request.existingPrompt) {
       const userMessage: ChatMessage = { id: Date.now().toString(), role: 'user', content: displayFinalPrompt, timestamp: runStartedAt }
+      promptMessageId = userMessage.id
       chatToUpdate.messages = [...chatToUpdate.messages, userMessage]
     } else {
       const lastUserMessage = [...chatToUpdate.messages].reverse().find((message) => message.role === 'user')
       runStartedAt = lastUserMessage?.timestamp || runStartedAt
+      promptMessageId = lastUserMessage?.id
     }
     const currentRunId = request.appRunId || Date.now().toString()
     activeRunByProviderRef.current.set(runProvider, currentRunId)
@@ -4439,6 +4519,8 @@ function App(): React.JSX.Element {
       runId: currentRunId,
       provider: runProvider,
       startedAt: runStartedAt,
+      promptMessageId,
+      rawEventsFile: `run-events/${currentRunId}.jsonl`,
       requestedModel: modelToPass,
       approvalMode: modeToPass,
       ...(runProvider !== 'gemini' && resumeSessionId ? { providerThreadId: resumeSessionId } : {}),
@@ -4499,6 +4581,27 @@ function App(): React.JSX.Element {
       return prev.map(chat => chat.appChatId === runChatId ? chatToUpdate : chat)
     })
     window.api.saveChat(chatToUpdate)
+    appendDurableRunEvent({
+      runId: currentRunId,
+      chatId: runChatId,
+      workspaceId: chatToUpdate.workspaceId,
+      workspacePath: runWorkspace.path,
+      provider: runProvider,
+      kind: 'lifecycle',
+      phase: 'control',
+      source: 'renderer',
+      summary: `Run requested for ${getProviderLabel(runProvider)}`,
+      payload: {
+        promptMessageId,
+        requestedModel: modelToPass,
+        approvalMode: modeToPass,
+        contextTurns: contextTurnsForRun,
+        workspacePath: runWorkspace.path,
+        effectiveWorkspacePath: runDiffWorkspacePath,
+        diffUnavailable: runDiffUnavailable,
+        scheduledTaskId: request.scheduledTaskId || null
+      }
+    })
 
     const initialRawLogs: RawLogEntry[] = [
       { type: 'info', content: contextApplicationLog },
@@ -4530,7 +4633,51 @@ function App(): React.JSX.Element {
 
     const isVisibleRunChat = () => currentChatIdRef.current === runChatId
     let runContext: ActiveRunContext
+    const durableKindForAdapterEvent = (event: NormalizedEvent): RunEventInput['kind'] => {
+      if (event.type === 'tool_event') return 'tool'
+      if (event.type === 'assistant_message_complete') return 'final_message'
+      if (event.type === 'run_started' || event.type === 'run_finished') return 'lifecycle'
+      return 'timeline'
+    }
+    const durableSummaryForAdapterEvent = (event: NormalizedEvent): string => {
+      if (event.type === 'tool_event') return `Tool ${event.isResult ? 'result' : 'event'}: ${event.name || event.data?.tool_name || event.data?.toolName || 'unknown'}`
+      if (event.type === 'assistant_message_complete') return 'Assistant final message'
+      if (event.type === 'assistant_message_delta') return 'Assistant message delta'
+      if (event.type === 'run_started') return `Provider run started${event.model ? `: ${event.model}` : ''}`
+      if (event.type === 'run_finished') return `Provider run finished: ${event.status || 'unknown'}`
+      if (event.type === 'raw_event') return `Raw event${event.data?.type ? `: ${event.data.type}` : ''}`
+      if (event.type === 'malformed_json') return 'Malformed provider JSON'
+      if (event.type === 'error') return event.message || 'Provider error'
+      return event.type
+    }
+    const durablePayloadForAdapterEvent = (event: NormalizedEvent): unknown => {
+      if (event.type === 'raw_event') {
+        return {
+          type: event.data?.type,
+          preview: redactLog(JSON.stringify(event.data, null, 2))
+        }
+      }
+      if (event.type === 'malformed_json') {
+        return {
+          text: redactLog(event.text)
+        }
+      }
+      return event
+    }
     const adapter = new GeminiStreamAdapter((event: NormalizedEvent) => {
+      appendDurableRunEvent({
+        runId: currentRunId,
+        chatId: runChatId,
+        workspaceId: chatToUpdate.workspaceId,
+        workspacePath: runWorkspace.path,
+        provider: runProvider,
+        kind: durableKindForAdapterEvent(event),
+        phase: 'normalized',
+        source: 'renderer',
+        summary: durableSummaryForAdapterEvent(event),
+        payload: durablePayloadForAdapterEvent(event)
+      })
+
       if (event.type === 'raw_event') {
         const redacted = redactLog(JSON.stringify(event.data, null, 2))
         const permissionRequest = parseGeminiPermissionRequest(event.data)

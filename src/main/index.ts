@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -327,7 +327,77 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
 runManager.onChange((event) => {
   if (event.type === 'removed') return
   persistRunSessionQueueState(event.session)
+  appendDurableRunEvent({
+    runId: event.session.runId,
+    chatId: event.session.appChatId,
+    provider: event.session.provider,
+    providerSessionId: event.session.providerSessionId,
+    providerRunId: event.session.providerRunId,
+    workspacePath: event.session.workspacePath,
+    kind: 'lifecycle',
+    phase: 'control',
+    source: 'main',
+    summary: `Runtime session ${event.type}: ${event.session.status}`,
+    payload: {
+      eventType: event.type,
+      status: event.session.status,
+      startedAt: event.session.startedAt,
+      updatedAt: event.session.updatedAt,
+      hasProcess: Boolean(event.session.process),
+      hasAbortController: Boolean(event.session.abortController),
+      approvalIds: [...event.session.approvalIds]
+    }
+  })
 })
+
+function emitRunEventsChanged(record: { runId: string; chatId?: string; workspaceId?: string; sequence: number }) {
+  mainWindow?.webContents.send('run-events-changed', {
+    runId: record.runId,
+    chatId: record.chatId,
+    workspaceId: record.workspaceId,
+    sequence: record.sequence
+  })
+}
+
+function appendDurableRunEvent(input: RunEventInput): void {
+  try {
+    const record = AppStore.appendRunEvent(input)
+    emitRunEventsChanged(record)
+  } catch (error) {
+    console.error('Failed to append run event', error)
+  }
+}
+
+function appendDurableRunEventForRoute(
+  provider: ProviderId,
+  route: AgentRunRoute | null | undefined,
+  kind: RunEventInput['kind'],
+  phase: RunEventInput['phase'],
+  summary: string,
+  payload?: unknown,
+  source: RunEventInput['source'] = 'main'
+): void {
+  const session = runManager.get(route?.appRunId) || getRuntimeSession(provider, route)
+  const runId = route?.appRunId || session?.runId
+  if (!runId) return
+
+  const chatId = route?.appChatId || session?.appChatId
+  const chat = chatId ? AppStore.getChat(chatId) : null
+  appendDurableRunEvent({
+    runId,
+    chatId,
+    workspaceId: chat?.workspaceId,
+    workspacePath: session?.workspacePath || chat?.workspacePath,
+    provider,
+    providerSessionId: session?.providerSessionId,
+    providerRunId: session?.providerRunId,
+    kind,
+    phase,
+    source,
+    summary,
+    payload
+  })
+}
 
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
@@ -444,7 +514,7 @@ async function requestAgenticServiceApproval(
     })
     runManager.registerApproval(request.runId, approvalId)
     const session = runManager.get(request.runId)
-    sender.send('agent-approval-request', {
+    const approvalPayload = {
       provider,
       appRunId: session?.runId,
       appChatId: session?.appChatId,
@@ -455,7 +525,16 @@ async function requestAgenticServiceApproval(
       body: request.body,
       preview: { ...(request.preview || {}), actions },
       actions
-    })
+    }
+    appendDurableRunEventForRoute(
+      provider,
+      { appRunId: session?.runId, appChatId: session?.appChatId },
+      'approval_request',
+      'control',
+      request.title,
+      approvalPayload
+    )
+    sender.send('agent-approval-request', approvalPayload)
   })
 }
 
@@ -1745,7 +1824,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
               pendingKimiApprovals.set(approvalId, { child, rpcId: message.id, params: message.params, runId: route.appRunId })
               runManager.registerApproval(route.appRunId, approvalId)
-              event.sender.send('agent-approval-request', {
+              const approvalPayload = {
                 provider: 'kimi',
                 appRunId: route.appRunId,
                 appChatId: route.appChatId,
@@ -1763,7 +1842,16 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                   params: message.params?.payload,
                   actions: ['accept', 'acceptForSession', 'decline', 'cancel']
                 }
-              })
+              }
+              appendDurableRunEventForRoute(
+                'kimi',
+                route,
+                'approval_request',
+                'control',
+                'Approve Kimi action',
+                approvalPayload
+              )
+              event.sender.send('agent-approval-request', approvalPayload)
             } else if (requestType === 'QuestionRequest') {
               respondToKimiWireRequest(child, message.id, { response: 'User input is not available in this non-interactive run.' })
             } else {
@@ -1988,6 +2076,15 @@ function enrichAgentPayload(provider: ProviderId, payload: any, route?: AgentRun
 
 function sendAgentCompatLine(sender: Electron.WebContents, provider: ProviderId, payload: any, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, payload, route)
+  appendDurableRunEventForRoute(
+    provider,
+    routed,
+    payload?.type === 'tool_use' || payload?.type === 'tool_result' ? 'tool' : 'provider_raw',
+    'raw',
+    `Provider output${payload?.type ? `: ${payload.type}` : ''}`,
+    payload,
+    'provider'
+  )
   const line = `${JSON.stringify(routed)}\n`
   sender.send('agent-output', { provider, data: line, appRunId: routed.appRunId, appChatId: routed.appChatId })
   if (provider === 'gemini') {
@@ -1997,6 +2094,7 @@ function sendAgentCompatLine(sender: Electron.WebContents, provider: ProviderId,
 
 function sendAgentCompatError(sender: Electron.WebContents, provider: ProviderId, error: string, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, { error }, route)
+  appendDurableRunEventForRoute(provider, routed, 'provider_error', 'raw', 'Provider stderr/error', { error }, 'provider')
   sender.send('agent-error', routed)
   if (provider === 'gemini') {
     sender.send('gemini-error', routed)
@@ -2005,6 +2103,7 @@ function sendAgentCompatError(sender: Electron.WebContents, provider: ProviderId
 
 function sendAgentCompatExit(sender: Electron.WebContents, provider: ProviderId, code: number | null, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, { code }, route)
+  appendDurableRunEventForRoute(provider, routed, 'provider_exit', 'raw', `Provider exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
   sender.send('agent-exit', routed)
   if (provider === 'gemini') {
     sender.send('gemini-exit', routed)
@@ -2627,7 +2726,7 @@ function handleCodexServerRequest(message: any) {
 
   pendingCodexApprovals.set(approvalId, { rpcId: message.id, method, params, service, workspacePath: state.workspacePath, runId: state.appRunId })
   runManager.registerApproval(state.appRunId, approvalId)
-  state.sender.send('agent-approval-request', {
+  const approvalPayload = {
     provider: 'codex',
     appRunId: state.appRunId,
     appChatId: state.appChatId,
@@ -2640,7 +2739,16 @@ function handleCodexServerRequest(message: any) {
     body: formatted.body,
     preview: formatted.preview,
     actions
-  })
+  }
+  appendDurableRunEventForRoute(
+    'codex',
+    { appRunId: state.appRunId, appChatId: state.appChatId },
+    'approval_request',
+    'control',
+    formatted.title,
+    approvalPayload
+  )
+  state.sender.send('agent-approval-request', approvalPayload)
 }
 
 function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: string, output: string): void {
@@ -2685,7 +2793,7 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     output
   })
   runManager.registerApproval(state.appRunId, approvalId)
-  state.sender.send('agent-approval-request', {
+  const approvalPayload = {
     provider: 'codex',
     appRunId: state.appRunId,
     appChatId: state.appChatId,
@@ -2702,7 +2810,16 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
       actions: ['accept', 'decline']
     },
     actions: ['accept', 'decline']
-  })
+  }
+  appendDurableRunEventForRoute(
+    'codex',
+    { appRunId: state.appRunId, appChatId: state.appChatId },
+    'approval_request',
+    'control',
+    'Rerun command outside sandbox',
+    approvalPayload
+  )
+  state.sender.send('agent-approval-request', approvalPayload)
 }
 
 async function continueCodexAfterHostRerun(approval: HostCommandApproval, result: HostCommandResult, resultText: string): Promise<void> {
@@ -2891,6 +3008,7 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
 
   child.stdout?.on('data', (data) => {
     const text = data.toString()
+    appendDurableRunEventForRoute('codex', route, 'provider_raw', 'raw', 'Codex exec stdout', { data: text }, 'provider')
     event.sender.send('agent-output', { provider: 'codex', data: text, ...route })
   })
 
@@ -4662,6 +4780,22 @@ app.whenReady().then(() => {
     emitRunQueueChanged()
   })
 
+  // Durable transcript/event store
+  ipcMain.handle('append-run-event', (_, eventInput: RunEventInput) => {
+    const record = AppStore.appendRunEvent(eventInput)
+    emitRunEventsChanged(record)
+    return record
+  })
+  ipcMain.handle('append-run-events', (_, eventInputs: RunEventInput[]) => {
+    const records = AppStore.appendRunEvents(Array.isArray(eventInputs) ? eventInputs : [])
+    for (const record of records) {
+      emitRunEventsChanged(record)
+    }
+    return records
+  })
+  ipcMain.handle('get-run-events', (_, filter: any = {}) => AppStore.getRunEvents(filter || {}))
+  ipcMain.handle('get-run-event-replay', (_, runId: string) => AppStore.getRunEventReplay(runId))
+
   ipcMain.handle('set-appearance-mode', (_, payload: { mode?: string; reduceTransparency?: boolean } | string) => {
     const isMac = process.platform === 'darwin'
     if (isMac && mainWindow) {
@@ -5104,6 +5238,20 @@ app.whenReady().then(() => {
   ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
     const pendingGeminiTool = pendingGeminiToolApprovals.get(requestId)
     if (pendingGeminiTool) {
+      const session = runManager.resolveApproval(requestId) || runManager.get(pendingGeminiTool.runId)
+      appendDurableRunEventForRoute(
+        pendingGeminiTool.provider,
+        { appRunId: session?.runId || pendingGeminiTool.runId, appChatId: session?.appChatId },
+        'approval_response',
+        'control',
+        `Approval response: ${action}`,
+        {
+          requestId,
+          action,
+          service: pendingGeminiTool.service,
+          workspacePath: pendingGeminiTool.workspacePath
+        }
+      )
       pendingGeminiToolApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       if (action === 'acceptForWorkspace') {
@@ -5118,6 +5266,19 @@ app.whenReady().then(() => {
 
     const pendingHostCommand = pendingHostCommandApprovals.get(requestId)
     if (pendingHostCommand) {
+      appendDurableRunEventForRoute(
+        pendingHostCommand.provider,
+        { appRunId: pendingHostCommand.appRunId, appChatId: pendingHostCommand.appChatId },
+        'approval_response',
+        'control',
+        `Host command rerun response: ${action}`,
+        {
+          requestId,
+          action,
+          command: pendingHostCommand.commandText,
+          cwd: pendingHostCommand.cwd
+        }
+      )
       runManager.clearApproval(requestId)
       if (action === 'accept') {
         return runApprovedHostCommand(requestId)
@@ -5136,6 +5297,20 @@ app.whenReady().then(() => {
 
     const pendingKimi = pendingKimiApprovals.get(requestId)
     if (pendingKimi) {
+      const session = runManager.resolveApproval(requestId) || runManager.get(pendingKimi.runId)
+      appendDurableRunEventForRoute(
+        'kimi',
+        { appRunId: session?.runId || pendingKimi.runId, appChatId: session?.appChatId },
+        'approval_response',
+        'control',
+        `Kimi approval response: ${action}`,
+        {
+          requestId,
+          action,
+          rpcId: pendingKimi.rpcId,
+          params: pendingKimi.params
+        }
+      )
       pendingKimiApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       const payload = pendingKimi.params?.payload || {}
@@ -5156,6 +5331,22 @@ app.whenReady().then(() => {
     if (!pending || !codexClient) {
       return false
     }
+    const session = runManager.resolveApproval(requestId) || runManager.get(pending.runId)
+    appendDurableRunEventForRoute(
+      'codex',
+      { appRunId: session?.runId || pending.runId, appChatId: session?.appChatId },
+      'approval_response',
+      'control',
+      `Codex approval response: ${action}`,
+      {
+        requestId,
+        action,
+        rpcId: pending.rpcId,
+        method: pending.method,
+        service: pending.service,
+        workspacePath: pending.workspacePath
+      }
+    )
     pendingCodexApprovals.delete(requestId)
     runManager.clearApproval(requestId)
 
@@ -5280,14 +5471,19 @@ app.whenReady().then(() => {
     runManager.attachProcess(route.appRunId!, child)
 
     child.stdout?.on('data', (data) => {
-      event.sender.send('gemini-output', { provider: 'gemini', data: data.toString(), ...route })
+      const text = data.toString()
+      appendDurableRunEventForRoute('gemini', route, 'provider_raw', 'raw', 'Gemini stdout', { data: text }, 'provider')
+      event.sender.send('gemini-output', { provider: 'gemini', data: text, ...route })
     })
 
     child.stderr?.on('data', (data) => {
-      event.sender.send('gemini-error', { provider: 'gemini', error: data.toString(), ...route })
+      const error = data.toString()
+      appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini stderr', { error }, 'provider')
+      event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
     })
 
     child.on('close', (code) => {
+      appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', `Gemini exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
       event.sender.send('gemini-exit', { provider: 'gemini', code, ...route })
       if (geminiProcess === child) {
         geminiProcess = null
@@ -5300,7 +5496,10 @@ app.whenReady().then(() => {
     })
 
     child.on('error', (err) => {
-      event.sender.send('gemini-error', { provider: 'gemini', error: `Failed to start process: ${err.message}`, ...route })
+      const error = `Failed to start process: ${err.message}`
+      appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini process failed to start', { error }, 'provider')
+      event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
+      appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', 'Gemini process failed before exit', { code: -1 }, 'provider')
       event.sender.send('gemini-exit', { provider: 'gemini', code: -1, ...route })
       if (geminiProcess === child) {
         geminiProcess = null

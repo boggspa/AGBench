@@ -1,9 +1,10 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord } from './types';
 import { randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
+import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -12,6 +13,8 @@ const usagePath = path.join(userDataPath, 'usage.json');
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
 const runQueuePath = path.join(userDataPath, 'run-queue.json');
 const chatsDir = path.join(userDataPath, 'chats');
+const runEventsDir = path.join(userDataPath, 'run-events');
+const runEventSequenceCache = new Map<string, number>();
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -64,6 +67,37 @@ function writeJson<T>(filePath: string, data: T) {
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
   } catch (e) {
     console.error(`Failed to write ${filePath}`, e);
+  }
+}
+
+function runEventFilePath(runId: string): string {
+  return path.join(runEventsDir, safeRunEventFileName(runId));
+}
+
+function readRunEventFile(filePath: string): RunEventRecord[] {
+  try {
+    if (!fs.existsSync(filePath)) return [];
+    return fs
+      .readFileSync(filePath, 'utf-8')
+      .split(/\r?\n/)
+      .map(parseRunEventLine)
+      .filter((event): event is RunEventRecord => Boolean(event));
+  } catch (e) {
+    console.error(`Failed to read ${filePath}`, e);
+    return [];
+  }
+}
+
+function readAllRunEventFiles(): RunEventRecord[] {
+  try {
+    if (!fs.existsSync(runEventsDir)) return [];
+    return fs
+      .readdirSync(runEventsDir)
+      .filter((file) => file.endsWith('.jsonl'))
+      .flatMap((file) => readRunEventFile(path.join(runEventsDir, file)));
+  } catch (e) {
+    console.error(`Failed to read ${runEventsDir}`, e);
+    return [];
   }
 }
 
@@ -315,5 +349,37 @@ export class AppStore {
     const recovered = recoverInterruptedQueueJobs(jobs);
     writeJson(runQueuePath, sortRunQueueJobs(recovered));
     return recovered;
+  }
+
+  // Run transcript/event store
+  static appendRunEvent(input: RunEventInput): RunEventRecord {
+    const filePath = runEventFilePath(input.runId);
+    const cachedSequence = runEventSequenceCache.get(input.runId);
+    const sequence = cachedSequence !== undefined
+      ? cachedSequence + 1
+      : nextRunEventSequence(readRunEventFile(filePath));
+    const settings = this.getSettings();
+    const record = createRunEventRecord(input, sequence, {
+      storeRawPayload: settings.storeRawEvents
+    });
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.appendFileSync(filePath, serializeRunEventRecord(record), 'utf-8');
+    runEventSequenceCache.set(input.runId, record.sequence);
+    return record;
+  }
+
+  static appendRunEvents(inputs: RunEventInput[]): RunEventRecord[] {
+    return inputs.map((input) => this.appendRunEvent(input));
+  }
+
+  static getRunEvents(filter: RunEventFilter = {}): RunEventRecord[] {
+    const events = filter.runId
+      ? readRunEventFile(runEventFilePath(filter.runId))
+      : readAllRunEventFiles();
+    return filterRunEvents(events, filter);
+  }
+
+  static getRunEventReplay(runId: string) {
+    return createRunEventReplay(runId, readRunEventFile(runEventFilePath(runId)));
   }
 }

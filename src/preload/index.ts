@@ -113,6 +113,10 @@ const api = {
   saveRunQueueJob: (job: any) => ipcRenderer.invoke('save-run-queue-job', job),
   updateRunQueueJob: (runIdOrId: string, partial: any) => ipcRenderer.invoke('update-run-queue-job', runIdOrId, partial),
   deleteRunQueueJob: (runIdOrId: string) => ipcRenderer.invoke('delete-run-queue-job', runIdOrId),
+  appendRunEvent: (event: any) => ipcRenderer.invoke('append-run-event', event),
+  appendRunEvents: (events: any[]) => ipcRenderer.invoke('append-run-events', events),
+  getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
+  getRunEventReplay: (runId: string) => ipcRenderer.invoke('get-run-event-replay', runId),
 
   onGeminiOutput: (callback: (data: any) => void) => {
     ipcRenderer.on('gemini-output', (_event, data) => callback(data))
@@ -135,6 +139,9 @@ const api = {
   onRunQueueChanged: (callback: (jobs: any[]) => void) => {
     ipcRenderer.on('run-queue-changed', (_event, jobs) => callback(jobs))
   },
+  onRunEventsChanged: (callback: (payload: any) => void) => {
+    ipcRenderer.on('run-events-changed', (_event, payload) => callback(payload))
+  },
   onAgentApprovalRequest: (callback: (payload: any) => void) => {
     ipcRenderer.on('agent-approval-request', (_event, payload) => callback(payload))
   },
@@ -152,6 +159,7 @@ const api = {
     ipcRenderer.removeAllListeners('agent-error')
     ipcRenderer.removeAllListeners('agent-exit')
     ipcRenderer.removeAllListeners('run-queue-changed')
+    ipcRenderer.removeAllListeners('run-events-changed')
     ipcRenderer.removeAllListeners('agent-approval-request')
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
