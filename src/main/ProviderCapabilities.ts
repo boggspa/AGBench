@@ -14,6 +14,7 @@ import type {
   ProviderToolingCapability,
   ProviderToolingCapabilityId
 } from './store/types'
+import { providerLabel } from './ProviderAdapters'
 
 export const AGENTBENCH_GEMINI_MCP_TOOLS = [
   'run_shell_command',
@@ -45,13 +46,6 @@ type UnknownRecord = Record<string, unknown>
 
 function asRecord(value: unknown): UnknownRecord {
   return value && typeof value === 'object' ? (value as UnknownRecord) : {}
-}
-
-function providerLabel(provider: ProviderId): string {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  return 'Gemini'
 }
 
 function serviceState(policy?: AgenticServicePolicy): ProviderCapabilityState {

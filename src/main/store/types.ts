@@ -143,6 +143,33 @@ export interface ProviderCapabilityContract {
   warnings: ProviderCapabilityWarning[];
 }
 
+export type ProviderAdapterTransport =
+  | 'gemini-cli'
+  | 'codex-app-server'
+  | 'claude-sdk-or-cli'
+  | 'kimi-wire-or-cli';
+
+export type ProviderAdapterRunChannel = 'run-gemini' | 'run-agent';
+
+export interface ProviderAdapterFeatureFlags {
+  persistentSessions: boolean;
+  appManagedApprovals: boolean;
+  workspaceGrants: boolean;
+  agentBenchMcpBridge: boolean;
+  providerManagedMcp: boolean;
+  nativeThreadTools: boolean;
+  hostCommandFallback: boolean;
+}
+
+export interface ProviderAdapterDescriptor {
+  provider: ProviderId;
+  label: string;
+  transport: ProviderAdapterTransport;
+  runChannel: ProviderAdapterRunChannel;
+  capabilitySource: 'agentbench' | 'provider' | 'bridge' | 'mixed';
+  features: ProviderAdapterFeatureFlags;
+}
+
 export interface AppSettings {
   activeProvider?: ProviderId;
   claudeBinaryPath?: string;

@@ -15,6 +15,7 @@ const api = {
   getAgentStatus: (provider: ProviderId) => ipcRenderer.invoke('get-agent-status', provider),
   getProviderCapabilities: (provider: ProviderId, workspace?: string, approvalMode?: string) =>
     ipcRenderer.invoke('get-provider-capabilities', provider, workspace, approvalMode),
+  getProviderAdapters: () => ipcRenderer.invoke('get-provider-adapters'),
   getAgentModels: (provider: ProviderId) => ipcRenderer.invoke('get-agent-models', provider),
   getAgentRateLimits: (provider: ProviderId) => ipcRenderer.invoke('get-agent-rate-limits', provider),
   importCodexUsageCredential: (filePath?: string) => ipcRenderer.invoke('import-codex-usage-credential', filePath),

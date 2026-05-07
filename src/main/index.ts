@@ -10,13 +10,14 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
 import { isPathInsideWorkspace, resolveAgenticPermission } from './AgenticPolicy'
 import { RunManager } from './RunManager'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
+import { createProviderAdapterRegistry, defaultProviderDescriptor, providerLabel } from './ProviderAdapters'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -269,10 +270,7 @@ interface CodexUsageCredential {
 let inMemoryCodexUsageCredential: CodexUsageCredential | null = null
 
 function providerDisplayName(provider: ProviderId): string {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  return 'Gemini'
+  return providerLabel(provider)
 }
 
 function emitRunQueueChanged(): void {
@@ -1125,7 +1123,7 @@ function getCliProviderMcpStatus(provider: ProviderId) {
   }
 }
 
-async function getAgentStatusSnapshot(provider: ProviderId): Promise<any> {
+async function getAgentStatusSnapshotDirect(provider: ProviderId): Promise<any> {
   if (provider === 'codex') {
     let accountStatus: any = null
     let rateLimitStatus: any = null
@@ -1173,7 +1171,7 @@ async function getAgentStatusSnapshot(provider: ProviderId): Promise<any> {
   }
 }
 
-async function getAgentMcpStatusSnapshot(provider: ProviderId): Promise<any> {
+async function getAgentMcpStatusSnapshotDirect(provider: ProviderId): Promise<any> {
   if (provider === 'claude' || provider === 'kimi') {
     return getCliProviderMcpStatus(provider)
   }
@@ -1188,20 +1186,20 @@ async function getAgentMcpStatusSnapshot(provider: ProviderId): Promise<any> {
   }, 20_000)
 }
 
-async function getProviderCapabilityContract(
+async function getProviderCapabilityContractDirect(
   provider: ProviderId,
   workspacePath?: string,
   approvalMode?: string
 ): Promise<ProviderCapabilityContract> {
   const settings = AppStore.getSettings()
   const [status, mcpStatus, geminiBridgeStatus] = await Promise.all([
-    getAgentStatusSnapshot(provider).catch((error) => ({
+    getAgentStatusSnapshotDirect(provider).catch((error) => ({
       provider,
       available: false,
       setupRequired: true,
       error: error instanceof Error ? error.message : String(error)
     })),
-    getAgentMcpStatusSnapshot(provider).catch((error) => ({
+    getAgentMcpStatusSnapshotDirect(provider).catch((error) => ({
       provider,
       available: false,
       error: error instanceof Error ? error.message : String(error)
@@ -1226,6 +1224,26 @@ async function getProviderCapabilityContract(
     mcpStatus,
     geminiMcpBridgeStatus: geminiBridgeStatus
   })
+}
+
+async function getAgentStatusSnapshot(provider: ProviderId): Promise<any> {
+  return providerAdapters.require(provider).getStatus()
+}
+
+async function getAgentMcpStatusSnapshot(provider: ProviderId): Promise<any> {
+  return providerAdapters.require(provider).getMcpStatus()
+}
+
+async function getProviderCapabilityContract(
+  provider: ProviderId,
+  workspacePath?: string,
+  approvalMode?: string
+): Promise<ProviderCapabilityContract> {
+  return providerAdapters.require(provider).getCapabilityContract({ workspacePath, approvalMode })
+}
+
+function getProviderAdapterDescriptors(): ProviderAdapterDescriptor[] {
+  return providerAdapters.descriptors()
 }
 
 async function emitProviderCapabilityWarnings(
@@ -3289,6 +3307,129 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
   })
 }
 
+async function runCodexProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload): Promise<void> {
+  try {
+    await runCodexAppServer(event, payload)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    runCodexExecFallback(event, payload, message)
+  }
+}
+
+async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string): Promise<boolean> {
+  const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
+  if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
+    AppStore.updateRunQueueJob(queuedJob.runId, {
+      status: 'cancelled',
+      statusReason: 'Cancelled before the queued run started.'
+    })
+    emitRunQueueChanged()
+    return true
+  }
+
+  const session = runManager.get(runId) || runManager.getLatestByProvider(provider)
+  if (session) {
+    session.abortController?.abort()
+    session.process?.kill()
+    runManager.finish(session.runId, 'cancelled')
+    if (provider === 'codex') {
+      const codexState = getCodexStateFromSession(session)
+      if (codexState?.threadId && codexState.turnId && codexClient) {
+        await codexClient.request('turn/interrupt', {
+          threadId: codexState.threadId,
+          turnId: codexState.turnId
+        }, 10_000).catch(() => {})
+      }
+    }
+    return true
+  }
+
+  if (provider === 'claude' || provider === 'kimi') {
+    const child = cliProviderProcesses.get(provider)
+    if (child) {
+      child.kill()
+      cliProviderProcesses.delete(provider)
+      return true
+    }
+    const controller = cliProviderAbortControllers.get(provider)
+    if (controller) {
+      controller.abort()
+      cliProviderAbortControllers.delete(provider)
+      return true
+    }
+    return false
+  }
+
+  if (provider !== 'codex') {
+    if (geminiProcess) {
+      geminiProcess.kill()
+      geminiProcess = null
+      if (!geminiSessionProcess) {
+        activeGeminiToolContext = null
+      }
+      return true
+    }
+    return false
+  }
+
+  if (codexExecProcess) {
+    codexExecProcess.kill()
+    codexExecProcess = null
+    return true
+  }
+
+  if (activeCodexRunState?.threadId && activeCodexRunState.turnId && codexClient) {
+    await codexClient.request('turn/interrupt', {
+      threadId: activeCodexRunState.threadId,
+      turnId: activeCodexRunState.turnId
+    }, 10_000).catch(() => {})
+    return true
+  }
+
+  return false
+}
+
+const providerAdapters = createProviderAdapterRegistry<AgentRunPayload, Electron.IpcMainInvokeEvent>([
+  {
+    ...defaultProviderDescriptor('gemini'),
+    run: async () => {
+      throw new Error('Gemini runs still use the run-gemini compatibility channel in this adapter boundary pass.')
+    },
+    cancel: (runId) => cancelProviderRun('gemini', runId),
+    getStatus: () => getAgentStatusSnapshotDirect('gemini'),
+    getMcpStatus: () => getAgentMcpStatusSnapshotDirect('gemini'),
+    getCapabilityContract: (request = {}) =>
+      getProviderCapabilityContractDirect('gemini', request.workspacePath, request.approvalMode)
+  },
+  {
+    ...defaultProviderDescriptor('codex'),
+    run: ({ event, payload }) => runCodexProvider(event, payload),
+    cancel: (runId) => cancelProviderRun('codex', runId),
+    getStatus: () => getAgentStatusSnapshotDirect('codex'),
+    getMcpStatus: () => getAgentMcpStatusSnapshotDirect('codex'),
+    getCapabilityContract: (request = {}) =>
+      getProviderCapabilityContractDirect('codex', request.workspacePath, request.approvalMode)
+  },
+  {
+    ...defaultProviderDescriptor('claude'),
+    run: ({ event, payload }) => runClaudeProvider(event, payload),
+    cancel: (runId) => cancelProviderRun('claude', runId),
+    getStatus: () => getAgentStatusSnapshotDirect('claude'),
+    getMcpStatus: () => getAgentMcpStatusSnapshotDirect('claude'),
+    getCapabilityContract: (request = {}) =>
+      getProviderCapabilityContractDirect('claude', request.workspacePath, request.approvalMode)
+  },
+  {
+    ...defaultProviderDescriptor('kimi'),
+    run: ({ event, payload }) => runKimiProvider(event, payload),
+    cancel: (runId) => cancelProviderRun('kimi', runId),
+    getStatus: () => getAgentStatusSnapshotDirect('kimi'),
+    getMcpStatus: () => getAgentMcpStatusSnapshotDirect('kimi'),
+    getCapabilityContract: (request = {}) =>
+      getProviderCapabilityContractDirect('kimi', request.workspacePath, request.approvalMode)
+  }
+])
+
 async function readCliVersion(command: string): Promise<string> {
   const provider = ['gemini', 'codex', 'claude', 'kimi'].includes(command)
     ? command as ProviderId
@@ -5283,6 +5424,8 @@ app.whenReady().then(() => {
     return getProviderCapabilityContract(provider, workspacePath, approvalMode)
   })
 
+  ipcMain.handle('get-provider-adapters', () => getProviderAdapterDescriptors())
+
   ipcMain.handle('list-agent-threads', async (_, provider: ProviderId, params: any = {}) => {
     if (provider !== 'codex') {
       return { data: [], nextCursor: null }
@@ -5398,94 +5541,18 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
-    if (!payload || payload.provider === 'gemini') {
-      throw new Error('Generic runAgent routes non-Gemini providers. Use runGemini for Gemini compatibility runs.')
+    if (!payload?.provider) {
+      throw new Error('Provider is required.')
     }
-
-    if (payload.provider === 'codex') {
-      try {
-        await runCodexAppServer(event, payload)
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        runCodexExecFallback(event, payload, message)
-      }
-      return
+    const adapter = providerAdapters.require(payload.provider)
+    if (adapter.runChannel !== 'run-agent') {
+      throw new Error(`${adapter.label} uses ${adapter.runChannel}; this provider is not routed through run-agent yet.`)
     }
-
-    if (payload.provider === 'claude') {
-      await runClaudeProvider(event, payload)
-      return
-    }
-
-    if (payload.provider === 'kimi') {
-      await runKimiProvider(event, payload)
-      return
-    }
+    await adapter.run({ event, payload })
   })
 
   ipcMain.handle('cancel-agent-run', async (_, provider: ProviderId = 'gemini', runId?: string) => {
-    const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
-    if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
-      AppStore.updateRunQueueJob(queuedJob.runId, {
-        status: 'cancelled',
-        statusReason: 'Cancelled before the queued run started.'
-      })
-      emitRunQueueChanged()
-      return
-    }
-    const session = runManager.get(runId) || runManager.getLatestByProvider(provider)
-    if (session) {
-      session.abortController?.abort()
-      session.process?.kill()
-      runManager.finish(session.runId, 'cancelled')
-      if (provider === 'codex') {
-        const codexState = getCodexStateFromSession(session)
-        if (codexState?.threadId && codexState.turnId && codexClient) {
-          await codexClient.request('turn/interrupt', {
-            threadId: codexState.threadId,
-            turnId: codexState.turnId
-          }, 10_000).catch(() => {})
-        }
-      }
-      return
-    }
-
-    if (provider === 'claude' || provider === 'kimi') {
-      const child = cliProviderProcesses.get(provider)
-      if (child) {
-        child.kill()
-        cliProviderProcesses.delete(provider)
-      }
-      const controller = cliProviderAbortControllers.get(provider)
-      if (controller) {
-        controller.abort()
-        cliProviderAbortControllers.delete(provider)
-      }
-      return
-    }
-
-    if (provider !== 'codex') {
-      if (geminiProcess) {
-        geminiProcess.kill()
-        geminiProcess = null
-        if (!geminiSessionProcess) {
-          activeGeminiToolContext = null
-        }
-      }
-      return
-    }
-
-    if (codexExecProcess) {
-      codexExecProcess.kill()
-      codexExecProcess = null
-    }
-
-    if (activeCodexRunState?.threadId && activeCodexRunState.turnId && codexClient) {
-      await codexClient.request('turn/interrupt', {
-        threadId: activeCodexRunState.threadId,
-        turnId: activeCodexRunState.turnId
-      }, 10_000).catch(() => {})
-    }
+    return providerAdapters.require(provider).cancel(runId)
   })
 
   ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
