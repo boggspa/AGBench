@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -126,8 +126,6 @@ const HOST_WEATHER_CACHE_MS = 30 * 60 * 1000
 const HOST_WEATHER_TIMEOUT_MS = 5_000
 let hostWeatherCache: HostWeatherState | null = null
 let hostWeatherCacheAt = 0
-
-type AgentApprovalAction = 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel'
 
 interface AgentRunRoute {
   appRunId?: string
@@ -327,6 +325,7 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
 runManager.onChange((event) => {
   if (event.type === 'removed') return
   persistRunSessionQueueState(event.session)
+  expireRunScopedApprovalLedger(event.session)
   appendDurableRunEvent({
     runId: event.session.runId,
     chatId: event.session.appChatId,
@@ -399,6 +398,164 @@ function appendDurableRunEventForRoute(
   })
 }
 
+function approvalRouteContext(provider: ProviderId, route?: AgentRunRoute | null) {
+  const session = runManager.get(route?.appRunId) || getRuntimeSession(provider, route)
+  const runId = route?.appRunId || session?.runId
+  const chatId = route?.appChatId || session?.appChatId
+  const chat = chatId ? AppStore.getChat(chatId) : null
+  return {
+    session,
+    runId,
+    chatId,
+    workspaceId: chat?.workspaceId,
+    workspacePath: session?.workspacePath || chat?.workspacePath
+  }
+}
+
+function recordApprovalLedgerRequest(
+  provider: ProviderId,
+  route: AgentRunRoute | null | undefined,
+  payload: {
+    id?: string
+    approvalId?: string
+    requestId?: number | string
+    method?: string
+    title?: string
+    body?: string
+    preview?: unknown
+    params?: unknown
+    actions?: AgentApprovalAction[]
+  },
+  options: {
+    service?: AgenticServiceId
+    workspacePath?: string
+    metadata?: Record<string, unknown>
+  } = {}
+): void {
+  const approvalId = String(payload.approvalId || payload.id || '').trim()
+  if (!approvalId) return
+  const context = approvalRouteContext(provider, route)
+  try {
+    AppStore.recordApprovalRequest({
+      approvalId,
+      provider,
+      service: options.service,
+      method: payload.method || 'approval/request',
+      title: payload.title || 'Approval requested',
+      body: payload.body,
+      preview: payload.preview,
+      params: payload.params,
+      actions: Array.isArray(payload.actions) ? payload.actions : [],
+      runId: context.runId,
+      chatId: context.chatId,
+      workspaceId: context.workspaceId,
+      workspacePath: options.workspacePath || context.workspacePath,
+      providerSessionId: context.session?.providerSessionId,
+      providerRunId: context.session?.providerRunId,
+      rpcId: payload.requestId,
+      metadata: options.metadata
+    })
+  } catch (error) {
+    console.error('Failed to record approval ledger request', error)
+  }
+}
+
+function recordApprovalLedgerDecision(input: ApprovalLedgerRequestInput): void {
+  try {
+    AppStore.recordApprovalRequest(input)
+  } catch (error) {
+    console.error('Failed to record approval ledger decision', error)
+  }
+}
+
+function resolveApprovalLedgerResponse(approvalId: string, action: AgentApprovalAction): void {
+  try {
+    AppStore.resolveApprovalRequest(approvalId, action)
+  } catch (error) {
+    console.error('Failed to resolve approval ledger request', error)
+  }
+}
+
+function recordAutomaticApprovalDecision(
+  provider: ProviderId,
+  route: AgentRunRoute | null | undefined,
+  service: AgenticServiceId,
+  workspacePath: string | undefined,
+  request: {
+    method: string
+    title: string
+    body: string
+    preview?: unknown
+  },
+  decision: 'autoAllow' | 'autoDeny',
+  decisionSource: 'policy' | 'workspace_grant' | 'session_grant',
+  grantedScope: 'request' | 'session' | 'workspace',
+  metadata: Record<string, unknown> = {}
+): void {
+  const now = new Date().toISOString()
+  const context = approvalRouteContext(provider, route)
+  recordApprovalLedgerDecision({
+    approvalId: `${decision}-${service}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    provider,
+    service,
+    method: request.method,
+    title: request.title,
+    body: request.body,
+    preview: request.preview,
+    actions: [],
+    status: decision === 'autoAllow' ? 'approved' : 'denied',
+    requestedAt: now,
+    respondedAt: now,
+    decision,
+    decisionSource,
+    grantedScope,
+    expiration: decision === 'autoDeny'
+      ? {
+          mode: 'on_decision',
+          description: 'Denied automatically by the current AgentBench policy.',
+          expiresAt: now,
+          expiredAt: now,
+          expiredReason: 'policy_denied'
+        }
+      : grantedScope === 'workspace'
+        ? {
+            mode: 'workspace_revocation',
+            description: 'Workspace approval remains active until the workspace grant is revoked.'
+          }
+        : grantedScope === 'session'
+          ? {
+              mode: 'session_end',
+              description: 'Session approval expires when the active provider runtime session ends.'
+            }
+          : {
+              mode: 'none',
+              description: 'Allowed automatically by the current AgentBench policy for this request.'
+            },
+    runId: context.runId,
+    chatId: context.chatId,
+    workspaceId: context.workspaceId,
+    workspacePath: workspacePath || context.workspacePath,
+    providerSessionId: context.session?.providerSessionId,
+    providerRunId: context.session?.providerRunId,
+    metadata
+  })
+}
+
+function expireRunScopedApprovalLedger(session: { runId: string; provider: ProviderId; workspacePath?: string; status?: string }): void {
+  if (session.status !== 'completed' && session.status !== 'failed' && session.status !== 'cancelled') return
+  try {
+    AppStore.expireApprovalLedgerScope({
+      runId: session.runId,
+      provider: session.provider,
+      workspacePath: session.workspacePath,
+      scopes: ['run', 'session'],
+      reason: `run_${session.status}`
+    })
+  } catch (error) {
+    console.error('Failed to expire run-scoped approval ledger records', error)
+  }
+}
+
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
@@ -438,7 +595,8 @@ function upsertAgenticWorkspaceGrant(provider: ProviderId, workspacePath: string
     service,
     workspacePath: normalizedWorkspace,
     createdAt: now,
-    updatedAt: now
+    updatedAt: now,
+    expiresOn: 'workspace_revocation'
   })
   AppStore.updateSettings({ agenticWorkspaceGrants: grants })
 }
@@ -485,17 +643,41 @@ async function requestAgenticServiceApproval(
   const settings = AppStore.getSettings()
   const policy = getAgenticServicePolicy(service, settings)
   const label = AGENTIC_SERVICE_LABELS[service]
+  const workspaceGrantAllowed = policy === 'workspace' && hasAgenticWorkspaceGrant(settings, provider, workspacePath, service)
+  const sessionGrantAllowed = hasAgenticSessionGrant(provider, workspacePath, service, request.runId)
   const decision = resolveAgenticPermission(
     policy,
-    policy === 'workspace' && hasAgenticWorkspaceGrant(settings, provider, workspacePath, service),
-    hasAgenticSessionGrant(provider, workspacePath, service, request.runId)
+    workspaceGrantAllowed,
+    sessionGrantAllowed
   )
 
   if (decision === 'deny') {
+    recordAutomaticApprovalDecision(
+      provider,
+      { appRunId: request.runId },
+      service,
+      workspacePath,
+      request,
+      'autoDeny',
+      'policy',
+      'request',
+      { policy }
+    )
     sender?.send('agent-error', { provider, error: `${label} blocked by AgentBench settings.` })
     return false
   }
   if (decision === 'allow') {
+    recordAutomaticApprovalDecision(
+      provider,
+      { appRunId: request.runId },
+      service,
+      workspacePath,
+      request,
+      'autoAllow',
+      workspaceGrantAllowed ? 'workspace_grant' : sessionGrantAllowed ? 'session_grant' : 'policy',
+      workspaceGrantAllowed ? 'workspace' : sessionGrantAllowed ? 'session' : 'request',
+      { policy }
+    )
     return true
   }
   if (!sender || sender.isDestroyed()) {
@@ -533,6 +715,16 @@ async function requestAgenticServiceApproval(
       'control',
       request.title,
       approvalPayload
+    )
+    recordApprovalLedgerRequest(
+      provider,
+      { appRunId: session?.runId, appChatId: session?.appChatId },
+      approvalPayload,
+      {
+        service,
+        workspacePath,
+        metadata: { policy }
+      }
     )
     sender.send('agent-approval-request', approvalPayload)
   })
@@ -1835,12 +2027,12 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                 params: message.params,
                 title: 'Approve Kimi action',
                 body: message.params?.payload?.description || message.params?.payload?.action || 'Kimi is requesting permission to continue.',
-                actions: ['accept', 'acceptForSession', 'decline', 'cancel'],
+                actions: ['accept', 'acceptForSession', 'decline', 'cancel'] as AgentApprovalAction[],
                 preview: {
                   kind: 'tool',
                   toolName: message.params?.payload?.sender || message.params?.payload?.action || 'kimi_action',
                   params: message.params?.payload,
-                  actions: ['accept', 'acceptForSession', 'decline', 'cancel']
+                  actions: ['accept', 'acceptForSession', 'decline', 'cancel'] as AgentApprovalAction[]
                 }
               }
               appendDurableRunEventForRoute(
@@ -1851,6 +2043,9 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                 'Approve Kimi action',
                 approvalPayload
               )
+              recordApprovalLedgerRequest('kimi', route, approvalPayload, {
+                metadata: { requestType, transport: 'kimi-wire' }
+              })
               event.sender.send('agent-approval-request', approvalPayload)
             } else if (requestType === 'QuestionRequest') {
               respondToKimiWireRequest(child, message.id, { response: 'User input is not available in this non-interactive run.' })
@@ -2701,6 +2896,22 @@ function handleCodexServerRequest(message: any) {
 
   if (service && policy === 'deny') {
     const label = AGENTIC_SERVICE_LABELS[service]
+    recordAutomaticApprovalDecision(
+      'codex',
+      { appRunId: state.appRunId, appChatId: state.appChatId },
+      service,
+      state.workspacePath,
+      {
+        method,
+        title: formatted.title,
+        body: formatted.body,
+        preview: formatted.preview
+      },
+      'autoDeny',
+      'policy',
+      'request',
+      { policy }
+    )
     codexClient.reject(message.id, `${label} are disabled in AgentBench settings.`)
     sendAgentCompatError(state.sender, 'codex', `${label} blocked by AgentBench settings.`, state)
     return
@@ -2709,6 +2920,22 @@ function handleCodexServerRequest(message: any) {
   if (service && method === 'item/permissions/requestApproval') {
     const hasWorkspaceGrant = policy === 'workspace' && hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
     if (policy === 'allow' || hasWorkspaceGrant) {
+      recordAutomaticApprovalDecision(
+        'codex',
+        { appRunId: state.appRunId, appChatId: state.appChatId },
+        service,
+        state.workspacePath,
+        {
+          method,
+          title: formatted.title,
+          body: formatted.body,
+          preview: formatted.preview
+        },
+        'autoAllow',
+        hasWorkspaceGrant ? 'workspace_grant' : 'policy',
+        hasWorkspaceGrant ? 'workspace' : 'request',
+        { policy }
+      )
       codexClient.respond(message.id, {
         permissions: params?.permissions || {},
         scope: hasWorkspaceGrant ? 'session' : 'turn'
@@ -2747,6 +2974,16 @@ function handleCodexServerRequest(message: any) {
     'control',
     formatted.title,
     approvalPayload
+  )
+  recordApprovalLedgerRequest(
+    'codex',
+    { appRunId: state.appRunId, appChatId: state.appChatId },
+    approvalPayload,
+    {
+      service,
+      workspacePath: state.workspacePath,
+      metadata: { policy }
+    }
   )
   state.sender.send('agent-approval-request', approvalPayload)
 }
@@ -2807,9 +3044,9 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
       command: commandText,
       cwd: normalizedCwd,
       output: output.slice(0, 4000),
-      actions: ['accept', 'decline']
+      actions: ['accept', 'decline'] as AgentApprovalAction[]
     },
-    actions: ['accept', 'decline']
+    actions: ['accept', 'decline'] as AgentApprovalAction[]
   }
   appendDurableRunEventForRoute(
     'codex',
@@ -2818,6 +3055,20 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     'control',
     'Rerun command outside sandbox',
     approvalPayload
+  )
+  recordApprovalLedgerRequest(
+    'codex',
+    { appRunId: state.appRunId, appChatId: state.appChatId },
+    approvalPayload,
+    {
+      service: 'shellCommands',
+      workspacePath: state.workspacePath,
+      metadata: {
+        kind: 'host-command-rerun',
+        policy,
+        reason
+      }
+    }
   )
   state.sender.send('agent-approval-request', approvalPayload)
 }
@@ -4715,6 +4966,7 @@ if (isGeminiMcpBridgeProcess) {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
   AppStore.recoverInterruptedRunQueueJobs()
+  AppStore.recoverExpiredApprovalLedger()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -4795,6 +5047,7 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('get-run-events', (_, filter: any = {}) => AppStore.getRunEvents(filter || {}))
   ipcMain.handle('get-run-event-replay', (_, runId: string) => AppStore.getRunEventReplay(runId))
+  ipcMain.handle('get-approval-ledger', (_, filter?: ApprovalLedgerFilter) => AppStore.getApprovalLedger(filter || {}))
 
   ipcMain.handle('set-appearance-mode', (_, payload: { mode?: string; reduceTransparency?: boolean } | string) => {
     const isMac = process.platform === 'darwin'
@@ -5252,6 +5505,7 @@ app.whenReady().then(() => {
           workspacePath: pendingGeminiTool.workspacePath
         }
       )
+      resolveApprovalLedgerResponse(requestId, action)
       pendingGeminiToolApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       if (action === 'acceptForWorkspace') {
@@ -5279,6 +5533,7 @@ app.whenReady().then(() => {
           cwd: pendingHostCommand.cwd
         }
       )
+      resolveApprovalLedgerResponse(requestId, action)
       runManager.clearApproval(requestId)
       if (action === 'accept') {
         return runApprovedHostCommand(requestId)
@@ -5311,6 +5566,7 @@ app.whenReady().then(() => {
           params: pendingKimi.params
         }
       )
+      resolveApprovalLedgerResponse(requestId, action)
       pendingKimiApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       const payload = pendingKimi.params?.payload || {}
@@ -5347,6 +5603,7 @@ app.whenReady().then(() => {
         workspacePath: pending.workspacePath
       }
     )
+    resolveApprovalLedgerResponse(requestId, action)
     pendingCodexApprovals.delete(requestId)
     runManager.clearApproval(requestId)
 

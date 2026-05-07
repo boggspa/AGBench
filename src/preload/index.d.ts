@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -172,6 +172,7 @@ declare global {
       appendRunEvents: (events: RunEventInput[]) => Promise<RunEventRecord[]>
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
+      getApprovalLedger: (filter?: ApprovalLedgerFilter) => Promise<ApprovalLedgerRecord[]>
 
       onGeminiOutput: (callback: (data: GeminiStreamPayload) => void) => void
       onGeminiError: (callback: (error: GeminiStreamPayload) => void) => void

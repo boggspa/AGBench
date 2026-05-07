@@ -1,10 +1,11 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId } from './types';
 import { randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
 import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
+import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -12,6 +13,7 @@ const workspacesPath = path.join(userDataPath, 'workspaces.json');
 const usagePath = path.join(userDataPath, 'usage.json');
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
 const runQueuePath = path.join(userDataPath, 'run-queue.json');
+const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
 const chatsDir = path.join(userDataPath, 'chats');
 const runEventsDir = path.join(userDataPath, 'run-events');
 const runEventSequenceCache = new Map<string, number>();
@@ -381,5 +383,63 @@ export class AppStore {
 
   static getRunEventReplay(runId: string) {
     return createRunEventReplay(runId, readRunEventFile(runEventFilePath(runId)));
+  }
+
+  // Approval ledger
+  static getApprovalLedger(filter: ApprovalLedgerFilter = {}): ApprovalLedgerRecord[] {
+    const records = this.recoverExpiredApprovalLedger();
+    return filterApprovalLedgerRecords(records, filter);
+  }
+
+  static recordApprovalRequest(input: ApprovalLedgerRequestInput): ApprovalLedgerRecord {
+    const records = this.recoverExpiredApprovalLedger();
+    const record = createApprovalLedgerRecord(input);
+    const index = records.findIndex((item) => item.approvalId === record.approvalId);
+    if (index >= 0) {
+      records[index] = {
+        ...records[index],
+        ...record,
+        id: records[index].id,
+        requestedAt: records[index].requestedAt
+      };
+    } else {
+      records.push(record);
+    }
+    writeJson(approvalLedgerPath, records);
+    return index >= 0 ? records[index] : record;
+  }
+
+  static resolveApprovalRequest(approvalId: string, action: AgentApprovalAction): ApprovalLedgerRecord | null {
+    const records = this.recoverExpiredApprovalLedger();
+    const index = records.findIndex((record) => record.approvalId === approvalId);
+    if (index < 0) return null;
+    const updated = resolveApprovalLedgerRecord(records[index], action);
+    records[index] = updated;
+    writeJson(approvalLedgerPath, records);
+    return updated;
+  }
+
+  static expireApprovalLedgerScope(filter: {
+    runId?: string;
+    provider?: ProviderId;
+    workspacePath?: string;
+    scopes: ApprovalLedgerScope[];
+    reason: string;
+  }): ApprovalLedgerRecord[] {
+    const records = this.recoverExpiredApprovalLedger();
+    const updated = expireScopedApprovalLedgerRecords(records, filter);
+    writeJson(approvalLedgerPath, updated);
+    return updated;
+  }
+
+  static recoverExpiredApprovalLedger(): ApprovalLedgerRecord[] {
+    const stored = readJson<ApprovalLedgerRecord[] | unknown>(approvalLedgerPath, []);
+    const records = Array.isArray(stored) ? stored : [];
+    const recovered = recoverExpiredApprovalLedgerRecords(records);
+    const changed = !Array.isArray(stored) || recovered.some((record, index) => record !== records[index]);
+    if (changed) {
+      writeJson(approvalLedgerPath, recovered);
+    }
+    return recovered;
   }
 }

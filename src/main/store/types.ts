@@ -32,6 +32,7 @@ export type AgenticNetworkPolicy = 'allow' | 'deny';
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off';
 export type ExternalPathGrantAccess = 'read' | 'write';
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace';
+export type AgentApprovalAction = 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel';
 
 export interface ExternalPathGrant {
   id: string;
@@ -60,6 +61,8 @@ export interface AgenticWorkspaceGrant {
   service: AgenticServiceId;
   createdAt: string;
   updatedAt: string;
+  expiresAt?: string;
+  expiresOn?: 'workspace_revocation';
 }
 
 export interface GeminiMcpBridgeStatus {
@@ -312,6 +315,86 @@ export interface RunEventReplay {
   countsByKind: Partial<Record<RunEventKind, number>>;
   startedAt?: string;
   endedAt?: string;
+}
+
+export type ApprovalLedgerStatus = 'pending' | 'approved' | 'denied' | 'cancelled' | 'expired';
+export type ApprovalLedgerScope = 'request' | 'run' | 'session' | 'workspace';
+export type ApprovalLedgerDecisionSource = 'user' | 'policy' | 'workspace_grant' | 'session_grant' | 'system';
+export type ApprovalLedgerExpirationMode =
+  | 'pending_timeout'
+  | 'on_decision'
+  | 'run_end'
+  | 'session_end'
+  | 'workspace_revocation'
+  | 'none';
+
+export interface ApprovalLedgerExpiration {
+  mode: ApprovalLedgerExpirationMode;
+  description: string;
+  expiresAt?: string;
+  expiredAt?: string;
+  expiredReason?: string;
+}
+
+export interface ApprovalLedgerRecord {
+  schemaVersion: 1;
+  id: string;
+  approvalId: string;
+  provider: ProviderId;
+  service?: AgenticServiceId;
+  method: string;
+  title: string;
+  body?: string;
+  preview?: unknown;
+  params?: unknown;
+  actions: AgentApprovalAction[];
+  status: ApprovalLedgerStatus;
+  requestedAt: string;
+  respondedAt?: string;
+  decision?: AgentApprovalAction | 'autoAllow' | 'autoDeny' | 'expired';
+  decisionSource?: ApprovalLedgerDecisionSource;
+  grantedScope?: ApprovalLedgerScope;
+  expiration: ApprovalLedgerExpiration;
+  runId?: string;
+  chatId?: string;
+  workspaceId?: string;
+  workspacePath?: string;
+  providerSessionId?: string;
+  providerRunId?: string;
+  rpcId?: number | string;
+  metadata?: Record<string, unknown>;
+}
+
+export type ApprovalLedgerRequestInput = Omit<
+  ApprovalLedgerRecord,
+  | 'schemaVersion'
+  | 'id'
+  | 'status'
+  | 'requestedAt'
+  | 'respondedAt'
+  | 'decision'
+  | 'decisionSource'
+  | 'grantedScope'
+  | 'expiration'
+> &
+  Partial<
+    Pick<
+      ApprovalLedgerRecord,
+      'id' | 'requestedAt' | 'status' | 'respondedAt' | 'decision' | 'decisionSource' | 'grantedScope' | 'expiration'
+    >
+  >;
+
+export interface ApprovalLedgerFilter {
+  approvalId?: string;
+  runId?: string;
+  chatId?: string;
+  workspaceId?: string;
+  provider?: ProviderId;
+  service?: AgenticServiceId;
+  statuses?: ApprovalLedgerStatus[];
+  scopes?: ApprovalLedgerScope[];
+  includeExpired?: boolean;
+  limit?: number;
 }
 
 export interface UsageRecord {

@@ -117,6 +117,7 @@ const api = {
   appendRunEvents: (events: any[]) => ipcRenderer.invoke('append-run-events', events),
   getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
   getRunEventReplay: (runId: string) => ipcRenderer.invoke('get-run-event-replay', runId),
+  getApprovalLedger: (filter: any = {}) => ipcRenderer.invoke('get-approval-ledger', filter),
 
   onGeminiOutput: (callback: (data: any) => void) => {
     ipcRenderer.on('gemini-output', (_event, data) => callback(data))

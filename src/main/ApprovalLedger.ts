@@ -1,0 +1,202 @@
+import { randomUUID } from 'crypto'
+import type {
+  AgentApprovalAction,
+  ApprovalLedgerFilter,
+  ApprovalLedgerExpiration,
+  ApprovalLedgerRecord,
+  ApprovalLedgerRequestInput,
+  ApprovalLedgerScope,
+  ApprovalLedgerStatus
+} from './store/types'
+
+export const APPROVAL_LEDGER_SCHEMA_VERSION = 1
+export const PENDING_APPROVAL_TTL_MS = 24 * 60 * 60 * 1000
+
+function addMs(isoTimestamp: string, ms: number): string {
+  return new Date(new Date(isoTimestamp).getTime() + ms).toISOString()
+}
+
+export function scopeForApprovalAction(action: AgentApprovalAction): ApprovalLedgerScope {
+  if (action === 'acceptForWorkspace') return 'workspace'
+  if (action === 'acceptForSession') return 'session'
+  if (action === 'accept') return 'run'
+  return 'request'
+}
+
+export function statusForApprovalAction(action: AgentApprovalAction): ApprovalLedgerStatus {
+  if (action === 'accept' || action === 'acceptForSession' || action === 'acceptForWorkspace') {
+    return 'approved'
+  }
+  if (action === 'cancel') return 'cancelled'
+  return 'denied'
+}
+
+export function expirationForApprovalAction(
+  action: AgentApprovalAction,
+  decidedAt: string
+): ApprovalLedgerExpiration {
+  const scope = scopeForApprovalAction(action)
+  if (scope === 'workspace') {
+    return {
+      mode: 'workspace_revocation' as const,
+      description: 'Workspace approval remains active until the workspace grant is revoked.'
+    }
+  }
+  if (scope === 'session') {
+    return {
+      mode: 'session_end' as const,
+      description: 'Session approval expires when the active provider runtime session ends.'
+    }
+  }
+  if (scope === 'run') {
+    return {
+      mode: 'run_end' as const,
+      description: 'Run approval expires when this run reaches a terminal state.'
+    }
+  }
+  return {
+    mode: 'on_decision' as const,
+    description: 'Denied or cancelled requests expire immediately after the decision.',
+    expiresAt: decidedAt,
+    expiredAt: decidedAt,
+    expiredReason: action
+  }
+}
+
+export function createApprovalLedgerRecord(
+  input: ApprovalLedgerRequestInput,
+  now: string = new Date().toISOString()
+): ApprovalLedgerRecord {
+  const approvalId = String(input.approvalId || input.id || '').trim()
+  if (!approvalId) {
+    throw new Error('Approval ledger record requires an approvalId.')
+  }
+
+  return {
+    schemaVersion: APPROVAL_LEDGER_SCHEMA_VERSION,
+    id: input.id || approvalId || randomUUID(),
+    approvalId,
+    provider: input.provider,
+    service: input.service,
+    method: input.method,
+    title: input.title,
+    body: input.body,
+    preview: input.preview,
+    params: input.params,
+    actions: Array.isArray(input.actions) ? input.actions : [],
+    status: input.status || 'pending',
+    requestedAt: input.requestedAt || now,
+    respondedAt: input.respondedAt,
+    decision: input.decision,
+    decisionSource: input.decisionSource,
+    grantedScope: input.grantedScope,
+    expiration: input.expiration || {
+      mode: 'pending_timeout',
+      description: 'Pending approval expires if it is not answered within 24 hours.',
+      expiresAt: addMs(input.requestedAt || now, PENDING_APPROVAL_TTL_MS)
+    },
+    runId: input.runId,
+    chatId: input.chatId,
+    workspaceId: input.workspaceId,
+    workspacePath: input.workspacePath,
+    providerSessionId: input.providerSessionId,
+    providerRunId: input.providerRunId,
+    rpcId: input.rpcId,
+    metadata: input.metadata
+  }
+}
+
+export function resolveApprovalLedgerRecord(
+  record: ApprovalLedgerRecord,
+  action: AgentApprovalAction,
+  decidedAt: string = new Date().toISOString()
+): ApprovalLedgerRecord {
+  return {
+    ...record,
+    status: statusForApprovalAction(action),
+    respondedAt: decidedAt,
+    decision: action,
+    decisionSource: 'user',
+    grantedScope: scopeForApprovalAction(action),
+    expiration: expirationForApprovalAction(action, decidedAt)
+  }
+}
+
+export function expireApprovalLedgerRecord(
+  record: ApprovalLedgerRecord,
+  expiredAt: string = new Date().toISOString(),
+  reason = 'expired'
+): ApprovalLedgerRecord {
+  if (record.status === 'expired' || record.status === 'denied' || record.status === 'cancelled') {
+    return record
+  }
+  return {
+    ...record,
+    status: 'expired',
+    decision: record.decision || 'expired',
+    expiration: {
+      ...record.expiration,
+      expiredAt,
+      expiredReason: reason
+    }
+  }
+}
+
+export function recoverExpiredApprovalLedgerRecords(
+  records: ApprovalLedgerRecord[],
+  now: string = new Date().toISOString()
+): ApprovalLedgerRecord[] {
+  const nowMs = new Date(now).getTime()
+  return records.map((record) => {
+    if (record.status !== 'pending') return record
+    const expiresAt = record.expiration?.expiresAt
+    if (!expiresAt || new Date(expiresAt).getTime() > nowMs) return record
+    return expireApprovalLedgerRecord(record, now, 'pending_timeout')
+  })
+}
+
+export function expireScopedApprovalLedgerRecords(
+  records: ApprovalLedgerRecord[],
+  filter: {
+    runId?: string
+    provider?: string
+    workspacePath?: string
+    scopes: ApprovalLedgerScope[]
+    reason: string
+  },
+  now: string = new Date().toISOString()
+): ApprovalLedgerRecord[] {
+  const scopeSet = new Set(filter.scopes)
+  return records.map((record) => {
+    if (record.status !== 'approved') return record
+    if (!record.grantedScope || !scopeSet.has(record.grantedScope)) return record
+    if (filter.runId && record.runId !== filter.runId) return record
+    if (filter.provider && record.provider !== filter.provider) return record
+    if (filter.workspacePath && record.workspacePath !== filter.workspacePath) return record
+    return expireApprovalLedgerRecord(record, now, filter.reason)
+  })
+}
+
+export function filterApprovalLedgerRecords(
+  records: ApprovalLedgerRecord[],
+  filter: ApprovalLedgerFilter = {}
+): ApprovalLedgerRecord[] {
+  const statusSet = filter.statuses?.length ? new Set(filter.statuses) : null
+  const scopeSet = filter.scopes?.length ? new Set(filter.scopes) : null
+  const filtered = records.filter((record) => {
+    if (filter.approvalId && record.approvalId !== filter.approvalId) return false
+    if (filter.runId && record.runId !== filter.runId) return false
+    if (filter.chatId && record.chatId !== filter.chatId) return false
+    if (filter.workspaceId && record.workspaceId !== filter.workspaceId) return false
+    if (filter.provider && record.provider !== filter.provider) return false
+    if (filter.service && record.service !== filter.service) return false
+    if (statusSet && !statusSet.has(record.status)) return false
+    if (scopeSet && (!record.grantedScope || !scopeSet.has(record.grantedScope))) return false
+    if (!filter.includeExpired && record.status === 'expired') return false
+    return true
+  })
+  const sorted = [...filtered].sort(
+    (a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime()
+  )
+  return filter.limit && filter.limit > 0 ? sorted.slice(0, Math.floor(filter.limit)) : sorted
+}
