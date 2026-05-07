@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -3041,7 +3041,7 @@ function App(): React.JSX.Element {
     }
     const wsList = await window.api.getWorkspaces()
     setWorkspaces(wsList)
-    void rehydrateQueuedRuns(wsList)
+    await rehydrateQueuedRuns(wsList).catch(() => {})
     if (wsList.length > 0) {
       // Sort by lastOpenedAt descending
       const sorted = [...wsList].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
@@ -4331,16 +4331,84 @@ function App(): React.JSX.Element {
     }
   }
 
+  const recoveryMessageId = (record: RunRecoveryRecord): string => `recovery-${record.id}`
+
+  const recoveryMessageContent = (record: RunRecoveryRecord): string => {
+    const providerLabel = getProviderLabel(record.provider)
+    const processText = record.process?.alive
+      ? ` A process with PID ${record.process.pid}${record.process.command ? ` (${record.process.command})` : ''} may still be running outside AgentBench.`
+      : record.process
+        ? ` No live process was found for the recorded PID ${record.process.pid}.`
+        : ''
+    return `Recovered interrupted ${providerLabel} run after app restart. ${record.reason} AgentBench marked the run as ${record.recoveredStatus}.${processText} ${record.resumeHint}`
+  }
+
+  const applyRecoveryRecordsToChats = async (
+    records: RunRecoveryRecord[],
+    chatList: ChatRecord[]
+  ): Promise<ChatRecord[]> => {
+    if (records.length === 0 || chatList.length === 0) return chatList
+    const recordsByChatId = new Map<string, RunRecoveryRecord[]>()
+    for (const record of records) {
+      if (!record.chatId) continue
+      const existing = recordsByChatId.get(record.chatId) || []
+      existing.push(record)
+      recordsByChatId.set(record.chatId, existing)
+    }
+
+    if (recordsByChatId.size === 0) return chatList
+
+    const updatedChats = chatList.map((chat) => {
+      const chatRecords = recordsByChatId.get(chat.appChatId) || []
+      if (chatRecords.length === 0) return chat
+      const existingMessageIds = new Set(chat.messages.map((message) => message.id))
+      const messagesToAdd = chatRecords
+        .filter((record) => !existingMessageIds.has(recoveryMessageId(record)))
+        .map((record): ChatMessage => ({
+          id: recoveryMessageId(record),
+          role: 'system',
+          content: recoveryMessageContent(record),
+          timestamp: record.recoveredAt,
+          runId: record.runId
+        }))
+      if (messagesToAdd.length === 0) return chat
+      return {
+        ...chat,
+        messages: [...chat.messages, ...messagesToAdd],
+        updatedAt: Math.max(chat.updatedAt, Date.now())
+      }
+    })
+
+    const changedChats = updatedChats.filter((chat, index) => chat !== chatList[index])
+    if (changedChats.length === 0) return chatList
+
+    for (const chat of changedChats) {
+      chatByIdRef.current.set(chat.appChatId, chat)
+    }
+    await Promise.all(changedChats.map((chat) => window.api.saveChat(chat).catch(() => {})))
+    setChats(prev => {
+      if (prev.length === 0) return updatedChats
+      const updatedById = new Map(updatedChats.map((chat) => [chat.appChatId, chat]))
+      return prev.map((chat) => updatedById.get(chat.appChatId) || chat)
+    })
+    setCurrentChat(prev => prev ? updatedChats.find((chat) => chat.appChatId === prev.appChatId) || prev : prev)
+    return updatedChats
+  }
+
   const rehydrateQueuedRuns = async (workspaceList: WorkspaceRecord[]) => {
     if (rehydratedRunQueueRef.current || typeof window.api.getRunQueueJobs !== 'function') return
     rehydratedRunQueueRef.current = true
-    const [jobs, chatList] = await Promise.all([
+    const [jobs, chatList, recoveryRecords] = await Promise.all([
       window.api.getRunQueueJobs({ statuses: ['queued'] }),
-      window.api.getChats()
+      window.api.getChats(),
+      typeof window.api.getRunRecoveryRecords === 'function'
+        ? window.api.getRunRecoveryRecords({ limit: 100 })
+        : Promise.resolve([])
     ])
+    const recoveredChatList = await applyRecoveryRecordsToChats(recoveryRecords, chatList)
     setRunQueueJobs(jobs)
     const restoredRuns = jobs
-      .map((job) => queuedRunRequestFromJob(job, workspaceList, chatList))
+      .map((job) => queuedRunRequestFromJob(job, workspaceList, recoveredChatList))
       .filter((request): request is QueuedRunRequest => Boolean(request))
     if (restoredRuns.length > 0) {
       setQueuedRuns((current) => {

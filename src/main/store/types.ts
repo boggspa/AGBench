@@ -521,6 +521,19 @@ export interface RunQueueRequestSnapshot {
   preserveComposer?: boolean;
 }
 
+export type RunRecoveryProcessAction = 'left_running' | 'not_found' | 'inaccessible' | 'unknown';
+
+export interface RunRecoveryProcessSnapshot {
+  pid: number;
+  checkedAt: string;
+  alive: boolean;
+  command?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  detection: 'pid_signal' | 'pid_signal_and_ps';
+  action: RunRecoveryProcessAction;
+}
+
 export interface RunQueueJob {
   id: string;
   runId: string;
@@ -537,6 +550,9 @@ export interface RunQueueJob {
   providerSessionId?: string;
   providerRunId?: string;
   processPid?: number;
+  processStartedAt?: string;
+  processCommand?: string;
+  orphanProcess?: RunRecoveryProcessSnapshot;
   parentRunId?: string;
   createdAt: string;
   updatedAt: string;
@@ -547,9 +563,13 @@ export interface RunQueueJob {
   cancelledAt?: string;
   failedAt?: string;
   completedAt?: string;
+  interruptedAt?: string;
+  recoveredAt?: string;
   statusReason?: string;
   lastError?: string;
   recoveryReason?: string;
+  resumeAvailable?: boolean;
+  resumeHint?: string;
 }
 
 export interface RunQueueJobFilter {
@@ -558,6 +578,51 @@ export interface RunQueueJobFilter {
   provider?: ProviderId;
   statuses?: RunQueueJobStatus[];
   includeTerminal?: boolean;
+}
+
+export type RunRecoveryAction =
+  | 'marked_failed'
+  | 'marked_failed_orphan_detected'
+  | 'cleared_stale_process'
+  | 'cleared_stale_orphan_process';
+
+export interface RunRecoveryRecord {
+  schemaVersion: 1;
+  id: string;
+  runId: string;
+  jobId: string;
+  provider: ProviderId;
+  chatId?: string;
+  workspaceId?: string;
+  workspacePath: string;
+  previousStatus: RunQueueJobStatus;
+  recoveredStatus: RunQueueJobStatus;
+  action: RunRecoveryAction;
+  reason: string;
+  recoveredAt: string;
+  process?: RunRecoveryProcessSnapshot;
+  resumeAvailable: boolean;
+  resumeHint: string;
+  jobSnapshot: {
+    providerSessionId?: string;
+    providerRunId?: string;
+    promptPreview?: string;
+    startedAt?: string;
+    updatedAt?: string;
+    processPid?: number;
+    processStartedAt?: string;
+    processCommand?: string;
+  };
+}
+
+export interface RunRecoveryFilter {
+  runId?: string;
+  chatId?: string;
+  workspaceId?: string;
+  provider?: ProviderId;
+  actions?: RunRecoveryAction[];
+  onlyOrphans?: boolean;
+  limit?: number;
 }
 
 export type RunStatus = 'success' | 'success_with_warnings' | 'failed' | 'cancelled' | 'running';

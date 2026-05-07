@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -289,10 +289,19 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
   if (!session) return
   const status = mapRunSessionStatusToQueueStatus(session.status)
   const existing = AppStore.getRunQueueJob(session.runId)
-  const processLike = session.process as unknown as { pid?: unknown } | undefined
+  const processLike = session.process as unknown as {
+    pid?: unknown
+    spawnfile?: unknown
+    spawnargs?: unknown
+  } | undefined
   const processPid = typeof processLike?.pid === 'number'
     ? processLike.pid
     : undefined
+  const processCommand = Array.isArray(processLike?.spawnargs)
+    ? processLike.spawnargs.filter((part): part is string => typeof part === 'string').join(' ')
+    : typeof processLike?.spawnfile === 'string'
+      ? processLike.spawnfile
+      : undefined
   const partial: Partial<RunQueueJob> = {
     provider: session.provider,
     chatId: session.appChatId,
@@ -300,6 +309,8 @@ function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>)
     providerSessionId: session.providerSessionId,
     providerRunId: session.providerRunId,
     processPid,
+    processCommand,
+    processStartedAt: processPid ? existing?.processStartedAt || new Date(session.startedAt).toISOString() : undefined,
     status
   }
 
@@ -394,6 +405,25 @@ function appendDurableRunEventForRoute(
     summary,
     payload
   })
+}
+
+function recordStartupRecoveryEvents(records: RunRecoveryRecord[]): void {
+  for (const record of records) {
+    appendDurableRunEvent({
+      runId: record.runId,
+      chatId: record.chatId,
+      workspaceId: record.workspaceId,
+      workspacePath: record.workspacePath,
+      provider: record.provider,
+      kind: 'lifecycle',
+      phase: 'control',
+      source: 'main',
+      summary: record.process?.alive
+        ? `Recovered interrupted run; orphan process ${record.process.pid} may still be running`
+        : 'Recovered interrupted run after app restart',
+      payload: record
+    })
+  }
 }
 
 function approvalRouteContext(provider: ProviderId, route?: AgentRunRoute | null) {
@@ -5106,7 +5136,8 @@ if (isGeminiMcpBridgeProcess) {
 } else {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
-  AppStore.recoverInterruptedRunQueueJobs()
+  const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
+  recordStartupRecoveryEvents(startupRecoveryRecords)
   AppStore.recoverExpiredApprovalLedger()
 
   app.on('browser-window-created', (_, window) => {
@@ -5158,6 +5189,7 @@ app.whenReady().then(() => {
 
   // Durable run queue
   ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => AppStore.getRunQueueJobs(filter || {}))
+  ipcMain.handle('get-run-recovery-records', (_, filter?: RunRecoveryFilter) => AppStore.getRunRecoveryRecords(filter || {}))
   ipcMain.handle('save-run-queue-job', (_, job: any) => {
     const saved = AppStore.saveRunQueueJob(job)
     emitRunQueueChanged()

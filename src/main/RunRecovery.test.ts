@@ -1,0 +1,185 @@
+import { describe, expect, it } from 'vitest'
+import { createRunQueueJob } from './RunQueue'
+import {
+  filterRunRecoveryRecords,
+  recoverRunQueueJobsAfterStartup,
+  type ProcessInspector
+} from './RunRecovery'
+import type { RunQueueJob, RunRecoveryRecord } from './store/types'
+
+const recoveredAt = '2026-05-07T12:00:00.000Z'
+
+function job(input: Partial<RunQueueJob> & Pick<RunQueueJob, 'id' | 'runId'>): RunQueueJob {
+  return createRunQueueJob(
+    {
+      provider: 'codex',
+      workspacePath: '/workspace',
+      source: 'manual',
+      ...input
+    },
+    '2026-05-07T11:00:00.000Z'
+  )
+}
+
+describe('RunRecovery', () => {
+  it('marks active jobs as failed on startup and records a recoverable thread hint', () => {
+    const active = job({
+      id: 'run-active',
+      runId: 'run-active',
+      status: 'active',
+      chatId: 'chat-1',
+      workspaceId: 'workspace-1',
+      providerSessionId: 'thread-1'
+    })
+
+    const recovered = recoverRunQueueJobsAfterStartup([active], recoveredAt, () => undefined)
+    const recoveredJob = recovered.jobs[0]
+
+    expect(recoveredJob.status).toBe('failed')
+    expect(recoveredJob.recoveryReason).toBe('marked_failed_on_startup')
+    expect(recoveredJob.processPid).toBeUndefined()
+    expect(recoveredJob.interruptedAt).toBe(recoveredAt)
+    expect(recoveredJob.recoveredAt).toBe(recoveredAt)
+    expect(recoveredJob.resumeAvailable).toBe(true)
+    expect(recovered.records).toHaveLength(1)
+    expect(recovered.records[0]).toMatchObject({
+      runId: 'run-active',
+      chatId: 'chat-1',
+      workspaceId: 'workspace-1',
+      previousStatus: 'active',
+      recoveredStatus: 'failed',
+      action: 'marked_failed',
+      resumeAvailable: true
+    })
+  })
+
+  it('captures live orphan process details for interrupted active jobs', () => {
+    const active = job({
+      id: 'run-orphan',
+      runId: 'run-orphan',
+      status: 'starting',
+      processPid: 4242,
+      processStartedAt: '2026-05-07T11:01:00.000Z',
+      processCommand: 'gemini --model flash'
+    })
+    const inspectProcess: ProcessInspector = (pid, checkedAt) => ({
+      pid,
+      checkedAt,
+      alive: true,
+      command: '/opt/homebrew/bin/gemini',
+      detection: 'pid_signal_and_ps',
+      action: 'left_running'
+    })
+
+    const recovered = recoverRunQueueJobsAfterStartup([active], recoveredAt, inspectProcess)
+    const recoveredJob = recovered.jobs[0]
+
+    expect(recoveredJob.status).toBe('failed')
+    expect(recoveredJob.recoveryReason).toBe('orphan_detected_on_startup')
+    expect(recoveredJob.processPid).toBeUndefined()
+    expect(recoveredJob.orphanProcess).toMatchObject({
+      pid: 4242,
+      alive: true,
+      action: 'left_running'
+    })
+    expect(recovered.records[0]).toMatchObject({
+      action: 'marked_failed_orphan_detected',
+      process: {
+        pid: 4242,
+        alive: true
+      },
+      jobSnapshot: {
+        processPid: 4242,
+        processStartedAt: '2026-05-07T11:01:00.000Z',
+        processCommand: 'gemini --model flash'
+      }
+    })
+  })
+
+  it('clears stale process ids from already failed jobs while preserving terminal status', () => {
+    const failed = job({
+      id: 'run-failed',
+      runId: 'run-failed',
+      status: 'failed',
+      processPid: 5150,
+      lastError: 'Provider exited 1'
+    })
+    const inspectProcess: ProcessInspector = (pid, checkedAt) => ({
+      pid,
+      checkedAt,
+      alive: true,
+      command: '/usr/bin/codex',
+      detection: 'pid_signal_and_ps',
+      action: 'left_running'
+    })
+
+    const recovered = recoverRunQueueJobsAfterStartup([failed], recoveredAt, inspectProcess)
+    const recoveredJob = recovered.jobs[0]
+
+    expect(recoveredJob.status).toBe('failed')
+    expect(recoveredJob.processPid).toBeUndefined()
+    expect(recoveredJob.recoveryReason).toBe('orphan_detected_after_failure')
+    expect(recoveredJob.lastError).toBe('Provider exited 1')
+    expect(recovered.records[0].action).toBe('cleared_stale_orphan_process')
+  })
+
+  it('leaves queued and completed jobs unchanged', () => {
+    const queued = job({ id: 'queued', runId: 'queued', status: 'queued' })
+    const completed = job({ id: 'completed', runId: 'completed', status: 'completed' })
+
+    const recovered = recoverRunQueueJobsAfterStartup([queued, completed], recoveredAt)
+
+    expect(recovered.jobs).toEqual([queued, completed])
+    expect(recovered.records).toEqual([])
+  })
+
+  it('filters recovery records by orphan status and route metadata', () => {
+    const baseRecord: RunRecoveryRecord = {
+      schemaVersion: 1,
+      id: 'record-1',
+      runId: 'run-1',
+      jobId: 'job-1',
+      provider: 'gemini',
+      chatId: 'chat-1',
+      workspaceId: 'workspace-1',
+      workspacePath: '/workspace',
+      previousStatus: 'active',
+      recoveredStatus: 'failed',
+      action: 'marked_failed',
+      reason: 'restart',
+      recoveredAt: '2026-05-07T12:00:00.000Z',
+      resumeAvailable: false,
+      resumeHint: 'No session.',
+      jobSnapshot: {}
+    }
+    const orphanRecord: RunRecoveryRecord = {
+      ...baseRecord,
+      id: 'record-2',
+      runId: 'run-2',
+      provider: 'codex',
+      action: 'marked_failed_orphan_detected',
+      recoveredAt: '2026-05-07T12:01:00.000Z',
+      process: {
+        pid: 222,
+        checkedAt: '2026-05-07T12:01:00.000Z',
+        alive: true,
+        detection: 'pid_signal_and_ps',
+        action: 'left_running'
+      }
+    }
+
+    expect(filterRunRecoveryRecords([baseRecord, orphanRecord]).map((record) => record.id)).toEqual(
+      ['record-2', 'record-1']
+    )
+    expect(
+      filterRunRecoveryRecords([baseRecord, orphanRecord], { onlyOrphans: true }).map(
+        (record) => record.id
+      )
+    ).toEqual(['record-2'])
+    expect(
+      filterRunRecoveryRecords([baseRecord, orphanRecord], { provider: 'gemini' }).map(
+        (record) => record.id
+      )
+    ).toEqual(['record-1'])
+  })
+})

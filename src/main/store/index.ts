@@ -1,11 +1,12 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord } from './types';
 import { randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
 import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
 import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
+import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -13,6 +14,7 @@ const workspacesPath = path.join(userDataPath, 'workspaces.json');
 const usagePath = path.join(userDataPath, 'usage.json');
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
 const runQueuePath = path.join(userDataPath, 'run-queue.json');
+const runRecoveryPath = path.join(userDataPath, 'run-recovery.json');
 const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
 const chatsDir = path.join(userDataPath, 'chats');
 const runEventsDir = path.join(userDataPath, 'run-events');
@@ -351,6 +353,22 @@ export class AppStore {
     const recovered = recoverInterruptedQueueJobs(jobs);
     writeJson(runQueuePath, sortRunQueueJobs(recovered));
     return recovered;
+  }
+
+  static recoverRunQueueAfterStartup(): RunRecoveryRecord[] {
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
+    const recovered = recoverRunQueueJobsAfterStartup(jobs);
+    writeJson(runQueuePath, sortRunQueueJobs(recovered.jobs));
+    if (recovered.records.length > 0) {
+      const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, []);
+      writeJson(runRecoveryPath, [...records, ...recovered.records]);
+    }
+    return recovered.records;
+  }
+
+  static getRunRecoveryRecords(filter: RunRecoveryFilter = {}): RunRecoveryRecord[] {
+    const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, []);
+    return filterRunRecoveryRecords(Array.isArray(records) ? records : [], filter);
   }
 
   // Run transcript/event store

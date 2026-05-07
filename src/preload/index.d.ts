@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -169,6 +169,7 @@ declare global {
       saveRunQueueJob: (job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'workspacePath' | 'source'>) => Promise<RunQueueJob>
       updateRunQueueJob: (runIdOrId: string, partial: Partial<RunQueueJob>) => Promise<RunQueueJob | null>
       deleteRunQueueJob: (runIdOrId: string) => Promise<void>
+      getRunRecoveryRecords: (filter?: RunRecoveryFilter) => Promise<RunRecoveryRecord[]>
       appendRunEvent: (event: RunEventInput) => Promise<RunEventRecord>
       appendRunEvents: (events: RunEventInput[]) => Promise<RunEventRecord[]>
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>

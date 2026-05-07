@@ -114,6 +114,7 @@ const api = {
   saveRunQueueJob: (job: any) => ipcRenderer.invoke('save-run-queue-job', job),
   updateRunQueueJob: (runIdOrId: string, partial: any) => ipcRenderer.invoke('update-run-queue-job', runIdOrId, partial),
   deleteRunQueueJob: (runIdOrId: string) => ipcRenderer.invoke('delete-run-queue-job', runIdOrId),
+  getRunRecoveryRecords: (filter: any = {}) => ipcRenderer.invoke('get-run-recovery-records', filter),
   appendRunEvent: (event: any) => ipcRenderer.invoke('append-run-event', event),
   appendRunEvents: (events: any[]) => ipcRenderer.invoke('append-run-events', events),
   getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
