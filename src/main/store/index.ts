@@ -1,12 +1,13 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput } from './types';
 import { randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
 import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
 import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
 import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery';
+import { createWorkspaceChangeSet, createWorkspaceChangeSetFromEditorWrite, createWorkspaceChangeSetFromRunDiff, filterWorkspaceChangeSets } from '../WorkspaceChangeModel';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -15,6 +16,7 @@ const usagePath = path.join(userDataPath, 'usage.json');
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
 const runQueuePath = path.join(userDataPath, 'run-queue.json');
 const runRecoveryPath = path.join(userDataPath, 'run-recovery.json');
+const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json');
 const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
 const chatsDir = path.join(userDataPath, 'chats');
 const runEventsDir = path.join(userDataPath, 'run-events');
@@ -401,6 +403,38 @@ export class AppStore {
 
   static getRunEventReplay(runId: string) {
     return createRunEventReplay(runId, readRunEventFile(runEventFilePath(runId)));
+  }
+
+  // Workspace change model
+  static getWorkspaceChangeSets(filter: WorkspaceChangeFilter = {}): WorkspaceChangeSet[] {
+    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, []);
+    return filterWorkspaceChangeSets(Array.isArray(records) ? records : [], filter);
+  }
+
+  static saveWorkspaceChangeSet(input: WorkspaceChangeSetInput): WorkspaceChangeSet {
+    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, []);
+    const record = createWorkspaceChangeSet(input);
+    const index = records.findIndex((item) => item.id === record.id);
+    if (index >= 0) {
+      records[index] = {
+        ...records[index],
+        ...record,
+        id: records[index].id,
+        createdAt: records[index].createdAt
+      };
+    } else {
+      records.push(record);
+    }
+    writeJson(workspaceChangesPath, filterWorkspaceChangeSets(records));
+    return index >= 0 ? records[index] : record;
+  }
+
+  static recordWorkspaceRunChange(input: WorkspaceRunChangeInput): WorkspaceChangeSet {
+    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromRunDiff(input));
+  }
+
+  static recordWorkspaceEditorChange(input: WorkspaceEditorChangeInput): WorkspaceChangeSet {
+    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromEditorWrite(input));
   }
 
   // Approval ledger

@@ -2095,7 +2095,11 @@ interface ActiveRunContext {
   errorCount: number
   toolCallsCount: number
   preSnapshot: any
+  baseWorkspacePath: string
   workspacePath: string | null
+  workspaceId?: string
+  worktree?: GeminiWorktreeConfig
+  checkpointingEnabled?: boolean
   startedAt: string | null
   diffUnavailable: boolean
   scheduledTaskId: string | null
@@ -4081,7 +4085,38 @@ function App(): React.JSX.Element {
       } else if (completedWorkspacePath && completedRunId && context.preSnapshot) {
         const completedPreSnapshot = context.preSnapshot
         window.api.captureSnapshot(completedWorkspacePath).then(postSnapshot => {
-          window.api.computeRunDiff(completedRunId, completedPreSnapshot, postSnapshot).then(runDiffResult => {
+          window.api.computeRunDiff(completedRunId, completedPreSnapshot, postSnapshot).then(async runDiffResult => {
+            const workspaceChangeSet = typeof window.api.recordWorkspaceRunChange === 'function'
+              ? await window.api.recordWorkspaceRunChange({
+                runId: completedRunId,
+                chatId: completedRunChatId,
+                workspaceId: context.workspaceId || chatByIdRef.current.get(completedRunChatId)?.workspaceId,
+                workspacePath: context.baseWorkspacePath,
+                effectiveWorkspacePath: completedWorkspacePath,
+                provider,
+                runDiff: runDiffResult,
+                ...(context.worktree ? {
+                  worktree: {
+                    enabled: Boolean(context.worktree.enabled),
+                    name: context.worktree.name,
+                    baseWorkspacePath: context.baseWorkspacePath,
+                    effectivePath: context.worktree.effectivePath || completedWorkspacePath
+                  }
+                } : {}),
+                ...(provider === 'gemini' ? {
+                  checkpoint: {
+                    enabled: Boolean(context.checkpointingEnabled),
+                    provider: 'gemini' as const
+                  }
+                } : {}),
+                metadata: {
+                  scheduledTaskId: completedScheduledTaskId || undefined
+                }
+              }).catch(() => null)
+              : null
+            if (workspaceChangeSet?.id) {
+              runDiffResult.changeSetId = workspaceChangeSet.id
+            }
             appendDurableRunEvent({
               runId: completedRunId,
               chatId: completedRunChatId,
@@ -4092,7 +4127,10 @@ function App(): React.JSX.Element {
               phase: 'artifact',
               source: 'renderer',
               summary: `Run diff: ${runDiffResult.createdFiles.length} created, ${runDiffResult.modifiedFiles.length} modified, ${runDiffResult.deletedFiles.length} deleted`,
-              payload: runDiffResult
+              payload: {
+                ...runDiffResult,
+                workspaceChangeSetId: workspaceChangeSet?.id
+              }
             })
             updateChatById(completedRunChatId, (source) => {
               const runs = [...(source.runs || [])]
@@ -4101,6 +4139,7 @@ function App(): React.JSX.Element {
                 runs[targetIndex].preSnapshot = completedPreSnapshot
                 runs[targetIndex].postSnapshot = postSnapshot
                 runs[targetIndex].runDiff = runDiffResult
+                runs[targetIndex].workspaceChangeSetId = workspaceChangeSet?.id
               }
               return { ...source, runs }
             })
@@ -4982,7 +5021,11 @@ function App(): React.JSX.Element {
       errorCount: errorCountRef.current,
       toolCallsCount: toolCallsCountRef.current,
       preSnapshot,
+      baseWorkspacePath: runWorkspace.path,
       workspacePath: runDiffWorkspacePath || null,
+      workspaceId: runWorkspace.id,
+      worktree: runWorktree,
+      checkpointingEnabled: runProvider === 'gemini' ? geminiCheckpointingEnabled : false,
       startedAt: runStartedAt,
       diffUnavailable: runDiffUnavailable,
       scheduledTaskId: request.scheduledTaskId || null

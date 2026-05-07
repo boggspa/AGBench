@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -5411,14 +5411,40 @@ app.whenReady().then(() => {
 
   ipcMain.handle('write-workspace-file', async (_, workspace: string, filePath: string, content: string): Promise<WorkspaceFileReadResult> => {
     const targetPath = resolveWorkspaceChild(workspace, filePath)
+    let previousContent: string | undefined
+    let existedBefore = false
+    try {
+      const previousStat = await fs.stat(targetPath)
+      existedBefore = previousStat.isFile()
+      if (existedBefore && previousStat.size <= MAX_EDITOR_FILE_BYTES) {
+        const previousBuffer = await fs.readFile(targetPath)
+        assertTextBuffer(previousBuffer)
+        previousContent = previousBuffer.toString('utf8')
+      }
+    } catch {
+      existedBefore = false
+    }
     await fs.mkdir(dirname(targetPath), { recursive: true })
     await fs.writeFile(targetPath, content, 'utf8')
     const fileStat = await fs.stat(targetPath)
+    const relativePath = toWorkspaceRelativePath(workspace, targetPath)
+    const changeSet = AppStore.recordWorkspaceEditorChange({
+      workspacePath: workspace,
+      filePath: relativePath,
+      existedBefore,
+      previousContent,
+      nextContent: content,
+      sizeBytes: fileStat.size,
+      metadata: {
+        origin: 'file-editor'
+      }
+    })
 
     return {
-      path: toWorkspaceRelativePath(workspace, targetPath),
+      path: relativePath,
       content,
-      sizeBytes: fileStat.size
+      sizeBytes: fileStat.size,
+      changeSet
     }
   })
 
@@ -6018,6 +6044,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-diff', async (_, workspace: string) => {
     return getWorkspaceDiff(workspace)
+  })
+
+  ipcMain.handle('get-workspace-change-sets', async (_, filter?: WorkspaceChangeFilter) => {
+    return AppStore.getWorkspaceChangeSets(filter || {})
+  })
+
+  ipcMain.handle('record-workspace-run-change', async (_, input: WorkspaceRunChangeInput) => {
+    return AppStore.recordWorkspaceRunChange(input)
   })
 
   ipcMain.handle('capture-snapshot', async (_, workspace: string) => {

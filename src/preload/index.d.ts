@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceRunChangeInput } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -121,6 +121,8 @@ declare global {
       writeWorkspaceFile: (workspace: string, path: string, content: string) => Promise<WorkspaceFileReadResult>
       captureSnapshot: (workspace: string) => Promise<any>
       computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any) => Promise<any>
+      getWorkspaceChangeSets: (filter?: WorkspaceChangeFilter) => Promise<WorkspaceChangeSet[]>
+      recordWorkspaceRunChange: (input: WorkspaceRunChangeInput) => Promise<WorkspaceChangeSet>
       getGeminiVersion: () => Promise<string>
       getGeminiCapabilities: (workspace?: string) => Promise<GeminiCapabilitiesState>
       getGeminiMcpBridgeStatus: () => Promise<GeminiMcpBridgeStatus>

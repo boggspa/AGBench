@@ -260,6 +260,7 @@ export interface ChatRun {
   rawEventsFile?: string;
   diffSnapshot?: string;
   runDiff?: RunDiffResult;
+  workspaceChangeSetId?: string;
   preSnapshot?: WorkspaceSnapshot;
   postSnapshot?: WorkspaceSnapshot;
 }
@@ -691,6 +692,7 @@ export interface WorkspaceFileReadResult {
   path: string;
   content: string;
   sizeBytes: number;
+  changeSet?: WorkspaceChangeSet;
 }
 
 export type DiffFileStatus =
@@ -738,8 +740,151 @@ export interface RunDiffResult {
   runId: string;
   preSnapshot: WorkspaceSnapshot;
   postSnapshot?: WorkspaceSnapshot;
+  changeSetId?: string;
   createdFiles: DiffFileSummary[];
   modifiedFiles: DiffFileSummary[];
   deletedFiles: DiffFileSummary[];
   preExistingFiles: DiffFileSummary[];
+}
+
+export type WorkspaceChangeSource =
+  | 'provider_run'
+  | 'editor'
+  | 'host_command'
+  | 'checkpoint'
+  | 'worktree'
+  | 'system';
+
+export type WorkspaceChangeStatus = 'captured' | 'failed' | 'superseded';
+
+export type WorkspaceChangeFileOrigin =
+  | 'run_diff'
+  | 'manual_edit'
+  | 'tool_activity'
+  | 'git_status'
+  | 'snapshot'
+  | 'pre_existing';
+
+export type WorkspaceArtifactKind = 'file' | 'directory' | 'diff' | 'snapshot' | 'checkpoint' | 'worktree';
+
+export interface WorkspaceChangeFile {
+  path: string;
+  status: DiffFileStatus;
+  origin: WorkspaceChangeFileOrigin;
+  additions?: number;
+  deletions?: number;
+  sizeBytes?: number;
+  isBinary?: boolean;
+  isNoise?: boolean;
+  isSensitive?: boolean;
+  previewKind?: DiffPreviewKind;
+  diffText?: string;
+}
+
+export interface WorkspaceChangeArtifact {
+  id: string;
+  kind: WorkspaceArtifactKind;
+  path?: string;
+  label?: string;
+  source: WorkspaceChangeSource;
+  sizeBytes?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkspaceChangeWorktreeContext {
+  enabled: boolean;
+  name?: string;
+  baseWorkspacePath?: string;
+  effectivePath?: string;
+}
+
+export interface WorkspaceChangeCheckpointContext {
+  enabled: boolean;
+  provider?: ProviderId;
+  checkpointId?: string;
+  label?: string;
+}
+
+export interface WorkspaceChangeStats {
+  filesCreated: number;
+  filesModified: number;
+  filesDeleted: number;
+  filesPreExisting: number;
+  artifactsGenerated: number;
+  additions: number;
+  deletions: number;
+}
+
+export interface WorkspaceChangeSet {
+  schemaVersion: 1;
+  id: string;
+  source: WorkspaceChangeSource;
+  status: WorkspaceChangeStatus;
+  title: string;
+  summary?: string;
+  workspaceId?: string;
+  workspacePath: string;
+  effectiveWorkspacePath?: string;
+  chatId?: string;
+  runId?: string;
+  provider?: ProviderId;
+  createdAt: string;
+  updatedAt: string;
+  preSnapshot?: WorkspaceSnapshot;
+  postSnapshot?: WorkspaceSnapshot;
+  files: WorkspaceChangeFile[];
+  artifacts: WorkspaceChangeArtifact[];
+  worktree?: WorkspaceChangeWorktreeContext;
+  checkpoint?: WorkspaceChangeCheckpointContext;
+  stats: WorkspaceChangeStats;
+  metadata?: Record<string, unknown>;
+}
+
+export type WorkspaceChangeSetInput = Omit<
+  WorkspaceChangeSet,
+  'schemaVersion' | 'id' | 'status' | 'createdAt' | 'updatedAt' | 'stats' | 'files' | 'artifacts'
+> &
+  Partial<
+    Pick<
+      WorkspaceChangeSet,
+      'id' | 'status' | 'createdAt' | 'updatedAt' | 'stats' | 'files' | 'artifacts'
+    >
+  >;
+
+export interface WorkspaceRunChangeInput {
+  runId: string;
+  chatId?: string;
+  workspaceId?: string;
+  workspacePath: string;
+  effectiveWorkspacePath?: string;
+  provider?: ProviderId;
+  runDiff: RunDiffResult;
+  worktree?: WorkspaceChangeWorktreeContext;
+  checkpoint?: WorkspaceChangeCheckpointContext;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkspaceEditorChangeInput {
+  workspaceId?: string;
+  workspacePath: string;
+  effectiveWorkspacePath?: string;
+  chatId?: string;
+  filePath: string;
+  existedBefore: boolean;
+  previousContent?: string;
+  nextContent: string;
+  sizeBytes?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkspaceChangeFilter {
+  workspaceId?: string;
+  workspacePath?: string;
+  chatId?: string;
+  runId?: string;
+  provider?: ProviderId;
+  sources?: WorkspaceChangeSource[];
+  statuses?: WorkspaceChangeStatus[];
+  since?: string;
+  limit?: number;
 }

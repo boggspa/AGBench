@@ -38,6 +38,8 @@ const api = {
     ipcRenderer.invoke('write-workspace-file', workspace, path, content),
   captureSnapshot: (workspace: string) => ipcRenderer.invoke('capture-snapshot', workspace),
   computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any) => ipcRenderer.invoke('compute-run-diff', runId, preSnapshot, postSnapshot),
+  getWorkspaceChangeSets: (filter: any = {}) => ipcRenderer.invoke('get-workspace-change-sets', filter),
+  recordWorkspaceRunChange: (input: any) => ipcRenderer.invoke('record-workspace-run-change', input),
   getGeminiVersion: () => ipcRenderer.invoke('get-gemini-version'),
   getGeminiCapabilities: (workspace?: string) => ipcRenderer.invoke('get-gemini-capabilities', workspace),
   getGeminiMcpBridgeStatus: () => ipcRenderer.invoke('get-gemini-mcp-bridge-status'),
