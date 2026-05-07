@@ -122,6 +122,11 @@ const api = {
   getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
   getRunEventReplay: (runId: string) => ipcRenderer.invoke('get-run-event-replay', runId),
   getApprovalLedger: (filter: any = {}) => ipcRenderer.invoke('get-approval-ledger', filter),
+  getProductOperationsStatus: () => ipcRenderer.invoke('get-product-operations-status'),
+  getProductCrashes: (filter: any = {}) => ipcRenderer.invoke('get-product-crashes', filter),
+  recordProductCrash: (input: any) => ipcRenderer.invoke('record-product-crash', input),
+  exportProductDiagnostics: (path?: string) => ipcRenderer.invoke('export-product-diagnostics', path),
+  repairProductInstall: () => ipcRenderer.invoke('repair-product-install'),
 
   onGeminiOutput: (callback: (data: any) => void) => {
     ipcRenderer.on('gemini-output', (_event, data) => callback(data))

@@ -1,13 +1,14 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput } from './types';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord } from './types';
 import { randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
 import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
 import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
 import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery';
 import { createWorkspaceChangeSet, createWorkspaceChangeSetFromEditorWrite, createWorkspaceChangeSetFromRunDiff, filterWorkspaceChangeSets } from '../WorkspaceChangeModel';
+import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations';
 
 const userDataPath = app.getPath('userData');
 const settingsPath = path.join(userDataPath, 'settings.json');
@@ -18,6 +19,7 @@ const runQueuePath = path.join(userDataPath, 'run-queue.json');
 const runRecoveryPath = path.join(userDataPath, 'run-recovery.json');
 const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json');
 const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
+const productCrashesPath = path.join(userDataPath, 'product-crashes.json');
 const chatsDir = path.join(userDataPath, 'chats');
 const runEventsDir = path.join(userDataPath, 'run-events');
 const runEventSequenceCache = new Map<string, number>();
@@ -53,6 +55,7 @@ const defaultSettings: AppSettings = {
   geminiMcpBridgeEnabled: false,
   geminiMcpBridgeLastStatus: undefined,
   codexSandboxFallback: 'ask_rerun',
+  updateChannel: 'debug',
 };
 
 function readJson<T>(filePath: string, defaultData: T): T {
@@ -493,5 +496,24 @@ export class AppStore {
       writeJson(approvalLedgerPath, recovered);
     }
     return recovered;
+  }
+
+  // Product operations
+  static getProductCrashes(filter: ProductCrashFilter = {}): ProductCrashRecord[] {
+    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, []);
+    return filterProductCrashRecords(Array.isArray(records) ? records : [], filter);
+  }
+
+  static recordProductCrash(input: ProductCrashInput): ProductCrashRecord {
+    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, []);
+    const current = Array.isArray(records) ? records : [];
+    const record = createProductCrashRecord(input, {
+      appVersion: app.getVersion() || 'unknown',
+      platform: process.platform,
+      arch: process.arch
+    });
+    current.push(record);
+    writeJson(productCrashesPath, filterProductCrashRecords(current, { limit: 200 }));
+    return record;
   }
 }

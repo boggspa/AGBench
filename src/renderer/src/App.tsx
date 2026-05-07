@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -2409,6 +2409,7 @@ type SettingsPanelUpdate = {
   agenticServices?: AgenticServicesSettings
   geminiMcpBridgeEnabled?: boolean
   codexSandboxFallback?: CodexSandboxFallbackMode
+  updateChannel?: ProductUpdateChannel
 }
 
 function App(): React.JSX.Element {
@@ -2448,6 +2449,8 @@ function App(): React.JSX.Element {
   const [geminiMcpBridgeEnabled, setGeminiMcpBridgeEnabledState] = useState(false)
   const [geminiMcpBridgeStatus, setGeminiMcpBridgeStatus] = useState<GeminiMcpBridgeStatus | null>(null)
   const [codexSandboxFallback, setCodexSandboxFallback] = useState<CodexSandboxFallbackMode>('ask_rerun')
+  const [updateChannel, setUpdateChannel] = useState<ProductUpdateChannel>('debug')
+  const [productOperationsStatus, setProductOperationsStatus] = useState<ProductOperationsStatus | null>(null)
   
   // Trust & Session
   const [trustResult, setTrustResult] = useState<any>(null)
@@ -3015,6 +3018,44 @@ function App(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    const recordRendererCrash = (input: { message: string; name?: string; stack?: string; metadata?: Record<string, unknown> }) => {
+      if (typeof window.api.recordProductCrash !== 'function') return
+      window.api.recordProductCrash({
+        source: 'renderer',
+        severity: 'error',
+        ...input
+      }).catch(() => {})
+    }
+    const handleError = (event: ErrorEvent) => {
+      recordRendererCrash({
+        name: event.error instanceof Error ? event.error.name : 'RendererError',
+        message: event.message || String(event.error || 'Renderer error'),
+        stack: event.error instanceof Error ? event.error.stack : undefined,
+        metadata: {
+          filename: event.filename,
+          lineno: event.lineno,
+          colno: event.colno
+        }
+      })
+    }
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const error = reason instanceof Error ? reason : null
+      recordRendererCrash({
+        name: error?.name || 'UnhandledRejection',
+        message: error?.message || String(reason),
+        stack: error?.stack
+      })
+    }
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!chatContextNotice) return
     const timeout = window.setTimeout(() => {
       setChatContextNotice((current) => current?.id === chatContextNotice.id ? null : current)
@@ -3037,11 +3078,15 @@ function App(): React.JSX.Element {
     setGeminiMcpBridgeEnabledState(Boolean(s.geminiMcpBridgeEnabled))
     setGeminiMcpBridgeStatus(s.geminiMcpBridgeLastStatus || null)
     setCodexSandboxFallback(s.codexSandboxFallback || 'ask_rerun')
+    setUpdateChannel(s.updateChannel || 'debug')
     setChatContextTurns(clampContextTurns(s.chatContextTurns))
     setGeminiCheckpointingEnabled(Boolean(s.geminiCheckpointingEnabled))
     void refreshProviderMetadata(s.activeProvider || 'gemini')
     if (typeof window.api.getGeminiMcpBridgeStatus === 'function') {
       void window.api.getGeminiMcpBridgeStatus().then(setGeminiMcpBridgeStatus).catch(() => {})
+    }
+    if (typeof window.api.getProductOperationsStatus === 'function') {
+      void window.api.getProductOperationsStatus().then(setProductOperationsStatus).catch(() => {})
     }
     const wsList = await window.api.getWorkspaces()
     setWorkspaces(wsList)
@@ -3153,6 +3198,10 @@ function App(): React.JSX.Element {
     if (next.codexSandboxFallback !== undefined) {
       setCodexSandboxFallback(next.codexSandboxFallback)
       settingsPatch.codexSandboxFallback = next.codexSandboxFallback
+    }
+    if (next.updateChannel !== undefined) {
+      setUpdateChannel(next.updateChannel)
+      settingsPatch.updateChannel = next.updateChannel
     }
 
     if (Object.keys(settingsPatch).length > 0) {
@@ -5519,6 +5568,44 @@ function App(): React.JSX.Element {
     }
   }
 
+  const refreshProductOperationsStatus = async () => {
+    if (typeof window.api.getProductOperationsStatus !== 'function') return
+    try {
+      const status = await window.api.getProductOperationsStatus()
+      setProductOperationsStatus(status)
+      setRawLogs(prev => [...prev, { type: 'info', content: `Product operations health: ${status.overallStatus}` }])
+    } catch (error) {
+      setRawLogs(prev => [...prev, { type: 'stderr', content: `Product operations health check failed: ${redactLog(String(error))}` }])
+    }
+  }
+
+  const exportProductDiagnostics = async () => {
+    if (typeof window.api.exportProductDiagnostics !== 'function') return
+    try {
+      const result = await window.api.exportProductDiagnostics()
+      if (result.ok) {
+        setProductOperationsStatus(result.snapshot?.status || productOperationsStatus)
+        setRawLogs(prev => [...prev, { type: 'info', content: `Diagnostics exported to ${result.path}` }])
+      } else if (result.error && result.error !== 'Diagnostics export cancelled.') {
+        setRawLogs(prev => [...prev, { type: 'stderr', content: `Diagnostics export failed: ${redactLog(String(result.error))}` }])
+      }
+    } catch (error) {
+      setRawLogs(prev => [...prev, { type: 'stderr', content: `Diagnostics export failed: ${redactLog(String(error))}` }])
+    }
+  }
+
+  const repairProductInstall = async () => {
+    if (typeof window.api.repairProductInstall !== 'function') return
+    try {
+      const status = await window.api.repairProductInstall()
+      setProductOperationsStatus(status)
+      setGeminiMcpBridgeStatus(status.bridgeHealth.find((item) => item.provider === 'gemini')?.rawStatus || geminiMcpBridgeStatus)
+      setRawLogs(prev => [...prev, { type: 'info', content: `Install repair completed with health: ${status.overallStatus}` }])
+    } catch (error) {
+      setRawLogs(prev => [...prev, { type: 'stderr', content: `Install repair failed: ${redactLog(String(error))}` }])
+    }
+  }
+
   const installGeminiMcpBridge = async () => {
     if (typeof window.api.installGeminiMcpBridge !== 'function') return
     try {
@@ -7309,8 +7396,13 @@ function App(): React.JSX.Element {
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
               codexSandboxFallback={codexSandboxFallback}
+              updateChannel={updateChannel}
+              productOperationsStatus={productOperationsStatus}
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
+              onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}
+              onExportProductDiagnostics={() => void exportProductDiagnostics()}
+              onRepairProductInstall={() => void repairProductInstall()}
               onChange={handleSettingsChange}
               onClose={() => setShowSettings(false)}
             />

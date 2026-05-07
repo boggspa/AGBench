@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceRunChangeInput } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -177,6 +177,11 @@ declare global {
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
       getApprovalLedger: (filter?: ApprovalLedgerFilter) => Promise<ApprovalLedgerRecord[]>
+      getProductOperationsStatus: () => Promise<ProductOperationsStatus>
+      getProductCrashes: (filter?: ProductCrashFilter) => Promise<ProductCrashRecord[]>
+      recordProductCrash: (input: ProductCrashInput) => Promise<ProductCrashRecord>
+      exportProductDiagnostics: (path?: string) => Promise<ProductDiagnosticsExportResult>
+      repairProductInstall: () => Promise<ProductOperationsStatus>
 
       onGeminiOutput: (callback: (data: GeminiStreamPayload) => void) => void
       onGeminiError: (callback: (error: GeminiStreamPayload) => void) => void

@@ -30,6 +30,8 @@ export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools';
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny';
 export type AgenticNetworkPolicy = 'allow' | 'deny';
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off';
+export type ProductUpdateChannel = 'debug' | 'stable' | 'nightly';
+export type ProductOperationStatus = 'ok' | 'warning' | 'error' | 'unknown';
 export type ExternalPathGrantAccess = 'read' | 'write';
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace';
 export type AgentApprovalAction = 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel';
@@ -203,6 +205,164 @@ export interface AppSettings {
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus;
   codexSandboxFallback: CodexSandboxFallbackMode;
+  updateChannel: ProductUpdateChannel;
+}
+
+export type ProductCrashSource =
+  | 'main'
+  | 'renderer'
+  | 'child_process'
+  | 'provider'
+  | 'bridge'
+  | 'startup'
+  | 'unknown';
+
+export interface ProductCrashRecord {
+  schemaVersion: 1;
+  id: string;
+  source: ProductCrashSource;
+  severity: 'warning' | 'error' | 'fatal';
+  occurredAt: string;
+  appVersion: string;
+  platform: string;
+  arch: string;
+  processType?: string;
+  reason?: string;
+  exitCode?: number | null;
+  name?: string;
+  message: string;
+  stack?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type ProductCrashInput = Omit<
+  ProductCrashRecord,
+  'schemaVersion' | 'id' | 'occurredAt' | 'appVersion' | 'platform' | 'arch'
+> &
+  Partial<Pick<ProductCrashRecord, 'id' | 'occurredAt' | 'appVersion' | 'platform' | 'arch'>>;
+
+export interface ProductCrashFilter {
+  source?: ProductCrashSource;
+  severity?: ProductCrashRecord['severity'];
+  since?: string;
+  limit?: number;
+}
+
+export interface ProductHealthCheck {
+  id: string;
+  label: string;
+  status: ProductOperationStatus;
+  message: string;
+  repairAction?: 'install_gemini_bridge' | 'create_user_data_dir' | 'none';
+  checkedAt: string;
+}
+
+export interface ProductBridgeHealthRecord {
+  provider: ProviderId;
+  bridgeId: string;
+  label: string;
+  status: ProductOperationStatus;
+  checkedAt: string;
+  enabled: boolean;
+  installed: boolean;
+  available: boolean;
+  message: string;
+  rawStatus?: GeminiMcpBridgeStatus;
+}
+
+export interface ProductInstallRepairStatus {
+  checkedAt: string;
+  status: ProductOperationStatus;
+  appPath: string;
+  userDataPath: string;
+  checks: ProductHealthCheck[];
+}
+
+export interface ProductReleaseAutomationStatus {
+  checkedAt: string;
+  status: ProductOperationStatus;
+  updateChannel: ProductUpdateChannel;
+  appId?: string;
+  productName?: string;
+  outputDirectory?: string;
+  scripts: {
+    build?: string;
+    buildDebugMac?: string;
+    buildDebugMacNotarized?: string;
+  };
+  notarization: {
+    configured: boolean;
+    keychainProfile?: string;
+    scriptName?: string;
+    message: string;
+  };
+  signing: {
+    configured: boolean;
+    identity?: string;
+    message: string;
+  };
+  releaseSteps: string[];
+}
+
+export interface ProductOperationsStatus {
+  generatedAt: string;
+  updateChannel: ProductUpdateChannel;
+  overallStatus: ProductOperationStatus;
+  app: {
+    name: string;
+    version: string;
+    isPackaged: boolean;
+    appPath: string;
+    userDataPath: string;
+  };
+  system: {
+    platform: string;
+    arch: string;
+    osRelease: string;
+  };
+  bridgeHealth: ProductBridgeHealthRecord[];
+  installRepair: ProductInstallRepairStatus;
+  releaseAutomation: ProductReleaseAutomationStatus;
+  recentCrashes: ProductCrashRecord[];
+  counts: {
+    workspaces: number;
+    chats: number;
+    queuedRuns: number;
+    activeRuns: number;
+    interruptedRuns: number;
+    approvalLedgerRecords: number;
+    workspaceChangeSets: number;
+    scheduledTasks: number;
+  };
+}
+
+export interface ProductDiagnosticsSnapshot {
+  schemaVersion: 1;
+  generatedAt: string;
+  status: ProductOperationsStatus;
+  settings: {
+    activeProvider?: ProviderId;
+    updateChannel: ProductUpdateChannel;
+    storeLocalChatHistory: boolean;
+    storeRawEvents: boolean;
+    agenticServices: AgenticServicesSettings;
+    geminiMcpBridgeEnabled: boolean;
+    codexSandboxFallback: CodexSandboxFallbackMode;
+  };
+  workspaces: Array<Pick<WorkspaceRecord, 'id' | 'path' | 'displayName' | 'lastOpenedAt' | 'pinned'>>;
+  runQueue: RunQueueJob[];
+  runRecovery: RunRecoveryRecord[];
+  scheduledTasks: ScheduledTask[];
+  approvalLedger: ApprovalLedgerRecord[];
+  workspaceChanges: WorkspaceChangeSet[];
+  recentCrashes: ProductCrashRecord[];
+}
+
+export interface ProductDiagnosticsExportResult {
+  ok: boolean;
+  path?: string;
+  snapshot?: ProductDiagnosticsSnapshot;
+  error?: string;
 }
 
 export interface GeminiWorktreeConfig {

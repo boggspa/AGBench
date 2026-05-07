@@ -10,7 +10,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure } from './SandboxFallback'
@@ -18,6 +18,7 @@ import { isPathInsideWorkspace, resolveAgenticPermission } from './AgenticPolicy
 import { RunManager } from './RunManager'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { createProviderAdapterRegistry, defaultProviderDescriptor, providerLabel } from './ProviderAdapters'
+import { buildDiagnosticsSnapshot, buildProductOperationsStatus, serializeDiagnosticsSnapshot } from './ProductOperations'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -3908,6 +3909,231 @@ async function getCachedHostWeather(): Promise<HostWeatherState> {
   return hostWeatherCache
 }
 
+async function readTextFileIfAvailable(filePath: string): Promise<string | undefined> {
+  try {
+    return await fs.readFile(filePath, 'utf8')
+  } catch {
+    return undefined
+  }
+}
+
+async function readPackageJsonIfAvailable(): Promise<any | undefined> {
+  const candidates = [
+    join(app.getAppPath(), 'package.json'),
+    join(process.cwd(), 'package.json')
+  ]
+  for (const candidate of candidates) {
+    const text = await readTextFileIfAvailable(candidate)
+    if (!text) continue
+    try {
+      return JSON.parse(text)
+    } catch {
+      return undefined
+    }
+  }
+  return undefined
+}
+
+async function readDebugBuilderConfigText(): Promise<string | undefined> {
+  const candidates = [
+    join(app.getAppPath(), 'electron-builder.debug.yml'),
+    join(process.cwd(), 'electron-builder.debug.yml')
+  ]
+  for (const candidate of candidates) {
+    const text = await readTextFileIfAvailable(candidate)
+    if (text) return text
+  }
+  return undefined
+}
+
+async function userDataDirectoryExists(): Promise<boolean> {
+  try {
+    const stat = await fs.stat(app.getPath('userData'))
+    return stat.isDirectory()
+  } catch {
+    return false
+  }
+}
+
+function recordProductCrash(input: ProductCrashInput): void {
+  try {
+    AppStore.recordProductCrash(input)
+  } catch (error) {
+    console.error('Failed to record product crash', error)
+  }
+}
+
+function registerProductCrashHandlers(): void {
+  process.on('uncaughtExceptionMonitor', (error) => {
+    recordProductCrash({
+      source: 'main',
+      severity: 'fatal',
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    })
+  })
+
+  process.on('unhandledRejection', (reason) => {
+    const error = reason instanceof Error ? reason : null
+    recordProductCrash({
+      source: 'main',
+      severity: 'error',
+      name: error?.name || 'UnhandledRejection',
+      message: error?.message || String(reason),
+      stack: error?.stack
+    })
+  })
+
+  app.on('child-process-gone', (_event, details) => {
+    if (details.reason === 'clean-exit') {
+      return
+    }
+    recordProductCrash({
+      source: 'child_process',
+      severity: details.reason === 'crashed' ? 'error' : 'warning',
+      processType: details.type,
+      reason: details.reason,
+      exitCode: details.exitCode,
+      message: `${details.type || 'child process'} exited: ${details.reason || 'unknown'}`,
+      metadata: {
+        name: details.name,
+        serviceName: details.serviceName
+      }
+    })
+  })
+}
+
+async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
+  const settings = AppStore.getSettings()
+  const packageJson = await readPackageJsonIfAvailable()
+  const builderConfigText = await readDebugBuilderConfigText()
+  const geminiBridgeStatus = await getGeminiMcpBridgeStatus().catch((error) => {
+    const fallback = settings.geminiMcpBridgeLastStatus
+    if (fallback) {
+      return {
+        ...fallback,
+        available: false,
+        error: error instanceof Error ? error.message : String(error),
+        message: 'Gemini MCP bridge status check failed; showing last known status.'
+      } satisfies GeminiMcpBridgeStatus
+    }
+    return {
+      checkedAt: new Date().toISOString(),
+      enabled: Boolean(settings.geminiMcpBridgeEnabled),
+      installed: false,
+      available: false,
+      serverName: GEMINI_MCP_SERVER_NAME,
+      error: error instanceof Error ? error.message : String(error),
+      message: 'Gemini MCP bridge status check failed.'
+    } satisfies GeminiMcpBridgeStatus
+  })
+
+  const workspaces = AppStore.getWorkspaces()
+  const chats = AppStore.getChats()
+  const runQueue = AppStore.getRunQueueJobs()
+  const runRecovery = AppStore.getRunRecoveryRecords()
+  const approvalLedger = AppStore.getApprovalLedger()
+  const workspaceChanges = AppStore.getWorkspaceChangeSets()
+  const scheduledTasks = AppStore.getScheduledTasks()
+  const recentCrashes = AppStore.getProductCrashes({ limit: 20 })
+
+  return buildProductOperationsStatus({
+    updateChannel: settings.updateChannel || 'debug',
+    appName: app.getName() || 'AgentBench',
+    appVersion: app.getVersion() || 'unknown',
+    isPackaged: app.isPackaged,
+    appPath: app.getAppPath(),
+    userDataPath: app.getPath('userData'),
+    platform: process.platform,
+    arch: process.arch,
+    osRelease: os.release(),
+    workspaces,
+    chats,
+    runQueue,
+    runRecovery,
+    approvalLedger,
+    workspaceChanges,
+    scheduledTasks,
+    recentCrashes,
+    geminiBridgeStatus,
+    userDataExists: await userDataDirectoryExists(),
+    packageJson,
+    builderConfigText,
+    env: {
+      APPLE_KEYCHAIN_PROFILE: process.env.APPLE_KEYCHAIN_PROFILE,
+      CSC_NAME: process.env.CSC_NAME
+    }
+  })
+}
+
+async function buildCurrentDiagnosticsSnapshot() {
+  const settings = AppStore.getSettings()
+  const status = await getProductOperationsStatus()
+  return buildDiagnosticsSnapshot({
+    status,
+    settings,
+    workspaces: AppStore.getWorkspaces(),
+    runQueue: AppStore.getRunQueueJobs(),
+    runRecovery: AppStore.getRunRecoveryRecords(),
+    scheduledTasks: AppStore.getScheduledTasks(),
+    approvalLedger: AppStore.getApprovalLedger(),
+    workspaceChanges: AppStore.getWorkspaceChangeSets(),
+    recentCrashes: AppStore.getProductCrashes({ limit: 100 })
+  })
+}
+
+async function exportProductDiagnostics(requestedPath?: string): Promise<ProductDiagnosticsExportResult> {
+  try {
+    const snapshot = await buildCurrentDiagnosticsSnapshot()
+    let targetPath = requestedPath
+    if (!targetPath) {
+      if (!mainWindow) {
+        throw new Error('No application window is available for diagnostics export.')
+      }
+      const result = await dialog.showSaveDialog(mainWindow, {
+        title: 'Export AgentBench Diagnostics',
+        defaultPath: `AgentBench-Diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+        filters: [{ name: 'JSON diagnostics', extensions: ['json'] }]
+      })
+      if (result.canceled || !result.filePath) {
+        return { ok: false, error: 'Diagnostics export cancelled.' }
+      }
+      targetPath = result.filePath
+    }
+    await fs.writeFile(targetPath, serializeDiagnosticsSnapshot(snapshot), 'utf8')
+    return { ok: true, path: targetPath, snapshot }
+  } catch (error) {
+    recordProductCrash({
+      source: 'main',
+      severity: 'warning',
+      name: error instanceof Error ? error.name : 'DiagnosticsExportError',
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    return { ok: false, error: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function repairProductInstall(): Promise<ProductOperationsStatus> {
+  await fs.mkdir(app.getPath('userData'), { recursive: true })
+  const settings = AppStore.getSettings()
+  if (settings.geminiMcpBridgeEnabled) {
+    try {
+      await installGeminiMcpBridge()
+    } catch (error) {
+      recordProductCrash({
+        source: 'bridge',
+        severity: 'warning',
+        name: error instanceof Error ? error.name : 'GeminiBridgeRepairError',
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      })
+    }
+  }
+  return getProductOperationsStatus()
+}
+
 async function resolveCapabilityWorkspace(workspace?: string): Promise<string | undefined> {
   if (typeof workspace !== 'string' || !workspace.trim()) {
     return undefined
@@ -5136,12 +5362,26 @@ if (isGeminiMcpBridgeProcess) {
 } else {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
+  registerProductCrashHandlers()
   const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
   recordStartupRecoveryEvents(startupRecoveryRecords)
   AppStore.recoverExpiredApprovalLedger()
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
+    window.webContents.on('render-process-gone', (_event, details) => {
+      if (details.reason === 'clean-exit') {
+        return
+      }
+      recordProductCrash({
+        source: 'renderer',
+        severity: details.reason === 'crashed' || details.reason === 'oom' ? 'error' : 'warning',
+        processType: 'renderer',
+        reason: details.reason,
+        exitCode: details.exitCode,
+        message: `Renderer process exited: ${details.reason || 'unknown'}`,
+      })
+    })
   })
 
   // Settings
@@ -5221,6 +5461,18 @@ app.whenReady().then(() => {
   ipcMain.handle('get-run-events', (_, filter: any = {}) => AppStore.getRunEvents(filter || {}))
   ipcMain.handle('get-run-event-replay', (_, runId: string) => AppStore.getRunEventReplay(runId))
   ipcMain.handle('get-approval-ledger', (_, filter?: ApprovalLedgerFilter) => AppStore.getApprovalLedger(filter || {}))
+
+  // Product operations
+  ipcMain.handle('get-product-operations-status', async () => getProductOperationsStatus())
+  ipcMain.handle('get-product-crashes', (_, filter?: ProductCrashFilter) => AppStore.getProductCrashes(filter || {}))
+  ipcMain.handle('record-product-crash', (_, input: ProductCrashInput) => {
+    return AppStore.recordProductCrash({
+      ...input,
+      source: input?.source || 'renderer'
+    })
+  })
+  ipcMain.handle('export-product-diagnostics', async (_, requestedPath?: string) => exportProductDiagnostics(requestedPath))
+  ipcMain.handle('repair-product-install', async () => repairProductInstall())
 
   ipcMain.handle('set-appearance-mode', (_, payload: { mode?: string; reduceTransparency?: boolean } | string) => {
     const isMac = process.platform === 'darwin'

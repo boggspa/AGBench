@@ -7,6 +7,8 @@ import type {
   GeminiMcpBridgeStatus,
   ProviderCapabilityContract,
   ProviderId,
+  ProductOperationsStatus,
+  ProductUpdateChannel,
   PromptSurfaceStyle,
   ThemeAccentStyle,
   ThemeAppearance,
@@ -35,8 +37,13 @@ interface SettingsPanelProps {
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeStatus: GeminiMcpBridgeStatus | null;
   codexSandboxFallback: CodexSandboxFallbackMode;
+  updateChannel: ProductUpdateChannel;
+  productOperationsStatus: ProductOperationsStatus | null;
   onInstallGeminiMcpBridge: () => void;
   onRefreshGeminiMcpBridgeStatus: () => void;
+  onRefreshProductOperationsStatus: () => void;
+  onExportProductDiagnostics: () => void;
+  onRepairProductInstall: () => void;
   onChange: (partial: {
     mode?: AppearanceMode;
     visualEffectStyle?: VisualEffectStyle;
@@ -54,6 +61,7 @@ interface SettingsPanelProps {
     agenticServices?: AgenticServicesSettings;
     geminiMcpBridgeEnabled?: boolean;
     codexSandboxFallback?: CodexSandboxFallbackMode;
+    updateChannel?: ProductUpdateChannel;
   }) => void;
   onClose: () => void;
 }
@@ -118,6 +126,11 @@ const CODEX_SANDBOX_FALLBACK_OPTIONS: Array<{ value: CodexSandboxFallbackMode; l
   { value: 'ask_rerun', label: 'Ask to rerun outside sandbox' },
   { value: 'off', label: 'Off' }
 ];
+const PRODUCT_UPDATE_CHANNEL_OPTIONS: Array<{ value: ProductUpdateChannel; label: string }> = [
+  { value: 'debug', label: 'Debug' },
+  { value: 'stable', label: 'Stable' },
+  { value: 'nightly', label: 'Nightly' }
+];
 
 export function SettingsPanel({
   mode,
@@ -140,8 +153,13 @@ export function SettingsPanel({
   geminiMcpBridgeEnabled,
   geminiMcpBridgeStatus,
   codexSandboxFallback,
+  updateChannel,
+  productOperationsStatus,
   onInstallGeminiMcpBridge,
   onRefreshGeminiMcpBridgeStatus,
+  onRefreshProductOperationsStatus,
+  onExportProductDiagnostics,
+  onRepairProductInstall,
   onChange,
   onClose
 }: SettingsPanelProps) {
@@ -408,6 +426,43 @@ export function SettingsPanel({
         <p className="settings-hint">
           {geminiMcpBridgeStatus?.message || 'Bridge status has not been checked yet.'}
         </p>
+      </div>
+
+      <div className="settings-group">
+        <h4 className="sidebar-section-title" style={{ margin: 0 }}>Product operations</h4>
+        <label className="settings-service-row">
+          <span>Update channel</span>
+          <select
+            className="settings-select"
+            value={updateChannel}
+            onChange={(e) => onChange({ updateChannel: e.target.value as ProductUpdateChannel })}
+          >
+            {PRODUCT_UPDATE_CHANNEL_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </label>
+        <div className="settings-option-list settings-option-list-inline">
+          <button className="btn btn-sm" type="button" onClick={onRefreshProductOperationsStatus}>
+            Refresh health
+          </button>
+          <button className="btn btn-sm btn-ghost" type="button" onClick={onExportProductDiagnostics}>
+            Export diagnostics
+          </button>
+          <button className="btn btn-sm btn-ghost" type="button" onClick={onRepairProductInstall}>
+            Repair install
+          </button>
+        </div>
+        <p className="settings-hint">
+          {productOperationsStatus
+            ? `Health is ${productOperationsStatus.overallStatus}; ${productOperationsStatus.counts.queuedRuns} queued, ${productOperationsStatus.counts.activeRuns} active, ${productOperationsStatus.recentCrashes.length} recent crash ${productOperationsStatus.recentCrashes.length === 1 ? 'record' : 'records'}.`
+            : 'Product operations health has not been checked yet.'}
+        </p>
+        {productOperationsStatus && (
+          <p className="settings-hint">
+            Release automation: {productOperationsStatus.releaseAutomation.status}; {productOperationsStatus.releaseAutomation.notarization.message}
+          </p>
+        )}
       </div>
 
       <div className="settings-group">
