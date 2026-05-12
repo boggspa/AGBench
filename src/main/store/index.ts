@@ -1,10 +1,10 @@
 import { app } from 'electron';
 import * as fs from 'fs';
 import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord } from './types';
-import { randomUUID } from 'crypto';
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventArtifactRef, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, RuntimeProfile, HandoffCard, HandoffCardFilter } from './types';
+import { createHash, randomUUID } from 'crypto';
 import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
-import { createRunEventRecord, createRunEventReplay, filterRunEvents, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
+import { createRunEventRecord, createRunEventReplay, filterRunEvents, lastRunEventHash, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
 import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
 import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery';
 import { createWorkspaceChangeSet, createWorkspaceChangeSetFromEditorWrite, createWorkspaceChangeSetFromRunDiff, filterWorkspaceChangeSets } from '../WorkspaceChangeModel';
@@ -20,9 +20,16 @@ const runRecoveryPath = path.join(userDataPath, 'run-recovery.json');
 const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json');
 const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
 const productCrashesPath = path.join(userDataPath, 'product-crashes.json');
+const runtimeProfilesPath = path.join(userDataPath, 'runtime-profiles.json');
+const handoffCardsPath = path.join(userDataPath, 'handoff-cards.json');
+const legacySettingsMigrationPath = path.join(userDataPath, 'legacy-settings-migration.json');
+const legacyUserDataDirs = ['AgentBench'].map((dirName) => path.join(path.dirname(userDataPath), dirName));
 const chatsDir = path.join(userDataPath, 'chats');
 const runEventsDir = path.join(userDataPath, 'run-events');
+const runArtifactsDir = path.join(userDataPath, 'run-artifacts');
 const runEventSequenceCache = new Map<string, number>();
+const runEventHashCache = new Map<string, string>();
+const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi'];
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -45,6 +52,14 @@ const defaultSettings: AppSettings = {
   showInspector: true,
   inspectorWidth: 380,
   sidebarWidth: 260,
+  funFxEnabled: true,
+  funFxMode: 'cinematic',
+  advancedFx: {
+    agentAura: true,
+    livingWorkspace: true,
+    dataViz: true,
+    intensity: 'cinematic'
+  },
   agenticServices: {
     shellCommands: 'workspace',
     fileChanges: 'ask',
@@ -66,16 +81,73 @@ function readJson<T>(filePath: string, defaultData: T): T {
     }
   } catch (e) {
     console.error(`Failed to read ${filePath}`, e);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`);
+      }
+    } catch (backupError) {
+      console.error(`Failed to preserve corrupt ${filePath}`, backupError);
+    }
   }
   return defaultData;
 }
 
 function writeJson<T>(filePath: string, data: T) {
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  let fd: number | null = null;
   try {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+    fd = fs.openSync(tempPath, 'w');
+    fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8');
+    fs.fsyncSync(fd);
+    fs.closeSync(fd);
+    fd = null;
+    fs.renameSync(tempPath, filePath);
+    try {
+      const dirFd = fs.openSync(path.dirname(filePath), 'r');
+      fs.fsyncSync(dirFd);
+      fs.closeSync(dirFd);
+    } catch {
+      // Directory fsync is best effort on some filesystems.
+    }
   } catch (e) {
     console.error(`Failed to write ${filePath}`, e);
+    if (fd !== null) {
+      try {
+        fs.closeSync(fd);
+      } catch {}
+    }
+    try {
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+    } catch {}
+  }
+}
+
+function migrateLegacySettingsIfMissing() {
+  if (fs.existsSync(settingsPath)) {
+    return;
+  }
+
+  for (const legacyDir of legacyUserDataDirs) {
+    const legacySettingsPath = path.join(legacyDir, 'settings.json');
+    if (!fs.existsSync(legacySettingsPath)) {
+      continue;
+    }
+
+    try {
+      const legacySettings = JSON.parse(fs.readFileSync(legacySettingsPath, 'utf-8')) as Partial<AppSettings>;
+      writeJson(settingsPath, {
+        ...legacySettings,
+        geminiMcpBridgeLastStatus: undefined
+      });
+      writeJson(legacySettingsMigrationPath, {
+        migratedAt: new Date().toISOString(),
+        source: legacySettingsPath
+      });
+    } catch (e) {
+      console.error(`Failed to migrate legacy settings from ${legacySettingsPath}`, e);
+    }
+    return;
   }
 }
 
@@ -110,13 +182,51 @@ function readAllRunEventFiles(): RunEventRecord[] {
   }
 }
 
+function extractRunStreamText(input: RunEventInput): { stream: 'stdout' | 'stderr' | 'stdin'; text: string } | null {
+  if (input.kind === 'provider_raw') {
+    const payload = input.payload as { data?: unknown } | string | undefined;
+    const text = typeof payload === 'string' ? payload : typeof payload?.data === 'string' ? payload.data : '';
+    return text ? { stream: 'stdout', text } : null;
+  }
+  if (input.kind === 'provider_error') {
+    const payload = input.payload as { error?: unknown } | string | undefined;
+    const text = typeof payload === 'string' ? payload : typeof payload?.error === 'string' ? payload.error : '';
+    return text ? { stream: 'stderr', text } : null;
+  }
+  return null;
+}
+
+function appendRunStreamArtifact(input: RunEventInput, sequence: number): RunEventArtifactRef[] | undefined {
+  const stream = extractRunStreamText(input);
+  if (!stream) return undefined;
+  const runFileName = safeRunEventFileName(input.runId).replace(/\.jsonl$/, '');
+  const artifactRelativePath = path.join(safeRunEventFileName(input.runId).replace(/\.jsonl$/, ''), `${stream.stream}.log`);
+  const artifactPath = path.join(runArtifactsDir, artifactRelativePath);
+  const bytes = Buffer.from(stream.text, 'utf8');
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+  fs.appendFileSync(artifactPath, bytes);
+  return [{
+    id: `${runFileName}:${stream.stream}:${sequence}`,
+    kind: stream.stream,
+    path: artifactRelativePath.split(path.sep).join('/'),
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    sizeBytes: bytes.byteLength,
+    sequence
+  }];
+}
+
 export class AppStore {
   // Settings
   static getSettings(): AppSettings {
+    migrateLegacySettingsIfMissing();
     const stored = readJson<Partial<AppSettings>>(settingsPath, {});
     return {
       ...defaultSettings,
       ...stored,
+      advancedFx: {
+        ...defaultSettings.advancedFx,
+        ...(stored.advancedFx || {})
+      },
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
@@ -128,6 +238,123 @@ export class AppStore {
   static updateSettings(partial: Partial<AppSettings>) {
     const current = this.getSettings();
     writeJson(settingsPath, { ...current, ...partial });
+  }
+
+  static getDefaultRuntimeProfiles(): RuntimeProfile[] {
+    const now = new Date(0).toISOString();
+    return providerIds.map((provider) => ({
+      id: `builtin:${provider}:local`,
+      name: `${provider[0].toUpperCase()}${provider.slice(1)} local`,
+      provider,
+      scope: 'workspace',
+      workspaceMode: provider === 'gemini' ? 'worktree' : 'local',
+      env: {},
+      approvalMode: 'default',
+      networkPolicy: 'inherit',
+      persistence: 'reusable',
+      builtin: true,
+      createdAt: now,
+      updatedAt: now
+    }));
+  }
+
+  static getRuntimeProfiles(provider?: ProviderId): RuntimeProfile[] {
+    const customProfiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, []);
+    const profiles = [...this.getDefaultRuntimeProfiles(), ...customProfiles];
+    return profiles
+      .filter((profile) => !provider || profile.provider === provider)
+      .sort((a, b) => Number(Boolean(b.builtin)) - Number(Boolean(a.builtin)) || a.name.localeCompare(b.name));
+  }
+
+  static saveRuntimeProfile(input: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>): RuntimeProfile {
+    const profiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, []);
+    const now = new Date().toISOString();
+    const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined;
+    const record: RuntimeProfile = {
+      id: input.id && !input.id.startsWith('builtin:') ? input.id : randomUUID(),
+      name: input.name.trim() || 'Runtime profile',
+      provider: input.provider,
+      scope: input.scope === 'global' ? 'global' : 'workspace',
+      workspaceMode: input.workspaceMode || 'local',
+      binaryPath: input.binaryPath,
+      env: input.env && typeof input.env === 'object' ? input.env : {},
+      mcpProfileId: input.mcpProfileId,
+      approvalMode: input.approvalMode,
+      agenticServices: input.agenticServices,
+      networkPolicy: input.networkPolicy || 'inherit',
+      persistence: input.persistence || 'reusable',
+      containerConfig: input.containerConfig,
+      createdAt: existing?.createdAt || now,
+      updatedAt: now
+    };
+    const index = profiles.findIndex((profile) => profile.id === record.id);
+    if (index >= 0) {
+      profiles[index] = record;
+    } else {
+      profiles.push(record);
+    }
+    writeJson(runtimeProfilesPath, profiles);
+    return record;
+  }
+
+  static deleteRuntimeProfile(id: string) {
+    if (id.startsWith('builtin:')) return;
+    writeJson(runtimeProfilesPath, readJson<RuntimeProfile[]>(runtimeProfilesPath, []).filter((profile) => profile.id !== id));
+  }
+
+  static getHandoffCards(filter: HandoffCardFilter = {}): HandoffCard[] {
+    const cards = readJson<HandoffCard[]>(handoffCardsPath, []);
+    return cards
+      .filter((card) => !filter.sourceChatId || card.sourceChatId === filter.sourceChatId)
+      .filter((card) => !filter.sourceRunId || card.sourceRunId === filter.sourceRunId)
+      .filter((card) => !filter.status || card.status === filter.status)
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+  }
+
+  static saveHandoffCard(input: Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>): HandoffCard {
+    const cards = readJson<HandoffCard[]>(handoffCardsPath, []);
+    const now = new Date().toISOString();
+    const existing = input.id ? cards.find((card) => card.id === input.id) : undefined;
+    const record: HandoffCard = {
+      id: input.id || randomUUID(),
+      status: input.status || 'draft',
+      sourceChatId: input.sourceChatId,
+      sourceRunId: input.sourceRunId,
+      sourceProvider: input.sourceProvider,
+      workspaceId: input.workspaceId,
+      workspacePath: input.workspacePath,
+      summary: input.summary,
+      selectedFiles: Array.isArray(input.selectedFiles) ? input.selectedFiles : [],
+      workspaceChangeSetIds: Array.isArray(input.workspaceChangeSetIds) ? input.workspaceChangeSetIds : [],
+      rawEventRunIds: Array.isArray(input.rawEventRunIds) ? input.rawEventRunIds : [],
+      recommendedProvider: input.recommendedProvider,
+      recommendedModel: input.recommendedModel,
+      recommendedApprovalMode: input.recommendedApprovalMode,
+      targetChatId: input.targetChatId,
+      dispatchedRunId: input.dispatchedRunId,
+      finalPrompt: input.finalPrompt,
+      createdAt: existing?.createdAt || input.createdAt || now,
+      updatedAt: now,
+      dispatchedAt: input.dispatchedAt
+    };
+    const index = cards.findIndex((card) => card.id === record.id);
+    if (index >= 0) {
+      cards[index] = record;
+    } else {
+      cards.push(record);
+    }
+    writeJson(handoffCardsPath, cards);
+    return record;
+  }
+
+  static updateHandoffCard(id: string, partial: Partial<HandoffCard>): HandoffCard | null {
+    const existing = this.getHandoffCards().find((card) => card.id === id);
+    if (!existing) return null;
+    return this.saveHandoffCard({ ...existing, ...partial, id });
+  }
+
+  static deleteHandoffCard(id: string) {
+    writeJson(handoffCardsPath, readJson<HandoffCard[]>(handoffCardsPath, []).filter((card) => card.id !== id));
   }
 
   // Workspaces
@@ -168,6 +395,23 @@ export class AppStore {
   }
 
   // Chats
+  static normalizeChatRecord(chat: ChatRecord): ChatRecord {
+    const scope = chat.scope === 'global' ? 'global' : 'workspace';
+    if (scope === 'global') {
+      const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat;
+      return {
+        ...rest,
+        scope
+      };
+    }
+    return {
+      ...chat,
+      scope,
+      workspaceId: chat.workspaceId || '',
+      workspacePath: chat.workspacePath || ''
+    };
+  }
+
   static getChats(workspaceId?: string): ChatRecord[] {
     if (!fs.existsSync(chatsDir)) return [];
     const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json'));
@@ -175,8 +419,9 @@ export class AppStore {
     for (const file of files) {
       const chat = readJson<ChatRecord | null>(path.join(chatsDir, file), null);
       if (chat) {
-        if (!workspaceId || chat.workspaceId === workspaceId) {
-          chats.push(chat);
+        const normalizedChat = this.normalizeChatRecord(chat);
+        if (!workspaceId || normalizedChat.workspaceId === workspaceId) {
+          chats.push(normalizedChat);
         }
       }
     }
@@ -185,13 +430,15 @@ export class AppStore {
 
   static getChat(chatId: string): ChatRecord | null {
     const chatPath = path.join(chatsDir, `${chatId}.json`);
-    return readJson<ChatRecord | null>(chatPath, null);
+    const chat = readJson<ChatRecord | null>(chatPath, null);
+    return chat ? this.normalizeChatRecord(chat) : null;
   }
 
   static createChat(workspaceId: string, workspacePath: string): ChatRecord {
     const settings = this.getSettings();
     const chat: ChatRecord = {
       appChatId: randomUUID(),
+      scope: 'workspace',
       provider: settings.activeProvider || 'gemini',
       title: 'New Chat',
       workspaceId,
@@ -208,13 +455,33 @@ export class AppStore {
     return chat;
   }
 
+  static createGlobalChat(): ChatRecord {
+    const settings = this.getSettings();
+    const chat: ChatRecord = {
+      appChatId: randomUUID(),
+      scope: 'global',
+      provider: settings.activeProvider || 'gemini',
+      title: 'New Chat',
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      archived: false,
+      messages: [],
+      runs: []
+    };
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat);
+    }
+    return chat;
+  }
+
   static saveChat(chat: ChatRecord) {
     const settings = this.getSettings();
     if (!settings.storeLocalChatHistory) return;
 
-    chat.updatedAt = Date.now();
-    const chatPath = path.join(chatsDir, `${chat.appChatId}.json`);
-    writeJson(chatPath, chat);
+    const normalizedChat = this.normalizeChatRecord(chat);
+    normalizedChat.updatedAt = Date.now();
+    const chatPath = path.join(chatsDir, `${normalizedChat.appChatId}.json`);
+    writeJson(chatPath, normalizedChat);
   }
 
   static deleteChat(chatId: string) {
@@ -380,16 +647,31 @@ export class AppStore {
   static appendRunEvent(input: RunEventInput): RunEventRecord {
     const filePath = runEventFilePath(input.runId);
     const cachedSequence = runEventSequenceCache.get(input.runId);
+    const cachedHash = runEventHashCache.get(input.runId);
+    const existingEvents = cachedSequence !== undefined && cachedHash !== undefined
+      ? []
+      : readRunEventFile(filePath);
     const sequence = cachedSequence !== undefined
       ? cachedSequence + 1
-      : nextRunEventSequence(readRunEventFile(filePath));
+      : nextRunEventSequence(existingEvents);
+    const previousHash = cachedHash || lastRunEventHash(existingEvents);
     const settings = this.getSettings();
+    const artifacts = appendRunStreamArtifact(input, sequence);
     const record = createRunEventRecord(input, sequence, {
-      storeRawPayload: settings.storeRawEvents
+      storeRawPayload: settings.storeRawEvents,
+      previousHash,
+      artifacts
     });
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.appendFileSync(filePath, serializeRunEventRecord(record), 'utf-8');
+    const fd = fs.openSync(filePath, 'a');
+    try {
+      fs.writeFileSync(fd, serializeRunEventRecord(record), 'utf-8');
+      fs.fsyncSync(fd);
+    } finally {
+      fs.closeSync(fd);
+    }
     runEventSequenceCache.set(input.runId, record.sequence);
+    runEventHashCache.set(input.runId, record.hash || previousHash);
     return record;
   }
 

@@ -25,6 +25,14 @@ const baseSettings: AppSettings = {
   themeCornerStyle: 'rounded',
   themeAccentStyle: 'system',
   promptSurfaceStyle: 'liquid_glass',
+  funFxEnabled: true,
+  funFxMode: 'cinematic',
+  advancedFx: {
+    agentAura: true,
+    livingWorkspace: true,
+    dataViz: true,
+    intensity: 'cinematic'
+  },
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,
@@ -116,13 +124,21 @@ describe('ProductOperations', () => {
     expect(health.provider).toBe('gemini')
   })
 
-  it('detects notarized debug release automation from scripts and builder config', () => {
+  it('detects hardened release automation from scripts and builder config', () => {
     const status = buildReleaseAutomationStatus({
       updateChannel: 'debug',
       now: '2026-05-07T10:00:00.000Z',
       packageJson: {
         scripts: {
           build: 'npm run typecheck && electron-vite build',
+          test: 'vitest run',
+          ci: 'npm run typecheck && npm run test && npm run smoke:node-pty',
+          'smoke:node-pty': 'node scripts/smoke-node-pty.cjs',
+          'smoke:package': 'node scripts/smoke-packaged-electron.cjs',
+          'build:unpack': 'npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist',
+          'build:mac': 'npm run build && electron-builder --mac',
+          'build:mac:notarized':
+            'npm run build && CSC_NAME=${CSC_NAME:-ABC} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --mac -c.mac.notarize=true',
           'build:debug:mac':
             'npm run build && CSC_NAME=${CSC_NAME:-ABC} electron-builder --dir --config electron-builder.debug.yml',
           'build:debug:mac:notarized':
@@ -130,20 +146,24 @@ describe('ProductOperations', () => {
         }
       },
       builderConfigText:
-        'appId: com.chrisizatt.agentbench\nproductName: AgentBench Debug\ndirectories:\n  output: dist-debug\n',
+        'appId: com.chrisizatt.agbench\nproductName: AGBench Debug\ndirectories:\n  output: dist-debug\nasarUnpack:\n  - resources/**\n  - node_modules/node-pty/**\nafterPack: build/validate-native-modules.cjs\nnpmRebuild: true\npublish:\n  provider: github\n  owner: chrisizatt\n  repo: GUIGemini\n',
       env: {}
     })
 
     expect(status.status).toBe('ok')
     expect(status.notarization.configured).toBe(true)
     expect(status.notarization.keychainProfile).toBe('<your-notary-profile>')
-    expect(status.appId).toBe('com.chrisizatt.agentbench')
+    expect(status.notarization.scriptName).toBe('build:mac:notarized')
+    expect(status.nativeModules.configured).toBe(true)
+    expect(status.updateDistribution.configured).toBe(true)
+    expect(status.updateDistribution.provider).toBe('github')
+    expect(status.appId).toBe('com.chrisizatt.agbench')
   })
 
   it('builds a redacted diagnostics snapshot with product counts', () => {
     const status = buildProductOperationsStatus({
       updateChannel: 'debug',
-      appName: 'AgentBench Debug',
+      appName: 'AGBench Debug',
       appVersion: '1.0.0',
       isPackaged: false,
       appPath: '/app',

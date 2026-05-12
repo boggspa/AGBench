@@ -49,12 +49,17 @@ describe('ProviderAdapters', () => {
     })
     expect(defaultProviderDescriptor('gemini')).toMatchObject({
       provider: 'gemini',
-      runChannel: 'run-gemini',
+      runChannel: 'run-agent',
       features: {
         agentBenchMcpBridge: true,
         workspaceGrants: true
       }
     })
+    expect(
+      ['gemini', 'codex', 'claude', 'kimi'].map((provider) =>
+        defaultProviderDescriptor(provider as 'gemini' | 'codex' | 'claude' | 'kimi').runChannel
+      )
+    ).toEqual(['run-agent', 'run-agent', 'run-agent', 'run-agent'])
   })
 
   it('enforces one adapter per provider and requires registered providers', () => {

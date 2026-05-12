@@ -9,6 +9,13 @@ import type {
   VisualEffectStyle
 } from '../../../main/store/types';
 
+const DEFAULT_ADVANCED_FX: AppSettings['advancedFx'] = {
+  agentAura: true,
+  livingWorkspace: true,
+  dataViz: true,
+  intensity: 'cinematic'
+};
+
 export interface AppearanceState {
   mode: AppearanceMode;
   visualEffectStyle: VisualEffectStyle;
@@ -16,12 +23,39 @@ export interface AppearanceState {
   themeCornerStyle: ThemeCornerStyle;
   themeAccentStyle: ThemeAccentStyle;
   promptSurfaceStyle: PromptSurfaceStyle;
+  funFxEnabled: boolean;
+  funFxMode: AppSettings['funFxMode'];
+  advancedFx: AppSettings['advancedFx'];
   reduceTransparency: boolean;
   reduceMotion: boolean;
   compactDensity: boolean;
   showInspector: boolean;
   inspectorWidth: number;
   sidebarWidth: number;
+}
+
+const DEFAULT_INSPECTOR_WIDTH = 380;
+const DEFAULT_SIDEBAR_WIDTH = 260;
+const MIN_INSPECTOR_WIDTH = 300;
+const MAX_INSPECTOR_WIDTH = 720;
+const MIN_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 440;
+
+const clampNumber = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, Math.round(value)));
+
+const normalizeAppearanceDimension = (
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number => {
+  const parsed = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : typeof value === 'string'
+      ? Number(value)
+      : fallback
+  return Number.isFinite(parsed) ? clampNumber(parsed, min, max) : fallback;
 }
 
 function getInitialState(): AppearanceState {
@@ -39,12 +73,41 @@ function getInitialState(): AppearanceState {
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
     promptSurfaceStyle: 'liquid_glass',
+    funFxEnabled: true,
+    funFxMode: 'cinematic',
+    advancedFx: DEFAULT_ADVANCED_FX,
     reduceTransparency,
     reduceMotion,
     compactDensity: false,
     showInspector: true,
-    inspectorWidth: 380,
-    sidebarWidth: 260,
+    inspectorWidth: DEFAULT_INSPECTOR_WIDTH,
+    sidebarWidth: DEFAULT_SIDEBAR_WIDTH,
+  };
+}
+
+function isFunFxMode(value: unknown): value is AppSettings['funFxMode'] {
+  return (
+    value === 'off' ||
+    value === 'subtle' ||
+    value === 'cinematic' ||
+    value === 'epic'
+  )
+}
+
+function normalizeAdvancedFx(
+  value: Partial<AppSettings['advancedFx']> | undefined,
+  fallbackIntensity: AppSettings['advancedFx']['intensity'] = DEFAULT_ADVANCED_FX.intensity
+): AppSettings['advancedFx'] {
+  const intensity =
+    value?.intensity === 'subtle' || value?.intensity === 'cinematic' || value?.intensity === 'epic'
+      ? value.intensity
+      : fallbackIntensity;
+
+  return {
+    agentAura: value?.agentAura ?? DEFAULT_ADVANCED_FX.agentAura,
+    livingWorkspace: value?.livingWorkspace ?? DEFAULT_ADVANCED_FX.livingWorkspace,
+    dataViz: value?.dataViz ?? DEFAULT_ADVANCED_FX.dataViz,
+    intensity
   };
 }
 
@@ -54,6 +117,7 @@ export function useAppearance() {
 
   useEffect(() => {
     window.api.getSettings().then((settings: AppSettings) => {
+      const funFxMode = isFunFxMode(settings.funFxMode) ? settings.funFxMode : getInitialState().funFxMode;
       setState({
         mode: settings.appearanceMode || 'soft_glass',
         visualEffectStyle: settings.visualEffectStyle || 'auto',
@@ -61,12 +125,28 @@ export function useAppearance() {
         themeCornerStyle: settings.themeCornerStyle || 'rounded',
         themeAccentStyle: settings.themeAccentStyle || 'system',
         promptSurfaceStyle: settings.promptSurfaceStyle || 'liquid_glass',
+        funFxEnabled: typeof settings.funFxEnabled === 'boolean' ? settings.funFxEnabled : getInitialState().funFxEnabled,
+        funFxMode,
+        advancedFx: normalizeAdvancedFx(
+          settings.advancedFx,
+          funFxMode === 'off' ? DEFAULT_ADVANCED_FX.intensity : funFxMode
+        ),
         reduceTransparency: settings.reduceTransparency || getInitialState().reduceTransparency,
         reduceMotion: settings.reduceMotion || getInitialState().reduceMotion,
         compactDensity: settings.compactDensity || false,
         showInspector: settings.showInspector !== false,
-        inspectorWidth: settings.inspectorWidth || 380,
-        sidebarWidth: settings.sidebarWidth || 260,
+        inspectorWidth: normalizeAppearanceDimension(
+          settings.inspectorWidth,
+          DEFAULT_INSPECTOR_WIDTH,
+          MIN_INSPECTOR_WIDTH,
+          MAX_INSPECTOR_WIDTH
+        ),
+        sidebarWidth: normalizeAppearanceDimension(
+          settings.sidebarWidth,
+          DEFAULT_SIDEBAR_WIDTH,
+          MIN_SIDEBAR_WIDTH,
+          MAX_SIDEBAR_WIDTH
+        ),
       });
       setLoaded(true);
     }).catch(() => setLoaded(true));
@@ -82,6 +162,12 @@ export function useAppearance() {
     root.setAttribute('data-prompt-surface', next.promptSurfaceStyle);
     root.setAttribute('data-reduce-transparency', String(next.reduceTransparency));
     root.setAttribute('data-reduce-motion', String(next.reduceMotion));
+    root.setAttribute('data-fx-enabled', String(next.funFxEnabled));
+    root.setAttribute('data-fx-mode', next.funFxMode);
+    root.setAttribute('data-advanced-fx-agent-aura', String(next.funFxEnabled && !next.reduceMotion && next.advancedFx.agentAura));
+    root.setAttribute('data-advanced-fx-living-workspace', String(next.funFxEnabled && !next.reduceMotion && next.advancedFx.livingWorkspace));
+    root.setAttribute('data-advanced-fx-data-viz', String(next.funFxEnabled && !next.reduceMotion && next.advancedFx.dataViz));
+    root.setAttribute('data-advanced-fx-intensity', next.advancedFx.intensity);
     root.setAttribute('data-compact', String(next.compactDensity));
     root.style.setProperty('--inspector-width', `${next.inspectorWidth}px`);
     root.style.setProperty('--sidebar-width', `${next.sidebarWidth}px`);
@@ -95,7 +181,15 @@ export function useAppearance() {
 
   const update = useCallback((partial: Partial<AppearanceState>) => {
     setState(prev => {
-      const next = { ...prev, ...partial };
+      const next = {
+        ...prev,
+        ...partial,
+        advancedFx: partial.advancedFx
+          ? normalizeAdvancedFx(partial.advancedFx, prev.advancedFx.intensity)
+          : prev.advancedFx
+      };
+      next.inspectorWidth = normalizeAppearanceDimension(next.inspectorWidth, DEFAULT_INSPECTOR_WIDTH, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH)
+      next.sidebarWidth = normalizeAppearanceDimension(next.sidebarWidth, DEFAULT_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
       // Persist to store
       window.api.updateSettings({
         appearanceMode: next.mode,
@@ -104,6 +198,9 @@ export function useAppearance() {
         themeCornerStyle: next.themeCornerStyle,
         themeAccentStyle: next.themeAccentStyle,
         promptSurfaceStyle: next.promptSurfaceStyle,
+        funFxEnabled: next.funFxEnabled,
+        funFxMode: next.funFxMode,
+        advancedFx: next.advancedFx,
         reduceTransparency: next.reduceTransparency,
         reduceMotion: next.reduceMotion,
         compactDensity: next.compactDensity,

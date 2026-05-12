@@ -256,6 +256,13 @@ export class RunManager<TState = unknown> {
     ) {
       return session
     }
+    if (session && isTerminalRunSessionStatus(status)) {
+      for (const approvalId of session.approvalIds) {
+        this.approvalIdToRunId.delete(approvalId)
+      }
+      session.approvalIds.clear()
+      session.sessionGrants.clear()
+    }
     return this.update(runId, { status, process: undefined, abortController: undefined })
   }
 

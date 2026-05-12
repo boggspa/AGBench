@@ -1,24 +1,31 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
-import { delimiter, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'path'
+import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto'
 import { promises as fs } from 'fs'
+import * as fsSync from 'fs'
 import { createConnection, createServer, Socket, Server as NetServer } from 'net'
 import * as pty from 'node-pty'
 import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
-import { isCodexSandboxToolingFailure } from './SandboxFallback'
-import { isPathInsideWorkspace, resolveAgenticPermission } from './AgenticPolicy'
+import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
+import { isPathInsideWorkspace } from './AgenticPolicy'
 import { RunManager } from './RunManager'
+import { RunRepository } from './RunRepository'
+import { PermissionService } from './PermissionService'
+import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { createProviderAdapterRegistry, defaultProviderDescriptor, providerLabel } from './ProviderAdapters'
 import { buildDiagnosticsSnapshot, buildProductOperationsStatus, serializeDiagnosticsSnapshot } from './ProductOperations'
+import { installIpcValidation } from './IpcValidation'
+import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -27,8 +34,10 @@ let codexClient: CodexAppServerClient | null = null
 let codexExecProcess: ChildProcess | null = null
 let scheduledTaskTimer: ReturnType<typeof setTimeout> | null = null
 let geminiMcpBroker: NetServer | null = null
+let geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
 const NATIVE_GLASS_VIBRANCY: BrowserWindowConstructorOptions['vibrancy'] = 'sidebar'
+let appliedNativeGlassState: string | null = null
 const FILE_ICON_CACHE = new Map<string, string | null>()
 const MAX_EDITOR_FILE_BYTES = 1_500_000
 const MAX_EDITOR_FILES = 900
@@ -62,15 +71,43 @@ const MAX_SCHEDULE_TIMER_DELAY_MS = 2_147_000_000
 const GEMINI_MCP_SERVER_NAME = 'agentbench'
 const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const GEMINI_MCP_SOCKET_ARG = '--socket'
+const GEMINI_MCP_TOKEN_ARG = '--token'
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
 const AGENTBENCH_MCP_TOOLS = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory'] as const
-type AgentBenchMcpToolName = typeof AGENTBENCH_MCP_TOOLS[number]
+type AGBenchMcpToolName = typeof AGENTBENCH_MCP_TOOLS[number]
+const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
+const geminiMcpBrokerToken = randomBytes(32).toString('hex')
+let geminiMcpBridgeInstalledForCurrentToken = false
+
+installIpcValidation(ipcMain)
 
 // Ask Chromium to keep expensive renderer visuals on the GPU raster path where supported.
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-zero-copy')
 
 type GeminiCapabilityKind = typeof GEMINI_CAPABILITY_KINDS[number]
+
+function loadOrCreateExternalGrantSigningSecret(): Buffer {
+  const secretPath = join(app.getPath('userData'), 'external-grant-signing-secret')
+  try {
+    const existing = fsSync.readFileSync(secretPath, 'utf-8').trim()
+    if (/^[0-9a-f]{64}$/i.test(existing)) {
+      return Buffer.from(existing, 'hex')
+    }
+  } catch {
+    // Missing or unreadable secrets are replaced below.
+  }
+
+  const secret = randomBytes(32)
+  fsSync.mkdirSync(dirname(secretPath), { recursive: true })
+  fsSync.writeFileSync(secretPath, secret.toString('hex'), { mode: 0o600 })
+  try {
+    fsSync.chmodSync(secretPath, 0o600)
+  } catch {
+    // chmod is best-effort on platforms without POSIX permissions.
+  }
+  return secret
+}
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
 
 interface GeminiCapabilityItem {
@@ -136,7 +173,8 @@ interface AgentRunRoute {
 
 interface AgentRunPayload {
   provider: ProviderId
-  workspace: string
+  scope: ChatScope
+  workspace?: string
   prompt: string
   appRunId?: string
   appChatId?: string
@@ -147,11 +185,18 @@ interface AgentRunPayload {
   imagePaths?: string[]
   providerSessionId?: string | null
   externalPathGrants?: ExternalPathGrant[]
+  sessionTrust?: boolean
+  geminiWorktree?: GeminiWorktreeLaunchOption
+  runtimeProfileId?: string
+  handoffSourceRunId?: string
+  runtimeProfile?: RuntimeProfile
 }
 
 interface CodexRunState {
   sender: Electron.WebContents
   threadId: string
+  scope?: ChatScope
+  cwd: string
   workspacePath?: string
   turnId?: string
   model: string
@@ -169,7 +214,9 @@ interface CodexRunState {
 
 interface GeminiToolContext {
   sender: Electron.WebContents
-  workspacePath: string
+  scope: ChatScope
+  cwd: string
+  workspacePath?: string
   appRunId?: string
   appChatId?: string
   providerSessionId?: string | null
@@ -189,7 +236,7 @@ interface HostCommandApproval {
   command: unknown
   commandText: string
   cwd: string
-  workspacePath: string
+  workspacePath?: string
   threadId: string
   model: string
   appRunId?: string
@@ -232,15 +279,726 @@ const pendingCodexApprovals = new Map<string, { rpcId: number | string; method: 
 const pendingKimiApprovals = new Map<string, { child: ChildProcess; rpcId: number | string; params: any; runId?: string }>()
 const pendingGeminiToolApprovals = new Map<string, AgenticApprovalWaiter>()
 const pendingHostCommandApprovals = new Map<string, HostCommandApproval>()
+const pendingMainApprovals = new Map<string, { provider: ProviderId; workspacePath?: string; runId?: string; resolve: (allowed: boolean) => void }>()
 const agenticSessionGrants = new Set<string>()
 let activeCodexRunState: CodexRunState | null = null
 const cliProviderProcesses = new Map<ProviderId, ChildProcess>()
 const cliProviderAbortControllers = new Map<ProviderId, AbortController>()
+const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>(['queued', 'starting', 'active', 'paused', 'cancelling', 'cancelled', 'failed', 'completed'])
+const RUN_QUEUE_SOURCES = new Set<RunQueueJobSource>(['manual', 'scheduled', 'retry', 'permission_retry', 'review', 'host_rerun', 'system'])
+const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
+  shellCommands: 'workspace',
+  fileChanges: 'ask',
+  mcpTools: 'ask',
+  networkAccess: 'allow'
+}
+const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
+  'activeProvider',
+  'claudeBinaryPath',
+  'kimiBinaryPath',
+  'codexUsageCredential',
+  'storeLocalChatHistory',
+  'storeRawEvents',
+  'storePromptResponseInUsage',
+  'geminiCheckpointingEnabled',
+  'chatContextTurns',
+  'appearanceMode',
+  'visualEffectStyle',
+  'themeAppearance',
+  'themeCornerStyle',
+  'themeAccentStyle',
+  'promptSurfaceStyle',
+  'reduceTransparency',
+  'reduceMotion',
+  'compactDensity',
+  'showInspector',
+  'inspectorWidth',
+  'sidebarWidth',
+  'funFxEnabled',
+  'funFxMode',
+  'advancedFx',
+  'agenticServices',
+  'geminiMcpBridgeEnabled',
+  'geminiMcpBridgeLastStatus',
+  'codexSandboxFallback',
+  'updateChannel'
+])
+const MIN_INSPECTOR_WIDTH = 300;
+const MAX_INSPECTOR_WIDTH = 720;
+const MIN_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 440;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function requireRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object.`)
+  }
+  return value
+}
+
+function assertProviderId(value: unknown): ProviderId {
+  if (typeof value === 'string' && PROVIDER_IDS.has(value as ProviderId)) {
+    return value as ProviderId
+  }
+  throw new Error('Provider is invalid.')
+}
+
+function requireNonEmptyString(value: unknown, label: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${label} is required.`)
+  }
+  return value
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function optionalStringOrNull(value: unknown): string | null | undefined {
+  if (value === null) return null
+  return optionalString(value)
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function optionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+}
+
+function clampDimension(value: unknown, min: number, max: number, fallback = 0): number {
+  const next = typeof value === 'number' && Number.isFinite(value)
+    ? value
+    : Number(value)
+  if (!Number.isFinite(next)) return fallback
+  return Math.max(min, Math.min(max, Math.round(next)))
+}
+
+function canonicalPath(value: string): string {
+  return resolve(expandHomePath(value))
+}
+
+function chatScope(chat: Pick<ChatRecord, 'scope'> | null | undefined): ChatScope {
+  return chat?.scope === 'global' ? 'global' : 'workspace'
+}
+
+function globalRunCwd(): string {
+  return canonicalPath(app.getPath('home'))
+}
+
+function requireGlobalChat(chatId: unknown, label = 'Global chat'): ChatRecord {
+  const id = requireNonEmptyString(chatId, label)
+  const chat = AppStore.getChat(id)
+  if (!chat || chatScope(chat) !== 'global') {
+    throw new Error(`${label} must be a saved global chat.`)
+  }
+  return chat
+}
+
+function validateChatWorkspaceIdentity(chatId: string | undefined, workspace: WorkspaceRecord | undefined): void {
+  if (!chatId) return
+  const chat = AppStore.getChat(chatId)
+  if (!chat) return
+  if (chatScope(chat) === 'global') {
+    throw new Error('Global chats cannot be used for workspace-scoped runs.')
+  }
+  if (workspace && chat.workspaceId && chat.workspaceId !== workspace.id) {
+    throw new Error('Chat workspace does not match the selected workspace.')
+  }
+}
+
+function sanitizeChatForSave(chat: ChatRecord): ChatRecord {
+  const scope = chatScope(chat)
+  if (scope === 'global') {
+    const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat
+    return {
+      ...rest,
+      scope: 'global'
+    }
+  }
+  if (!chat.workspacePath || !chat.workspaceId) {
+    throw new Error('Workspace chat must include a workspace id and path.')
+  }
+  const workspace = findRegisteredWorkspace(chat.workspacePath)
+  if (!workspace || workspace.id !== chat.workspaceId) {
+    throw new Error('Chat workspace must be a registered AGBench workspace.')
+  }
+  return {
+    ...chat,
+    scope: 'workspace',
+    workspaceId: workspace.id,
+    workspacePath: canonicalPath(workspace.path)
+  }
+}
+
+function safeWorkspacePartial(partial: Partial<WorkspaceRecord> = {}): Partial<WorkspaceRecord> {
+  const allowed: Partial<WorkspaceRecord> = {}
+  if (typeof partial.displayName === 'string') allowed.displayName = partial.displayName
+  if (typeof partial.branch === 'string') allowed.branch = partial.branch
+  if (typeof partial.pinned === 'boolean') allowed.pinned = partial.pinned
+  if ('geminiWorktree' in partial) {
+    const geminiWorktree = sanitizeWorkspaceGeminiWorktree(partial.geminiWorktree)
+    if (geminiWorktree) allowed.geminiWorktree = geminiWorktree
+  }
+  return allowed
+}
+
+function sanitizeWorkspaceGeminiWorktree(value: unknown): WorkspaceRecord['geminiWorktree'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const record = value as Record<string, unknown>
+  const sanitized: WorkspaceRecord['geminiWorktree'] = {
+    enabled: Boolean(record.enabled)
+  }
+  if (typeof record.name === 'string' && record.name.trim()) {
+    sanitized.name = record.name.trim()
+  }
+  return sanitized
+}
+
+function assertSafeWorkspaceRoot(workspacePath: string): void {
+  const normalized = canonicalPath(workspacePath)
+  const root = parse(normalized).root
+  if (normalized === root) {
+    throw new Error('Filesystem roots cannot be registered as workspaces.')
+  }
+}
+
+function findRegisteredWorkspace(workspacePath: string): WorkspaceRecord | undefined {
+  const normalized = canonicalPath(workspacePath)
+  return AppStore.getWorkspaces().find((workspace) => canonicalPath(workspace.path) === normalized)
+}
+
+function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'): string {
+  const normalized = canonicalPath(requireNonEmptyString(workspacePath, label))
+  assertSafeWorkspaceRoot(normalized)
+  if (!findRegisteredWorkspace(normalized)) {
+    throw new Error(`${label} must be selected through AGBench before it can be used.`)
+  }
+  return normalized
+}
+
+function addWorkspaceFromNativeSelection(workspacePath: string): WorkspaceRecord {
+  const normalized = canonicalPath(requireNonEmptyString(workspacePath, 'Workspace'))
+  assertSafeWorkspaceRoot(normalized)
+  return AppStore.addOrUpdateWorkspace(normalized)
+}
+
+function sanitizeRunQueueStatus(value: unknown, fallback: RunQueueJobStatus = 'queued'): RunQueueJobStatus {
+  return typeof value === 'string' && RUN_QUEUE_STATUSES.has(value as RunQueueJobStatus)
+    ? value as RunQueueJobStatus
+    : fallback
+}
+
+function sanitizeRunQueueSource(value: unknown): RunQueueJobSource {
+  return typeof value === 'string' && RUN_QUEUE_SOURCES.has(value as RunQueueJobSource)
+    ? value as RunQueueJobSource
+    : 'manual'
+}
+
+function sanitizeRunQueueRequestSnapshot(value: unknown): RunQueueRequestSnapshot | undefined {
+  if (!isRecord(value)) return undefined
+  const imageAttachments = Array.isArray(value.imageAttachments)
+    ? value.imageAttachments
+      .filter(isRecord)
+      .map((attachment) => ({
+        id: optionalString(attachment.id),
+        path: requireNonEmptyString(attachment.path, 'Image attachment path'),
+        name: optionalString(attachment.name)
+      }))
+    : []
+  const rawExternalPathGrants = Array.isArray(value.externalPathGrants)
+    ? value.externalPathGrants as ExternalPathGrant[]
+    : []
+  const externalPathGrants = normalizeExternalPathGrants(rawExternalPathGrants)
+  if (rawExternalPathGrants.length && externalPathGrants.length !== rawExternalPathGrants.length) {
+    throw new Error('Queued external path grants must be issued by AGBench in this app session.')
+  }
+  return {
+    scope: value.scope === 'global' ? 'global' : 'workspace',
+    prompt: typeof value.prompt === 'string' ? value.prompt : '',
+    displayPrompt: optionalString(value.displayPrompt),
+    selectedModelType: optionalString(value.selectedModelType) || 'cli-default',
+    customModel: typeof value.customModel === 'string' ? value.customModel : '',
+    approvalMode: optionalString(value.approvalMode) || 'default',
+    sessionTrust: Boolean(value.sessionTrust),
+    imageAttachments,
+    externalPathGrants: externalPathGrants.length ? externalPathGrants : undefined,
+    geminiWorktree: sanitizeWorkspaceGeminiWorktree(value.geminiWorktree),
+    codexNativeReview: Boolean(value.codexNativeReview) || undefined,
+    codexReasoningEffort: optionalStringOrNull(value.codexReasoningEffort),
+    codexServiceTier: optionalStringOrNull(value.codexServiceTier),
+    scheduledTaskId: optionalString(value.scheduledTaskId),
+    preserveComposer: Boolean(value.preserveComposer) || undefined,
+    runtimeProfileId: optionalString(value.runtimeProfileId),
+    handoffSourceRunId: optionalString(value.handoffSourceRunId)
+  }
+}
+
+function normalizeRunQueueJobRequest(value: unknown): Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'> {
+  const record = requireRecord(value, 'Run queue request')
+  const provider = assertProviderId(record.provider)
+  const runId = optionalString(record.runId) || optionalString(record.id) || randomUUID()
+  const chatId = optionalString(record.chatId)
+  const chat = chatId ? AppStore.getChat(chatId) : null
+  const scope: ChatScope = record.scope === 'global' || chatScope(chat) === 'global' ? 'global' : 'workspace'
+  let workspacePath: string | undefined
+  let workspaceId: string | undefined
+  if (scope === 'global') {
+    requireGlobalChat(chatId, 'Run queue global chat')
+  } else {
+    workspacePath = requireRegisteredWorkspace(requireNonEmptyString(record.workspacePath, 'Workspace'))
+    const workspace = findRegisteredWorkspace(workspacePath)
+    workspaceId = workspace?.id || optionalString(record.workspaceId)
+    validateChatWorkspaceIdentity(chatId, workspace)
+  }
+  const status = sanitizeRunQueueStatus(record.status, 'queued')
+  return {
+    id: optionalString(record.id) || runId,
+    runId,
+    provider,
+    scope,
+    workspacePath,
+    workspaceId,
+    chatId,
+    source: sanitizeRunQueueSource(record.source),
+    status: status === 'active' || status === 'cancelling' ? 'starting' : status,
+    priority: optionalNumber(record.priority),
+    attempt: optionalNumber(record.attempt),
+    promptPreview: optionalString(record.promptPreview),
+    request: sanitizeRunQueueRequestSnapshot(record.request),
+    providerSessionId: optionalString(record.providerSessionId),
+    providerRunId: optionalString(record.providerRunId),
+    parentRunId: optionalString(record.parentRunId),
+    runtimeProfileId: optionalString(record.runtimeProfileId),
+    handoffSourceRunId: optionalString(record.handoffSourceRunId),
+    statusReason: optionalString(record.statusReason),
+    lastError: optionalString(record.lastError)
+  }
+}
+
+function providerHasActiveRun(provider: ProviderId): boolean {
+  return runManager.getActiveByProvider(provider).length > 0
+}
+
+function externalGrantSigningPayload(grant: Pick<ExternalPathGrant, 'id' | 'provider' | 'path' | 'kind' | 'access' | 'duration' | 'createdAt'>): string {
+  return JSON.stringify({
+    id: grant.id,
+    provider: grant.provider,
+    path: canonicalPath(grant.path),
+    kind: grant.kind,
+    access: grant.access,
+    duration: grant.duration,
+    createdAt: grant.createdAt
+  })
+}
+
+function signExternalPathGrant(grant: Pick<ExternalPathGrant, 'id' | 'provider' | 'path' | 'kind' | 'access' | 'duration' | 'createdAt'>): string {
+  return createHmac('sha256', externalGrantSigningSecret)
+    .update(externalGrantSigningPayload(grant))
+    .digest('hex')
+}
+
+function issueExternalPathGrant(grant: Omit<ExternalPathGrant, 'issuedBy' | 'signature'>): ExternalPathGrant {
+  const normalizedGrant: ExternalPathGrant = {
+    ...grant,
+    path: canonicalPath(grant.path),
+    issuedBy: 'main',
+    signature: ''
+  }
+  normalizedGrant.signature = signExternalPathGrant(normalizedGrant)
+  return normalizedGrant
+}
+
+function isMainIssuedExternalPathGrant(grant: ExternalPathGrant): boolean {
+  if (!grant || grant.issuedBy !== 'main' || typeof grant.signature !== 'string') return false
+  const expected = Buffer.from(signExternalPathGrant(grant), 'hex')
+  const actual = Buffer.from(grant.signature, 'hex')
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
+}
+
+function sanitizeAgenticServicePolicy(value: unknown, fallback: 'ask' | 'workspace' | 'allow' | 'deny'): 'ask' | 'workspace' | 'allow' | 'deny' {
+  return value === 'ask' || value === 'workspace' || value === 'allow' || value === 'deny'
+    ? value
+    : fallback
+}
+
+function sanitizeAgenticNetworkPolicy(value: unknown, fallback: 'allow' | 'deny'): 'allow' | 'deny' {
+  return value === 'allow' || value === 'deny' ? value : fallback
+}
+
+function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
+  const payload = requireRecord(rawPayload, 'Run payload')
+  const provider = assertProviderId(payload.provider)
+  const scope: ChatScope = payload.scope === 'global' ? 'global' : 'workspace'
+  const rawExternalPathGrants = Array.isArray(payload.externalPathGrants)
+    ? payload.externalPathGrants as ExternalPathGrant[]
+    : []
+  const externalPathGrants = rawExternalPathGrants.length
+    ? normalizeExternalPathGrants(rawExternalPathGrants)
+    : []
+  if (rawExternalPathGrants.length && externalPathGrants.length !== rawExternalPathGrants.length) {
+    throw new Error('External path grants must be issued by AGBench in this app session.')
+  }
+  const appChatId = optionalString(payload.appChatId) || optionalString(payload.chatId)
+  let workspace: string | undefined
+  let scopedExternalPathGrants = externalPathGrants
+  if (scope === 'global') {
+    requireGlobalChat(appChatId, 'Run global chat')
+    workspace = globalRunCwd()
+    if (rawExternalPathGrants.length > 0) {
+      throw new Error('Global chats use approval prompts instead of external path grants.')
+    }
+    scopedExternalPathGrants = []
+  } else {
+    workspace = canonicalPath(requireNonEmptyString(payload.workspace, 'Workspace'))
+  }
+  return {
+    provider,
+    scope,
+    workspace,
+    prompt: typeof payload.prompt === 'string' ? payload.prompt : String(payload.prompt ?? ''),
+    appRunId: optionalString(payload.appRunId),
+    appChatId,
+    model: optionalString(payload.model),
+    reasoningEffort: optionalStringOrNull(payload.reasoningEffort),
+    serviceTier: optionalStringOrNull(payload.serviceTier),
+    approvalMode: scope === 'global'
+      ? (optionalString(payload.approvalMode) === 'plan' ? 'plan' : 'default')
+      : optionalString(payload.approvalMode),
+    imagePaths: stringArray(payload.imagePaths),
+    providerSessionId: optionalStringOrNull(payload.providerSessionId),
+    externalPathGrants: scopedExternalPathGrants,
+    sessionTrust: Boolean(payload.sessionTrust),
+    geminiWorktree: (payload.geminiWorktree ?? null) as GeminiWorktreeLaunchOption,
+    runtimeProfileId: optionalString(payload.runtimeProfileId),
+    handoffSourceRunId: optionalString(payload.handoffSourceRunId)
+  }
+}
+
+async function ensureProviderRunPreflight(
+  sender: Electron.WebContents,
+  payload: AgentRunPayload
+): Promise<boolean> {
+  const route = routeWithRunId(payload.provider, payload)
+  payload.appRunId = route.appRunId
+  if (payload.scope === 'global') {
+    try {
+      requireGlobalChat(payload.appChatId, 'Run global chat')
+      payload.workspace = globalRunCwd()
+    } catch (error) {
+      sendAgentCompatError(sender, payload.provider, error instanceof Error ? error.message : String(error), route)
+      sendAgentCompatExit(sender, payload.provider, -1, route)
+      return false
+    }
+  } else {
+    try {
+      payload.workspace = requireRegisteredWorkspace(payload.workspace || '')
+      validateChatWorkspaceIdentity(payload.appChatId, findRegisteredWorkspace(payload.workspace))
+    } catch (error) {
+      sendAgentCompatError(sender, payload.provider, error instanceof Error ? error.message : String(error), route)
+      sendAgentCompatExit(sender, payload.provider, -1, route)
+      return false
+    }
+  }
+
+  if (!(await ensureWorkspaceTrustForRun(sender, payload))) {
+    return false
+  }
+
+  const adapter = providerAdapters.require(payload.provider)
+  const contract = await adapter.getCapabilityContract({
+    workspacePath: payload.workspace,
+    approvalMode: payload.approvalMode
+  })
+  const preflight = providerPreflightService.evaluate(
+    {
+      provider: payload.provider,
+      workspacePath: payload.workspace,
+      approvalMode: payload.approvalMode,
+      model: payload.model
+    },
+    contract,
+    adapter
+  )
+  if (preflight.state === 'ready') {
+    return true
+  }
+  sendAgentCompatError(
+    sender,
+    payload.provider,
+    preflight.reason,
+    route
+  )
+  sendAgentCompatExit(sender, payload.provider, -1, route)
+  return false
+}
+
+function normalizeScheduledTaskExternalGrants(value: unknown): ExternalPathGrant[] | undefined {
+  const rawGrants = Array.isArray(value) ? value as ExternalPathGrant[] : []
+  const grants = normalizeExternalPathGrants(rawGrants)
+  if (rawGrants.length && grants.length !== rawGrants.length) {
+    throw new Error('Scheduled task external path grants must be issued by AGBench in this app session.')
+  }
+  return grants.length ? grants : undefined
+}
+
+function assertScheduledTaskWorkspaceIdentity(workspacePath: string, workspaceId?: unknown): WorkspaceRecord {
+  const registeredPath = requireRegisteredWorkspace(workspacePath, 'Scheduled task workspace')
+  const workspace = findRegisteredWorkspace(registeredPath)
+  if (!workspace) {
+    throw new Error('Scheduled task workspace must be registered.')
+  }
+  if (typeof workspaceId === 'string' && workspaceId && workspaceId !== workspace.id) {
+    throw new Error('Scheduled task workspace id does not match the registered workspace.')
+  }
+  return workspace
+}
+
+function sanitizeScheduledTaskForSave(task: unknown): Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>> {
+  const input = requireRecord(task, 'Scheduled task')
+  const workspace = assertScheduledTaskWorkspaceIdentity(
+    requireNonEmptyString(input.workspacePath, 'Scheduled task workspace'),
+    input.workspaceId
+  )
+  return {
+    ...input,
+    workspaceId: workspace.id,
+    workspacePath: canonicalPath(workspace.path),
+    provider: assertProviderId(input.provider),
+    externalPathGrants: normalizeScheduledTaskExternalGrants(input.externalPathGrants),
+    runtimeProfileId: optionalString(input.runtimeProfileId),
+    handoffSourceRunId: optionalString(input.handoffSourceRunId)
+  } as Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
+}
+
+function sanitizeScheduledTaskPatch(id: string, partial: unknown): Partial<ScheduledTask> | null {
+  const input = requireRecord(partial, 'Scheduled task update')
+  const existing = AppStore.getScheduledTasks().find((task) => task.id === id)
+  if (!existing) return null
+  const workspace = assertScheduledTaskWorkspaceIdentity(existing.workspacePath, existing.workspaceId)
+  if ('workspacePath' in input && input.workspacePath !== undefined && canonicalPath(String(input.workspacePath)) !== canonicalPath(workspace.path)) {
+    throw new Error('Scheduled task workspace path cannot be changed by the renderer.')
+  }
+  if ('workspaceId' in input && input.workspaceId !== undefined && input.workspaceId !== workspace.id) {
+    throw new Error('Scheduled task workspace id cannot be changed by the renderer.')
+  }
+
+  const sanitized: Partial<ScheduledTask> = {
+    ...(input as Partial<ScheduledTask>),
+    workspaceId: workspace.id,
+    workspacePath: canonicalPath(workspace.path)
+  }
+  if ('provider' in input && input.provider !== undefined) {
+    sanitized.provider = assertProviderId(input.provider)
+  }
+  if ('externalPathGrants' in input) {
+    sanitized.externalPathGrants = normalizeScheduledTaskExternalGrants(input.externalPathGrants)
+  }
+  if ('runtimeProfileId' in input) {
+    sanitized.runtimeProfileId = optionalString(input.runtimeProfileId)
+  }
+  if ('handoffSourceRunId' in input) {
+    sanitized.handoffSourceRunId = optionalString(input.handoffSourceRunId)
+  }
+  return sanitized
+}
+
+function sanitizeRuntimeProfileForSave(profile: unknown): Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'> {
+  const input = requireRecord(profile, 'Runtime profile')
+  const env: Record<string, string> = {}
+  if (isRecord(input.env)) {
+    for (const [key, value] of Object.entries(input.env)) {
+      if (typeof key === 'string' && key.trim() && typeof value === 'string') {
+        env[key] = value
+      }
+    }
+  }
+  const workspaceMode = input.workspaceMode === 'worktree' || input.workspaceMode === 'container'
+    ? input.workspaceMode
+    : 'local'
+  const networkPolicy = input.networkPolicy === 'allow' || input.networkPolicy === 'deny'
+    ? input.networkPolicy
+    : 'inherit'
+  const persistence = input.persistence === 'ephemeral' ? 'ephemeral' : 'reusable'
+  return {
+    id: optionalString(input.id),
+    name: requireNonEmptyString(input.name, 'Runtime profile name'),
+    provider: assertProviderId(input.provider),
+    scope: input.scope === 'global' ? 'global' : 'workspace',
+    workspaceMode,
+    binaryPath: optionalString(input.binaryPath),
+    env,
+    mcpProfileId: optionalString(input.mcpProfileId),
+    approvalMode: optionalString(input.approvalMode),
+    agenticServices: isRecord(input.agenticServices) ? {
+      shellCommands: sanitizeAgenticServicePolicy(input.agenticServices.shellCommands, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.shellCommands),
+      fileChanges: sanitizeAgenticServicePolicy(input.agenticServices.fileChanges, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.fileChanges),
+      mcpTools: sanitizeAgenticServicePolicy(input.agenticServices.mcpTools, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.mcpTools),
+      networkAccess: sanitizeAgenticNetworkPolicy(input.agenticServices.networkAccess, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.networkAccess)
+    } : undefined,
+    networkPolicy,
+    persistence,
+    containerConfig: isRecord(input.containerConfig) ? {
+      image: optionalString(input.containerConfig.image),
+      workdir: optionalString(input.containerConfig.workdir),
+      mounts: Array.isArray(input.containerConfig.mounts)
+        ? input.containerConfig.mounts.filter(isRecord).map((mount) => ({
+          source: requireNonEmptyString(mount.source, 'Runtime mount source'),
+          target: requireNonEmptyString(mount.target, 'Runtime mount target'),
+          access: mount.access === 'write' ? 'write' : 'read'
+        }))
+        : undefined
+    } : undefined
+  }
+}
+
+function sanitizeHandoffStatus(value: unknown): HandoffCard['status'] {
+  return value === 'dispatched' || value === 'archived' ? value : 'draft'
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim()) : []
+}
+
+function sanitizeHandoffCardForSave(card: unknown): Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'> {
+  const input = requireRecord(card, 'Handoff card')
+  const sourceChatId = requireNonEmptyString(input.sourceChatId, 'Handoff source chat')
+  const sourceProvider = assertProviderId(input.sourceProvider)
+  const recommendedProvider = input.recommendedProvider === undefined ? undefined : assertProviderId(input.recommendedProvider)
+  return {
+    id: optionalString(input.id),
+    status: sanitizeHandoffStatus(input.status),
+    sourceChatId,
+    sourceRunId: optionalString(input.sourceRunId),
+    sourceProvider,
+    workspaceId: optionalString(input.workspaceId),
+    workspacePath: optionalString(input.workspacePath),
+    summary: requireNonEmptyString(input.summary, 'Handoff summary'),
+    selectedFiles: stringList(input.selectedFiles),
+    workspaceChangeSetIds: stringList(input.workspaceChangeSetIds),
+    rawEventRunIds: stringList(input.rawEventRunIds),
+    recommendedProvider,
+    recommendedModel: optionalString(input.recommendedModel),
+    recommendedApprovalMode: optionalString(input.recommendedApprovalMode),
+    targetChatId: optionalString(input.targetChatId),
+    dispatchedRunId: optionalString(input.dispatchedRunId),
+    finalPrompt: requireNonEmptyString(input.finalPrompt, 'Handoff prompt'),
+    dispatchedAt: optionalString(input.dispatchedAt)
+  }
+}
+
+function sanitizeHandoffCardPatch(partial: unknown): Partial<HandoffCard> {
+  const input = requireRecord(partial, 'Handoff card update')
+  const sanitized: Partial<HandoffCard> = {}
+  if ('status' in input) sanitized.status = sanitizeHandoffStatus(input.status)
+  if ('summary' in input && input.summary !== undefined) sanitized.summary = requireNonEmptyString(input.summary, 'Handoff summary')
+  if ('finalPrompt' in input && input.finalPrompt !== undefined) sanitized.finalPrompt = requireNonEmptyString(input.finalPrompt, 'Handoff prompt')
+  if ('sourceRunId' in input) sanitized.sourceRunId = optionalString(input.sourceRunId)
+  if ('selectedFiles' in input) sanitized.selectedFiles = stringList(input.selectedFiles)
+  if ('workspaceChangeSetIds' in input) sanitized.workspaceChangeSetIds = stringList(input.workspaceChangeSetIds)
+  if ('rawEventRunIds' in input) sanitized.rawEventRunIds = stringList(input.rawEventRunIds)
+  if ('recommendedProvider' in input) sanitized.recommendedProvider = input.recommendedProvider === undefined ? undefined : assertProviderId(input.recommendedProvider)
+  if ('recommendedModel' in input) sanitized.recommendedModel = optionalString(input.recommendedModel)
+  if ('recommendedApprovalMode' in input) sanitized.recommendedApprovalMode = optionalString(input.recommendedApprovalMode)
+  if ('targetChatId' in input) sanitized.targetChatId = optionalString(input.targetChatId)
+  if ('dispatchedRunId' in input) sanitized.dispatchedRunId = optionalString(input.dispatchedRunId)
+  if ('dispatchedAt' in input) sanitized.dispatchedAt = optionalString(input.dispatchedAt)
+  return sanitized
+}
+
+function sanitizeHandoffCardFilter(filter: unknown): HandoffCardFilter {
+  if (!isRecord(filter)) return {}
+  return {
+    sourceChatId: optionalString(filter.sourceChatId),
+    sourceRunId: optionalString(filter.sourceRunId),
+    status: filter.status === 'draft' || filter.status === 'dispatched' || filter.status === 'archived' ? filter.status : undefined
+  }
+}
+
+function sanitizeAdvancedFxSettings(value: unknown, current: AppSettings['advancedFx']): AppSettings['advancedFx'] {
+  const source = isRecord(value) ? value : {}
+  const rawIntensity = source.intensity
+  const intensity =
+    rawIntensity === 'subtle' || rawIntensity === 'cinematic' || rawIntensity === 'epic'
+      ? rawIntensity
+      : current.intensity || 'cinematic'
+
+  return {
+    agentAura: 'agentAura' in source ? Boolean(source.agentAura) : current.agentAura,
+    livingWorkspace: 'livingWorkspace' in source ? Boolean(source.livingWorkspace) : current.livingWorkspace,
+    dataViz: 'dataViz' in source ? Boolean(source.dataViz) : current.dataViz,
+    intensity
+  }
+}
+
+function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
+  const input = requireRecord(partial, 'Settings patch')
+  const sanitized: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (!SETTINGS_PATCH_KEYS.has(key as keyof AppSettings)) continue
+    sanitized[key] = value
+  }
+  if ('activeProvider' in sanitized && sanitized.activeProvider !== undefined) {
+    sanitized.activeProvider = assertProviderId(sanitized.activeProvider)
+  }
+  if ('agenticServices' in sanitized) {
+    const services = requireRecord(sanitized.agenticServices, 'Agentic services')
+    const current = AppStore.getSettings().agenticServices
+    sanitized.agenticServices = {
+      shellCommands: sanitizeAgenticServicePolicy(services.shellCommands, current.shellCommands),
+      fileChanges: sanitizeAgenticServicePolicy(services.fileChanges, current.fileChanges),
+      mcpTools: sanitizeAgenticServicePolicy(services.mcpTools, current.mcpTools),
+      networkAccess: sanitizeAgenticNetworkPolicy(services.networkAccess, current.networkAccess)
+    }
+  }
+  if ('advancedFx' in sanitized) {
+    sanitized.advancedFx = sanitizeAdvancedFxSettings(sanitized.advancedFx, AppStore.getSettings().advancedFx)
+  }
+  for (const key of ['chatContextTurns', 'inspectorWidth', 'sidebarWidth'] as const) {
+    if (key in sanitized) {
+      const value = Number(sanitized[key])
+      if (Number.isFinite(value)) {
+        if (key === 'chatContextTurns') {
+          sanitized[key] = Math.max(0, Math.trunc(value))
+        } else if (key === 'inspectorWidth') {
+          sanitized[key] = clampDimension(value, MIN_INSPECTOR_WIDTH, MAX_INSPECTOR_WIDTH)
+        } else if (key === 'sidebarWidth') {
+          sanitized[key] = clampDimension(value, MIN_SIDEBAR_WIDTH, MAX_SIDEBAR_WIDTH)
+        } else {
+          sanitized[key] = Math.max(0, Math.trunc(value))
+        }
+      } else {
+        delete sanitized[key]
+      }
+    }
+  }
+
+  if ('funFxEnabled' in sanitized) {
+    const value = sanitized.funFxEnabled
+    sanitized.funFxEnabled = typeof value === 'boolean' ? value : Boolean(value)
+  }
+  if ('funFxMode' in sanitized) {
+    const value = sanitized.funFxMode
+    if (value === 'off' || value === 'subtle' || value === 'cinematic' || value === 'epic') {
+      sanitized.funFxMode = value
+    } else {
+      delete sanitized.funFxMode
+    }
+  }
+  return sanitized as Partial<AppSettings>
+}
 
 interface ResolvedProviderBinary {
   provider: ProviderId
   binaryPath: string | null
-  source: 'settings' | 'path' | 'common' | 'missing'
+  source: 'runtime_profile' | 'settings' | 'path' | 'common' | 'missing'
   error?: string
 }
 
@@ -260,6 +1018,20 @@ interface CliProviderStreamState {
 }
 
 const runManager = new RunManager<any>()
+const permissionService = new PermissionService({ runManager, sessionGrants: agenticSessionGrants })
+const providerPreflightService = new ProviderPreflightService()
+let runRepository: RunRepository | null = null
+
+function getRunRepository(): RunRepository {
+  if (!runRepository) {
+    runRepository = new RunRepository({
+      providerLabel: providerDisplayName,
+      emitRunQueueChanged,
+      emitRunEventsChanged
+    })
+  }
+  return runRepository
+}
 
 interface CodexUsageCredential {
   accessToken: string
@@ -278,85 +1050,15 @@ function emitRunQueueChanged(): void {
   mainWindow?.webContents.send('run-queue-changed', AppStore.getRunQueueJobs({ includeTerminal: true }))
 }
 
-function mapRunSessionStatusToQueueStatus(status: string): RunQueueJobStatus {
-  if (status === 'completed') return 'completed'
-  if (status === 'failed') return 'failed'
-  if (status === 'cancelled') return 'cancelled'
-  if (status === 'starting') return 'starting'
-  return 'active'
-}
-
 function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>): void {
-  if (!session) return
-  const status = mapRunSessionStatusToQueueStatus(session.status)
-  const existing = AppStore.getRunQueueJob(session.runId)
-  const processLike = session.process as unknown as {
-    pid?: unknown
-    spawnfile?: unknown
-    spawnargs?: unknown
-  } | undefined
-  const processPid = typeof processLike?.pid === 'number'
-    ? processLike.pid
-    : undefined
-  const processCommand = Array.isArray(processLike?.spawnargs)
-    ? processLike.spawnargs.filter((part): part is string => typeof part === 'string').join(' ')
-    : typeof processLike?.spawnfile === 'string'
-      ? processLike.spawnfile
-      : undefined
-  const partial: Partial<RunQueueJob> = {
-    provider: session.provider,
-    chatId: session.appChatId,
-    workspacePath: session.workspacePath || existing?.workspacePath || '',
-    providerSessionId: session.providerSessionId,
-    providerRunId: session.providerRunId,
-    processPid,
-    processCommand,
-    processStartedAt: processPid ? existing?.processStartedAt || new Date(session.startedAt).toISOString() : undefined,
-    status
-  }
-
-  if (existing) {
-    AppStore.updateRunQueueJob(session.runId, partial)
-  } else if (partial.workspacePath) {
-    AppStore.saveRunQueueJob({
-      id: session.runId,
-      runId: session.runId,
-      provider: session.provider,
-      chatId: session.appChatId,
-      workspacePath: partial.workspacePath,
-      source: 'system',
-      status,
-      promptPreview: `${providerDisplayName(session.provider)} run`
-    })
-  }
-  emitRunQueueChanged()
+  getRunRepository().persistSessionQueueState(session)
 }
 
 runManager.onChange((event) => {
   if (event.type === 'removed') return
   persistRunSessionQueueState(event.session)
   expireRunScopedApprovalLedger(event.session)
-  appendDurableRunEvent({
-    runId: event.session.runId,
-    chatId: event.session.appChatId,
-    provider: event.session.provider,
-    providerSessionId: event.session.providerSessionId,
-    providerRunId: event.session.providerRunId,
-    workspacePath: event.session.workspacePath,
-    kind: 'lifecycle',
-    phase: 'control',
-    source: 'main',
-    summary: `Runtime session ${event.type}: ${event.session.status}`,
-    payload: {
-      eventType: event.type,
-      status: event.session.status,
-      startedAt: event.session.startedAt,
-      updatedAt: event.session.updatedAt,
-      hasProcess: Boolean(event.session.process),
-      hasAbortController: Boolean(event.session.abortController),
-      approvalIds: [...event.session.approvalIds]
-    }
-  })
+  getRunRepository().appendLifecycleEvent(event.type, event.session)
 })
 
 function emitRunEventsChanged(record: { runId: string; chatId?: string; workspaceId?: string; sequence: number }) {
@@ -369,12 +1071,7 @@ function emitRunEventsChanged(record: { runId: string; chatId?: string; workspac
 }
 
 function appendDurableRunEvent(input: RunEventInput): void {
-  try {
-    const record = AppStore.appendRunEvent(input)
-    emitRunEventsChanged(record)
-  } catch (error) {
-    console.error('Failed to append run event', error)
-  }
+  getRunRepository().appendRunEvent(input)
 }
 
 function appendDurableRunEventForRoute(
@@ -465,7 +1162,7 @@ function recordApprovalLedgerRequest(
   if (!approvalId) return
   const context = approvalRouteContext(provider, route)
   try {
-    AppStore.recordApprovalRequest({
+    permissionService.recordApprovalRequest({
       approvalId,
       provider,
       service: options.service,
@@ -491,7 +1188,7 @@ function recordApprovalLedgerRequest(
 
 function recordApprovalLedgerDecision(input: ApprovalLedgerRequestInput): void {
   try {
-    AppStore.recordApprovalRequest(input)
+    permissionService.recordApprovalRequest(input)
   } catch (error) {
     console.error('Failed to record approval ledger decision', error)
   }
@@ -499,7 +1196,7 @@ function recordApprovalLedgerDecision(input: ApprovalLedgerRequestInput): void {
 
 function resolveApprovalLedgerResponse(approvalId: string, action: AgentApprovalAction): void {
   try {
-    AppStore.resolveApprovalRequest(approvalId, action)
+    permissionService.resolveApprovalResponse(approvalId, action)
   } catch (error) {
     console.error('Failed to resolve approval ledger request', error)
   }
@@ -541,7 +1238,7 @@ function recordAutomaticApprovalDecision(
     expiration: decision === 'autoDeny'
       ? {
           mode: 'on_decision',
-          description: 'Denied automatically by the current AgentBench policy.',
+          description: 'Denied automatically by the current AGBench policy.',
           expiresAt: now,
           expiredAt: now,
           expiredReason: 'policy_denied'
@@ -558,7 +1255,7 @@ function recordAutomaticApprovalDecision(
             }
           : {
               mode: 'none',
-              description: 'Allowed automatically by the current AgentBench policy for this request.'
+              description: 'Allowed automatically by the current AGBench policy for this request.'
             },
     runId: context.runId,
     chatId: context.chatId,
@@ -573,13 +1270,7 @@ function recordAutomaticApprovalDecision(
 function expireRunScopedApprovalLedger(session: { runId: string; provider: ProviderId; workspacePath?: string; status?: string }): void {
   if (session.status !== 'completed' && session.status !== 'failed' && session.status !== 'cancelled') return
   try {
-    AppStore.expireApprovalLedgerScope({
-      runId: session.runId,
-      provider: session.provider,
-      workspacePath: session.workspacePath,
-      scopes: ['run', 'session'],
-      reason: `run_${session.status}`
-    })
+    permissionService.expireRunScopedApprovals(session)
   } catch (error) {
     console.error('Failed to expire run-scoped approval ledger records', error)
   }
@@ -592,7 +1283,7 @@ const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
 }
 
 function getAgenticServicePolicy(service: AgenticServiceId, settings: AppSettings = AppStore.getSettings()) {
-  return settings.agenticServices?.[service] || 'ask'
+  return permissionService.getServicePolicy(service, settings)
 }
 
 function hasAgenticWorkspaceGrant(
@@ -601,50 +1292,7 @@ function hasAgenticWorkspaceGrant(
   workspacePath: string | undefined,
   service: AgenticServiceId
 ): boolean {
-  if (!workspacePath) return false
-  const normalizedWorkspace = resolve(workspacePath)
-  return (settings.agenticWorkspaceGrants || []).some((grant) => {
-    if (!grant || grant.provider !== provider || grant.service !== service || !grant.workspacePath) return false
-    return resolve(grant.workspacePath) === normalizedWorkspace
-  })
-}
-
-function upsertAgenticWorkspaceGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId): void {
-  if (!workspacePath) return
-  const settings = AppStore.getSettings()
-  const normalizedWorkspace = resolve(workspacePath)
-  const now = new Date().toISOString()
-  const grants = (settings.agenticWorkspaceGrants || []).filter((grant) => {
-    if (!grant || grant.provider !== provider || grant.service !== service || !grant.workspacePath) return true
-    return resolve(grant.workspacePath) !== normalizedWorkspace
-  })
-  grants.push({
-    id: `${provider}-${service}-${Date.now()}`,
-    provider,
-    service,
-    workspacePath: normalizedWorkspace,
-    createdAt: now,
-    updatedAt: now,
-    expiresOn: 'workspace_revocation'
-  })
-  AppStore.updateSettings({ agenticWorkspaceGrants: grants })
-}
-
-function agenticSessionGrantKey(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId): string {
-  return `${provider}:${service}:${workspacePath ? resolve(workspacePath) : 'global'}`
-}
-
-function hasAgenticSessionGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId, runId?: string): boolean {
-  if (runId && runManager.hasSessionGrant(runId, service)) return true
-  return agenticSessionGrants.has(agenticSessionGrantKey(provider, workspacePath, service))
-}
-
-function addAgenticSessionGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId, runId?: string): void {
-  if (runId && runManager.get(runId)) {
-    runManager.addSessionGrant(runId, service)
-    return
-  }
-  agenticSessionGrants.add(agenticSessionGrantKey(provider, workspacePath, service))
+  return permissionService.hasWorkspaceGrant(settings, provider, workspacePath, service)
 }
 
 function approvalActionsForPolicy(policy: string, workspacePath?: string): AgentApprovalAction[] {
@@ -667,18 +1315,13 @@ async function requestAgenticServiceApproval(
     body: string
     preview?: any
     runId?: string
+    forcePrompt?: boolean
   }
 ): Promise<boolean> {
   const settings = AppStore.getSettings()
-  const policy = getAgenticServicePolicy(service, settings)
+  const resolution = permissionService.resolvePermission(provider, service, workspacePath, request.runId, settings)
+  const { policy, workspaceGrantAllowed, sessionGrantAllowed, decision } = resolution
   const label = AGENTIC_SERVICE_LABELS[service]
-  const workspaceGrantAllowed = policy === 'workspace' && hasAgenticWorkspaceGrant(settings, provider, workspacePath, service)
-  const sessionGrantAllowed = hasAgenticSessionGrant(provider, workspacePath, service, request.runId)
-  const decision = resolveAgenticPermission(
-    policy,
-    workspaceGrantAllowed,
-    sessionGrantAllowed
-  )
 
   if (decision === 'deny') {
     recordAutomaticApprovalDecision(
@@ -692,10 +1335,10 @@ async function requestAgenticServiceApproval(
       'request',
       { policy }
     )
-    sender?.send('agent-error', { provider, error: `${label} blocked by AgentBench settings.` })
+    sender?.send('agent-error', { provider, error: `${label} blocked by AGBench settings.` })
     return false
   }
-  if (decision === 'allow') {
+  if (decision === 'allow' && !(request.forcePrompt && !sessionGrantAllowed)) {
     recordAutomaticApprovalDecision(
       provider,
       { appRunId: request.runId },
@@ -759,6 +1402,100 @@ async function requestAgenticServiceApproval(
   })
 }
 
+async function requestMainApproval(
+  sender: Electron.WebContents | null,
+  provider: ProviderId,
+  route: AgentRunRoute | null | undefined,
+  request: {
+    method: string
+    title: string
+    body: string
+    preview?: unknown
+    workspacePath?: string
+  }
+): Promise<boolean> {
+  if (!sender || sender.isDestroyed()) return false
+  const routed = routeWithRunId(provider, route)
+  const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
+  return new Promise((resolveApproval) => {
+    pendingMainApprovals.set(approvalId, {
+      provider,
+      workspacePath: request.workspacePath,
+      runId: routed.appRunId,
+      resolve: resolveApproval
+    })
+    runManager.registerApproval(routed.appRunId, approvalId)
+    const actions: AgentApprovalAction[] = ['accept', 'decline', 'cancel']
+    const approvalPayload = {
+      provider,
+      appRunId: routed.appRunId,
+      appChatId: routed.appChatId,
+      id: approvalId,
+      approvalId,
+      method: request.method,
+      title: request.title,
+      body: request.body,
+      preview: { ...(isRecord(request.preview) ? request.preview : {}), actions },
+      actions
+    }
+    appendDurableRunEventForRoute(
+      provider,
+      routed,
+      'approval_request',
+      'control',
+      request.title,
+      approvalPayload
+    )
+    recordApprovalLedgerRequest(provider, routed, approvalPayload, {
+      workspacePath: request.workspacePath,
+      metadata: { mainAuthority: true }
+    })
+    sender.send('agent-approval-request', approvalPayload)
+  })
+}
+
+function trustStatusAllowsRun(status: string | undefined): boolean {
+  return status === 'trusted' || status === 'inherited'
+}
+
+async function ensureWorkspaceTrustForRun(
+  sender: Electron.WebContents,
+  payload: AgentRunPayload
+): Promise<boolean> {
+  if (payload.scope === 'global') return true
+  if (payload.provider !== 'gemini') return true
+  const trust = TrustStatusService.checkTrust(payload.workspace || '')
+  if (trustStatusAllowsRun(trust.status)) return true
+
+  const route = routeWithRunId('gemini', payload)
+  payload.appRunId = route.appRunId
+  if (payload.sessionTrust) {
+    const approved = await requestMainApproval(sender, 'gemini', route, {
+      method: 'workspace/session-trust',
+      title: 'Approve session-only workspace trust',
+      body: `${payload.workspace}\n${trust.reason || trust.status}`,
+      workspacePath: payload.workspace,
+      preview: {
+        kind: 'workspaceTrust',
+        workspacePath: payload.workspace,
+        trustStatus: trust.status,
+        reason: trust.reason,
+        duration: 'thisRun'
+      }
+    })
+    if (approved) return true
+  }
+
+  sendAgentCompatError(
+    sender,
+    'gemini',
+    `Gemini run blocked because workspace trust is ${trust.status}${trust.reason ? `: ${trust.reason}` : '.'}`,
+    route
+  )
+  sendAgentCompatExit(sender, 'gemini', -1, route)
+  return false
+}
+
 function resolveWorkspaceDirectory(workspacePath: string, requestedCwd?: string | null): string {
   const workspaceRoot = resolve(workspacePath)
   const cwd = requestedCwd && requestedCwd.trim()
@@ -770,6 +1507,18 @@ function resolveWorkspaceDirectory(workspacePath: string, requestedCwd?: string 
   return cwd
 }
 
+function resolveHostDirectory(baseCwd: string, requestedCwd?: string | null): string {
+  return requestedCwd && requestedCwd.trim()
+    ? isAbsolute(requestedCwd) ? resolve(requestedCwd) : resolve(baseCwd, requestedCwd)
+    : resolve(baseCwd)
+}
+
+function resolveScopedDirectory(scope: ChatScope, baseCwd: string, workspacePath: string | undefined, requestedCwd?: string | null): string {
+  return scope === 'global'
+    ? resolveHostDirectory(baseCwd, requestedCwd)
+    : resolveWorkspaceDirectory(workspacePath || baseCwd, requestedCwd)
+}
+
 function resolveGeminiMcpPath(workspacePath: string, filePath: string): string {
   if (typeof filePath !== 'string' || !filePath.trim()) {
     throw new Error('A workspace path is required.')
@@ -777,7 +1526,23 @@ function resolveGeminiMcpPath(workspacePath: string, filePath: string): string {
   return resolveWorkspaceChild(workspacePath, filePath)
 }
 
-function previewForGeminiMcpTool(toolName: AgentBenchMcpToolName, args: Record<string, any>, cwd: string, workspacePath: string) {
+function resolveGeminiMcpScopedPath(context: GeminiToolContext, filePath: string): string {
+  if (typeof filePath !== 'string' || !filePath.trim()) {
+    throw new Error(context.scope === 'global' ? 'A host path is required.' : 'A workspace path is required.')
+  }
+  if (context.scope === 'global') {
+    return isAbsolute(filePath) ? resolve(filePath) : resolve(context.cwd, filePath)
+  }
+  return resolveGeminiMcpPath(context.workspacePath || context.cwd, filePath)
+}
+
+function formatScopedPath(context: GeminiToolContext, targetPath: string): string {
+  return context.scope === 'global'
+    ? resolve(targetPath)
+    : toWorkspaceRelativePath(context.workspacePath || context.cwd, targetPath)
+}
+
+function previewForGeminiMcpTool(toolName: AGBenchMcpToolName, args: Record<string, any>, cwd: string, context: GeminiToolContext) {
   if (toolName === 'run_shell_command') {
     return {
       title: 'Approve Gemini shell command',
@@ -793,13 +1558,15 @@ function previewForGeminiMcpTool(toolName: AgentBenchMcpToolName, args: Record<s
 
   if (toolName === 'write_file' || toolName === 'replace') {
     const filePath = String(args.path || args.file_path || '')
+    const resolvedFilePath = filePath ? resolveGeminiMcpScopedPath(context, filePath) : ''
+    const previewPath = resolvedFilePath ? formatScopedPath(context, resolvedFilePath) : filePath
     return {
       title: toolName === 'write_file' ? 'Approve Gemini file write' : 'Approve Gemini file edit',
-      body: filePath ? toWorkspaceRelativePath(workspacePath, resolveGeminiMcpPath(workspacePath, filePath)) : toolName,
+      body: previewPath || toolName,
       service: 'fileChanges' as AgenticServiceId,
       preview: {
         kind: 'fileChange',
-        changes: [{ kind: toolName === 'write_file' ? 'write' : 'replace', path: filePath }],
+        changes: [{ kind: toolName === 'write_file' ? 'write' : 'replace', path: previewPath }],
         patchPreview: toolName === 'replace'
           ? [
               `--- old_string`,
@@ -921,10 +1688,11 @@ function resolveGeminiApprovalModeForServices(approvalMode: string, settings: Ap
   const services = settings.agenticServices
   if (!services || approvalMode === 'plan') return approvalMode
   if (services.shellCommands === 'deny' || services.fileChanges === 'deny') return 'plan'
-  if (approvalMode === 'auto_edit' && (services.shellCommands !== 'allow' || services.fileChanges !== 'allow')) {
-    return 'default'
-  }
   return approvalMode
+}
+
+function geminiWriteModeRequiresBridge(scope: ChatScope | undefined, approvalMode: string): boolean {
+  return scope !== 'global' && approvalMode !== 'plan'
 }
 
 function clearScheduledTaskTimer() {
@@ -991,7 +1759,9 @@ function getCliSearchDirs(binaryPath?: string | null): string[] {
     join(os.homedir(), '.npm-global', 'bin'),
     join(os.homedir(), '.bun', 'bin'),
     join(os.homedir(), '.cargo', 'bin'),
+    '/opt/homebrew/opt/ripgrep/bin',
     '/opt/homebrew/bin',
+    '/usr/local/opt/ripgrep/bin',
     '/usr/local/bin',
     '/usr/bin',
     '/bin',
@@ -1006,13 +1776,74 @@ function createCliEnv(extra: Record<string, string>, binaryPath?: string | null)
   return {
     ...(process.env as Record<string, string>),
     PATH: getCliSearchDirs(binaryPath).join(delimiter),
+    TERM: process.env.TERM || 'xterm-256color',
+    COLORTERM: process.env.COLORTERM || 'truecolor',
+    ...(activeRuntimeProfileEnv(extra) || {}),
     ...extra
   }
 }
 
-async function resolveCliProviderBinary(provider: ProviderId): Promise<ResolvedProviderBinary> {
+function activeRuntimeProfileEnv(extra: Record<string, string>): Record<string, string> | null {
+  const rawProfileId = extra.AGENTBENCH_RUNTIME_PROFILE_ID
+  if (!rawProfileId) return null
+  const profile = AppStore.getRuntimeProfiles().find((item) => item.id === rawProfileId)
+  return profile?.env || null
+}
+
+function runtimeSettings(base: AppSettings, profile?: RuntimeProfile | null): AppSettings {
+  if (!profile?.agenticServices) return base
+  return {
+    ...base,
+    agenticServices: {
+      ...(base.agenticServices || {}),
+      ...profile.agenticServices
+    }
+  }
+}
+
+function resolveRuntimeProfileForPayload(payload: AgentRunPayload): RuntimeProfile | undefined {
+  if (!payload.runtimeProfileId) return undefined
+  const profile = AppStore.getRuntimeProfiles(payload.provider).find((candidate) => candidate.id === payload.runtimeProfileId)
+  if (!profile) {
+    throw new Error(`Runtime profile was not found: ${payload.runtimeProfileId}`)
+  }
+  if (profile.provider !== payload.provider) {
+    throw new Error(`Runtime profile ${profile.name} is for ${profile.provider}, not ${payload.provider}.`)
+  }
+  if (profile.scope === 'workspace' && payload.scope === 'global') {
+    throw new Error(`Runtime profile ${profile.name} is workspace-scoped and cannot run a global chat.`)
+  }
+  if (profile.workspaceMode === 'container') {
+    throw new Error(`Runtime profile ${profile.name} uses container execution, which is not enabled in this build yet.`)
+  }
+  return profile
+}
+
+function applyRuntimeProfileToPayload(payload: AgentRunPayload): AgentRunPayload {
+  const profile = resolveRuntimeProfileForPayload(payload)
+  if (!profile) return payload
+  payload.runtimeProfile = profile
+  if (profile.approvalMode) {
+    payload.approvalMode = profile.approvalMode
+  }
+  return payload
+}
+
+async function resolveCliProviderBinary(provider: ProviderId, runtimeProfile?: RuntimeProfile | null): Promise<ResolvedProviderBinary> {
   const binaryName = providerBinaryName(provider)
   const settings = AppStore.getSettings()
+  const profilePath = expandHomePath(runtimeProfile?.binaryPath)
+  if (profilePath) {
+    if (await fileExists(profilePath)) {
+      return { provider, binaryPath: profilePath, source: 'runtime_profile' }
+    }
+    return {
+      provider,
+      binaryPath: null,
+      source: 'runtime_profile',
+      error: `Runtime profile ${runtimeProfile?.name || runtimeProfile?.id || ''} binary was not found: ${profilePath}`
+    }
+  }
   const configured = provider === 'claude' ? settings.claudeBinaryPath : provider === 'kimi' ? settings.kimiBinaryPath : ''
   const configuredPath = expandHomePath(configured)
 
@@ -1235,7 +2066,7 @@ async function getProviderCapabilityContractDirect(
       available: false,
       error: error instanceof Error ? error.message : String(error)
     })),
-    provider === 'gemini' ? getGeminiMcpBridgeStatus().catch((error) => ({
+    provider === 'gemini' ? getGeminiMcpBridgeStatus({ autoRepairIfEnabled: true }).catch((error) => ({
       checkedAt: new Date().toISOString(),
       enabled: Boolean(settings.geminiMcpBridgeEnabled),
       installed: false,
@@ -1270,7 +2101,17 @@ async function getProviderCapabilityContract(
   workspacePath?: string,
   approvalMode?: string
 ): Promise<ProviderCapabilityContract> {
-  return providerAdapters.require(provider).getCapabilityContract({ workspacePath, approvalMode })
+  const adapter = providerAdapters.require(provider)
+  const contract = await adapter.getCapabilityContract({ workspacePath, approvalMode })
+  const preflight = providerPreflightService.evaluate(
+    { provider, workspacePath, approvalMode },
+    contract,
+    adapter
+  )
+  return {
+    ...contract,
+    warnings: preflight.chips
+  }
 }
 
 function getProviderAdapterDescriptors(): ProviderAdapterDescriptor[] {
@@ -1742,6 +2583,7 @@ function runCliProviderProcess(
   options: { fallback: boolean; warning?: string } = { fallback: true }
 ) {
   const route = routeWithRunId(provider, payload)
+  const cwd = payload.workspace!
   const model = normalizeCliProviderModel(provider, payload.model)
   const state: CliProviderStreamState = {
     provider,
@@ -1754,7 +2596,7 @@ function runCliProviderProcess(
     providerSessionId: payload.providerSessionId || null,
     ...route
   }
-  registerRunSession(provider, event.sender, route, payload.workspace, state, payload.providerSessionId || null)
+  registerRunSession(provider, event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
   void emitProviderCapabilityWarnings(event.sender, provider, payload.workspace, payload.approvalMode, state)
 
   if (options.warning) {
@@ -1776,10 +2618,11 @@ function runCliProviderProcess(
   }, state)
 
   const child = spawn(command, args, {
-    cwd: payload.workspace,
+    cwd,
     shell: false,
-    env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, command)
+    env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '' }, command)
   })
+  child.stdin?.end()
   runManager.attachProcess(route.appRunId!, child)
   cliProviderProcesses.set(provider, child)
 
@@ -1870,7 +2713,7 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
     providerSessionId: payload.providerSessionId || null,
     ...route
   }
-  registerRunSession('claude', event.sender, route, payload.workspace, state, payload.providerSessionId || null)
+  registerRunSession('claude', event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
   runManager.attachAbortController(route.appRunId!, controller)
   void emitProviderCapabilityWarnings(event.sender, 'claude', payload.workspace, payload.approvalMode, state)
   sendAgentCompatLine(event.sender, 'claude', {
@@ -1885,7 +2728,7 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
   const stream = query({
     prompt: payload.prompt,
     options: {
-      cwd: payload.workspace,
+      cwd: payload.workspace!,
       model: model === 'default' ? undefined : model,
       permissionMode: claudePermissionModeForApproval(payload.approvalMode),
       resume: payload.providerSessionId || undefined,
@@ -1925,7 +2768,7 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     }
   }
 
-  const resolved = await resolveCliProviderBinary('claude')
+  const resolved = await resolveCliProviderBinary('claude', payload.runtimeProfile)
   if (!resolved.binaryPath) {
     sendAgentCompatError(event.sender, 'claude', resolved.error || 'Claude CLI is not configured.')
     sendAgentCompatLine(event.sender, 'claude', {
@@ -1940,7 +2783,7 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   const model = normalizeCliProviderModel('claude', payload.model)
-  const args = ['-p', payload.prompt, '--output-format', 'stream-json', '--include-partial-messages', '--permission-mode', claudePermissionModeForApproval(payload.approvalMode)]
+  const args = ['-p', payload.prompt, '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', claudePermissionModeForApproval(payload.approvalMode)]
   if (model !== 'default') args.push('--model', model)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
@@ -1967,7 +2810,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     providerSessionId: payload.providerSessionId || null,
     ...route
   }
-  registerRunSession('kimi', event.sender, route, payload.workspace, state, payload.providerSessionId || null)
+  registerRunSession('kimi', event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
   void emitProviderCapabilityWarnings(event.sender, 'kimi', payload.workspace, payload.approvalMode, state)
 
   sendAgentCompatLine(event.sender, 'kimi', {
@@ -1979,15 +2822,15 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     fallback: false
   }, state)
 
-  const args = ['--wire', '--work-dir', payload.workspace]
+  const args = ['--wire', '--work-dir', payload.workspace!]
   if (model !== 'default') args.push('--model', model)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
   return new Promise((resolveWire) => {
     const child = spawn(binaryPath, args, {
-      cwd: payload.workspace,
+      cwd: payload.workspace!,
       shell: false,
-      env: { ...process.env, FORCE_COLOR: '0', NO_COLOR: '1' }
+      env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '' }, binaryPath)
     })
     cliProviderProcesses.set('kimi', child)
     runManager.attachProcess(route.appRunId!, child)
@@ -2130,6 +2973,12 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
       if (settled) return
       clearTimeout(timeout)
       if (cliProviderProcesses.get('kimi') === child) cliProviderProcesses.delete('kimi')
+      if (state.completed) {
+        runManager.finish(route.appRunId, 'completed')
+        settled = true
+        resolveWire(true)
+        return
+      }
       if (!promptSent) {
         settled = true
         runManager.finish(route.appRunId, 'failed')
@@ -2165,7 +3014,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
 }
 
 async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
-  const resolved = await resolveCliProviderBinary('kimi')
+  const resolved = await resolveCliProviderBinary('kimi', payload.runtimeProfile)
   if (!resolved.binaryPath) {
     sendAgentCompatError(event.sender, 'kimi', resolved.error || 'Kimi CLI is not configured.')
     sendAgentCompatLine(event.sender, 'kimi', {
@@ -2197,7 +3046,7 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   }
 
   const model = normalizeCliProviderModel('kimi', payload.model)
-  const args = ['--print', '--plan', '--output-format', 'stream-json', '--work-dir', payload.workspace, '--prompt', payload.prompt]
+  const args = ['--print', '--plan', '--output-format', 'stream-json', '--work-dir', payload.workspace!, '--prompt', payload.prompt]
   if (model !== 'default') args.push('--model', model)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
   runCliProviderProcess(event, 'kimi', resolved.binaryPath, args, payload, {
@@ -2299,8 +3148,13 @@ function findCodexRunStateForMessage(message: any): CodexRunState | null {
 function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext | null {
   const session = getRuntimeSession('gemini', route)
   const state = session?.state
-  if (state && typeof state === 'object' && (state as GeminiToolContext).workspacePath && (state as GeminiToolContext).sender) {
-    return state as GeminiToolContext
+  if (state && typeof state === 'object' && (state as GeminiToolContext).sender) {
+    const context = state as GeminiToolContext
+    return {
+      ...context,
+      scope: context.scope === 'global' ? 'global' : 'workspace',
+      cwd: context.cwd || context.workspacePath || globalRunCwd()
+    }
   }
   return activeGeminiToolContext
 }
@@ -2380,6 +3234,7 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
   const normalized: ExternalPathGrant[] = []
   for (const grant of grants) {
     if (!grant || grant.provider !== 'codex' || typeof grant.path !== 'string') continue
+    if (!isMainIssuedExternalPathGrant(grant)) continue
     const grantPath = grant.path.trim()
     if (!grantPath || !isAbsolute(grantPath)) continue
     const resolvedPath = resolve(grantPath)
@@ -2397,10 +3252,11 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
   return normalized
 }
 
-function codexSandboxPolicyForMode(approvalMode: string | undefined, workspace: string, externalPathGrants?: ExternalPathGrant[], settings: AppSettings = AppStore.getSettings()) {
+function codexSandboxPolicyForMode(approvalMode: string | undefined, workspace: string, externalPathGrants?: ExternalPathGrant[], settings: AppSettings = AppStore.getSettings(), scope: ChatScope = 'workspace') {
   const grants = normalizeExternalPathGrants(externalPathGrants)
-  const readableRoots = [workspace, ...grants.map((grant) => grant.path)]
-  const writableRoots = [workspace, ...grants.filter((grant) => grant.access === 'write').map((grant) => grant.path)]
+  const hostRoot = parse(resolve(workspace)).root || sep
+  const readableRoots = scope === 'global' ? [hostRoot] : [workspace, ...grants.map((grant) => grant.path)]
+  const writableRoots = scope === 'global' ? [hostRoot] : [workspace, ...grants.filter((grant) => grant.access === 'write').map((grant) => grant.path)]
   if (approvalMode === 'plan') {
     return { type: 'readOnly', readableRoots, networkAccess: false }
   }
@@ -2443,10 +3299,12 @@ function normalizeCodexTurnStatus(status?: string): string {
   return status || 'success'
 }
 
-function createCodexRunState(sender: Electron.WebContents, threadId: string, model: string, workspacePath?: string, route?: AgentRunRoute | null): CodexRunState {
+function createCodexRunState(sender: Electron.WebContents, threadId: string, model: string, cwd: string, workspacePath?: string, scope: ChatScope = 'workspace', route?: AgentRunRoute | null): CodexRunState {
   return {
     sender,
     threadId,
+    scope,
+    cwd,
     workspacePath,
     model,
     ...normalizeRunRoute(route),
@@ -2942,6 +3800,7 @@ function handleCodexServerRequest(message: any) {
   const service = formatted.service
   const settings = AppStore.getSettings()
   const policy = service ? getAgenticServicePolicy(service, settings) : 'ask'
+  const isGlobalScope = state.scope === 'global'
 
   if (service && policy === 'deny') {
     const label = AGENTIC_SERVICE_LABELS[service]
@@ -2961,19 +3820,20 @@ function handleCodexServerRequest(message: any) {
       'request',
       { policy }
     )
-    codexClient.reject(message.id, `${label} are disabled in AgentBench settings.`)
-    sendAgentCompatError(state.sender, 'codex', `${label} blocked by AgentBench settings.`, state)
+    codexClient.reject(message.id, `${label} are disabled in AGBench settings.`)
+    sendAgentCompatError(state.sender, 'codex', `${label} blocked by AGBench settings.`, state)
     return
   }
 
   if (service && method === 'item/permissions/requestApproval') {
-    const hasWorkspaceGrant = policy === 'workspace' && hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
-    if (policy === 'allow' || hasWorkspaceGrant) {
+    const hasSessionGrant = permissionService.hasSessionGrant('codex', isGlobalScope ? undefined : state.workspacePath, service, state.appRunId)
+    const hasWorkspaceGrant = !isGlobalScope && policy === 'workspace' && hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
+    if (hasSessionGrant || (!isGlobalScope && policy === 'allow') || hasWorkspaceGrant) {
       recordAutomaticApprovalDecision(
         'codex',
         { appRunId: state.appRunId, appChatId: state.appChatId },
         service,
-        state.workspacePath,
+        isGlobalScope ? undefined : state.workspacePath,
         {
           method,
           title: formatted.title,
@@ -2981,26 +3841,26 @@ function handleCodexServerRequest(message: any) {
           preview: formatted.preview
         },
         'autoAllow',
-        hasWorkspaceGrant ? 'workspace_grant' : 'policy',
-        hasWorkspaceGrant ? 'workspace' : 'request',
+        hasSessionGrant ? 'session_grant' : hasWorkspaceGrant ? 'workspace_grant' : 'policy',
+        hasSessionGrant ? 'session' : hasWorkspaceGrant ? 'workspace' : 'request',
         { policy }
       )
       codexClient.respond(message.id, {
         permissions: params?.permissions || {},
-        scope: hasWorkspaceGrant ? 'session' : 'turn'
+        scope: hasSessionGrant || hasWorkspaceGrant ? 'session' : 'turn'
       })
       return
     }
   }
 
   const actions: AgentApprovalAction[] = ['accept']
-  if (service && method === 'item/permissions/requestApproval' && state.workspacePath && policy === 'workspace') {
+  if (service && method === 'item/permissions/requestApproval' && !isGlobalScope && state.workspacePath && policy === 'workspace') {
     actions.push('acceptForWorkspace')
   }
   actions.push('acceptForSession', 'decline', 'cancel')
   formatted.preview = { ...(formatted.preview || {}), actions }
 
-  pendingCodexApprovals.set(approvalId, { rpcId: message.id, method, params, service, workspacePath: state.workspacePath, runId: state.appRunId })
+  pendingCodexApprovals.set(approvalId, { rpcId: message.id, method, params, service, workspacePath: isGlobalScope ? undefined : state.workspacePath, runId: state.appRunId })
   runManager.registerApproval(state.appRunId, approvalId)
   const approvalPayload = {
     provider: 'codex',
@@ -3030,7 +3890,7 @@ function handleCodexServerRequest(message: any) {
     approvalPayload,
     {
       service,
-      workspacePath: state.workspacePath,
+      workspacePath: isGlobalScope ? undefined : state.workspacePath,
       metadata: { policy }
     }
   )
@@ -3041,7 +3901,8 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
   const settings = AppStore.getSettings()
   if (settings.codexSandboxFallback === 'off') return
   if (state.hostRerunRequestedItemIds.has(itemId)) return
-  if (!state.workspacePath || !state.threadId) return
+  if (!state.threadId) return
+  if (state.scope !== 'global' && !state.workspacePath) return
   const failed = item?.status === 'failed' || (typeof item?.exitCode === 'number' && item.exitCode !== 0)
   if (!failed) return
   if (!isCodexSandboxToolingFailure(output)) return
@@ -3051,26 +3912,31 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
 
   const command = item.command || ''
   const commandText = codexCommandText(command)
-  const cwd = codexString(item.cwd || state.workspacePath)
+  const cwd = codexString(item.cwd || state.workspacePath || state.cwd)
   if (!commandText.trim()) return
 
   let normalizedCwd: string
   try {
-    normalizedCwd = resolveWorkspaceDirectory(state.workspacePath, cwd)
+    normalizedCwd = state.scope === 'global'
+      ? resolveHostDirectory(state.cwd, cwd)
+      : resolveWorkspaceDirectory(state.workspacePath!, cwd)
   } catch {
     return
   }
 
   state.hostRerunRequestedItemIds.add(itemId)
   const approvalId = `host-rerun-${Date.now()}-${Math.random().toString(36).slice(2)}`
-  const reason = 'Codex command failed in the command sandbox with a Swift/Xcode-style sandbox/tooling collision.'
+  const swiftPmNestedSandbox = isSwiftPmNestedSandboxFailure(command, output)
+  const reason = swiftPmNestedSandbox
+    ? 'SwiftPM attempted to apply its own sandbox from inside the Codex command sandbox.'
+    : 'Codex command failed in the command sandbox with a Swift/Xcode-style sandbox/tooling collision.'
   pendingHostCommandApprovals.set(approvalId, {
     sender: state.sender,
     provider: 'codex',
     command,
     commandText,
     cwd: normalizedCwd,
-    workspacePath: state.workspacePath,
+    workspacePath: state.scope === 'global' ? undefined : state.workspacePath,
     threadId: state.threadId,
     model: state.model,
     appRunId: state.appRunId,
@@ -3086,13 +3952,14 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     id: approvalId,
     approvalId,
     method: 'hostCommand/rerun',
-    title: 'Rerun command outside sandbox',
+    title: swiftPmNestedSandbox ? 'Rerun SwiftPM outside sandbox' : 'Rerun command outside sandbox',
     body: `${reason}\n\n${commandText}\n${normalizedCwd}`,
     preview: {
       kind: 'host-command-rerun',
       command: commandText,
       cwd: normalizedCwd,
       output: output.slice(0, 4000),
+      swiftPmNestedSandbox,
       actions: ['accept', 'decline'] as AgentApprovalAction[]
     },
     actions: ['accept', 'decline'] as AgentApprovalAction[]
@@ -3102,7 +3969,7 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     { appRunId: state.appRunId, appChatId: state.appChatId },
     'approval_request',
     'control',
-    'Rerun command outside sandbox',
+    swiftPmNestedSandbox ? 'Rerun SwiftPM outside sandbox' : 'Rerun command outside sandbox',
     approvalPayload
   )
   recordApprovalLedgerRequest(
@@ -3111,11 +3978,12 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     approvalPayload,
     {
       service: 'shellCommands',
-      workspacePath: state.workspacePath,
+      workspacePath: state.scope === 'global' ? undefined : state.workspacePath,
       metadata: {
         kind: 'host-command-rerun',
         policy,
-        reason
+        reason,
+        swiftPmNestedSandbox
       }
     }
   )
@@ -3125,7 +3993,15 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
 async function continueCodexAfterHostRerun(approval: HostCommandApproval, result: HostCommandResult, resultText: string): Promise<void> {
   if (!codexClient) return
   const settings = AppStore.getSettings()
-  const continuationState = createCodexRunState(approval.sender, approval.threadId, approval.model, approval.workspacePath, approval)
+  const continuationState = createCodexRunState(
+    approval.sender,
+    approval.threadId,
+    approval.model,
+    approval.cwd,
+    approval.workspacePath,
+    approval.workspacePath ? 'workspace' : 'global',
+    approval
+  )
   registerRunSession('codex', approval.sender, continuationState, approval.workspacePath, continuationState, approval.threadId)
   setActiveCodexRunState(continuationState)
   sendAgentCompatLine(approval.sender, 'codex', {
@@ -3137,7 +4013,7 @@ async function continueCodexAfterHostRerun(approval: HostCommandApproval, result
     continuation: true
   }, continuationState)
   const prompt = [
-    'AgentBench reran a previously failed shell command once from the app host process after explicit user approval.',
+    'AGBench reran a previously failed shell command once from the app host process after explicit user approval.',
     `Command: ${approval.commandText}`,
     `Cwd: ${approval.cwd}`,
     `Exit code: ${result.exitCode ?? (result.timedOut ? 'timeout' : 'unknown')}`,
@@ -3150,9 +4026,9 @@ async function continueCodexAfterHostRerun(approval: HostCommandApproval, result
     await codexClient.request('turn/start', {
       threadId: approval.threadId,
       input: buildCodexUserInput(prompt),
-      cwd: approval.workspacePath,
-      approvalPolicy: codexApprovalPolicyForMode('default', settings),
-      sandboxPolicy: codexSandboxPolicyForMode('default', approval.workspacePath, [], settings),
+      cwd: approval.cwd,
+      approvalPolicy: approval.workspacePath ? codexApprovalPolicyForMode('default', settings) : 'on-request',
+      sandboxPolicy: codexSandboxPolicyForMode('default', approval.cwd, [], settings, approval.workspacePath ? 'workspace' : 'global'),
       model: approval.model
     }, 60_000)
   } catch (error) {
@@ -3206,12 +4082,12 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
 
   await client.ensureStarted(app.getVersion())
 
-  const settings = AppStore.getSettings()
+  const settings = runtimeSettings(AppStore.getSettings(), payload.runtimeProfile)
   const model = normalizeCodexModel(payload.model)
-  const approvalPolicy = codexApprovalPolicyForMode(payload.approvalMode, settings)
+  const approvalPolicy = payload.scope === 'global' ? 'on-request' : codexApprovalPolicyForMode(payload.approvalMode, settings)
   const sandbox = codexSandboxForMode(payload.approvalMode)
   const startOrResumeParams = {
-    cwd: payload.workspace,
+    cwd: payload.workspace!,
     model,
     ...(payload.serviceTier ? { serviceTier: payload.serviceTier } : {}),
     approvalPolicy,
@@ -3237,8 +4113,16 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   const route = routeWithRunId('codex', payload)
-  const codexState = createCodexRunState(event.sender, threadId, threadResponse?.model || model, payload.workspace, route)
-  registerRunSession('codex', event.sender, codexState, payload.workspace, codexState, threadId)
+  const codexState = createCodexRunState(
+    event.sender,
+    threadId,
+    threadResponse?.model || model,
+    payload.workspace!,
+    payload.scope === 'global' ? undefined : payload.workspace,
+    payload.scope,
+    route
+  )
+  registerRunSession('codex', event.sender, codexState, payload.scope === 'global' ? undefined : payload.workspace, codexState, threadId)
   setActiveCodexRunState(codexState)
   void emitProviderCapabilityWarnings(event.sender, 'codex', payload.workspace, payload.approvalMode, codexState)
 
@@ -3253,9 +4137,9 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
   await client.request('turn/start', {
     threadId,
     input: buildCodexUserInput(payload.prompt, payload.imagePaths),
-    cwd: payload.workspace,
+    cwd: payload.workspace!,
     approvalPolicy,
-    sandboxPolicy: codexSandboxPolicyForMode(payload.approvalMode, payload.workspace, payload.externalPathGrants, settings),
+    sandboxPolicy: codexSandboxPolicyForMode(payload.approvalMode, payload.workspace!, payload.externalPathGrants, settings, payload.scope),
     model,
     ...(payload.reasoningEffort ? { effort: payload.reasoningEffort } : {}),
     ...(payload.serviceTier ? { serviceTier: payload.serviceTier } : {})
@@ -3264,7 +4148,13 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
 
 function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload, reason: string) {
   const route = routeWithRunId('codex', payload)
-  const settings = AppStore.getSettings()
+  const settings = runtimeSettings(AppStore.getSettings(), payload.runtimeProfile)
+  if (payload.scope === 'global') {
+    sendAgentCompatError(event.sender, 'codex', `Codex app-server unavailable, so global chat execution is blocked. Global host tools require in-app approval prompts. Reason: ${reason}`, route)
+    sendAgentCompatExit(event.sender, 'codex', 1, route)
+    runManager.finish(route.appRunId, 'failed')
+    return
+  }
   if (codexNeedsApprovalGate(settings) || settings.agenticServices?.networkAccess === 'deny') {
     sendAgentCompatError(event.sender, 'codex', `Codex app-server unavailable and agentic service gates are active, so exec fallback is blocked. Reason: ${reason}`, route)
     sendAgentCompatExit(event.sender, 'codex', 1, route)
@@ -3273,7 +4163,7 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
 
   const model = normalizeCodexModel(payload.model)
   const sandbox = codexSandboxForMode(payload.approvalMode)
-  const args = ['exec', '--json', '--color', 'never', '-C', payload.workspace, '--sandbox', sandbox, '--model', model]
+  const args = ['exec', '--json', '--color', 'never', '-C', payload.workspace!, '--sandbox', sandbox, '--model', model]
   for (const imagePath of payload.imagePaths || []) {
     args.push('--image', imagePath)
   }
@@ -3296,11 +4186,12 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
   }, route)
 
   const child = spawn('codex', args, {
-    cwd: payload.workspace,
+    cwd: payload.workspace!,
     shell: false,
     env: createCliEnv({
       FORCE_COLOR: '0',
-      NO_COLOR: '1'
+      NO_COLOR: '1',
+      AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
     })
   })
   codexExecProcess = child
@@ -3350,11 +4241,14 @@ async function runCodexProvider(event: Electron.IpcMainInvokeEvent, payload: Age
 async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string): Promise<boolean> {
   const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
   if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
-    AppStore.updateRunQueueJob(queuedJob.runId, {
-      status: 'cancelled',
+    getRunRepository().markCancelled({
+      runId: queuedJob.runId,
+      provider: queuedJob.provider,
+      workspacePath: queuedJob.workspacePath,
+      chatId: queuedJob.chatId,
+      workspaceId: queuedJob.workspaceId,
       statusReason: 'Cancelled before the queued run started.'
     })
-    emitRunQueueChanged()
     return true
   }
 
@@ -3363,6 +4257,15 @@ async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string
     session.abortController?.abort()
     session.process?.kill()
     runManager.finish(session.runId, 'cancelled')
+    if (provider === 'gemini') {
+      if (geminiProcess === session.process) {
+        geminiProcess = null
+      }
+      if (!geminiSessionProcess) {
+        const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+        activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
+      }
+    }
     if (provider === 'codex') {
       const codexState = getCodexStateFromSession(session)
       if (codexState?.threadId && codexState.turnId && codexClient) {
@@ -3420,12 +4323,151 @@ async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string
   return false
 }
 
+async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload): Promise<void> {
+  const route = routeWithRunId('gemini', payload)
+  const args: string[] = []
+  const settings = runtimeSettings(AppStore.getSettings(), payload.runtimeProfile)
+  const approvalMode = payload.approvalMode || 'default'
+  const effectiveApprovalMode = payload.scope === 'global' && approvalMode !== 'plan'
+    ? 'default'
+    : resolveGeminiApprovalModeForServices(approvalMode, settings)
+  const requiresGeminiWriteTools = geminiWriteModeRequiresBridge(payload.scope, effectiveApprovalMode)
+  if (effectiveApprovalMode !== approvalMode) {
+    sendAgentCompatError(event.sender, 'gemini', `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because AGBench service settings block write-capable Gemini modes.`, route)
+  }
+  const resumePolicy = resolveGeminiCliResumePolicy(effectiveApprovalMode, payload.providerSessionId)
+  if (resumePolicy.skippedReason) {
+    sendAgentCompatLine(event.sender, 'gemini', {
+      type: 'provider_warning',
+      provider: 'gemini',
+      severity: 'warning',
+      title: 'Gemini session resume skipped',
+      message: resumePolicy.skippedReason
+    }, route)
+  }
+  const argsError = appendGeminiCliSessionArgs(
+    args,
+    payload.model || 'cli-default',
+    effectiveApprovalMode,
+    Boolean(payload.sessionTrust),
+    resumePolicy.resumeSessionId,
+    settings.geminiCheckpointingEnabled,
+    payload.geminiWorktree || null,
+    requiresGeminiWriteTools
+  )
+  if (argsError) {
+    sendAgentCompatError(event.sender, 'gemini', argsError, route)
+    sendAgentCompatExit(event.sender, 'gemini', -1, route)
+    return
+  }
+
+  const includeDirs = Array.from(
+    (payload.imagePaths || []).reduce((acc, attachmentPath) => {
+      const normalized = attachmentPath.trim()
+      if (!normalized) return acc
+      const pathToInclude = isAbsolute(normalized)
+        ? dirname(normalized)
+        : dirname(join(payload.workspace!, normalized))
+      if (pathToInclude) {
+        acc.add(pathToInclude)
+      }
+      return acc
+    }, new Set<string>())
+  )
+
+  includeDirs.forEach((imageDir) => {
+    args.push('--include-directories', imageDir)
+  })
+
+  args.push(
+    '--prompt',
+    payload.prompt,
+    '--output-format',
+    'stream-json'
+  )
+
+  const resolved = await resolveCliProviderBinary('gemini', payload.runtimeProfile)
+  if (!resolved.binaryPath) {
+    sendAgentCompatError(event.sender, 'gemini', resolved.error || 'Gemini CLI is not configured.', route)
+    sendAgentCompatExit(event.sender, 'gemini', -1, route)
+    return
+  }
+
+  try {
+    await prepareGeminiMcpBridgeForRun(event.sender, payload.workspace!, route, payload.scope, Boolean(payload.sessionTrust), {
+      requireWriteTools: requiresGeminiWriteTools
+    })
+  } catch (error) {
+    sendAgentCompatError(event.sender, 'gemini', error instanceof Error ? error.message : String(error), route)
+    sendAgentCompatExit(event.sender, 'gemini', -1, route)
+    return
+  }
+
+  void emitProviderCapabilityWarnings(event.sender, 'gemini', payload.workspace, effectiveApprovalMode, route)
+
+  const env = createCliEnv({
+    FORCE_COLOR: '0',
+    NO_COLOR: '1',
+    GEMINI_SANDBOX: 'true',
+    AGENTBENCH_RUN_ID: route.appRunId || '',
+    AGENTBENCH_CHAT_ID: route.appChatId || '',
+    AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
+  }, resolved.binaryPath)
+
+  const child = spawn(resolved.binaryPath, args, {
+    cwd: payload.workspace!,
+    shell: false,
+    env
+  })
+  geminiProcess = child
+  runManager.attachProcess(route.appRunId!, child)
+
+  child.stdout?.on('data', (data) => {
+    const text = data.toString()
+    appendDurableRunEventForRoute('gemini', route, 'provider_raw', 'raw', 'Gemini stdout', { data: text }, 'provider')
+    event.sender.send('gemini-output', { provider: 'gemini', data: text, ...route })
+  })
+
+  child.stderr?.on('data', (data) => {
+    const error = data.toString()
+    appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini stderr', { error }, 'provider')
+    event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
+  })
+
+  child.on('close', (code) => {
+    appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', `Gemini exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
+    event.sender.send('gemini-exit', { provider: 'gemini', code, ...route })
+    if (geminiProcess === child) {
+      geminiProcess = null
+    }
+    runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
+    if (!geminiSessionProcess) {
+      const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+      activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
+    }
+  })
+
+  child.on('error', (err) => {
+    const error = `Failed to start process: ${err.message}`
+    appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini process failed to start', { error }, 'provider')
+    event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
+    appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', 'Gemini process failed before exit', { code: -1 }, 'provider')
+    event.sender.send('gemini-exit', { provider: 'gemini', code: -1, ...route })
+    if (geminiProcess === child) {
+      geminiProcess = null
+    }
+    runManager.finish(route.appRunId, 'failed')
+    if (!geminiSessionProcess) {
+      const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+      activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
+    }
+  })
+}
+
 const providerAdapters = createProviderAdapterRegistry<AgentRunPayload, Electron.IpcMainInvokeEvent>([
   {
     ...defaultProviderDescriptor('gemini'),
-    run: async () => {
-      throw new Error('Gemini runs still use the run-gemini compatibility channel in this adapter boundary pass.')
-    },
+    run: ({ event, payload }) => runGeminiProvider(event, payload),
     cancel: (runId) => cancelProviderRun('gemini', runId),
     getStatus: () => getAgentStatusSnapshotDirect('gemini'),
     getMcpStatus: () => getAgentMcpStatusSnapshotDirect('gemini'),
@@ -4008,7 +5050,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
   const settings = AppStore.getSettings()
   const packageJson = await readPackageJsonIfAvailable()
   const builderConfigText = await readDebugBuilderConfigText()
-  const geminiBridgeStatus = await getGeminiMcpBridgeStatus().catch((error) => {
+  const geminiBridgeStatus = await getGeminiMcpBridgeStatus({ autoRepairIfEnabled: true }).catch((error) => {
     const fallback = settings.geminiMcpBridgeLastStatus
     if (fallback) {
       return {
@@ -4040,7 +5082,7 @@ async function getProductOperationsStatus(): Promise<ProductOperationsStatus> {
 
   return buildProductOperationsStatus({
     updateChannel: settings.updateChannel || 'debug',
-    appName: app.getName() || 'AgentBench',
+    appName: app.getName() || 'AGBench',
     appVersion: app.getVersion() || 'unknown',
     isPackaged: app.isPackaged,
     appPath: app.getAppPath(),
@@ -4092,8 +5134,8 @@ async function exportProductDiagnostics(requestedPath?: string): Promise<Product
         throw new Error('No application window is available for diagnostics export.')
       }
       const result = await dialog.showSaveDialog(mainWindow, {
-        title: 'Export AgentBench Diagnostics',
-        defaultPath: `AgentBench-Diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
+        title: 'Export AGBench Diagnostics',
+        defaultPath: `AGBench-Diagnostics-${new Date().toISOString().replace(/[:.]/g, '-')}.json`,
         filters: [{ name: 'JSON diagnostics', extensions: ['json'] }]
       })
       if (result.canceled || !result.filePath) {
@@ -4203,6 +5245,19 @@ function geminiMcpSocketPath(): string {
   return join(app.getPath('userData'), 'agentbench-gemini-mcp.sock')
 }
 
+function hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): boolean {
+  if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
+    return false
+  }
+  if (/\/Applications\/AgentBench\.app\//i.test(raw)) {
+    return true
+  }
+  if (/Application Support\/agentbench\//i.test(raw) && !socketPath.includes('/Application Support/agentbench/')) {
+    return true
+  }
+  return app.isPackaged && raw.includes(GEMINI_MCP_BRIDGE_ARG) && !raw.includes(process.execPath)
+}
+
 function normalizeMcpToolArguments(value: unknown): Record<string, any> {
   if (!value) return {}
   if (typeof value === 'string') {
@@ -4219,8 +5274,15 @@ function normalizeMcpToolArguments(value: unknown): Record<string, any> {
   return { value }
 }
 
-function isAgentBenchMcpToolName(value: unknown): value is AgentBenchMcpToolName {
-  return AGENTBENCH_MCP_TOOLS.includes(value as AgentBenchMcpToolName)
+function isAGBenchMcpToolName(value: unknown): value is AGBenchMcpToolName {
+  return AGENTBENCH_MCP_TOOLS.includes(value as AGBenchMcpToolName)
+}
+
+function isValidGeminiMcpBrokerToken(value: unknown): boolean {
+  if (typeof value !== 'string') return false
+  const expected = Buffer.from(geminiMcpBrokerToken, 'utf8')
+  const actual = Buffer.from(value, 'utf8')
+  return expected.length === actual.length && timingSafeEqual(expected, actual)
 }
 
 function formatHostCommandResult(result: HostCommandResult): string {
@@ -4233,22 +5295,24 @@ function formatHostCommandResult(result: HostCommandResult): string {
   return parts.join('\n\n')
 }
 
-async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null): Promise<{ text: string; isError?: boolean }> {
+async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null): Promise<{ text: string; isError?: boolean }> {
   const context = getGeminiToolContext(route)
   if (!context) {
-    return { text: 'AgentBench has no active Gemini workspace context for this MCP tool call.', isError: true }
+    return { text: 'AGBench has no active Gemini workspace context for this MCP tool call.', isError: true }
   }
 
-  const workspacePath = resolve(context.workspacePath)
+  const baseCwd = resolve(context.cwd || context.workspacePath || globalRunCwd())
+  const workspacePath = context.workspacePath ? resolve(context.workspacePath) : undefined
   const args = normalizeMcpToolArguments(rawArgs)
-  const cwd = resolveWorkspaceDirectory(workspacePath, String(args.cwd || args.working_directory || args.workdir || ''))
-  const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, workspacePath)
-  const allowed = await requestAgenticServiceApproval(context.sender, 'gemini', approvalPreview.service, workspacePath, {
+  const cwd = resolveScopedDirectory(context.scope, baseCwd, workspacePath, String(args.cwd || args.working_directory || args.workdir || ''))
+  const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context)
+  const allowed = await requestAgenticServiceApproval(context.sender, 'gemini', approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
     method: `gemini-mcp/${toolName}`,
     title: approvalPreview.title,
     body: approvalPreview.body,
     preview: approvalPreview.preview,
-    runId: context.appRunId
+    runId: context.appRunId,
+    forcePrompt: context.scope === 'global'
   })
   const toolId = `gemini-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
@@ -4262,7 +5326,7 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
   })
 
   if (!allowed) {
-    const text = `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AgentBench.`
+    const text = `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
     sendAgentCompatLine(context.sender, 'gemini', {
       type: 'tool_result',
       tool_id: toolId,
@@ -4298,7 +5362,7 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
     }
 
     if (toolName === 'read_file') {
-      const targetPath = resolveGeminiMcpPath(workspacePath, String(args.path || args.file_path || ''))
+      const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.file_path || ''))
       const stat = await fs.stat(targetPath)
       if (!stat.isFile()) throw new Error('Selected path is not a file.')
       if (stat.size > MAX_EDITOR_FILE_BYTES) throw new Error('File is too large to read through the MCP bridge.')
@@ -4306,7 +5370,7 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
       assertTextBuffer(buffer)
       text = buffer.toString('utf8')
     } else if (toolName === 'list_directory') {
-      const targetPath = resolveGeminiMcpPath(workspacePath, String(args.path || args.directory || '.'))
+      const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.directory || '.'))
       const stat = await fs.stat(targetPath)
       if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')
       const entries = await fs.readdir(targetPath, { withFileTypes: true })
@@ -4319,13 +5383,13 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
         .map((entry) => `${entry.isDirectory() ? 'directory' : 'file'}\t${entry.name}`)
         .join('\n')
     } else if (toolName === 'write_file') {
-      const targetPath = resolveGeminiMcpPath(workspacePath, String(args.path || args.file_path || ''))
+      const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.file_path || ''))
       const content = String(args.content ?? '')
       await fs.mkdir(dirname(targetPath), { recursive: true })
       await fs.writeFile(targetPath, content, 'utf8')
-      text = `Wrote ${toWorkspaceRelativePath(workspacePath, targetPath)} (${content.length} chars).`
+      text = `Wrote ${formatScopedPath(context, targetPath)} (${content.length} chars).`
     } else if (toolName === 'replace') {
-      const targetPath = resolveGeminiMcpPath(workspacePath, String(args.path || args.file_path || ''))
+      const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.file_path || ''))
       const oldString = String(args.old_string ?? args.oldString ?? '')
       const newString = String(args.new_string ?? args.newString ?? '')
       if (!oldString) throw new Error('old_string is required.')
@@ -4335,7 +5399,7 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
         ? original.split(oldString).join(newString)
         : original.replace(oldString, newString)
       await fs.writeFile(targetPath, updated, 'utf8')
-      text = `Edited ${toWorkspaceRelativePath(workspacePath, targetPath)}.`
+      text = `Edited ${formatScopedPath(context, targetPath)}.`
     }
 
     sendAgentCompatLine(context.sender, 'gemini', {
@@ -4364,9 +5428,12 @@ async function executeGeminiMcpTool(toolName: AgentBenchMcpToolName, rawArgs: un
 }
 
 async function handleGeminiMcpBrokerRequest(request: any): Promise<any> {
+  if (!isValidGeminiMcpBrokerToken(request?.token)) {
+    return { ok: false, error: 'AGBench MCP broker authentication failed.' }
+  }
   const toolName = request?.tool || request?.name
-  if (!isAgentBenchMcpToolName(toolName)) {
-    return { ok: false, error: `Unknown AgentBench MCP tool: ${String(toolName || 'unknown')}` }
+  if (!isAGBenchMcpToolName(toolName)) {
+    return { ok: false, error: `Unknown AGBench MCP tool: ${String(toolName || 'unknown')}` }
   }
   const result = await executeGeminiMcpTool(toolName, request?.arguments ?? request?.args ?? request?.input, normalizeRunRoute(request))
   return { ok: !result.isError, ...result }
@@ -4433,7 +5500,7 @@ function brokerRequest(socketPath: string, request: any): Promise<any> {
       socket.destroy()
       resolveRequest(result)
     }
-    const timeout = setTimeout(() => finish({ ok: false, error: 'AgentBench MCP broker timed out.' }), 130_000)
+    const timeout = setTimeout(() => finish({ ok: false, error: 'AGBench MCP broker timed out.' }), 130_000)
     socket.setEncoding('utf8')
     socket.on('connect', () => {
       socket.write(`${JSON.stringify(request)}\n`)
@@ -4456,7 +5523,7 @@ function brokerRequest(socketPath: string, request: any): Promise<any> {
     })
     socket.on('close', () => {
       clearTimeout(timeout)
-      if (!settled) finish({ ok: false, error: 'AgentBench MCP broker closed before responding.' })
+      if (!settled) finish({ ok: false, error: 'AGBench MCP broker closed before responding.' })
     })
   })
 }
@@ -4465,7 +5532,7 @@ function mcpToolDefinitions() {
   return [
     {
       name: 'run_shell_command',
-      description: 'Run a shell command in the active AgentBench workspace after AgentBench approval policy allows it.',
+      description: 'Run a shell command in the active AGBench workspace after AGBench approval policy allows it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -4477,7 +5544,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'write_file',
-      description: 'Write a UTF-8 text file inside the active AgentBench workspace after approval.',
+      description: 'Write a UTF-8 text file inside the active AGBench workspace after approval.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -4489,7 +5556,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'replace',
-      description: 'Replace text in a UTF-8 file inside the active AgentBench workspace after approval.',
+      description: 'Replace text in a UTF-8 file inside the active AGBench workspace after approval.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -4503,7 +5570,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'read_file',
-      description: 'Read a UTF-8 text file inside the active AgentBench workspace after tool policy allows it.',
+      description: 'Read a UTF-8 text file inside the active AGBench workspace after tool policy allows it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -4514,7 +5581,7 @@ function mcpToolDefinitions() {
     },
     {
       name: 'list_directory',
-      description: 'List a directory inside the active AgentBench workspace after tool policy allows it.',
+      description: 'List a directory inside the active AGBench workspace after tool policy allows it.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -4533,24 +5600,39 @@ function parseBridgeSocketArg(): string {
   return geminiMcpSocketPath()
 }
 
+function parseBridgeTokenArg(): string {
+  const index = process.argv.indexOf(GEMINI_MCP_TOKEN_ARG)
+  return index >= 0 && process.argv[index + 1] ? process.argv[index + 1] : ''
+}
+
+type McpResponseTransport = 'framed' | 'line'
+
 function writeMcpFrame(payload: unknown): void {
   const body = JSON.stringify(payload)
   process.stdout.write(`Content-Length: ${Buffer.byteLength(body, 'utf8')}\r\n\r\n${body}`)
 }
 
-function writeMcpResponse(id: unknown, result: unknown): void {
-  writeMcpFrame({ jsonrpc: '2.0', id, result })
+function writeMcpPayload(payload: unknown, transport: McpResponseTransport): void {
+  if (transport === 'line') {
+    process.stdout.write(`${JSON.stringify(payload)}\n`)
+    return
+  }
+  writeMcpFrame(payload)
 }
 
-function writeMcpError(id: unknown, code: number, message: string): void {
-  writeMcpFrame({ jsonrpc: '2.0', id: id ?? null, error: { code, message } })
+function writeMcpResponse(id: unknown, result: unknown, transport: McpResponseTransport = 'framed'): void {
+  writeMcpPayload({ jsonrpc: '2.0', id, result }, transport)
 }
 
-function handleMcpJsonRpcMessage(socketPath: string, message: any): void {
+function writeMcpError(id: unknown, code: number, message: string, transport: McpResponseTransport = 'framed'): void {
+  writeMcpPayload({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, transport)
+}
+
+function handleMcpJsonRpcMessage(socketPath: string, brokerToken: string, message: any, transport: McpResponseTransport = 'framed'): void {
   const id = message?.id
   const method = String(message?.method || '')
   if (!method) {
-    writeMcpError(id, -32600, 'Invalid MCP request.')
+    writeMcpError(id, -32600, 'Invalid MCP request.', transport)
     return
   }
   if (method.startsWith('notifications/')) {
@@ -4560,12 +5642,16 @@ function handleMcpJsonRpcMessage(socketPath: string, message: any): void {
     writeMcpResponse(id, {
       protocolVersion: message?.params?.protocolVersion || '2024-11-05',
       capabilities: { tools: {} },
-      serverInfo: { name: 'AgentBench Gemini Bridge', version: app.getVersion() || '1.0.0' }
-    })
+      serverInfo: { name: 'AGBench Gemini Bridge', version: app.getVersion() || '1.0.0' }
+    }, transport)
+    return
+  }
+  if (method === 'ping') {
+    writeMcpResponse(id, {}, transport)
     return
   }
   if (method === 'tools/list') {
-    writeMcpResponse(id, { tools: mcpToolDefinitions() })
+    writeMcpResponse(id, { tools: mcpToolDefinitions() }, transport)
     return
   }
   if (method === 'tools/call') {
@@ -4573,6 +5659,7 @@ function handleMcpJsonRpcMessage(socketPath: string, message: any): void {
     const args = message?.params?.arguments || {}
     brokerRequest(socketPath, {
       id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      token: brokerToken,
       tool: name,
       arguments: args,
       appRunId: process.env.AGENTBENCH_RUN_ID,
@@ -4582,15 +5669,16 @@ function handleMcpJsonRpcMessage(socketPath: string, message: any): void {
       writeMcpResponse(id, {
         content: [{ type: 'text', text }],
         isError: result?.ok === false
-      })
+      }, transport)
     })
     return
   }
-  writeMcpError(id, -32601, `Unsupported MCP method: ${method}`)
+  writeMcpError(id, -32601, `Unsupported MCP method: ${method}`, transport)
 }
 
 function startGeminiMcpBridgeProcess(): void {
   const socketPath = parseBridgeSocketArg()
+  const brokerToken = parseBridgeTokenArg()
   let buffer = Buffer.alloc(0)
 
   const parseMessages = () => {
@@ -4611,9 +5699,9 @@ function startGeminiMcpBridgeProcess(): void {
         const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString('utf8')
         buffer = buffer.subarray(bodyStart + contentLength)
         try {
-          handleMcpJsonRpcMessage(socketPath, JSON.parse(body))
+          handleMcpJsonRpcMessage(socketPath, brokerToken, JSON.parse(body), 'framed')
         } catch (error) {
-          writeMcpError(null, -32700, error instanceof Error ? error.message : String(error))
+          writeMcpError(null, -32700, error instanceof Error ? error.message : String(error), 'framed')
         }
         continue
       }
@@ -4625,9 +5713,9 @@ function startGeminiMcpBridgeProcess(): void {
       buffer = buffer.subarray(lineBytes)
       if (!line) continue
       try {
-        handleMcpJsonRpcMessage(socketPath, JSON.parse(line))
+        handleMcpJsonRpcMessage(socketPath, brokerToken, JSON.parse(line), 'line')
       } catch (error) {
-        writeMcpError(null, -32700, error instanceof Error ? error.message : String(error))
+        writeMcpError(null, -32700, error instanceof Error ? error.message : String(error), 'line')
       }
     }
   }
@@ -4636,21 +5724,177 @@ function startGeminiMcpBridgeProcess(): void {
     buffer = Buffer.concat([buffer, chunk])
     parseMessages()
   })
+  process.stdin.on('end', () => process.exit(0))
+  process.stdin.on('close', () => process.exit(0))
   process.stdin.resume()
 }
 
-async function getGeminiMcpBridgeStatus(): Promise<GeminiMcpBridgeStatus> {
+async function selfTestGeminiMcpBridgeProcess(socketPath: string): Promise<{ ok: boolean; error?: string }> {
+  return new Promise((resolveSelfTest) => {
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    let initialized = false
+    let proc: ChildProcess
+
+    const finish = (result: { ok: boolean; error?: string }) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      try {
+        proc.stdin?.end()
+      } catch {}
+      if (!proc.killed) {
+        proc.kill()
+      }
+      resolveSelfTest(result)
+    }
+
+    const timeout = setTimeout(() => {
+      finish({ ok: false, error: 'Timed out waiting for AGBench Gemini MCP bridge self-test.' })
+    }, 5_000)
+
+    try {
+      proc = spawn(process.execPath, [
+        GEMINI_MCP_BRIDGE_ARG,
+        GEMINI_MCP_SOCKET_ARG,
+        socketPath,
+        GEMINI_MCP_TOKEN_ARG,
+        geminiMcpBrokerToken
+      ], {
+        shell: false,
+        env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, process.execPath)
+      })
+    } catch (error) {
+      clearTimeout(timeout)
+      resolveSelfTest({ ok: false, error: error instanceof Error ? error.message : String(error) })
+      return
+    }
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderr = appendLimitedOutput(stderr, data).value
+    })
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString('utf8')
+      while (true) {
+        const lineEnd = stdout.indexOf('\n')
+        if (lineEnd < 0) break
+        const line = stdout.slice(0, lineEnd).trim()
+        stdout = stdout.slice(lineEnd + 1)
+        if (!line) continue
+        let message: any
+        try {
+          message = JSON.parse(line)
+        } catch (error) {
+          finish({ ok: false, error: error instanceof Error ? error.message : String(error) })
+          return
+        }
+        if (message?.id === 1) {
+          if (message.error) {
+            finish({ ok: false, error: message.error.message || 'Initialize failed.' })
+            return
+          }
+          initialized = true
+          proc.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' })}\n`)
+          continue
+        }
+        if (message?.id === 2) {
+          if (message.error) {
+            finish({ ok: false, error: message.error.message || 'Ping failed.' })
+            return
+          }
+          proc.stdin?.write(`${JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'tools/list' })}\n`)
+          continue
+        }
+        if (message?.id === 3) {
+          if (message.error) {
+            finish({ ok: false, error: message.error.message || 'Tool listing failed.' })
+            return
+          }
+          const tools = Array.isArray(message.result?.tools) ? message.result.tools : []
+          const names = new Set(tools.map((tool: any) => String(tool?.name || '')).filter(Boolean))
+          const missing = ['write_file', 'replace', 'read_file', 'list_directory', 'run_shell_command'].filter((name) => !names.has(name))
+          if (missing.length > 0) {
+            finish({ ok: false, error: `AGBench Gemini MCP bridge is connected but missing tools: ${missing.join(', ')}.` })
+            return
+          }
+          finish({ ok: true })
+          return
+        }
+      }
+    })
+
+    proc.on('error', (error) => finish({ ok: false, error: error.message }))
+    proc.on('close', (code) => {
+      if (!settled) {
+        finish({
+          ok: false,
+          error: stderr.trim() || `AGBench Gemini MCP bridge exited before ${initialized ? 'ping completed' : 'initializing'} with code ${code ?? 'unknown'}.`
+        })
+      }
+    })
+
+    proc.stdin?.write(`${JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'agentbench-self-test', version: app.getVersion() || '1.0.0' }
+      }
+    })}\n`)
+  })
+}
+
+async function getGeminiMcpBridgeStatus(options: { autoRepairIfEnabled?: boolean; cwd?: string; allowSessionTrustBypass?: boolean } = {}): Promise<GeminiMcpBridgeStatus> {
   const settings = AppStore.getSettings()
   const socketPath = geminiMcpSocketPath()
-  const section = await readGeminiCapabilitySection('mcp')
+  if (settings.geminiMcpBridgeEnabled) {
+    await startGeminiMcpBroker().catch(() => {})
+  }
+  let section = await readGeminiCapabilitySection('mcp', options.cwd)
+  if (!section.items.length && ![section.stdout, section.stderr].filter(Boolean).join('\n').toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
+    const debugResult = await runGeminiCapabilityCommand(['mcp', 'list', '--debug'], options.cwd)
+    if (debugResult.exitCode === 0 && `${debugResult.stdout}\n${debugResult.stderr}`.toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
+      section = {
+        kind: 'mcp',
+        command: ['gemini', ...debugResult.args],
+        format: 'raw',
+        items: parseCapabilityRawItems(debugResult.stdout, 'mcp'),
+        stdout: debugResult.stdout,
+        stderr: debugResult.stderr,
+        status: debugResult.exitCode,
+        timedOut: debugResult.timedOut,
+        error: debugResult.error,
+        truncated: debugResult.truncated
+      }
+    }
+  }
   const raw = [section.stdout, section.stderr].filter(Boolean).join('\n')
+  const staleRegistration = hasStaleGeminiMcpBridgeRegistration(raw, socketPath)
   const bridgeItem = section.items.find((item) => {
     const haystack = `${item.id} ${item.name} ${item.detail || ''} ${item.raw || ''}`.toLowerCase()
     return haystack.includes(GEMINI_MCP_SERVER_NAME)
   })
   const installed = Boolean(bridgeItem || raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME))
   const disabled = Boolean(bridgeItem && /disabled|inactive|off/i.test(`${bridgeItem.status || ''} ${bridgeItem.raw || ''}`))
-  const available = Boolean(installed && !disabled && section.status === 0 && !section.error && !section.timedOut)
+  const disconnected = /disconnected|connection\s+refused|failed\s+to\s+connect|not\s+connected|unavailable|error/i.test(
+    `${bridgeItem?.status || ''}\n${bridgeItem?.raw || ''}\n${raw}`
+  )
+  const bridgeSelfTest = installed && disconnected && settings.geminiMcpBridgeEnabled
+    ? await selfTestGeminiMcpBridgeProcess(socketPath)
+    : null
+  const available = Boolean(
+    installed &&
+    !disabled &&
+    !staleRegistration &&
+    section.status === 0 &&
+    !section.error &&
+    !section.timedOut &&
+    (!disconnected || bridgeSelfTest?.ok)
+  )
   const status: GeminiMcpBridgeStatus = {
     checkedAt: new Date().toISOString(),
     enabled: Boolean(settings.geminiMcpBridgeEnabled),
@@ -4662,12 +5906,37 @@ async function getGeminiMcpBridgeStatus(): Promise<GeminiMcpBridgeStatus> {
     raw,
     ...(section.error || section.parsingError ? { error: section.error || section.parsingError } : {}),
     message: available
-      ? 'AgentBench Gemini MCP bridge is installed and enabled.'
+      ? bridgeSelfTest?.ok
+        ? 'AGBench Gemini MCP bridge is installed; direct bridge self-test passed.'
+        : 'AGBench Gemini MCP bridge is installed and enabled.'
+      : installed && staleRegistration
+        ? 'AGBench Gemini MCP bridge registration points at an old app bundle or socket and needs repair.'
       : installed && disabled
-        ? 'AgentBench Gemini MCP bridge is installed but disabled.'
-        : installed
-          ? 'AgentBench Gemini MCP bridge is installed but did not report as available.'
-          : 'AgentBench Gemini MCP bridge is not installed.'
+        ? 'AGBench Gemini MCP bridge is installed but disabled.'
+      : installed && disconnected
+        ? bridgeSelfTest?.error
+          ? `AGBench Gemini MCP bridge is installed but disconnected: ${bridgeSelfTest.error}`
+          : 'AGBench Gemini MCP bridge is installed but disconnected.'
+      : installed
+          ? 'AGBench Gemini MCP bridge is installed but did not report as available.'
+          : 'AGBench Gemini MCP bridge is not installed.'
+  }
+  if (options.autoRepairIfEnabled && settings.geminiMcpBridgeEnabled && !status.available) {
+    try {
+      return await repairGeminiMcpBridge()
+    } catch (error) {
+      const repairMessage = error instanceof Error ? error.message : String(error)
+      const repairedStatus: GeminiMcpBridgeStatus = {
+        ...status,
+        checkedAt: new Date().toISOString(),
+        enabled: true,
+        available: false,
+        error: repairMessage,
+        message: `AGBench Gemini MCP bridge auto-repair failed: ${repairMessage}`
+      }
+      AppStore.updateSettings({ geminiMcpBridgeLastStatus: repairedStatus })
+      return repairedStatus
+    }
   }
   AppStore.updateSettings({ geminiMcpBridgeLastStatus: status })
   return status
@@ -4680,26 +5949,44 @@ async function installGeminiMcpBridge(): Promise<GeminiMcpBridgeStatus> {
     throw new Error(resolved.error || 'Gemini CLI is not configured.')
   }
   const socketPath = geminiMcpSocketPath()
-  await captureProcessOutput(resolved.binaryPath, ['mcp', 'remove', GEMINI_MCP_SERVER_NAME], undefined, 8_000)
+  await captureProcessOutput(resolved.binaryPath, ['mcp', 'remove', '--scope', 'user', GEMINI_MCP_SERVER_NAME], undefined, 8_000)
   const addResult = await captureProcessOutput(resolved.binaryPath, [
     'mcp',
     'add',
+    '--scope',
+    'user',
     GEMINI_MCP_SERVER_NAME,
     process.execPath,
     GEMINI_MCP_BRIDGE_ARG,
     GEMINI_MCP_SOCKET_ARG,
-    socketPath
+    socketPath,
+    GEMINI_MCP_TOKEN_ARG,
+    geminiMcpBrokerToken
   ], undefined, 15_000)
   if (addResult.code !== 0) {
     throw new Error((addResult.stderr || addResult.stdout || addResult.error || 'gemini mcp add failed.').trim())
   }
   await captureProcessOutput(resolved.binaryPath, ['mcp', 'enable', GEMINI_MCP_SERVER_NAME], undefined, 8_000)
+  geminiMcpBridgeInstalledForCurrentToken = true
   AppStore.updateSettings({ geminiMcpBridgeEnabled: true })
   return getGeminiMcpBridgeStatus()
 }
 
+async function repairGeminiMcpBridge(): Promise<GeminiMcpBridgeStatus> {
+  if (!geminiMcpBridgeRepairPromise) {
+    geminiMcpBridgeRepairPromise = installGeminiMcpBridge().finally(() => {
+      geminiMcpBridgeRepairPromise = null
+    })
+  }
+  return geminiMcpBridgeRepairPromise
+}
+
 async function setGeminiMcpBridgeEnabled(enabled: boolean): Promise<GeminiMcpBridgeStatus> {
   AppStore.updateSettings({ geminiMcpBridgeEnabled: Boolean(enabled) })
+  if (enabled) {
+    return repairGeminiMcpBridge()
+  }
+  geminiMcpBridgeInstalledForCurrentToken = false
   const statusBefore = await getGeminiMcpBridgeStatus()
   if (statusBefore.installed) {
     const resolved = await resolveCliProviderBinary('gemini')
@@ -4712,37 +5999,58 @@ async function setGeminiMcpBridgeEnabled(enabled: boolean): Promise<GeminiMcpBri
   return { ...status, enabled: Boolean(enabled) }
 }
 
-async function prepareGeminiMcpBridgeForRun(sender: Electron.WebContents, workspace: string, channel: 'gemini-output' | 'gemini-session-data', route?: AgentRunRoute | null): Promise<void> {
+async function prepareGeminiMcpBridgeForRun(
+  sender: Electron.WebContents,
+  cwd: string,
+  route?: AgentRunRoute | null,
+  scope: ChatScope = 'workspace',
+  sessionTrust: boolean = false,
+  options: { requireWriteTools?: boolean } = {}
+): Promise<AgentRunRoute> {
   const routed = routeWithRunId('gemini', route)
-  activeGeminiToolContext = {
-    sender,
-    workspacePath: resolve(workspace),
-    ...routed
-  }
-  registerRunSession('gemini', sender, routed, resolve(workspace), activeGeminiToolContext, activeGeminiToolContext.providerSessionId || null)
   const settings = AppStore.getSettings()
-  if (!settings.geminiMcpBridgeEnabled) {
-    return
-  }
-  try {
+  const resolvedCwd = resolve(cwd)
+  const requireWriteTools = Boolean(options.requireWriteTools && scope !== 'global')
+  if (settings.geminiMcpBridgeEnabled || requireWriteTools) {
+    if (requireWriteTools && !settings.geminiMcpBridgeEnabled) {
+      sendAgentCompatLine(sender, 'gemini', {
+        type: 'provider_warning',
+        provider: 'gemini',
+        severity: 'warning',
+        title: 'Gemini MCP bridge auto-repair',
+        message: 'Write-capable Gemini runs require the AGBench MCP bridge. AGBench is enabling and repairing it before launch.'
+      }, routed)
+      AppStore.updateSettings({ geminiMcpBridgeEnabled: true })
+    }
     await startGeminiMcpBroker()
-    const status = await getGeminiMcpBridgeStatus()
+    if (!geminiMcpBridgeInstalledForCurrentToken) {
+      await repairGeminiMcpBridge()
+    }
+    const status = await getGeminiMcpBridgeStatus({
+      autoRepairIfEnabled: true,
+      cwd: resolvedCwd,
+      allowSessionTrustBypass: sessionTrust
+    })
     if (!status.available) {
-      const message = `AgentBench Gemini MCP bridge is enabled but unavailable: ${status.message || status.error || 'unknown status'}. Shell and file tools from AgentBench will not be advertised for this run.`
-      if (channel === 'gemini-session-data') {
-        sender.send(channel, `${message}\r\n`)
-      } else {
-        sendAgentCompatError(sender, 'gemini', message, route)
+      throw new Error(`AGBench Gemini MCP bridge repair failed: ${status.message || status.error || 'unknown status'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`)
+    }
+    if (requireWriteTools) {
+      const toolSelfTest = await selfTestGeminiMcpBridgeProcess(geminiMcpSocketPath())
+      if (!toolSelfTest.ok) {
+        throw new Error(`AGBench Gemini MCP bridge repair failed: ${toolSelfTest.error || 'write tools were not advertised by the bridge'}. Gemini write-capable mode was not launched because it would start without file-edit tools.`)
       }
     }
-  } catch (error) {
-    const message = `AgentBench Gemini MCP bridge preflight failed: ${error instanceof Error ? error.message : String(error)}`
-    if (channel === 'gemini-session-data') {
-      sender.send(channel, `${message}\r\n`)
-    } else {
-      sendAgentCompatError(sender, 'gemini', message, route)
-    }
   }
+
+  activeGeminiToolContext = {
+    sender,
+    scope,
+    cwd: resolvedCwd,
+    ...(scope === 'workspace' ? { workspacePath: resolvedCwd } : {}),
+    ...routed
+  }
+  registerRunSession('gemini', sender, routed, scope === 'workspace' ? resolvedCwd : undefined, activeGeminiToolContext, activeGeminiToolContext.providerSessionId || null)
+  return routed
 }
 
 function resolveNativeVibrancy(useNativeGlass: boolean): BrowserWindowConstructorOptions['vibrancy'] | undefined {
@@ -5033,9 +6341,14 @@ function appendGeminiCliSessionArgs(
   sessionTrust: boolean = false,
   resumeSessionId?: string | null,
   checkpointingEnabled: boolean = false,
-  worktree: GeminiWorktreeLaunchOption = null
+  worktree: GeminiWorktreeLaunchOption = null,
+  allowAgentbenchMcp: boolean = false
 ): string | null {
   args.push('--sandbox', '--approval-mode', approvalMode)
+
+  if (allowAgentbenchMcp) {
+    args.push('--allowed-mcp-server-names', GEMINI_MCP_SERVER_NAME)
+  }
 
   if (checkpointingEnabled) {
     args.push('--checkpointing')
@@ -5291,12 +6604,19 @@ async function discoverGeminiMemory(workspace: string): Promise<GeminiMemoryDisc
 const applyNativeGlassToWindow = (targetWindow: BrowserWindow, settings: AppSettings): void => {
   const isMac = process.platform === 'darwin'
   const useNativeGlass = isMac && settings.appearanceMode === 'native_glass' && !settings.reduceTransparency
+  const nextState = `${useNativeGlass ? NATIVE_GLASS_VIBRANCY : 'off'}:${settings.appearanceMode}:${settings.reduceTransparency ? 'reduced' : 'normal'}`
+  if (targetWindow === mainWindow && appliedNativeGlassState === nextState) {
+    return
+  }
   if (useNativeGlass) {
     targetWindow.setVibrancy(NATIVE_GLASS_VIBRANCY)
     targetWindow.setBackgroundColor('#00000000')
   } else {
     targetWindow.setVibrancy(null)
     targetWindow.setBackgroundColor('#1e1e1e')
+  }
+  if (targetWindow === mainWindow) {
+    appliedNativeGlassState = nextState
   }
 }
 
@@ -5366,6 +6686,9 @@ app.whenReady().then(() => {
   const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
   recordStartupRecoveryEvents(startupRecoveryRecords)
   AppStore.recoverExpiredApprovalLedger()
+  void getGeminiMcpBridgeStatus({
+    autoRepairIfEnabled: AppStore.getSettings().geminiMcpBridgeEnabled
+  }).catch(() => {})
 
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
@@ -5386,19 +6709,50 @@ app.whenReady().then(() => {
 
   // Settings
   ipcMain.handle('get-settings', () => AppStore.getSettings())
-  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => AppStore.updateSettings(partial))
+  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => AppStore.updateSettings(sanitizeSettingsPatch(partial)))
+
+  // Runtime profiles
+  ipcMain.handle('get-runtime-profiles', (_, provider?: ProviderId) => {
+    return AppStore.getRuntimeProfiles(provider ? assertProviderId(provider) : undefined)
+  })
+  ipcMain.handle('save-runtime-profile', (_, profile: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>) => {
+    return AppStore.saveRuntimeProfile(sanitizeRuntimeProfileForSave(profile))
+  })
+  ipcMain.handle('delete-runtime-profile', (_, id: string) => AppStore.deleteRuntimeProfile(requireNonEmptyString(id, 'Runtime profile id')))
+
+  // User-mediated handoffs
+  ipcMain.handle('get-handoff-cards', (_, filter?: HandoffCardFilter) => AppStore.getHandoffCards(sanitizeHandoffCardFilter(filter)))
+  ipcMain.handle('save-handoff-card', (_, card: Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>) => {
+    return AppStore.saveHandoffCard(sanitizeHandoffCardForSave(card))
+  })
+  ipcMain.handle('update-handoff-card', (_, id: string, partial: Partial<HandoffCard>) => {
+    return AppStore.updateHandoffCard(requireNonEmptyString(id, 'Handoff card id'), sanitizeHandoffCardPatch(partial))
+  })
+  ipcMain.handle('delete-handoff-card', (_, id: string) => AppStore.deleteHandoffCard(requireNonEmptyString(id, 'Handoff card id')))
 
   // Workspaces
   ipcMain.handle('get-workspaces', () => AppStore.getWorkspaces())
-  ipcMain.handle('add-or-update-workspace', (_, path: string, partial: Partial<WorkspaceRecord>) => AppStore.addOrUpdateWorkspace(path, partial))
+  ipcMain.handle('add-or-update-workspace', (_, path: string, partial: Partial<WorkspaceRecord>) => {
+    const workspacePath = requireRegisteredWorkspace(path)
+    return AppStore.addOrUpdateWorkspace(workspacePath, safeWorkspacePartial(partial))
+  })
   ipcMain.handle('remove-workspace', (_, id: string) => AppStore.removeWorkspace(id))
   ipcMain.handle('clear-workspaces', () => AppStore.clearWorkspaces())
 
   // Chats
   ipcMain.handle('get-chats', (_, workspaceId?: string) => AppStore.getChats(workspaceId))
   ipcMain.handle('get-chat', (_, chatId: string) => AppStore.getChat(chatId))
-  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) => AppStore.createChat(workspaceId, workspacePath))
-  ipcMain.handle('save-chat', (_, chat: ChatRecord) => AppStore.saveChat(chat))
+  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) => {
+    const registered = findRegisteredWorkspace(workspacePath)
+    if (!registered || registered.id !== workspaceId) {
+      throw new Error('Chat workspace must be a registered AGBench workspace.')
+    }
+    return AppStore.createChat(workspaceId, canonicalPath(workspacePath))
+  })
+  ipcMain.handle('create-global-chat', () => AppStore.createGlobalChat())
+  ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
+    AppStore.saveChat(sanitizeChatForSave(chat))
+  })
   ipcMain.handle('delete-chat', (_, chatId: string) => AppStore.deleteChat(chatId))
   ipcMain.handle('clear-chats', (_, workspaceId?: string) => AppStore.clearChats(workspaceId))
   
@@ -5409,14 +6763,16 @@ app.whenReady().then(() => {
   // Scheduled tasks
   ipcMain.handle('get-scheduled-tasks', (_, workspaceId?: string) => AppStore.getScheduledTasks(workspaceId))
   ipcMain.handle('save-scheduled-task', (_, task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>) => {
-    const saved = AppStore.saveScheduledTask(task)
+    const saved = AppStore.saveScheduledTask(sanitizeScheduledTaskForSave(task))
     mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
     scheduleNextTaskTimer()
     emitDueScheduledTasks()
     return saved
   })
   ipcMain.handle('update-scheduled-task', (_, id: string, partial: Partial<ScheduledTask>) => {
-    const updated = AppStore.updateScheduledTask(id, partial)
+    const sanitized = sanitizeScheduledTaskPatch(id, partial)
+    if (!sanitized) return null
+    const updated = AppStore.updateScheduledTask(id, sanitized)
     mainWindow?.webContents.send('scheduled-tasks-changed', AppStore.getScheduledTasks())
     scheduleNextTaskTimer()
     return updated
@@ -5427,39 +6783,41 @@ app.whenReady().then(() => {
     scheduleNextTaskTimer()
   })
 
-  // Durable run queue
-  ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => AppStore.getRunQueueJobs(filter || {}))
-  ipcMain.handle('get-run-recovery-records', (_, filter?: RunRecoveryFilter) => AppStore.getRunRecoveryRecords(filter || {}))
-  ipcMain.handle('save-run-queue-job', (_, job: any) => {
-    const saved = AppStore.saveRunQueueJob(job)
-    emitRunQueueChanged()
-    return saved
+  // Durable run queue. Renderer requests and observes; main owns persistence and leases.
+  ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => getRunRepository().getRunQueueJobs(filter || {}))
+  ipcMain.handle('get-run-recovery-records', (_, filter?: RunRecoveryFilter) => getRunRepository().getRunRecoveryRecords(filter || {}))
+  ipcMain.handle('request-run-queue-job', (_, job: any) => {
+    return getRunRepository().saveRunQueueJob(normalizeRunQueueJobRequest(job))
   })
-  ipcMain.handle('update-run-queue-job', (_, runIdOrId: string, partial: Partial<RunQueueJob>) => {
-    const updated = AppStore.updateRunQueueJob(runIdOrId, partial)
-    emitRunQueueChanged()
-    return updated
+  ipcMain.handle('lease-run-queue-job', (_, request: { runId?: string; provider?: ProviderId; statusReason?: string } = {}) => {
+    const provider = request?.provider ? assertProviderId(request.provider) : undefined
+    const runId = optionalString(request?.runId)
+    const candidate = runId ? AppStore.getRunQueueJob(runId) : AppStore.getRunQueueJobs({ provider, statuses: ['queued'] })[0]
+    if (!candidate || candidate.status !== 'queued') {
+      return null
+    }
+    if (provider && candidate.provider !== provider) {
+      return null
+    }
+    if (providerHasActiveRun(candidate.provider)) {
+      return null
+    }
+    return getRunRepository().leaseQueuedRun({
+      runId: candidate.runId,
+      provider: candidate.provider,
+      statusReason: optionalString(request?.statusReason) || 'Leased by AGBench main scheduler.'
+    })
   })
-  ipcMain.handle('delete-run-queue-job', (_, runIdOrId: string) => {
-    AppStore.deleteRunQueueJob(runIdOrId)
-    emitRunQueueChanged()
+  ipcMain.handle('transition-run-queue-job', (_, runIdOrId: string, status: RunQueueJobStatus, partial: Partial<RunQueueJob> = {}) => {
+    return getRunRepository().transitionRunQueueJob(runIdOrId, sanitizeRunQueueStatus(status), {
+      statusReason: optionalString(partial?.statusReason),
+      lastError: optionalString(partial?.lastError)
+    })
   })
 
-  // Durable transcript/event store
-  ipcMain.handle('append-run-event', (_, eventInput: RunEventInput) => {
-    const record = AppStore.appendRunEvent(eventInput)
-    emitRunEventsChanged(record)
-    return record
-  })
-  ipcMain.handle('append-run-events', (_, eventInputs: RunEventInput[]) => {
-    const records = AppStore.appendRunEvents(Array.isArray(eventInputs) ? eventInputs : [])
-    for (const record of records) {
-      emitRunEventsChanged(record)
-    }
-    return records
-  })
-  ipcMain.handle('get-run-events', (_, filter: any = {}) => AppStore.getRunEvents(filter || {}))
-  ipcMain.handle('get-run-event-replay', (_, runId: string) => AppStore.getRunEventReplay(runId))
+  // Durable transcript/event store. Writes are main-owned; renderer may only read/replay.
+  ipcMain.handle('get-run-events', (_, filter: any = {}) => getRunRepository().getRunEvents(filter || {}))
+  ipcMain.handle('get-run-event-replay', (_, runId: string) => getRunRepository().getRunEventReplay(runId))
   ipcMain.handle('get-approval-ledger', (_, filter?: ApprovalLedgerFilter) => AppStore.getApprovalLedger(filter || {}))
 
   // Product operations
@@ -5561,10 +6919,10 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('get-gemini-mcp-bridge-status', async () => getGeminiMcpBridgeStatus())
+  ipcMain.handle('get-gemini-mcp-bridge-status', async () => getGeminiMcpBridgeStatus({ autoRepairIfEnabled: true }))
   ipcMain.handle('install-gemini-mcp-bridge', async () => installGeminiMcpBridge())
   ipcMain.handle('set-gemini-mcp-bridge-enabled', async (_, enabled: boolean) => setGeminiMcpBridgeEnabled(Boolean(enabled)))
-  ipcMain.handle('run-approved-host-command', async (_, requestId: string) => runApprovedHostCommand(requestId))
+  ipcMain.handle('run-approved-host-command', async (_, requestId: string) => runApprovedHostCommand(requireNonEmptyString(requestId, 'Request id')))
 
   ipcMain.handle('list-gemini-sessions', async () => listGeminiSessions())
 
@@ -5578,7 +6936,7 @@ app.whenReady().then(() => {
       return null
     }
     const path = result.filePaths[0]
-    return AppStore.addOrUpdateWorkspace(path)
+    return addWorkspaceFromNativeSelection(path)
   })
 
   ipcMain.handle('select-image-files', async () => {
@@ -5617,7 +6975,7 @@ app.whenReady().then(() => {
       kind = 'file'
     }
 
-    return {
+    return issueExternalPathGrant({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       provider: 'codex',
       path: selectedPath,
@@ -5626,15 +6984,16 @@ app.whenReady().then(() => {
       duration: 'thisThread',
       securityScopedBookmark: Array.isArray((result as any).bookmarks) ? (result as any).bookmarks[0] : undefined,
       createdAt: new Date().toISOString()
-    } satisfies ExternalPathGrant
+    })
   })
 
   ipcMain.handle('list-workspace-files', async (_, workspace: string): Promise<WorkspaceFileEntry[]> => {
-    return listWorkspaceFileEntries(workspace)
+    return listWorkspaceFileEntries(requireRegisteredWorkspace(workspace))
   })
 
   ipcMain.handle('read-workspace-file', async (_, workspace: string, filePath: string): Promise<WorkspaceFileReadResult> => {
-    const targetPath = resolveWorkspaceChild(workspace, filePath)
+    const registeredWorkspace = requireRegisteredWorkspace(workspace)
+    const targetPath = resolveWorkspaceChild(registeredWorkspace, filePath)
     const fileStat = await fs.stat(targetPath)
     if (!fileStat.isFile()) {
       throw new Error('Selected item is not a file.')
@@ -5647,22 +7006,23 @@ app.whenReady().then(() => {
     assertTextBuffer(buffer)
 
     return {
-      path: toWorkspaceRelativePath(workspace, targetPath),
+      path: toWorkspaceRelativePath(registeredWorkspace, targetPath),
       content: buffer.toString('utf8'),
       sizeBytes: fileStat.size
     }
   })
 
   ipcMain.handle('discover-gemini-commands', async (_, workspace: string): Promise<GeminiCommandDiscoveryRecord[]> => {
-    return discoverGeminiCommands(workspace)
+    return discoverGeminiCommands(requireRegisteredWorkspace(workspace))
   })
 
   ipcMain.handle('discover-gemini-memory', async (_, workspace: string): Promise<GeminiMemoryDiscoveryRecord[]> => {
-    return discoverGeminiMemory(workspace)
+    return discoverGeminiMemory(requireRegisteredWorkspace(workspace))
   })
 
   ipcMain.handle('write-workspace-file', async (_, workspace: string, filePath: string, content: string): Promise<WorkspaceFileReadResult> => {
-    const targetPath = resolveWorkspaceChild(workspace, filePath)
+    const registeredWorkspace = requireRegisteredWorkspace(workspace)
+    const targetPath = resolveWorkspaceChild(registeredWorkspace, filePath)
     let previousContent: string | undefined
     let existedBefore = false
     try {
@@ -5679,9 +7039,9 @@ app.whenReady().then(() => {
     await fs.mkdir(dirname(targetPath), { recursive: true })
     await fs.writeFile(targetPath, content, 'utf8')
     const fileStat = await fs.stat(targetPath)
-    const relativePath = toWorkspaceRelativePath(workspace, targetPath)
+    const relativePath = toWorkspaceRelativePath(registeredWorkspace, targetPath)
     const changeSet = AppStore.recordWorkspaceEditorChange({
-      workspacePath: workspace,
+      workspacePath: registeredWorkspace,
       filePath: relativePath,
       existedBefore,
       previousContent,
@@ -5701,10 +7061,11 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-agent-status', async (_, provider: ProviderId) => {
-    return getAgentStatusSnapshot(provider)
+    return getAgentStatusSnapshot(assertProviderId(provider))
   })
 
   ipcMain.handle('get-agent-rate-limits', async (_, provider: ProviderId) => {
+    provider = assertProviderId(provider)
     if (provider !== 'codex') {
       return null
     }
@@ -5727,11 +7088,11 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-agent-mcp-status', async (_, provider: ProviderId) => {
-    return getAgentMcpStatusSnapshot(provider)
+    return getAgentMcpStatusSnapshot(assertProviderId(provider))
   })
 
   ipcMain.handle('get-provider-capabilities', async (_, provider: ProviderId, workspacePath?: string, approvalMode?: string) => {
-    return getProviderCapabilityContract(provider, workspacePath, approvalMode)
+    return getProviderCapabilityContract(assertProviderId(provider), workspacePath, approvalMode)
   })
 
   ipcMain.handle('get-provider-adapters', () => getProviderAdapterDescriptors())
@@ -5791,7 +7152,7 @@ app.whenReady().then(() => {
     await client.ensureStarted(app.getVersion())
     const model = normalizeCodexModel(params?.model)
     const route = routeWithRunId('codex', params)
-    const reviewState = createCodexRunState(event.sender, threadId, model, params?.cwd, route)
+    const reviewState = createCodexRunState(event.sender, threadId, model, params?.cwd, params?.cwd, 'workspace', route)
     registerRunSession('codex', event.sender, reviewState, params?.cwd, reviewState, threadId)
     setActiveCodexRunState(reviewState)
     sendAgentCompatLine(event.sender, 'codex', {
@@ -5851,21 +7212,51 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
-    if (!payload?.provider) {
-      throw new Error('Provider is required.')
+    const normalizedPayload = normalizeAgentRunPayload(payload)
+    normalizedPayload.appRunId = routeWithRunId(normalizedPayload.provider, normalizedPayload).appRunId
+    try {
+      applyRuntimeProfileToPayload(normalizedPayload)
+    } catch (error) {
+      const route = routeWithRunId(normalizedPayload.provider, normalizedPayload)
+      sendAgentCompatError(event.sender, normalizedPayload.provider, error instanceof Error ? error.message : String(error), route)
+      sendAgentCompatExit(event.sender, normalizedPayload.provider, -1, route)
+      return
     }
-    const adapter = providerAdapters.require(payload.provider)
-    if (adapter.runChannel !== 'run-agent') {
-      throw new Error(`${adapter.label} uses ${adapter.runChannel}; this provider is not routed through run-agent yet.`)
+    const adapter = providerAdapters.require(normalizedPayload.provider)
+    if (!(await ensureProviderRunPreflight(event.sender, normalizedPayload))) {
+      return
     }
-    await adapter.run({ event, payload })
+    await adapter.run({ event, payload: normalizedPayload })
   })
 
   ipcMain.handle('cancel-agent-run', async (_, provider: ProviderId = 'gemini', runId?: string) => {
-    return providerAdapters.require(provider).cancel(runId)
+    const normalizedProvider = assertProviderId(provider || 'gemini')
+    return providerAdapters.require(normalizedProvider).cancel(optionalString(runId))
   })
 
   ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
+    const pendingMain = pendingMainApprovals.get(requestId)
+    if (pendingMain) {
+      const session = runManager.resolveApproval(requestId) || runManager.get(pendingMain.runId)
+      appendDurableRunEventForRoute(
+        pendingMain.provider,
+        { appRunId: session?.runId || pendingMain.runId, appChatId: session?.appChatId },
+        'approval_response',
+        'control',
+        `Main approval response: ${action}`,
+        {
+          requestId,
+          action,
+          workspacePath: pendingMain.workspacePath
+        }
+      )
+      resolveApprovalLedgerResponse(requestId, action)
+      pendingMainApprovals.delete(requestId)
+      runManager.clearApproval(requestId)
+      pendingMain.resolve(permissionService.isApprovedAction(action))
+      return true
+    }
+
     const pendingGeminiTool = pendingGeminiToolApprovals.get(requestId)
     if (pendingGeminiTool) {
       const session = runManager.resolveApproval(requestId) || runManager.get(pendingGeminiTool.runId)
@@ -5885,13 +7276,14 @@ app.whenReady().then(() => {
       resolveApprovalLedgerResponse(requestId, action)
       pendingGeminiToolApprovals.delete(requestId)
       runManager.clearApproval(requestId)
-      if (action === 'acceptForWorkspace') {
-        upsertAgenticWorkspaceGrant(pendingGeminiTool.provider, pendingGeminiTool.workspacePath, pendingGeminiTool.service)
-      }
-      if (action === 'acceptForSession') {
-        addAgenticSessionGrant(pendingGeminiTool.provider, pendingGeminiTool.workspacePath, pendingGeminiTool.service, pendingGeminiTool.runId)
-      }
-      pendingGeminiTool.resolve(action === 'accept' || action === 'acceptForSession' || action === 'acceptForWorkspace')
+      const allowed = permissionService.applyApprovalDecision({
+        provider: pendingGeminiTool.provider,
+        workspacePath: pendingGeminiTool.workspacePath,
+        service: pendingGeminiTool.service,
+        runId: pendingGeminiTool.runId,
+        action
+      })
+      pendingGeminiTool.resolve(allowed)
       return true
     }
 
@@ -5985,10 +7377,14 @@ app.whenReady().then(() => {
     runManager.clearApproval(requestId)
 
     if (pending.method === 'item/permissions/requestApproval') {
-      if (action === 'acceptForWorkspace' && pending.service) {
-        upsertAgenticWorkspaceGrant('codex', pending.workspacePath, pending.service)
-      }
-      if (action === 'accept' || action === 'acceptForSession' || action === 'acceptForWorkspace') {
+      const allowed = permissionService.applyApprovalDecision({
+        provider: 'codex',
+        workspacePath: pending.workspacePath,
+        service: pending.service,
+        runId: pending.runId,
+        action
+      })
+      if (allowed) {
         codexClient.respond(pending.rpcId, {
           permissions: pending.params?.permissions || {},
           scope: action === 'accept' ? 'turn' : 'session'
@@ -6033,149 +7429,27 @@ app.whenReady().then(() => {
     worktree: GeminiWorktreeLaunchOption = null,
     runRoute: AgentRunRoute | null = null
   ) => {
-    const route = routeWithRunId('gemini', runRoute)
-    void emitProviderCapabilityWarnings(event.sender, 'gemini', workspace, approvalMode, route, {
-      excludeIds: ['gemini-bridge-unavailable']
-    })
-
-    const args: string[] = []
-    const settings = AppStore.getSettings()
-    const effectiveApprovalMode = resolveGeminiApprovalModeForServices(approvalMode, settings)
-    if (effectiveApprovalMode !== approvalMode) {
-      sendAgentCompatError(event.sender, 'gemini', `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} by AgentBench service settings.`, route)
-    }
-    const argsError = appendGeminiCliSessionArgs(args, model, effectiveApprovalMode, sessionTrust, resumeSessionId, settings.geminiCheckpointingEnabled, worktree)
-    if (argsError) {
-      sendAgentCompatError(event.sender, 'gemini', argsError, route)
-      sendAgentCompatExit(event.sender, 'gemini', -1, route)
-      return
-    }
-
-    const includeDirs = Array.from(
-      imageAttachments.reduce((acc, attachmentPath) => {
-        if (attachmentPath && typeof attachmentPath === 'string') {
-          const normalized = attachmentPath.trim()
-          if (!normalized) {
-            return acc
-          }
-
-          const pathToInclude = isAbsolute(normalized) ? dirname(normalized) : dirname(join(workspace, normalized))
-          if (pathToInclude) {
-            acc.add(pathToInclude)
-          }
-        }
-        return acc
-      }, new Set<string>())
-    )
-
-    includeDirs.forEach((imageDir) => {
-      args.push('--include-directories', imageDir)
-    })
-
-    args.push(
-      '--prompt',
+    const normalizedPayload = normalizeAgentRunPayload({
+      provider: 'gemini',
+      workspace,
       prompt,
-      '--output-format',
-      'stream-json'
-    )
-
-    const resolved = await resolveCliProviderBinary('gemini')
-    if (!resolved.binaryPath) {
-      sendAgentCompatError(event.sender, 'gemini', resolved.error || 'Gemini CLI is not configured.', route)
-      sendAgentCompatExit(event.sender, 'gemini', -1, route)
+      model,
+      approvalMode,
+      sessionTrust,
+      imagePaths: imageAttachments,
+      providerSessionId: resumeSessionId,
+      geminiWorktree: worktree,
+      ...runRoute
+    })
+    normalizedPayload.appRunId = routeWithRunId('gemini', normalizedPayload).appRunId
+    if (!(await ensureProviderRunPreflight(event.sender, normalizedPayload))) {
       return
     }
-
-    await prepareGeminiMcpBridgeForRun(event.sender, workspace, 'gemini-output', route)
-
-    const env = createCliEnv({
-      FORCE_COLOR: '0',
-      NO_COLOR: '1',
-      GEMINI_SANDBOX: 'true',
-      AGENTBENCH_RUN_ID: route.appRunId || '',
-      AGENTBENCH_CHAT_ID: route.appChatId || ''
-    }, resolved.binaryPath)
-
-    const child = spawn(resolved.binaryPath, args, {
-      cwd: workspace,
-      shell: false,
-      env
-    })
-    geminiProcess = child
-    runManager.attachProcess(route.appRunId!, child)
-
-    child.stdout?.on('data', (data) => {
-      const text = data.toString()
-      appendDurableRunEventForRoute('gemini', route, 'provider_raw', 'raw', 'Gemini stdout', { data: text }, 'provider')
-      event.sender.send('gemini-output', { provider: 'gemini', data: text, ...route })
-    })
-
-    child.stderr?.on('data', (data) => {
-      const error = data.toString()
-      appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini stderr', { error }, 'provider')
-      event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
-    })
-
-    child.on('close', (code) => {
-      appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', `Gemini exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
-      event.sender.send('gemini-exit', { provider: 'gemini', code, ...route })
-      if (geminiProcess === child) {
-        geminiProcess = null
-      }
-      runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
-      if (!geminiSessionProcess) {
-        const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
-        activeGeminiToolContext = latestGemini?.workspacePath ? latestGemini : null
-      }
-    })
-
-    child.on('error', (err) => {
-      const error = `Failed to start process: ${err.message}`
-      appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini process failed to start', { error }, 'provider')
-      event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
-      appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', 'Gemini process failed before exit', { code: -1 }, 'provider')
-      event.sender.send('gemini-exit', { provider: 'gemini', code: -1, ...route })
-      if (geminiProcess === child) {
-        geminiProcess = null
-      }
-      runManager.finish(route.appRunId, 'failed')
-      if (!geminiSessionProcess) {
-        const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
-        activeGeminiToolContext = latestGemini?.workspacePath ? latestGemini : null
-      }
-    })
+    await runGeminiProvider(event, normalizedPayload)
   })
 
   ipcMain.handle('cancel-gemini', async (_, runId?: string) => {
-    const queuedJob = runId ? AppStore.getRunQueueJob(runId) : null
-    if (queuedJob && (queuedJob.status === 'queued' || queuedJob.status === 'paused')) {
-      AppStore.updateRunQueueJob(queuedJob.runId, {
-        status: 'cancelled',
-        statusReason: 'Cancelled before the queued run started.'
-      })
-      emitRunQueueChanged()
-      return
-    }
-    const session = runManager.get(runId) || runManager.getLatestByProvider('gemini')
-    if (session?.process) {
-      session.process.kill()
-      runManager.finish(session.runId, 'cancelled')
-      if (geminiProcess === session.process) {
-        geminiProcess = null
-      }
-      if (!geminiSessionProcess) {
-        const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
-        activeGeminiToolContext = latestGemini?.workspacePath ? latestGemini : null
-      }
-      return
-    }
-    if (geminiProcess) {
-      geminiProcess.kill()
-      geminiProcess = null
-      if (!geminiSessionProcess) {
-        activeGeminiToolContext = null
-      }
-    }
+    return providerAdapters.require('gemini').cancel(optionalString(runId))
   })
 
   ipcMain.handle('write-gemini-input', async (_, data: string) => {
@@ -6211,6 +7485,31 @@ app.whenReady().then(() => {
     resumeSessionId?: string | null,
     worktree: GeminiWorktreeLaunchOption = null
   ) => {
+    let registeredWorkspace: string
+    try {
+      registeredWorkspace = requireRegisteredWorkspace(workspace)
+    } catch (error) {
+      event.sender.send('gemini-session-data', `${error instanceof Error ? error.message : String(error)}\r\n`)
+      event.sender.send('gemini-session-exit', -1)
+      return
+    }
+    const sessionRoute = routeWithRunId('gemini')
+    const trustPayload: AgentRunPayload = {
+      provider: 'gemini',
+      scope: 'workspace',
+      workspace: registeredWorkspace,
+      prompt: '',
+      appRunId: sessionRoute.appRunId,
+      sessionTrust
+    }
+    const trustApproved = await ensureWorkspaceTrustForRun(event.sender, trustPayload)
+    if (!trustApproved) {
+      event.sender.send('gemini-session-data', 'Gemini session blocked by workspace trust policy.\r\n')
+      event.sender.send('gemini-session-exit', -1)
+      return
+    }
+    const effectiveSessionTrust = Boolean(sessionTrust && !trustStatusAllowsRun(TrustStatusService.checkTrust(registeredWorkspace).status))
+
     if (geminiSessionProcess) {
       geminiSessionProcess.kill()
       geminiSessionProcess = null
@@ -6220,9 +7519,13 @@ app.whenReady().then(() => {
     const settings = AppStore.getSettings()
     const effectiveApprovalMode = resolveGeminiApprovalModeForServices(approvalMode, settings)
     if (effectiveApprovalMode !== approvalMode) {
-      event.sender.send('gemini-session-data', `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} by AgentBench service settings.\r\n`)
+      event.sender.send('gemini-session-data', `Gemini approval mode changed from ${approvalMode} to ${effectiveApprovalMode} because AGBench service settings block write-capable Gemini modes.\r\n`)
     }
-    const argsError = appendGeminiCliSessionArgs(args, model, effectiveApprovalMode, sessionTrust, resumeSessionId, settings.geminiCheckpointingEnabled, worktree)
+    const resumePolicy = resolveGeminiCliResumePolicy(effectiveApprovalMode, resumeSessionId)
+    if (resumePolicy.skippedReason) {
+      event.sender.send('gemini-session-data', `${resumePolicy.skippedReason}\r\n`)
+    }
+    const argsError = appendGeminiCliSessionArgs(args, model, effectiveApprovalMode, effectiveSessionTrust, resumePolicy.resumeSessionId, settings.geminiCheckpointingEnabled, worktree, geminiWriteModeRequiresBridge('workspace', effectiveApprovalMode))
     if (argsError) {
       event.sender.send('gemini-session-data', `${argsError}\r\n`)
       event.sender.send('gemini-session-exit', -1)
@@ -6236,11 +7539,22 @@ app.whenReady().then(() => {
       return
     }
 
-    await prepareGeminiMcpBridgeForRun(event.sender, workspace, 'gemini-session-data')
+    let routedSession: AgentRunRoute
+    try {
+      routedSession = await prepareGeminiMcpBridgeForRun(event.sender, registeredWorkspace, sessionRoute, 'workspace', effectiveSessionTrust, {
+        requireWriteTools: geminiWriteModeRequiresBridge('workspace', effectiveApprovalMode)
+      })
+    } catch (error) {
+      event.sender.send('gemini-session-data', `${error instanceof Error ? error.message : String(error)}\r\n`)
+      event.sender.send('gemini-session-exit', -1)
+      return
+    }
 
     const env: Record<string, string> = createCliEnv({
       FORCE_COLOR: '1',
-      GEMINI_SANDBOX: 'true'
+      GEMINI_SANDBOX: 'true',
+      AGENTBENCH_RUN_ID: routedSession.appRunId || '',
+      AGENTBENCH_CHAT_ID: routedSession.appChatId || ''
     }, resolved.binaryPath)
 
     try {
@@ -6248,7 +7562,7 @@ app.whenReady().then(() => {
         name: 'xterm-color',
         cols,
         rows,
-        cwd: workspace,
+        cwd: registeredWorkspace,
         env
       })
     } catch (err) {
@@ -6295,66 +7609,128 @@ app.whenReady().then(() => {
   })
 
   ipcMain.handle('get-diff', async (_, workspace: string) => {
-    return getWorkspaceDiff(workspace)
+    return getWorkspaceDiff(requireRegisteredWorkspace(workspace))
   })
 
   ipcMain.handle('get-workspace-change-sets', async (_, filter?: WorkspaceChangeFilter) => {
     return AppStore.getWorkspaceChangeSets(filter || {})
   })
 
-  ipcMain.handle('record-workspace-run-change', async (_, input: WorkspaceRunChangeInput) => {
-    return AppStore.recordWorkspaceRunChange(input)
-  })
-
   ipcMain.handle('capture-snapshot', async (_, workspace: string) => {
-    return captureWorkspaceSnapshot(workspace)
+    return captureWorkspaceSnapshot(requireRegisteredWorkspace(workspace))
   })
 
-  ipcMain.handle('compute-run-diff', async (_, runId: string, preSnapshot: any, postSnapshot: any) => {
-    return computeRunDiff(preSnapshot, postSnapshot, runId)
+  ipcMain.handle('compute-run-diff', async (_, runId: string, preSnapshot: any, postSnapshot: any, changeContext?: Partial<WorkspaceRunChangeInput>) => {
+    const runDiff = computeRunDiff(preSnapshot, postSnapshot, runId)
+    if (!changeContext || !isRecord(changeContext)) {
+      return runDiff
+    }
+
+    const workspacePath = requireRegisteredWorkspace(requireNonEmptyString(changeContext.workspacePath, 'Workspace'))
+    const workspace = findRegisteredWorkspace(workspacePath)
+    if (changeContext.workspaceId && workspace && changeContext.workspaceId !== workspace.id) {
+      throw new Error('Run diff workspace id does not match the registered workspace.')
+    }
+    const effectiveWorkspacePath = changeContext.effectiveWorkspacePath
+      ? requireRegisteredWorkspace(changeContext.effectiveWorkspacePath, 'Effective workspace')
+      : workspacePath
+    const changeSet = AppStore.recordWorkspaceRunChange({
+      ...changeContext,
+      runId,
+      workspaceId: workspace?.id || changeContext.workspaceId,
+      workspacePath,
+      effectiveWorkspacePath,
+      provider: changeContext.provider ? assertProviderId(changeContext.provider) : undefined,
+      runDiff
+    })
+    return {
+      ...runDiff,
+      changeSetId: changeSet.id
+    }
   })
 
   // Trust Status
   ipcMain.handle('check-trust', (_, workspacePath: string) => {
-    return TrustStatusService.checkTrust(workspacePath)
+    return TrustStatusService.checkTrust(requireRegisteredWorkspace(workspacePath))
   })
 
   // PTY for Trust Assistant
-  let ptyProcess: pty.IPty | null = null
+  const ptyProcesses = new Map<string, pty.IPty>()
+  const stoppedPtySessions = new Set<string>()
 
-  ipcMain.handle('start-pty', (event, workspacePath: string) => {
-    if (ptyProcess) {
-      ptyProcess.kill()
-      ptyProcess = null
+  ipcMain.handle('start-pty', async (event, workspacePath: string, sessionId: string = 'default') => {
+    const registeredWorkspace = requireRegisteredWorkspace(workspacePath)
+    const ptySessionId = optionalString(sessionId) || 'default'
+    stoppedPtySessions.delete(ptySessionId)
+    const allowed = await requestAgenticServiceApproval(event.sender, 'gemini', 'shellCommands', registeredWorkspace, {
+      method: 'pty/start',
+      title: 'Approve setup terminal',
+      body: `${registeredWorkspace}\n${process.env.SHELL || (os.platform() === 'win32' ? 'powershell.exe' : 'bash')}`,
+      preview: {
+        kind: 'terminal',
+        workspacePath: registeredWorkspace,
+        sessionId: ptySessionId
+      }
+    })
+    if (!allowed) {
+      event.sender.send('pty-data', 'Terminal start denied by AGBench approval policy.\r\n', ptySessionId)
+      event.sender.send('pty-exit', -1, ptySessionId)
+      return
+    }
+    if (stoppedPtySessions.delete(ptySessionId)) {
+      event.sender.send('pty-exit', null, ptySessionId)
+      return
+    }
+
+    const existing = ptyProcesses.get(ptySessionId)
+    if (existing) {
+      existing.kill()
+      ptyProcesses.delete(ptySessionId)
     }
     
     const shellCommand = os.platform() === 'win32' ? 'powershell.exe' : process.env.SHELL || 'bash'
 
-    ptyProcess = pty.spawn(shellCommand, [], {
+    const ptyProcess = pty.spawn(shellCommand, [], {
       name: 'xterm-color',
       cols: 80,
       rows: 24,
-      cwd: workspacePath,
+      cwd: registeredWorkspace,
       env: process.env as Record<string, string>
     })
+    ptyProcesses.set(ptySessionId, ptyProcess)
 
     ptyProcess.onData((data) => {
-      event.sender.send('pty-data', data)
+      event.sender.send('pty-data', data, ptySessionId)
     })
 
     ptyProcess.onExit((e) => {
-      event.sender.send('pty-exit', e.exitCode)
-      ptyProcess = null
+      event.sender.send('pty-exit', e.exitCode, ptySessionId)
+      if (ptyProcesses.get(ptySessionId) === ptyProcess) {
+        ptyProcesses.delete(ptySessionId)
+      }
     })
   })
 
-  ipcMain.handle('pty-write', (_, data: string) => {
+  ipcMain.handle('stop-pty', (_, sessionId: string = 'default') => {
+    const ptySessionId = optionalString(sessionId) || 'default'
+    const ptyProcess = ptyProcesses.get(ptySessionId)
+    if (ptyProcess) {
+      ptyProcess.kill()
+      ptyProcesses.delete(ptySessionId)
+    } else {
+      stoppedPtySessions.add(ptySessionId)
+    }
+  })
+
+  ipcMain.handle('pty-write', (_, data: string, sessionId: string = 'default') => {
+    const ptyProcess = ptyProcesses.get(optionalString(sessionId) || 'default')
     if (ptyProcess) {
       ptyProcess.write(data)
     }
   })
 
-  ipcMain.handle('pty-resize', (_, cols: number, rows: number) => {
+  ipcMain.handle('pty-resize', (_, cols: number, rows: number, sessionId: string = 'default') => {
+    const ptyProcess = ptyProcesses.get(optionalString(sessionId) || 'default')
     if (ptyProcess) {
       ptyProcess.resize(cols, rows)
     }

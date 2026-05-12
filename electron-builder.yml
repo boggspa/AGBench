@@ -1,5 +1,5 @@
-appId: com.chrisizatt.agentbench
-productName: AgentBench
+appId: com.chrisizatt.agbench
+productName: AGBench
 directories:
   buildResources: build
 files:
@@ -11,10 +11,12 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
 asarUnpack:
   - resources/**
+  - node_modules/node-pty/**
+afterPack: build/validate-native-modules.cjs
 win:
-  executableName: AgentBench
+  executableName: AGBench
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: AGBench-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
@@ -28,7 +30,7 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: AGBench-${version}.${ext}
 linux:
   target:
     - AppImage
@@ -37,8 +39,12 @@ linux:
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: ${name}-${version}.${ext}
-npmRebuild: false
+  artifactName: AGBench-${version}.${ext}
+npmRebuild: true
+detectUpdateChannel: true
+generateUpdatesFilesForAllChannels: true
 publish:
-  provider: generic
-  url: https://example.com/auto-updates
+  provider: github
+  owner: chrisizatt
+  repo: GUIGemini
+  releaseType: release

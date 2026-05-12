@@ -1,4 +1,4 @@
-import { ToolActivity, ToolActivityStatus } from '../../../main/store/types';
+import { DiffFileStatus, ToolActivity, ToolActivityStatus, ToolDiffFileSummary, ToolDiffSummary } from '../../../main/store/types';
 
 export function extractToolName(event: any): string {
   if (!event || typeof event !== 'object') return 'unknown';
@@ -71,7 +71,7 @@ export function getToolCategory(toolName: string): ToolCategory {
   const name = (toolName || '').toLowerCase();
   if (['update_topic', 'invoke_agent', 'summary', 'intent', 'progress', 'tool_progress', 'codex_reasoning', 'codex_plan'].includes(name)) return 'task';
   if (name === 'read_file' || name === 'list_directory') return 'read';
-  if (['replace', 'write_file', 'create_file', 'edit_file'].includes(name)) return 'write';
+  if (['replace', 'write_file', 'create_file', 'edit_file', 'delete_file'].includes(name)) return 'write';
   if (['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(name)) return 'search';
   if (name === 'run_shell_command' || name === 'shell') return 'shell';
   return 'unknown';
@@ -99,6 +99,9 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
       }
       if (toolName.toLowerCase() === 'create_file') {
         return filePath ? `Created ${filePath}` : 'Created file';
+      }
+      if (toolName.toLowerCase() === 'delete_file') {
+        return filePath ? `Deleted ${filePath}` : 'Deleted file';
       }
       return filePath ? `Wrote ${filePath}` : 'Wrote file';
     }
@@ -133,6 +136,152 @@ export function estimateLineChanges(parameters?: Record<string, unknown>): { add
   return {};
 }
 
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function numberValue(value: unknown): number | undefined {
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : undefined;
+}
+
+function normalizeStatus(value: unknown): ToolDiffFileSummary['status'] {
+  const status = String(value || '').toLowerCase();
+  if (status === 'add' || status === 'create' || status === 'created' || status === 'new') return 'created';
+  if (status === 'delete' || status === 'deleted' || status === 'remove' || status === 'removed') return 'deleted';
+  if (status === 'rename' || status === 'renamed') return 'renamed';
+  if (status === 'modify' || status === 'modified' || status === 'edit' || status === 'update') return 'modified';
+  return status ? (status as DiffFileStatus | 'updated' | 'unknown') : 'unknown';
+}
+
+function getPathFromRecord(record: Record<string, unknown>): string | undefined {
+  const path = stringValue(record.path) ||
+    stringValue(record.filePath) ||
+    stringValue(record.file_path) ||
+    stringValue(record.target) ||
+    stringValue(record.target_file) ||
+    stringValue(record.target_file_path);
+  return path.trim() || undefined;
+}
+
+function summarizeFiles(files: ToolDiffFileSummary[], source: ToolDiffSummary['source'], confidence: ToolDiffSummary['confidence']): ToolDiffSummary | undefined {
+  if (files.length === 0) return undefined;
+  let hasStats = false;
+  const totals = files.reduce<{ additions: number; deletions: number }>((acc, file) => {
+    if (file.additions !== undefined || file.deletions !== undefined) hasStats = true;
+    acc.additions += file.additions || 0;
+    acc.deletions += file.deletions || 0;
+    return acc;
+  }, { additions: 0, deletions: 0 });
+
+  return {
+    additions: hasStats ? totals.additions : undefined,
+    deletions: hasStats ? totals.deletions : undefined,
+    files,
+    source,
+    confidence: hasStats ? confidence : 'unknown'
+  };
+}
+
+function parseChanges(value: unknown): ToolDiffSummary | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const files = value
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .map((item) => ({
+      path: getPathFromRecord(item),
+      status: normalizeStatus(item.kind || item.type || item.operation || item.status),
+      additions: numberValue(item.additions ?? item.added ?? item.linesAdded ?? item.insertions),
+      deletions: numberValue(item.deletions ?? item.deleted ?? item.linesDeleted ?? item.removals)
+    }));
+
+  return summarizeFiles(files, 'codex_changes', 'exact');
+}
+
+export function parseUnifiedDiffSummary(diffText: string): ToolDiffSummary | undefined {
+  if (!diffText.trim()) return undefined;
+
+  const files: ToolDiffFileSummary[] = [];
+  let current: ToolDiffFileSummary | null = null;
+
+  const commitCurrent = () => {
+    if (current) {
+      files.push(current);
+      current = null;
+    }
+  };
+
+  for (const line of diffText.split('\n')) {
+    const diffHeader = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    if (diffHeader) {
+      commitCurrent();
+      current = {
+        path: diffHeader[2] || diffHeader[1],
+        status: 'modified',
+        additions: 0,
+        deletions: 0
+      };
+      continue;
+    }
+
+    if (!current) {
+      current = { additions: 0, deletions: 0, status: 'unknown' };
+    }
+
+    if (line.startsWith('+++ b/')) current.path = line.slice(6);
+    if (line.startsWith('new file mode')) current.status = 'created';
+    if (line.startsWith('deleted file mode')) current.status = 'deleted';
+    if (line.startsWith('+') && !line.startsWith('+++')) current.additions = (current.additions || 0) + 1;
+    if (line.startsWith('-') && !line.startsWith('---')) current.deletions = (current.deletions || 0) + 1;
+  }
+
+  commitCurrent();
+  const usefulFiles = files.filter((file) => file.path || file.additions || file.deletions);
+  return summarizeFiles(usefulFiles, 'patch_preview', 'exact');
+}
+
+function getPatchPreview(parameters?: Record<string, unknown>, resultText?: string): string {
+  if (!parameters) return resultText || '';
+  return stringValue(parameters.patchPreview) ||
+    stringValue(parameters.patch_preview) ||
+    stringValue(parameters.patch) ||
+    stringValue(parameters.diff) ||
+    stringValue(parameters.unifiedDiff) ||
+    stringValue(parameters.unified_diff) ||
+    resultText ||
+    '';
+}
+
+export function deriveToolDiffSummary(toolName: string, parameters?: Record<string, unknown>, resultText?: string): ToolDiffSummary | undefined {
+  const category = getToolCategory(toolName);
+  const changesSummary = parseChanges(parameters?.changes);
+  if (changesSummary?.confidence === 'exact' && ((changesSummary.additions || 0) > 0 || (changesSummary.deletions || 0) > 0)) {
+    return changesSummary;
+  }
+
+  const patchPreview = getPatchPreview(parameters, resultText);
+  const patchSummary = parseUnifiedDiffSummary(patchPreview);
+  if (patchSummary) return patchSummary;
+
+  if (changesSummary) return changesSummary;
+
+  const replacement = estimateLineChanges(parameters);
+  if (replacement.additions !== undefined || replacement.deletions !== undefined) {
+    const path = parameters ? getPathFromRecord(parameters) : undefined;
+    const source = typeof parameters?.old_string === 'string' && typeof parameters?.new_string === 'string'
+      ? 'string_replace'
+      : 'content';
+    return {
+      additions: replacement.additions || 0,
+      deletions: replacement.deletions || 0,
+      files: [{ path, status: category === 'write' && toolName.toLowerCase() === 'create_file' ? 'created' : 'modified', additions: replacement.additions || 0, deletions: replacement.deletions || 0 }],
+      source,
+      confidence: source === 'content' && toolName.toLowerCase() !== 'edit_file' ? 'exact' : 'estimated'
+    };
+  }
+
+  return undefined;
+}
+
 export function createToolActivity(toolUseEvent: any): ToolActivity {
   const toolName = extractToolName(toolUseEvent);
   const parameters = extractParameters(toolUseEvent);
@@ -149,6 +298,7 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
     startedAt: new Date().toISOString(),
     parameters,
     filePath,
+    diffSummary: deriveToolDiffSummary(toolName, parameters),
     rawUseEvent: toolUseEvent,
     // Legacy fields
     operationCategory: category as any,
@@ -170,6 +320,7 @@ export function pairToolResult(activity: ToolActivity, toolResultEvent: any): To
     status,
     endedAt,
     durationMs,
+    diffSummary: deriveToolDiffSummary(activity.toolName, activity.parameters, resultOutput) || activity.diffSummary,
     resultSummary: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : ''),
     outputPreview: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : ''),
     rawResultEvent: toolResultEvent,

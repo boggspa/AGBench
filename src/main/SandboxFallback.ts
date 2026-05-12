@@ -36,3 +36,14 @@ export function isCodexSandboxToolingFailure(output: string): boolean {
 
   return false
 }
+
+export function isSwiftPmCommand(command: unknown): boolean {
+  const text = Array.isArray(command)
+    ? command.map((part) => String(part || '')).join(' ')
+    : String(command || '')
+  return /\bswift\s+(test|run|package\s+dump-package)\b/i.test(text)
+}
+
+export function isSwiftPmNestedSandboxFailure(command: unknown, output: string): boolean {
+  return isSwiftPmCommand(command) && isCodexSandboxToolingFailure(output)
+}

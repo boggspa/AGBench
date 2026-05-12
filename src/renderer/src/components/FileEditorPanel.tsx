@@ -112,32 +112,15 @@ const extensionForPath = (filePath: string): Extension[] => {
   return []
 }
 
-const invokeEditorIpc = async <T,>(channel: string, ...args: unknown[]): Promise<T> => {
-  const electronInvoke = window.electron?.ipcRenderer?.invoke
-  if (!electronInvoke) {
-    throw new Error('File editor IPC is unavailable. Restart the app if it was already open during the latest update.')
-  }
-  return electronInvoke(channel, ...args) as Promise<T>
-}
-
 const editorApi = {
   listFiles: (workspacePath: string): Promise<WorkspaceFileEntry[]> => {
-    if (typeof window.api.listWorkspaceFiles === 'function') {
-      return window.api.listWorkspaceFiles(workspacePath)
-    }
-    return invokeEditorIpc<WorkspaceFileEntry[]>('list-workspace-files', workspacePath)
+    return window.api.listWorkspaceFiles(workspacePath)
   },
   readFile: (workspacePath: string, filePath: string): Promise<WorkspaceFileReadResult> => {
-    if (typeof window.api.readWorkspaceFile === 'function') {
-      return window.api.readWorkspaceFile(workspacePath, filePath)
-    }
-    return invokeEditorIpc<WorkspaceFileReadResult>('read-workspace-file', workspacePath, filePath)
+    return window.api.readWorkspaceFile(workspacePath, filePath)
   },
   writeFile: (workspacePath: string, filePath: string, content: string): Promise<WorkspaceFileReadResult> => {
-    if (typeof window.api.writeWorkspaceFile === 'function') {
-      return window.api.writeWorkspaceFile(workspacePath, filePath, content)
-    }
-    return invokeEditorIpc<WorkspaceFileReadResult>('write-workspace-file', workspacePath, filePath, content)
+    return window.api.writeWorkspaceFile(workspacePath, filePath, content)
   }
 }
 

@@ -7,7 +7,8 @@ import {
   parseRunEventLine,
   prepareRunEventPayload,
   safeRunEventFileName,
-  serializeRunEventRecord
+  serializeRunEventRecord,
+  verifyRunEventHashChain
 } from './RunEventStore'
 import type { RunEventRecord } from './store/types'
 
@@ -32,9 +33,29 @@ describe('RunEventStore', () => {
 
     expect(record.schemaVersion).toBe(1)
     expect(record.sequence).toBe(7)
+    expect(record.previousHash).toMatch(/^0{64}$/)
+    expect(record.hash).toMatch(/^[0-9a-f]{64}$/)
+    expect(record.spanId).toBe('run-1:7')
     expect(record.runId).toBe('run-1')
     expect(record.timestamp).toBe('2026-05-07T00:00:00.000Z')
     expect(record.payload).toEqual({ requestedModel: 'flash' })
+  })
+
+  it('hash chains immutable JSONL events', () => {
+    const first = createRunEventRecord(
+      { runId: 'run-1', kind: 'lifecycle', phase: 'control', source: 'main' },
+      1,
+      { now: '2026-05-07T00:00:00.000Z' }
+    )
+    const second = createRunEventRecord(
+      { runId: 'run-1', kind: 'provider_raw', phase: 'raw', source: 'provider', payload: { data: 'hello' } },
+      2,
+      { now: '2026-05-07T00:00:01.000Z', previousHash: first.hash }
+    )
+
+    expect(second.previousHash).toBe(first.hash)
+    expect(verifyRunEventHashChain([first, second])).toBe(true)
+    expect(verifyRunEventHashChain([{ ...second, summary: 'tampered' }, first])).toBe(false)
   })
 
   it('sanitizes run ids for per-run JSONL filenames', () => {
@@ -85,7 +106,8 @@ describe('RunEventStore', () => {
           provider: 'gemini',
           kind: 'tool',
           phase: 'normalized',
-          source: 'renderer'
+          source: 'renderer',
+          payload: { tool_id: 'tool-1' }
         },
         2
       ),
@@ -111,8 +133,7 @@ describe('RunEventStore', () => {
   })
 
   it('builds replay metadata for a run journal', () => {
-    const events: RunEventRecord[] = [
-      createRunEventRecord(
+    const first = createRunEventRecord(
         {
           runId: 'run-1',
           kind: 'lifecycle',
@@ -122,8 +143,8 @@ describe('RunEventStore', () => {
         },
         1,
         { now: '2026-05-07T00:00:00.000Z' }
-      ),
-      createRunEventRecord(
+      )
+    const second = createRunEventRecord(
         {
           runId: 'run-1',
           kind: 'final_message',
@@ -132,9 +153,9 @@ describe('RunEventStore', () => {
           payload: { content: 'Done' }
         },
         2,
-        { now: '2026-05-07T00:00:01.000Z' }
-      ),
-      createRunEventRecord(
+        { now: '2026-05-07T00:00:01.000Z', previousHash: first.hash }
+      )
+    const third = createRunEventRecord(
         {
           runId: 'run-1',
           kind: 'lifecycle',
@@ -143,15 +164,18 @@ describe('RunEventStore', () => {
           payload: { status: 'completed' }
         },
         3,
-        { now: '2026-05-07T00:00:02.000Z' }
+        { now: '2026-05-07T00:00:02.000Z', previousHash: second.hash }
       )
-    ]
+    const events: RunEventRecord[] = [first, second, third]
 
     const replay = createRunEventReplay('run-1', events)
     expect(replay.count).toBe(3)
     expect(replay.lastSequence).toBe(3)
     expect(replay.countsByKind.lifecycle).toBe(2)
     expect(replay.countsByKind.final_message).toBe(1)
+    expect(replay.hashChainValid).toBe(true)
+    expect(replay.timeline).toHaveLength(3)
+    expect(replay.hashHead).toBe(events[2].hash)
     expect(replay.startedAt).toBe('2026-05-07T00:00:00.000Z')
     expect(replay.endedAt).toBe('2026-05-07T00:00:02.000Z')
   })

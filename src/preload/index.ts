@@ -1,9 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
 import type { GeminiWorktreeLaunchOption, ProviderId } from '../main/store/types'
 
 // Custom APIs for renderer
 const api = {
+  getRuntimeVersions: () => ({ ...process.versions }),
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   selectImageFiles: () => ipcRenderer.invoke('select-image-files'),
   selectExternalPathGrant: (access: 'read' | 'write' = 'read') => ipcRenderer.invoke('select-external-path-grant', access),
@@ -37,9 +37,9 @@ const api = {
   writeWorkspaceFile: (workspace: string, path: string, content: string) =>
     ipcRenderer.invoke('write-workspace-file', workspace, path, content),
   captureSnapshot: (workspace: string) => ipcRenderer.invoke('capture-snapshot', workspace),
-  computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any) => ipcRenderer.invoke('compute-run-diff', runId, preSnapshot, postSnapshot),
+  computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any, changeContext: any = null) =>
+    ipcRenderer.invoke('compute-run-diff', runId, preSnapshot, postSnapshot, changeContext),
   getWorkspaceChangeSets: (filter: any = {}) => ipcRenderer.invoke('get-workspace-change-sets', filter),
-  recordWorkspaceRunChange: (input: any) => ipcRenderer.invoke('record-workspace-run-change', input),
   getGeminiVersion: () => ipcRenderer.invoke('get-gemini-version'),
   getGeminiCapabilities: (workspace?: string) => ipcRenderer.invoke('get-gemini-capabilities', workspace),
   getGeminiMcpBridgeStatus: () => ipcRenderer.invoke('get-gemini-mcp-bridge-status'),
@@ -53,9 +53,10 @@ const api = {
   
   // Trust and PTY
   checkTrust: (workspacePath: string) => ipcRenderer.invoke('check-trust', workspacePath),
-  startPty: (workspacePath: string) => ipcRenderer.invoke('start-pty', workspacePath),
-  ptyWrite: (data: string) => ipcRenderer.invoke('pty-write', data),
-  ptyResize: (cols: number, rows: number) => ipcRenderer.invoke('pty-resize', cols, rows),
+  startPty: (workspacePath: string, sessionId: string = 'default') => ipcRenderer.invoke('start-pty', workspacePath, sessionId),
+  stopPty: (sessionId: string = 'default') => ipcRenderer.invoke('stop-pty', sessionId),
+  ptyWrite: (data: string, sessionId: string = 'default') => ipcRenderer.invoke('pty-write', data, sessionId),
+  ptyResize: (cols: number, rows: number, sessionId: string = 'default') => ipcRenderer.invoke('pty-resize', cols, rows, sessionId),
   startGeminiSession: (
     workspace: string,
     model: string = 'cli-default',
@@ -72,11 +73,11 @@ const api = {
   discoverGeminiCommands: (workspace: string) => ipcRenderer.invoke('discover-gemini-commands', workspace),
   discoverGeminiMemory: (workspace: string) => ipcRenderer.invoke('discover-gemini-memory', workspace),
   getFileIconDataUrl: (path: string) => ipcRenderer.invoke('get-file-icon', path),
-  onPtyData: (callback: (data: string) => void) => {
-    ipcRenderer.on('pty-data', (_event, data) => callback(data))
+  onPtyData: (callback: (data: string, sessionId?: string) => void) => {
+    ipcRenderer.on('pty-data', (_event, data, sessionId) => callback(data, sessionId))
   },
-  onPtyExit: (callback: (code: number | null) => void) => {
-    ipcRenderer.on('pty-exit', (_event, code) => callback(code))
+  onPtyExit: (callback: (code: number | null, sessionId?: string) => void) => {
+    ipcRenderer.on('pty-exit', (_event, code, sessionId) => callback(code, sessionId))
   },
   removePtyListeners: () => {
     ipcRenderer.removeAllListeners('pty-data')
@@ -96,6 +97,13 @@ const api = {
   // Store APIs
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (partial: any) => ipcRenderer.invoke('update-settings', partial),
+  getRuntimeProfiles: (provider?: ProviderId) => ipcRenderer.invoke('get-runtime-profiles', provider),
+  saveRuntimeProfile: (profile: any) => ipcRenderer.invoke('save-runtime-profile', profile),
+  deleteRuntimeProfile: (id: string) => ipcRenderer.invoke('delete-runtime-profile', id),
+  getHandoffCards: (filter: any = {}) => ipcRenderer.invoke('get-handoff-cards', filter),
+  saveHandoffCard: (card: any) => ipcRenderer.invoke('save-handoff-card', card),
+  updateHandoffCard: (id: string, partial: any) => ipcRenderer.invoke('update-handoff-card', id, partial),
+  deleteHandoffCard: (id: string) => ipcRenderer.invoke('delete-handoff-card', id),
   getWorkspaces: () => ipcRenderer.invoke('get-workspaces'),
   addOrUpdateWorkspace: (path: string, partial: any = {}) => ipcRenderer.invoke('add-or-update-workspace', path, partial),
   removeWorkspace: (id: string) => ipcRenderer.invoke('remove-workspace', id),
@@ -103,6 +111,7 @@ const api = {
   getChats: (workspaceId?: string) => ipcRenderer.invoke('get-chats', workspaceId),
   getChat: (chatId: string) => ipcRenderer.invoke('get-chat', chatId),
   createChat: (workspaceId: string, workspacePath: string) => ipcRenderer.invoke('create-chat', workspaceId, workspacePath),
+  createGlobalChat: () => ipcRenderer.invoke('create-global-chat'),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),
   deleteChat: (chatId: string) => ipcRenderer.invoke('delete-chat', chatId),
   clearChats: (workspaceId?: string) => ipcRenderer.invoke('clear-chats', workspaceId),
@@ -113,12 +122,10 @@ const api = {
   updateScheduledTask: (id: string, partial: any) => ipcRenderer.invoke('update-scheduled-task', id, partial),
   deleteScheduledTask: (id: string) => ipcRenderer.invoke('delete-scheduled-task', id),
   getRunQueueJobs: (filter: any = {}) => ipcRenderer.invoke('get-run-queue-jobs', filter),
-  saveRunQueueJob: (job: any) => ipcRenderer.invoke('save-run-queue-job', job),
-  updateRunQueueJob: (runIdOrId: string, partial: any) => ipcRenderer.invoke('update-run-queue-job', runIdOrId, partial),
-  deleteRunQueueJob: (runIdOrId: string) => ipcRenderer.invoke('delete-run-queue-job', runIdOrId),
+  requestRunQueueJob: (job: any) => ipcRenderer.invoke('request-run-queue-job', job),
+  leaseRunQueueJob: (request: any = {}) => ipcRenderer.invoke('lease-run-queue-job', request),
+  transitionRunQueueJob: (runIdOrId: string, status: string, partial: any = {}) => ipcRenderer.invoke('transition-run-queue-job', runIdOrId, status, partial),
   getRunRecoveryRecords: (filter: any = {}) => ipcRenderer.invoke('get-run-recovery-records', filter),
-  appendRunEvent: (event: any) => ipcRenderer.invoke('append-run-event', event),
-  appendRunEvents: (events: any[]) => ipcRenderer.invoke('append-run-events', events),
   getRunEvents: (filter: any = {}) => ipcRenderer.invoke('get-run-events', filter),
   getRunEventReplay: (runId: string) => ipcRenderer.invoke('get-run-event-replay', runId),
   getApprovalLedger: (filter: any = {}) => ipcRenderer.invoke('get-approval-ledger', filter),
@@ -178,14 +185,11 @@ const api = {
 
 if (process.contextIsolated) {
   try {
-    contextBridge.exposeInMainWorld('electron', electronAPI)
     contextBridge.exposeInMainWorld('api', api)
   } catch (error) {
     console.error(error)
   }
 } else {
-  // @ts-ignore (define in dts)
-  window.electron = electronAPI
   // @ts-ignore (define in dts)
   window.api = api
 }

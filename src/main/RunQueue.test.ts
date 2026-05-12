@@ -36,6 +36,34 @@ describe('RunQueue', () => {
     expect(job.attempt).toBe(1)
   })
 
+  it('creates global queued jobs without workspace fields', () => {
+    const job = createRunQueueJob(
+      {
+        id: 'global-run-1',
+        runId: 'global-run-1',
+        provider: 'codex',
+        scope: 'global',
+        chatId: 'global-chat-1',
+        source: 'manual',
+        request: {
+          scope: 'global',
+          prompt: 'Search online and sketch options.',
+          selectedModelType: 'gpt-5.5',
+          customModel: '',
+          approvalMode: 'default',
+          sessionTrust: false,
+          imageAttachments: []
+        }
+      },
+      '2026-05-06T00:00:00.000Z'
+    )
+
+    expect(job.scope).toBe('global')
+    expect(job.workspacePath).toBeUndefined()
+    expect(job.workspaceId).toBeUndefined()
+    expect(job.status).toBe('queued')
+  })
+
   it('persists active and terminal timestamps during transitions', () => {
     const queued = createRunQueueJob(
       {

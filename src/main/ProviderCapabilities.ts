@@ -74,6 +74,8 @@ function serviceCapability(
     label: TOOLING_LABELS[id],
     state: serviceState(policy),
     source,
+    enforcedByAgentBench: source === 'agentbench' || source === 'bridge' || source === 'settings',
+    enforcement: source,
     policy,
     requiresApproval: serviceRequiresApproval(policy),
     tools,
@@ -91,6 +93,8 @@ function unavailableCapability(
     label: TOOLING_LABELS[id],
     state: 'unavailable',
     source,
+    enforcedByAgentBench: false,
+    enforcement: 'none',
     requiresApproval: false,
     tools: [],
     details
@@ -108,6 +112,8 @@ function delegatedCapability(
     label: TOOLING_LABELS[id],
     state: policy === 'deny' ? 'blocked' : 'delegated',
     source: policy === 'deny' ? 'settings' : 'provider',
+    enforcedByAgentBench: false,
+    enforcement: policy === 'deny' ? 'best_effort' : 'provider',
     policy,
     requiresApproval: policy !== 'allow' && policy !== 'deny',
     tools,
@@ -121,13 +127,15 @@ function networkCapability(policy?: AgenticNetworkPolicy): ProviderToolingCapabi
     label: TOOLING_LABELS.networkAccess,
     state: networkState(policy),
     source: 'settings',
+    enforcedByAgentBench: false,
+    enforcement: policy === 'deny' ? 'best_effort' : 'none',
     policy,
     requiresApproval: false,
     tools: [],
     details:
       policy === 'deny'
-        ? 'AgentBench settings request network blocking where provider transport supports it.'
-        : 'Network access is allowed by AgentBench settings.'
+        ? 'AGBench settings request network blocking where provider transport supports it.'
+        : 'Network access is allowed by AGBench settings.'
   }
 }
 
@@ -187,9 +195,16 @@ function geminiMcpCapability(
     message:
       status?.message ||
       (enabled
-        ? 'AgentBench Gemini MCP bridge is not available.'
-        : 'AgentBench Gemini MCP bridge is disabled.')
+        ? 'AGBench Gemini MCP bridge is not available.'
+        : 'AGBench Gemini MCP bridge is disabled.')
   }
+}
+
+function geminiMcpUnavailableTitle(status: GeminiMcpBridgeStatus | null | undefined): string {
+  if (!status?.enabled) return 'Gemini MCP bridge disabled'
+  if (!status.installed) return 'Gemini MCP bridge not installed'
+  if (status.error) return 'Gemini MCP bridge status failed'
+  return 'Gemini MCP bridge unavailable'
 }
 
 function unsupportedMcpCapability(provider: ProviderId): ProviderMcpCapability {
@@ -198,7 +213,7 @@ function unsupportedMcpCapability(provider: ProviderId): ProviderMcpCapability {
     source: 'unsupported',
     available: false,
     tools: [],
-    message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured AgentBench API yet.`
+    message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured AGBench API yet.`
   }
 }
 
@@ -219,7 +234,7 @@ function approvalContract(
             : 'workspace-write / on-request',
       inAppApprovals: true,
       supportsWorkspaceGrants: true,
-      notes: ['Codex app-server permission requests are routed through AgentBench approval cards.']
+      notes: ['Codex app-server permission requests are routed through AGBench approval cards.']
     }
   }
   if (provider === 'gemini') {
@@ -230,7 +245,7 @@ function approvalContract(
       inAppApprovals: true,
       supportsWorkspaceGrants: true,
       notes: [
-        'AgentBench-managed Gemini MCP tools use AgentBench approval cards when the bridge is available.'
+        'AGBench-managed Gemini MCP tools use AGBench approval cards when the bridge is available.'
       ]
     }
   }
@@ -242,7 +257,7 @@ function approvalContract(
       inAppApprovals: true,
       supportsWorkspaceGrants: false,
       notes: [
-        'Kimi Wire approval requests are routed through AgentBench, but provider-native tool coverage depends on Kimi CLI events.'
+        'Kimi Wire approval requests are routed through AGBench, but provider-native tool coverage depends on Kimi CLI events.'
       ]
     }
   }
@@ -260,12 +275,6 @@ function approvalContract(
 function effectiveGeminiMode(requestedMode: string, services: AgenticServicesSettings): string {
   if (requestedMode === 'plan') return requestedMode
   if (services.shellCommands === 'deny' || services.fileChanges === 'deny') return 'plan'
-  if (
-    requestedMode === 'auto_edit' &&
-    (services.shellCommands !== 'allow' || services.fileChanges !== 'allow')
-  ) {
-    return 'default'
-  }
   return requestedMode
 }
 
@@ -326,43 +335,43 @@ export function buildProviderCapabilityContract({
         services.shellCommands,
         'bridge',
         ['run_shell_command'],
-        'Gemini uses the AgentBench MCP bridge for host shell commands.'
+        'Gemini uses the AGBench MCP bridge for host shell commands.'
       )
       fileChanges = serviceCapability(
         'fileChanges',
         services.fileChanges,
         'bridge',
         ['write_file', 'replace'],
-        'Gemini uses the AgentBench MCP bridge for workspace file writes and replacements.'
+        'Gemini uses the AGBench MCP bridge for workspace file writes and replacements.'
       )
       mcpTools = serviceCapability(
         'mcpTools',
         services.mcpTools,
         'bridge',
         ['read_file', 'list_directory'],
-        'Gemini uses the AgentBench MCP bridge for workspace read/list tools.'
+        'Gemini uses the AGBench MCP bridge for workspace read/list tools.'
       )
     } else {
       shellCommands = unavailableCapability(
         'shellCommands',
         'bridge',
-        'AgentBench shell tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
+        'AGBench shell tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
       )
       fileChanges = unavailableCapability(
         'fileChanges',
         'bridge',
-        'AgentBench file editing tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
+        'AGBench file editing tools are not advertised to Gemini until the MCP bridge is enabled, installed, and available.'
       )
       mcpTools = unavailableCapability(
         'mcpTools',
         'bridge',
-        'AgentBench MCP tools are not advertised to Gemini until the bridge is enabled, installed, and available.'
+        'AGBench MCP tools are not advertised to Gemini until the bridge is enabled, installed, and available.'
       )
       warnings.push(
         warning(
           mcp.enabled ? 'gemini-bridge-unavailable' : 'gemini-bridge-disabled',
           'warning',
-          'Gemini AgentBench tools unavailable',
+          geminiMcpUnavailableTitle(geminiMcpBridgeStatus),
           mcp.message || 'Gemini will only have provider-native tools for this run.'
         )
       )
@@ -373,7 +382,7 @@ export function buildProviderCapabilityContract({
           'gemini-approval-mode-downgraded',
           'warning',
           'Gemini approval mode adjusted',
-          `Requested ${requestedMode}, but AgentBench service settings require ${effectiveMode}.`
+          `Requested ${requestedMode}, but AGBench service settings block write-capable Gemini modes, so this run will use ${effectiveMode}.`
         )
       )
     }
@@ -384,14 +393,14 @@ export function buildProviderCapabilityContract({
       services.shellCommands,
       'agentbench',
       ['run_shell_command'],
-      'Codex command approvals are routed through AgentBench.'
+      'Codex command approvals are routed through AGBench.'
     )
     fileChanges = serviceCapability(
       'fileChanges',
       services.fileChanges,
       'agentbench',
       ['edit_file', 'create_file', 'delete_file'],
-      'Codex file approvals and diffs are routed through AgentBench.'
+      'Codex file approvals and diffs are routed through AGBench.'
     )
     mcpTools = serviceCapability('mcpTools', services.mcpTools, 'provider', mcp.tools, mcp.message)
     if (settings.codexSandboxFallback === 'ask_rerun') {
@@ -429,7 +438,7 @@ export function buildProviderCapabilityContract({
         `${provider}-provider-managed-tools`,
         'info',
         `${label} tools are provider-managed`,
-        `${label} can run with AgentBench routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
+        `${label} can run with AGBench routing, but full shell/file/MCP tool introspection depends on provider CLI events.`
       )
     )
   }
@@ -441,7 +450,7 @@ export function buildProviderCapabilityContract({
         `${provider}-network-blocked`,
         'warning',
         'Network access blocked',
-        `${label} will be launched with AgentBench network policy set to block where that provider transport supports it.`
+        `${label} will be launched with AGBench network policy set to block where that provider transport supports it.`
       )
     )
   }
@@ -453,7 +462,7 @@ export function buildProviderCapabilityContract({
           `${provider}-${tool.id}-blocked`,
           'warning',
           `${tool.label} blocked`,
-          `${tool.label} are blocked by AgentBench settings for ${label}.`
+          `${tool.label} are blocked by AGBench settings for ${label}.`
         )
       )
     }

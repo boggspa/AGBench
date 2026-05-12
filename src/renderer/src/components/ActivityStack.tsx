@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { ToolActivity } from '../../../main/store/types';
-import { estimateLineChanges } from '../lib/ToolParser';
+import { ToolActivity, ToolDiffSummary } from '../../../main/store/types';
+import { deriveToolDiffSummary, estimateLineChanges } from '../lib/ToolParser';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface ActivityStackProps {
@@ -8,7 +8,7 @@ interface ActivityStackProps {
   workspacePath?: string
 }
 
-const WRITER_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file'];
+const WRITER_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file', 'delete_file'];
 const SEARCH_PARAM_KEYS = ['query', 'search_query', 'pattern', 'regex', 'term'];
 const COMMAND_PARAM_KEYS = ['command', 'cmd', 'script'];
 const CONTENT_PARAM_KEYS = ['content', 'new_string', 'old_string'];
@@ -126,6 +126,11 @@ function buildSanitizedDetail(activity: ToolActivity, activityFilePath?: string,
       rows.push({ label: 'Content', value: `${countLines(content)} line${countLines(content) === 1 ? '' : 's'}` });
     }
 
+    const patchPreview = typeof parameters.patchPreview === 'string' ? parameters.patchPreview : '';
+    if (patchPreview) {
+      previews.push({ label: 'Patch preview', content: truncateText(patchPreview, 1400), tone: 'diff' });
+    }
+
     if (toolName === 'replace') {
       const oldString = typeof parameters.old_string === 'string' ? parameters.old_string : '';
       const newString = typeof parameters.new_string === 'string' ? parameters.new_string : '';
@@ -201,6 +206,7 @@ function getFileActionLabel(activity: ToolActivity): string {
   const toolName = (activity.toolName || '').toLowerCase();
   if (toolName === 'replace' || toolName === 'edit_file') return 'Edited';
   if (toolName === 'create_file') return 'Created';
+  if (toolName === 'delete_file') return 'Deleted';
   if (toolName === 'write_file') return 'Wrote';
   if (toolName === 'read_file') return 'Read';
   return activity.displayName || activity.toolName || 'Used tool';
@@ -288,9 +294,19 @@ function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][num
 
 export function ActivityStack({ activities, workspacePath }: ActivityStackProps) {
   if (!activities || activities.length === 0) return null;
+  const aggregate = aggregateDiffSummary(activities);
 
   return (
     <div className="activity-timeline">
+      {aggregate && (
+        <div className={`activity-run-edit-counter confidence-${aggregate.confidence}`}>
+          <span className="activity-run-edit-label">Live edits</span>
+          <span key={`run-add-${aggregate.additions || 0}`} className="activity-counter-value roll-up">+{aggregate.additions || 0}</span>
+          <span key={`run-del-${aggregate.deletions || 0}`} className="activity-counter-value roll-down">-{aggregate.deletions || 0}</span>
+          <span className="activity-run-edit-files">{aggregate.files?.length || 0} {(aggregate.files?.length || 0) === 1 ? 'file' : 'files'}</span>
+          {aggregate.confidence !== 'exact' && <span className="activity-run-edit-estimated">est.</span>}
+        </div>
+      )}
       {activities.map(activity => (
         <ActivityRow key={activity.id} activity={activity} workspacePath={workspacePath} />
       ))}
@@ -298,8 +314,73 @@ export function ActivityStack({ activities, workspacePath }: ActivityStackProps)
   );
 }
 
+function aggregateDiffSummary(activities: ToolActivity[]): ToolDiffSummary | null {
+  const summaries = activities
+    .map((activity) => activity.diffSummary || deriveToolDiffSummary(activity.toolName, activity.parameters, activity.resultSummary || activity.outputPreview))
+    .filter((summary): summary is ToolDiffSummary => Boolean(summary));
+
+  if (summaries.length === 0) return null;
+
+  const fileMap = new Map<string, NonNullable<ToolDiffSummary['files']>[number]>();
+  let additions = 0;
+  let deletions = 0;
+  let hasStats = false;
+  let confidence: ToolDiffSummary['confidence'] = 'exact';
+
+  for (const summary of summaries) {
+    if (summary.confidence !== 'exact') confidence = summary.confidence === 'unknown' ? 'unknown' : confidence === 'unknown' ? 'unknown' : 'estimated';
+    if (summary.additions !== undefined || summary.deletions !== undefined) hasStats = true;
+    additions += summary.additions || 0;
+    deletions += summary.deletions || 0;
+    for (const file of summary.files || []) {
+      const key = file.path || `unknown-${fileMap.size}`;
+      const existing = fileMap.get(key);
+      fileMap.set(key, {
+        ...existing,
+        ...file,
+        additions: (existing?.additions || 0) + (file.additions || 0),
+        deletions: (existing?.deletions || 0) + (file.deletions || 0)
+      });
+    }
+  }
+
+  if (!hasStats && fileMap.size === 0) return null;
+
+  return {
+    additions: hasStats ? additions : undefined,
+    deletions: hasStats ? deletions : undefined,
+    files: [...fileMap.values()],
+    source: 'unknown',
+    confidence
+  };
+}
+
+function ActivityDiffFiles({ diffSummary, workspacePath }: { diffSummary?: ToolDiffSummary; workspacePath?: string }) {
+  const files = diffSummary?.files || [];
+  if (files.length === 0) return null;
+
+  return (
+    <div className="activity-file-change-cards">
+      {files.slice(0, 8).map((file, index) => (
+        <div key={`${file.path || 'unknown'}-${index}`} className="activity-file-change-card">
+          <FileTypeIcon path={file.path || ''} size={14} className="activity-file-type-icon" workspacePath={workspacePath} />
+          <span className="activity-file-change-path" title={file.path || 'Unknown file'}>{file.path || 'Unknown file'}</span>
+          <span className={`activity-file-change-status status-${file.status || 'unknown'}`}>{file.status || 'changed'}</span>
+          {(file.additions !== undefined || file.deletions !== undefined) && (
+            <span className="activity-file-change-stats">
+              <span className="activity-line-stat activity-line-stat-add">+{file.additions || 0}</span>
+              <span className="activity-line-stat activity-line-stat-delete">-{file.deletions || 0}</span>
+            </span>
+          )}
+        </div>
+      ))}
+      {files.length > 8 && <div className="activity-file-change-overflow">+{files.length - 8} more files</div>}
+    </div>
+  );
+}
+
 function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; workspacePath?: string }) {
-  const defaultCollapsed = activity.category === 'task' || activity.category === 'shell';
+  const defaultCollapsed = activity.category === 'task' || activity.category === 'shell' || activity.category === 'read' || activity.category === 'search';
   const [expanded, setExpanded] = useState(!defaultCollapsed);
 
   useEffect(() => {
@@ -330,13 +411,14 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
   if (activity.durationMs !== undefined) chipText.push(`${activity.durationMs}ms`);
   const metaText = chipText.join(' · ');
   const parameters = activity.parameters || {};
+  const diffSummary = activity.diffSummary || deriveToolDiffSummary(activity.toolName, parameters, activity.resultSummary || activity.outputPreview);
   const lineChanges = estimateLineChanges(parameters);
   const hasFileContent = typeof parameters.content === 'string';
   const lineChangesFromContent = hasFileContent && ['write_file', 'create_file', 'edit_file'].includes((activity.toolName || '').toLowerCase())
     ? { additions: (parameters.content as string).split('\n').length, deletions: 0 }
     : { additions: undefined, deletions: undefined };
-  const addedLines = lineChanges.additions ?? lineChangesFromContent.additions;
-  const deletedLines = lineChanges.deletions ?? lineChangesFromContent.deletions;
+  const addedLines = diffSummary?.additions ?? lineChanges.additions ?? lineChangesFromContent.additions;
+  const deletedLines = diffSummary?.deletions ?? lineChanges.deletions ?? lineChangesFromContent.deletions;
   const hasLineChanges = addedLines !== undefined || deletedLines !== undefined;
   const sanitizedDetail = buildSanitizedDetail(activity, activityFilePath, addedLines, deletedLines);
   const hasSanitizedDetail = sanitizedDetail.rows.length > 0 || sanitizedDetail.previews.length > 0;
@@ -372,9 +454,10 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
           </div>
           {hasLineChanges && (
             <div className="activity-line-stats">
-              <span className="activity-line-stat activity-line-stat-add">+{addedLines || 0}</span>
+              <span key={`add-${addedLines || 0}`} className="activity-line-stat activity-line-stat-add roll-up">+{addedLines || 0}</span>
               <span className="activity-line-stat-divider">|</span>
-              <span className="activity-line-stat activity-line-stat-delete">-{deletedLines || 0}</span>
+              <span key={`del-${deletedLines || 0}`} className="activity-line-stat activity-line-stat-delete roll-down">-{deletedLines || 0}</span>
+              {diffSummary?.confidence && diffSummary.confidence !== 'exact' && <span className="activity-line-stat-estimated">est.</span>}
             </div>
           )}
         </div>
@@ -397,6 +480,7 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
                 ))}
               </div>
             )}
+            <ActivityDiffFiles diffSummary={diffSummary} workspacePath={workspacePath} />
             {sanitizedDetail.previews.map((preview) => (
               <div key={`${preview.label}-${preview.content.slice(0, 32)}`}>
                 <div className="activity-detail-section-title">{preview.label}</div>

@@ -1,5 +1,4 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -49,7 +48,8 @@ type AgentApprovalAction = 'accept' | 'acceptForSession' | 'acceptForWorkspace' 
 
 interface AgentRunPayload {
   provider: ProviderId
-  workspace: string
+  scope?: 'workspace' | 'global'
+  workspace?: string
   prompt: string
   appRunId?: string
   appChatId?: string
@@ -60,6 +60,10 @@ interface AgentRunPayload {
   imagePaths?: string[]
   providerSessionId?: string | null
   externalPathGrants?: ExternalPathGrant[]
+  sessionTrust?: boolean
+  geminiWorktree?: GeminiWorktreeLaunchOption
+  runtimeProfileId?: string
+  handoffSourceRunId?: string
 }
 
 interface AgentRunRoute {
@@ -91,8 +95,8 @@ interface AgentApprovalRequest {
 
 declare global {
   interface Window {
-    electron: ElectronAPI
     api: {
+      getRuntimeVersions: () => NodeJS.ProcessVersions
       selectWorkspace: () => Promise<WorkspaceRecord | null>
       selectImageFiles: () => Promise<string[]>
       selectExternalPathGrant: (access?: 'read' | 'write') => Promise<ExternalPathGrant | null>
@@ -120,9 +124,8 @@ declare global {
       readWorkspaceFile: (workspace: string, path: string) => Promise<WorkspaceFileReadResult>
       writeWorkspaceFile: (workspace: string, path: string, content: string) => Promise<WorkspaceFileReadResult>
       captureSnapshot: (workspace: string) => Promise<any>
-      computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any) => Promise<any>
+      computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any, changeContext?: any) => Promise<any>
       getWorkspaceChangeSets: (filter?: WorkspaceChangeFilter) => Promise<WorkspaceChangeSet[]>
-      recordWorkspaceRunChange: (input: WorkspaceRunChangeInput) => Promise<WorkspaceChangeSet>
       getGeminiVersion: () => Promise<string>
       getGeminiCapabilities: (workspace?: string) => Promise<GeminiCapabilitiesState>
       getGeminiMcpBridgeStatus: () => Promise<GeminiMcpBridgeStatus>
@@ -134,16 +137,17 @@ declare global {
       setAppearanceMode: (payload: { mode?: string; reduceTransparency?: boolean } | string) => Promise<boolean>
 
       checkTrust: (workspacePath: string) => Promise<TrustStatusResult>
-      startPty: (workspacePath: string) => Promise<void>
-      ptyWrite: (data: string) => Promise<void>
-      ptyResize: (cols: number, rows: number) => Promise<void>
+      startPty: (workspacePath: string, sessionId?: string) => Promise<void>
+      stopPty: (sessionId?: string) => Promise<void>
+      ptyWrite: (data: string, sessionId?: string) => Promise<void>
+      ptyResize: (cols: number, rows: number, sessionId?: string) => Promise<void>
       startGeminiSession: (workspace: string, model?: string, approvalMode?: string, sessionTrust?: boolean, cols?: number, rows?: number, resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption) => Promise<void>
       stopGeminiSession: () => Promise<void>
       writeGeminiSession: (data: string) => Promise<void>
       resizeGeminiSession: (cols: number, rows: number) => Promise<void>
       getFileIconDataUrl: (path: string) => Promise<string | null>
-      onPtyData: (callback: (data: string) => void) => void
-      onPtyExit: (callback: (code: number | null) => void) => void
+      onPtyData: (callback: (data: string, sessionId?: string) => void) => void
+      onPtyExit: (callback: (code: number | null, sessionId?: string) => void) => void
       removePtyListeners: () => void
       onGeminiSessionData: (callback: (data: string) => void) => void
       onGeminiSessionExit: (callback: (code: number | null) => void) => void
@@ -151,6 +155,13 @@ declare global {
 
       getSettings: () => Promise<AppSettings>
       updateSettings: (partial: Partial<AppSettings>) => Promise<void>
+      getRuntimeProfiles: (provider?: ProviderId) => Promise<RuntimeProfile[]>
+      saveRuntimeProfile: (profile: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>) => Promise<RuntimeProfile>
+      deleteRuntimeProfile: (id: string) => Promise<void>
+      getHandoffCards: (filter?: HandoffCardFilter) => Promise<HandoffCard[]>
+      saveHandoffCard: (card: Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>) => Promise<HandoffCard>
+      updateHandoffCard: (id: string, partial: Partial<HandoffCard>) => Promise<HandoffCard | null>
+      deleteHandoffCard: (id: string) => Promise<void>
       getWorkspaces: () => Promise<WorkspaceRecord[]>
       addOrUpdateWorkspace: (path: string, partial?: Partial<WorkspaceRecord>) => Promise<WorkspaceRecord>
       removeWorkspace: (id: string) => Promise<void>
@@ -158,6 +169,7 @@ declare global {
       getChats: (workspaceId?: string) => Promise<ChatRecord[]>
       getChat: (chatId: string) => Promise<ChatRecord | null>
       createChat: (workspaceId: string, workspacePath: string) => Promise<ChatRecord>
+      createGlobalChat: () => Promise<ChatRecord>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
       clearChats: (workspaceId?: string) => Promise<void>
@@ -168,12 +180,10 @@ declare global {
       updateScheduledTask: (id: string, partial: Partial<ScheduledTask>) => Promise<ScheduledTask | null>
       deleteScheduledTask: (id: string) => Promise<void>
       getRunQueueJobs: (filter?: RunQueueJobFilter) => Promise<RunQueueJob[]>
-      saveRunQueueJob: (job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'workspacePath' | 'source'>) => Promise<RunQueueJob>
-      updateRunQueueJob: (runIdOrId: string, partial: Partial<RunQueueJob>) => Promise<RunQueueJob | null>
-      deleteRunQueueJob: (runIdOrId: string) => Promise<void>
+      requestRunQueueJob: (job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'>) => Promise<RunQueueJob>
+      leaseRunQueueJob: (request?: { runId?: string, provider?: ProviderId, statusReason?: string }) => Promise<RunQueueJob | null>
+      transitionRunQueueJob: (runIdOrId: string, status: RunQueueJob['status'], partial?: Pick<Partial<RunQueueJob>, 'statusReason' | 'lastError'>) => Promise<RunQueueJob | null>
       getRunRecoveryRecords: (filter?: RunRecoveryFilter) => Promise<RunRecoveryRecord[]>
-      appendRunEvent: (event: RunEventInput) => Promise<RunEventRecord>
-      appendRunEvents: (events: RunEventInput[]) => Promise<RunEventRecord[]>
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
       getApprovalLedger: (filter?: ApprovalLedgerFilter) => Promise<ApprovalLedgerRecord[]>

@@ -59,7 +59,15 @@ interface InspectorProps {
   setDiffView: (v: 'this_run' | 'workspace') => void;
   runDiff: DiffFileSummary[] | null;
   diffRefreshStatus: string;
-  rawLogs: Array<{ type: 'stdout' | 'stderr' | 'tool' | 'info'; content: string }>;
+  rawLogs: Array<{
+    type: 'stdout' | 'stderr' | 'tool' | 'info';
+    content: string;
+    sequence?: number;
+    hash?: string;
+    spanId?: string;
+    toolCallId?: string;
+    artifactCount?: number;
+  }>;
   rawFilter: 'all' | 'stdout' | 'stderr' | 'tool';
   setRawFilter: (f: 'all' | 'stdout' | 'stderr' | 'tool') => void;
   setRawLogs: (logs: any[]) => void;
@@ -206,7 +214,7 @@ function DiffTab(props: InspectorProps) {
 
 function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }: InspectorProps) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <div className="diff-studio raw-events-panel">
       <div className="diff-studio-toolbar">
         <div style={{ display: 'flex', gap: '4px' }}>
           {(['all', 'stdout', 'stderr', 'tool'] as const).map(f => (
@@ -241,6 +249,14 @@ function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }:
               color: log.type === 'stderr' ? 'var(--danger)' : log.type === 'tool' ? 'var(--success)' : log.type === 'info' ? 'var(--accent)' : 'var(--text-secondary)'
             }}
           >
+            {(log.sequence || log.hash || log.spanId || log.toolCallId || log.artifactCount) && (
+              <span className="raw-log-meta">
+                {log.sequence ? `#${log.sequence}` : ''}
+                {log.hash ? ` ${log.hash.slice(0, 10)}` : ''}
+                {log.toolCallId ? ` tool:${log.toolCallId}` : log.spanId ? ` span:${log.spanId}` : ''}
+                {log.artifactCount ? ` artifacts:${log.artifactCount}` : ''}
+              </span>
+            )}
             {log.content}
           </div>
         ))}
@@ -292,6 +308,20 @@ function toolingStateColor(state: ProviderToolingCapability['state']): string {
   return 'var(--text-secondary)';
 }
 
+function toolingEnforcementLabel(tool: ProviderToolingCapability): string {
+  if (tool.enforcedByAgentBench) return 'AGBench-enforced';
+  if (tool.enforcement === 'provider') return 'provider-managed';
+  if (tool.enforcement === 'best_effort') return 'best-effort';
+  if (tool.enforcement === 'none') return 'not enforced';
+  return tool.source === 'provider' ? 'provider-managed' : 'not enforced';
+}
+
+function toolingEnforcementColor(tool: ProviderToolingCapability): string {
+  if (tool.enforcedByAgentBench) return 'var(--success)';
+  if (tool.enforcement === 'best_effort') return 'var(--warning)';
+  return 'var(--text-secondary)';
+}
+
 function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContract | null }) {
   if (!contract) {
     return (
@@ -305,16 +335,18 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
   }
 
   const tools = [contract.tools.shellCommands, contract.tools.fileChanges, contract.tools.mcpTools, contract.tools.networkAccess];
+  const enforcedCount = tools.filter((tool) => tool.enforcedByAgentBench).length;
   return (
     <div className="safety-card">
       <h4>{contract.label} tooling contract</h4>
       <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: '0 0 var(--space-md) 0' }}>
-        Shared AgentBench view of shell, file, MCP, approval, and unavailable-tool behavior for this provider.
+        Shared AGBench view of shell, file, MCP, approval, and unavailable-tool behavior for this provider.
       </p>
       <div className="safety-row"><span>Availability</span><span style={{ color: contract.availability.available ? 'var(--success)' : 'var(--danger)' }}>{contract.availability.available ? 'available' : 'unavailable'}</span></div>
       <div className="safety-row"><span>Version</span><span>{contract.availability.version || 'unknown'}</span></div>
       <div className="safety-row"><span>Approval mode</span><span>{contract.approvals.providerMode}</span></div>
       <div className="safety-row"><span>In-app approvals</span><span>{contract.approvals.inAppApprovals ? 'yes' : 'provider-managed'}</span></div>
+      <div className="safety-row"><span>AGBench enforcement</span><span style={{ color: enforcedCount > 0 ? 'var(--success)' : 'var(--warning)' }}>{enforcedCount}/{tools.length} controls</span></div>
       <div className="safety-row"><span>MCP</span><span style={{ color: toolingStateColor(contract.mcp.state) }}>{contract.mcp.state}</span></div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginTop: 'var(--space-md)' }}>
         {tools.map((tool) => (
@@ -322,6 +354,10 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)' }}>
               <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>{tool.label}</span>
               <span style={{ fontSize: 'var(--font-size-xs)', color: toolingStateColor(tool.state), whiteSpace: 'nowrap' }}>{tool.state}</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', marginTop: 2 }}>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>Enforcement</span>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: toolingEnforcementColor(tool), whiteSpace: 'nowrap' }}>{toolingEnforcementLabel(tool)}</span>
             </div>
             <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', marginTop: 2 }}>
               {tool.details || `${tool.source}${tool.policy ? ` · ${tool.policy}` : ''}`}
@@ -478,7 +514,7 @@ function CapabilitiesTab(props: InspectorProps) {
 
       <div className="safety-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', alignItems: 'center' }}>
-          <h4>AgentBench MCP bridge</h4>
+          <h4>AGBench MCP bridge</h4>
           <div style={{ display: 'flex', gap: 'var(--space-xs)' }}>
             <button className="btn btn-sm btn-ghost" onClick={props.onRefreshGeminiMcpBridgeStatus} disabled={!props.onRefreshGeminiMcpBridgeStatus}>
               Test
@@ -492,7 +528,7 @@ function CapabilitiesTab(props: InspectorProps) {
         <div className="safety-row"><span>Gemini config</span><span>{props.geminiMcpBridgeStatus?.installed ? 'installed' : 'not installed'}</span></div>
         <div className="safety-row"><span>Status</span><span style={{ color: props.geminiMcpBridgeStatus?.available ? 'var(--success)' : 'var(--warning)' }}>{props.geminiMcpBridgeStatus?.available ? 'available' : 'unavailable'}</span></div>
         <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 'var(--space-sm) 0 0 0' }}>
-          {props.geminiMcpBridgeStatus?.message || 'Use Install / repair only when you want AgentBench to update your Gemini MCP configuration.'}
+          {props.geminiMcpBridgeStatus?.message || 'Use Install / repair only when you want AGBench to update your Gemini MCP configuration.'}
         </p>
       </div>
 

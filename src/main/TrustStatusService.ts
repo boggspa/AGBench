@@ -13,10 +13,62 @@ export class TrustStatusService {
 
   private static safeRealpath(path: string): string {
     try {
-      return realpathSync(path);
+      const nativeRealpath = typeof realpathSync.native === 'function'
+        ? realpathSync.native
+        : realpathSync;
+      const resolved = nativeRealpath(path);
+      return typeof resolved === 'string' ? resolved : path;
     } catch {
       return path; // Fallback if file doesn't exist yet
     }
+  }
+
+  private static normalizePathForComparison(path: string): string {
+    const normalized = path.replace(/\\/g, '/');
+    return process.platform === 'darwin' ? normalized.toLocaleLowerCase() : normalized;
+  }
+
+  private static normalizeTrustedFolders(parsed: any): Array<{ path: string; status: string }> | null {
+    if (Array.isArray(parsed)) {
+      return parsed
+        .filter((item): item is string => typeof item === 'string')
+        .map((path) => ({ path, status: 'TRUST_FOLDER' }));
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    if (Array.isArray(parsed.trustedFolders)) {
+      return parsed.trustedFolders
+        .filter((item: unknown): item is string => typeof item === 'string')
+        .map((path: string) => ({ path, status: 'TRUST_FOLDER' }));
+    }
+
+    if (Array.isArray(parsed.folders)) {
+      return parsed.folders
+        .filter((item: unknown): item is string => typeof item === 'string')
+        .map((path: string) => ({ path, status: 'TRUST_FOLDER' }));
+    }
+
+    const entries = Object.entries(parsed)
+      .filter(([path, status]) => typeof path === 'string' && typeof status === 'string')
+      .map(([path, status]) => ({ path, status: String(status) }));
+
+    return entries.length > 0 ? entries : null;
+  }
+
+  private static trustResultForStatus(status: string, inheritedFrom?: string): TrustStatusResult | null {
+    const normalized = status.toUpperCase();
+    if (normalized === 'DO_NOT_TRUST' || normalized === 'UNTRUSTED') {
+      return { status: 'untrusted', reason: inheritedFrom ? `Blocked by ${inheritedFrom}` : undefined };
+    }
+    if (normalized === 'TRUST_FOLDER' || normalized === 'TRUST_PARENT' || normalized === 'TRUSTED') {
+      return inheritedFrom
+        ? { status: 'inherited', reason: `Inherited from ${inheritedFrom}` }
+        : { status: 'trusted' };
+    }
+    return null;
   }
 
   public static checkTrust(workspacePath: string): TrustStatusResult {
@@ -39,34 +91,36 @@ export class TrustStatusService {
         return { status: 'unknown', reason: 'Trust file is not valid JSON' };
       }
 
-      let trustedPaths: string[] = [];
-
-      // Defensive parsing
-      if (Array.isArray(parsed)) {
-        trustedPaths = parsed;
-      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.trustedFolders)) {
-        trustedPaths = parsed.trustedFolders;
-      } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.folders)) {
-        trustedPaths = parsed.folders;
-      } else {
+      const trustedEntries = this.normalizeTrustedFolders(parsed);
+      if (!trustedEntries) {
         return { status: 'unknown', reason: 'Trust file schema unknown' };
       }
 
       const targetPath = this.safeRealpath(workspacePath);
+      const targetKey = this.normalizePathForComparison(targetPath);
+      const resolvedEntries = trustedEntries
+        .map((entry) => {
+          const path = this.safeRealpath(entry.path);
+          return {
+            path,
+            key: this.normalizePathForComparison(path),
+            status: entry.status
+          };
+        })
+        .filter((entry) => entry.path);
 
-      for (const tPath of trustedPaths) {
-        if (typeof tPath !== 'string') continue;
-        const resolvedTPath = this.safeRealpath(tPath);
-        
-        if (resolvedTPath === targetPath) {
-          return { status: 'trusted' };
-        }
-        
-        // Check if targetPath is inside resolvedTPath (inherited)
-        // Add trailing slash to ensure we match whole folder names
-        if (targetPath.startsWith(resolvedTPath + '/') || targetPath.startsWith(resolvedTPath + '\\')) {
-          return { status: 'inherited', reason: `Inherited from ${resolvedTPath}` };
-        }
+      const exact = resolvedEntries.find((entry) => entry.key === targetKey);
+      const exactResult = exact ? this.trustResultForStatus(exact.status) : null;
+      if (exactResult) {
+        return exactResult;
+      }
+
+      const inherited = resolvedEntries
+        .filter((entry) => targetKey.startsWith(entry.key + '/'))
+        .sort((a, b) => b.key.length - a.key.length)[0];
+      const inheritedResult = inherited ? this.trustResultForStatus(inherited.status, inherited.path) : null;
+      if (inheritedResult) {
+        return inheritedResult;
       }
 
       return { status: 'untrusted' };

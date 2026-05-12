@@ -71,7 +71,7 @@ function resumeHintForJob(job: RunQueueJob): { resumeAvailable: boolean; resumeH
     return {
       resumeAvailable: true,
       resumeHint:
-        'A provider session id was recorded. AgentBench cannot reattach to the interrupted process, but a follow-up turn can resume this provider thread.'
+        'A provider session id was recorded. AGBench cannot reattach to the interrupted process, but a follow-up turn can resume this provider thread.'
     }
   }
   return {
@@ -141,7 +141,7 @@ function recoverInterruptedJob(
     {
       status: 'failed',
       statusReason: orphan
-        ? `Interrupted by app shutdown; process ${processSnapshot?.pid} may still be running outside AgentBench.`
+        ? `Interrupted by app shutdown; process ${processSnapshot?.pid} may still be running outside AGBench.`
         : 'Interrupted by app shutdown before the run reached a terminal state.',
       lastError: job.lastError || 'Run interrupted by app shutdown.',
       recoveryReason: orphan ? 'orphan_detected_on_startup' : 'marked_failed_on_startup',
@@ -194,7 +194,7 @@ export function recoverRunQueueJobsAfterStartup(
       ? inspectProcess(job.processPid, recoveredAt)
       : undefined
     const reason = isInterrupted
-      ? 'Run was active when AgentBench last exited.'
+      ? 'Run was active when AGBench last exited.'
       : 'Failed run still had a recorded process id at startup.'
     const recovered = isInterrupted
       ? recoverInterruptedJob(job, recoveredAt, processSnapshot)

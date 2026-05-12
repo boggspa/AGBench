@@ -4,6 +4,7 @@ import type {
   AgenticServicesSettings,
   AppearanceMode,
   CodexSandboxFallbackMode,
+  AppSettings,
   GeminiMcpBridgeStatus,
   ProviderCapabilityContract,
   ProviderId,
@@ -37,6 +38,9 @@ interface SettingsPanelProps {
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeStatus: GeminiMcpBridgeStatus | null;
   codexSandboxFallback: CodexSandboxFallbackMode;
+  funFxEnabled: boolean;
+  funFxMode: AppSettings['funFxMode'];
+  advancedFx: AppSettings['advancedFx'];
   updateChannel: ProductUpdateChannel;
   productOperationsStatus: ProductOperationsStatus | null;
   onInstallGeminiMcpBridge: () => void;
@@ -61,6 +65,9 @@ interface SettingsPanelProps {
     agenticServices?: AgenticServicesSettings;
     geminiMcpBridgeEnabled?: boolean;
     codexSandboxFallback?: CodexSandboxFallbackMode;
+    funFxEnabled?: boolean;
+    funFxMode?: AppSettings['funFxMode'];
+    advancedFx?: AppSettings['advancedFx'];
     updateChannel?: ProductUpdateChannel;
   }) => void;
   onClose: () => void;
@@ -131,6 +138,12 @@ const PRODUCT_UPDATE_CHANNEL_OPTIONS: Array<{ value: ProductUpdateChannel; label
   { value: 'stable', label: 'Stable' },
   { value: 'nightly', label: 'Nightly' }
 ];
+const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; helper: string }> = [
+  { value: 'off', label: 'Off', helper: 'No cinematic effects.' },
+  { value: 'subtle', label: 'Subtle', helper: 'One effect layer with gentle motion.' },
+  { value: 'cinematic', label: 'Cinematic', helper: 'Sky + ghost in synchronized balance.' },
+  { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
+];
 
 export function SettingsPanel({
   mode,
@@ -153,6 +166,9 @@ export function SettingsPanel({
   geminiMcpBridgeEnabled,
   geminiMcpBridgeStatus,
   codexSandboxFallback,
+  funFxEnabled,
+  funFxMode,
+  advancedFx,
   updateChannel,
   productOperationsStatus,
   onInstallGeminiMcpBridge,
@@ -167,6 +183,9 @@ export function SettingsPanel({
   const boundedTurns = Math.min(20, safeTurns);
   const updateAgenticService = <K extends keyof AgenticServicesSettings>(key: K, value: AgenticServicesSettings[K]) => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } });
+  };
+  const updateAdvancedFx = (partial: Partial<AppSettings['advancedFx']>) => {
+    onChange({ advancedFx: { ...advancedFx, ...partial } });
   };
 
   return (
@@ -288,6 +307,89 @@ export function SettingsPanel({
 
       <div className="settings-group">
         <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
+          <input type="checkbox" checked={funFxEnabled} onChange={e => onChange({ funFxEnabled: e.target.checked })} />
+          Epic FX
+        </label>
+        <div className="settings-option-list settings-option-list-inline">
+          {FUN_FX_MODES.map((option) => (
+            <button
+              key={option.value}
+              className={`btn btn-sm ${funFxMode === option.value ? '' : 'btn-ghost'}`}
+              onClick={() => onChange({ funFxMode: option.value })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-hint">
+          {funFxMode === 'off' ? 'Epic FX disabled.' : (FUN_FX_MODES.find((option) => option.value === funFxMode)?.helper || FUN_FX_MODES[2].helper)}
+        </p>
+      </div>
+
+      <div className="settings-group settings-fx-labs">
+        <label className="settings-label">FX Labs</label>
+        <p className="settings-hint">
+          Opt-in visual layers for agent ambience, workspace atmosphere, and live run telemetry. Disabled automatically when Reduce motion is enabled.
+        </p>
+        <label className="settings-service-row settings-fx-toggle">
+          <span>
+            Agent Aura
+            <small>Provider-colored backgrounds, composer rims, inspector edges, and run-state bursts.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={!reduceMotion && funFxEnabled && advancedFx.agentAura}
+            disabled={reduceMotion || !funFxEnabled}
+            onChange={(e) => updateAdvancedFx({ agentAura: e.target.checked })}
+          />
+        </label>
+        <label className="settings-service-row settings-fx-toggle">
+          <span>
+            Living Workspace
+            <small>Extends Sky/Weather with parallax depth, motes, weather particles, and room-light glow.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={!reduceMotion && funFxEnabled && advancedFx.livingWorkspace}
+            disabled={reduceMotion || !funFxEnabled}
+            onChange={(e) => updateAdvancedFx({ livingWorkspace: e.target.checked })}
+          />
+        </label>
+        <label className="settings-service-row settings-fx-toggle">
+          <span>
+            Data Viz FX
+            <small>Lightweight SVG overlays for token flow, queue lanes, tool pulses, approvals, and progress.</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={!reduceMotion && funFxEnabled && advancedFx.dataViz}
+            disabled={reduceMotion || !funFxEnabled}
+            onChange={(e) => updateAdvancedFx({ dataViz: e.target.checked })}
+          />
+        </label>
+        <div className="settings-option-list settings-option-list-inline">
+          {FUN_FX_MODES.filter((option) => option.value !== 'off').map((option) => (
+            <button
+              key={option.value}
+              className={`btn btn-sm ${advancedFx.intensity === option.value ? '' : 'btn-ghost'}`}
+              disabled={reduceMotion || !funFxEnabled}
+              onClick={() => updateAdvancedFx({ intensity: option.value as AppSettings['advancedFx']['intensity'] })}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <p className="settings-hint">
+          {reduceMotion
+            ? 'Reduce motion is active, so FX Labs animations stay off.'
+            : funFxEnabled
+              ? `${advancedFx.intensity} intensity; subtle favors CSS-only ambience, epic adds denser particles and telemetry.`
+              : 'Turn on Epic FX to enable FX Labs layers.'}
+        </p>
+      </div>
+
+      <div className="settings-group">
+        <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
           <input type="checkbox" checked={compactDensity} onChange={e => onChange({ compactDensity: e.target.checked })} />
           Compact density
         </label>
@@ -379,7 +481,7 @@ export function SettingsPanel({
 
         {providerCapabilities && (
           <div className="settings-hint">
-            Active provider contract: {providerCapabilities.label} shell is {providerCapabilities.tools.shellCommands.state}, files are {providerCapabilities.tools.fileChanges.state}, MCP is {providerCapabilities.mcp.state}.
+            Active provider contract: {providerCapabilities.label} shell is {providerCapabilities.tools.shellCommands.state}, files are {providerCapabilities.tools.fileChanges.state}, MCP is {providerCapabilities.mcp.state}; {Object.values(providerCapabilities.tools).filter((tool) => tool.enforcedByAgentBench).length}/{Object.values(providerCapabilities.tools).length} controls are AGBench-enforced.
           </div>
         )}
         {!providerCapabilities && (
@@ -400,7 +502,7 @@ export function SettingsPanel({
             ))}
           </select>
         </label>
-        <p className="settings-hint">When Codex hits a Swift/Xcode sandbox/tooling collision, AgentBench can ask to rerun that exact command once from the host process.</p>
+        <p className="settings-hint">When Codex hits a Swift/Xcode sandbox/tooling collision, AGBench can ask to rerun that exact command once from the host process.</p>
 
         <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
           <span>Gemini MCP bridge</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect, type MouseEvent } from 'react';
+import { useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
 
 interface SidebarProps {
@@ -37,6 +37,7 @@ interface SidebarProps {
   onRemoveWorkspace: (id: string, e: MouseEvent<HTMLButtonElement>) => void;
   onSelectWorkspaceDialog: () => void;
   onNewChat: (wsId: string, wsPath: string) => void;
+  onNewGlobalChat: () => void;
   onSelectChat: (chat: ChatRecord) => void;
   onOpenSettings: () => void;
 }
@@ -81,6 +82,27 @@ function PlusSymbolIcon() {
     <span className="sf-symbol-icon" aria-hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
         <path d="M8 3.5v9M3.5 8h9" />
+      </svg>
+    </span>
+  );
+}
+
+function SearchSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="7.1" cy="7.1" r="4.1" />
+        <path d="m10.1 10.1 3.1 3.1" />
+      </svg>
+    </span>
+  );
+}
+
+function XSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" />
       </svg>
     </span>
   );
@@ -146,6 +168,8 @@ function getChatsByWorkspace(chats: ChatRecord[]): Map<string, ChatRecord[]> {
   const grouped = new Map<string, ChatRecord[]>();
   for (const chat of chats) {
     if (chat.archived) continue;
+    if (chat.scope === 'global') continue;
+    if (!chat.workspaceId) continue;
     const bucket = grouped.get(chat.workspaceId);
     if (bucket) {
       bucket.push(chat);
@@ -154,6 +178,33 @@ function getChatsByWorkspace(chats: ChatRecord[]): Map<string, ChatRecord[]> {
     }
   }
   return grouped;
+}
+
+function normalizeSearchText(value: unknown): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function chatMatchesSearch(chat: ChatRecord, query: string): boolean {
+  if (!query) return true;
+  const provider = getProviderName(chat.provider);
+  const searchableText = [
+    chat.title,
+    provider,
+    chat.appChatId,
+    chat.linkedGeminiSessionId,
+    chat.linkedProviderSessionId,
+    ...(chat.messages || []).map((message) => `${message.role} ${message.content}`),
+  ].join(' ');
+  return searchableText.toLowerCase().includes(query);
+}
+
+function workspaceMatchesSearch(workspace: WorkspaceRecord, query: string): boolean {
+  if (!query) return true;
+  return [
+    workspace.displayName,
+    workspace.path,
+    workspace.branch,
+  ].join(' ').toLowerCase().includes(query);
 }
 
 function formatChatAge(timestamp: number, now: number): string {
@@ -185,6 +236,56 @@ function formatChatAgeTitle(timestamp: number): string {
   });
 }
 
+function getWorkspaceMeta(workspace: WorkspaceRecord): string {
+  const pathParts = workspace.path.split(/[\\/]/).filter(Boolean);
+  const compactPath = pathParts.length > 2
+    ? `.../${pathParts.slice(-2).join('/')}`
+    : workspace.path;
+  return [compactPath, workspace.branch ? `branch ${workspace.branch}` : ''].filter(Boolean).join(' · ');
+}
+
+function HighlightMatch({ text, query }: { text: string; query: string }): ReactNode {
+  if (!query) return text;
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const parts: ReactNode[] = [];
+  let cursor = 0;
+  let matchIndex = lowerText.indexOf(lowerQuery, cursor);
+
+  while (matchIndex >= 0) {
+    if (matchIndex > cursor) {
+      parts.push(text.slice(cursor, matchIndex));
+    }
+    const matchEnd = matchIndex + lowerQuery.length;
+    parts.push(
+      <mark key={`${matchIndex}-${matchEnd}`} className="sidebar-search-highlight">
+        {text.slice(matchIndex, matchEnd)}
+      </mark>
+    );
+    cursor = matchEnd;
+    matchIndex = lowerText.indexOf(lowerQuery, cursor);
+  }
+
+  if (cursor < text.length) {
+    parts.push(text.slice(cursor));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
+function getLastRunStatus(chat: ChatRecord): { label: string; tone: 'success' | 'warning' | 'danger' | 'muted' } | null {
+  const run = chat.runs?.[chat.runs.length - 1];
+  if (!run) return null;
+  if (!run.endedAt && run.status !== 'failed' && run.status !== 'cancelled') {
+    return { label: 'Running', tone: 'warning' };
+  }
+  if (run.status === 'success') return { label: 'Done', tone: 'success' };
+  if (run.status === 'success_with_warnings') return { label: 'Warnings', tone: 'warning' };
+  if (run.status === 'failed') return { label: 'Failed', tone: 'danger' };
+  if (run.status === 'cancelled') return { label: 'Cancelled', tone: 'muted' };
+  return { label: run.status || 'Completed', tone: 'muted' };
+}
+
 export function Sidebar({
   workspaces,
   currentWorkspace,
@@ -197,10 +298,12 @@ export function Sidebar({
   onRemoveWorkspace,
   onSelectWorkspaceDialog,
   onNewChat,
+  onNewGlobalChat,
   onSelectChat,
   onOpenSettings,
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
+  const [sidebarSearch, setSidebarSearch] = useState('');
   const [ageNow, setAgeNow] = useState(() => Date.now());
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
@@ -216,7 +319,48 @@ export function Sidebar({
     }
   });
   const chatsByWorkspace = getChatsByWorkspace(chats);
+  const globalChats = chats.filter((chat) => !chat.archived && chat.scope === 'global');
   const runningChatIdSet = new Set(runningChatIds);
+  const sidebarSearchQuery = normalizeSearchText(sidebarSearch);
+  const isSidebarSearchActive = sidebarSearchQuery.length > 0;
+  const visibleWorkspaceEntries = workspaces
+    .map((workspace) => {
+      const workspaceChats = chatsByWorkspace.get(workspace.id) || [];
+      const workspaceMatched = workspaceMatchesSearch(workspace, sidebarSearchQuery);
+      const visibleChats = isSidebarSearchActive
+        ? workspaceChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
+        : workspaceChats;
+      return {
+        workspace,
+        workspaceMatched,
+        visibleChats,
+        totalChats: workspaceChats.length,
+      };
+    })
+    .filter((entry) => !isSidebarSearchActive || entry.workspaceMatched || entry.visibleChats.length > 0);
+  const visibleGlobalChats = isSidebarSearchActive
+    ? globalChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
+    : globalChats;
+  const sidebarSearchResultCount = visibleWorkspaceEntries.length +
+    visibleWorkspaceEntries.reduce((total, entry) => total + entry.visibleChats.length, 0) +
+    visibleGlobalChats.length;
+  const totalChatCount = chats.filter((chat) => !chat.archived).length;
+  const currentScopeTitle = currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'AGBench');
+  const currentScopeMeta = currentWorkspace
+    ? getWorkspaceMeta(currentWorkspace)
+    : 'System-wide agent threads';
+  const runningCount = runningChatIdSet.size;
+  const primaryNewTitle = currentWorkspace
+    ? `New chat in ${currentWorkspace.displayName}`
+    : 'New system chat';
+  const handlePrimaryNewChat = () => {
+    if (currentWorkspace) {
+      onNewChat(currentWorkspace.id, currentWorkspace.path);
+      return;
+    }
+    onNewGlobalChat();
+  };
+
   useEffect(() => {
     const interval = window.setInterval(() => setAgeNow(Date.now()), 60000);
     return () => window.clearInterval(interval);
@@ -313,7 +457,65 @@ export function Sidebar({
     return (
       <div className="app-sidebar">
         <div className="sidebar-content">
-          {/* Workspaces */}
+          <div className="sidebar-masthead">
+            <div className="sidebar-masthead-copy">
+              <span className="sidebar-product-label">AGBench</span>
+              <strong title={currentWorkspace?.path || currentScopeTitle}>{currentScopeTitle}</strong>
+              <span title={currentWorkspace?.path || currentScopeMeta}>{currentScopeMeta}</span>
+            </div>
+            <button
+              type="button"
+              className="sidebar-primary-action"
+              onClick={handlePrimaryNewChat}
+              title={primaryNewTitle}
+              aria-label={primaryNewTitle}
+            >
+              <PlusSymbolIcon />
+              <span>New</span>
+            </button>
+          </div>
+          <div className="sidebar-masthead-stats" aria-label="Sidebar summary">
+            <span>{workspaces.length} workspace{workspaces.length === 1 ? '' : 's'}</span>
+            <span>{totalChatCount} thread{totalChatCount === 1 ? '' : 's'}</span>
+            {runningCount > 0 && <span className="sidebar-stat-live">{runningCount} running</span>}
+          </div>
+
+          <div className="sidebar-search-section">
+            <div className="sidebar-section-header sidebar-search-header">
+              <h4 className="sidebar-section-title">Command search</h4>
+              {isSidebarSearchActive && (
+                <span className="sidebar-search-result-count">
+                  {sidebarSearchResultCount}
+                </span>
+              )}
+            </div>
+            <label className="sidebar-search-field">
+              <SearchSymbolIcon />
+              <input
+                type="search"
+                value={sidebarSearch}
+                onChange={(event) => setSidebarSearch(event.target.value)}
+                placeholder="Find workspaces or threads"
+                aria-label="Search workspaces and chats"
+                spellCheck={false}
+              />
+              {!isSidebarSearchActive && (
+                <span className="sidebar-search-hint">Filter</span>
+              )}
+              {isSidebarSearchActive && (
+                <button
+                  type="button"
+                  className="sidebar-search-clear"
+                  onClick={() => setSidebarSearch('')}
+                  title="Clear search"
+                  aria-label="Clear workspace and thread search"
+                >
+                  <XSymbolIcon />
+                </button>
+              )}
+            </label>
+          </div>
+
           <div className="sidebar-workspace-scroll">
             <div className="sidebar-section-header">
               <h4 className="sidebar-section-title">Workspaces</h4>
@@ -322,13 +524,14 @@ export function Sidebar({
               </button>
             </div>
             <div className="sidebar-workspace-list">
-              {workspaces.map((ws) => {
+              {visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
+                const expanded = isSidebarSearchActive ? true : expandedWorkspaceIds.has(ws.id);
                 const workspaceChats = chatsByWorkspace.get(ws.id) || [];
-                const expanded = expandedWorkspaceIds.has(ws.id);
+                const workspaceHasRunning = workspaceChats.some((chat) => runningChatIdSet.has(chat.appChatId));
                 return (
                   <div key={ws.id} className="sidebar-workspace-group">
                     <div
-                      className={`sidebar-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}
+                      className={`sidebar-item sidebar-workspace-item ${currentWorkspace?.id === ws.id ? 'active' : ''}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => onSelectWorkspace(ws)}
@@ -350,7 +553,7 @@ export function Sidebar({
                       onMouseEnter={() => setHoveredWorkspace(ws.id)}
                       onMouseLeave={() => setHoveredWorkspace(null)}
                     >
-                      {workspaceChats.length > 0 ? (
+                      {totalChats > 0 ? (
                         <button
                           type="button"
                           className="btn btn-sm btn-ghost sidebar-tree-toggle"
@@ -364,9 +567,30 @@ export function Sidebar({
                       <span className="sidebar-tree-toggle spacer" />
                     )}
                     <FolderSymbolIcon />
-                    <span className="sidebar-item-text" title={ws.path}>
-                      {ws.displayName}
+                    <span className="sidebar-workspace-copy" title={ws.path}>
+                      <span className="sidebar-workspace-name">
+                        <HighlightMatch text={ws.displayName} query={sidebarSearchQuery} />
+                      </span>
+                      <span className="sidebar-workspace-meta">
+                        <HighlightMatch text={getWorkspaceMeta(ws)} query={sidebarSearchQuery} />
+                      </span>
                     </span>
+                    {workspaceHasRunning && (
+                      <span
+                        className="sidebar-workspace-running-dot"
+                        title="Task running in this workspace"
+                        aria-label="Task running in this workspace"
+                      />
+                    )}
+                    {totalChats > 0 && hoveredWorkspace !== ws.id && (
+                      <span
+                        className="sidebar-workspace-count-badge"
+                        title={`${totalChats} chat${totalChats === 1 ? '' : 's'}`}
+                        aria-label={`${totalChats} chat${totalChats === 1 ? '' : 's'} in this workspace`}
+                      >
+                        {totalChats}
+                      </span>
+                    )}
                     <button
                       className="btn btn-sm btn-ghost btn-icon sidebar-item-action"
                       style={{ opacity: hoveredWorkspace === ws.id ? 1 : 0, transition: 'opacity 0.1s' }}
@@ -386,24 +610,36 @@ export function Sidebar({
                       </button>
                     )}
                   </div>
-                  {workspaceChats.length > 0 && expanded ? (
+                  {visibleChats.length > 0 && expanded ? (
                     <div className="sidebar-chat-list">
-                      {workspaceChats.map((chat) => {
+                      {visibleChats.map((chat) => {
                         const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
                         const chatAgeLabel = formatChatAge(chatAgeTimestamp, ageNow);
                         const isChatRunning = runningChatIdSet.has(chat.appChatId);
+                        const lastRunStatus = getLastRunStatus(chat);
                         return (
                           <button
                             type="button"
                             key={chat.appChatId}
-                            className={`sidebar-item sidebar-chat-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                            className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                             onClick={() => onSelectChat(chat)}
                           >
                             <ChatBubbleSymbolIcon />
-                            <span className="sidebar-item-text" title={chat.title}>
-                              <SidebarProviderLabel provider={chat.provider} />
-                              <span className="sidebar-provider-separator"> · </span>
-                              <span>{chat.title}</span>
+                            <span className="sidebar-chat-copy" title={chat.title}>
+                              <span className="sidebar-chat-title-line">
+                                <SidebarProviderLabel provider={chat.provider} />
+                                <span className="sidebar-chat-title">
+                                  <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
+                                </span>
+                              </span>
+                              <span className="sidebar-chat-subline">
+                                {lastRunStatus && (
+                                  <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                                    {lastRunStatus.label}
+                                  </span>
+                                )}
+                                <span>{getProviderName(chat.provider)} thread</span>
+                              </span>
                             </span>
                             {isChatRunning && (
                               <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
@@ -421,6 +657,65 @@ export function Sidebar({
                 </div>
               );
             })}
+              {isSidebarSearchActive && visibleWorkspaceEntries.length === 0 && (
+                visibleGlobalChats.length === 0 && (
+                <div className="sidebar-empty-state">
+                  <strong>No matches</strong>
+                  <span>Try a workspace name, provider, branch, or thread title.</span>
+                </div>
+                )
+              )}
+              <div className="sidebar-section-header sidebar-chats-header">
+                <h4 className="sidebar-section-title">Chats</h4>
+                <button className="btn btn-sm btn-ghost" onClick={onNewGlobalChat} title="New system chat" aria-label="New system chat">
+                  <PlusSymbolIcon />
+                </button>
+              </div>
+              <div className="sidebar-chat-list sidebar-global-chat-list">
+                {visibleGlobalChats.map((chat) => {
+                  const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
+                  const chatAgeLabel = formatChatAge(chatAgeTimestamp, ageNow);
+                  const isChatRunning = runningChatIdSet.has(chat.appChatId);
+                  const lastRunStatus = getLastRunStatus(chat);
+                    return (
+                      <button
+                        type="button"
+                        key={chat.appChatId}
+                      className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                        onClick={() => onSelectChat(chat)}
+                      >
+                      <ChatBubbleSymbolIcon />
+                      <span className="sidebar-chat-copy" title={chat.title}>
+                        <span className="sidebar-chat-title-line">
+                          <SidebarProviderLabel provider={chat.provider} />
+                          <span className="sidebar-chat-title">
+                            <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
+                          </span>
+                        </span>
+                        <span className="sidebar-chat-subline">
+                          {lastRunStatus && (
+                            <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                              {lastRunStatus.label}
+                            </span>
+                          )}
+                          <span>System thread</span>
+                        </span>
+                      </span>
+                      {isChatRunning && (
+                        <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
+                      )}
+                      {chatAgeLabel && (
+                        <span className="sidebar-chat-age" title={formatChatAgeTitle(chatAgeTimestamp)}>
+                          {chatAgeLabel}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+                {visibleGlobalChats.length === 0 && !isSidebarSearchActive && (
+                  <div className="sidebar-empty-state">No chats yet.</div>
+                )}
+              </div>
           </div>
         </div>
 

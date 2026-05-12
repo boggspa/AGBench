@@ -1,0 +1,191 @@
+import type { IpcMain } from 'electron'
+
+type ArgSpec =
+  | 'any'
+  | 'string'
+  | 'nonEmptyString'
+  | 'optionalString'
+  | 'number'
+  | 'optionalNumber'
+  | 'boolean'
+  | 'optionalBoolean'
+  | 'object'
+  | 'optionalObject'
+  | 'array'
+  | 'optionalArray'
+  | 'provider'
+  | 'optionalProvider'
+  | 'approvalAction'
+  | 'settingsPatch'
+  | 'runPayload'
+  | 'workspacePath'
+  | 'filePath'
+  | 'runId'
+  | 'chatId'
+  | 'externalPathGrantAccess'
+  | 'runQueueStatus'
+
+const PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi'])
+const APPROVAL_ACTIONS = new Set(['accept', 'acceptForSession', 'acceptForWorkspace', 'decline', 'cancel'])
+const RUN_QUEUE_STATUSES = new Set(['queued', 'starting', 'active', 'paused', 'cancelling', 'cancelled', 'failed', 'completed'])
+
+const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
+  'get-settings': [],
+  'update-settings': ['settingsPatch'],
+  'get-workspaces': [],
+  'add-or-update-workspace': ['workspacePath', 'optionalObject'],
+  'remove-workspace': ['string'],
+  'clear-workspaces': [],
+  'get-chats': ['optionalString'],
+  'get-chat': ['chatId'],
+  'create-chat': ['string', 'workspacePath'],
+  'create-global-chat': [],
+  'save-chat': ['object'],
+  'delete-chat': ['string'],
+  'clear-chats': ['optionalString'],
+  'record-usage': ['object'],
+  'get-usage': ['optionalString', 'optionalString'],
+  'get-scheduled-tasks': ['optionalString'],
+  'save-scheduled-task': ['object'],
+  'update-scheduled-task': ['string', 'object'],
+  'delete-scheduled-task': ['string'],
+  'get-run-queue-jobs': ['optionalObject'],
+  'get-run-recovery-records': ['optionalObject'],
+  'request-run-queue-job': ['object'],
+  'lease-run-queue-job': ['optionalObject'],
+  'transition-run-queue-job': ['string', 'runQueueStatus', 'optionalObject'],
+  'get-run-events': ['optionalObject'],
+  'get-run-event-replay': ['runId'],
+  'get-approval-ledger': ['optionalObject'],
+  'get-product-operations-status': [],
+  'get-product-crashes': ['optionalObject'],
+  'record-product-crash': ['object'],
+  'export-product-diagnostics': ['optionalString'],
+  'repair-product-install': [],
+  'set-appearance-mode': ['any'],
+  'get-host-weather': [],
+  'get-file-icon': ['string'],
+  'get-gemini-version': [],
+  'get-gemini-capabilities': ['optionalString'],
+  'get-gemini-mcp-bridge-status': [],
+  'install-gemini-mcp-bridge': [],
+  'set-gemini-mcp-bridge-enabled': ['boolean'],
+  'run-approved-host-command': ['nonEmptyString'],
+  'list-gemini-sessions': [],
+  'select-workspace': [],
+  'select-image-files': [],
+  'select-external-path-grant': ['externalPathGrantAccess'],
+  'list-workspace-files': ['workspacePath'],
+  'read-workspace-file': ['workspacePath', 'filePath'],
+  'discover-gemini-commands': ['workspacePath'],
+  'discover-gemini-memory': ['workspacePath'],
+  'write-workspace-file': ['workspacePath', 'filePath', 'string'],
+  'get-agent-status': ['provider'],
+  'get-agent-rate-limits': ['provider'],
+  'import-codex-usage-credential': ['optionalString'],
+  'clear-codex-usage-credential': [],
+  'get-codex-usage-snapshot': [],
+  'get-agent-mcp-status': ['provider'],
+  'get-provider-capabilities': ['provider', 'optionalString', 'optionalString'],
+  'get-provider-adapters': [],
+  'list-agent-threads': ['provider', 'optionalObject'],
+  'fork-agent-thread': ['provider', 'string', 'optionalObject'],
+  'rollback-agent-thread': ['provider', 'string', 'optionalNumber'],
+  'start-agent-review': ['provider', 'string', 'optionalObject'],
+  'get-agent-models': ['provider'],
+  'run-agent': ['runPayload'],
+  'cancel-agent-run': ['optionalProvider', 'optionalString'],
+  'respond-agent-approval': ['nonEmptyString', 'approvalAction'],
+  'run-gemini': ['workspacePath', 'string', 'optionalString', 'optionalString', 'optionalBoolean', 'optionalArray', 'optionalString', 'any', 'optionalObject'],
+  'cancel-gemini': ['optionalString'],
+  'write-gemini-input': ['string'],
+  'start-gemini-session': ['workspacePath', 'optionalString', 'optionalString', 'optionalBoolean', 'optionalNumber', 'optionalNumber', 'optionalString', 'any'],
+  'stop-gemini-session': [],
+  'write-gemini-session': ['string'],
+  'resize-gemini-session': ['number', 'number'],
+  'get-diff': ['workspacePath'],
+  'get-workspace-change-sets': ['optionalObject'],
+  'capture-snapshot': ['workspacePath'],
+  'compute-run-diff': ['runId', 'any', 'any', 'optionalObject'],
+  'check-trust': ['workspacePath'],
+  'start-pty': ['workspacePath', 'optionalString'],
+  'stop-pty': ['optionalString'],
+  'pty-write': ['string', 'optionalString'],
+  'pty-resize': ['number', 'number', 'optionalString']
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function validateArg(channel: string, spec: ArgSpec, value: unknown, index: number): void {
+  const label = `${channel} argument ${index + 1}`
+  if (spec === 'any') return
+  if (spec.startsWith('optional') && (value === undefined || value === null)) return
+  if ((spec === 'string' || spec === 'optionalString') && typeof value !== 'string') throw new Error(`${label} must be a string.`)
+  if (spec === 'nonEmptyString' && (typeof value !== 'string' || !value.trim())) throw new Error(`${label} must be a non-empty string.`)
+  if ((spec === 'workspacePath' || spec === 'filePath' || spec === 'runId' || spec === 'chatId') && (typeof value !== 'string' || !value.trim())) throw new Error(`${label} must be a non-empty string.`)
+  if (spec === 'workspacePath' && !/^([/\\~]|[A-Za-z]:[\\/])/.test(value as string)) throw new Error(`${label} must be an absolute workspace path.`)
+  if (spec === 'filePath' && /\0/.test(value as string)) throw new Error(`${label} must not contain null bytes.`)
+  if ((spec === 'number' || spec === 'optionalNumber') && (typeof value !== 'number' || !Number.isFinite(value))) throw new Error(`${label} must be a finite number.`)
+  if ((spec === 'boolean' || spec === 'optionalBoolean') && typeof value !== 'boolean') throw new Error(`${label} must be a boolean.`)
+  if ((spec === 'object' || spec === 'optionalObject' || spec === 'settingsPatch' || spec === 'runPayload') && !isRecord(value)) throw new Error(`${label} must be an object.`)
+  if ((spec === 'array' || spec === 'optionalArray') && !Array.isArray(value)) throw new Error(`${label} must be an array.`)
+  if ((spec === 'provider' || spec === 'optionalProvider') && (typeof value !== 'string' || !PROVIDERS.has(value))) throw new Error(`${label} must be a known provider.`)
+  if (spec === 'approvalAction' && (typeof value !== 'string' || !APPROVAL_ACTIONS.has(value))) throw new Error(`${label} must be a known approval action.`)
+  if (spec === 'runQueueStatus' && (typeof value !== 'string' || !RUN_QUEUE_STATUSES.has(value))) throw new Error(`${label} must be a known run queue status.`)
+  if (spec === 'externalPathGrantAccess' && value !== undefined && value !== null && value !== 'read' && value !== 'write') throw new Error(`${label} must be read or write.`)
+  if (spec === 'runPayload') validateRunPayload(channel, value)
+  if (spec === 'settingsPatch') validateSettingsPatch(channel, value)
+}
+
+function validateRunPayload(channel: string, value: unknown): void {
+  if (!isRecord(value)) throw new Error(`${channel} payload must be an object.`)
+  validateArg(channel, 'provider', value.provider, 0)
+  const scope = value.scope === 'global' ? 'global' : 'workspace'
+  if (scope === 'global') {
+    const chatId = value.appChatId ?? value.chatId
+    if (typeof chatId !== 'string' || !chatId.trim()) {
+      throw new Error(`${channel} global payload chat id must be a non-empty string.`)
+    }
+  } else {
+    validateArg(channel, 'workspacePath', value.workspace, 1)
+  }
+  if (typeof value.prompt !== 'string') throw new Error(`${channel} payload prompt must be a string.`)
+  if (value.imagePaths !== undefined && !Array.isArray(value.imagePaths)) throw new Error(`${channel} payload imagePaths must be an array.`)
+}
+
+function validateSettingsPatch(channel: string, value: unknown): void {
+  if (!isRecord(value)) throw new Error(`${channel} settings patch must be an object.`)
+  if (value.activeProvider !== undefined) validateArg(channel, 'provider', value.activeProvider, 0)
+  if (value.funFxEnabled !== undefined) {
+    if (typeof value.funFxEnabled !== 'boolean') throw new Error(`${channel} funFxEnabled must be a boolean.`)
+  }
+  if (value.funFxMode !== undefined) {
+    const mode = String(value.funFxMode)
+    if (!['off', 'subtle', 'cinematic', 'epic'].includes(mode)) {
+      throw new Error(`${channel} funFxMode must be one of off, subtle, cinematic, epic.`)
+    }
+  }
+  if (value.agenticServices !== undefined && !isRecord(value.agenticServices)) throw new Error(`${channel} agenticServices must be an object.`)
+  if (value.agenticWorkspaceGrants !== undefined) throw new Error(`${channel} cannot update workspace grants directly.`)
+}
+
+export function validateIpcArgs(channel: string, args: unknown[]): unknown[] {
+  const schema = IPC_ARGUMENT_SCHEMAS[channel]
+  if (!schema) {
+    throw new Error(`No IPC schema registered for ${channel}.`)
+  }
+  schema.forEach((spec, index) => validateArg(channel, spec, args[index], index))
+  return args
+}
+
+export function installIpcValidation(ipcMain: IpcMain): void {
+  const target = ipcMain as IpcMain & { __agentBenchValidationInstalled?: boolean }
+  if (target.__agentBenchValidationInstalled) return
+  const originalHandle = ipcMain.handle.bind(ipcMain)
+  ;(target as any).handle = (channel: string, listener: any) => {
+    return originalHandle(channel, (event, ...args) => listener(event, ...validateIpcArgs(channel, args)))
+  }
+  target.__agentBenchValidationInstalled = true
+}

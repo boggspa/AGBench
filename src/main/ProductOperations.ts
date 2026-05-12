@@ -58,6 +58,10 @@ function parseScriptEnvDefault(script: string | undefined, envName: string): str
   return directMatch?.[1]?.replace(/^['"]|['"]$/g, '')
 }
 
+function builderConfigIncludes(text: string | undefined, pattern: RegExp): boolean {
+  return Boolean(text && pattern.test(text))
+}
+
 function listStatusChecks(checks: ProductHealthCheck[]): ProductOperationStatus {
   return normalizeStatus(checks.map((check) => check.status))
 }
@@ -211,8 +215,22 @@ export function buildReleaseAutomationStatus(input: {
   const checkedAt = input.now || new Date().toISOString()
   const scripts = input.packageJson?.scripts || {}
   const buildScript = scripts.build
+  const testScript = scripts.test
+  const ciScript = scripts.ci
+  const buildUnpackScript = scripts['build:unpack']
+  const buildMacScript = scripts['build:mac']
+  const buildMacNotarizedScript = scripts['build:mac:notarized']
   const debugScript = scripts['build:debug:mac']
-  const notarizedScript = scripts['build:debug:mac:notarized']
+  const debugNotarizedScript = scripts['build:debug:mac:notarized']
+  const notarizedScript = buildMacNotarizedScript || debugNotarizedScript
+  const smokeNodePtyScript = scripts['smoke:node-pty']
+  const smokePackageScript = scripts['smoke:package']
+  const validateReleaseScript = scripts['validate:release']
+  const notarizedScriptName = buildMacNotarizedScript
+    ? 'build:mac:notarized'
+    : debugNotarizedScript
+      ? 'build:debug:mac:notarized'
+      : undefined
   const appId = input.builderConfigText
     ? parseBuilderValue(input.builderConfigText, 'appId')
     : undefined
@@ -222,6 +240,28 @@ export function buildReleaseAutomationStatus(input: {
   const outputDirectory = input.builderConfigText
     ? parseBuilderValue(input.builderConfigText, 'output')
     : undefined
+  const publishProvider = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'provider')
+    : undefined
+  const publishOwner = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'owner')
+    : undefined
+  const publishRepo = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'repo')
+    : undefined
+  const publishUrl = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'url')
+    : undefined
+  const afterPack = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'afterPack')
+    : undefined
+  const npmRebuild = input.builderConfigText
+    ? parseBuilderValue(input.builderConfigText, 'npmRebuild')
+    : undefined
+  const hasNodePtyAsarUnpack = builderConfigIncludes(
+    input.builderConfigText,
+    /asarUnpack:[\s\S]*node_modules\/node-pty\/\*\*/
+  )
   const env = input.env || {}
   const keychainProfile =
     env.APPLE_KEYCHAIN_PROFILE || parseScriptEnvDefault(notarizedScript, 'APPLE_KEYCHAIN_PROFILE')
@@ -232,19 +272,38 @@ export function buildReleaseAutomationStatus(input: {
   const signingConfigured = Boolean(
     (notarizedScript || debugScript)?.includes('CSC_NAME=') || signingIdentity
   )
+  const nativeModulesConfigured = Boolean(
+    smokeNodePtyScript &&
+      smokePackageScript &&
+      afterPack?.includes('validate-native-modules') &&
+      hasNodePtyAsarUnpack &&
+      npmRebuild === 'true'
+  )
+  const updateDistributionConfigured =
+    publishProvider === 'github'
+      ? Boolean(publishOwner && publishRepo)
+      : publishProvider === 'generic'
+        ? Boolean(publishUrl && !/example\.com/i.test(publishUrl))
+        : Boolean(publishProvider)
   const releaseSteps = [
-    'npm run typecheck',
-    'npm run build',
-    'npm run build:debug:mac:notarized',
-    'Verify notarization/stapling output',
-    'Stage AgentBench Debug.app in /Applications'
+    'npm run ci',
+    'npm run build:unpack',
+    'npm run build:mac:notarized',
+    'Verify packaged smoke/native module validation output',
+    `Publish ${input.updateChannel} update artifacts`
   ]
   const statuses: ProductOperationStatus[] = [
     buildScript ? 'ok' : 'warning',
+    testScript ? 'ok' : 'warning',
+    ciScript ? 'ok' : 'warning',
+    buildUnpackScript ? 'ok' : 'warning',
+    smokeNodePtyScript && smokePackageScript ? 'ok' : 'warning',
     debugScript ? 'ok' : 'warning',
     notarizationConfigured ? 'ok' : 'warning',
     signingConfigured ? 'ok' : 'warning',
-    appId && productName ? 'ok' : 'warning'
+    appId && productName ? 'ok' : 'warning',
+    nativeModulesConfigured ? 'ok' : 'warning',
+    updateDistributionConfigured ? 'ok' : 'warning'
   ]
 
   return {
@@ -256,16 +315,43 @@ export function buildReleaseAutomationStatus(input: {
     outputDirectory,
     scripts: {
       build: buildScript,
+      test: testScript,
+      ci: ciScript,
+      buildUnpack: buildUnpackScript,
+      buildMac: buildMacScript,
+      buildMacNotarized: buildMacNotarizedScript,
       buildDebugMac: debugScript,
-      buildDebugMacNotarized: notarizedScript
+      buildDebugMacNotarized: debugNotarizedScript,
+      smokeNodePty: smokeNodePtyScript,
+      smokePackage: smokePackageScript,
+      validateRelease: validateReleaseScript
+    },
+    nativeModules: {
+      configured: nativeModulesConfigured,
+      ...(afterPack ? { validationScript: afterPack } : {}),
+      message: nativeModulesConfigured
+        ? 'node-pty is rebuilt, unpacked, and validated during packaging.'
+        : 'node-pty rebuild/unpack validation is incomplete.'
+    },
+    updateDistribution: {
+      configured: updateDistributionConfigured,
+      ...(publishProvider ? { provider: publishProvider } : {}),
+      ...(publishOwner ? { owner: publishOwner } : {}),
+      ...(publishRepo ? { repo: publishRepo } : {}),
+      ...(publishUrl ? { url: publishUrl } : {}),
+      message: updateDistributionConfigured
+        ? publishProvider === 'github'
+          ? `Updates are published through GitHub releases for ${publishOwner}/${publishRepo}.`
+          : `Updates are published through ${publishProvider}.`
+        : 'No real update publishing target was detected.'
     },
     notarization: {
       configured: notarizationConfigured,
       ...(keychainProfile ? { keychainProfile } : {}),
-      ...(notarizedScript ? { scriptName: 'build:debug:mac:notarized' } : {}),
+      ...(notarizedScriptName ? { scriptName: notarizedScriptName } : {}),
       message: notarizationConfigured
-        ? `Notarized debug build script is configured with keychain profile ${keychainProfile}.`
-        : 'No complete notarized debug build script/keychain profile was detected.'
+        ? `Notarized macOS build script is configured with keychain profile ${keychainProfile}.`
+        : 'No complete notarized macOS build script/keychain profile was detected.'
     },
     signing: {
       configured: signingConfigured,

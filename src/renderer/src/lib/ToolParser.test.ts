@@ -8,6 +8,8 @@ import {
   getToolCategory,
   getToolDisplayName,
   estimateLineChanges,
+  deriveToolDiffSummary,
+  parseUnifiedDiffSummary,
   createToolActivity,
   pairToolResult,
   isToolUseEvent,
@@ -234,6 +236,47 @@ describe('ToolParser', () => {
       const result = pairToolResult(use, { output: longOutput });
       expect(result.resultSummary).toMatch(/\.\.\.$/);
       expect(result.resultSummary!.length).toBeLessThanOrEqual(503);
+    });
+  });
+
+  describe('diff telemetry', () => {
+    it('extracts exact stats from Codex changes first', () => {
+      const summary = deriveToolDiffSummary('edit_file', {
+        changes: [
+          { path: 'src/App.tsx', kind: 'modify', additions: 12, deletions: 3 },
+          { path: 'src/main.css', kind: 'modify', added: 4, deleted: 1 }
+        ],
+        patchPreview: 'not a unified diff'
+      });
+
+      expect(summary?.source).toBe('codex_changes');
+      expect(summary?.confidence).toBe('exact');
+      expect(summary?.additions).toBe(16);
+      expect(summary?.deletions).toBe(4);
+      expect(summary?.files).toHaveLength(2);
+    });
+
+    it('parses unified diffs when changes do not carry stats', () => {
+      const summary = parseUnifiedDiffSummary([
+        'diff --git a/a.ts b/a.ts',
+        '--- a/a.ts',
+        '+++ b/a.ts',
+        '@@ -1,2 +1,3 @@',
+        ' line',
+        '-old',
+        '+new',
+        '+next'
+      ].join('\n'));
+
+      expect(summary?.source).toBe('patch_preview');
+      expect(summary?.additions).toBe(2);
+      expect(summary?.deletions).toBe(1);
+      expect(summary?.files?.[0].path).toBe('a.ts');
+    });
+
+    it('falls back to estimated replace/content stats and tolerates old activities', () => {
+      expect(deriveToolDiffSummary('replace', { path: 'a.ts', old_string: 'a\nb', new_string: 'a\nb\nc' })?.confidence).toBe('estimated');
+      expect(deriveToolDiffSummary('run_shell_command', { command: 'sed -i s/a/b/g a.ts' })).toBeUndefined();
     });
   });
 

@@ -26,6 +26,7 @@ export type ThemeCornerStyle = 'rounded' | 'hard';
 export type ThemeAccentStyle = 'system' | 'blue' | 'purple' | 'pink' | 'orange' | 'green' | 'red' | 'yellow';
 export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic';
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi';
+export type ChatScope = 'workspace' | 'global';
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools';
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny';
 export type AgenticNetworkPolicy = 'allow' | 'deny';
@@ -46,6 +47,8 @@ export interface ExternalPathGrant {
   access: ExternalPathGrantAccess;
   duration: ExternalPathGrantDuration;
   securityScopedBookmark?: string;
+  issuedBy?: 'main';
+  signature?: string;
   createdAt: string;
 }
 
@@ -96,6 +99,8 @@ export interface ProviderToolingCapability {
   label: string;
   state: ProviderCapabilityState;
   source: 'agentbench' | 'provider' | 'bridge' | 'settings';
+  enforcedByAgentBench?: boolean;
+  enforcement?: 'agentbench' | 'provider' | 'bridge' | 'settings' | 'best_effort' | 'none';
   policy?: AgenticServicePolicy | AgenticNetworkPolicy;
   requiresApproval: boolean;
   tools: string[];
@@ -151,7 +156,7 @@ export type ProviderAdapterTransport =
   | 'claude-sdk-or-cli'
   | 'kimi-wire-or-cli';
 
-export type ProviderAdapterRunChannel = 'run-gemini' | 'run-agent';
+export type ProviderAdapterRunChannel = 'run-agent';
 
 export interface ProviderAdapterFeatureFlags {
   persistentSessions: boolean;
@@ -170,6 +175,71 @@ export interface ProviderAdapterDescriptor {
   runChannel: ProviderAdapterRunChannel;
   capabilitySource: 'agentbench' | 'provider' | 'bridge' | 'mixed';
   features: ProviderAdapterFeatureFlags;
+}
+
+export type RuntimeWorkspaceMode = 'local' | 'worktree' | 'container';
+export type RuntimeNetworkPolicy = 'inherit' | 'allow' | 'deny';
+export type RuntimePersistence = 'reusable' | 'ephemeral';
+
+export interface RuntimeProfile {
+  id: string;
+  name: string;
+  provider: ProviderId;
+  scope: ChatScope;
+  workspaceMode: RuntimeWorkspaceMode;
+  binaryPath?: string;
+  env: Record<string, string>;
+  mcpProfileId?: string;
+  approvalMode?: string;
+  agenticServices?: AgenticServicesSettings;
+  networkPolicy: RuntimeNetworkPolicy;
+  persistence: RuntimePersistence;
+  containerConfig?: {
+    image?: string;
+    workdir?: string;
+    mounts?: Array<{ source: string; target: string; access: 'read' | 'write' }>;
+  };
+  builtin?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface HandoffCard {
+  id: string;
+  status: 'draft' | 'dispatched' | 'archived';
+  sourceChatId: string;
+  sourceRunId?: string;
+  sourceProvider: ProviderId;
+  workspaceId?: string;
+  workspacePath?: string;
+  summary: string;
+  selectedFiles: string[];
+  workspaceChangeSetIds: string[];
+  rawEventRunIds: string[];
+  recommendedProvider?: ProviderId;
+  recommendedModel?: string;
+  recommendedApprovalMode?: string;
+  targetChatId?: string;
+  dispatchedRunId?: string;
+  finalPrompt: string;
+  createdAt: string;
+  updatedAt: string;
+  dispatchedAt?: string;
+}
+
+export interface HandoffCardFilter {
+  sourceChatId?: string;
+  sourceRunId?: string;
+  status?: HandoffCard['status'];
+}
+
+export type FunFxMode = 'off' | 'subtle' | 'cinematic' | 'epic'
+
+export interface AdvancedFxSettings {
+  agentAura: boolean;
+  livingWorkspace: boolean;
+  dataViz: boolean;
+  intensity: Exclude<FunFxMode, 'off'>;
 }
 
 export interface AppSettings {
@@ -194,6 +264,9 @@ export interface AppSettings {
   themeCornerStyle: ThemeCornerStyle;
   themeAccentStyle: ThemeAccentStyle;
   promptSurfaceStyle: PromptSurfaceStyle;
+  funFxEnabled: boolean;
+  funFxMode: FunFxMode;
+  advancedFx: AdvancedFxSettings;
   reduceTransparency: boolean;
   reduceMotion: boolean;
   compactDensity: boolean;
@@ -287,8 +360,29 @@ export interface ProductReleaseAutomationStatus {
   outputDirectory?: string;
   scripts: {
     build?: string;
+    test?: string;
+    ci?: string;
+    buildUnpack?: string;
+    buildMac?: string;
+    buildMacNotarized?: string;
     buildDebugMac?: string;
     buildDebugMacNotarized?: string;
+    smokeNodePty?: string;
+    smokePackage?: string;
+    validateRelease?: string;
+  };
+  nativeModules: {
+    configured: boolean;
+    validationScript?: string;
+    message: string;
+  };
+  updateDistribution: {
+    configured: boolean;
+    provider?: string;
+    owner?: string;
+    repo?: string;
+    url?: string;
+    message: string;
   };
   notarization: {
     configured: boolean;
@@ -333,6 +427,8 @@ export interface ProductOperationsStatus {
     approvalLedgerRecords: number;
     workspaceChangeSets: number;
     scheduledTasks: number;
+    runtimeProfiles?: number;
+    handoffCards?: number;
   };
 }
 
@@ -423,14 +519,17 @@ export interface ChatRun {
   workspaceChangeSetId?: string;
   preSnapshot?: WorkspaceSnapshot;
   postSnapshot?: WorkspaceSnapshot;
+  runtimeProfileId?: string;
+  handoffSourceRunId?: string;
 }
 
 export interface ChatRecord {
   appChatId: string;
+  scope?: ChatScope;
   provider?: ProviderId;
   title: string;
-  workspaceId: string;
-  workspacePath: string;
+  workspaceId?: string;
+  workspacePath?: string;
   createdAt: number;
   updatedAt: number;
   archived: boolean;
@@ -462,10 +561,24 @@ export type RunEventKind =
 
 export type RunEventPhase = 'raw' | 'normalized' | 'control' | 'artifact';
 
+export type RunEventArtifactKind = 'stdin' | 'stdout' | 'stderr' | 'file' | 'snapshot' | 'diff' | 'other';
+
+export interface RunEventArtifactRef {
+  id: string;
+  kind: RunEventArtifactKind;
+  path: string;
+  sha256: string;
+  sizeBytes: number;
+  sequence?: number;
+  metadata?: Record<string, unknown>;
+}
+
 export interface RunEventRecord {
   schemaVersion: 1;
   id: string;
   sequence: number;
+  previousHash?: string;
+  hash?: string;
   runId: string;
   chatId?: string;
   workspaceId?: string;
@@ -473,12 +586,16 @@ export interface RunEventRecord {
   provider?: ProviderId;
   providerSessionId?: string;
   providerRunId?: string;
+  spanId?: string;
+  parentSpanId?: string;
+  toolCallId?: string;
   kind: RunEventKind;
   phase: RunEventPhase;
   source: 'main' | 'renderer' | 'provider' | 'replay';
   timestamp: string;
   summary?: string;
   payload?: unknown;
+  artifacts?: RunEventArtifactRef[];
 }
 
 export type RunEventInput = Omit<RunEventRecord, 'schemaVersion' | 'id' | 'sequence' | 'timestamp'> &
@@ -500,7 +617,22 @@ export interface RunEventReplay {
   events: RunEventRecord[];
   count: number;
   lastSequence: number;
+  hashHead?: string;
+  hashChainValid: boolean;
   countsByKind: Partial<Record<RunEventKind, number>>;
+  timeline: Array<{
+    sequence: number;
+    timestamp: string;
+    kind: RunEventKind;
+    phase: RunEventPhase;
+    source: RunEventRecord['source'];
+    summary?: string;
+    spanId?: string;
+    parentSpanId?: string;
+    toolCallId?: string;
+    artifactIds?: string[];
+    hash?: string;
+  }>;
   startedAt?: string;
   endedAt?: string;
 }
@@ -630,6 +762,8 @@ export interface ScheduledTask {
   geminiWorktree?: GeminiWorktreeConfig;
   codexReasoningEffort?: string | null;
   codexServiceTier?: string | null;
+  runtimeProfileId?: string;
+  handoffSourceRunId?: string;
   runAt: string;
   timezone: string;
   status: ScheduledTaskStatus;
@@ -666,6 +800,7 @@ export interface RunQueueImageAttachmentSnapshot {
 }
 
 export interface RunQueueRequestSnapshot {
+  scope?: ChatScope;
   prompt: string;
   displayPrompt?: string;
   selectedModelType: string;
@@ -680,6 +815,8 @@ export interface RunQueueRequestSnapshot {
   codexServiceTier?: string | null;
   scheduledTaskId?: string;
   preserveComposer?: boolean;
+  runtimeProfileId?: string;
+  handoffSourceRunId?: string;
 }
 
 export type RunRecoveryProcessAction = 'left_running' | 'not_found' | 'inaccessible' | 'unknown';
@@ -699,8 +836,9 @@ export interface RunQueueJob {
   id: string;
   runId: string;
   provider: ProviderId;
+  scope?: ChatScope;
   workspaceId?: string;
-  workspacePath: string;
+  workspacePath?: string;
   chatId?: string;
   source: RunQueueJobSource;
   status: RunQueueJobStatus;
@@ -713,6 +851,8 @@ export interface RunQueueJob {
   processPid?: number;
   processStartedAt?: string;
   processCommand?: string;
+  runtimeProfileId?: string;
+  handoffSourceRunId?: string;
   orphanProcess?: RunRecoveryProcessSnapshot;
   parentRunId?: string;
   createdAt: string;
@@ -755,7 +895,7 @@ export interface RunRecoveryRecord {
   provider: ProviderId;
   chatId?: string;
   workspaceId?: string;
-  workspacePath: string;
+  workspacePath?: string;
   previousStatus: RunQueueJobStatus;
   recoveredStatus: RunQueueJobStatus;
   action: RunRecoveryAction;
@@ -795,6 +935,21 @@ export interface RunWarning {
 
 export type ToolActivityStatus = 'pending' | 'running' | 'success' | 'warning' | 'error';
 
+export interface ToolDiffFileSummary {
+  path?: string;
+  status?: DiffFileStatus | 'updated' | 'unknown';
+  additions?: number;
+  deletions?: number;
+}
+
+export interface ToolDiffSummary {
+  additions?: number;
+  deletions?: number;
+  files?: ToolDiffFileSummary[];
+  source: 'codex_changes' | 'patch_preview' | 'string_replace' | 'content' | 'result_diff' | 'unknown';
+  confidence: 'exact' | 'estimated' | 'unknown';
+}
+
 export interface ToolActivity {
   id: string;
   toolName: string;
@@ -808,6 +963,7 @@ export interface ToolActivity {
   resultSummary?: string;
   outputPreview?: string;
   filePath?: string;
+  diffSummary?: ToolDiffSummary;
   rawUseEvent?: unknown;
   rawResultEvent?: unknown;
   // Legacy fields preserved for backward compatibility
@@ -1047,4 +1203,134 @@ export interface WorkspaceChangeFilter {
   statuses?: WorkspaceChangeStatus[];
   since?: string;
   limit?: number;
+}
+
+export type BenchmarkArtifactKind =
+  | 'stdout'
+  | 'stderr'
+  | 'file'
+  | 'directory'
+  | 'snapshot'
+  | 'diff'
+  | 'score'
+  | 'other';
+
+export interface BenchmarkPinnedFile {
+  path: string;
+  sizeBytes: number;
+  sha256: string;
+  mtimeMs?: number;
+  mode?: number;
+}
+
+export interface BenchmarkGitManifest {
+  root?: string;
+  head?: string;
+  branch?: string;
+  dirty: boolean;
+  statusPorcelain?: string;
+  trackedFiles?: BenchmarkPinnedFile[];
+}
+
+export type BenchmarkScorerKind =
+  | 'exact_match'
+  | 'regex_match'
+  | 'file_exists'
+  | 'artifact_exists'
+  | 'json_field_equals';
+
+export interface BenchmarkScorerDefinition {
+  id: string;
+  kind: BenchmarkScorerKind;
+  weight?: number;
+  target?: string;
+  expected?: unknown;
+  pattern?: string;
+  flags?: string;
+  path?: string;
+  sha256?: string;
+  artifactName?: string;
+  artifactKind?: BenchmarkArtifactKind;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BenchmarkTaskManifest {
+  schemaVersion: 1;
+  id: string;
+  title: string;
+  prompt: string;
+  provider?: ProviderId;
+  workspacePath?: string;
+  inputFiles?: string[];
+  expectedArtifacts?: Array<{
+    name: string;
+    kind: BenchmarkArtifactKind;
+    sha256?: string;
+  }>;
+  scorers: BenchmarkScorerDefinition[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface BenchmarkEnvironmentManifest {
+  schemaVersion: 1;
+  capturedAt: string;
+  platform: NodeJS.Platform;
+  arch: NodeJS.Architecture;
+  nodeVersion: string;
+  appVersion?: string;
+  workspacePath?: string;
+  git?: BenchmarkGitManifest;
+  files: BenchmarkPinnedFile[];
+  env?: Record<string, string>;
+}
+
+export interface BenchmarkArtifactRecord {
+  id: string;
+  runId: string;
+  kind: BenchmarkArtifactKind;
+  name: string;
+  relativePath: string;
+  absolutePath?: string;
+  sha256: string;
+  sizeBytes: number;
+  createdAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BenchmarkScoreResult {
+  scorerId: string;
+  kind: BenchmarkScorerKind;
+  passed: boolean;
+  score: number;
+  maxScore: number;
+  message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface BenchmarkEvaluationReport {
+  schemaVersion: 1;
+  taskId: string;
+  evaluatedAt: string;
+  score: number;
+  maxScore: number;
+  passed: boolean;
+  results: BenchmarkScoreResult[];
+}
+
+export interface BenchmarkRunManifest {
+  schemaVersion: 1;
+  id: string;
+  taskId: string;
+  runId?: string;
+  provider?: ProviderId;
+  workspacePath?: string;
+  createdAt: string;
+  taskManifestSha256: string;
+  environmentManifestSha256: string;
+  promptSha256: string;
+  task: BenchmarkTaskManifest;
+  environment: BenchmarkEnvironmentManifest;
+  artifacts: BenchmarkArtifactRecord[];
+  evaluation?: BenchmarkEvaluationReport;
+  metadata?: Record<string, unknown>;
 }

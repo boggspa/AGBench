@@ -1,26 +1,32 @@
 {
-  "name": "agentbench",
+  "name": "agbench",
   "version": "1.0.0",
-  "description": "AgentBench desktop workspace",
+  "description": "AGBench desktop workspace",
   "main": "./out/main/index.js",
-  "author": "example.com",
-  "homepage": "https://electron-vite.org",
+  "author": "Chris Izatt",
+  "homepage": "https://github.com/chrisizatt/GUIGemini",
   "scripts": {
     "format": "prettier --write .",
     "lint": "eslint --cache .",
+    "test": "vitest run",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "ci": "npm run typecheck && npm run test && npm run smoke:node-pty",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:debug:mac": "npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} electron-builder --dir --config electron-builder.debug.yml",
-    "build:debug:mac:notarized": "npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true",
+    "smoke:node-pty": "node scripts/smoke-node-pty.cjs",
+    "smoke:package": "node scripts/smoke-packaged-electron.cjs",
+    "validate:release": "npm run ci && npm run build:unpack",
+    "build:unpack": "npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist",
+    "build:debug:mac": "npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} electron-builder --dir --config electron-builder.debug.yml && node scripts/smoke-packaged-electron.cjs dist-debug",
+    "build:debug:mac:notarized": "npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist-debug",
     "build:win": "npm run build && electron-builder --win",
-    "build:mac": "electron-vite build && electron-builder --mac",
-    "build:linux": "electron-vite build && electron-builder --linux"
+    "build:mac": "npm run build && electron-builder --mac",
+    "build:mac:notarized": "npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --mac -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist",
+    "build:linux": "npm run build && electron-builder --linux"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10.3",
@@ -42,7 +48,9 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "node-pty": "^1.1.0"
+    "node-pty": "^1.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

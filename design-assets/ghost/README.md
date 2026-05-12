@@ -1,0 +1,22 @@
+# Ghost Asset Exports
+
+Private visual asset exports for the small ghost companion.
+
+Generated files:
+
+- `ghost-guy-mark.svg` and `ghost-guy-mark-*.png`: transparent logo mark, no floor shadow.
+- `ghost-guy-sticker.svg` and `ghost-guy-sticker-*.png`: transparent sticker-style mark with glow and floor shadow.
+
+Default PNG sizes: 128, 256, 512, and 1024 px.
+
+Regenerate from the repo root:
+
+```sh
+node scripts/export-ghost-assets.cjs
+```
+
+Custom sizes:
+
+```sh
+node scripts/export-ghost-assets.cjs --sizes=128,256,512,1024
+```

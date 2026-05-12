@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -13,7 +13,8 @@ import { SettingsPanel } from './components/SettingsPanel'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
-import { HighlightedCodeBlock } from './components/HighlightedCodeBlock'
+import { MarkdownMessage } from './components/MarkdownMessage'
+import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLane } from './lib/RunLanes'
 
 type SkyWeatherKind = 'clear' | 'partly_cloudy' | 'cloudy' | 'overcast' | 'rain' | 'heavy_rain' | 'snow' | 'mist' | 'fog' | 'storm' | 'unknown'
 
@@ -136,30 +137,44 @@ function CopyResponseIcon() {
   )
 }
 
+type SkyTimePhase = 'dawn' | 'day' | 'evening' | 'night'
+
 function SkyWeatherVisual({ weather }: { weather: HostWeatherVisualState | null }) {
   const localHour = new Date().getHours()
-  const isNight = weather ? !weather.isDay : localHour < 7 || localHour >= 19
   const skyKind = weather?.kind || 'unknown'
 
+  // Keep the backend daylight signal for core assets like stars vs sun/day state.
+  const isNightBase = weather ? !weather.isDay : localHour < 7 || localHour >= 19
+
+  let timePhase: SkyTimePhase = isNightBase ? 'night' : 'day'
+  if (localHour >= 5 && localHour < 8) {
+    timePhase = 'dawn'
+  } else if (localHour >= 17 && localHour < 20) {
+    timePhase = 'evening'
+  }
+
   return (
-    <div className={`sky-visual-fx sky-${skyKind} ${isNight ? 'sky-night' : 'sky-day'}`} aria-hidden>
+    <div
+      className={`sky-visual-fx sky-${skyKind} ${isNightBase ? 'sky-night' : 'sky-day'} sky-phase-${timePhase}`}
+      aria-hidden
+    >
       <div className="sky-glow" />
       <div className="sky-orb" />
-      {isNight && (
+      {isNightBase && (
         <>
           <span className="sky-star sky-star-1" />
           <span className="sky-star sky-star-2" />
           <span className="sky-star sky-star-3" />
           <span className="sky-star sky-star-4" />
+          <span className="sky-star sky-star-5" />
         </>
       )}
       <span className="sky-cloud sky-cloud-1" />
       <span className="sky-cloud sky-cloud-2" />
       <span className="sky-cloud sky-cloud-3" />
+      <span className="sky-cloud sky-cloud-4" />
+      <span className="sky-cloud sky-cloud-5" />
       <div className="sky-rainfall">
-        <span />
-        <span />
-        <span />
         <span />
         <span />
         <span />
@@ -167,9 +182,6 @@ function SkyWeatherVisual({ weather }: { weather: HostWeatherVisualState | null 
         <span />
       </div>
       <div className="sky-snowfall">
-        <span />
-        <span />
-        <span />
         <span />
         <span />
         <span />
@@ -186,21 +198,117 @@ function GhostCompanion() {
       <div className="ghost-avatar">
         <div className="ghost-shadow" />
         <div className="ghost-body">
-          <span className="ghost-cap ghost-cap-top" />
-          <span className="ghost-cap ghost-cap-crown" />
-          <span className="ghost-cap ghost-cap-brim" />
-          <span className="ghost-face ghost-face-left" />
-          <span className="ghost-face ghost-face-right" />
           <span className="ghost-eye ghost-eye-left" />
           <span className="ghost-eye ghost-eye-right" />
-          <span className="ghost-moustache ghost-moustache-left" />
-          <span className="ghost-moustache ghost-moustache-right" />
-          <span className="ghost-cheek ghost-cheek-left" />
-          <span className="ghost-cheek ghost-cheek-right" />
+          <span className="ghost-face ghost-face-left" />
+          <span className="ghost-face ghost-face-right" />
           <span className="ghost-pixel ghost-pixel-left" />
           <span className="ghost-pixel ghost-pixel-mid" />
           <span className="ghost-pixel ghost-pixel-right" />
         </div>
+      </div>
+    </div>
+  )
+}
+
+type AdvancedFxIntensity = AppSettings['advancedFx']['intensity']
+type AgentAuraStatus = 'idle' | 'running' | 'queued' | 'approval' | 'failed' | 'complete' | 'handoff'
+
+function AgentAuraLayer({
+  provider,
+  status,
+  intensity,
+  hasHandoff
+}: {
+  provider: ProviderId
+  status: AgentAuraStatus
+  intensity: AdvancedFxIntensity
+  hasHandoff: boolean
+}) {
+  return (
+    <div
+      className={`agent-aura-layer fx-provider-${provider} fx-status-${status} fx-intensity-${intensity} ${hasHandoff ? 'fx-handoff' : ''}`}
+      aria-hidden
+    >
+      <div className="agent-aura-edge agent-aura-edge-left" />
+      <div className="agent-aura-edge agent-aura-edge-right" />
+      <div className="agent-aura-run-burst" />
+    </div>
+  )
+}
+
+function LivingWorkspaceLayer({
+  weather,
+  intensity
+}: {
+  weather: HostWeatherVisualState | null
+  intensity: AdvancedFxIntensity
+}) {
+  const localHour = new Date().getHours()
+  const isNight = weather ? !weather.isDay : localHour < 7 || localHour >= 19
+  const phase: SkyTimePhase =
+    localHour >= 5 && localHour < 8
+      ? 'dawn'
+      : localHour >= 17 && localHour < 20
+        ? 'evening'
+        : isNight
+          ? 'night'
+          : 'day'
+  const kind = weather?.kind || 'unknown'
+  const moteCount = intensity === 'epic' ? 18 : intensity === 'cinematic' ? 12 : 7
+  const weatherParticleCount = intensity === 'epic' ? 16 : intensity === 'cinematic' ? 10 : 5
+
+  return (
+    <div className={`living-workspace-layer living-${kind} living-phase-${phase} fx-intensity-${intensity}`} aria-hidden>
+      <div className="living-depth living-depth-back" />
+      <div className="living-depth living-depth-mid" />
+      <div className="living-room-light" />
+      <div className="living-motes">
+        {Array.from({ length: moteCount }).map((_, index) => (
+          <span key={`mote-${index}`} style={{ '--mote-index': index } as CSSProperties} />
+        ))}
+      </div>
+      <div className="living-weather-particles">
+        {Array.from({ length: weatherParticleCount }).map((_, index) => (
+          <span key={`weather-${index}`} style={{ '--particle-index': index } as CSSProperties} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function RunDataVizLayer({
+  provider,
+  intensity,
+  queueCount,
+  rawEventCount,
+  approvalWaiting,
+  status
+}: {
+  provider: ProviderId
+  intensity: AdvancedFxIntensity
+  queueCount: number
+  rawEventCount: number
+  approvalWaiting: boolean
+  status: AgentAuraStatus
+}) {
+  const queueLaneCount = Math.max(1, Math.min(queueCount || 1, intensity === 'epic' ? 5 : 3))
+  const eventLevel = Math.min(100, Math.max(8, rawEventCount * 2))
+
+  return (
+    <div
+      className={`run-data-viz-layer fx-provider-${provider} fx-status-${status} fx-intensity-${intensity} ${approvalWaiting ? 'approval-waiting' : ''}`}
+      aria-hidden
+    >
+      <svg className="run-data-viz-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <path className="run-data-viz-flow run-data-viz-flow-a" d="M4 78 C 24 56, 42 62, 60 42 S 86 24, 96 16" />
+        <path className="run-data-viz-flow run-data-viz-flow-b" d="M2 34 C 24 26, 38 42, 58 34 S 82 12, 98 28" />
+        <path className="run-data-viz-progress" d={`M8 92 H ${Math.min(94, 8 + eventLevel)}`} />
+      </svg>
+      <div className="run-data-viz-queue">
+        {Array.from({ length: queueLaneCount }).map((_, index) => (
+          <span key={`queue-${index}`} style={{ '--queue-index': index } as CSSProperties} />
+        ))}
       </div>
     </div>
   )
@@ -440,7 +548,15 @@ interface UsageWindowAggregate {
   usedPercent?: number
 }
 
-type RawLogEntry = { type: 'stdout' | 'stderr' | 'tool' | 'info'; content: string }
+type RawLogEntry = {
+  type: 'stdout' | 'stderr' | 'tool' | 'info'
+  content: string
+  sequence?: number
+  hash?: string
+  spanId?: string
+  toolCallId?: string
+  artifactCount?: number
+}
 
 interface CodexModelOption {
   id: string
@@ -514,6 +630,7 @@ const MAX_RIGHT_PANEL_WIDTH = 720
 const DEFAULT_WORKSPACE_SIDEBAR_WIDTH = 260
 const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
 const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
+const FX_BURST_DURATION_MS = 1150
 const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
 const RUN_WRITE_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file']
 const COMMAND_PALETTE_CORE: CommandPaletteItem[] = [
@@ -714,191 +831,282 @@ const CLI_PROVIDER_COMMAND_PALETTE_CORE: CommandPaletteItem[] = [
     source: 'core'
   },
 ]
-const WELCOME_SUGGESTIONS = [
-  'Inspect this workspace and suggest the highest-impact next improvement.',
-  'Explain the project structure and where I should start.',
-  'Review recent file changes for risk and missing tests.',
-]
-const WELCOME_USER_NAME = 'Chris'
 type WelcomeHeadingCopy = {
   beforeWorkspace: string
   workspaceName: string
   afterWorkspace: string
 }
-type WelcomeHeadingTemplate = (welcomeGreeting: string, dayName: string, workspaceName: string) => WelcomeHeadingCopy
-type WelcomeGreetingTemplate = (timeGreeting: string, userName: string) => string
-type WelcomeHeadingTone = 'standard' | 'edge'
 
-const WELCOME_GREETINGS: Record<WelcomeHeadingTone, WelcomeGreetingTemplate[]> = {
-  standard: [
-    (timeGreeting, userName) => `${timeGreeting}, ${userName}.`,
-    (_timeGreeting, userName) => `Ready when you are, ${userName}.`,
-    (_timeGreeting, userName) => `Back at it, ${userName}.`,
-    (_timeGreeting, userName) => `Fresh slate, ${userName}.`,
-    (_timeGreeting, userName) => `All set, ${userName}.`,
-    (_timeGreeting, userName) => `Let's focus, ${userName}.`,
-    (_timeGreeting, userName) => `Clear desk, ${userName}.`,
-    (_timeGreeting, userName) => `Steady start, ${userName}.`,
-    (_timeGreeting, userName) => `Quick reset, ${userName}.`,
-    (_timeGreeting, userName) => `Good to see you, ${userName}.`,
-  ],
-  edge: [
-    (_timeGreeting, userName) => `Let's be direct, ${userName}.`,
-    (_timeGreeting, userName) => `One sharp move, ${userName}.`,
-    (_timeGreeting, userName) => `Keep it tight, ${userName}.`,
-    (_timeGreeting, userName) => `No drift today, ${userName}.`,
-    (_timeGreeting, userName) => `Straight to it, ${userName}.`,
-    (_timeGreeting, userName) => `Make it count, ${userName}.`,
-    (_timeGreeting, userName) => `Clean pass first, ${userName}.`,
-    (_timeGreeting, userName) => `Less noise, ${userName}.`,
-    (_timeGreeting, userName) => `Narrow target, ${userName}.`,
-    (_timeGreeting, userName) => `Decisive mode, ${userName}.`,
-  ],
+type WelcomeStarterIntent = 'explore' | 'review' | 'plan' | 'implement' | 'debug' | 'test' | 'schedule' | 'global'
+type WelcomeStarter = {
+  id: string
+  label: string
+  description: string
+  prompt: string
+  intent: WelcomeStarterIntent
+}
+type WelcomeCopy = {
+  heading: WelcomeHeadingCopy
+  subheading: string
+  starters: WelcomeStarter[]
+}
+type WelcomeCopyContext = {
+  workspaceName: string
+  providerLabel: string
+  permissionModeLabel: string
+  isGlobalChat: boolean
+  hasDiff: boolean
+  diffCount: number
+  scheduledTaskCount: number
+  lastRunStatus?: string
 }
 
-const WELCOME_HEADING_TEMPLATES: Record<'standard' | 'edge', WelcomeHeadingTemplate[]> = {
-  standard: [
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Start in `,
-      workspaceName,
-      afterWorkspace: ' with one clear task.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Focus `,
-      workspaceName,
-      afterWorkspace: ' on one useful change.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Use `,
-      workspaceName,
-      afterWorkspace: ' for a quick, practical win.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Open `,
-      workspaceName,
-      afterWorkspace: ' and pick the next step.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Keep `,
-      workspaceName,
-      afterWorkspace: ' narrow and measurable.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Make progress in `,
-      workspaceName,
-      afterWorkspace: ' one check at a time.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Triage `,
-      workspaceName,
-      afterWorkspace: ', then act on the clearest signal.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Start small in `,
-      workspaceName,
-      afterWorkspace: ' and keep it reviewable.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Let `,
-      workspaceName,
-      afterWorkspace: ' show the next obvious move.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Take one clean pass through `,
-      workspaceName,
-      afterWorkspace: '.',
-    }),
-  ],
-  edge: [
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Make `,
-      workspaceName,
-      afterWorkspace: ' less vague.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Find the sharpest edge in `,
-      workspaceName,
-      afterWorkspace: '.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Keep `,
-      workspaceName,
-      afterWorkspace: ' honest with one check.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Skip ceremony in `,
-      workspaceName,
-      afterWorkspace: ' and pick a real task.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Tighten `,
-      workspaceName,
-      afterWorkspace: ' until the next move is obvious.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Turn `,
-      workspaceName,
-      afterWorkspace: ' into one clean decision.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Start with risk in `,
-      workspaceName,
-      afterWorkspace: ', then move.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Give `,
-      workspaceName,
-      afterWorkspace: ' one focused pass.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Cut the noise in `,
-      workspaceName,
-      afterWorkspace: '.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Make `,
-      workspaceName,
-      afterWorkspace: ' easy to reason about.',
-    }),
-    (welcomeGreeting: string, _dayName: string, workspaceName: string) => ({
-      beforeWorkspace: `${welcomeGreeting} Put `,
-      workspaceName,
-      afterWorkspace: ' on rails with one clear check.',
-    }),
-  ],
-}
+const pluralize = (count: number, singular: string, plural: string = `${singular}s`): string =>
+  `${count} ${count === 1 ? singular : plural}`
 
-const WELCOME_TONE_WEIGHTS: Record<WelcomeHeadingTone, number> = {
-  standard: 60,
-  edge: 40,
-}
-const WELCOME_HEADING_POOL_SIZE = WELCOME_HEADING_TEMPLATES.standard.length + WELCOME_HEADING_TEMPLATES.edge.length
+const welcomeContextLine = (context: WelcomeCopyContext): string =>
+  `Current GUI context: ${context.providerLabel}, ${context.permissionModeLabel}.`
 
-const pickWelcomeTone = (seed: number): WelcomeHeadingTone => {
-  const totalWeight = Object.values(WELCOME_TONE_WEIGHTS).reduce((sum, value) => sum + value, 0)
-  const bucket = seed % totalWeight
-  if (bucket < WELCOME_TONE_WEIGHTS.standard) return 'standard'
-  return 'edge'
-}
-const WELCOME_SUBHEADING_TEMPLATES: Record<WelcomeHeadingTone, string[]> = {
-  standard: [
-    'Start a Gemini CLI task, inspect the workspace, or ask for a practical plan for the next step.',
-    'Pick a starter, ask a question, or point Gemini at the next file to improve.',
-    'Use the prompt below for planning, editing, review, or workspace exploration.',
-    'Drop in the next task and I will route it through the workspace-aware flow.',
-    'Ask for a quick risk scan and then narrow to one concrete fix.',
-    'Request a test-focused validation order before changing code.',
-    'Ask for the highest-impact file in this workspace and proceed carefully.',
-  ],
-  edge: [
-    'Need a focused audit, a cleanup lane, or a direct diff-risk recommendation? Start with that.',
-    'Use one sentence to define your target, then ask for a scoped implementation plan.',
-    'Pick the noisiest file and ask for the smallest safe first edit.',
-    'Say “prove the riskiest assumption” and I’ll open a narrow verification path.',
-    'Ask for a before/after plan with explicit acceptance checks.',
-    'Point at a pain point and request a concrete fix-and-verify sequence.',
-    'Ask for a tactical plan: one edit, one check, one follow-up.',
-  ],
+const buildWorkspaceOrientationPrompt = (context: WelcomeCopyContext): string => [
+  `Inspect the ${context.workspaceName} workspace and give me a concise orientation.`,
+  welcomeContextLine(context),
+  '',
+  'Cover:',
+  '- what this app appears to do',
+  '- the main frontend, backend, and process boundaries',
+  '- the files or directories I should understand first',
+  '- the riskiest or most complex areas',
+  '- the best first task to improve it',
+  '',
+  'Do not edit files yet.'
+].join('\n')
+
+const buildDiffReviewPrompt = (context: WelcomeCopyContext): string => [
+  `Review the current uncommitted changes in ${context.workspaceName}.`,
+  welcomeContextLine(context),
+  '',
+  'Use read-only inspection first. Check git status, staged and unstaged diffs, and nearby code when needed.',
+  '',
+  'Return findings first, ordered by severity. For each finding include file/location, issue, impact, and a concrete suggested fix. If there are no findings, say so explicitly and mention residual risks or missing tests.',
+  '',
+  'Do not edit files, stage files, commit files, or run formatters.'
+].join('\n')
+
+const buildImplementationPlanPrompt = (context: WelcomeCopyContext): string => [
+  `Make a scoped implementation plan for the next useful change in ${context.workspaceName}.`,
+  welcomeContextLine(context),
+  '',
+  'First inspect only enough code to understand the path. Then give:',
+  '- the smallest valuable target',
+  '- the files likely involved',
+  '- the risks and assumptions',
+  '- the acceptance checks',
+  '- the exact first edit you would make',
+  '',
+  'Do not edit files until the plan is clear.'
+].join('\n')
+
+const buildFocusedImplementationPrompt = (context: WelcomeCopyContext): string => [
+  `Find and implement the smallest high-impact improvement in ${context.workspaceName}.`,
+  welcomeContextLine(context),
+  '',
+  'Before editing, state the target and why it is the right size. Keep changes tightly scoped, follow existing code patterns, and avoid unrelated refactors.',
+  '',
+  'After editing, run the narrowest relevant validation and summarize what changed, what was checked, and any remaining risk.'
+].join('\n')
+
+const buildTestGapPrompt = (context: WelcomeCopyContext): string => [
+  `Find the narrowest useful test or validation gap in ${context.workspaceName}.`,
+  welcomeContextLine(context),
+  '',
+  'Inspect existing tests and recent code paths. Recommend one focused check, then either add it or explain why a different validation is more appropriate.',
+  '',
+  'Keep the change small and run the relevant test command if available.'
+].join('\n')
+
+const buildFailureDebugPrompt = (context: WelcomeCopyContext): string => [
+  `Investigate the last failed ${context.providerLabel} run in this thread.`,
+  welcomeContextLine(context),
+  '',
+  'Use the available transcript, raw logs, and workspace state to identify the failing path. Then give:',
+  '- the likely root cause',
+  '- the smallest safe fix',
+  '- the validation command or manual check',
+  '- any risk before editing',
+  '',
+  'Do not edit files until the failure path is clear.'
+].join('\n')
+
+const buildContinueSafelyPrompt = (context: WelcomeCopyContext): string => [
+  `Continue work in ${context.workspaceName} without losing the current state.`,
+  welcomeContextLine(context),
+  '',
+  'Start by checking the current diff and recent run context. Then propose the next single edit, the reason for it, and the validation check that should follow.',
+  '',
+  'Do not make broad cleanup changes.'
+].join('\n')
+
+const buildScheduledWorkPrompt = (context: WelcomeCopyContext): string => [
+  `Review the pending scheduled work for ${context.workspaceName}.`,
+  welcomeContextLine(context),
+  '',
+  'Summarize what appears queued or due, identify any conflicts or stale assumptions, and recommend the next action. If a scheduled run should be adjusted, explain the change before making it.'
+].join('\n')
+
+const buildGlobalPlanningPrompt = (context: WelcomeCopyContext): string => [
+  'Help me plan across my coding work from this global chat.',
+  welcomeContextLine(context),
+  '',
+  'Ask for missing context only if necessary. Otherwise, help me choose one concrete next action, the workspace it belongs in, and the first check that would prove progress.'
+].join('\n')
+
+const buildProviderSetupPrompt = (context: WelcomeCopyContext): string => [
+  `Check whether the current ${context.providerLabel} setup is ready for productive work.`,
+  welcomeContextLine(context),
+  '',
+  'Look for obvious provider, model, permission, or workspace trust issues visible from this app state. Recommend the smallest setup fix before suggesting any coding task.'
+].join('\n')
+
+const buildGlobalTaskPlanPrompt = (context: WelcomeCopyContext): string => [
+  'Help me turn a broad coding goal into a workspace-specific implementation plan.',
+  welcomeContextLine(context),
+  '',
+  'Start by identifying the missing context you need. Then produce:',
+  '- the workspace or repo this should happen in',
+  '- the smallest useful target',
+  '- likely files or systems involved',
+  '- risks and assumptions',
+  '- acceptance checks before implementation starts',
+].join('\n')
+
+const buildWelcomeStarters = (context: WelcomeCopyContext): WelcomeStarter[] => {
+  if (context.isGlobalChat) {
+    return [
+      {
+        id: 'global-plan',
+        label: 'Choose next action',
+        description: 'Turn broad context into one concrete coding step.',
+        prompt: buildGlobalPlanningPrompt(context),
+        intent: 'global'
+      },
+      {
+        id: 'provider-setup',
+        label: 'Check setup',
+        description: 'Review provider, model, permission, and trust readiness.',
+        prompt: buildProviderSetupPrompt(context),
+        intent: 'global'
+      },
+      {
+        id: 'implementation-plan',
+        label: 'Plan workspace task',
+        description: 'Turn a broad goal into a scoped repo plan.',
+        prompt: buildGlobalTaskPlanPrompt(context),
+        intent: 'plan'
+      },
+    ]
+  }
+
+  if (context.lastRunStatus === 'failed') {
+    return [
+      {
+        id: 'debug-failure',
+        label: 'Debug failure',
+        description: 'Find the failing path before touching files.',
+        prompt: buildFailureDebugPrompt(context),
+        intent: 'debug'
+      },
+      {
+        id: 'review-changes',
+        label: 'Review changes',
+        description: 'Read-only diff review with findings first.',
+        prompt: buildDiffReviewPrompt(context),
+        intent: 'review'
+      },
+      {
+        id: 'continue-safely',
+        label: 'Continue safely',
+        description: 'Pick one next edit and one validation check.',
+        prompt: buildContinueSafelyPrompt(context),
+        intent: 'plan'
+      },
+    ]
+  }
+
+  if (context.hasDiff) {
+    return [
+      {
+        id: 'review-changes',
+        label: 'Review changes',
+        description: `Audit ${context.diffCount > 0 ? pluralize(context.diffCount, 'changed file') : 'the current diff'} before editing.`,
+        prompt: buildDiffReviewPrompt(context),
+        intent: 'review'
+      },
+      {
+        id: 'continue-safely',
+        label: 'Continue safely',
+        description: 'Use the current diff to choose the next single edit.',
+        prompt: buildContinueSafelyPrompt(context),
+        intent: 'plan'
+      },
+      {
+        id: 'test-gap',
+        label: 'Find test gap',
+        description: 'Add or recommend the narrowest useful validation.',
+        prompt: buildTestGapPrompt(context),
+        intent: 'test'
+      },
+    ]
+  }
+
+  if (context.scheduledTaskCount > 0) {
+    return [
+      {
+        id: 'scheduled-work',
+        label: 'Review schedule',
+        description: `Check ${pluralize(context.scheduledTaskCount, 'pending run')} for stale assumptions.`,
+        prompt: buildScheduledWorkPrompt(context),
+        intent: 'schedule'
+      },
+      {
+        id: 'implementation-plan',
+        label: 'Plan a change',
+        description: 'Define target, files, risks, and acceptance checks.',
+        prompt: buildImplementationPlanPrompt(context),
+        intent: 'plan'
+      },
+      {
+        id: 'map-project',
+        label: 'Map project',
+        description: 'Orient around structure, risk, and best starting point.',
+        prompt: buildWorkspaceOrientationPrompt(context),
+        intent: 'explore'
+      },
+    ]
+  }
+
+  return [
+    {
+      id: 'map-project',
+      label: 'Map project',
+      description: 'Orient around structure, risk, and best starting point.',
+      prompt: buildWorkspaceOrientationPrompt(context),
+      intent: 'explore'
+    },
+    {
+      id: 'implementation-plan',
+      label: 'Plan a change',
+      description: 'Define target, files, risks, and acceptance checks.',
+      prompt: buildImplementationPlanPrompt(context),
+      intent: 'plan'
+    },
+    {
+      id: 'focused-implementation',
+      label: 'Make improvement',
+      description: 'Find one small valuable edit and verify it.',
+      prompt: buildFocusedImplementationPrompt(context),
+      intent: 'implement'
+    },
+  ]
 }
 const FILE_DIFF_STATUSES = new Set<DiffFileSummary['status']>([
   'created',
@@ -936,45 +1144,39 @@ const formatWorkDuration = (startedAt?: string, completedAt?: string): string | 
   return `Worked for ${parts.slice(0, 2).join(' ')}`
 }
 
-const hashWelcomeSeed = (value: string): number => {
-  let hash = 0
-  for (let index = 0; index < value.length; index += 1) {
-    hash = ((hash << 5) - hash + value.charCodeAt(index)) | 0
-  }
-  return Math.abs(hash)
-}
+const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
+  const heading: WelcomeHeadingCopy = context.isGlobalChat
+    ? {
+        beforeWorkspace: `New ${context.providerLabel} `,
+        workspaceName: 'global chat',
+        afterWorkspace: '.',
+      }
+    : {
+        beforeWorkspace: `New ${context.providerLabel} thread for `,
+        workspaceName: context.workspaceName,
+        afterWorkspace: context.lastRunStatus === 'failed'
+          ? ' after a failed run.'
+          : context.hasDiff
+            ? context.diffCount > 0
+              ? ` with ${pluralize(context.diffCount, 'changed file')} ready.`
+              : ' with current changes ready.'
+            : '.',
+      }
 
-const getTimeGreeting = (date: Date): string => {
-  const hour = date.getHours()
-  if (hour < 5) return 'Still up'
-  if (hour < 12) return 'Good morning'
-  if (hour < 17) return 'Good afternoon'
-  if (hour < 22) return 'Good evening'
-  return 'Good evening'
-}
-
-const formatWelcomeGreeting = (timeGreeting: string, tone: WelcomeHeadingTone, seed: number): string => {
-  const templates = WELCOME_GREETINGS[tone]
-  const greeting = templates[seed % templates.length]
-
-  return greeting(timeGreeting, WELCOME_USER_NAME)
-}
-
-const buildWelcomeCopy = (workspaceName: string, chatId?: string): { heading: WelcomeHeadingCopy; subheading: string } => {
-  const now = new Date()
-  const dayName = now.toLocaleDateString([], { weekday: 'long' })
-  const dateKey = now.toISOString().slice(0, 10)
-  const seed = hashWelcomeSeed(`${dateKey}:${workspaceName}:${chatId || ''}`)
-  const tone = pickWelcomeTone(seed)
-  const headingTemplates = WELCOME_HEADING_TEMPLATES[tone]
-  const greeting = formatWelcomeGreeting(getTimeGreeting(now), tone, seed)
-  const headingTemplate = headingTemplates[seed % headingTemplates.length]
-  const subheadingPool = WELCOME_SUBHEADING_TEMPLATES[tone]
-  const subheading = subheadingPool[Math.floor(seed / WELCOME_HEADING_POOL_SIZE) % subheadingPool.length]
+  const subheading = context.isGlobalChat
+    ? 'Use system scope for broad planning, setup checks, or choosing the right workspace.'
+    : context.lastRunStatus === 'failed'
+      ? 'Start by narrowing the failure path, then make one fix and verify it.'
+      : context.hasDiff
+        ? 'Review the current state or choose the next safe edit before adding more changes.'
+        : context.scheduledTaskCount > 0
+          ? 'Pending scheduled work exists. Check assumptions before starting a new run.'
+          : `Pick a starter to place a complete ${context.providerLabel} prompt in the composer.`
 
   return {
-    heading: headingTemplate(greeting, dayName, workspaceName),
-    subheading
+    heading,
+    subheading,
+    starters: buildWelcomeStarters(context)
   }
 }
 
@@ -1179,6 +1381,7 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
     if (!item || typeof item !== 'object') continue
     const grant = item as Partial<ExternalPathGrant>
     if (grant.provider !== 'codex' || typeof grant.path !== 'string' || !grant.path.trim()) continue
+    if (grant.issuedBy !== 'main' || typeof grant.signature !== 'string' || !grant.signature) continue
     const access = grant.access === 'write' ? 'write' : 'read'
     const key = `${access}:${grant.path.trim()}`
     if (seen.has(key)) continue
@@ -1193,6 +1396,8 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
       access,
       duration: grant.duration || 'thisThread',
       securityScopedBookmark: grant.securityScopedBookmark,
+      issuedBy: 'main',
+      signature: grant.signature,
       createdAt: grant.createdAt || new Date().toISOString()
     })
   }
@@ -1271,147 +1476,7 @@ const sanitizeContextText = (value: string, maxLength: number): string => {
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`
 }
 
-type RenderedMessagePart = {
-  kind: 'text' | 'code'
-  content: string
-  language?: string
-}
-
-const parseFenceLanguage = (line: string): string | undefined => {
-  const match = line.trim().match(/^```+\s*([^\s`{]+)/)
-  return match?.[1]
-}
-
-const extractFullyQuotedLine = (line: string): string | null => {
-  const match = line.match(/^\s*([`"'])([\s\S]*?)\1\s*$/)
-  if (!match) return null
-  const inner = match[2]
-  if (!inner.trim()) return null
-  return inner
-}
-
-const parseGeminiDisplayContent = (text: string): RenderedMessagePart[] => {
-  const lines = text.split('\n')
-  const parts: RenderedMessagePart[] = []
-  const textBuffer: string[] = []
-  const quotedBuffer: string[] = []
-  const quotedRawBuffer: string[] = []
-  let inCodeFence = false
-  let openFenceLine = ''
-  let codeFenceLanguage: string | undefined
-  const codeBuffer: string[] = []
-
-  const flushTextBuffer = () => {
-    if (textBuffer.length === 0) return
-    parts.push({ kind: 'text', content: textBuffer.join('\n') })
-    textBuffer.length = 0
-  }
-
-  const flushQuotedBuffer = () => {
-    if (quotedBuffer.length === 0) return
-
-    if (quotedBuffer.length >= 2) {
-      parts.push({ kind: 'code', content: quotedBuffer.join('\n') })
-    } else {
-      textBuffer.push(...quotedRawBuffer)
-    }
-    quotedBuffer.length = 0
-    quotedRawBuffer.length = 0
-  }
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-
-    if (inCodeFence) {
-      if (trimmed.startsWith('```')) {
-        parts.push({ kind: 'code', content: codeBuffer.join('\n'), language: codeFenceLanguage })
-        codeBuffer.length = 0
-        inCodeFence = false
-        openFenceLine = ''
-        codeFenceLanguage = undefined
-      } else {
-        codeBuffer.push(line)
-      }
-      continue
-    }
-
-    if (trimmed.startsWith('```')) {
-      flushQuotedBuffer()
-      flushTextBuffer()
-      inCodeFence = true
-      openFenceLine = line
-      codeFenceLanguage = parseFenceLanguage(line)
-      continue
-    }
-
-    const quoted = extractFullyQuotedLine(line)
-    if (quoted) {
-      quotedBuffer.push(quoted)
-      quotedRawBuffer.push(line)
-      continue
-    }
-
-    flushQuotedBuffer()
-    textBuffer.push(line)
-  }
-
-  if (inCodeFence) {
-    textBuffer.push(openFenceLine, ...codeBuffer)
-  } else {
-    flushQuotedBuffer()
-  }
-
-  flushTextBuffer()
-
-  return parts
-}
-
-const copyCodeBlock = async (text: string): Promise<void> => {
-  try {
-    await navigator.clipboard.writeText(text)
-  } catch {
-    // Best effort; keep behavior silent to avoid noisy UI side-effects for read-only copy actions.
-  }
-}
-
-const renderGeminiMessage = (text: string): React.JSX.Element => {
-  const parts = parseGeminiDisplayContent(text)
-
-  if (parts.length === 0) {
-    return <></>
-  }
-
-  if (parts.length === 1 && parts[0].kind === 'text') {
-    return <>{parts[0].content}</>
-  }
-
-  return (
-    <>
-      {parts.map((part, index) => {
-        if (part.kind === 'code') {
-          return (
-            <div key={`message-code-${index}`} className="message-code-block-wrapper">
-              <button
-                type="button"
-                className="message-code-copy-btn"
-                onClick={() => void copyCodeBlock(part.content)}
-                title="Copy code block"
-                aria-label="Copy code block"
-              >
-                <CopyResponseIcon />
-              </button>
-              <div className="message-code-block">
-                <HighlightedCodeBlock content={part.content} language={part.language} />
-              </div>
-            </div>
-          )
-        }
-
-        return <span key={`message-text-${index}`}>{part.content}</span>
-      })}
-    </>
-  )
-}
+const renderGeminiMessage = (text: string): React.JSX.Element => <MarkdownMessage content={text} />
 
 const formatApprovalChangePreview = (changes: any): string => {
   if (!Array.isArray(changes) || changes.length === 0) return ''
@@ -1470,6 +1535,24 @@ const renderAgentApprovalPreview = (preview: any): React.JSX.Element | null => {
       )}
     </div>
   )
+}
+
+const NON_EXECUTION_TOOL_EVENT_NAMES = new Set([
+  'provider_warning',
+  'update_topic',
+  'summary',
+  'intent',
+  'progress',
+  'tool_progress',
+  'codex_reasoning',
+  'codex_plan'
+])
+
+const isProviderExecutionToolEvent = (event: NormalizedEvent): boolean => {
+  if (event.type !== 'tool_event') return false
+  const name = String(event.name || event.data?.tool_name || event.data?.toolName || event.data?.type || '').toLowerCase()
+  if (NON_EXECUTION_TOOL_EVENT_NAMES.has(name)) return false
+  return event.isUse || event.isResult || isToolUseEvent(event.data) || isToolResultEvent(event.data)
 }
 
 const extractNumeric = (value: unknown): number | undefined => {
@@ -1925,6 +2008,23 @@ const getStoredSkyVisualFxEnabled = (): boolean => {
   }
 }
 
+const isFunFxMode = (value: unknown): value is AppSettings['funFxMode'] =>
+  value === 'off' || value === 'subtle' || value === 'cinematic' || value === 'epic'
+
+const getLegacyFunFxSettingsFromLocalStorage = (): Pick<AppSettings, 'funFxEnabled' | 'funFxMode'> => {
+  const skyEnabled = getStoredSkyVisualFxEnabled()
+  const ghostEnabled = getStoredGhostCompanionEnabled()
+  if (!skyEnabled && !ghostEnabled) {
+    return { funFxEnabled: false, funFxMode: 'off' }
+  }
+
+  if (skyEnabled && ghostEnabled) {
+    return { funFxEnabled: true, funFxMode: 'cinematic' }
+  }
+
+  return { funFxEnabled: true, funFxMode: 'subtle' }
+}
+
 const clampGeminiTerminalHeight = (value: number): number => {
   const maxHeight = Math.max(MIN_GEMINI_TERMINAL_HEIGHT, Math.floor(window.innerHeight * MAX_GEMINI_TERMINAL_HEIGHT_RATIO))
   return Math.max(MIN_GEMINI_TERMINAL_HEIGHT, Math.min(maxHeight, Math.round(value)))
@@ -2055,6 +2155,7 @@ const buildReviewCurrentDiffPrompt = (diffObj: any): string => {
 
 interface QueuedRunRequest {
   appRunId?: string
+  scope?: ChatScope
   provider: ProviderId
   prompt: string
   displayPrompt?: string
@@ -2074,6 +2175,15 @@ interface QueuedRunRequest {
   workspaceRecord?: WorkspaceRecord
   chatRecord?: ChatRecord
   preserveComposer?: boolean
+  runtimeProfileId?: string
+  handoffSourceRunId?: string
+}
+
+interface ComposerPermissionState {
+  paths: string[]
+  message: string
+  kind: GeminiPermissionRequest['kind'] | null
+  source: GeminiPermissionRequest['source'] | null
 }
 
 interface RunRouteEventPayload {
@@ -2093,9 +2203,10 @@ interface ActiveRunContext {
   warnings: RunWarning[]
   usageResetHints: Map<string, { resetAt?: string; resetText?: string }>
   errorCount: number
+  capacityFallbackShown?: boolean
   toolCallsCount: number
   preSnapshot: any
-  baseWorkspacePath: string
+  baseWorkspacePath: string | null
   workspacePath: string | null
   workspaceId?: string
   worktree?: GeminiWorktreeConfig
@@ -2151,8 +2262,13 @@ const CLAUDE_MODEL_IDS = new Set(['default', 'sonnet', 'opus', 'haiku', 'best', 
 const KIMI_MODEL_IDS = new Set(['default', 'kimi-k2', 'kimi-k2-turbo', 'kimi-latest', 'custom'])
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
+const GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
 
 const getChatProvider = (chat?: ChatRecord | null): ProviderId => chat?.provider || 'gemini'
+const getChatScope = (chat?: Pick<ChatRecord, 'scope'> | null): ChatScope => chat?.scope === 'global' ? 'global' : 'workspace'
+const isGlobalChat = (chat?: Pick<ChatRecord, 'scope'> | null): boolean => getChatScope(chat) === 'global'
+const getUsageWorkspaceIdForChat = (chat?: ChatRecord | null): string | undefined =>
+  isGlobalChat(chat) ? GLOBAL_USAGE_WORKSPACE_ID : chat?.workspaceId
 const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
@@ -2166,10 +2282,195 @@ const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId) 
 const normalizeProviderModelKey = (model?: string | null): string => String(model || '').trim().toLowerCase()
 const isCompletedCodexRunStatus = (status?: string): boolean => status === 'success' || status === 'success_with_warnings'
 
+const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
+  paths: [],
+  message: '',
+  kind: null,
+  source: null
+}
+
+const applyStateAction = <T,>(value: T | ((previous: T) => T), previous: T): T =>
+  typeof value === 'function' ? (value as (previous: T) => T)(previous) : value
+
+function CockpitPanel({
+  lanes,
+  handoffCards,
+  onClose,
+  onOpenThread,
+  onCancelRun,
+  onRetryRun,
+  onDuplicateRun,
+  onCreateHandoff,
+  onDispatchHandoff,
+  onArchiveHandoff
+}: {
+  lanes: RunLane[]
+  handoffCards: HandoffCard[]
+  onClose: () => void
+  onOpenThread: (chatId?: string) => void
+  onCancelRun: (lane: RunLane) => void
+  onRetryRun: (lane: RunLane) => void
+  onDuplicateRun: (lane: RunLane) => void
+  onCreateHandoff: (lane: RunLane) => void
+  onDispatchHandoff: (card: HandoffCard) => void
+  onArchiveHandoff: (card: HandoffCard) => void
+}) {
+  const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  const activeCount = lanes.filter((lane) => lane.phase === 'active').length
+  const waitingCount = lanes.filter((lane) => lane.phase === 'queued' || lane.phase === 'scheduled' || lane.phase === 'paused').length
+  const failedCount = lanes.filter((lane) => lane.phase === 'failed').length
+  const openHandoffs = handoffCards.filter((card) => card.status === 'draft')
+
+  return (
+    <div className="cockpit-overlay" role="dialog" aria-modal="true" aria-label="Agent cockpit">
+      <div className="cockpit-panel">
+        <div className="cockpit-header">
+          <div>
+            <span className="cockpit-kicker">AGBench cockpit</span>
+            <h2>Run lanes</h2>
+            <p>Global queue, profile, handoff, and workspace collision supervision.</p>
+          </div>
+          <button className="cockpit-close-btn" type="button" onClick={onClose}>Close</button>
+        </div>
+        <div className="cockpit-metrics">
+          <span><strong>{activeCount}</strong> active</span>
+          <span><strong>{waitingCount}</strong> waiting</span>
+          <span><strong>{failedCount}</strong> failed</span>
+          <span><strong>{openHandoffs.length}</strong> handoffs</span>
+        </div>
+        <div className="cockpit-body">
+          <div className="cockpit-lanes">
+            {providerIds.map((provider) => {
+              const providerLanes = lanes.filter((lane) => lane.provider === provider)
+              return (
+                <section key={provider} className={`cockpit-provider provider-${provider}`}>
+                  <div className="cockpit-provider-header">
+                    <strong>{getProviderLabel(provider)}</strong>
+                    <span>{providerLanes.filter((lane) => lane.phase === 'active').length}/1 running</span>
+                  </div>
+                  {providerLanes.length === 0 ? (
+                    <div className="cockpit-empty">No lanes.</div>
+                  ) : (
+                    providerLanes.map((lane) => (
+                      <article key={lane.id} className={`cockpit-lane phase-${lane.phase}`}>
+                        <div className="cockpit-lane-main">
+                          <span className="cockpit-lane-phase">{lane.phase}</span>
+                          <strong>{lane.chatTitle || lane.chatId || 'Untitled chat'}</strong>
+                          <p>{lane.promptPreview || 'No prompt preview available.'}</p>
+                        </div>
+                        <div className="cockpit-lane-meta">
+                          <span>{lane.runtimeProfileName || 'Default runtime'}</span>
+                          {lane.workspacePath && <span title={lane.workspacePath}>{lane.workspacePath.split(/[\\/]/).pop() || lane.workspacePath}</span>}
+                          {lane.blockedReason && <span>{lane.blockedReason}</span>}
+                          {lane.conflictSummary && <span className="cockpit-conflict">{lane.conflictSummary}</span>}
+                        </div>
+                        <div className="cockpit-lane-actions">
+                          <button type="button" onClick={() => onOpenThread(lane.chatId)} disabled={!lane.chatId}>Open</button>
+                          <button type="button" onClick={() => onCancelRun(lane)} disabled={!lane.runId || (lane.phase !== 'active' && lane.phase !== 'queued' && lane.phase !== 'paused')}>Cancel</button>
+                          <button type="button" onClick={() => onRetryRun(lane)} disabled={!lane.runId}>Retry</button>
+                          <button type="button" onClick={() => onDuplicateRun(lane)} disabled={!lane.chatId}>Duplicate</button>
+                          <button type="button" onClick={() => onCreateHandoff(lane)} disabled={!lane.runId || !lane.chatId}>Handoff</button>
+                        </div>
+                      </article>
+                    ))
+                  )}
+                </section>
+              )
+            })}
+          </div>
+          <aside className="cockpit-handoffs">
+            <div className="cockpit-provider-header">
+              <strong>User-mediated handoffs</strong>
+              <span>{openHandoffs.length} draft</span>
+            </div>
+            {openHandoffs.length === 0 ? (
+              <div className="cockpit-empty">Create a handoff from any completed or active run.</div>
+            ) : (
+              openHandoffs.map((card) => (
+                <article key={card.id} className="cockpit-handoff-card">
+                  <strong>{getProviderLabel(card.sourceProvider)} handoff</strong>
+                  <p>{compactPromptPreview(card.summary || card.finalPrompt)}</p>
+                  {card.selectedFiles.length > 0 && <span>{card.selectedFiles.length} file refs</span>}
+                  <div className="cockpit-lane-actions">
+                    <button type="button" onClick={() => onOpenThread(card.sourceChatId)}>Source</button>
+                    <button type="button" onClick={() => onDispatchHandoff(card)}>Dispatch</button>
+                    <button type="button" onClick={() => onArchiveHandoff(card)}>Archive</button>
+                  </div>
+                </article>
+              ))
+            )}
+          </aside>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 const getLastCompletedCodexRunModel = (chat: ChatRecord): string | null => {
   const runs = [...(chat.runs || [])].reverse()
   const run = runs.find((candidate) => (candidate.provider || getChatProvider(chat)) === 'codex' && isCompletedCodexRunStatus(candidate.status))
   return run?.actualModel || run?.requestedModel || null
+}
+
+const getGeminiWorktreeResumeKey = (worktree?: GeminiWorktreeConfig | null): string => {
+  if (!worktree?.enabled) {
+    return 'disabled'
+  }
+  return ['enabled', worktree.name || '', worktree.effectivePath || ''].join('\u0000')
+}
+
+const getLastGeminiRunForResume = (chat: ChatRecord): ChatRun | undefined => {
+  const runs = [...(chat.runs || [])].reverse()
+  return runs.find((candidate) => (candidate.provider || getChatProvider(chat)) === 'gemini')
+}
+
+const resolveGeminiResumeForRun = (
+  chat: ChatRecord,
+  requestedModel: string | undefined,
+  approvalMode: string,
+  worktree?: GeminiWorktreeConfig | null
+): { sessionId?: string; skippedReason?: string } => {
+  const sessionId = normalizeGeminiResumeTarget(chat.linkedGeminiSessionId)
+  if (!sessionId) {
+    return {}
+  }
+
+  if (approvalMode !== 'plan') {
+    return {
+      skippedReason: 'Starting a fresh Gemini session because write-capable Gemini runs cannot safely resume CLI sessions; Gemini can persist plan-mode tool limits inside a resumed session.'
+    }
+  }
+
+  const lastRun = getLastGeminiRunForResume(chat)
+  if (!lastRun) {
+    return { sessionId }
+  }
+
+  const previousApprovalMode = lastRun.approvalMode || 'default'
+  if (previousApprovalMode !== approvalMode) {
+    return {
+      skippedReason: `Starting a fresh Gemini session because approval mode changed from ${previousApprovalMode} to ${approvalMode}.`
+    }
+  }
+
+  const previousModel = lastRun.requestedModel || lastRun.actualModel
+  const previousModelKey = normalizeProviderModelKey(previousModel)
+  const nextModelKey = normalizeProviderModelKey(requestedModel)
+  if (previousModelKey && nextModelKey && previousModelKey !== nextModelKey) {
+    return {
+      skippedReason: `Starting a fresh Gemini session because model changed from ${previousModel} to ${requestedModel}.`
+    }
+  }
+
+  const previousWorktreeKey = getGeminiWorktreeResumeKey(lastRun.geminiWorktree)
+  const nextWorktreeKey = getGeminiWorktreeResumeKey(worktree)
+  if (previousWorktreeKey !== nextWorktreeKey) {
+    return {
+      skippedReason: 'Starting a fresh Gemini session because the Gemini worktree setting changed.'
+    }
+  }
+
+  return { sessionId }
 }
 
 const getCodexModelContextAppliedKeys = (chat: ChatRecord): string[] => {
@@ -2399,6 +2700,9 @@ type SettingsPanelUpdate = {
   themeCornerStyle?: AppSettings['themeCornerStyle']
   themeAccentStyle?: AppSettings['themeAccentStyle']
   promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
+  funFxEnabled?: boolean
+  funFxMode?: AppSettings['funFxMode']
+  advancedFx?: AppSettings['advancedFx']
   reduceTransparency?: boolean
   reduceMotion?: boolean
   compactDensity?: boolean
@@ -2416,15 +2720,20 @@ function App(): React.JSX.Element {
   const [, setSettings] = useState<AppSettings | null>(null)
   const [chatContextTurns, setChatContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS)
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([])
+  const [workspacesHydrated, setWorkspacesHydrated] = useState(false)
   const [currentWorkspace, setCurrentWorkspace] = useState<WorkspaceRecord | null>(null)
   
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [currentChat, setCurrentChat] = useState<ChatRecord | null>(null)
 
-  const [prompt, setPrompt] = useState('')
+  const [composerDraftsByChatId, setComposerDraftsByChatId] = useState<Record<string, string>>({})
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
   const [runQueueJobs, setRunQueueJobs] = useState<RunQueueJob[]>([])
+  const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfile[]>([])
+  const [selectedRuntimeProfileByChatId, setSelectedRuntimeProfileByChatId] = useState<Record<string, string>>({})
+  const [handoffCards, setHandoffCards] = useState<HandoffCard[]>([])
+  const [showCockpit, setShowCockpit] = useState(false)
   
   // Model & Mode Selectors
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini')
@@ -2486,33 +2795,31 @@ function App(): React.JSX.Element {
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
-  const [geminiTerminalInput, setGeminiTerminalInput] = useState('')
+  const [geminiTerminalInputByChatId, setGeminiTerminalInputByChatId] = useState<Record<string, string>>({})
   const [geminiTerminalHeight, setGeminiTerminalHeight] = useState(DEFAULT_GEMINI_TERMINAL_HEIGHT)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
   const [hostWeather, setHostWeather] = useState<HostWeatherVisualState | null>(null)
+  const [fxBurstClass, setFxBurstClass] = useState('')
   const [fileEditorWidth, setFileEditorWidth] = useState(getStoredFileEditorWidth)
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
   const [chatContextNotice, setChatContextNotice] = useState<{ id: string; message: string } | null>(null)
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
-  const [imageAttachments, setImageAttachments] = useState<ImageAttachment[]>([])
-  const [permissionRequestPaths, setPermissionRequestPaths] = useState<string[]>([])
-  const [permissionRequestMessage, setPermissionRequestMessage] = useState('')
-  const [permissionRequestKind, setPermissionRequestKind] = useState<GeminiPermissionRequest['kind'] | null>(null)
-  const [permissionRequestSource, setPermissionRequestSource] = useState<GeminiPermissionRequest['source'] | null>(null)
-  const [pendingAgentApproval, setPendingAgentApproval] = useState<AgentApprovalRequest | null>(null)
+  const [imageAttachmentsByChatId, setImageAttachmentsByChatId] = useState<Record<string, ImageAttachment[]>>({})
+  const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<Record<string, ComposerPermissionState>>({})
+  const [pendingAgentApprovalByChatId, setPendingAgentApprovalByChatId] = useState<Record<string, AgentApprovalRequest | null>>({})
   const [isSendConfirming, setIsSendConfirming] = useState(false)
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
-  const [pendingPlanChoice, setPendingPlanChoice] = useState<PlanChoiceState | null>(null)
-  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false)
-  const [commandPaletteQuery, setCommandPaletteQuery] = useState('')
+  const [pendingPlanChoiceByChatId, setPendingPlanChoiceByChatId] = useState<Record<string, PlanChoiceState | null>>({})
+  const [commandPaletteOpenByChatId, setCommandPaletteOpenByChatId] = useState<Record<string, boolean>>({})
+  const [commandPaletteQueryByChatId, setCommandPaletteQueryByChatId] = useState<Record<string, string>>({})
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
   const [commandDiscoveryStatus, setCommandDiscoveryStatus] = useState('Static Gemini commands loaded.')
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false)
   const [geminiMemoryFiles, setGeminiMemoryFiles] = useState<GeminiMemoryFile[]>([])
   const [geminiMemoryStatus, setGeminiMemoryStatus] = useState('GEMINI.md memory has not been inspected yet.')
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
-  const [scheduleRunAt, setScheduleRunAt] = useState('')
+  const [scheduleRunAtByChatId, setScheduleRunAtByChatId] = useState<Record<string, string>>({})
   const [dueScheduledTasks, setDueScheduledTasks] = useState<ScheduledTask[]>([])
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(new Set())
   const [runningProviders, setRunningProviders] = useState<Set<ProviderId>>(new Set())
@@ -2533,6 +2840,12 @@ function App(): React.JSX.Element {
   const composerAreaRef = useRef<HTMLDivElement>(null)
   const adapterRef = useRef<GeminiStreamAdapter | null>(null)
   const activeRunsRef = useRef<Map<string, ActiveRunContext>>(new Map())
+  const fxProfileRef = useRef({
+    enabled: false,
+    mode: 'off' as AppSettings['funFxMode'],
+    reduceMotion: false
+  })
+  const fxBurstTimeoutRef = useRef<number | null>(null)
   const activeRunByProviderRef = useRef<Map<ProviderId, string>>(new Map())
   const currentWorkspaceIdRef = useRef<string | null>(null)
   const currentChatIdRef = useRef<string | null>(null)
@@ -2552,6 +2865,9 @@ function App(): React.JSX.Element {
   const persistentSessionActiveRef = useRef(false)
   const activeScheduledTaskIdRef = useRef<string | null>(null)
   const currentProvider = currentChat ? getChatProvider(currentChat) : activeProvider
+  const currentChatScope = getChatScope(currentChat)
+  const isCurrentGlobalChat = currentChatScope === 'global'
+  const hasWorkspaceContext = Boolean(currentWorkspace && currentChat && !isCurrentGlobalChat)
   const isCurrentProviderRunning = runningProviders.has(currentProvider)
   const isCurrentChatProviderLocked = Boolean(
     currentChat && (
@@ -2561,12 +2877,195 @@ function App(): React.JSX.Element {
       Boolean(currentChat.linkedProviderSessionId)
     )
   )
-  const codexExternalPathGrants = currentProvider === 'codex'
+  const isFxEnabled = appearance.funFxEnabled && appearance.funFxMode !== 'off'
+  const shouldShowSkyVisualFxInFxMode = isFxEnabled
+    ? appearance.funFxMode === 'subtle'
+      ? (showSkyVisualFx || !showGhostCompanion)
+      : showSkyVisualFx
+    : false
+  const shouldShowGhostCompanion = isFxEnabled
+    ? appearance.funFxMode === 'subtle'
+      ? (showGhostCompanion && !showSkyVisualFx)
+      : showGhostCompanion
+    : false
+  const codexExternalPathGrants = currentProvider === 'codex' && !isCurrentGlobalChat
     ? normalizeExternalPathGrants(currentChat?.providerMetadata?.codexExternalPathGrants)
     : []
+  const currentComposerChatId = currentChat?.appChatId || null
+  const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
+  const imageAttachments = currentComposerChatId ? imageAttachmentsByChatId[currentComposerChatId] || [] : []
+  const permissionRequestState = currentComposerChatId ? permissionRequestByChatId[currentComposerChatId] || EMPTY_PERMISSION_STATE : EMPTY_PERMISSION_STATE
+  const permissionRequestPaths = permissionRequestState.paths
+  const permissionRequestMessage = permissionRequestState.message
+  const permissionRequestKind = permissionRequestState.kind
+  const permissionRequestSource = permissionRequestState.source
+  const pendingAgentApproval = currentComposerChatId ? pendingAgentApprovalByChatId[currentComposerChatId] || null : null
+  const pendingPlanChoice = currentComposerChatId ? pendingPlanChoiceByChatId[currentComposerChatId] || null : null
+  const isCommandPaletteOpen = currentComposerChatId ? Boolean(commandPaletteOpenByChatId[currentComposerChatId]) : false
+  const commandPaletteQuery = currentComposerChatId ? commandPaletteQueryByChatId[currentComposerChatId] || '' : ''
+  const scheduleRunAt = currentComposerChatId ? scheduleRunAtByChatId[currentComposerChatId] || '' : ''
+  const geminiTerminalInput = currentComposerChatId ? geminiTerminalInputByChatId[currentComposerChatId] || '' : ''
+  const selectedRuntimeProfileId = currentComposerChatId
+    ? selectedRuntimeProfileByChatId[currentComposerChatId] || runtimeProfiles.find((profile) => profile.provider === currentProvider)?.id || ''
+    : runtimeProfiles.find((profile) => profile.provider === currentProvider)?.id || ''
+  const currentProviderRuntimeProfiles = runtimeProfiles.filter((profile) => profile.provider === currentProvider)
+  const setChatPromptDraft = (chatId: string | null | undefined, value: string) => {
+    if (!chatId) return
+    setComposerDraftsByChatId(prev => {
+      if (!value) {
+        if (!(chatId in prev)) return prev
+        const next = { ...prev }
+        delete next[chatId]
+        return next
+      }
+      if (prev[chatId] === value) return prev
+      return { ...prev, [chatId]: value }
+    })
+  }
+  const setPrompt = (value: string) => {
+    setChatPromptDraft(currentChatIdRef.current || currentComposerChatId, value)
+  }
+  const getCurrentComposerStateChatId = (): string | null => currentChatIdRef.current || currentComposerChatId
+  const setImageAttachments = (value: ImageAttachment[] | ((previous: ImageAttachment[]) => ImageAttachment[])) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setImageAttachmentsByChatId(prev => {
+      const nextValue = applyStateAction(value, prev[chatId] || [])
+      return { ...prev, [chatId]: nextValue }
+    })
+  }
+  const updatePermissionRequestState = (patch: Partial<ComposerPermissionState> | ((previous: ComposerPermissionState) => ComposerPermissionState)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setPermissionRequestByChatId(prev => {
+      const previous = prev[chatId] || EMPTY_PERMISSION_STATE
+      const nextValue = typeof patch === 'function'
+        ? patch(previous)
+        : { ...previous, ...patch }
+      return { ...prev, [chatId]: nextValue }
+    })
+  }
+  const setPermissionRequestPaths = (value: string[] | ((previous: string[]) => string[])) => {
+    updatePermissionRequestState((previous) => ({ ...previous, paths: applyStateAction(value, previous.paths) }))
+  }
+  const setPermissionRequestMessage = (message: string) => updatePermissionRequestState({ message })
+  const setPermissionRequestKind = (kind: GeminiPermissionRequest['kind'] | null) => updatePermissionRequestState({ kind })
+  const setPermissionRequestSource = (source: GeminiPermissionRequest['source'] | null) => updatePermissionRequestState({ source })
+  const setPendingAgentApproval = (value: AgentApprovalRequest | null | ((previous: AgentApprovalRequest | null) => AgentApprovalRequest | null)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setPendingAgentApprovalByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || null)
+    }))
+  }
+  const setPendingAgentApprovalForChat = (
+    chatId: string | null | undefined,
+    value: AgentApprovalRequest | null | ((previous: AgentApprovalRequest | null) => AgentApprovalRequest | null)
+  ) => {
+    if (!chatId) return
+    setPendingAgentApprovalByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || null)
+    }))
+  }
+  const setPendingPlanChoice = (value: PlanChoiceState | null | ((previous: PlanChoiceState | null) => PlanChoiceState | null)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setPendingPlanChoiceByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || null)
+    }))
+  }
+  const setCommandPaletteQuery = (value: string | ((previous: string) => string)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setCommandPaletteQueryByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || '')
+    }))
+  }
+  const setIsCommandPaletteOpen = (value: boolean | ((previous: boolean) => boolean)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setCommandPaletteOpenByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, Boolean(prev[chatId]))
+    }))
+  }
+  const setScheduleRunAt = (value: string | ((previous: string) => string)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setScheduleRunAtByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || '')
+    }))
+  }
+  const setGeminiTerminalInput = (value: string | ((previous: string) => string)) => {
+    const chatId = getCurrentComposerStateChatId()
+    if (!chatId) return
+    setGeminiTerminalInputByChatId(prev => ({
+      ...prev,
+      [chatId]: applyStateAction(value, prev[chatId] || '')
+    }))
+  }
+  const setRuntimeProfileForChat = (chatId: string | null | undefined, runtimeProfileId: string) => {
+    if (!chatId) return
+    setSelectedRuntimeProfileByChatId(prev => ({ ...prev, [chatId]: runtimeProfileId }))
+  }
+  const getRuntimeProfileIdForChat = (chat: ChatRecord | null | undefined, provider: ProviderId): string | undefined => {
+    const chatId = chat?.appChatId
+    const metadataRuntimeProfileId = typeof chat?.providerMetadata?.runtimeProfileId === 'string'
+      ? chat.providerMetadata.runtimeProfileId
+      : undefined
+    return (chatId ? selectedRuntimeProfileByChatId[chatId] : undefined) ||
+      metadataRuntimeProfileId ||
+      runtimeProfiles.find((profile) => profile.provider === provider)?.id
+  }
+
+  useEffect(() => {
+    fxProfileRef.current = {
+      enabled: appearance.funFxEnabled,
+      mode: appearance.funFxMode,
+      reduceMotion: appearance.reduceMotion
+    }
+  }, [appearance.funFxEnabled, appearance.funFxMode, appearance.reduceMotion])
+
+  const clearFxBurst = () => {
+    if (fxBurstTimeoutRef.current) {
+      window.clearTimeout(fxBurstTimeoutRef.current)
+      fxBurstTimeoutRef.current = null
+    }
+    setFxBurstClass('')
+  }
+
+  const triggerFxBurst = (type: 'run-start' | 'run-complete' | 'run-summary' | 'warning') => {
+    const profile = fxProfileRef.current
+    if (!profile.enabled || profile.mode === 'off' || profile.reduceMotion) {
+      return
+    }
+    clearFxBurst()
+    setFxBurstClass(`fx-burst-${type}`)
+    fxBurstTimeoutRef.current = window.setTimeout(() => {
+      setFxBurstClass('')
+      fxBurstTimeoutRef.current = null
+    }, FX_BURST_DURATION_MS)
+  }
+
+  useEffect(() => {
+    return () => {
+      clearFxBurst()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isFxEnabled && fxBurstClass) {
+      clearFxBurst()
+    }
+  }, [isFxEnabled, fxBurstClass])
 
   const triggerSendConfirmation = () => {
-    if (!currentWorkspace || !currentChat || !prompt.trim()) return
+    if (!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim()) return
     if (sendConfirmationTimeoutRef.current) {
       window.clearTimeout(sendConfirmationTimeoutRef.current)
       sendConfirmationTimeoutRef.current = null
@@ -2602,9 +3101,8 @@ function App(): React.JSX.Element {
     setThreadRawLogs(chatId, [...previous, log])
   }
 
-  const appendDurableRunEvent = (event: RunEventInput) => {
-    if (typeof window.api.appendRunEvent !== 'function') return
-    window.api.appendRunEvent(event).catch?.(() => {})
+  const appendDurableRunEvent = (_event: RunEventInput) => {
+    // Durable event writes are main-owned; renderer keeps local raw logs only.
   }
 
   const rawLogFromRunEvent = (event: RunEventRecord): RawLogEntry | null => {
@@ -2623,11 +3121,18 @@ function App(): React.JSX.Element {
               ? payloadRecord.preview
               : event.summary || ''
     if (!payloadText.trim()) return null
-    if (event.kind === 'provider_error') return { type: 'stderr', content: redactLog(payloadText) }
-    if (event.kind === 'provider_raw') return { type: 'stdout', content: redactLog(payloadText) }
-    if (event.kind === 'tool') return { type: 'tool', content: redactLog(payloadText) }
+    const metadata = {
+      sequence: event.sequence,
+      hash: event.hash,
+      spanId: event.spanId,
+      toolCallId: event.toolCallId,
+      artifactCount: event.artifacts?.length
+    }
+    if (event.kind === 'provider_error') return { type: 'stderr', content: redactLog(payloadText), ...metadata }
+    if (event.kind === 'provider_raw') return { type: 'stdout', content: redactLog(payloadText), ...metadata }
+    if (event.kind === 'tool') return { type: 'tool', content: redactLog(payloadText), ...metadata }
     if (event.kind === 'approval_request' || event.kind === 'approval_response' || event.kind === 'provider_exit' || event.kind === 'lifecycle') {
-      return { type: 'info', content: redactLog(payloadText) }
+      return { type: 'info', content: redactLog(payloadText), ...metadata }
     }
     return null
   }
@@ -2656,6 +3161,39 @@ function App(): React.JSX.Element {
   }
 
   const isProviderBusy = (provider: ProviderId): boolean => activeRunByProviderRef.current.has(provider)
+
+  const getActiveRunContextForProvider = (provider: ProviderId): ActiveRunContext | null => {
+    const runId = activeRunByProviderRef.current.get(provider)
+    return runId ? activeRunsRef.current.get(runId) || null : null
+  }
+
+  const markCapacityStoppedRun = (context: ActiveRunContext, message: string) => {
+    const stoppedAt = new Date().toISOString()
+    updateRunQueueJobStatus(context.runId, 'failed', message, 'Gemini model capacity exhausted.')
+    updateChatById(context.chatId, (source) => ({
+      ...source,
+      runs: (source.runs || []).map((run) => run.runId === context.runId
+        ? {
+            ...run,
+            status: 'failed',
+            endedAt: stoppedAt,
+            warnings: [...context.warnings]
+          }
+        : run
+      )
+    }))
+  }
+
+  const clearQueuedRunsForProvider = (provider: ProviderId, reason: string) => {
+    setQueuedRuns((current) => {
+      const removed = current.filter((request) => request.provider === provider)
+      if (removed.length === 0) return current
+      for (const request of removed) {
+        updateRunQueueJobStatus(request.appRunId, 'cancelled', reason)
+      }
+      return current.filter((request) => request.provider !== provider)
+    })
+  }
 
   const getRouteProvider = (value: unknown, fallback: ProviderId): ProviderId => {
     if (value && typeof value === 'object') {
@@ -2825,6 +3363,7 @@ function App(): React.JSX.Element {
     setApprovalMode(selection.approvalMode)
     setCodexReasoningEffort(selection.codexReasoningEffort)
     setCodexServiceTier(selection.codexServiceTier)
+    setRuntimeProfileForChat(chat.appChatId, getRuntimeProfileIdForChat(chat, selection.provider) || '')
     if (selection.provider === 'gemini' && selection.selectedModelType !== 'custom') {
       syncPersistentModelSelection(selection.selectedModelType)
     }
@@ -2845,9 +3384,11 @@ function App(): React.JSX.Element {
 
   const getWorkspaceForChat = (chat?: ChatRecord | null): WorkspaceRecord | null => {
     if (!chat) return currentWorkspace
+    if (isGlobalChat(chat)) return null
     if (currentWorkspace?.id === chat.workspaceId) return currentWorkspace
     const knownWorkspace = workspaces.find((workspace) => workspace.id === chat.workspaceId)
     if (knownWorkspace) return knownWorkspace
+    if (!chat.workspaceId || !chat.workspacePath) return null
     const fallbackName = chat.workspacePath.split(/[\\/]/).filter(Boolean).pop() || 'Workspace'
     return {
       id: chat.workspaceId,
@@ -2859,9 +3400,10 @@ function App(): React.JSX.Element {
     }
   }
 
-  const refreshProviderMetadata = async (provider: ProviderId, workspacePath: string | undefined = currentWorkspace?.path) => {
+  const refreshProviderMetadata = async (provider: ProviderId, workspacePath: string | null | undefined = currentWorkspace?.path) => {
+    const capabilityWorkspacePath = workspacePath || undefined
     if (typeof window.api.getProviderCapabilities === 'function') {
-      window.api.getProviderCapabilities(provider, workspacePath, approvalMode)
+      window.api.getProviderCapabilities(provider, capabilityWorkspacePath, approvalMode)
         .then((capabilities) => {
           setProviderCapabilitiesByProvider(prev => ({ ...prev, [provider]: capabilities }))
         })
@@ -3069,6 +3611,19 @@ function App(): React.JSX.Element {
 
   const loadInitialData = async () => {
     const s = await window.api.getSettings()
+    const legacyFunFx = getLegacyFunFxSettingsFromLocalStorage()
+    const nextFunFxEnabled = typeof s.funFxEnabled === 'boolean' ? s.funFxEnabled : legacyFunFx.funFxEnabled
+    const nextFunFxMode = isFunFxMode(s.funFxMode) ? s.funFxMode : legacyFunFx.funFxMode
+    appearance.update({
+      funFxEnabled: nextFunFxEnabled,
+      funFxMode: nextFunFxMode
+    })
+    if (typeof s.funFxEnabled !== 'boolean' || !isFunFxMode(s.funFxMode)) {
+      window.api.updateSettings({
+        funFxEnabled: nextFunFxEnabled,
+        funFxMode: nextFunFxMode
+      }).catch(() => {})
+    }
     setSettings(s)
     setActiveProvider(s.activeProvider || 'gemini')
     setClaudeBinaryPath(s.claudeBinaryPath || '')
@@ -3088,8 +3643,17 @@ function App(): React.JSX.Element {
     if (typeof window.api.getProductOperationsStatus === 'function') {
       void window.api.getProductOperationsStatus().then(setProductOperationsStatus).catch(() => {})
     }
-    const wsList = await window.api.getWorkspaces()
+    const [wsList, allChats, profiles, handoffs] = await Promise.all([
+      window.api.getWorkspaces(),
+      window.api.getChats(),
+      typeof window.api.getRuntimeProfiles === 'function' ? window.api.getRuntimeProfiles() : Promise.resolve([]),
+      typeof window.api.getHandoffCards === 'function' ? window.api.getHandoffCards() : Promise.resolve([])
+    ])
+    setRuntimeProfiles(profiles)
+    setHandoffCards(handoffs)
+    setChats(allChats)
     setWorkspaces(wsList)
+    setWorkspacesHydrated(true)
     await rehydrateQueuedRuns(wsList).catch(() => {})
     if (wsList.length > 0) {
       // Sort by lastOpenedAt descending
@@ -3143,6 +3707,18 @@ function App(): React.JSX.Element {
     if (next.promptSurfaceStyle !== undefined) {
       settingsPatch.promptSurfaceStyle = next.promptSurfaceStyle
       appearance.update({ promptSurfaceStyle: next.promptSurfaceStyle })
+    }
+    if (next.funFxEnabled !== undefined) {
+      settingsPatch.funFxEnabled = next.funFxEnabled
+      appearance.update({ funFxEnabled: next.funFxEnabled })
+    }
+    if (next.funFxMode !== undefined) {
+      settingsPatch.funFxMode = next.funFxMode
+      appearance.update({ funFxMode: next.funFxMode })
+    }
+    if (next.advancedFx !== undefined) {
+      settingsPatch.advancedFx = next.advancedFx
+      appearance.update({ advancedFx: next.advancedFx })
     }
     if (next.reduceTransparency !== undefined) {
       settingsPatch.reduceTransparency = next.reduceTransparency
@@ -3221,15 +3797,18 @@ function App(): React.JSX.Element {
       return
     }
     const nextModel = getDefaultModelForProvider(provider)
+    const nextRuntimeProfileId = runtimeProfiles.find((profile) => profile.provider === provider)?.id || ''
     const nextMetadata = {
       selectedModelType: nextModel,
       customModel: '',
-      approvalMode
+      approvalMode,
+      runtimeProfileId: nextRuntimeProfileId
     }
     setActiveProvider(provider)
     setSelectedModelType(nextModel)
     setLastNonCustomModelType(nextModel)
     setCustomModel('')
+    setRuntimeProfileForChat(currentChat?.appChatId, nextRuntimeProfileId)
     if (provider === 'gemini') {
       syncPersistentModelSelection(nextModel)
     }
@@ -3251,9 +3830,10 @@ function App(): React.JSX.Element {
     }
     setPendingAgentApproval(null)
     window.api.updateSettings({ activeProvider: provider }).catch(() => {})
-    void refreshProviderMetadata(provider)
-    if (currentWorkspaceIdRef.current) {
-      void refreshUsageSummary(currentWorkspaceIdRef.current, provider)
+    void refreshProviderMetadata(provider, isCurrentGlobalChat ? null : undefined)
+    const usageWorkspaceId = getUsageWorkspaceIdForChat(currentChat) || currentWorkspaceIdRef.current || undefined
+    if (usageWorkspaceId) {
+      void refreshUsageSummary(usageWorkspaceId, provider)
     }
     if (provider === 'codex') {
       if (typeof window.api.listAgentThreads === 'function') {
@@ -3279,6 +3859,20 @@ function App(): React.JSX.Element {
       setPersistentSessionNeedsRestart(false)
     }
 
+  }
+
+  const handleRuntimeProfileChange = (runtimeProfileId: string) => {
+    const chatId = currentChatIdRef.current || currentChat?.appChatId
+    if (!chatId) return
+    setRuntimeProfileForChat(chatId, runtimeProfileId)
+    updateChatById(chatId, (source) => ({
+      ...source,
+      providerMetadata: {
+        ...(source.providerMetadata || {}),
+        runtimeProfileId
+      },
+      updatedAt: Date.now()
+    }))
   }
 
   const handleGeminiWorktreeToggle = async () => {
@@ -3405,10 +3999,7 @@ function App(): React.JSX.Element {
     setRawLogs(rawLogsByChatIdRef.current.get(selectedChat.appChatId) || [])
     hydrateThreadRawLogsFromEvents(selectedChat.appChatId)
     setShowFallbackUX(false)
-    setImageAttachments([])
-    clearImagePermissions()
     setSessionTrust(false)
-    setPendingPlanChoice(null)
     setIsThinking(runningChatIds.has(selectedChat.appChatId))
     if (selectedProvider === 'codex' && typeof window.api.listAgentThreads === 'function') {
       window.api.listAgentThreads('codex', { cwd: ws.path })
@@ -3568,7 +4159,7 @@ function App(): React.JSX.Element {
     if (currentWorkspace?.id === id) {
       setCurrentWorkspace(null)
       setCurrentChat(null)
-      setChats([])
+      setChats(await window.api.getChats())
       setUsageSummary([])
     }
   }
@@ -3576,6 +4167,12 @@ function App(): React.JSX.Element {
   const handleNewChat = async (wsId: string, wsPath: string) => {
     const newChat = await window.api.createChat(wsId, wsPath)
     const provider = getChatProvider(newChat)
+    const workspace = workspaces.find((item) => item.id === wsId) || getWorkspaceForChat(newChat)
+    if (workspace) {
+      setCurrentWorkspace(workspace)
+      currentWorkspaceIdRef.current = workspace.id
+      window.api.checkTrust(workspace.path).then(setTrustResult).catch(() => {})
+    }
     setChats(await window.api.getChats())
     currentChatIdRef.current = newChat.appChatId
     chatByIdRef.current.set(newChat.appChatId, newChat)
@@ -3589,10 +4186,60 @@ function App(): React.JSX.Element {
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(newChat.appChatId) || [])
     setShowFallbackUX(false)
-    setImageAttachments([])
     clearImagePermissions()
-    setPendingPlanChoice(null)
     setIsThinking(runningChatIds.has(newChat.appChatId))
+  }
+
+  const clearWorkspaceOnlyUiState = () => {
+    const geminiSessionApi = window.api as any
+    if (persistentSessionActiveRef.current && typeof geminiSessionApi.stopGeminiSession === 'function') {
+      geminiSessionApi.stopGeminiSession().catch(() => {})
+    }
+    persistentSessionActiveRef.current = false
+    setIsPersistentSessionEnabled(false)
+    setPersistentSessionStatus('idle')
+    setPersistentSessionNeedsRestart(false)
+    setCurrentWorkspace(null)
+    currentWorkspaceIdRef.current = null
+    setTrustResult(null)
+    setDiff(null)
+    setRunDiff(null)
+    setDiffRefreshStatus('')
+    setShowGeminiTerminal(false)
+    setShowFileEditor(false)
+    setIsMemoryInspectorOpen(false)
+    setScheduledTasks([])
+    activeRunWorkspacePathRef.current = null
+  }
+
+  const selectGlobalChat = async (chat: ChatRecord) => {
+    const provider = getChatProvider(chat)
+    clearWorkspaceOnlyUiState()
+    const normalizedChat: ChatRecord = { ...chat, scope: 'global' }
+    currentChatIdRef.current = normalizedChat.appChatId
+    chatByIdRef.current.set(normalizedChat.appChatId, normalizedChat)
+    setCurrentChat(normalizedChat)
+    applyChatComposerSelection(normalizedChat, provider)
+    setChats(prev => {
+      const index = prev.findIndex(item => item.appChatId === normalizedChat.appChatId)
+      if (index < 0) return [normalizedChat, ...prev]
+      return prev.map(item => item.appChatId === normalizedChat.appChatId ? normalizedChat : item)
+    })
+    void refreshUsageSummary(GLOBAL_USAGE_WORKSPACE_ID, provider)
+    void refreshProviderMetadata(provider, null)
+    setRawLogs(rawLogsByChatIdRef.current.get(normalizedChat.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(normalizedChat.appChatId)
+    setShowFallbackUX(false)
+    clearImagePermissions()
+    setCodexThreads([])
+    setIsThinking(runningChatIds.has(normalizedChat.appChatId))
+  }
+
+  const handleNewGlobalChat = async () => {
+    const newChat = await window.api.createGlobalChat()
+    const allChats = await window.api.getChats()
+    setChats(allChats)
+    await selectGlobalChat(newChat)
   }
 
   const handleWelcomeSuggestion = (suggestion: string) => {
@@ -3775,8 +4422,7 @@ function App(): React.JSX.Element {
     const nextGrant: ExternalPathGrant = {
       ...grant,
       workspaceId: currentWorkspace.id,
-      chatId: currentChat.appChatId,
-      duration: 'thisThread'
+      chatId: currentChat.appChatId
     }
     updateCodexExternalPathGrants([...codexExternalPathGrants, nextGrant])
     setRawLogs(prev => [...prev, { type: 'info', content: `Granted Codex ${access} access to external ${nextGrant.kind}: ${nextGrant.path}` }])
@@ -3787,6 +4433,10 @@ function App(): React.JSX.Element {
   }
 
   const handleSelectChat = async (chat: ChatRecord) => {
+    if (isGlobalChat(chat)) {
+      await selectGlobalChat(chat)
+      return
+    }
     const provider = getChatProvider(chat)
     const workspaceForChat = getWorkspaceForChat(chat)
     if (workspaceForChat && currentWorkspace?.id !== workspaceForChat.id) {
@@ -3802,7 +4452,7 @@ function App(): React.JSX.Element {
       currentWorkspaceIdRef.current = workspaceForChat.id
       window.api.checkTrust(workspaceForChat.path).then(setTrustResult).catch(() => {})
     } else {
-      currentWorkspaceIdRef.current = chat.workspaceId
+      currentWorkspaceIdRef.current = chat.workspaceId || null
     }
     currentChatIdRef.current = chat.appChatId
     chatByIdRef.current.set(chat.appChatId, chat)
@@ -3811,15 +4461,12 @@ function App(): React.JSX.Element {
     if (provider === 'codex') {
       setShowGeminiTerminal(false)
     }
-    void refreshUsageSummary(chat.workspaceId, provider)
+    void refreshUsageSummary(getUsageWorkspaceIdForChat(chat), provider)
     setRunDiff(null)
     setRunCompleteNotice(null)
     setRawLogs(rawLogsByChatIdRef.current.get(chat.appChatId) || [])
     hydrateThreadRawLogsFromEvents(chat.appChatId)
     setShowFallbackUX(false)
-    setImageAttachments([])
-    clearImagePermissions()
-    setPendingPlanChoice(null)
     setIsThinking(runningChatIds.has(chat.appChatId))
   }
 
@@ -4001,6 +4648,50 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('resize', resizeSession)
   }, [isPersistentSessionEnabled])
 
+  const handleGeminiCapacityExhaustion = (
+    provider: ProviderId,
+    context: ActiveRunContext | null,
+    message: string,
+    runChatId: string | null | undefined,
+    isVisibleRun: boolean
+  ): boolean => {
+    if (provider !== 'gemini' || !context || classifyError(message) !== 'model_capacity_exhausted') {
+      return false
+    }
+
+    const redacted = redactLog(message)
+    context.warnings.push({ message: redacted, timestamp: new Date().toISOString() })
+    context.errorCount += 1
+    triggerFxBurst('warning')
+
+    if (context.errorCount >= 3 && context.toolCallsCount === 0 && !context.capacityFallbackShown) {
+      context.capacityFallbackShown = true
+      const stopReason = `Stopped after repeated Gemini model capacity exhaustion (${context.errorCount} retries).`
+      markCapacityStoppedRun(context, stopReason)
+      clearQueuedRunsForProvider('gemini', 'Cancelled because Gemini Pro capacity is exhausted.')
+      void window.api.cancelAgentRun('gemini', context.runId).catch(() => window.api.cancelGemini(context.runId))
+      clearActiveRunContext(context)
+      if (isVisibleRun) setIsThinking(false)
+      if (isVisibleRun) setShowFallbackUX(true)
+      if (runChatId) {
+        updateChatById(runChatId, (source) => {
+          const msgs = [
+            ...source.messages,
+            {
+              id: Date.now().toString(),
+              role: 'system',
+              content: `Run auto-stopped due to repeated Gemini model capacity exhaustion (${context.errorCount} retries). Try Flash or Flash Lite for this request.`,
+              timestamp: new Date().toISOString()
+            }
+          ] as ChatMessage[]
+          return { ...source, messages: msgs }
+        })
+      }
+    }
+
+    return true
+  }
+
   // IPC Listeners
   useEffect(() => {
     const handleProviderOutput = (fallbackProvider: ProviderId, payload: unknown) => {
@@ -4009,6 +4700,13 @@ function App(): React.JSX.Element {
       if (!text) return
       const context = resolveActiveRunContext(provider, getRouteRunId(payload), getRouteChatId(payload))
       if (context) {
+        handleGeminiCapacityExhaustion(
+          provider,
+          context,
+          text,
+          context.chatId,
+          !context.chatId || currentChatIdRef.current === context.chatId
+        )
         context.adapter.appendChunk(text)
       } else {
         appendThreadRawLog(getRouteChatId(payload) || currentChatIdRef.current, { type: 'stdout', content: text })
@@ -4027,19 +4725,14 @@ function App(): React.JSX.Element {
       const isVisibleErrorRun = !errorRunChatId || currentChatIdRef.current === errorRunChatId
       if (provider === 'gemini' && isVisibleErrorRun && permissionRequest && (category === 'permission_or_approval_required' || category === 'untrusted_workspace')) {
         showAttachmentPermissionRequest({ ...permissionRequest, message: redactLog(permissionRequest.message) })
+        triggerFxBurst('warning')
       }
 
       if (provider === 'gemini' && context && category === 'model_capacity_exhausted') {
-        context.warnings.push({ message: redacted, timestamp: new Date().toISOString() })
-        context.errorCount += 1
-        if (context.errorCount >= 3 && context.toolCallsCount === 0) {
-          window.api.cancelGemini()
-          if (isVisibleErrorRun) setShowFallbackUX(true)
-          updateChatById(errorRunChatId, (source) => {
-            const msgs = [...source.messages, { id: Date.now().toString(), role: 'system', content: `Run auto-stopped due to repeated model capacity exhaustion (${context.errorCount} retries).`, timestamp: new Date().toISOString() }] as ChatMessage[]
-            return { ...source, messages: msgs }
-          })
-        }
+        handleGeminiCapacityExhaustion(provider, context, error, errorRunChatId, isVisibleErrorRun)
+      }
+      if (provider === 'gemini' && isVisibleErrorRun && category !== 'model_capacity_exhausted' && redacted.toLowerCase().includes('warning')) {
+        triggerFxBurst('warning')
       }
 
       appendThreadRawLog(errorRunChatId, { type: 'stderr', content: redacted })
@@ -4060,7 +4753,8 @@ function App(): React.JSX.Element {
       const completedRunChatId = context.chatId
       const completedScheduledTaskId = context.scheduledTaskId
       const completedRunDiffUnavailable = context.diffUnavailable
-      const completedWorkspacePath = completedRunDiffUnavailable ? null : context.workspacePath
+      const isGlobalCompletedRun = !context.baseWorkspacePath
+      const completedWorkspacePath = isGlobalCompletedRun || completedRunDiffUnavailable ? null : context.workspacePath
       const completedRunStartedAt = context.startedAt
       const isVisibleCompletedRun = () => !completedRunChatId || currentChatIdRef.current === completedRunChatId
       updateRunQueueJobStatus(
@@ -4072,7 +4766,7 @@ function App(): React.JSX.Element {
       appendDurableRunEvent({
         runId: completedRunId,
         chatId: completedRunChatId,
-        workspaceId: chatByIdRef.current.get(completedRunChatId)?.workspaceId,
+        workspaceId: isGlobalCompletedRun ? undefined : chatByIdRef.current.get(completedRunChatId)?.workspaceId,
         workspacePath: completedWorkspacePath || context.workspacePath || undefined,
         provider,
         kind: 'lifecycle',
@@ -4083,9 +4777,13 @@ function App(): React.JSX.Element {
           exitCode,
           hasToolCalls,
           diffUnavailable: completedRunDiffUnavailable,
-          scheduledTaskId: completedScheduledTaskId
+        scheduledTaskId: completedScheduledTaskId
         }
       })
+      triggerFxBurst('run-complete')
+      if (context.warnings.length > 0) {
+        triggerFxBurst('run-summary')
+      }
       if (isVisibleCompletedRun()) {
         setIsThinking(false)
       }
@@ -4131,41 +4829,33 @@ function App(): React.JSX.Element {
           setDiff(createWorktreeDiffUnavailable())
           setDiffRefreshStatus('Diff disabled: worktree path unknown.')
         }
-      } else if (completedWorkspacePath && completedRunId && context.preSnapshot) {
+      } else if (!isGlobalCompletedRun && completedWorkspacePath && completedRunId && context.preSnapshot) {
         const completedPreSnapshot = context.preSnapshot
         window.api.captureSnapshot(completedWorkspacePath).then(postSnapshot => {
-          window.api.computeRunDiff(completedRunId, completedPreSnapshot, postSnapshot).then(async runDiffResult => {
-            const workspaceChangeSet = typeof window.api.recordWorkspaceRunChange === 'function'
-              ? await window.api.recordWorkspaceRunChange({
-                runId: completedRunId,
-                chatId: completedRunChatId,
-                workspaceId: context.workspaceId || chatByIdRef.current.get(completedRunChatId)?.workspaceId,
-                workspacePath: context.baseWorkspacePath,
-                effectiveWorkspacePath: completedWorkspacePath,
-                provider,
-                runDiff: runDiffResult,
-                ...(context.worktree ? {
-                  worktree: {
-                    enabled: Boolean(context.worktree.enabled),
-                    name: context.worktree.name,
-                    baseWorkspacePath: context.baseWorkspacePath,
-                    effectivePath: context.worktree.effectivePath || completedWorkspacePath
-                  }
-                } : {}),
-                ...(provider === 'gemini' ? {
-                  checkpoint: {
-                    enabled: Boolean(context.checkpointingEnabled),
-                    provider: 'gemini' as const
-                  }
-                } : {}),
-                metadata: {
-                  scheduledTaskId: completedScheduledTaskId || undefined
-                }
-              }).catch(() => null)
-              : null
-            if (workspaceChangeSet?.id) {
-              runDiffResult.changeSetId = workspaceChangeSet.id
+          window.api.computeRunDiff(completedRunId, completedPreSnapshot, postSnapshot, {
+            chatId: completedRunChatId,
+            workspaceId: context.workspaceId || chatByIdRef.current.get(completedRunChatId)?.workspaceId,
+            workspacePath: context.baseWorkspacePath!,
+            effectiveWorkspacePath: completedWorkspacePath,
+            provider,
+            ...(context.worktree ? {
+              worktree: {
+                enabled: Boolean(context.worktree.enabled),
+                name: context.worktree.name,
+                baseWorkspacePath: context.baseWorkspacePath!,
+                effectivePath: context.worktree.effectivePath || completedWorkspacePath
+              }
+            } : {}),
+            ...(provider === 'gemini' ? {
+              checkpoint: {
+                enabled: Boolean(context.checkpointingEnabled),
+                provider: 'gemini' as const
+              }
+            } : {}),
+            metadata: {
+              scheduledTaskId: completedScheduledTaskId || undefined
             }
+          }).then(async runDiffResult => {
             appendDurableRunEvent({
               runId: completedRunId,
               chatId: completedRunChatId,
@@ -4178,7 +4868,7 @@ function App(): React.JSX.Element {
               summary: `Run diff: ${runDiffResult.createdFiles.length} created, ${runDiffResult.modifiedFiles.length} modified, ${runDiffResult.deletedFiles.length} deleted`,
               payload: {
                 ...runDiffResult,
-                workspaceChangeSetId: workspaceChangeSet?.id
+                workspaceChangeSetId: runDiffResult.changeSetId
               }
             })
             updateChatById(completedRunChatId, (source) => {
@@ -4188,7 +4878,7 @@ function App(): React.JSX.Element {
                 runs[targetIndex].preSnapshot = completedPreSnapshot
                 runs[targetIndex].postSnapshot = postSnapshot
                 runs[targetIndex].runDiff = runDiffResult
-                runs[targetIndex].workspaceChangeSetId = workspaceChangeSet?.id
+                runs[targetIndex].workspaceChangeSetId = runDiffResult.changeSetId
               }
               return { ...source, runs }
             })
@@ -4207,7 +4897,7 @@ function App(): React.JSX.Element {
         }).catch(() => {
           if (isVisibleCompletedRun()) setDiffView('workspace')
         })
-      } else if (isVisibleCompletedRun()) {
+      } else if (!isGlobalCompletedRun && isVisibleCompletedRun()) {
         setDiffView('this_run')
       }
 
@@ -4261,9 +4951,10 @@ function App(): React.JSX.Element {
 
     if (typeof window.api.onAgentApprovalRequest === 'function') {
       window.api.onAgentApprovalRequest((request) => {
-        setPendingAgentApproval(request)
         const context = resolveActiveRunContext(request.provider, request.appRunId, request.appChatId)
-        appendThreadRawLog(context?.chatId || request.appChatId || currentChatIdRef.current, { type: 'info', content: `${getProviderLabel(request.provider)} approval requested: ${request.title}\n${request.body}` })
+        const targetChatId = context?.chatId || request.appChatId || currentChatIdRef.current
+        setPendingAgentApprovalForChat(targetChatId, request)
+        appendThreadRawLog(targetChatId, { type: 'info', content: `${getProviderLabel(request.provider)} approval requested: ${request.title}\n${request.body}` })
       })
     }
 
@@ -4321,6 +5012,7 @@ function App(): React.JSX.Element {
   }
 
   const createRunQueueRequestSnapshot = (request: QueuedRunRequest): RunQueueRequestSnapshot => ({
+    scope: request.scope || getChatScope(request.chatRecord || currentChat),
     prompt: request.prompt,
     ...(request.displayPrompt ? { displayPrompt: request.displayPrompt } : {}),
     selectedModelType: request.selectedModelType,
@@ -4338,6 +5030,8 @@ function App(): React.JSX.Element {
     ...(request.codexReasoningEffort !== undefined ? { codexReasoningEffort: request.codexReasoningEffort } : {}),
     ...(request.codexServiceTier !== undefined ? { codexServiceTier: request.codexServiceTier } : {}),
     ...(request.scheduledTaskId ? { scheduledTaskId: request.scheduledTaskId } : {}),
+    ...(request.runtimeProfileId ? { runtimeProfileId: request.runtimeProfileId } : {}),
+    ...(request.handoffSourceRunId ? { handoffSourceRunId: request.handoffSourceRunId } : {}),
     ...(request.preserveComposer ? { preserveComposer: true } : {})
   })
 
@@ -4348,18 +5042,22 @@ function App(): React.JSX.Element {
   ) => {
     const workspace = request.workspaceRecord || getWorkspaceForChat(request.chatRecord) || currentWorkspace
     const chat = request.chatRecord || currentChat
+    const scope = request.scope || getChatScope(chat)
     const runId = request.appRunId
-    if (!runId || !workspace) return
-    window.api.saveRunQueueJob({
+    if (!runId || !chat) return
+    if (scope !== 'global' && !workspace) return
+    window.api.requestRunQueueJob({
       id: runId,
       runId,
       provider: request.provider,
-      workspaceId: workspace.id,
-      workspacePath: workspace.path,
+      scope,
+      ...(scope === 'global' ? {} : { workspaceId: workspace!.id, workspacePath: workspace!.path }),
       chatId: chat?.appChatId,
       source: getRunQueueSource(request),
       status,
       promptPreview: request.displayPrompt || request.prompt,
+      runtimeProfileId: request.runtimeProfileId,
+      handoffSourceRunId: request.handoffSourceRunId,
       request: createRunQueueRequestSnapshot(request),
       ...(statusReason ? { statusReason } : {})
     }).catch(() => {})
@@ -4376,8 +5074,7 @@ function App(): React.JSX.Element {
     if (existing && isTerminalRunQueueStatus(existing.status) && isTerminalRunQueueStatus(status)) {
       return
     }
-    window.api.updateRunQueueJob(runId, {
-      status,
+    window.api.transitionRunQueueJob(runId, status, {
       ...(statusReason ? { statusReason } : {}),
       ...(lastError ? { lastError } : {})
     }).catch(() => {})
@@ -4391,10 +5088,12 @@ function App(): React.JSX.Element {
     if (job.status !== 'queued' || !job.request) return null
     const workspaceRecord = workspaceList.find((workspace) => workspace.id === job.workspaceId || workspace.path === job.workspacePath)
     const chatRecord = chatList.find((chat) => chat.appChatId === job.chatId)
-    if (!workspaceRecord || !chatRecord) return null
+    const scope = job.scope === 'global' || job.request.scope === 'global' || isGlobalChat(chatRecord) ? 'global' : 'workspace'
+    if (!chatRecord || (scope !== 'global' && !workspaceRecord)) return null
     const request = job.request
     return {
       appRunId: job.runId,
+      scope,
       provider: job.provider,
       prompt: request.prompt,
       displayPrompt: request.displayPrompt,
@@ -4413,7 +5112,9 @@ function App(): React.JSX.Element {
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
       scheduledTaskId: request.scheduledTaskId,
-      workspaceRecord,
+      runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
+      handoffSourceRunId: job.handoffSourceRunId || request.handoffSourceRunId,
+      workspaceRecord: scope === 'global' ? undefined : workspaceRecord,
       chatRecord,
       preserveComposer: request.preserveComposer
     }
@@ -4424,11 +5125,11 @@ function App(): React.JSX.Element {
   const recoveryMessageContent = (record: RunRecoveryRecord): string => {
     const providerLabel = getProviderLabel(record.provider)
     const processText = record.process?.alive
-      ? ` A process with PID ${record.process.pid}${record.process.command ? ` (${record.process.command})` : ''} may still be running outside AgentBench.`
+      ? ` A process with PID ${record.process.pid}${record.process.command ? ` (${record.process.command})` : ''} may still be running outside AGBench.`
       : record.process
         ? ` No live process was found for the recorded PID ${record.process.pid}.`
         : ''
-    return `Recovered interrupted ${providerLabel} run after app restart. ${record.reason} AgentBench marked the run as ${record.recoveredStatus}.${processText} ${record.resumeHint}`
+    return `Recovered interrupted ${providerLabel} run after app restart. ${record.reason} AGBench marked the run as ${record.recoveredStatus}.${processText} ${record.resumeHint}`
   }
 
   const applyRecoveryRecordsToChats = async (
@@ -4508,7 +5209,8 @@ function App(): React.JSX.Element {
 
   const buildRunRequest = (overrideModel?: string, existingPrompt?: string): QueuedRunRequest => {
     const selectedChat = (currentChatIdRef.current ? chatByIdRef.current.get(currentChatIdRef.current) : null) || currentChat
-    const selectedWorkspace = getWorkspaceForChat(selectedChat) || currentWorkspace
+    const scope = getChatScope(selectedChat)
+    const selectedWorkspace = scope === 'global' ? null : getWorkspaceForChat(selectedChat) || currentWorkspace
     const provider = selectedChat ? getChatProvider(selectedChat) : currentProvider
     const composerSelection = selectedChat ? getChatComposerSelection(selectedChat, provider) : null
     const requestModel = overrideModel
@@ -4523,11 +5225,13 @@ function App(): React.JSX.Element {
       ? (composerSelection?.codexServiceTier || codexServiceTier)
       : codexServiceTier
     const externalPathGrants = provider === 'codex'
+      && scope !== 'global'
       ? normalizeExternalPathGrants(selectedChat?.providerMetadata?.codexExternalPathGrants)
       : []
 
     return {
       appRunId: createAppRunId(),
+      scope,
       provider,
       prompt: existingPrompt || prompt,
       overrideModel,
@@ -4538,9 +5242,10 @@ function App(): React.JSX.Element {
       sessionTrust,
       imageAttachments,
       externalPathGrants,
-      geminiWorktree: resolveGeminiWorktreeConfig(selectedWorkspace),
+      geminiWorktree: scope === 'global' ? undefined : resolveGeminiWorktreeConfig(selectedWorkspace),
       codexReasoningEffort: requestReasoningEffort,
       codexServiceTier: requestServiceTier,
+      runtimeProfileId: getRuntimeProfileIdForChat(selectedChat, provider),
       workspaceRecord: selectedWorkspace || undefined,
       chatRecord: selectedChat || undefined
     }
@@ -4551,6 +5256,30 @@ function App(): React.JSX.Element {
     const queuedAt = new Date().toISOString()
     const targetChatId = queuedRequest.chatRecord?.appChatId
     const targetProvider = queuedRequest.provider
+    const capacityContext = targetProvider === 'gemini' ? getActiveRunContextForProvider('gemini') : null
+    if (capacityContext?.capacityFallbackShown) {
+      updateRunQueueJobStatus(queuedRequest.appRunId, 'cancelled', 'Gemini Pro capacity fallback is active.')
+      appendThreadRawLog(targetChatId, {
+        type: 'info',
+        content: 'Gemini run was not queued because the active Pro run hit model capacity. Retry with Flash or Flash Lite instead.'
+      })
+      return
+    }
+    const duplicateQueuedRun = queuedRuns.some((queued) =>
+      queued.provider === targetProvider &&
+      queued.chatRecord?.appChatId === targetChatId &&
+      queued.prompt === queuedRequest.prompt &&
+      queued.selectedModelType === queuedRequest.selectedModelType &&
+      queued.overrideModel === queuedRequest.overrideModel
+    )
+    if (duplicateQueuedRun) {
+      updateRunQueueJobStatus(queuedRequest.appRunId, 'cancelled', 'Duplicate queued run ignored.')
+      appendThreadRawLog(targetChatId, {
+        type: 'info',
+        content: `${getProviderLabel(targetProvider)} run was already queued for this request.`
+      })
+      return
+    }
     const queuePosition = queuedRuns.length + 1
     persistRunQueueJobForRequest(queuedRequest, 'queued', reason)
     setQueuedRuns(prev => [...prev, queuedRequest])
@@ -4608,12 +5337,13 @@ function App(): React.JSX.Element {
     const displayFinalPrompt = request.displayPrompt
       ? request.displayPrompt
       : finalPrompt
-    const runWorkspace = request.workspaceRecord || currentWorkspace
     const runChat = request.chatRecord || currentChat
-    if (!runWorkspace || !runChat || !finalPrompt.trim()) return
+    const isGlobalRun = request.scope === 'global' || isGlobalChat(runChat)
+    const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
+    if (!runChat || (!isGlobalRun && !runWorkspace) || !finalPrompt.trim()) return
     const runProvider = request.provider || currentProvider
     if (isProviderBusy(runProvider)) {
-      queueRunRequest(request, `${getProviderLabel(runProvider)} is already running; AgentBench will start this thread when that provider is free.`)
+      queueRunRequest(request, `${getProviderLabel(runProvider)} is already running; AGBench will start this thread when that provider is free.`)
       return
     }
 
@@ -4629,16 +5359,25 @@ function App(): React.JSX.Element {
     latestRunRequestRef.current = request
 
     const modelToPass = request.overrideModel || (request.selectedModelType === 'custom' ? request.customModel.trim() : request.selectedModelType)
-    const modeToPass = request.approvalMode
-    const runWorktree = runProvider === 'gemini' ? request.geminiWorktree : undefined
-    const runDiffUnavailable = isGeminiWorktreeDiffUnavailable(runWorktree)
-    const runDiffWorkspacePath = runDiffUnavailable ? undefined : getDiffWorkspacePath(runWorkspace, runWorktree)
+    const modeToPass = isGlobalRun && request.approvalMode !== 'plan' ? 'default' : request.approvalMode
+    const runWorktree = !isGlobalRun && runProvider === 'gemini' ? request.geminiWorktree : undefined
+    const runDiffUnavailable = !isGlobalRun && isGeminiWorktreeDiffUnavailable(runWorktree)
+    const runDiffWorkspacePath = !isGlobalRun && runWorkspace && !runDiffUnavailable ? getDiffWorkspacePath(runWorkspace, runWorktree) : undefined
     
     activeScheduledTaskIdRef.current = request.scheduledTaskId || null
     let chatToUpdate = { ...runChat, provider: runProvider }
-    const resumeSessionId = runProvider !== 'gemini'
-      ? normalizeGeminiResumeTarget(chatToUpdate.linkedProviderSessionId)
-      : normalizeGeminiResumeTarget(chatToUpdate.linkedGeminiSessionId)
+    let geminiResumeSkippedReason: string | undefined
+    let resumeSessionId: string | undefined
+    if (runProvider !== 'gemini') {
+      resumeSessionId = normalizeGeminiResumeTarget(chatToUpdate.linkedProviderSessionId)
+    } else {
+      const resumeDecision = resolveGeminiResumeForRun(chatToUpdate, modelToPass, modeToPass, runWorktree)
+      resumeSessionId = resumeDecision.sessionId
+      geminiResumeSkippedReason = resumeDecision.skippedReason
+      if (geminiResumeSkippedReason) {
+        chatToUpdate.linkedGeminiSessionId = undefined
+      }
+    }
     const selectedChatIdAtRunStart = currentChatIdRef.current || currentChat?.appChatId || null
     const isRunVisibleAtStart = selectedChatIdAtRunStart === chatToUpdate.appChatId
     if (isRunVisibleAtStart) {
@@ -4679,6 +5418,8 @@ function App(): React.JSX.Element {
       rawEventsFile: `run-events/${currentRunId}.jsonl`,
       requestedModel: modelToPass,
       approvalMode: modeToPass,
+      runtimeProfileId: request.runtimeProfileId,
+      handoffSourceRunId: request.handoffSourceRunId,
       ...(runProvider !== 'gemini' && resumeSessionId ? { providerThreadId: resumeSessionId } : {}),
       ...(runWorktree ? { geminiWorktree: runWorktree } : {}),
       ...(runDiffWorkspacePath ? { effectiveWorkspacePath: runDiffWorkspacePath } : {}),
@@ -4719,6 +5460,16 @@ function App(): React.JSX.Element {
         })
       }
     }
+
+    if (runProvider === 'gemini' && !isGlobalRun && modeToPass !== 'plan') {
+      const geminiWriteToolPreamble = [
+        'AGBench runtime note: this Gemini workspace run is write-capable.',
+        'Use the AGBench MCP tools directly for file changes: read_file, list_directory, write_file, replace, and run_shell_command.',
+        'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit AGBench write tools.',
+        'If any of those tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+      ].join('\n')
+      contextualPrompt = `${geminiWriteToolPreamble}\n\n${contextualPrompt}`
+    }
     
     const runChatId = chatToUpdate.appChatId
     activeRunChatSnapshotRef.current = chatToUpdate
@@ -4740,8 +5491,8 @@ function App(): React.JSX.Element {
     appendDurableRunEvent({
       runId: currentRunId,
       chatId: runChatId,
-      workspaceId: chatToUpdate.workspaceId,
-      workspacePath: runWorkspace.path,
+      workspaceId: isGlobalRun ? undefined : chatToUpdate.workspaceId,
+      workspacePath: isGlobalRun ? undefined : runWorkspace!.path,
       provider: runProvider,
       kind: 'lifecycle',
       phase: 'control',
@@ -4752,10 +5503,12 @@ function App(): React.JSX.Element {
         requestedModel: modelToPass,
         approvalMode: modeToPass,
         contextTurns: contextTurnsForRun,
-        workspacePath: runWorkspace.path,
+        workspacePath: isGlobalRun ? undefined : runWorkspace!.path,
         effectiveWorkspacePath: runDiffWorkspacePath,
         diffUnavailable: runDiffUnavailable,
-        scheduledTaskId: request.scheduledTaskId || null
+        scheduledTaskId: request.scheduledTaskId || null,
+        runtimeProfileId: request.runtimeProfileId || null,
+        handoffSourceRunId: request.handoffSourceRunId || null
       }
     })
 
@@ -4764,12 +5517,14 @@ function App(): React.JSX.Element {
       { type: 'info', content: `Exact prompt being sent: ${contextualPrompt}` },
       { type: 'info', content: `Requested model: ${modelToPass}` },
       { type: 'info', content: `Approval Mode: ${modeToPass}` },
+      ...(geminiResumeSkippedReason ? [{ type: 'info' as const, content: geminiResumeSkippedReason }] : []),
       ...(resumeSessionId ? [{ type: 'info' as const, content: `Resuming ${getProviderLabel(runProvider)} session: ${resumeSessionId}` }] : []),
       ...(runWorktree?.enabled
         ? [{ type: 'info' as const, content: `Gemini worktree: ${runWorktree.name || 'enabled'}${runDiffWorkspacePath ? ` (diff path: ${runDiffWorkspacePath})` : ' (effective path unknown; Diff Studio disabled)'}` }]
         : [])
     ]
     setThreadRawLogs(runChatId, initialRawLogs)
+    triggerFxBurst('run-start')
     setIsRunning(true)
     setDiffRefreshStatus('')
 
@@ -4824,8 +5579,8 @@ function App(): React.JSX.Element {
       appendDurableRunEvent({
         runId: currentRunId,
         chatId: runChatId,
-        workspaceId: chatToUpdate.workspaceId,
-        workspacePath: runWorkspace.path,
+        workspaceId: isGlobalRun ? undefined : chatToUpdate.workspaceId,
+        workspacePath: isGlobalRun ? undefined : runWorkspace!.path,
         provider: runProvider,
         kind: durableKindForAdapterEvent(event),
         phase: 'normalized',
@@ -4836,6 +5591,7 @@ function App(): React.JSX.Element {
 
       if (event.type === 'raw_event') {
         const redacted = redactLog(JSON.stringify(event.data, null, 2))
+        handleGeminiCapacityExhaustion(runProvider, runContext, redacted, runChatId, isVisibleRunChat())
         const permissionRequest = parseGeminiPermissionRequest(event.data)
         if (permissionRequest && isVisibleRunChat()) {
           showAttachmentPermissionRequest({ ...permissionRequest, message: redactLog(permissionRequest.message) })
@@ -4899,7 +5655,7 @@ function App(): React.JSX.Element {
           if (resetHints.length > 0) {
             Promise.all(resetHints.map((hint) => window.api.recordUsage({
               provider: runProvider,
-              workspaceId: updated.workspaceId,
+              workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
               chatId: updated.appChatId,
               runId: currentRunId,
               usageKind: 'reset_hint',
@@ -4911,8 +5667,9 @@ function App(): React.JSX.Element {
               resetText: hint.resetText,
               durationMs: 0
             }))).then(() => {
-              if (updated.workspaceId && currentWorkspaceIdRef.current === updated.workspaceId) {
-                void refreshUsageSummary(updated.workspaceId)
+              const usageWorkspaceId = getUsageWorkspaceIdForChat(updated)
+              if (usageWorkspaceId && (currentWorkspaceIdRef.current === usageWorkspaceId || isGlobalChat(updated))) {
+                void refreshUsageSummary(usageWorkspaceId)
               }
             })
           }
@@ -4975,7 +5732,7 @@ function App(): React.JSX.Element {
 
             return window.api.recordUsage({
               provider: runProvider,
-              workspaceId: updated.workspaceId,
+              workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
               chatId: updated.appChatId,
               runId: currentRunId,
               usageKind: 'run',
@@ -4995,13 +5752,12 @@ function App(): React.JSX.Element {
           })
 
           Promise.all(usageRecordPromises).then(() => {
-            if (updated.workspaceId && currentWorkspaceIdRef.current === updated.workspaceId) {
-              void refreshUsageSummary(updated.workspaceId)
+            const usageWorkspaceId = getUsageWorkspaceIdForChat(updated)
+            if (usageWorkspaceId && (currentWorkspaceIdRef.current === usageWorkspaceId || isGlobalChat(updated))) {
+              void refreshUsageSummary(usageWorkspaceId)
             }
           })
         } else if (event.type === 'tool_event') {
-          runContext.toolCallsCount += 1
-
           if (updated.messages.length === 0 || updated.messages[updated.messages.length - 1].role !== 'tool') {
              updated.messages = [...updated.messages, { id: Date.now().toString(), role: 'tool', content: '', timestamp: new Date().toISOString(), toolActivities: [] }]
           }
@@ -5013,6 +5769,9 @@ function App(): React.JSX.Element {
           const tData = event.data
           const isUse = event.isUse || isToolUseEvent(tData)
           const isResult = event.isResult || isToolResultEvent(tData)
+          if (isProviderExecutionToolEvent(event)) {
+            runContext.toolCallsCount += 1
+          }
           const tId = event.data?.tool_id || event.data?.toolId || event.data?.id || event.data?.call_id || `unknown-${Date.now()}`
           let latestToolActivity: ToolActivity | null = null
 
@@ -5070,9 +5829,9 @@ function App(): React.JSX.Element {
       errorCount: errorCountRef.current,
       toolCallsCount: toolCallsCountRef.current,
       preSnapshot,
-      baseWorkspacePath: runWorkspace.path,
+      baseWorkspacePath: isGlobalRun ? null : runWorkspace!.path,
       workspacePath: runDiffWorkspacePath || null,
-      workspaceId: runWorkspace.id,
+      workspaceId: isGlobalRun ? undefined : runWorkspace!.id,
       worktree: runWorktree,
       checkpointingEnabled: runProvider === 'gemini' ? geminiCheckpointingEnabled : false,
       startedAt: runStartedAt,
@@ -5085,71 +5844,50 @@ function App(): React.JSX.Element {
     syncRunningState()
 
     if (!request.existingPrompt && !request.preserveComposer) {
-      setPrompt('')
+      setChatPromptDraft(runChatId, '')
       clearComposerAttachmentsForSubmittedRequest(request)
     }
-    if (runProvider !== 'gemini') {
-      try {
-        if (runProvider === 'codex' && request.codexNativeReview && resumeSessionId && typeof window.api.startAgentReview === 'function') {
-          await window.api.startAgentReview('codex', resumeSessionId, {
-            model: modelToPass,
-            target: { type: 'uncommittedChanges' },
-            delivery: 'inline',
-            cwd: runWorkspace.path,
-            appRunId: currentRunId,
-            appChatId: runChatId
-          })
-        } else {
-          await window.api.runAgent({
-            provider: runProvider,
-            workspace: runWorkspace.path,
-            prompt: contextualPrompt,
-            appRunId: currentRunId,
-            appChatId: runChatId,
-            model: modelToPass,
-            reasoningEffort: runProvider === 'codex' ? ((request.codexReasoningEffort ?? codexReasoningEffort) || null) : null,
-            serviceTier: runProvider === 'codex' ? ((request.codexServiceTier ?? codexServiceTier) || null) : null,
-            approvalMode: modeToPass,
-            imagePaths: request.imageAttachments.map(item => item.path),
-            providerSessionId: resumeSessionId,
-            externalPathGrants: runProvider === 'codex' ? request.externalPathGrants || [] : []
-          })
-        }
-      } catch (error) {
-        clearActiveRunContext(runContext)
-        const message = `Failed to start ${getProviderLabel(runProvider)}: ${redactLog(String(error))}`
-        updateRunQueueJobStatus(currentRunId, 'failed', 'Provider process failed before startup completed.', message)
-        appendThreadRawLog(runChatId, { type: 'stderr', content: message })
-        updateChatById(runChatId, (source) => ({
-          ...source,
-          messages: [...source.messages, { id: Date.now().toString(), role: 'error', content: message, timestamp: new Date().toISOString() }],
-          runs: source.runs.map((run) => run.runId === currentRunId ? { ...run, status: 'failed', endedAt: new Date().toISOString() } : run)
-        }))
+    try {
+      if (runProvider === 'codex' && request.codexNativeReview && resumeSessionId && typeof window.api.startAgentReview === 'function') {
+        await window.api.startAgentReview('codex', resumeSessionId, {
+          model: modelToPass,
+          target: { type: 'uncommittedChanges' },
+          delivery: 'inline',
+          cwd: runWorkspace!.path,
+          appRunId: currentRunId,
+          appChatId: runChatId
+        })
+      } else {
+        await window.api.runAgent({
+          provider: runProvider,
+          scope: isGlobalRun ? 'global' : 'workspace',
+          ...(isGlobalRun ? {} : { workspace: runWorkspace!.path }),
+          prompt: contextualPrompt,
+          appRunId: currentRunId,
+          appChatId: runChatId,
+          model: modelToPass,
+          reasoningEffort: runProvider === 'codex' ? ((request.codexReasoningEffort ?? codexReasoningEffort) || null) : null,
+          serviceTier: runProvider === 'codex' ? ((request.codexServiceTier ?? codexServiceTier) || null) : null,
+          approvalMode: modeToPass,
+          imagePaths: request.imageAttachments.map(item => item.path),
+          providerSessionId: resumeSessionId,
+          externalPathGrants: !isGlobalRun && runProvider === 'codex' ? request.externalPathGrants || [] : [],
+          sessionTrust: runProvider === 'gemini' ? request.sessionTrust : false,
+          geminiWorktree: !isGlobalRun && runProvider === 'gemini' ? request.geminiWorktree : null,
+          runtimeProfileId: request.runtimeProfileId,
+          handoffSourceRunId: request.handoffSourceRunId
+        })
       }
-    } else {
-      try {
-        await window.api.runGemini(
-          runWorkspace.path,
-          contextualPrompt,
-          modelToPass,
-          modeToPass,
-          request.sessionTrust,
-          request.imageAttachments.map(item => item.path),
-          resumeSessionId,
-          request.geminiWorktree,
-          { appRunId: currentRunId, appChatId: runChatId }
-        )
-      } catch (error) {
-        clearActiveRunContext(runContext)
-        const message = `Failed to start Gemini: ${redactLog(String(error))}`
-        updateRunQueueJobStatus(currentRunId, 'failed', 'Gemini process failed before startup completed.', message)
-        appendThreadRawLog(runChatId, { type: 'stderr', content: message })
-        updateChatById(runChatId, (source) => ({
-          ...source,
-          messages: [...source.messages, { id: Date.now().toString(), role: 'error', content: message, timestamp: new Date().toISOString() }],
-          runs: source.runs.map((run) => run.runId === currentRunId ? { ...run, status: 'failed', endedAt: new Date().toISOString() } : run)
-        }))
-      }
+    } catch (error) {
+      clearActiveRunContext(runContext)
+      const message = `Failed to start ${getProviderLabel(runProvider)}: ${redactLog(String(error))}`
+      updateRunQueueJobStatus(currentRunId, 'failed', 'Provider process failed before startup completed.', message)
+      appendThreadRawLog(runChatId, { type: 'stderr', content: message })
+      updateChatById(runChatId, (source) => ({
+        ...source,
+        messages: [...source.messages, { id: Date.now().toString(), role: 'error', content: message, timestamp: new Date().toISOString() }],
+        runs: source.runs.map((run) => run.runId === currentRunId ? { ...run, status: 'failed', endedAt: new Date().toISOString() } : run)
+      }))
     }
     setChats(await window.api.getChats())
   }
@@ -5206,7 +5944,7 @@ function App(): React.JSX.Element {
       queueRunRequest(request)
       clearComposerAttachmentsForSubmittedRequest(request)
       if (!request.existingPrompt) {
-        setPrompt('')
+        setChatPromptDraft(request.chatRecord?.appChatId || currentChatIdRef.current || currentChat?.appChatId, '')
       }
       return
     }
@@ -5244,6 +5982,8 @@ function App(): React.JSX.Element {
       geminiWorktree: request.geminiWorktree,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      runtimeProfileId: request.runtimeProfileId,
+      handoffSourceRunId: request.handoffSourceRunId,
       runAt: runAtDate.toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
     })
@@ -5252,10 +5992,197 @@ function App(): React.JSX.Element {
     setRawLogs(prev => [...prev, { type: 'info', content: `Scheduled ${getProviderLabel(saved.provider)} run for ${formatScheduledRunTime(saved.runAt)}.` }])
   }
 
+  const getCockpitRunSource = (lane: RunLane): { chat: ChatRecord | null; run: ChatRun | null; prompt: string } => {
+    const chat = lane.chatId ? chatByIdRef.current.get(lane.chatId) || chats.find((item) => item.appChatId === lane.chatId) || null : null
+    const run = chat?.runs?.find((item) => item.runId === lane.runId) || null
+    const prompt = run
+      ? chat?.messages.find((message) => message.id === run.promptMessageId)?.content ||
+        [...(chat?.messages || [])].reverse().find((message) => message.role === 'user')?.content ||
+        lane.promptPreview ||
+        ''
+      : lane.promptPreview || ''
+    return { chat, run, prompt }
+  }
+
+  const handleOpenCockpitThread = (chatId?: string) => {
+    if (!chatId) return
+    const chat = chatByIdRef.current.get(chatId) || chats.find((item) => item.appChatId === chatId)
+    if (chat) {
+      void handleSelectChat(chat)
+      setShowCockpit(false)
+    }
+  }
+
+  const handleCancelRunLane = (lane: RunLane) => {
+    if (lane.scheduledTaskId) {
+      void window.api.updateScheduledTask(lane.scheduledTaskId, {
+        status: 'cancelled' as any,
+        lastError: 'Cancelled from Cockpit.'
+      }).then(() => window.api.getScheduledTasks(currentWorkspaceIdRef.current || undefined).then(setScheduledTasks))
+      return
+    }
+    if (!lane.runId) return
+    setQueuedRuns(prev => prev.filter((request) => request.appRunId !== lane.runId))
+    if (lane.phase === 'queued' || lane.phase === 'paused') {
+      updateRunQueueJobStatus(lane.runId, 'cancelled', 'Cancelled from Cockpit.')
+      return
+    }
+    void window.api.cancelAgentRun(lane.provider, lane.runId).catch(() => {
+      if (lane.provider === 'gemini') {
+        void window.api.cancelGemini(lane.runId)
+      }
+    })
+  }
+
+  const handleRetryRunLane = (lane: RunLane) => {
+    const { chat, run, prompt: sourcePrompt } = getCockpitRunSource(lane)
+    if (!chat || !sourcePrompt.trim()) return
+    const workspace = getWorkspaceForChat(chat) || undefined
+    const provider = lane.provider || getChatProvider(chat)
+    const selection = getChatComposerSelection(chat, provider)
+    const request: QueuedRunRequest = {
+      appRunId: createAppRunId(),
+      scope: getChatScope(chat),
+      provider,
+      prompt: sourcePrompt,
+      displayPrompt: `[retry] ${sourcePrompt}`,
+      existingPrompt: sourcePrompt,
+      selectedModelType: run?.requestedModel || selection.selectedModelType,
+      customModel: selection.customModel,
+      approvalMode: run?.approvalMode || selection.approvalMode,
+      sessionTrust,
+      imageAttachments: [],
+      externalPathGrants: provider === 'codex' ? normalizeExternalPathGrants(chat.providerMetadata?.codexExternalPathGrants) : [],
+      geminiWorktree: getChatScope(chat) === 'global' ? undefined : resolveGeminiWorktreeConfig(workspace || null),
+      codexReasoningEffort: selection.codexReasoningEffort,
+      codexServiceTier: selection.codexServiceTier,
+      runtimeProfileId: lane.runtimeProfileId || getRuntimeProfileIdForChat(chat, provider),
+      handoffSourceRunId: lane.handoffSourceRunId,
+      workspaceRecord: getChatScope(chat) === 'global' ? undefined : workspace,
+      chatRecord: chat
+    }
+    if (isProviderBusy(provider)) {
+      queueRunRequest(request, `Retry is waiting for the active ${getProviderLabel(provider)} task to exit.`)
+      return
+    }
+    void executeRun(request)
+  }
+
+  const handleDuplicateRunLane = async (lane: RunLane) => {
+    const { chat, prompt: sourcePrompt } = getCockpitRunSource(lane)
+    if (!chat) return
+    const provider = lane.provider || getChatProvider(chat)
+    const workspace = getWorkspaceForChat(chat)
+    const duplicate = isGlobalChat(chat)
+      ? await window.api.createGlobalChat()
+      : workspace
+        ? await window.api.createChat(workspace.id, workspace.path)
+        : null
+    if (!duplicate) return
+    const updatedDuplicate: ChatRecord = {
+      ...duplicate,
+      provider,
+      providerMetadata: {
+        ...(duplicate.providerMetadata || {}),
+        runtimeProfileId: lane.runtimeProfileId || getRuntimeProfileIdForChat(chat, provider)
+      },
+      title: `${chat.title || getProviderLabel(provider)} copy`,
+      updatedAt: Date.now()
+    }
+    await window.api.saveChat(updatedDuplicate)
+    chatByIdRef.current.set(updatedDuplicate.appChatId, updatedDuplicate)
+    setChats(await window.api.getChats())
+    setChatPromptDraft(updatedDuplicate.appChatId, sourcePrompt)
+    setRuntimeProfileForChat(
+      updatedDuplicate.appChatId,
+      typeof updatedDuplicate.providerMetadata?.runtimeProfileId === 'string' ? updatedDuplicate.providerMetadata.runtimeProfileId : ''
+    )
+    void handleSelectChat(updatedDuplicate)
+    setShowCockpit(false)
+  }
+
+  const handleCreateHandoffFromLane = async (lane: RunLane) => {
+    const { chat, run, prompt: sourcePrompt } = getCockpitRunSource(lane)
+    if (!chat || !run || typeof window.api.saveHandoffCard !== 'function') return
+    const latestAssistantMessage = [...chat.messages].reverse().find((message) => message.role === 'assistant')
+    const selectedFiles = extractRunTouchedFiles(run)
+    const summary = latestAssistantMessage?.content
+      ? compactPromptPreview(latestAssistantMessage.content)
+      : `Continue work from ${getProviderLabel(lane.provider)} run ${run.runId}.`
+    const finalPrompt = [
+      `Continue from ${getProviderLabel(lane.provider)} run ${run.runId}.`,
+      `Source chat: ${chat.title || chat.appChatId}.`,
+      selectedFiles.length > 0 ? `Files touched: ${selectedFiles.slice(0, 24).join(', ')}` : 'Files touched: none recorded.',
+      `Prior request: ${sourcePrompt}`,
+      latestAssistantMessage?.content ? `Latest assistant summary:\n${latestAssistantMessage.content}` : ''
+    ].filter(Boolean).join('\n\n')
+    const card = await window.api.saveHandoffCard({
+      sourceChatId: chat.appChatId,
+      sourceRunId: run.runId,
+      sourceProvider: lane.provider,
+      workspaceId: chat.workspaceId,
+      workspacePath: chat.workspacePath,
+      summary,
+      selectedFiles,
+      workspaceChangeSetIds: run.workspaceChangeSetId ? [run.workspaceChangeSetId] : [],
+      rawEventRunIds: [run.runId],
+      recommendedProvider: lane.provider,
+      recommendedModel: run.actualModel || run.requestedModel,
+      recommendedApprovalMode: run.approvalMode,
+      finalPrompt
+    })
+    setHandoffCards(prev => [card, ...prev.filter((item) => item.id !== card.id)])
+    setShowCockpit(true)
+  }
+
+  const handleDispatchHandoff = async (card: HandoffCard) => {
+    const sourceChat = chatByIdRef.current.get(card.sourceChatId) || chats.find((item) => item.appChatId === card.sourceChatId)
+    const provider = card.recommendedProvider || card.sourceProvider
+    const workspace = sourceChat ? getWorkspaceForChat(sourceChat) : null
+    const targetChat = sourceChat && isGlobalChat(sourceChat)
+      ? await window.api.createGlobalChat()
+      : workspace
+        ? await window.api.createChat(workspace.id, workspace.path)
+        : null
+    if (!targetChat) return
+    const updatedTarget: ChatRecord = {
+      ...targetChat,
+      provider,
+      title: `Handoff from ${getProviderLabel(card.sourceProvider)}`,
+      updatedAt: Date.now()
+    }
+    await window.api.saveChat(updatedTarget)
+    const updatedCard = await window.api.updateHandoffCard(card.id, {
+      status: 'dispatched',
+      targetChatId: updatedTarget.appChatId,
+      dispatchedAt: new Date().toISOString()
+    })
+    if (updatedCard) {
+      setHandoffCards(prev => prev.map((item) => item.id === updatedCard.id ? updatedCard : item))
+    }
+    chatByIdRef.current.set(updatedTarget.appChatId, updatedTarget)
+    setChats(await window.api.getChats())
+    setChatPromptDraft(updatedTarget.appChatId, card.finalPrompt)
+    void handleSelectChat(updatedTarget)
+    setShowCockpit(false)
+  }
+
+  const handleArchiveHandoff = async (card: HandoffCard) => {
+    const updated = await window.api.updateHandoffCard(card.id, { status: 'archived' })
+    if (updated) {
+      setHandoffCards(prev => prev.map((item) => item.id === updated.id ? updated : item))
+    }
+  }
+
   const dispatchScheduledTask = async (task: ScheduledTask) => {
     try {
-      const workspace = workspaces.find((item) => item.id === task.workspaceId) ||
-        await window.api.addOrUpdateWorkspace(task.workspacePath, { id: task.workspaceId })
+      let workspace = workspaces.find((item) => item.id === task.workspaceId)
+      if (!workspace) {
+        const latestWorkspaces = await window.api.getWorkspaces()
+        setWorkspaces(latestWorkspaces)
+        setWorkspacesHydrated(true)
+        workspace = latestWorkspaces.find((item) => item.id === task.workspaceId)
+      }
       const chat = await window.api.getChat(task.chatId)
       if (!workspace || !chat) {
         await window.api.updateScheduledTask(task.id, { status: 'failed', lastError: 'Workspace or chat could not be loaded.' })
@@ -5294,6 +6221,8 @@ function App(): React.JSX.Element {
         geminiWorktree: task.geminiWorktree,
         codexReasoningEffort: task.codexReasoningEffort,
         codexServiceTier: task.codexServiceTier,
+        runtimeProfileId: task.runtimeProfileId,
+        handoffSourceRunId: task.handoffSourceRunId,
         scheduledTaskId: task.id,
         workspaceRecord: workspace,
         chatRecord: chat,
@@ -5309,6 +6238,9 @@ function App(): React.JSX.Element {
   }
 
   useEffect(() => {
+    if (!workspacesHydrated) {
+      return
+    }
     if (dueScheduledTasks.length === 0) {
       return
     }
@@ -5318,7 +6250,7 @@ function App(): React.JSX.Element {
     const remainingTasks = dueScheduledTasks.filter((_, index) => index !== nextIndex)
     setDueScheduledTasks(remainingTasks)
     void dispatchScheduledTask(nextTask)
-  }, [dueScheduledTasks, runningProviders])
+  }, [dueScheduledTasks, runningProviders, workspacesHydrated, workspaces])
 
   const appendBridgeFallback = (commandText: string, reason: string) => {
     const timestamp = new Date().toISOString()
@@ -5338,8 +6270,55 @@ function App(): React.JSX.Element {
     })
   }
 
+  const appendRawInfoOnce = (content: string) => {
+    setRawLogs(prev => prev[prev.length - 1]?.content === content ? prev : [...prev, { type: 'info', content }])
+  }
+
+  const markPersistentSessionRestartNeeded = (content: string) => {
+    if (!persistentSessionActiveRef.current) {
+      return
+    }
+    setPersistentSessionNeedsRestart(true)
+    appendRawInfoOnce(content)
+  }
+
+  const stopPersistentGeminiSession = async (message = 'Persistent Gemini session stopped.'): Promise<boolean> => {
+    const geminiSessionApi = window.api as any
+    if (typeof geminiSessionApi.stopGeminiSession !== 'function') {
+      persistentSessionActiveRef.current = false
+      setIsPersistentSessionEnabled(false)
+      setPersistentSessionStatus('unavailable')
+      setPersistentSessionNeedsRestart(false)
+      return false
+    }
+
+    setPersistentSessionStatus('stopping')
+    try {
+      await geminiSessionApi.stopGeminiSession()
+      persistentSessionActiveRef.current = false
+      setIsPersistentSessionEnabled(false)
+      setPersistentSessionStatus('idle')
+      setPersistentSessionNeedsRestart(false)
+      if (message) {
+        appendRawInfoOnce(message)
+      }
+      return true
+    } catch (error) {
+      setPersistentSessionStatus('error')
+      setRawLogs(prev => [...prev, { type: 'info', content: `Failed to stop persistent Gemini session: ${redactLog(String(error))}` }])
+      return false
+    }
+  }
+
   const startPersistentGeminiSession = async (): Promise<boolean> => {
     const geminiSessionApi = window.api as any
+
+    if (persistentSessionActiveRef.current && persistentSessionNeedsRestart) {
+      const stopped = await stopPersistentGeminiSession('Persistent Gemini session stopped for restart.')
+      if (!stopped) {
+        return false
+      }
+    }
 
     if (persistentSessionActiveRef.current) {
       setIsPersistentSessionEnabled(true)
@@ -5354,8 +6333,21 @@ function App(): React.JSX.Element {
     }
 
     const modelToPass = selectedModelType === 'custom' ? customModel.trim() : selectedModelType
-    const resumeSessionId = normalizeGeminiResumeTarget(currentChat?.linkedGeminiSessionId)
     const worktree = resolveGeminiWorktreeConfig(currentWorkspace)
+    const resumeDecision = currentChat
+      ? resolveGeminiResumeForRun(currentChat, modelToPass, approvalMode, worktree)
+      : {}
+    const resumeSessionId = resumeDecision.sessionId
+    if (resumeDecision.skippedReason) {
+      appendRawInfoOnce(resumeDecision.skippedReason)
+      if (currentChat) {
+        updateChatById(currentChat.appChatId, (source) => ({
+          ...source,
+          linkedGeminiSessionId: undefined,
+          updatedAt: Date.now()
+        }))
+      }
+    }
     setIsPersistentSessionEnabled(true)
     setPersistentSessionStatus('starting')
     setPersistentSessionNeedsRestart(false)
@@ -5468,35 +6460,27 @@ function App(): React.JSX.Element {
   }
 
   const syncPersistentModelSelection = (nextModel: string) => {
-    if (!persistentSessionActiveRef.current || nextModel === 'custom' || nextModel === 'cli-default') {
+    if (!persistentSessionActiveRef.current) {
       return
     }
-    void handleBridgeCommand(`/model ${nextModel}`)
+    const currentModel = selectedModelType === 'custom' ? (customModel.trim() || 'custom') : selectedModelType
+    const nextModelLabel = nextModel === 'custom' ? 'custom model' : nextModel
+    if (normalizeProviderModelKey(currentModel) === normalizeProviderModelKey(nextModel)) {
+      return
+    }
+    markPersistentSessionRestartNeeded(`Gemini model changed to ${nextModelLabel}. Restart the persistent session to apply the new model.`)
   }
 
   const handlePersistentSessionToggle = async () => {
-    const geminiSessionApi = window.api as any
-
     if (isPersistentSessionEnabled || persistentSessionActiveRef.current) {
-      if (typeof geminiSessionApi.stopGeminiSession !== 'function') {
-        persistentSessionActiveRef.current = false
-        setIsPersistentSessionEnabled(false)
-        setPersistentSessionStatus('unavailable')
-        setPersistentSessionNeedsRestart(false)
+      if (persistentSessionNeedsRestart) {
+        const stopped = await stopPersistentGeminiSession('Persistent Gemini session stopped for restart.')
+        if (stopped) {
+          await startPersistentGeminiSession()
+        }
         return
       }
-      setPersistentSessionStatus('stopping')
-      try {
-        await geminiSessionApi.stopGeminiSession()
-        persistentSessionActiveRef.current = false
-        setIsPersistentSessionEnabled(false)
-        setPersistentSessionStatus('idle')
-        setPersistentSessionNeedsRestart(false)
-        setRawLogs(prev => [...prev, { type: 'info', content: 'Persistent Gemini session stopped.' }])
-      } catch (error) {
-        setPersistentSessionStatus('error')
-        setRawLogs(prev => [...prev, { type: 'info', content: `Failed to stop persistent Gemini session: ${redactLog(String(error))}` }])
-      }
+      await stopPersistentGeminiSession()
       return
     }
 
@@ -5523,7 +6507,18 @@ function App(): React.JSX.Element {
     handleRun(undefined, option)
   }
 
-  const handleRunFallback = (fallbackModel: string) => {
+  const handleRunFallback = async (fallbackModel: string) => {
+    const capacityContext = getActiveRunContextForProvider('gemini')
+    if (capacityContext?.capacityFallbackShown) {
+      markCapacityStoppedRun(capacityContext, 'Gemini Pro capacity fallback selected.')
+      clearQueuedRunsForProvider('gemini', 'Cancelled because Gemini capacity fallback was selected.')
+      await window.api.cancelAgentRun('gemini', capacityContext.runId).catch(() => window.api.cancelGemini(capacityContext.runId))
+      clearActiveRunContext(capacityContext)
+      if (currentChatIdRef.current === capacityContext.chatId) {
+        setIsThinking(false)
+      }
+    }
+
     setSelectedModelType(fallbackModel)
     setLastNonCustomModelType(fallbackModel)
     rememberCurrentChatComposerSelection({ selectedModelType: fallbackModel })
@@ -5621,11 +6616,7 @@ function App(): React.JSX.Element {
 
   const handleCancel = async () => {
     const runId = currentRun?.runId
-    if (currentProvider !== 'gemini' && typeof window.api.cancelAgentRun === 'function') {
-      await window.api.cancelAgentRun(currentProvider, runId)
-    } else {
-      await window.api.cancelGemini(runId)
-    }
+    await window.api.cancelAgentRun(currentProvider, runId)
     syncRunningState()
   }
 
@@ -5696,12 +6687,21 @@ function App(): React.JSX.Element {
     const nextRun = queuedRuns[nextIndex]
     const remainingRuns = queuedRuns.filter((_, index) => index !== nextIndex)
     setQueuedRuns(remainingRuns)
-    persistRunQueueJobForRequest(nextRun, 'starting', 'Dequeued by AgentBench scheduler.')
-    appendThreadRawLog(nextRun.chatRecord?.appChatId, {
-      type: 'info',
-      content: `Starting queued ${getProviderLabel(nextRun.provider)} run. ${remainingRuns.length} queued task${remainingRuns.length === 1 ? '' : 's'} remain.`
+    void window.api.leaseRunQueueJob({
+      runId: nextRun.appRunId,
+      provider: nextRun.provider,
+      statusReason: 'Dequeued by AGBench scheduler.'
+    }).then((leased) => {
+      if (!leased) {
+        setQueuedRuns(prev => [nextRun, ...prev])
+        return
+      }
+      appendThreadRawLog(nextRun.chatRecord?.appChatId, {
+        type: 'info',
+        content: `Starting queued ${getProviderLabel(nextRun.provider)} run. ${remainingRuns.length} queued task${remainingRuns.length === 1 ? '' : 's'} remain.`
+      })
+      void executeRun({ ...nextRun, appRunId: leased.runId })
     })
-    void executeRun(nextRun)
   }, [queuedRuns, runningProviders, currentWorkspace, currentChat, executeRun])
 
   useEffect(() => {
@@ -5967,6 +6967,7 @@ function App(): React.JSX.Element {
 
   const isOldVersion = geminiVersion !== 'unknown' && geminiVersion < '0.39.1'
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
+  const isCurrentComposerLocked = isCurrentChatRunning
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
   const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
@@ -5975,6 +6976,35 @@ function App(): React.JSX.Element {
   const currentProviderCapabilities = providerCapabilitiesByProvider[currentProvider]
   const currentProviderCapabilityWarning = currentProviderCapabilities?.warnings.find((warning) => warning.severity !== 'info')
   const queuedRunQueueCount = runQueueJobs.filter((job) => job.status === 'queued').length
+  const currentChatQueuedRunCount = runQueueJobs.filter((job) => job.chatId === currentChat?.appChatId && job.status === 'queued').length
+  const hasCurrentHandoffDraft = Boolean(
+    currentChat?.appChatId &&
+    handoffCards.some((card) => card.status === 'draft' && card.sourceChatId === currentChat.appChatId)
+  )
+  const advancedFxIntensity = appearance.advancedFx.intensity || (appearance.funFxMode === 'off' ? 'cinematic' : appearance.funFxMode)
+  const isAdvancedFxActive = isFxEnabled && !appearance.reduceMotion
+  const runFxStatus: AgentAuraStatus = pendingAgentApproval
+    ? 'approval'
+    : isCurrentChatRunning
+      ? 'running'
+      : currentChatQueuedRunCount > 0
+        ? 'queued'
+        : currentRun?.status === 'failed'
+          ? 'failed'
+          : currentRun?.status === 'completed'
+            ? 'complete'
+            : hasCurrentHandoffDraft
+              ? 'handoff'
+              : 'idle'
+  const showAgentAuraFx = isAdvancedFxActive && appearance.advancedFx.agentAura
+  const showLivingWorkspaceFx = isAdvancedFxActive && appearance.advancedFx.livingWorkspace
+  const showRunDataVizFx = isAdvancedFxActive && appearance.advancedFx.dataViz && (isCurrentChatRunning || queuedRunQueueCount > 0 || rawLogs.length > 0 || Boolean(pendingAgentApproval))
+  const appAgentAuraClass = showAgentAuraFx
+    ? `fx-agent-aura-root fx-provider-${currentProvider} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
+    : ''
+  const composerAgentAuraClass = showAgentAuraFx
+    ? `fx-agent-aura fx-provider-${currentProvider} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
+    : ''
   const providerSessionLabel = currentChat?.linkedProviderSessionId
     ? `${currentProviderLabel} session linked`
     : currentProvider === 'codex'
@@ -5991,10 +7021,13 @@ function App(): React.JSX.Element {
     agenticServices.mcpTools !== 'allow'
   const permissionModeLabel = approvalMode === 'plan'
     ? 'Read-only sandbox'
+    : isCurrentGlobalChat
+      ? 'System scope, prompts'
     : approvalMode === 'auto_edit'
       ? hasAgenticApprovalGate ? 'Workspace write, gated' : 'Workspace write, no prompts'
       : 'Workspace write, prompts'
-  const trustSelectValue = trustResult?.status === 'trusted' || trustResult?.status === 'inherited' || sessionTrust ? 'trusted' : 'untrusted'
+  const geminiWorkspaceTrustReady = isCurrentGlobalChat || trustResult?.status === 'trusted' || trustResult?.status === 'inherited' || sessionTrust
+  const trustSelectValue = geminiWorkspaceTrustReady ? 'trusted' : 'untrusted'
   const persistentSessionLabel = persistentSessionStatus === 'active'
     ? 'Persistent session on'
     : persistentSessionStatus === 'starting'
@@ -6062,12 +7095,46 @@ function App(): React.JSX.Element {
     ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
     : null
   const isChatExpanded = !showWorkspaceSidebar || (!appearance.showInspector && !showFileEditor)
-  const welcomeCopy = buildWelcomeCopy(currentWorkspace?.displayName || 'GUIGemini', currentChat?.appChatId)
-  const visibleScheduledTasks = scheduledTasks
-    .filter((task) => !currentWorkspace || task.workspaceId === currentWorkspace.id)
-    .filter((task) => task.status === 'pending' || task.status === 'due' || task.status === 'running')
-    .slice(0, 4)
-  const scheduleControls = (
+  const activeDiffSummaries: DiffFileSummary[] = Array.isArray((activeDiff as any)?.summaries)
+    ? (activeDiff as any).summaries.filter(isFileSummaryRecord)
+    : []
+  const welcomeDiffCount = activeDiffSummaries.filter((item) => !item.isNoise).length || displayFileChangeSummaries.length
+  const hasWelcomeDiff = Boolean((activeDiff as any)?.type === 'changes' || welcomeDiffCount > 0)
+  const relevantScheduledTasks = isCurrentGlobalChat
+    ? []
+    : scheduledTasks
+        .filter((task) => !currentWorkspace || task.workspaceId === currentWorkspace.id)
+        .filter((task) => task.status === 'pending' || task.status === 'due' || task.status === 'running')
+  const welcomeCopy = buildWelcomeCopy({
+    workspaceName: isCurrentGlobalChat ? 'Chats' : currentWorkspace?.displayName || 'GUIGemini',
+    providerLabel: currentProviderLabel,
+    permissionModeLabel,
+    isGlobalChat: isCurrentGlobalChat,
+    hasDiff: hasWelcomeDiff,
+    diffCount: welcomeDiffCount,
+    scheduledTaskCount: relevantScheduledTasks.length,
+    lastRunStatus: currentRun?.status,
+  })
+  const visibleScheduledTasks = relevantScheduledTasks.slice(0, 4)
+  const runLanes = buildRunLanes(runQueueJobs, chats, scheduledTasks, runtimeProfiles)
+  const runtimeProfileControl = currentProviderRuntimeProfiles.length > 0 ? (
+    <label className="composer-runtime-profile" title="Runtime profile for this thread">
+      <span>Runtime</span>
+      <select
+        value={selectedRuntimeProfileId}
+        onChange={(event) => handleRuntimeProfileChange(event.target.value)}
+        disabled={!currentChat || isCurrentComposerLocked}
+        aria-label="Runtime profile"
+      >
+        {currentProviderRuntimeProfiles.map((profile) => (
+          <option key={profile.id} value={profile.id}>
+            {profile.name}
+          </option>
+        ))}
+      </select>
+    </label>
+  ) : null
+  const scheduleControls = hasWorkspaceContext ? (
     <span className="composer-scheduler-controls">
       <label className="composer-schedule-label" title="Schedule this prompt">
         <ClockSymbolIcon />
@@ -6077,7 +7144,7 @@ function App(): React.JSX.Element {
           value={scheduleRunAt}
           min={toDateTimeLocalValue(new Date(Date.now() + 60_000))}
           onChange={(event) => setScheduleRunAt(event.target.value)}
-          disabled={!currentWorkspace || !currentChat || isCurrentProviderRunning}
+          disabled={!currentWorkspace || !currentChat || isCurrentComposerLocked}
           aria-label="Scheduled run time"
         />
       </label>
@@ -6085,14 +7152,14 @@ function App(): React.JSX.Element {
         className="composer-picker-command composer-icon-command"
         type="button"
         onClick={() => void handleScheduleRun()}
-        disabled={!currentWorkspace || !currentChat || !prompt.trim() || !scheduleRunAt || isCurrentProviderRunning}
+        disabled={!currentWorkspace || !currentChat || !prompt.trim() || !scheduleRunAt || isCurrentComposerLocked}
         title="Schedule prompt"
         aria-label="Schedule prompt"
       >
         <ClockSymbolIcon />
       </button>
     </span>
-  )
+  ) : null
 
   const handleRollbackCodexThread = async (threadId: string) => {
     if (!threadId || typeof window.api.rollbackAgentThread !== 'function') return
@@ -6169,7 +7236,7 @@ function App(): React.JSX.Element {
   const appMainStyle = showWorkspaceSidebar ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties) : undefined
 
   return (
-    <div className="app-root">
+    <div className={`app-root ${fxBurstClass} ${appAgentAuraClass}`}>
       <div className="window-drag-strip" aria-hidden />
       <div className={`app-main ${isChatExpanded ? 'chat-expanded' : ''}`} style={appMainStyle}>
         {showWorkspaceSidebar && (
@@ -6186,6 +7253,7 @@ function App(): React.JSX.Element {
               onRemoveWorkspace={handleRemoveWorkspace}
               onSelectWorkspaceDialog={handleSelectWorkspace}
               onNewChat={handleNewChat}
+              onNewGlobalChat={handleNewGlobalChat}
               onSelectChat={handleSelectChat}
               onOpenSettings={() => setShowSettings(true)}
             />
@@ -6207,7 +7275,7 @@ function App(): React.JSX.Element {
 
         <div
           ref={appTranscriptRef}
-          className={`app-transcript provider-${currentProvider} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''}`}
+          className={`app-transcript provider-${currentProvider} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''}`}
           style={showGeminiTerminal && currentProvider === 'gemini' ? ({ '--gemini-terminal-height': `${geminiTerminalHeight}px` } as CSSProperties) : undefined}
         >
           {chatContextNotice && (
@@ -6226,28 +7294,41 @@ function App(): React.JSX.Element {
               <SidebarCornerIcon direction="left" isOpen={showWorkspaceSidebar} />
             </button>
             <button
-              className={`chat-corner-btn ${showSkyVisualFx ? 'active' : ''}`}
+              className={`chat-corner-btn ${shouldShowSkyVisualFxInFxMode ? 'active' : ''}`}
               type="button"
               onClick={() => setShowSkyVisualFx(current => !current)}
-              title={`${showSkyVisualFx ? 'Hide' : 'Show'} sky weather effects${hostWeather?.description ? ` · ${hostWeather.description}` : ''}`}
+              title={`${shouldShowSkyVisualFxInFxMode ? 'Hide' : isFxEnabled ? 'Show' : 'Enable Epic FX'} sky weather effects${hostWeather?.description ? ` · ${hostWeather.description}` : ''}`}
               aria-label="Toggle sky weather effects"
-              aria-pressed={showSkyVisualFx}
+              aria-pressed={shouldShowSkyVisualFxInFxMode}
+              disabled={!isFxEnabled}
             >
               <SkyWeatherIcon />
             </button>
             <button
-              className={`chat-corner-btn ${showGhostCompanion ? 'active' : ''}`}
+              className={`chat-corner-btn ${shouldShowGhostCompanion ? 'active' : ''}`}
               type="button"
               onClick={() => setShowGhostCompanion(current => !current)}
-              title={`${showGhostCompanion ? 'Hide' : 'Show'} ghost companion`}
+              title={`${shouldShowGhostCompanion ? 'Hide' : isFxEnabled ? 'Show' : 'Enable Epic FX'} ghost companion`}
               aria-label="Toggle ghost companion"
+              aria-pressed={shouldShowGhostCompanion}
+              disabled={!isFxEnabled}
             >
               <GhostCompanionIcon />
             </button>
           </div>
 
           <div className="chat-corner-controls chat-corner-controls-right">
-              {currentProvider === 'gemini' && (
+              <button
+                className={`chat-corner-btn ${showCockpit ? 'active' : ''}`}
+                type="button"
+                onClick={() => setShowCockpit(true)}
+                title="Open multi-agent cockpit"
+                aria-label="Open multi-agent cockpit"
+                aria-pressed={showCockpit}
+              >
+                <span className="chat-corner-symbol">CP</span>
+              </button>
+              {currentProvider === 'gemini' && hasWorkspaceContext && (
                 <button
                   className={`chat-corner-btn ${showGeminiTerminal ? 'active' : ''}`}
                   type="button"
@@ -6263,6 +7344,7 @@ function App(): React.JSX.Element {
                 className={`chat-corner-btn ${showFileEditor ? 'active' : ''}`}
                 type="button"
                 onClick={() => {
+                  if (!hasWorkspaceContext) return
                   const nextShowFileEditor = !showFileEditor
                   setShowFileEditor(nextShowFileEditor)
                   if (nextShowFileEditor && window.innerWidth <= 1180 && appearance.showInspector) {
@@ -6271,6 +7353,7 @@ function App(): React.JSX.Element {
                 }}
                 title={`${showFileEditor ? 'Hide' : 'Show'} file editor`}
                 aria-label="Toggle file editor"
+                disabled={!hasWorkspaceContext}
               >
                 <FileMenuSelectionIcon />
               </button>
@@ -6291,7 +7374,26 @@ function App(): React.JSX.Element {
               </button>
           </div>
 
-          {showSkyVisualFx && <SkyWeatherVisual weather={hostWeather} />}
+          {showLivingWorkspaceFx && <LivingWorkspaceLayer weather={hostWeather} intensity={advancedFxIntensity} />}
+          {showAgentAuraFx && (
+            <AgentAuraLayer
+              provider={currentProvider}
+              status={runFxStatus}
+              intensity={advancedFxIntensity}
+              hasHandoff={hasCurrentHandoffDraft}
+            />
+          )}
+          {showRunDataVizFx && (
+            <RunDataVizLayer
+              provider={currentProvider}
+              intensity={advancedFxIntensity}
+              queueCount={queuedRunQueueCount}
+              rawEventCount={rawLogs.length}
+              approvalWaiting={Boolean(pendingAgentApproval)}
+              status={runFxStatus}
+            />
+          )}
+          {shouldShowSkyVisualFxInFxMode && <SkyWeatherVisual weather={hostWeather} />}
 
           {currentProvider === 'gemini' && isOldVersion && (
             <div className="version-warning">
@@ -6430,7 +7532,7 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
-          {showGeminiTerminal && currentProvider === 'gemini' && (
+          {showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext && (
             <>
               <div
                 className="gemini-terminal-resize-divider"
@@ -6507,9 +7609,9 @@ function App(): React.JSX.Element {
                 <p>{welcomeCopy.subheading}</p>
               </div>
               )}
-              {showGhostCompanion && <GhostCompanion />}
+              {shouldShowGhostCompanion && <GhostCompanion />}
               <div
-                className={`composer-surface ${isComposerDragOver ? 'is-drag-over' : ''}`}
+                className={`composer-surface ${isComposerDragOver ? 'is-drag-over' : ''} ${composerAgentAuraClass}`}
                 onDragEnter={handleComposerDragEnter}
                 onDragOver={handleComposerDragOver}
                 onDragLeave={handleComposerDragLeave}
@@ -6531,47 +7633,56 @@ function App(): React.JSX.Element {
                   </span>
                 )}
                 {queuedRunQueueCount > 0 && (
-                  <span className="composer-chip" title="Durable queued tasks are persisted by AgentBench.">
+                  <span className="composer-chip" title="Durable queued tasks are persisted by AGBench.">
                     {queuedRunQueueCount} queued
                   </span>
-                )}
-                {isCurrentChatProviderLocked && (
-                  <span className="composer-chip composer-chat-lock-chip">{currentProviderLabel} chat locked</span>
                 )}
               </div>
               {currentProvider === 'gemini' ? (
                 <div className="composer-top-toggles">
-                  <button
-                    className={`composer-picker-command persistent-session-toggle ${isPersistentSessionEnabled ? 'active' : ''} ${persistentSessionStatus === 'error' || persistentSessionStatus === 'unavailable' || persistentSessionNeedsRestart ? 'warning' : ''}`}
-                    type="button"
-                    onClick={() => void handlePersistentSessionToggle()}
-                    disabled={!currentWorkspace || persistentSessionStatus === 'starting' || persistentSessionStatus === 'stopping'}
-                    title={persistentSessionNeedsRestart ? sessionRestartReason : 'Keep an interactive Gemini CLI session open for slash commands'}
-                  >
-                    <LinkCircleSymbolIcon />
-                    <span className="composer-control-label-text">{persistentSessionNeedsRestart ? 'Restart session' : persistentSessionLabel}</span>
-                  </button>
-                  <button
-                    className={`composer-picker-command persistent-session-toggle checkpoint-toggle ${geminiCheckpointingEnabled ? 'active' : ''}`}
-                    type="button"
-                    onClick={() => handleSettingsChange({ geminiCheckpointingEnabled: !geminiCheckpointingEnabled })}
-                    disabled={!currentWorkspace || isCurrentProviderRunning}
-                    title={geminiCheckpointingEnabled ? 'Disable Gemini CLI checkpointing for new runs' : 'Enable Gemini CLI checkpointing for new runs'}
-                  >
-                    <CheckpointSymbolIcon />
-                    <span className="composer-control-label-text">{geminiCheckpointingEnabled ? 'Checkpoints on' : 'Checkpoints off'}</span>
-                  </button>
-                  <button
-                    className={`composer-picker-command persistent-session-toggle worktree-toggle ${currentGeminiWorktree?.enabled ? 'active' : ''} ${currentWorktreeDiffUnavailable ? 'warning' : ''}`}
-                    type="button"
-                    onClick={() => void handleGeminiWorktreeToggle()}
-                    disabled={!currentWorkspace || isCurrentProviderRunning}
-                    title={currentGeminiWorktree?.enabled ? 'Disable Gemini CLI worktree mode for this workspace' : 'Run Gemini in an auto-created CLI worktree for this workspace'}
-                  >
-                    <WorktreeSymbolIcon />
-                    <span className="composer-control-label-text">{worktreeToggleLabel}</span>
-                  </button>
+                  {isCurrentGlobalChat ? (
+                    <>
+                      <span className="composer-picker-command persistent-session-toggle active">
+                        <PermissionSymbolIcon />
+                        <span className="composer-control-label-text">System scope, prompts</span>
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        className={`composer-picker-command persistent-session-toggle ${isPersistentSessionEnabled ? 'active' : ''} ${persistentSessionStatus === 'error' || persistentSessionStatus === 'unavailable' || persistentSessionNeedsRestart ? 'warning' : ''}`}
+                        type="button"
+                        onClick={() => void handlePersistentSessionToggle()}
+                        disabled={!hasWorkspaceContext || persistentSessionStatus === 'starting' || persistentSessionStatus === 'stopping'}
+                        title={persistentSessionNeedsRestart ? sessionRestartReason : 'Keep an interactive Gemini CLI session open for slash commands'}
+                      >
+                        <LinkCircleSymbolIcon />
+                        <span className="composer-control-label-text">{persistentSessionNeedsRestart ? 'Restart session' : persistentSessionLabel}</span>
+                      </button>
+                      <button
+                        className={`composer-picker-command persistent-session-toggle checkpoint-toggle ${geminiCheckpointingEnabled ? 'active' : ''}`}
+                        type="button"
+                        onClick={() => handleSettingsChange({ geminiCheckpointingEnabled: !geminiCheckpointingEnabled })}
+                        disabled={!hasWorkspaceContext || isCurrentComposerLocked}
+                        title={geminiCheckpointingEnabled ? 'Disable Gemini CLI checkpointing for new runs' : 'Enable Gemini CLI checkpointing for new runs'}
+                      >
+                        <CheckpointSymbolIcon />
+                        <span className="composer-control-label-text">{geminiCheckpointingEnabled ? 'Checkpoints on' : 'Checkpoints off'}</span>
+                      </button>
+                      <button
+                        className={`composer-picker-command persistent-session-toggle worktree-toggle ${currentGeminiWorktree?.enabled ? 'active' : ''} ${currentWorktreeDiffUnavailable ? 'warning' : ''}`}
+                        type="button"
+                        onClick={() => void handleGeminiWorktreeToggle()}
+                        disabled={!hasWorkspaceContext || isCurrentComposerLocked}
+                        title={currentGeminiWorktree?.enabled ? 'Disable Gemini CLI worktree mode for this workspace' : 'Run Gemini in an auto-created CLI worktree for this workspace'}
+                      >
+                        <WorktreeSymbolIcon />
+                        <span className="composer-control-label-text">{worktreeToggleLabel}</span>
+                      </button>
+                    </>
+                  )}
                   {scheduleControls}
+                  {runtimeProfileControl}
                 </div>
               ) : (
                 <div className="composer-top-toggles">
@@ -6584,6 +7695,7 @@ function App(): React.JSX.Element {
                     <span className="composer-control-label-text">{permissionModeLabel}</span>
                   </span>
                   {scheduleControls}
+                  {runtimeProfileControl}
                 </div>
               )}
 
@@ -6594,7 +7706,7 @@ function App(): React.JSX.Element {
                 placeholder={`Enter prompt for ${currentProviderLabel}…`}
                 aria-label={`Prompt for ${currentProviderLabel}`}
                 rows={3}
-                disabled={!currentWorkspace || !currentChat}
+                disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
@@ -6620,7 +7732,7 @@ function App(): React.JSX.Element {
                           className="composer-image-remove"
                           type="button"
                           onClick={() => handleRemoveImageAttachment(image.id)}
-                          disabled={isCurrentProviderRunning}
+                          disabled={isCurrentComposerLocked}
                           title="Remove attachment"
                         >
                           <XSymbolIcon />
@@ -6630,7 +7742,7 @@ function App(): React.JSX.Element {
                     <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
                   </div>
                 )}
-                {currentProvider === 'codex' && codexExternalPathGrants.length > 0 && (
+                {currentProvider === 'codex' && !isCurrentGlobalChat && codexExternalPathGrants.length > 0 && (
                   <div className="composer-image-strip composer-external-grant-strip">
                     {codexExternalPathGrants.map((grant) => (
                       <div key={grant.id} className={`composer-image-item external-grant access-${grant.access}`}>
@@ -6642,7 +7754,7 @@ function App(): React.JSX.Element {
                           className="composer-image-remove"
                           type="button"
                           onClick={() => handleRemoveExternalPathGrant(grant.id)}
-                          disabled={isCurrentProviderRunning}
+                          disabled={isCurrentComposerLocked}
                           title="Revoke external path grant"
                         >
                           <XSymbolIcon />
@@ -6866,18 +7978,18 @@ function App(): React.JSX.Element {
                       title="Add attachment"
                       aria-label="Add attachment"
                       onClick={handlePickImages}
-                      disabled={isCurrentProviderRunning}
+                      disabled={isCurrentComposerLocked}
                     >
                       <PlusSymbolIcon />
                     </button>
-                    {currentProvider === 'codex' && (
+                    {currentProvider === 'codex' && !isCurrentGlobalChat && (
                       <label className="composer-picker-label" title="Grant Codex access to a file or folder outside this workspace">
                         <PermissionSymbolIcon />
                         <select
                           className="composer-inline-picker"
                           aria-label="Grant external path access"
                           value=""
-                          disabled={isCurrentProviderRunning || !currentWorkspace || !currentChat}
+                          disabled={isCurrentComposerLocked || !currentWorkspace || !currentChat}
                           onChange={(event) => {
                             const access = event.target.value as 'read' | 'write'
                             if (access === 'read' || access === 'write') {
@@ -6898,7 +8010,7 @@ function App(): React.JSX.Element {
                         aria-label="Provider"
                         value={currentProvider}
                         onChange={(event) => void handleProviderChange(event.target.value as ProviderId)}
-                        disabled={isCurrentProviderRunning || isCurrentChatProviderLocked}
+                        disabled={isCurrentComposerLocked || isCurrentChatProviderLocked}
                       >
                         <option value="gemini">Gemini</option>
                         <option value="codex">Codex</option>
@@ -6932,12 +8044,12 @@ function App(): React.JSX.Element {
                               metadataPatch.codexServiceTier = ''
                             }
                           }
-                          if (currentProvider === 'gemini' && nextModel !== 'custom') {
+                          if (currentProvider === 'gemini') {
                             syncPersistentModelSelection(nextModel)
                           }
                           rememberCurrentChatComposerSelection(metadataPatch)
                         }}
-                        disabled={isCurrentProviderRunning}
+                        disabled={isCurrentComposerLocked}
                       >
                         {currentProvider === 'gemini' ? (
                           <>
@@ -6966,9 +8078,12 @@ function App(): React.JSX.Element {
                             onChange={e => {
                               setCustomModel(e.target.value)
                               rememberCurrentChatComposerSelection({ customModel: e.target.value })
+                              if (currentProvider === 'gemini') {
+                                markPersistentSessionRestartNeeded('Gemini custom model changed. Restart the persistent session to apply the new model.')
+                              }
                             }}
                             placeholder="Model ID"
-                            disabled={isCurrentProviderRunning}
+                            disabled={isCurrentComposerLocked}
                           />
                           <button
                             className="composer-inline-clear"
@@ -6984,7 +8099,7 @@ function App(): React.JSX.Element {
                                 syncPersistentModelSelection(lastNonCustomModelType)
                               }
                             }}
-                            disabled={isCurrentProviderRunning}
+                            disabled={isCurrentComposerLocked}
                             title="Cancel custom model"
                             aria-label="Cancel custom model"
                           >
@@ -7005,7 +8120,7 @@ function App(): React.JSX.Element {
                           setCodexReasoningEffort(event.target.value)
                           rememberCurrentChatComposerSelection({ codexReasoningEffort: event.target.value })
                         }}
-                        disabled={isCurrentProviderRunning}
+                        disabled={isCurrentComposerLocked}
                       >
                         {codexReasoningOptions.map((option) => (
                           <option key={option.reasoningEffort} value={option.reasoningEffort}>
@@ -7023,10 +8138,14 @@ function App(): React.JSX.Element {
                         aria-label="Permission mode"
                         value={approvalMode}
                         onChange={e => {
-                          setApprovalMode(e.target.value)
-                          rememberCurrentChatComposerSelection({ approvalMode: e.target.value })
+                          const nextApprovalMode = e.target.value
+                          setApprovalMode(nextApprovalMode)
+                          rememberCurrentChatComposerSelection({ approvalMode: nextApprovalMode })
+                          if (currentProvider === 'gemini' && nextApprovalMode !== approvalMode) {
+                            markPersistentSessionRestartNeeded('Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.')
+                          }
                         }}
-                        disabled={isCurrentProviderRunning || (currentProvider === 'gemini' && trustResult?.status === 'untrusted' && !sessionTrust)}
+                        disabled={isCurrentComposerLocked || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)}
                       >
                         <option value="plan">Plan / Read-only</option>
                         <option value="default">Default approval</option>
@@ -7034,7 +8153,7 @@ function App(): React.JSX.Element {
                       </select>
                     </label>
 
-                    {currentProvider === 'gemini' && (
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <label className="composer-picker-label" title="Workspace trust">
                       <TrustSymbolIcon />
                       <select
@@ -7048,9 +8167,10 @@ function App(): React.JSX.Element {
                             void handleBridgeCommand('/permissions trust')
                           } else if (nextValue === 'untrusted') {
                             setSessionTrust(false)
+                            markPersistentSessionRestartNeeded('Gemini workspace trust changed. Restart the persistent session to apply the trust setting.')
                           }
                         }}
-                        disabled={isCurrentProviderRunning}
+                        disabled={isCurrentComposerLocked}
                         title="Workspace trust"
                       >
                         <option value="trusted">Trusted</option>
@@ -7058,7 +8178,7 @@ function App(): React.JSX.Element {
                       </select>
                     </label>
                     )}
-                    {currentProvider === 'gemini' && (
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -7070,7 +8190,7 @@ function App(): React.JSX.Element {
                       <ChartBarSymbolIcon />
                     </button>
                     )}
-                    {currentProvider === 'gemini' && (
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -7082,7 +8202,7 @@ function App(): React.JSX.Element {
                       <QuestionmarkCircleSymbolIcon />
                     </button>
                     )}
-                    {currentProvider === 'gemini' && (
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
                       type="button"
@@ -7094,7 +8214,7 @@ function App(): React.JSX.Element {
                       <CommandSymbolIcon />
                     </button>
                     )}
-                    {currentProvider === 'gemini' && (
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className={`composer-picker-command composer-secondary-command ${isMemoryInspectorOpen ? 'active' : ''}`}
                       type="button"
@@ -7105,7 +8225,7 @@ function App(): React.JSX.Element {
                       <span className="composer-picker-command-slash">GEMINI.md</span>
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && (
+                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -7117,7 +8237,7 @@ function App(): React.JSX.Element {
                       <TrustSymbolIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && (
+                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -7129,7 +8249,7 @@ function App(): React.JSX.Element {
                       <FileMenuSelectionIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && (
+                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -7141,7 +8261,7 @@ function App(): React.JSX.Element {
                       <ModelSymbolIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && (
+                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
                       type="button"
@@ -7153,6 +8273,7 @@ function App(): React.JSX.Element {
                       <CommandSymbolIcon />
                     </button>
                     )}
+                    {!isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command composer-review-command"
                       type="button"
@@ -7163,7 +8284,8 @@ function App(): React.JSX.Element {
                     >
                       <ReviewSymbolIcon />
                     </button>
-                    {currentProvider === 'gemini' && (
+                    )}
+                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-secondary-command"
                       type="button"
@@ -7184,13 +8306,14 @@ function App(): React.JSX.Element {
                             triggerSendConfirmation()
                             handleRun()
                           }}
-                          disabled={!currentWorkspace || !currentChat || !prompt.trim()}
+                          disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim() || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)}
                           title="Queue next run"
                           aria-label="Queue next run"
                           type="button"
                       >
                         <QueueSymbolIcon />
                       </button>
+                        {isCurrentChatRunning && (
                         <button
                           className="composer-action-btn stop-btn"
                           onClick={handleCancel}
@@ -7200,6 +8323,7 @@ function App(): React.JSX.Element {
                         >
                           <StopSymbolIcon />
                         </button>
+                        )}
                       </>
                     ) : (
                       <button
@@ -7208,7 +8332,7 @@ function App(): React.JSX.Element {
                           triggerSendConfirmation()
                           handleRun()
                         }}
-                        disabled={!currentWorkspace || !currentChat || !prompt.trim()}
+                        disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim() || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)}
                         title="Run"
                         aria-label="Run prompt"
                         aria-keyshortcuts="Meta+Enter Control+Enter"
@@ -7219,8 +8343,8 @@ function App(): React.JSX.Element {
                     )}
                   </div>
                 </div>
-                {currentProvider === 'gemini' && trustResult?.status === 'untrusted' && !sessionTrust && (
-                  <div className="composer-inline-warning" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--warning)' }}>Workspace untrusted. Auto-edit disabled. Enable session trust or use Trust Assistant.</div>
+                {currentProvider === 'gemini' && !geminiWorkspaceTrustReady && (
+                  <div className="composer-inline-warning" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--warning)' }}>Workspace trust is not established. Enable session trust or use Trust Assistant.</div>
                 )}
               </div>
               {visibleScheduledTasks.length > 0 && (
@@ -7253,14 +8377,17 @@ function App(): React.JSX.Element {
             </div>
             {isWelcomeChat && (
               <div className="welcome-suggestions">
-                {WELCOME_SUGGESTIONS.map((suggestion) => (
+                {welcomeCopy.starters.map((starter) => (
                   <button
-                    key={suggestion}
+                    key={starter.id}
                     className="welcome-suggestion-btn"
                     type="button"
-                    onClick={() => handleWelcomeSuggestion(suggestion)}
+                    data-intent={starter.intent}
+                    aria-label={`${starter.label}: ${starter.description}`}
+                    onClick={() => handleWelcomeSuggestion(starter.prompt)}
                   >
-                    {suggestion}
+                    <span className="welcome-suggestion-label">{starter.label}</span>
+                    <span className="welcome-suggestion-description">{starter.description}</span>
                   </button>
                 ))}
               </div>
@@ -7268,7 +8395,7 @@ function App(): React.JSX.Element {
           </div>
         </div>
 
-        {showFileEditor && (
+        {showFileEditor && hasWorkspaceContext && (
           <>
             <div
               className="panel-resize-handle"
@@ -7348,6 +8475,21 @@ function App(): React.JSX.Element {
         )}
       </div>
 
+      {showCockpit && (
+        <CockpitPanel
+          lanes={runLanes}
+          handoffCards={handoffCards}
+          onClose={() => setShowCockpit(false)}
+          onOpenThread={handleOpenCockpitThread}
+          onCancelRun={handleCancelRunLane}
+          onRetryRun={handleRetryRunLane}
+          onDuplicateRun={handleDuplicateRunLane}
+          onCreateHandoff={handleCreateHandoffFromLane}
+          onDispatchHandoff={handleDispatchHandoff}
+          onArchiveHandoff={handleArchiveHandoff}
+        />
+      )}
+
       {showSettings && (
         <div
           className="settings-backdrop"
@@ -7396,6 +8538,9 @@ function App(): React.JSX.Element {
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
               codexSandboxFallback={codexSandboxFallback}
+              funFxEnabled={appearance.funFxEnabled}
+              funFxMode={appearance.funFxMode}
+              advancedFx={appearance.advancedFx}
               updateChannel={updateChannel}
               productOperationsStatus={productOperationsStatus}
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}

@@ -112,7 +112,7 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
       provider,
       label: providerLabel(provider),
       transport: 'gemini-cli',
-      runChannel: 'run-gemini',
+      runChannel: 'run-agent',
       capabilitySource: 'bridge',
       features: {
         persistentSessions: true,

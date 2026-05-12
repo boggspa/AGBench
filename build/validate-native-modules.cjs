@@ -1,0 +1,93 @@
+const fs = require('node:fs')
+const path = require('node:path')
+
+async function validateNativeModules(context) {
+  const resourcesDir = resolveResourcesDir(context)
+  const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked')
+  const platform = context.electronPlatformName || process.platform
+  const arch = context.arch || process.arch
+  const nodePtyBindings = findFiles(unpackedDir, (filePath) => {
+    const normalized = filePath.split(path.sep).join('/')
+    return (
+      normalized.includes('/node_modules/node-pty/') &&
+      path.basename(filePath) === 'pty.node' &&
+      isCompatibleNodePtyBinding(normalized, platform, arch)
+    )
+  })
+
+  if (nodePtyBindings.length === 0) {
+    throw new Error(`Compatible node-pty native binding for ${platform}-${arch} was not packaged under ${unpackedDir}.`)
+  }
+
+  console.log(`Validated node-pty native binding: ${nodePtyBindings[0]}`)
+}
+
+function isCompatibleNodePtyBinding(normalizedPath, platform, arch) {
+  const prebuildNeedle = `/node_modules/node-pty/prebuilds/${platform}-${arch}/pty.node`
+  const rebuiltNeedle = '/node_modules/node-pty/build/Release/pty.node'
+  return normalizedPath.endsWith(prebuildNeedle) || normalizedPath.endsWith(rebuiltNeedle)
+}
+
+function resolveResourcesDir(context) {
+  const appOutDir = context.appOutDir
+  const appInfo = context.packager && context.packager.appInfo
+  const productFilename = appInfo && (appInfo.productFilename || appInfo.productName)
+
+  if (context.electronPlatformName === 'darwin') {
+    const candidates = [
+      productFilename ? path.join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources') : '',
+      ...findDirectories(appOutDir, (candidate) => candidate.endsWith('.app'), 2).map((appPath) =>
+        path.join(appPath, 'Contents', 'Resources')
+      )
+    ].filter(Boolean)
+    const found = candidates.find((candidate) => fs.existsSync(candidate))
+    if (found) return found
+  }
+
+  const resourcesDir = path.join(appOutDir, 'resources')
+  if (fs.existsSync(resourcesDir)) return resourcesDir
+  throw new Error(`Electron resources directory was not found in ${appOutDir}.`)
+}
+
+function findDirectories(root, predicate, maxDepth, depth = 0) {
+  if (!root || depth > maxDepth) return []
+  const entries = safeReadDir(root)
+  const matches = []
+  for (const entry of entries) {
+    const fullPath = path.join(root, entry.name)
+    if (!entry.isDirectory()) continue
+    if (predicate(fullPath)) {
+      matches.push(fullPath)
+    }
+    matches.push(...findDirectories(fullPath, predicate, maxDepth, depth + 1))
+  }
+  return matches
+}
+
+function findFiles(root, predicate) {
+  const matches = []
+  const stack = [root]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    for (const entry of safeReadDir(current)) {
+      const fullPath = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(fullPath)
+      } else if (entry.isFile() && predicate(fullPath)) {
+        matches.push(fullPath)
+      }
+    }
+  }
+  return matches
+}
+
+function safeReadDir(dirPath) {
+  try {
+    return fs.readdirSync(dirPath, { withFileTypes: true })
+  } catch {
+    return []
+  }
+}
+
+module.exports = validateNativeModules
+module.exports.default = validateNativeModules
