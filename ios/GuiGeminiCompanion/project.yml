@@ -1,0 +1,39 @@
+name: GuiGeminiCompanion
+options:
+  minimumXcodeGenVersion: 2.43.0
+settings:
+  base:
+    SWIFT_VERSION: 6.0
+    CODE_SIGN_STYLE: Automatic
+    # DEVELOPMENT_TEAM left unset — set via local override or
+    # `xcodebuild -DEVELOPMENT_TEAM=<your-team-id>` when signing.
+packages:
+  # Local SwiftPM package containing the library target consumed by the
+  # iOS app. The `.` path is relative to this project.yml file.
+  GuiGeminiCompanionPackage:
+    path: .
+targets:
+  GuiGeminiCompanion:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - App
+    dependencies:
+      - package: GuiGeminiCompanionPackage
+        product: GuiGeminiCompanionCore
+    settings:
+      base:
+        PRODUCT_NAME: "GUIGemini"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.AGBench.ios
+        INFOPLIST_FILE: App/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
+        SUPPORTED_INTERFACE_ORIENTATIONS: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+schemes:
+  GuiGeminiCompanion:
+    build:
+      targets:
+        GuiGeminiCompanion: all
+    run:
+      config: Debug

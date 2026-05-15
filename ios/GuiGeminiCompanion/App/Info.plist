@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>$(EXECUTABLE_NAME)</string>
+    <key>CFBundleIdentifier</key>
+    <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>$(PRODUCT_NAME)</string>
+    <key>CFBundleDisplayName</key>
+    <string>GUIGemini</string>
+    <key>CFBundlePackageType</key>
+    <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSRequiresIPhoneOS</key>
+    <true/>
+    <key>UILaunchScreen</key>
+    <dict/>
+    <key>UIApplicationSceneManifest</key>
+    <dict>
+        <key>UIApplicationSupportsMultipleScenes</key>
+        <false/>
+    </dict>
+    <!--
+      Bonjour services we discover. Matches the desktop daemon's
+      `BridgeProductConfiguration.guiGemini.bonjourQUICServiceType` =
+      `_guigemini-quic._udp` and the TCP fallback `_guigemini._tcp`.
+      iOS requires these to be declared in Info.plist to permit
+      mDNS discovery.
+    -->
+    <key>NSBonjourServices</key>
+    <array>
+        <string>_guigemini-quic._udp</string>
+        <string>_guigemini._tcp</string>
+    </array>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>GUIGemini discovers your paired Mac on the local network to relay agent transcripts and approve tool calls from your phone.</string>
+    <!--
+      Camera access for QR-code scanning during pairing. The scaffold
+      doesn't yet use AVFoundation (developers can paste-the-JSON for
+      manual testing); this key is here so the eventual scanner
+      integration doesn't get blocked at the permission prompt.
+    -->
+    <key>NSCameraUsageDescription</key>
+    <string>GUIGemini scans the pairing QR code shown on your Mac to securely establish a connection.</string>
+</dict>
+</plist>
