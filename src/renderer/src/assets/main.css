@@ -647,6 +647,8 @@ button.sidebar-item {
   --composer-bottom-gap: 12px;
   --composer-reserved-height: calc(var(--composer-min-height) + (var(--space-lg) * 4));
   --composer-scroll-clearance: 14px;
+  --composer-content-max-width: 980px;
+  --welcome-usage-top: clamp(112px, 17vh, 220px);
   --chat-side-gutter: clamp(24px, 4.4vw, 72px);
   --agent-accent-rgb: 105 157 255;
   --agent-accent-strong: rgb(var(--agent-accent-rgb) / 0.72);
@@ -2945,14 +2947,21 @@ button.sidebar-item {
   z-index: 4;
 }
 
+.composer-area > .provider-shell-status-row,
+.composer-area > .composer-above-bar,
+.composer-area > .scheduled-task-strip {
+  width: 100%;
+  max-width: min(100%, var(--composer-content-max-width));
+}
+
 .gemini-terminal-open .composer-area {
   bottom: calc(var(--gemini-terminal-height) + var(--gemini-terminal-bottom-gap) + var(--composer-bottom-gap) + env(safe-area-inset-bottom, 0px));
 }
 
 .welcome-mode .composer-area {
-  top: 49%;
+  top: 61%;
   bottom: auto;
-  transform: translateY(-36%);
+  transform: translateY(-18%);
   padding-bottom: 0;
   justify-content: flex-start;
   background: transparent;
@@ -2965,11 +2974,11 @@ button.sidebar-item {
 
 .welcome-hero {
   width: 100%;
-  max-width: min(100%, 900px);
+  max-width: min(100%, var(--composer-content-max-width));
   font-family: var(--transcript-font-family);
   text-align: center;
   pointer-events: none;
-  margin-bottom: var(--space-sm);
+  margin: 2px 0 var(--space-sm);
   position: relative;
   z-index: 2;
 }
@@ -3024,7 +3033,7 @@ button.sidebar-item {
 
 .welcome-suggestions {
   width: 100%;
-  max-width: min(100%, 760px);
+  max-width: min(100%, var(--composer-content-max-width));
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
@@ -3078,10 +3087,23 @@ button.sidebar-item {
   color: color-mix(in srgb, var(--text-secondary) 96%, transparent);
 }
 
+.welcome-usage-region {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--welcome-usage-top);
+  box-sizing: border-box;
+  padding: 0 var(--chat-side-gutter);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
 .welcome-usage-dashboard {
-  width: min(620px, calc(100vw - var(--sidebar-width, 260px) - var(--inspector-width, 380px) - 80px));
-  max-width: calc(100vw - 64px);
-  margin: 4px 0 12px;
+  width: 100%;
+  max-width: min(100%, var(--composer-content-max-width));
+  margin: 0;
   padding: 12px 14px 14px;
   border-radius: 11px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
@@ -3381,7 +3403,7 @@ button.sidebar-item {
 
 .composer-surface {
   width: 100%;
-  max-width: none;
+  max-width: min(100%, var(--composer-content-max-width));
   background: var(--composer-bg);
   border: 1px solid var(--composer-border);
   border-radius: calc(var(--radius-lg) * 2.45);
@@ -3399,7 +3421,7 @@ button.sidebar-item {
 }
 
 .welcome-mode .composer-surface {
-  max-width: min(100%, 980px);
+  max-width: min(100%, var(--composer-content-max-width));
   border-radius: calc(var(--radius-lg) * 2.35);
   padding: 16px 16px 10px;
 }

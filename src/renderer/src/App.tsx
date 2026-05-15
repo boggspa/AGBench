@@ -8487,26 +8487,19 @@ function App(): React.JSX.Element {
             </>
           )}
 
+          {shouldShowWelcomeUsageDashboard && (
+            <div className="welcome-usage-region">
+              <WelcomeUsageDashboard
+                data={welcomeUsageDashboardData}
+                tab={welcomeUsageTab}
+                range={welcomeUsageRange}
+                onTabChange={setWelcomeUsageTab}
+                onRangeChange={setWelcomeUsageRange}
+              />
+            </div>
+          )}
+
           <div className={`composer-area interface-${interfaceStyle}`} ref={composerAreaRef}>
-              {isWelcomeChat && (
-                <div className="welcome-hero">
-                <h1>
-                  <span>{welcomeCopy.heading.beforeWorkspace}</span>
-                  <strong>{welcomeCopy.heading.workspaceName}</strong>
-                  <span>{welcomeCopy.heading.afterWorkspace}</span>
-                </h1>
-                <p>{welcomeCopy.subheading}</p>
-              </div>
-              )}
-              {shouldShowWelcomeUsageDashboard && (
-                <WelcomeUsageDashboard
-                  data={welcomeUsageDashboardData}
-                  tab={welcomeUsageTab}
-                  range={welcomeUsageRange}
-                  onTabChange={setWelcomeUsageTab}
-                  onRangeChange={setWelcomeUsageRange}
-                />
-              )}
               {shouldShowGhostCompanion && <GhostCompanion />}
               {providerShellEnabled && (
                 <div className={`provider-shell-status-row style-${interfaceStyle}`} aria-label={`${currentProviderLabel} shell capabilities`}>
@@ -8517,6 +8510,16 @@ function App(): React.JSX.Element {
                     </span>
                   ))}
                 </div>
+              )}
+              {isWelcomeChat && (
+                <div className="welcome-hero">
+                  <h1>
+                    <span>{welcomeCopy.heading.beforeWorkspace}</span>
+                    <strong>{welcomeCopy.heading.workspaceName}</strong>
+                    <span>{welcomeCopy.heading.afterWorkspace}</span>
+                  </h1>
+                  <p>{welcomeCopy.subheading}</p>
+              </div>
               )}
               {appearance.composerStyle === 'codex' && (latestRunDiffStats.filesChanged > 0 || latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
                 <div className="composer-above-bar style-codex">
