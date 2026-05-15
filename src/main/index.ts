@@ -14,7 +14,7 @@ import { CodexAppServerClient } from './CodexAppServerClient'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
-import { createBridgeApnsPusher } from './BridgeApnsPusher'
+import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
@@ -92,6 +92,113 @@ const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 let geminiMcpBridgeInstalledForCurrentToken = false
+
+// Late-bound APNs handles. Constructed inside `app.whenReady()` (because
+// the token store needs `app.getPath('userData')`), but exposed at module
+// scope so the top-level approval-routing helpers — `requestMainApproval`,
+// `requestGeminiToolApproval`, the Codex/Kimi/host-command approval paths
+// — can fan out a wake-push to paired iOS devices without crossing into
+// the whenReady closure. Both stay `null` until whenReady fires; the
+// notify helper is a no-op until they're set.
+let bridgeApnsTokenStoreRef: BridgeApnsTokenStore | null = null
+let bridgeApnsPusherRef: BridgeApnsPusher | null = null
+
+/**
+ * Notify all paired iOS devices that an approval needs the user's
+ * decision. Best-effort: fires per-device pushes via APNs in parallel,
+ * doesn't block the caller, and silently no-ops when APNs is
+ * un-configured (the factory returns `NoopApnsPusher` which doesn't
+ * expose `pushApprovalToToken`).
+ *
+ * Token cleanup: when Apple replies with `Unregistered` /
+ * `BadDeviceToken`, the device token is permanently invalid; we prune
+ * it from `BridgeApnsTokenStore` so subsequent approvals don't waste a
+ * request on a dead phone.
+ *
+ * Call sites: every place a `pendingXxxApprovals.set(approvalId, ...)`
+ * happens — host commands, Codex permissions/elicitation/userInput,
+ * Gemini tool prompts, Kimi prompts, main approval flow.
+ */
+function notifyPairedDevicesOfApproval(args: {
+  approvalId: string
+  workspaceId: string
+  threadId: string
+  summary: string
+}): void {
+  const tokenStore = bridgeApnsTokenStoreRef
+  const pusher = bridgeApnsPusherRef
+  if (!tokenStore || !pusher) return
+  const tokens = tokenStore.list()
+  if (tokens.length === 0) return
+  // The Http2ApnsPusher exposes pushApprovalToToken; NoopApnsPusher
+  // doesn't. Duck-type the check rather than narrow by import.
+  const maybePushable = pusher as unknown as {
+    pushApprovalToToken?: (
+      deviceTokenHex: string,
+      env: 'production' | 'sandbox',
+      payload: import('./BridgeApnsPusher').BridgeApprovalPushPayload
+    ) => Promise<import('./BridgeApnsPusher').BridgeApnsPushResult>
+  }
+  if (typeof maybePushable.pushApprovalToToken !== 'function') return
+  for (const entry of tokens) {
+    void (async () => {
+      try {
+        const result = await maybePushable.pushApprovalToToken!(
+          entry.deviceToken,
+          entry.env,
+          {
+            pairID: entry.pairID,
+            workspaceId: args.workspaceId,
+            threadId: args.threadId,
+            toolCallId: args.approvalId,
+            summary: args.summary
+          }
+        )
+        if (!result.delivered) {
+          const reason = result.reason ?? ''
+          // Apple's `Unregistered` (HTTP 410) or `BadDeviceToken` means
+          // this token is permanently dead. Prune.
+          if (/^Unregistered$|^BadDeviceToken$/i.test(reason)) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[APNs] pruning dead token for pairID=${entry.pairID}: ${reason}`
+            )
+            tokenStore.remove(entry.pairID)
+          } else if (reason && reason !== 'noop') {
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[APNs] approval push not delivered to pairID=${entry.pairID}: ${reason}`
+            )
+          }
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[APNs] approval push threw for pairID=${entry.pairID}:`,
+          err instanceof Error ? err.message : String(err)
+        )
+      }
+    })()
+  }
+}
+
+/**
+ * Resolve a workspace path to its store-managed `WorkspaceRecord.id`,
+ * falling back to a stable derivation (the canonical path itself) when
+ * the workspace isn't registered. The iOS app uses the id for routing,
+ * but a push notification is still useful even when the workspace is
+ * outside the curated allowlist — better to send "tap to approve" with
+ * a less-precise destination than to drop the push entirely.
+ */
+function workspaceIdForApprovalPush(workspacePath: string | undefined): string {
+  if (!workspacePath) return 'global'
+  try {
+    const record = findRegisteredWorkspace(workspacePath)
+    return record?.id ?? workspacePath
+  } catch {
+    return workspacePath
+  }
+}
 
 installIpcValidation(ipcMain)
 
@@ -1489,6 +1596,14 @@ async function requestAgenticServiceApproval(
       }
     )
     sender.send('agent-approval-request', approvalPayload)
+    // Fan out a wake-push to any paired iOS device so the user can
+    // approve the agentic-service request away from the desktop.
+    notifyPairedDevicesOfApproval({
+      approvalId,
+      workspaceId: workspaceIdForApprovalPush(workspacePath),
+      threadId: session?.appChatId ?? request.runId ?? approvalId,
+      summary: request.title
+    })
   })
 }
 
@@ -1541,6 +1656,16 @@ async function requestMainApproval(
       metadata: { mainAuthority: true }
     })
     sender.send('agent-approval-request', approvalPayload)
+    // Fan out a wake-push to any paired iOS device. Main-authority
+    // approvals are typically workspace-trust or other infrequent
+    // events — exactly the kind of decision the user benefits from
+    // handling on their phone.
+    notifyPairedDevicesOfApproval({
+      approvalId,
+      workspaceId: workspaceIdForApprovalPush(request.workspacePath),
+      threadId: routed.appChatId ?? routed.appRunId ?? approvalId,
+      summary: request.title
+    })
   })
 }
 
@@ -3981,6 +4106,20 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                 metadata: { requestType, transport: 'kimi-wire' }
               })
               event.sender.send('agent-approval-request', approvalPayload)
+              // Fan out a wake-push to any paired iOS device. Kimi's
+              // payload.description is the cleanest user-facing summary;
+              // fall back to action name or a generic phrase.
+              notifyPairedDevicesOfApproval({
+                approvalId,
+                workspaceId: workspaceIdForApprovalPush(
+                  payload.scope === 'global' ? undefined : payload.workspace
+                ),
+                threadId: route.appChatId,
+                summary:
+                  message.params?.payload?.description ||
+                  message.params?.payload?.action ||
+                  'Kimi is requesting permission to continue.'
+              })
             } else if (requestType === 'QuestionRequest') {
               respondToKimiWireRequest(child, message.id, { response: 'User input is not available in this non-interactive run.' })
             } else {
@@ -4990,6 +5129,17 @@ function handleCodexServerRequest(message: any) {
     }
   )
   state.sender.send('agent-approval-request', approvalPayload)
+  // Fan out a wake-push to any paired iOS device. Summary uses
+  // formatted.title (already curated for the user-facing approval
+  // modal); falls back to `method` for unfamiliar Codex shapes.
+  notifyPairedDevicesOfApproval({
+    approvalId,
+    workspaceId: workspaceIdForApprovalPush(
+      isGlobalScope ? undefined : state.workspacePath
+    ),
+    threadId: state.threadId ?? state.appChatId,
+    summary: formatted.title || `Codex approval: ${method}`
+  })
 }
 
 function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: string, output: string): void {
@@ -5083,6 +5233,18 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     }
   )
   state.sender.send('agent-approval-request', approvalPayload)
+  // Fan out a wake-push to any paired iOS device so the user can decide
+  // away from the desktop. No-op if APNs is un-configured.
+  notifyPairedDevicesOfApproval({
+    approvalId,
+    workspaceId: workspaceIdForApprovalPush(
+      state.scope === 'global' ? undefined : state.workspacePath
+    ),
+    threadId: state.threadId ?? state.appChatId,
+    summary: swiftPmNestedSandbox
+      ? `Rerun SwiftPM outside sandbox: ${commandText.slice(0, 120)}`
+      : `Rerun command outside sandbox: ${commandText.slice(0, 120)}`
+  })
 }
 
 async function continueCodexAfterHostRerun(approval: HostCommandApproval, result: HostCommandResult, resultText: string): Promise<void> {
@@ -7997,11 +8159,12 @@ app.whenReady().then(() => {
       console.log(line)
     }
   })
-  // bridgeApnsTokenStore is now consumed by the action executor's
-  // registerApnsTokenFn below — no longer a void-ed unused reference.
-  // bridgeApnsPusher is still pending wire-up — Approval Service will
-  // call `pushApprovalNeeded` once that flow grows the iOS wake hook.
-  void bridgeApnsPusher
+
+  // Publish to module-scope refs so top-level approval helpers can fan
+  // out a wake-push via `notifyPairedDevicesOfApproval`. See the helper
+  // definition near the top of this file.
+  bridgeApnsTokenStoreRef = bridgeApnsTokenStore
+  bridgeApnsPusherRef = bridgeApnsPusher
 
   // Phase C0: optional GuiGeminiBridge daemon spawn — only when the
   // AGBENCH_BRIDGE_DAEMON env var is set (default-off so this doesn't affect
