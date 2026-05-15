@@ -18,6 +18,7 @@ describe('makeBridgeRunEventSink', () => {
     const sink = makeBridgeRunEventSink({ notifier: { notify } })
     sink.handle(sampleEvent())
     expect(notify).toHaveBeenCalledTimes(1)
+    // No appChatId in the payload → no threadId on the wire.
     expect(notify).toHaveBeenCalledWith('bridge.runEvent', {
       channel: 'agent-output',
       provider: 'gemini',
@@ -81,6 +82,67 @@ describe('makeBridgeRunEventSink', () => {
     expect(logged).toContain('forwarded')
     expect(logged).toContain('agent-exit')
     expect(logged).toContain('codex')
+  })
+
+  it('extracts appChatId from payload as top-level threadId hint', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    sink.handle(sampleEvent({
+      payload: { text: 'hello', appRunId: 'run-1', appChatId: 'chat-42' }
+    }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape.threadId).toBe('chat-42')
+    // The original payload field is preserved too.
+    expect((forwardedShape.payload as Record<string, unknown>).appChatId).toBe('chat-42')
+  })
+
+  it('extracts appChatId from a nested data wrapper (sendAgentCompatLine shape)', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    // Some agent-compat events wrap the routed payload under `data`.
+    sink.handle(sampleEvent({
+      payload: {
+        provider: 'gemini',
+        data: '{"type":"text","content":"hi"}\n',
+        appRunId: 'run-1',
+        appChatId: 'chat-99'
+      }
+    }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape.threadId).toBe('chat-99')
+  })
+
+  it('omits threadId when payload has no appChatId', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    sink.handle(sampleEvent({ payload: { error: 'something went wrong' } }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape).not.toHaveProperty('threadId')
+  })
+
+  it('omits threadId when appChatId is an empty string', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    sink.handle(sampleEvent({ payload: { appChatId: '' } }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape).not.toHaveProperty('threadId')
+  })
+
+  it('omits threadId when payload is not an object', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    sink.handle(sampleEvent({ payload: 'some raw string' as unknown as RunEvent['payload'] }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape).not.toHaveProperty('threadId')
+  })
+
+  it('logs threadId in the forward summary when present', () => {
+    const notify = vi.fn()
+    const log = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify }, log })
+    sink.handle(sampleEvent({ payload: { appChatId: 'chat-1' } }))
+    const logged = log.mock.calls.map((c) => c[0] as string).join('\n')
+    expect(logged).toContain('threadId="chat-1"')
   })
 
   it('forwards each of the six known RunEventChannels', () => {

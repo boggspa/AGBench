@@ -633,6 +633,13 @@ dispatcher.register("bridge.runEvent") { rawParams in
     let dict = (rawParams as? [String: Any]) ?? [:]
     let channel = (dict["channel"] as? String) ?? "?"
     let provider = (dict["provider"] as? String) ?? "?"
+    // `threadId` is a top-level hint the Electron-side sink extracts
+    // from the payload's `appChatId`. When present, the daemon scopes
+    // the QUIC broadcast to iOS pairs that have explicitly opted in to
+    // events for that thread via sendWatchedThreads. When nil, the
+    // daemon broadcasts to all connected pairs (backward-compat for
+    // pre-subscription clients).
+    let threadID = dict["threadId"] as? String
     // Re-encode the whole params dict to JSON bytes for the wire payload.
     // Sorted keys to make on-the-wire bytes stable for debugging / hashing.
     guard let payloadJSON = try? JSONSerialization.data(
@@ -646,11 +653,11 @@ dispatcher.register("bridge.runEvent") { rawParams in
     }
     // Off-thread broadcast — the dispatch loop must not block on async
     // actor calls (same dispatch-queue pattern the handler loop uses).
-    Task.detached { @Sendable [transportListener, payloadJSON] in
-        await transportListener.broadcastRunEvent(payloadJSON)
+    Task.detached { @Sendable [transportListener, payloadJSON, threadID] in
+        await transportListener.broadcastRunEvent(payloadJSON, threadID: threadID)
     }
     FileHandle.standardError.write(Data(
-        "[bridge.runEvent] broadcast channel=\(channel) provider=\(provider) bytes=\(payloadJSON.count)\n".utf8
+        "[bridge.runEvent] broadcast channel=\(channel) provider=\(provider) bytes=\(payloadJSON.count) threadID=\(threadID ?? "nil")\n".utf8
     ))
     return [String: Any]()
 }

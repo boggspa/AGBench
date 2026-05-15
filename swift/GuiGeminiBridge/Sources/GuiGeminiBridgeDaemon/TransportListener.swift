@@ -48,6 +48,7 @@ public actor TransportListener {
     private let macDeviceID: DeviceID
     private let notifier: BridgeNotifier
     private let requester: BridgeRequester
+    private let watchedThreadsStore: WatchedThreadsStore
     private let ackTimeoutSeconds: TimeInterval
 
     private var server: QUICBridgeServer?
@@ -60,6 +61,7 @@ public actor TransportListener {
         macDeviceID: DeviceID,
         notifier: BridgeNotifier,
         requester: BridgeRequester,
+        watchedThreadsStore: WatchedThreadsStore = WatchedThreadsStore(),
         ackTimeoutSeconds: TimeInterval = 10.0
     ) {
         self.deviceStore = deviceStore
@@ -67,6 +69,7 @@ public actor TransportListener {
         self.macDeviceID = macDeviceID
         self.notifier = notifier
         self.requester = requester
+        self.watchedThreadsStore = watchedThreadsStore
         self.ackTimeoutSeconds = ackTimeoutSeconds
     }
 
@@ -85,11 +88,12 @@ public actor TransportListener {
         let cfg = BridgeProductConfiguration.current
 
         // Capture collaborators locally so the @Sendable handler closures can
-        // call them without hopping back through the actor. Both are
+        // call them without hopping back through the actor. All three are
         // Sendable + internally serialized, so concurrent calls from
         // different connections are safe.
         let notifier = self.notifier
         let requester = self.requester
+        let watchedThreadsStore = self.watchedThreadsStore
         let ackTimeout = self.ackTimeoutSeconds
 
         let handlers = LANBridgeServer.Handlers(
@@ -253,6 +257,10 @@ public actor TransportListener {
                 await self.logHandler(
                     "onWatchedThreads count=\(threadIDs.count) pairID=\(pairID.rawValue)"
                 )
+                // Update the daemon-side per-pair subscription store so
+                // future `broadcastRunEvent(payloadJSON:threadID:)` calls
+                // can filter delivery via toPairIDs.
+                await watchedThreadsStore.update(pairID: pairID, threadIDs: threadIDs)
                 notifier.publish(method: "bridge.didReceiveWatchedThreads", params: [
                     "pairID": pairID.rawValue,
                     "threadIDs": threadIDs
@@ -326,13 +334,29 @@ public actor TransportListener {
     /// protocol. iOS-side decoding will interpret the bytes as our run-event
     /// JSON (`{channel, provider, payload, publishedAt}`).
     ///
+    /// `threadID` (optional) enables per-pair filtering: when present and
+    /// at least one paired device has explicitly declared a non-empty
+    /// watched-threads set via `sendWatchedThreads`, the event is
+    /// delivered ONLY to pairs that opted in to that thread. When
+    /// threadID is nil or no pair has declared any subscription, the
+    /// event broadcasts to all (backward-compat behavior).
+    ///
     /// Best-effort: when the server isn't running OR no peers are
     /// connected, the call is a no-op. Sessions that fail a write are
     /// pruned automatically by `LANBridgeServer.broadcast`.
-    public func broadcastRunEvent(_ payloadJSON: Data) async {
+    public func broadcastRunEvent(_ payloadJSON: Data, threadID: String? = nil) async {
         guard let server else { return }
         let envelope = BridgeInboundEnvelope(payload: .eventRecord(payloadJSON))
-        await server.broadcast(envelope)
+        // Per-pair filtering: consult the subscription store. nil result
+        // means "no subscriber has spoken" → broadcast to all (preserves
+        // existing behavior). Non-nil set (including empty) means at
+        // least one pair has subscriptions; deliver only to that set.
+        if let threadID,
+           let watchingPairs = await watchedThreadsStore.pairsWatching(threadID: threadID) {
+            await server.broadcast(envelope, toPairIDs: watchingPairs)
+        } else {
+            await server.broadcast(envelope)
+        }
     }
 
     // MARK: - Helpers

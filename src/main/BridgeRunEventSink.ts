@@ -72,11 +72,22 @@ export function makeBridgeRunEventSink(options: BridgeRunEventSinkOptions): RunE
       // Strip the (non-serializable) `sender: Electron.WebContents` before
       // forwarding — it's only meaningful to the in-process Electron IPC
       // sink. Everything else round-trips through JSON without surprise.
-      const wireEvent = {
+      //
+      // Per-pair filter hint: extract `appChatId` from the routed
+      // payload (when present) and surface it as a top-level
+      // `threadId` on the notification. The Swift daemon uses this
+      // to consult its watched-threads store and scope the QUIC
+      // broadcast to subscribing iOS pairs only. Absent threadId
+      // → daemon falls back to broadcast-all.
+      const threadId = extractThreadId(event.payload)
+      const wireEvent: Record<string, unknown> = {
         channel: event.channel,
         provider: event.provider,
         payload: event.payload,
         publishedAt: event.publishedAt
+      }
+      if (threadId !== null) {
+        wireEvent.threadId = threadId
       }
       try {
         notifier.notify(NOTIFICATION_METHOD, wireEvent)
@@ -88,7 +99,35 @@ export function makeBridgeRunEventSink(options: BridgeRunEventSinkOptions): RunE
         )
         return
       }
-      log?.(`[BridgeRunEventSink] forwarded channel="${event.channel}" provider="${event.provider}"`)
+      log?.(
+        `[BridgeRunEventSink] forwarded channel="${event.channel}" provider="${event.provider}"${
+          threadId !== null ? ` threadId="${threadId}"` : ''
+        }`
+      )
     }
   }
+}
+
+/** Best-effort extraction of `appChatId` from a routed run-event payload.
+ * Returns null when the payload doesn't carry one (e.g. provider-level
+ * errors without route context, or older event shapes). The daemon
+ * falls back to broadcast-all when threadId is absent, so a null
+ * return preserves current behavior. */
+function extractThreadId(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const record = payload as Record<string, unknown>
+  // Direct field — most agent-output / agent-error / agent-exit events
+  // carry `appChatId` after route enrichment.
+  if (typeof record.appChatId === 'string' && record.appChatId.length > 0) {
+    return record.appChatId
+  }
+  // The payload may also be a nested `{provider, data, appRunId, appChatId}`
+  // shape (sendAgentCompatLine's wrapper). Check one level deep.
+  if (typeof record.data === 'object' && record.data !== null) {
+    const inner = record.data as Record<string, unknown>
+    if (typeof inner.appChatId === 'string' && inner.appChatId.length > 0) {
+      return inner.appChatId
+    }
+  }
+  return null
 }
