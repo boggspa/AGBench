@@ -44,10 +44,18 @@ final class AppState {
         self.transcriptViewModel = transcript
         self.approvalViewModel = ApprovalViewModel(client: client)
         self.composerViewModel = ComposerViewModel(client: client)
-        // Production builds use .production; sandbox switch can come
-        // from a build setting or env later. Hardcode .production for
-        // now so the scaffold matches what the desktop expects.
-        let registrar = PushNotificationRegistrar(client: client, pairID: pair.pairID, env: .production)
+        // APNs environment picked at compile time. DEBUG builds (Xcode
+        // local + TestFlight) register with Apple's sandbox APNs gateway
+        // (api.sandbox.push.apple.com); release builds use production.
+        // The env is reported back to the Mac via
+        // BridgeActionPayload.registerApnsToken so the desktop knows
+        // which Apple gateway to target when sending pushes for this pair.
+        #if DEBUG
+        let apnsEnv: BridgeActionPayload.ApnsEnv = .sandbox
+        #else
+        let apnsEnv: BridgeActionPayload.ApnsEnv = .production
+        #endif
+        let registrar = PushNotificationRegistrar(client: client, pairID: pair.pairID, env: apnsEnv)
         self.pushRegistrar = registrar
         await client.start()
         // If an APNs token already arrived before pairing (typical:

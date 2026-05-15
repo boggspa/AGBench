@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+      APNs environment.
+
+      `development` registers the app with Apple's sandbox APNs gateway
+      (api.sandbox.push.apple.com) and is what Xcode-deployed / TestFlight
+      builds expect. The iOS app reports this back to the Mac during
+      `BridgeActionPayload.registerApnsToken` so the desktop knows which
+      Apple gateway to use when sending pushes.
+
+      Switch to `production` only for App Store releases. The same .p8
+      auth key works for both gateways — the env field on the action
+      payload tells the Mac which side of Apple's infrastructure to
+      target.
+    -->
+    <key>aps-environment</key>
+    <string>development</string>
+
+    <!--
+      App Groups — declared even though the v1 iOS app doesn't use them
+      yet. Reserved for future Live Activity widget / share extension /
+      shared Keychain access between the main app and any extensions.
+      Group identifier matches what `BridgeProductConfiguration.guiGemini.appGroupIdentifier`
+      declares on the desktop side.
+    -->
+    <key>com.apple.security.application-groups</key>
+    <array>
+        <string>group.com.example.AGBench</string>
+    </array>
+</dict>
+</plist>

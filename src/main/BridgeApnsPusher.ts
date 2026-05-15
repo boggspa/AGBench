@@ -1,3 +1,5 @@
+import { Http2ApnsPusher } from './Http2ApnsPusher'
+
 /**
  * BridgeApnsPusher — Phase C5 scaffold for desktop → iPhone wake-pushes via APNs.
  *
@@ -114,12 +116,35 @@ export interface BridgeApnsPusherOptions {
   /** Set true (or env: `AGBENCH_BRIDGE_APNS_DRY_RUN=1`) to log only. */
   dryRun?: boolean
   log?: (line: string) => void
+  /** APNs credentials. When all four fields are present, the factory
+   * returns a `Http2ApnsPusher` connecting to Apple. When any field
+   * is missing, the factory falls back to `NoopApnsPusher` and logs.
+   * Env-var fallback paths: AGBENCH_APNS_KEY_PATH, AGBENCH_APNS_KEY_ID,
+   * AGBENCH_APNS_TEAM_ID, AGBENCH_APNS_BUNDLE_ID. */
+  credentials?: {
+    authKeyPath: string
+    keyId: string
+    teamId: string
+    bundleId: string
+  }
 }
 
-/** Factory: returns a `NoopApnsPusher` today. When the real Http2ApnsPusher
- * lands (with credentials), the same factory will return that implementation
- * gated by env flags. The signature is stable; call sites won't need to
- * change. */
+/** Factory: returns either a real `Http2ApnsPusher` (when credentials are
+ * configured) or `NoopApnsPusher` (no credentials). Credential
+ * resolution: explicit `options.credentials` > env vars > none.
+ *
+ * Env-var convention:
+ *   - AGBENCH_APNS_KEY_PATH   path to AuthKey_XXXXXXXXXX.p8
+ *   - AGBENCH_APNS_KEY_ID     10-char Key ID from Apple Developer Keys
+ *   - AGBENCH_APNS_TEAM_ID    10-char Team ID from membership page
+ *   - AGBENCH_APNS_BUNDLE_ID  iOS app bundle id (e.g. com.example.AGBench.ios)
+ *   - AGBENCH_BRIDGE_APNS     'sandbox' | 'production' (forced env; usually
+ *                             omitted so per-device env from the token
+ *                             registration picks)
+ *   - AGBENCH_BRIDGE_APNS_DRY_RUN  '1' or 'true' to log instead of send
+ *     (production: applied via the Http2ApnsPusher's forceEnv? no —
+ *     dryRun returns the NoopApnsPusher to avoid network entirely).
+ */
 export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): BridgeApnsPusher {
   const log = options.log ?? (() => {})
   // Read env if not explicitly provided.
@@ -130,10 +155,52 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
     (process.env.AGBENCH_BRIDGE_APNS_DRY_RUN === '1' ||
       process.env.AGBENCH_BRIDGE_APNS_DRY_RUN === 'true')
 
-  // Today: always Noop. Once Http2ApnsPusher lands, branch here based on
-  // whether `AGBENCH_BRIDGE_APNS_CREDENTIALS_PATH` (or similar) is set.
-  log(
-    `[BridgeApnsPusher] using NoopApnsPusher (env=${env} dryRun=${dryRun}) — real APNs client not yet configured`
-  )
-  return new NoopApnsPusher(log)
+  if (dryRun) {
+    log(`[BridgeApnsPusher] dryRun=true → using NoopApnsPusher (logged, never delivered)`)
+    return new NoopApnsPusher(log)
+  }
+
+  const creds = resolveCredentials(options)
+  if (!creds) {
+    log(
+      `[BridgeApnsPusher] using NoopApnsPusher (env=${env}) — credentials missing. Set AGBENCH_APNS_KEY_PATH + AGBENCH_APNS_KEY_ID + AGBENCH_APNS_TEAM_ID + AGBENCH_APNS_BUNDLE_ID to enable real push delivery.`
+    )
+    return new NoopApnsPusher(log)
+  }
+
+  try {
+    // Static import via the file's top-level import block (below).
+    // Originally lazy-required to defer http2 module load, but vitest's
+    // ESM transform makes dynamic require fragile. http2 is a Node
+    // built-in — load cost is negligible — so static import is fine.
+    const pusher = new Http2ApnsPusher({
+      authKeyPath: creds.authKeyPath,
+      keyId: creds.keyId,
+      teamId: creds.teamId,
+      bundleId: creds.bundleId,
+      forceEnv: options.env, // explicit option forces; otherwise per-device env wins
+      log
+    })
+    log(
+      `[BridgeApnsPusher] using Http2ApnsPusher (keyId=${creds.keyId}, teamId=${creds.teamId}, bundleId=${creds.bundleId})`
+    )
+    return pusher
+  } catch (err) {
+    log(
+      `[BridgeApnsPusher] failed to instantiate Http2ApnsPusher (${err instanceof Error ? err.message : String(err)}) — falling back to NoopApnsPusher`
+    )
+    return new NoopApnsPusher(log)
+  }
+}
+
+function resolveCredentials(options: BridgeApnsPusherOptions): BridgeApnsPusherOptions['credentials'] | null {
+  if (options.credentials) return options.credentials
+  const authKeyPath = process.env.AGBENCH_APNS_KEY_PATH
+  const keyId = process.env.AGBENCH_APNS_KEY_ID
+  const teamId = process.env.AGBENCH_APNS_TEAM_ID
+  const bundleId = process.env.AGBENCH_APNS_BUNDLE_ID
+  if (authKeyPath && keyId && teamId && bundleId) {
+    return { authKeyPath, keyId, teamId, bundleId }
+  }
+  return null
 }

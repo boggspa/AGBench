@@ -30,6 +30,18 @@
         <false/>
     </dict>
     <!--
+      Background modes. `remote-notification` allows silent APNs pushes
+      (content-available=1) to wake the app in the background long
+      enough to reconnect to the desktop bridge and refresh state.
+      Lock-screen alert pushes don't need this mode — they fire
+      independently. We add it here so the wake-on-approval flow can
+      pre-fetch the approval card before the user taps the notification.
+    -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+    </array>
+    <!--
       Bonjour services we discover. Matches the desktop daemon's
       `BridgeProductConfiguration.guiGemini.bonjourQUICServiceType` =
       `_guigemini-quic._udp` and the TCP fallback `_guigemini._tcp`.
