@@ -586,6 +586,163 @@ describe('BridgeActionRouter', () => {
     })
   })
 
+  describe('read-only mode enforcement (Phase C-late slice)', () => {
+    /** Allowlist with one read-only entry for ws-readonly. */
+    const seedReadOnly = () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-readonly',
+        path: '/a',
+        mode: 'read-only',
+        allowedProviders: ['gemini', 'codex'],
+        allowedApprovalModes: ['default', 'plan']
+      })
+      allowlist.upsert({
+        workspaceId: 'ws-readwrite',
+        path: '/b',
+        mode: 'read-write',
+        allowedProviders: ['gemini', 'codex'],
+        allowedApprovalModes: ['default', 'plan']
+      })
+      return allowlist
+    }
+
+    const encodeAction = (action: Record<string, unknown>) =>
+      Buffer.from(JSON.stringify(action), 'utf-8').toString('base64')
+
+    it('denies composerPrompt against read-only workspace', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly(), executor })
+      const wire = encodeAction({
+        kind: 'composerPrompt',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        provider: 'gemini',
+        text: 'hi'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.message).toMatch(/read-only/i)
+      expect(result.message).toMatch(/composerPrompt/)
+      // Executor must NOT be invoked when policy denies.
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies cancelRun against read-only workspace', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'cancelRun',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        provider: 'gemini',
+        runId: 'r-1'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.message).toMatch(/read-only/i)
+    })
+
+    it('denies questionReply against read-only workspace', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'questionReply',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        promptId: 'q-1',
+        answer: 'yes'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.message).toMatch(/read-only/i)
+    })
+
+    it('accepts approvalReply against read-only workspace (responding to desktop-initiated prompt)', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly(), executor })
+      const wire = encodeAction({
+        kind: 'approvalReply',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        toolCallId: 'tc-1',
+        decision: 'accept'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean }
+      expect(result.accepted).toBe(true)
+      expect(calls).toHaveLength(1)
+      expect(calls[0].method).toBe('executeApprovalReply')
+    })
+
+    it('accepts questionReject against read-only workspace (declining is not mutating)', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'questionReject',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        promptId: 'q-1'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean }
+      expect(result.accepted).toBe(true)
+    })
+
+    it('still accepts composerPrompt against read-write workspace (regression guard)', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'composerPrompt',
+        workspaceId: 'ws-readwrite',
+        threadId: 't-1',
+        provider: 'gemini',
+        text: 'hi'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean }
+      expect(result.accepted).toBe(true)
+    })
+
+    it('permissive-dev mode bypasses read-only enforcement', async () => {
+      const router = new BridgeActionRouter({
+        allowlist: seedReadOnly(),
+        permissiveDev: true
+      })
+      const wire = encodeAction({
+        kind: 'composerPrompt',
+        workspaceId: 'ws-readonly',
+        threadId: 't-1',
+        provider: 'gemini',
+        text: 'hi'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(true)
+      expect(result.message).toMatch(/permissive-dev/i)
+    })
+
+    it('read-only does not affect registerApnsToken (system action bypasses workspace gating entirely)', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'registerApnsToken',
+        pairID: 'pair-1',
+        deviceToken: 'tok',
+        env: 'production'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean }
+      expect(result.accepted).toBe(true)
+    })
+  })
+
   describe('unknown methods', () => {
     it('throws for an unrecognized method', async () => {
       const router = new BridgeActionRouter()

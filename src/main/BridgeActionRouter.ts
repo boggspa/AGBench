@@ -2,6 +2,7 @@ import type { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import {
   BridgeActionPayloadDecodeError,
   decodeBridgeActionPayload,
+  payloadIsMutating,
   payloadRequiresWorkspaceGating,
   workspaceIdFromPayload,
   type BridgeActionPayload
@@ -219,6 +220,21 @@ export class BridgeActionRouter {
             accepted: false,
             scope: 'once',
             message: decision.reason
+          }
+        }
+        // Read-only enforcement: when the workspace allowlist entry says
+        // `mode: 'read-only'`, mutating actions are denied. Non-mutating
+        // actions (approvalReply, questionReject) pass through — the
+        // intent is "iPhone can respond to desktop-initiated prompts but
+        // can't initiate or mutate work themselves". See
+        // `payloadIsMutating` for per-variant classification + rationale.
+        if (decision.entry.mode === 'read-only' && payloadIsMutating(payload)) {
+          const reason = `Workspace "${workspaceId}" is read-only; action "${payload.kind}" requires read-write access`
+          this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${reason}"`)
+          return {
+            accepted: false,
+            scope: 'once',
+            message: reason
           }
         }
       } else {

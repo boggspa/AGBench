@@ -244,6 +244,48 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
   }
 }
 
+/** Whether a payload mutates desktop-side state (kicks off a new run,
+ * cancels an in-flight one, injects input into an agent). Used by the
+ * router's read-only mode enforcement: when a workspace allowlist entry
+ * has `mode: 'read-only'`, mutating payloads are denied. The
+ * non-mutating set — approvalReply, questionReject — is iOS responding
+ * to desktop-initiated prompts. Per the original plan: "iPhone can
+ * watch + approve, never mutate" in read-only mode.
+ *
+ * Notes on individual variants:
+ *   - `approvalReply`: responding to an approval prompt the DESKTOP
+ *     already surfaced. The decision itself doesn't initiate new work;
+ *     it lets an already-pending tool call proceed. Allowed in read-only.
+ *   - `questionReject`: declining to provide input. Strictly less
+ *     mutating than answering. Allowed in read-only.
+ *   - `questionReply`: provides TYPED INPUT to an in-flight agent. This
+ *     is real data flowing into the workspace's state. Blocked in
+ *     read-only.
+ *   - `composerPrompt`: initiates a new turn. Clearly mutating.
+ *   - `cancelRun`: terminates an in-flight run. Read-only blocks; the
+ *     desktop user still has full control. (We might revisit this if
+ *     "safety cancel from phone" becomes a desired feature, but the
+ *     conservative read-only semantic is to deny.)
+ *   - `registerApnsToken`: never reaches this check — it bypasses
+ *     workspace gating entirely via `payloadRequiresWorkspaceGating`.
+ *   - `unknown`: classify defensively as mutating so a forward-compat
+ *     unknown action can't sneak past read-only gating.
+ */
+export function payloadIsMutating(payload: BridgeActionPayload): boolean {
+  switch (payload.kind) {
+    case 'composerPrompt':
+    case 'cancelRun':
+    case 'questionReply':
+      return true
+    case 'approvalReply':
+    case 'questionReject':
+    case 'registerApnsToken':
+      return false
+    case 'unknown':
+      return true
+  }
+}
+
 // MARK: - Shape gates
 
 function coerceToPayload(parsed: unknown): BridgeActionPayload {

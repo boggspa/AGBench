@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   BridgeActionPayloadDecodeError,
   decodeBridgeActionPayload,
+  payloadIsMutating,
   payloadRequiresWorkspaceGating,
   workspaceIdFromPayload,
   type BridgeActionPayload
@@ -406,6 +407,84 @@ describe('payloadRequiresWorkspaceGating', () => {
   it('returns true defensively for unknown variants', () => {
     expect(
       payloadRequiresWorkspaceGating({ kind: 'unknown', rawKind: 'x', raw: {} })
+    ).toBe(true)
+  })
+})
+
+describe('payloadIsMutating', () => {
+  it('classifies composerPrompt as mutating', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'composerPrompt',
+        workspaceId: 'w',
+        threadId: 't',
+        provider: 'gemini',
+        text: 'hi'
+      })
+    ).toBe(true)
+  })
+
+  it('classifies cancelRun as mutating', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'cancelRun',
+        workspaceId: 'w',
+        threadId: 't',
+        provider: 'gemini',
+        runId: 'r'
+      })
+    ).toBe(true)
+  })
+
+  it('classifies questionReply as mutating (provides typed input to agent)', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'questionReply',
+        workspaceId: 'w',
+        threadId: 't',
+        promptId: 'p',
+        answer: 'yes'
+      })
+    ).toBe(true)
+  })
+
+  it('classifies approvalReply as non-mutating (responds to desktop-initiated prompt)', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'approvalReply',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc',
+        decision: 'accept'
+      })
+    ).toBe(false)
+  })
+
+  it('classifies questionReject as non-mutating (declines to provide input)', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'questionReject',
+        workspaceId: 'w',
+        threadId: 't',
+        promptId: 'p'
+      })
+    ).toBe(false)
+  })
+
+  it('classifies registerApnsToken as non-mutating (system action, bypasses gating)', () => {
+    expect(
+      payloadIsMutating({
+        kind: 'registerApnsToken',
+        pairID: 'p',
+        deviceToken: 't',
+        env: 'production'
+      })
+    ).toBe(false)
+  })
+
+  it('classifies unknown variants as mutating defensively', () => {
+    expect(
+      payloadIsMutating({ kind: 'unknown', rawKind: 'futureKind', raw: {} })
     ).toBe(true)
   })
 })
