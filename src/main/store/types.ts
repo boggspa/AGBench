@@ -169,6 +169,55 @@ export interface ProviderAdapterFeatureFlags {
   hostCommandFallback: boolean;
 }
 
+/** Static per-provider capability declarations.
+ *
+ * `features` (above) describes INFRASTRUCTURE characteristics —
+ * whether the adapter uses AGBench's MCP bridge, has persistent
+ * sessions, etc. `ProviderAdapterCapabilities` describes USER-FACING
+ * UX capabilities — what the iOS composer / desktop renderer should
+ * render for this provider.
+ *
+ * Examples of how UI consumes these:
+ *   - `reasoningEffort: false` → hide the reasoning-effort picker
+ *   - `imageAttachments: false` → disable the paperclip button
+ *   - `approvalModes: ['default']` → hide the "plan mode" toggle
+ *   - `speedTiers: []` → no speed-tier picker at all
+ *
+ * iOS UI subscribes to a provider's capabilities snapshot (sent during
+ * pair init, refreshed on capability changes) and renders accordingly.
+ * Desktop renderer can do the same via the existing
+ * `get-provider-adapters` IPC.
+ *
+ * Future additions: thinking-mode flags, tool-call-batch support,
+ * worktree variants — extend cautiously, since iOS clients tolerate
+ * unknown fields but new required fields would break older clients. */
+export interface ProviderAdapterCapabilities {
+  /** Approval modes the provider's runtime accepts. iOS composer
+   * filters this against `RemoteWorkspaceEntry.allowedApprovalModes`
+   * to produce the final picker contents. */
+  approvalModes: Array<'default' | 'plan' | 'allow-all'>;
+  /** Whether the run payload's `reasoningEffort` field has any effect
+   * for this provider. Codex / Claude honor it; Gemini / Kimi
+   * currently don't. */
+  reasoningEffort: boolean;
+  /** Provider-specific speed tier identifiers. Empty array → no
+   * speed-tier picker. */
+  speedTiers: string[];
+  /** Whether `imagePaths` in the run payload are forwarded to the
+   * provider. iOS composer's image-picker is gated by this. */
+  imageAttachments: boolean;
+  /** Whether the prompt-composition layer's context-turn injection
+   * applies. When false, the composer's contextTurns slider has no
+   * effect — UI hides it. */
+  contextInjection: boolean;
+  /** Whether `providerSessionId` in the run payload resumes a prior
+   * session (vs the provider creating a fresh session every turn). */
+  sessionResumption: boolean;
+  /** Whether the provider supports per-thread MCP server scoping
+   * (Gemini-style). When false, MCP servers are workspace-wide. */
+  perThreadMcp: boolean;
+}
+
 export interface ProviderAdapterDescriptor {
   provider: ProviderId;
   label: string;
@@ -176,6 +225,7 @@ export interface ProviderAdapterDescriptor {
   runChannel: ProviderAdapterRunChannel;
   capabilitySource: 'agentbench' | 'provider' | 'bridge' | 'mixed';
   features: ProviderAdapterFeatureFlags;
+  capabilities: ProviderAdapterCapabilities;
 }
 
 export type RuntimeWorkspaceMode = 'local' | 'worktree' | 'container';

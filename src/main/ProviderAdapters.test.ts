@@ -86,3 +86,62 @@ describe('ProviderAdapters', () => {
     expect('cancel' in descriptor).toBe(false)
   })
 })
+
+describe('defaultProviderDescriptor capabilities', () => {
+  // Per-provider capability declarations — these are the static "what
+  // does this provider's UX support" flags that iOS composer + desktop
+  // renderer consume to decide what to render. Pinning them as tests
+  // means any change is reviewable; silently flipping (e.g. removing
+  // image support from Gemini) requires touching this file.
+  const allProviders: Array<'gemini' | 'codex' | 'claude' | 'kimi'> = ['gemini', 'codex', 'claude', 'kimi']
+
+  for (const provider of allProviders) {
+    it(`${provider} declares a non-empty approvalModes list`, () => {
+      const cap = defaultProviderDescriptor(provider).capabilities
+      expect(cap.approvalModes.length).toBeGreaterThan(0)
+      // Must always include 'default' — every provider's runtime accepts
+      // the baseline approval prompt mode.
+      expect(cap.approvalModes).toContain('default')
+    })
+
+    it(`${provider} declares boolean capability flags`, () => {
+      const cap = defaultProviderDescriptor(provider).capabilities
+      expect(typeof cap.reasoningEffort).toBe('boolean')
+      expect(typeof cap.imageAttachments).toBe('boolean')
+      expect(typeof cap.contextInjection).toBe('boolean')
+      expect(typeof cap.sessionResumption).toBe('boolean')
+      expect(typeof cap.perThreadMcp).toBe('boolean')
+    })
+
+    it(`${provider} declares a serializable capabilities object`, () => {
+      const cap = defaultProviderDescriptor(provider).capabilities
+      expect(() => JSON.parse(JSON.stringify(cap))).not.toThrow()
+    })
+  }
+
+  it('gemini supports plan mode + image attachments + per-thread MCP', () => {
+    const cap = defaultProviderDescriptor('gemini').capabilities
+    expect(cap.approvalModes).toContain('plan')
+    expect(cap.imageAttachments).toBe(true)
+    expect(cap.perThreadMcp).toBe(true)
+  })
+
+  it('codex supports reasoning effort + speed tiers', () => {
+    const cap = defaultProviderDescriptor('codex').capabilities
+    expect(cap.reasoningEffort).toBe(true)
+    expect(cap.speedTiers.length).toBeGreaterThan(0)
+  })
+
+  it('claude supports reasoning effort but not speed tiers', () => {
+    const cap = defaultProviderDescriptor('claude').capabilities
+    expect(cap.reasoningEffort).toBe(true)
+    expect(cap.speedTiers).toEqual([])
+  })
+
+  it('kimi has the most restrictive capability set (default-only, no reasoning, no images)', () => {
+    const cap = defaultProviderDescriptor('kimi').capabilities
+    expect(cap.approvalModes).toEqual(['default'])
+    expect(cap.reasoningEffort).toBe(false)
+    expect(cap.imageAttachments).toBe(false)
+  })
+})

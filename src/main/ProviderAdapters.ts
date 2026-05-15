@@ -71,7 +71,12 @@ export function providerAdapterDescriptor(
     transport: adapter.transport,
     runChannel: adapter.runChannel,
     capabilitySource: adapter.capabilitySource,
-    features: { ...adapter.features }
+    features: { ...adapter.features },
+    capabilities: {
+      ...adapter.capabilities,
+      approvalModes: [...adapter.capabilities.approvalModes],
+      speedTiers: [...adapter.capabilities.speedTiers]
+    }
   }
 }
 
@@ -104,6 +109,15 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         providerManagedMcp: true,
         nativeThreadTools: true,
         hostCommandFallback: true
+      },
+      capabilities: {
+        approvalModes: ['default'],
+        reasoningEffort: true,
+        speedTiers: ['flash', 'flash-lite'],
+        imageAttachments: false,
+        contextInjection: true,
+        sessionResumption: true,
+        perThreadMcp: false
       }
     }
   }
@@ -122,6 +136,15 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         providerManagedMcp: false,
         nativeThreadTools: false,
         hostCommandFallback: false
+      },
+      capabilities: {
+        approvalModes: ['default', 'plan'],
+        reasoningEffort: false,
+        speedTiers: [],
+        imageAttachments: true,
+        contextInjection: true,
+        sessionResumption: true,
+        perThreadMcp: true
       }
     }
   }
@@ -140,6 +163,15 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         providerManagedMcp: true,
         nativeThreadTools: false,
         hostCommandFallback: false
+      },
+      capabilities: {
+        approvalModes: ['default'],
+        reasoningEffort: false,
+        speedTiers: [],
+        imageAttachments: false,
+        contextInjection: true,
+        sessionResumption: false,
+        perThreadMcp: false
       }
     }
   }
@@ -157,6 +189,15 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
       providerManagedMcp: true,
       nativeThreadTools: false,
       hostCommandFallback: false
+    },
+    capabilities: {
+      approvalModes: ['default'],
+      reasoningEffort: true,
+      speedTiers: [],
+      imageAttachments: true,
+      contextInjection: true,
+      sessionResumption: true,
+      perThreadMcp: false
     }
   }
 }
