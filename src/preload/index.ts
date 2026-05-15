@@ -102,6 +102,19 @@ const api = {
     ipcRenderer.removeAllListeners('gemini-session-exit')
   },
 
+  // Bridge / iOS remote allowlist (Phase C4 admin surface)
+  bridgeAllowlistList: () => ipcRenderer.invoke('bridge-allowlist-list'),
+  bridgeAllowlistUpsert: (entry: {
+    workspaceId: string
+    path: string
+    mode: 'read-only' | 'read-write'
+    allowedProviders: string[]
+    allowedApprovalModes: string[]
+    expiresAt?: number
+  }) => ipcRenderer.invoke('bridge-allowlist-upsert', entry),
+  bridgeAllowlistRemove: (workspaceId: string) => ipcRenderer.invoke('bridge-allowlist-remove', workspaceId),
+  bridgeAllowlistClear: () => ipcRenderer.invoke('bridge-allowlist-clear'),
+
   // Store APIs
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (partial: any) => ipcRenderer.invoke('update-settings', partial),

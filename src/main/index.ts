@@ -11,6 +11,14 @@ import * as pty from 'node-pty'
 import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
+import { BridgeDaemonClient } from './BridgeDaemonClient'
+import { BridgeActionRouter } from './BridgeActionRouter'
+import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
+import { createBridgeApnsPusher } from './BridgeApnsPusher'
+import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
+import { MainProcessActionExecutor } from './BridgeActionExecutor'
+import { makeBridgeRunEventSink } from './BridgeRunEventSink'
+import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
 import { AppSettings, WorkspaceRecord, ChatRecord, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
@@ -4209,6 +4217,22 @@ function enrichAgentPayload(provider: ProviderId, payload: any, route?: AgentRun
   }
 }
 
+/**
+ * Convenience wrapper around `runEventBus.publish`. Used by the three
+ * `sendAgentCompat*` helpers below and by the few direct call sites that
+ * previously bypassed them. Keeping the sender parameter optional means
+ * non-IPC publish paths (telemetry, scheduled tasks, future remote sinks)
+ * can publish too.
+ */
+function publishRunEvent(
+  channel: RunEventChannel,
+  provider: ProviderId,
+  payload: unknown,
+  sender?: Electron.WebContents
+): void {
+  runEventBus.publish({ channel, provider, payload, sender })
+}
+
 function sendAgentCompatLine(sender: Electron.WebContents, provider: ProviderId, payload: any, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, payload, route)
   appendDurableRunEventForRoute(
@@ -4221,27 +4245,28 @@ function sendAgentCompatLine(sender: Electron.WebContents, provider: ProviderId,
     'provider'
   )
   const line = `${JSON.stringify(routed)}\n`
-  sender.send('agent-output', { provider, data: line, appRunId: routed.appRunId, appChatId: routed.appChatId })
+  const outputPayload = { provider, data: line, appRunId: routed.appRunId, appChatId: routed.appChatId }
+  publishRunEvent('agent-output', provider, outputPayload, sender)
   if (provider === 'gemini') {
-    sender.send('gemini-output', { provider, data: line, appRunId: routed.appRunId, appChatId: routed.appChatId })
+    publishRunEvent('gemini-output', provider, outputPayload, sender)
   }
 }
 
 function sendAgentCompatError(sender: Electron.WebContents, provider: ProviderId, error: string, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, { error }, route)
   appendDurableRunEventForRoute(provider, routed, 'provider_error', 'raw', 'Provider stderr/error', { error }, 'provider')
-  sender.send('agent-error', routed)
+  publishRunEvent('agent-error', provider, routed, sender)
   if (provider === 'gemini') {
-    sender.send('gemini-error', routed)
+    publishRunEvent('gemini-error', provider, routed, sender)
   }
 }
 
 function sendAgentCompatExit(sender: Electron.WebContents, provider: ProviderId, code: number | null, route?: AgentRunRoute | null) {
   const routed = enrichAgentPayload(provider, { code }, route)
   appendDurableRunEventForRoute(provider, routed, 'provider_exit', 'raw', `Provider exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
-  sender.send('agent-exit', routed)
+  publishRunEvent('agent-exit', provider, routed, sender)
   if (provider === 'gemini') {
-    sender.send('gemini-exit', routed)
+    publishRunEvent('gemini-exit', provider, routed, sender)
   }
 }
 
@@ -5270,7 +5295,9 @@ function runCodexExecFallback(event: Electron.IpcMainInvokeEvent, payload: Agent
   child.stdout?.on('data', (data) => {
     const text = data.toString()
     appendDurableRunEventForRoute('codex', route, 'provider_raw', 'raw', 'Codex exec stdout', { data: text }, 'provider')
-    event.sender.send('agent-output', { provider: 'codex', data: text, ...route })
+    // Was: event.sender.send('agent-output', ...). Routed through the bus so
+    // additional sinks (debug logger, remote bridge) observe Codex stdout too.
+    publishRunEvent('agent-output', 'codex', { provider: 'codex', data: text, ...route }, event.sender)
   })
 
   child.stderr?.on('data', (data) => {
@@ -5495,18 +5522,18 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   child.stdout?.on('data', (data) => {
     const text = data.toString()
     appendDurableRunEventForRoute('gemini', route, 'provider_raw', 'raw', 'Gemini stdout', { data: text }, 'provider')
-    event.sender.send('gemini-output', { provider: 'gemini', data: text, ...route })
+    publishRunEvent('gemini-output', 'gemini', { provider: 'gemini', data: text, ...route }, event.sender)
   })
 
   child.stderr?.on('data', (data) => {
     const error = data.toString()
     appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini stderr', { error }, 'provider')
-    event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
+    publishRunEvent('gemini-error', 'gemini', { provider: 'gemini', error, ...route }, event.sender)
   })
 
   child.on('close', (code) => {
     appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', `Gemini exited with code ${typeof code === 'number' ? code : 'unknown'}`, { code }, 'provider')
-    event.sender.send('gemini-exit', { provider: 'gemini', code, ...route })
+    publishRunEvent('gemini-exit', 'gemini', { provider: 'gemini', code, ...route }, event.sender)
     if (geminiProcess === child) {
       geminiProcess = null
     }
@@ -5520,9 +5547,9 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   child.on('error', (err) => {
     const error = `Failed to start process: ${err.message}`
     appendDurableRunEventForRoute('gemini', route, 'provider_error', 'raw', 'Gemini process failed to start', { error }, 'provider')
-    event.sender.send('gemini-error', { provider: 'gemini', error, ...route })
+    publishRunEvent('gemini-error', 'gemini', { provider: 'gemini', error, ...route }, event.sender)
     appendDurableRunEventForRoute('gemini', route, 'provider_exit', 'raw', 'Gemini process failed before exit', { code: -1 }, 'provider')
-    event.sender.send('gemini-exit', { provider: 'gemini', code: -1, ...route })
+    publishRunEvent('gemini-exit', 'gemini', { provider: 'gemini', code: -1, ...route }, event.sender)
     if (geminiProcess === child) {
       geminiProcess = null
     }
@@ -7924,6 +7951,230 @@ if (isGeminiMcpBridgeProcess) {
 app.whenReady().then(() => {
   electronApp.setAppUserModelId('com.electron')
   registerProductCrashHandlers()
+
+  // Phase B1: centralize run-event fan-out via the bus. The Electron IPC
+  // sink replays today's "send to the originating WebContents" behavior, so
+  // the renderer sees an identical event stream. The debug-logger sink
+  // (gated by AGBENCH_DEBUG_BUS) is the proof of fan-out: when enabled, you
+  // can see every published event in the main-process console without
+  // touching publish call sites. Future remote-bridge sinks (Phase C) plug
+  // in here too.
+  runEventBus.subscribe(makeElectronIpcSink())
+  if (process.env.AGBENCH_DEBUG_BUS === '1' || process.env.AGBENCH_DEBUG_BUS === 'true') {
+    runEventBus.subscribe(makeDebugLoggerSink())
+  }
+
+  // Phase C4: workspace allowlist is constructed unconditionally so the
+  // admin IPC handlers (`bridge-allowlist-*`) can manage entries even when
+  // the daemon itself is not yet running. The router and daemon spawn below
+  // are still gated by `AGBENCH_BRIDGE_DAEMON`.
+  const bridgeAllowlistPath = join(app.getPath('userData'), 'bridge', 'remote-workspaces.json')
+  const bridgeAllowlist = new RemoteWorkspaceAllowlist({
+    storagePath: bridgeAllowlistPath,
+    log: (line) => {
+      // eslint-disable-next-line no-console
+      console.log(line)
+    }
+  })
+
+  // Phase C5 scaffold: APNs wake-on-approval. Today both the pusher and
+  // token store are wired as no-ops / persistent stubs; the real APNs
+  // HTTP/2 client lands when the iOS companion app + Apple Developer
+  // credentials are ready. Constructing them unconditionally means
+  // ApprovalService can call `bridgeApnsPusher.pushApprovalNeeded(...)`
+  // safely once the approval flow is wired through, without a flag dance.
+  const bridgeApnsTokenStorePath = join(app.getPath('userData'), 'bridge', 'apns-tokens.json')
+  const bridgeApnsTokenStore = new BridgeApnsTokenStore({
+    storagePath: bridgeApnsTokenStorePath,
+    log: (line) => {
+      // eslint-disable-next-line no-console
+      console.log(line)
+    }
+  })
+  const bridgeApnsPusher = createBridgeApnsPusher({
+    log: (line) => {
+      // eslint-disable-next-line no-console
+      console.log(line)
+    }
+  })
+  // bridgeApnsTokenStore is now consumed by the action executor's
+  // registerApnsTokenFn below — no longer a void-ed unused reference.
+  // bridgeApnsPusher is still pending wire-up — Approval Service will
+  // call `pushApprovalNeeded` once that flow grows the iOS wake hook.
+  void bridgeApnsPusher
+
+  // Phase C0: optional GuiGeminiBridge daemon spawn — only when the
+  // AGBENCH_BRIDGE_DAEMON env var is set (default-off so this doesn't affect
+  // production startup until Phase C-late). On macOS the daemon imports
+  // BridgeCore and proves the GUIGemini product configuration loads cleanly.
+  // Phase C1+ will replace this proof-of-life with real stdio JSON-RPC.
+  if (process.platform === 'darwin' &&
+      (process.env.AGBENCH_BRIDGE_DAEMON === '1' || process.env.AGBENCH_BRIDGE_DAEMON === 'true')) {
+    // Phase C-late: action executor wires policy-cleared actions to real
+    // main-process services. Wired today: `cancelRun`, `approvalReply`,
+    // `composerPrompt`. The remaining two variants (`questionReply` /
+    // `questionReject`) return "scaffolded, not wired" — they need the
+    // underlying typed-answer plumbing in `processAgentApprovalResponse`
+    // (which currently discards typed user input) before iOS can wire
+    // through meaningfully.
+    //
+    // composerPrompt builds an AgentRunPayload from the iOS-side action
+    // and dispatches via `dispatchAgentRun` with `mainWindow.webContents`
+    // as the sender. The renderer's existing IPC subscribers see the
+    // run as if a desktop user had started it — the iOS-initiated run
+    // appears live in the desktop transcript. iOS gets only the initial
+    // appRunId today; streaming events back to iOS is a future slice.
+    const bridgeActionExecutor = new MainProcessActionExecutor({
+      cancelRunFn: async (provider, runId) => {
+        return providerAdapters.require(assertProviderId(provider)).cancel(runId)
+      },
+      respondApprovalFn: async (requestId, action) => {
+        // iOS-side decision values are a strict subset of AgentApprovalAction
+        // ('accept' | 'acceptForSession' | 'decline'). Pass-through is safe.
+        return processAgentApprovalResponse(requestId, action)
+      },
+      registerApnsTokenFn: async (action) => {
+        // Light validation beyond what the decoder did — same shape the
+        // store's upsert enforces. Thrown errors become the executor's
+        // "registration failed" message.
+        try {
+          bridgeApnsTokenStore.upsert(action.pairID, action.deviceToken, action.env)
+          return { registered: true }
+        } catch (err) {
+          return {
+            registered: false,
+            reason: err instanceof Error ? err.message : String(err)
+          }
+        }
+      },
+      composerPromptFn: async (action) => {
+        // Resolve workspace path from the iOS-supplied workspaceId.
+        const workspaceRecord = AppStore.getWorkspaces().find((w) => w.id === action.workspaceId)
+        if (!workspaceRecord) {
+          return {
+            dispatched: false,
+            appRunId: null,
+            reason: `Workspace id "${action.workspaceId}" is not registered`
+          }
+        }
+        // Need a sender for adapter event streaming. The main renderer
+        // window is the natural target — iOS-initiated runs surface in
+        // the desktop transcript live. When no window is open (rare —
+        // background daemon-only mode), we skip dispatch.
+        const sender = mainWindow?.webContents
+        if (!sender || sender.isDestroyed()) {
+          return {
+            dispatched: false,
+            appRunId: null,
+            reason: 'No main window available for run streaming'
+          }
+        }
+        // Synthesize a minimal IpcMainInvokeEvent. Adapters access
+        // `event.sender` for streaming; other fields are unused in the
+        // run path, so a duck-typed shim is sufficient.
+        const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
+        const payload: AgentRunPayload = {
+          provider: assertProviderId(action.provider),
+          scope: 'chat',
+          workspace: workspaceRecord.path,
+          prompt: action.text,
+          appChatId: action.threadId,
+          approvalMode: action.approvalMode,
+          model: action.model
+        }
+        try {
+          const result = await dispatchAgentRun(payload, fakeEvent)
+          return {
+            dispatched: result.dispatched,
+            appRunId: result.appRunId || null,
+            reason: result.dispatched ? undefined : 'Run preflight failed or runtime profile error'
+          }
+        } catch (err) {
+          return {
+            dispatched: false,
+            appRunId: null,
+            reason: err instanceof Error ? err.message : String(err)
+          }
+        }
+      },
+      log: (line) => {
+        // eslint-disable-next-line no-console
+        console.log(line)
+      }
+    })
+    // Phase C3.6: daemon → Electron request router. Default policy denies
+    // every action ack request; set AGBENCH_BRIDGE_PERMISSIVE=1 for local
+    // end-to-end testing. Phase C4: also consults the workspace allowlist
+    // for prepare-start-turn decisions. Phase C-late: dispatches accepted
+    // actions through the executor for real effect (cancel run, etc.).
+    const bridgeActionRouter = BridgeActionRouter.fromEnvironment(
+      (line) => {
+        // eslint-disable-next-line no-console
+        console.log(line)
+      },
+      bridgeAllowlist,
+      bridgeActionExecutor
+    )
+    const bridgeDaemon = new BridgeDaemonClient({
+      onHello: (hello) => {
+        // eslint-disable-next-line no-console
+        console.log('[BridgeDaemon] hello:', JSON.stringify(hello))
+      },
+      onStderr: (text) => {
+        // eslint-disable-next-line no-console
+        console.error('[BridgeDaemon stderr]', text.trimEnd())
+      },
+      onExit: (code) => {
+        // eslint-disable-next-line no-console
+        console.log(`[BridgeDaemon] exited with code ${code ?? 'unknown'}`)
+      },
+      // Phase C3-late: surface daemon-pushed notifications. Today these are
+      // `bridge.didReceive*` from the QUIC transport (ActionWake, ActionRecord,
+      // PrepareStartTurn, WatchedThreads) plus arbitrary `bridge.testNotify`
+      // emissions. Logging only for now — Phase C-late will route into
+      // RunService / ApprovalService.
+      onNotification: (method, params) => {
+        // eslint-disable-next-line no-console
+        console.log(`[BridgeDaemon notif] ${method}`, JSON.stringify(params))
+      },
+      // Phase C3.6: daemon-issued requests (e.g. `bridge.requestActionAck`,
+      // `bridge.requestPrepareStartTurnAck`) flow into the router. The router
+      // returns a JSON object the client wraps into a JSON-RPC response and
+      // writes back on stdin; the daemon's `BridgeRequester` awaiter resumes
+      // and the typed Swift `BridgeActionAck` (or PrepareStartTurnAck) is
+      // built from it. Until C4 lands, every decision is deny-by-default.
+      onRequest: (method, params) => bridgeActionRouter.route(method, params)
+    })
+    bridgeDaemon.start().catch((err: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error('[BridgeDaemon] failed to start:', err instanceof Error ? err.message : String(err))
+    })
+
+    // Phase C-late: forward every RunEventBus event to the daemon. The
+    // sink uses the bus's fan-out infrastructure (designed for exactly
+    // this in Phase B) so adapter call sites don't change. The daemon
+    // re-publishes inbound `bridge.runEvent` notifications to any
+    // connected iOS devices via QUIC (Swift slice, separate).
+    //
+    // Subscribed only while the daemon is enabled — when daemon is off
+    // the bus runs with just the Electron IPC sink (legacy behavior).
+    const unsubscribeBridgeRunSink = runEventBus.subscribe(
+      makeBridgeRunEventSink({
+        notifier: { notify: (method, params) => bridgeDaemon.notify(method, params) },
+        log: process.env.AGBENCH_DEBUG_BUS === '1'
+          ? // eslint-disable-next-line no-console
+            (line) => console.log(line)
+          : undefined
+      })
+    )
+
+    // Ensure the daemon is torn down when the app quits.
+    app.on('will-quit', () => {
+      unsubscribeBridgeRunSink()
+      bridgeDaemon.dispose()
+    })
+  }
+
   const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
   recordStartupRecoveryEvents(startupRecoveryRecords)
   AppStore.recoverExpiredApprovalLedger()
@@ -7946,6 +8197,60 @@ app.whenReady().then(() => {
         message: `Renderer process exited: ${details.reason || 'unknown'}`,
       })
     })
+  })
+
+  // Bridge / iOS remote allowlist (Phase C4 admin surface)
+  // The four handlers below proxy to the in-process `RemoteWorkspaceAllowlist`
+  // which persists at `<userData>/bridge/remote-workspaces.json`. They are
+  // unconditionally registered so the renderer can manage allowlist entries
+  // even when the daemon is not running.
+  ipcMain.handle('bridge-allowlist-list', () => bridgeAllowlist.list())
+  ipcMain.handle(
+    'bridge-allowlist-upsert',
+    (_, entry: {
+      workspaceId: string
+      path: string
+      mode: 'read-only' | 'read-write'
+      allowedProviders: string[]
+      allowedApprovalModes: string[]
+      expiresAt?: number
+    }) => {
+      // Defensive validation — the renderer is trusted but we don't want a
+      // typo to silently land an unusable entry. Throw early with a clear
+      // message so the UI can surface it.
+      if (!entry || typeof entry !== 'object') {
+        throw new Error('bridge-allowlist-upsert: entry must be an object')
+      }
+      const workspaceId = requireNonEmptyString(entry.workspaceId, 'workspaceId')
+      const path = requireNonEmptyString(entry.path, 'path')
+      if (entry.mode !== 'read-only' && entry.mode !== 'read-write') {
+        throw new Error(`bridge-allowlist-upsert: mode must be 'read-only' or 'read-write' (got '${entry.mode}')`)
+      }
+      if (!Array.isArray(entry.allowedProviders) || !entry.allowedProviders.every((p) => typeof p === 'string')) {
+        throw new Error('bridge-allowlist-upsert: allowedProviders must be string[]')
+      }
+      if (!Array.isArray(entry.allowedApprovalModes) || !entry.allowedApprovalModes.every((p) => typeof p === 'string')) {
+        throw new Error('bridge-allowlist-upsert: allowedApprovalModes must be string[]')
+      }
+      if (entry.expiresAt !== undefined && (typeof entry.expiresAt !== 'number' || entry.expiresAt <= 0)) {
+        throw new Error('bridge-allowlist-upsert: expiresAt must be a positive number (ms since epoch)')
+      }
+      return bridgeAllowlist.upsert({
+        workspaceId,
+        path,
+        mode: entry.mode,
+        allowedProviders: entry.allowedProviders,
+        allowedApprovalModes: entry.allowedApprovalModes,
+        expiresAt: entry.expiresAt
+      })
+    }
+  )
+  ipcMain.handle('bridge-allowlist-remove', (_, workspaceId: string) => {
+    return bridgeAllowlist.remove(requireNonEmptyString(workspaceId, 'workspaceId'))
+  })
+  ipcMain.handle('bridge-allowlist-clear', () => {
+    bridgeAllowlist.clear()
+    return true
   })
 
   // Settings
@@ -8594,7 +8899,25 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
+  // Dispatch an agent run with explicit sender + event. Extracted Phase
+  // C-late from the `run-agent` IPC handler body so bridge-initiated
+  // (iOS) runs can use the same dispatch path. Returns the resolved
+  // appRunId on success (or after error handling fires — the run-id
+  // is generated regardless of preflight outcome).
+  //
+  // For bridge-initiated runs, the caller passes `mainWindow.webContents`
+  // as both `event.sender` and the `event` itself (a thin compatibility
+  // shim — adapters access `event.sender` for streaming, not the rest
+  // of the IpcMainInvokeEvent shape). The renderer's IPC subscribers see
+  // those events the same way they would for a renderer-initiated run,
+  // so the iOS-initiated run shows up in the desktop transcript live.
+  //
+  // The function never throws — adapter errors flow through
+  // `sendAgentCompatError` / `sendAgentCompatExit` to the sender.
+  const dispatchAgentRun = async (
+    payload: AgentRunPayload,
+    event: Electron.IpcMainInvokeEvent
+  ): Promise<{ dispatched: boolean; appRunId: string }> => {
     const normalizedPayload = normalizeAgentRunPayload(payload)
     normalizedPayload.appRunId = routeWithRunId(normalizedPayload.provider, normalizedPayload).appRunId
     try {
@@ -8603,13 +8926,18 @@ app.whenReady().then(() => {
       const route = routeWithRunId(normalizedPayload.provider, normalizedPayload)
       sendAgentCompatError(event.sender, normalizedPayload.provider, error instanceof Error ? error.message : String(error), route)
       sendAgentCompatExit(event.sender, normalizedPayload.provider, -1, route)
-      return
+      return { dispatched: false, appRunId: normalizedPayload.appRunId ?? '' }
     }
     const adapter = providerAdapters.require(normalizedPayload.provider)
     if (!(await ensureProviderRunPreflight(event.sender, normalizedPayload))) {
-      return
+      return { dispatched: false, appRunId: normalizedPayload.appRunId ?? '' }
     }
     await adapter.run({ event, payload: normalizedPayload })
+    return { dispatched: true, appRunId: normalizedPayload.appRunId ?? '' }
+  }
+
+  ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
+    await dispatchAgentRun(payload, event)
   })
 
   ipcMain.handle('cancel-agent-run', async (_, provider: ProviderId = 'gemini', runId?: string) => {
@@ -8617,7 +8945,34 @@ app.whenReady().then(() => {
     return providerAdapters.require(normalizedProvider).cancel(optionalString(runId))
   })
 
-  ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
+  // Process an approval response from any caller (renderer via IPC, iOS
+  // device via BridgeActionExecutor). Walks all five pending-approval
+  // registries; first match wins. Returns `true` if a pending approval
+  // was found and resolved, `false` if no registry held it (already
+  // resolved, expired, or never existed). Side effects on success:
+  //   - Durable run-event written for audit
+  //   - Approval ledger entry updated
+  //   - Map entry deleted
+  //   - runManager state cleared
+  //   - Provider-specific completion (resolve promise / send wire response /
+  //     kill child for cancel)
+  //
+  // Extracted Phase C-late from the `respond-agent-approval` IPC handler
+  // body so iOS-initiated approvals can use the exact same dispatch as
+  // the desktop renderer. Behavior is byte-identical to the previous
+  // handler.
+  const processAgentApprovalResponse = async (
+    requestId: string,
+    action: AgentApprovalAction,
+    options?: {
+      /** Typed user input. When the pending Codex method is
+       * `tool/requestUserInput`, this becomes the `answers` field; for
+       * `mcp/elicitation/request` it becomes the `content`. Ignored for
+       * other methods / providers. Empty/undefined preserves today's
+       * behavior (renderer-driven approvals don't pass typed answers). */
+      userInput?: string
+    }
+  ): Promise<boolean> => {
     const pendingMain = pendingMainApprovals.get(requestId)
     if (pendingMain) {
       const session = runManager.resolveApproval(requestId) || runManager.get(pendingMain.runId)
@@ -8781,7 +9136,9 @@ app.whenReady().then(() => {
     if (pending.method === 'mcp/elicitation/request') {
       codexClient.respond(pending.rpcId, {
         action: action === 'acceptForSession' ? 'accept' : action,
-        content: null,
+        // Phase C-late: typed user input lands as the `content` field when
+        // present. Undefined preserves the renderer-driven `null` behavior.
+        content: options?.userInput ?? null,
         _meta: null
       })
       return true
@@ -8789,7 +9146,16 @@ app.whenReady().then(() => {
 
     if (pending.method === 'tool/requestUserInput') {
       if (action === 'accept' || action === 'acceptForSession') {
-        codexClient.respond(pending.rpcId, { answers: {} })
+        // Phase C-late: when iOS provided a typed answer, surface it as
+        // `{answers: {default: <text>}}`. This is a best-guess single-
+        // question shape — Codex's protocol allows arbitrary keyed answers
+        // but renderer-side flows never produced typed answers (always
+        // empty `{}`), so we have no precedent to mirror. The shape is
+        // versioned by behavior: existing callers still pass nothing and
+        // get the legacy empty payload. The iOS app's actual question UI
+        // will pin the multi-key contract once it ships.
+        const answers = options?.userInput !== undefined ? { default: options.userInput } : {}
+        codexClient.respond(pending.rpcId, { answers })
       } else {
         codexClient.reject(pending.rpcId, `User ${action}ed Codex input request.`)
       }
@@ -8798,6 +9164,10 @@ app.whenReady().then(() => {
 
     codexClient.respond(pending.rpcId, { decision: action })
     return true
+  }
+
+  ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
+    return processAgentApprovalResponse(requestId, action)
   })
 
   ipcMain.handle('run-gemini', async (

@@ -1,4 +1,5 @@
 import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
+import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -162,6 +163,19 @@ declare global {
       onGeminiSessionData: (callback: (data: string) => void) => void
       onGeminiSessionExit: (callback: (code: number | null) => void) => void
       removeGeminiSessionListeners: () => void
+
+      // Bridge / iOS remote allowlist (Phase C4 admin surface)
+      bridgeAllowlistList: () => Promise<RemoteWorkspaceEntry[]>
+      bridgeAllowlistUpsert: (entry: {
+        workspaceId: string
+        path: string
+        mode: 'read-only' | 'read-write'
+        allowedProviders: string[]
+        allowedApprovalModes: string[]
+        expiresAt?: number
+      }) => Promise<RemoteWorkspaceEntry>
+      bridgeAllowlistRemove: (workspaceId: string) => Promise<boolean>
+      bridgeAllowlistClear: () => Promise<boolean>
 
       getSettings: () => Promise<AppSettings>
       updateSettings: (partial: Partial<AppSettings>) => Promise<void>

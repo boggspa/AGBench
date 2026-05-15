@@ -1,0 +1,159 @@
+import type Electron from 'electron'
+import type { ProviderId } from './store/types'
+
+/**
+ * Centralized fan-out for provider/run streaming events.
+ *
+ * Before this module existed, every place in `main/index.ts` that wanted to
+ * notify the renderer about an agent output / error / exit called
+ * `event.sender.send(channel, payload)` directly. That meant ~10 scattered
+ * call sites, with no way to add a second subscriber (e.g. a remote iOS
+ * bridge sink, a durable replay logger, or a telemetry hook) without
+ * patching each one.
+ *
+ * `RunEventBus` is the single publish point. The three legacy helpers
+ * (`sendAgentCompatLine` / `Error` / `Exit`) and the few direct-call sites
+ * all funnel through `runEventBus.publish(...)`, and any number of sinks can
+ * subscribe to observe events.
+ *
+ * The first subscriber is the Electron IPC sink — it preserves today's
+ * behavior of forwarding events to the renderer via `WebContents.send`.
+ * A second subscriber (debug logger, gated by `AGBENCH_DEBUG_BUS=1`) is
+ * registered during Phase B kickoff to prove fan-out works.
+ *
+ * Future remote-bridge work (Phase C) will register additional sinks
+ * (websocket / Tailscale transport) here, without changing publish call
+ * sites at all.
+ */
+
+export type RunEventChannel =
+  | 'agent-output'
+  | 'agent-error'
+  | 'agent-exit'
+  | 'gemini-output'
+  | 'gemini-error'
+  | 'gemini-exit'
+
+export interface RunEvent {
+  /** IPC channel this event would be published on. */
+  channel: RunEventChannel
+  /** Provider id (informational; redundant with the channel for gemini-*). */
+  provider: ProviderId
+  /** Already route-enriched + serializable payload. */
+  payload: unknown
+  /** Originating Electron WebContents, when the event came from an IPC handler.
+   * The built-in Electron IPC sink forwards to this. Remote sinks ignore it. */
+  sender?: Electron.WebContents
+  /** ISO timestamp at publish time. Useful for ordering + telemetry. */
+  publishedAt: string
+}
+
+export interface RunEventSink {
+  /** Unique identifier so the bus can warn on duplicate subscriptions and
+   * surface meaningful sink names in error messages. */
+  id: string
+  /** Optional filter — return `false` to skip this sink for a given event. */
+  filter?: (event: RunEvent) => boolean
+  /** Receive an event. Errors are caught + logged by the bus so one sink
+   * failure can't block the others. */
+  handle(event: RunEvent): void
+}
+
+class RunEventBus {
+  private sinks: Map<string, RunEventSink> = new Map()
+
+  /**
+   * Register a sink. Returns an unsubscribe function. Throws if a sink with
+   * the same id is already registered (prevents accidental double-subscribe).
+   */
+  subscribe(sink: RunEventSink): () => void {
+    if (this.sinks.has(sink.id)) {
+      throw new Error(`RunEventBus: sink "${sink.id}" is already subscribed`)
+    }
+    this.sinks.set(sink.id, sink)
+    return () => {
+      this.sinks.delete(sink.id)
+    }
+  }
+
+  /**
+   * Publish an event to all subscribed sinks. Sink errors are caught + logged;
+   * an exception in one sink does not block delivery to the others.
+   */
+  publish(event: Omit<RunEvent, 'publishedAt'> & { publishedAt?: string }): void {
+    const stamped: RunEvent = {
+      ...event,
+      publishedAt: event.publishedAt ?? new Date().toISOString()
+    }
+    for (const sink of this.sinks.values()) {
+      try {
+        if (sink.filter && !sink.filter(stamped)) continue
+        sink.handle(stamped)
+      } catch (err) {
+        // Use bare console here — the bus is a foundational module and
+        // shouldn't take a dependency on app-level logging utilities.
+        // eslint-disable-next-line no-console
+        console.error(`[RunEventBus] sink "${sink.id}" threw on channel "${stamped.channel}":`, err)
+      }
+    }
+  }
+
+  /** Diagnostics: list currently-subscribed sink ids. */
+  listSinks(): string[] {
+    return Array.from(this.sinks.keys())
+  }
+
+  /** Diagnostics / tests: drop all subscribers. */
+  reset(): void {
+    this.sinks.clear()
+  }
+}
+
+export const runEventBus = new RunEventBus()
+
+/**
+ * Built-in sink that preserves the legacy "send to the originating
+ * WebContents" behavior. Forwards `event.payload` to `event.sender` over the
+ * `event.channel`. Skips events with no sender (remote-only events) and
+ * skips senders that have been destroyed (e.g. window closed mid-run).
+ */
+export function makeElectronIpcSink(): RunEventSink {
+  return {
+    id: 'electron-ipc',
+    handle(event) {
+      const sender = event.sender
+      if (!sender) return
+      try {
+        if (typeof sender.isDestroyed === 'function' && sender.isDestroyed()) return
+      } catch {
+        return
+      }
+      sender.send(event.channel, event.payload)
+    }
+  }
+}
+
+/**
+ * Debug subscriber. Logs a compact one-line summary per event so we can
+ * verify the bus is actually fanning out. Gated externally — register only
+ * when `AGBENCH_DEBUG_BUS=1` (or similar) is set, so production traffic stays
+ * quiet.
+ */
+export function makeDebugLoggerSink(): RunEventSink {
+  return {
+    id: 'debug-logger',
+    handle(event) {
+      let summary: string
+      if (event.payload && typeof event.payload === 'object') {
+        const keys = Object.keys(event.payload as Record<string, unknown>)
+        summary = keys.slice(0, 4).join(',') + (keys.length > 4 ? `…(+${keys.length - 4})` : '')
+      } else {
+        summary = String(event.payload).slice(0, 60)
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[RunEventBus] ${event.channel} provider=${event.provider} at=${event.publishedAt} keys=${summary}`
+      )
+    }
+  }
+}

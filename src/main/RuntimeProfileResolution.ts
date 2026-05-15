@@ -1,0 +1,37 @@
+import type { ChatRecord, ProviderId, RuntimeProfile } from './store/types'
+
+/**
+ * Runtime-profile resolution (Phase B3.4 extraction).
+ *
+ * Pure function that picks which `RuntimeProfile` applies to a given chat +
+ * provider, given:
+ *
+ *   1. Per-chat user selection (held in the renderer as
+ *      `selectedRuntimeProfileByChatId`, would be a remote-side state in the
+ *      iOS bridge).
+ *   2. Persisted choice on `chat.providerMetadata.runtimeProfileId`.
+ *   3. The default — first profile matching the provider.
+ *
+ * Extracted from `App.tsx:getRuntimeProfileIdForChat` so the future iOS
+ * bridge can answer "what runtime profile should this request use?" without
+ * forking the resolution rules.
+ */
+export function resolveRuntimeProfileIdForChat(input: {
+  chat?: ChatRecord | null
+  provider: ProviderId
+  /** Renderer-side per-chat override (chat appChatId → profile id). May be
+   * an empty map for callers that don't carry session-scoped overrides. */
+  selectionByChatId?: Record<string, string>
+  /** All available profiles. The default (provider match) is picked from this list. */
+  profiles: RuntimeProfile[]
+}): string | undefined {
+  const { chat, provider, selectionByChatId, profiles } = input
+  const chatId = chat?.appChatId
+  const sessionOverride = chatId && selectionByChatId ? selectionByChatId[chatId] : undefined
+  const metadataRuntimeProfileId = typeof chat?.providerMetadata?.runtimeProfileId === 'string'
+    ? chat.providerMetadata.runtimeProfileId
+    : undefined
+  const providerDefault = profiles.find((profile) => profile.provider === provider)?.id
+
+  return sessionOverride || metadataRuntimeProfileId || providerDefault
+}

@@ -15,6 +15,13 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
+import {
+  DEFAULT_CONTEXT_TURNS,
+  clampContextTurns,
+  composeRunPrompt
+} from '../../main/PromptComposition'
+import { findNextRunnableQueueIndex } from '../../main/RunQueue'
+import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
 import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLane } from './lib/RunLanes'
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 
@@ -720,10 +727,8 @@ type GeminiMemoryFile = {
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|avif|tiff|tif|svg|jfif)(\?.*)?$/i
 const MAX_IMAGE_ATTACHMENTS = 5
 const MEMORY_PREVIEW_CHARS = 6000
-const DEFAULT_CONTEXT_TURNS = 6
-const MAX_CONTEXT_TURNS = 20
-const MAX_CONTEXT_CHARS_PER_TURN = 420
-const MAX_CONTEXT_BLOCK_CHARS = 6000
+// DEFAULT_CONTEXT_TURNS, MAX_CONTEXT_TURNS moved to src/main/PromptComposition.ts.
+// MAX_CONTEXT_CHARS_PER_TURN, MAX_CONTEXT_BLOCK_CHARS moved to src/main/PromptComposition.ts.
 const DEFAULT_FILE_EDITOR_WIDTH = 390
 const MIN_RIGHT_PANEL_WIDTH = 300
 const MAX_RIGHT_PANEL_WIDTH = 720
@@ -1919,10 +1924,7 @@ const normalizeGeminiResumeTarget = (value?: string): string | undefined => {
   return target && /^[a-zA-Z0-9][a-zA-Z0-9._:@/-]{0,511}$/.test(target) ? target : undefined
 }
 
-const sanitizeContextText = (value: string, maxLength: number): string => {
-  const normalized = value.replace(/\s+/g, ' ').trim()
-  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`
-}
+// sanitizeContextText moved to `src/main/PromptComposition.ts` and re-exported below.
 
 // (Previously: `renderGeminiMessage(text)` returned `<MarkdownMessage content={text} />`.
 // Removed — the transcript now calls `<MarkdownMessage content chat>` directly so
@@ -2415,17 +2417,7 @@ const extractModelUsageEntriesFromStats = (stats: any, fallbackModel: string): U
   }]
 }
 
-const clampContextTurns = (value: number | undefined | null): number => {
-  const parsed = Number(value)
-  if (!Number.isFinite(parsed)) {
-    return DEFAULT_CONTEXT_TURNS
-  }
-  const integer = Math.trunc(parsed)
-  if (integer <= 0) {
-    return 0
-  }
-  return Math.max(1, Math.min(MAX_CONTEXT_TURNS, integer))
-}
+// clampContextTurns moved to `src/main/PromptComposition.ts` and re-exported below.
 
 const clampPanelWidth = (value: number): number => {
   return Math.max(MIN_RIGHT_PANEL_WIDTH, Math.min(MAX_RIGHT_PANEL_WIDTH, Math.round(value)))
@@ -2499,53 +2491,9 @@ const clampGeminiTerminalHeight = (value: number): number => {
   return Math.max(MIN_GEMINI_TERMINAL_HEIGHT, Math.min(maxHeight, Math.round(value)))
 }
 
-const buildConversationContextBlock = (messages: ChatMessage[], maxTurns: number, latestPrompt: string): string => {
-  if (maxTurns <= 0) {
-    return ''
-  }
-
-  const sanitizedLatestPrompt = latestPrompt.trim()
-  const relevantMessages = messages.filter((message) =>
-    (message.role === 'user' || message.role === 'assistant') && Boolean(message.content && message.content.trim())
-  )
-
-  let historyMessages = relevantMessages
-  const lastMessage = historyMessages[historyMessages.length - 1]
-  if (sanitizedLatestPrompt && lastMessage && lastMessage.role === 'user' && lastMessage.content.trim() === sanitizedLatestPrompt) {
-    historyMessages = historyMessages.slice(0, -1)
-  }
-
-  if (historyMessages.length === 0) {
-    return ''
-  }
-
-  const windowStart = Math.max(0, historyMessages.length - (maxTurns * 2))
-  const windowedMessages = historyMessages.slice(windowStart)
-  if (windowedMessages.length === 0) {
-    return ''
-  }
-
-  const lines = windowedMessages.map((item) =>
-    `${item.role === 'user' ? 'User' : 'Gemini'}: ${sanitizeContextText(item.content, MAX_CONTEXT_CHARS_PER_TURN)}`
-  )
-
-  const contextBlock = [
-    `\n\nConversation context (last ${Math.min(maxTurns, Math.ceil(windowedMessages.length / 2))} turn(s)):`,
-    ...lines
-  ].join('\n')
-
-  if (contextBlock.length <= MAX_CONTEXT_BLOCK_CHARS) {
-    return contextBlock
-  }
-
-  return `${contextBlock.slice(0, MAX_CONTEXT_BLOCK_CHARS - 18)}\n[context truncated]`
-}
-
-const appendConversationContext = (prompt: string, messages: ChatMessage[], maxTurns: number, latestPrompt: string): string => {
-  const context = buildConversationContextBlock(messages, maxTurns, latestPrompt)
-  if (!context) return prompt
-  return `${context}\nCurrent user request:\n${prompt}`
-}
+// Prompt-composition helpers moved to `src/main/PromptComposition.ts` (Phase B3 step 1).
+// Re-exported below from the canonical module so existing call sites keep working
+// without an import-statement migration; future call sites should import directly.
 
 const MAX_REVIEW_DIFF_CHARS = 90000
 
@@ -3526,13 +3474,14 @@ function App(): React.JSX.Element {
     setSelectedRuntimeProfileByChatId(prev => ({ ...prev, [chatId]: runtimeProfileId }))
   }
   const getRuntimeProfileIdForChat = (chat: ChatRecord | null | undefined, provider: ProviderId): string | undefined => {
-    const chatId = chat?.appChatId
-    const metadataRuntimeProfileId = typeof chat?.providerMetadata?.runtimeProfileId === 'string'
-      ? chat.providerMetadata.runtimeProfileId
-      : undefined
-    return (chatId ? selectedRuntimeProfileByChatId[chatId] : undefined) ||
-      metadataRuntimeProfileId ||
-      runtimeProfiles.find((profile) => profile.provider === provider)?.id
+    // Resolution rules live in main (Phase B3.4 extraction) so the future
+    // iOS bridge can answer the same question without forking logic.
+    return resolveRuntimeProfileIdForChat({
+      chat: chat || null,
+      provider,
+      selectionByChatId: selectedRuntimeProfileByChatId,
+      profiles: runtimeProfiles
+    })
   }
 
   useEffect(() => {
@@ -6156,60 +6105,42 @@ function App(): React.JSX.Element {
       ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {})
     }
     chatToUpdate.runs = [...(chatToUpdate.runs || []), newRun]
-    // Kimi's Wire protocol --resume only restores a session token, not the actual
-    // conversation transcript, so the model loses prior context across turns. To
-    // make Kimi behave like the other providers we always append a compact
-    // conversation-context block for Kimi runs (whether or not we have a resume
-    // session id). Gemini still relies on its CLI's resume to carry context.
-    const kimiNeedsContextInjection = runProvider === 'kimi'
-    const geminiNeedsContextInjection = runProvider === 'gemini' && !resumeSessionId
-    const shouldAppendContextForRun = kimiNeedsContextInjection || geminiNeedsContextInjection
-    let contextTurnsForRun = shouldAppendContextForRun ? clampContextTurns(chatContextTurns) : 0
-    let contextualPrompt = shouldAppendContextForRun
-      ? appendConversationContext(finalPrompt, chatToUpdate.messages, contextTurnsForRun, finalPrompt)
-      : finalPrompt
-    let contextApplicationLog = kimiNeedsContextInjection
-      ? `Context turns: ${contextTurnsForRun} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
-      : runProvider !== 'gemini'
-        ? `Context turns: 0 (${getProviderLabel(runProvider)} provider/session history is authoritative when available)`
-        : resumeSessionId
-          ? 'Context turns: 0 (resuming Gemini CLI session context)'
-          : `Context turns: ${contextTurnsForRun} (sending compact context + current request)`
-
-    if (runProvider === 'codex') {
-      const lastCompletedModel = getLastCompletedCodexRunModel(runChat)
-      const previousModelKey = normalizeProviderModelKey(lastCompletedModel)
-      const nextModelKey = normalizeProviderModelKey(modelToPass)
-      const hasCompletedWork = Boolean(lastCompletedModel)
-      const modelChangedAfterWork = hasCompletedWork && previousModelKey && nextModelKey && previousModelKey !== nextModelKey
-      const handoffKey = `${previousModelKey}->${nextModelKey}`
-      const appliedKeys = getCodexModelContextAppliedKeys(runChat)
-
-      if (modelChangedAfterWork && !appliedKeys.includes(handoffKey)) {
-        contextTurnsForRun = clampContextTurns(chatContextTurns)
-        contextualPrompt = appendConversationContext(finalPrompt, chatToUpdate.messages, contextTurnsForRun, finalPrompt)
-        contextApplicationLog = `Context turns: ${contextTurnsForRun} (Codex model changed from ${lastCompletedModel} to ${modelToPass}; applying chat context once)`
-        chatToUpdate.providerMetadata = {
-          ...(chatToUpdate.providerMetadata || {}),
-          codexModelContextAppliedKeys: [...appliedKeys, handoffKey],
-          lastCodexModelContextHandoffAt: new Date().toISOString()
-        }
-        setChatContextNotice({
-          id: `${Date.now()}-${handoffKey}`,
-          message: `Chat context is being applied once for the Codex model change: ${lastCompletedModel} -> ${modelToPass}.`
-        })
+    // Compose the outgoing prompt via the shared, pure-function path. Per-provider
+    // context-injection rules (Kimi always injects, Gemini skips when resuming,
+    // Codex injects once on model handoff, Gemini gets the write-tool preamble)
+    // all live in `src/main/PromptComposition.ts:composeRunPrompt` now. The
+    // function returns codex-handoff bookkeeping and an optional UI notice as
+    // data; we apply those side effects locally below.
+    const lastCompletedCodexModel = runProvider === 'codex' ? getLastCompletedCodexRunModel(runChat) : null
+    const codexHandoffsApplied = runProvider === 'codex' ? getCodexModelContextAppliedKeys(runChat) : []
+    const composed = composeRunPrompt({
+      provider: runProvider,
+      finalPrompt,
+      messages: chatToUpdate.messages,
+      chatContextTurns,
+      resumeSessionId,
+      lastCompletedCodexModel,
+      nextModel: modelToPass,
+      codexHandoffsApplied,
+      isGlobalRun,
+      approvalMode: modeToPass,
+      providerLabel: getProviderLabel(runProvider)
+    })
+    let contextTurnsForRun = composed.contextTurnsApplied
+    let contextualPrompt = composed.contextualPrompt
+    let contextApplicationLog = composed.applicationLog
+    if (composed.codexHandoffApplied) {
+      chatToUpdate.providerMetadata = {
+        ...(chatToUpdate.providerMetadata || {}),
+        codexModelContextAppliedKeys: [...codexHandoffsApplied, composed.codexHandoffApplied.handoffKey],
+        lastCodexModelContextHandoffAt: composed.codexHandoffApplied.appliedAt
       }
     }
-
-    if (runProvider === 'gemini' && !isGlobalRun && modeToPass !== 'plan') {
-      const geminiWriteToolPreamble = [
-        'AGBench runtime note: this Gemini workspace run is write-capable.',
-        'Use the AGBench MCP tools directly for file changes: read_file, list_directory, write_file, replace, and run_shell_command.',
-        'If Gemini exposes MCP-qualified names, use agentbench__read_file, agentbench__list_directory, agentbench__write_file, agentbench__replace, and agentbench__run_shell_command.',
-        'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit AGBench write tools.',
-        'If any of those tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
-      ].join('\n')
-      contextualPrompt = `${geminiWriteToolPreamble}\n\n${contextualPrompt}`
+    if (composed.uiNoticeMessage) {
+      setChatContextNotice({
+        id: `${Date.now()}-${composed.codexHandoffApplied?.handoffKey || 'context'}`,
+        message: composed.uiNoticeMessage
+      })
     }
     
     const runChatId = chatToUpdate.appChatId
@@ -7446,7 +7377,11 @@ function App(): React.JSX.Element {
   useEffect(() => {
     if (queuedRuns.length === 0) return
 
-    const nextIndex = queuedRuns.findIndex((run) => !isProviderBusy(run.provider))
+    // Pure scheduling decision lives in main (Phase B3.3 extraction). The
+    // renderer pump still orchestrates the lease + execute side effects, but
+    // the "which job runs next" choice is now shared with future remote
+    // pumpers via `findNextRunnableQueueIndex`.
+    const nextIndex = findNextRunnableQueueIndex(queuedRuns, isProviderBusy)
     if (nextIndex < 0) return
 
     const nextRun = queuedRuns[nextIndex]

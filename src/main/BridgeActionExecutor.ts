@@ -1,0 +1,343 @@
+import type {
+  BridgeApprovalReplyAction,
+  BridgeCancelRunAction,
+  BridgeComposerPromptAction,
+  BridgeQuestionRejectAction,
+  BridgeQuestionReplyAction,
+  BridgeRegisterApnsTokenAction
+} from './BridgeActionPayload'
+
+/**
+ * BridgeActionExecutor — Phase C-late execution surface.
+ *
+ * BridgeActionRouter answers the **policy** question: "should we let this
+ * iOS action through?" (allowlist + payload validity). The executor
+ * answers the **dispatch** question: "given that we are letting it
+ * through, what does the desktop actually DO?"
+ *
+ * Splitting policy from execution keeps:
+ *   - The router thin and easy to test (no service mocking needed).
+ *   - Service integrations independently swappable. Each `execute*`
+ *     method can be wired (or rewired) without touching policy code.
+ *   - A clear contract for what's "done" vs "scaffolded": each method
+ *     returns `executed: boolean` so the router can tell iOS the
+ *     difference between "policy-denied" and "policy-allowed but the
+ *     wiring isn't done yet".
+ *
+ * Today's slice wires `executeCancelRun` for real (cleanest dispatch
+ * surface — single line through `providerAdapters.cancel`). The other
+ * four variants return `executed: false, message: 'not yet implemented'`.
+ * Each becomes its own focused slice as the underlying main-process
+ * service surface stabilizes (the approval-response handler is 182
+ * lines deep and needs its own extraction before bridge wiring).
+ */
+
+export interface BridgeActionExecutionResult {
+  /** Whether the action's real effect was applied (run canceled,
+   * approval resolved, prompt sent, etc.). When false, the action was
+   * authorized by policy but the dispatch path isn't yet wired. */
+  executed: boolean
+  /** Human-readable message that surfaces in the iOS ack. */
+  message: string
+  /** Optional structured data the iOS UI can use to navigate (e.g. the
+   * new runId after a composerPrompt is dispatched). */
+  data?: Record<string, unknown>
+}
+
+export interface BridgeActionExecutor {
+  executeApprovalReply(action: BridgeApprovalReplyAction): Promise<BridgeActionExecutionResult>
+  executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult>
+  executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult>
+  executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
+  executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
+  executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult>
+}
+
+/**
+ * NoopActionExecutor — every method returns `executed: false`. Used by
+ * the router when no real executor is configured (tests, or main-process
+ * states where service dispatch isn't yet available). The router
+ * propagates the message back to iOS verbatim so the user sees
+ * "scaffolded, not wired" instead of a generic deny.
+ */
+export class NoopActionExecutor implements BridgeActionExecutor {
+  async executeApprovalReply(action: BridgeApprovalReplyAction): Promise<BridgeActionExecutionResult> {
+    return notWired('approvalReply', action.toolCallId)
+  }
+  async executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult> {
+    return notWired('questionReply', action.promptId)
+  }
+  async executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult> {
+    return notWired('questionReject', action.promptId)
+  }
+  async executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult> {
+    return notWired('composerPrompt', action.threadId)
+  }
+  async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
+    return notWired('cancelRun', action.runId)
+  }
+  async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
+    return notWired('registerApnsToken', action.pairID)
+  }
+}
+
+function notWired(kind: string, id: string): BridgeActionExecutionResult {
+  return {
+    executed: false,
+    message: `Action "${kind}" (id=${id}) authorized but execution not yet wired`
+  }
+}
+
+/**
+ * MainProcessActionExecutor — the production implementation that
+ * dispatches into Electron's main-process services.
+ *
+ * Wired today:
+ *   - `executeCancelRun` → `cancelRunFn(provider, runId)` which delegates
+ *     to the provider adapter's `cancel` method (same dispatch path the
+ *     `cancel-agent-run` IPC handler uses).
+ *
+ * Scaffolded (return `executed: false`):
+ *   - `executeApprovalReply` — wires after the `respond-agent-approval`
+ *     IPC handler body is extracted into a callable. Owns ~5 provider-
+ *     specific pending-approval registries; that extraction is its own
+ *     slice.
+ *   - `executeQuestionReply` / `executeQuestionReject` — tool-driven
+ *     prompt-reply paths; provider-specific (Kimi/Gemini/Codex each have
+ *     their own ask-question shapes).
+ *   - `executeComposerPrompt` — needs the prompt-composition + run-start
+ *     surface from main (currently distributed across IPC handlers
+ *     `run-agent` etc.).
+ */
+export interface MainProcessActionExecutorDependencies {
+  /** Callback the executor uses to cancel a run. Same dispatch surface
+   * the `cancel-agent-run` IPC handler uses. */
+  cancelRunFn: (provider: string, runId: string) => Promise<unknown>
+  /** Callback the executor uses to resolve a pending approval or question.
+   * Wraps the extracted `processAgentApprovalResponse` so iOS-initiated
+   * decisions walk the same registries as renderer-initiated ones.
+   * Returns `true` when the entry was found and processed, `false` when
+   * no pending request matched (already resolved / expired / never
+   * existed). The `options.userInput` field lets question-reply paths
+   * pass typed answers through to Codex's `tool/requestUserInput` /
+   * `mcp/elicitation/request` methods. */
+  respondApprovalFn?: (
+    requestId: string,
+    action: 'accept' | 'acceptForSession' | 'decline',
+    options?: { userInput?: string }
+  ) => Promise<boolean>
+  /** Callback the executor uses to dispatch an iOS-initiated agent run.
+   * The caller in main/index.ts looks up the workspace path by id,
+   * builds an `AgentRunPayload`, and calls `dispatchAgentRun` with
+   * `mainWindow.webContents` as the sender (so streaming events show
+   * up in the desktop renderer's transcript view). Returns the appRunId
+   * the run was dispatched as, or null when the run could not be
+   * dispatched (workspace not found, main window missing, etc.). */
+  composerPromptFn?: (action: BridgeComposerPromptAction) => Promise<{
+    dispatched: boolean
+    appRunId: string | null
+    reason?: string
+  }>
+  /** Callback the executor uses to register an iOS device's APNs token.
+   * The caller in main/index.ts forwards to `BridgeApnsTokenStore.upsert`.
+   * Returns true on success, false (with a reason) on validation failure. */
+  registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
+    registered: boolean
+    reason?: string
+  }>
+  log?: (line: string) => void
+}
+
+export class MainProcessActionExecutor implements BridgeActionExecutor {
+  private readonly deps: MainProcessActionExecutorDependencies
+  private readonly log: (line: string) => void
+
+  constructor(deps: MainProcessActionExecutorDependencies) {
+    this.deps = deps
+    this.log = deps.log ?? (() => {})
+  }
+
+  async executeApprovalReply(action: BridgeApprovalReplyAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.respondApprovalFn) {
+      this.log(`[BridgeActionExecutor] approvalReply has no respondApprovalFn — toolCallId=${action.toolCallId}`)
+      return notWired('approvalReply', action.toolCallId)
+    }
+    this.log(`[BridgeActionExecutor] approvalReply toolCallId=${action.toolCallId} decision=${action.decision}`)
+    try {
+      const resolved = await this.deps.respondApprovalFn(action.toolCallId, action.decision)
+      if (resolved) {
+        return {
+          executed: true,
+          message: `Approval "${action.toolCallId}" resolved as "${action.decision}"`,
+          data: { toolCallId: action.toolCallId, decision: action.decision }
+        }
+      }
+      return {
+        executed: false,
+        message: `No pending approval found for toolCallId="${action.toolCallId}" (already resolved, expired, or never registered)`
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] approvalReply failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Approval dispatch failed: ${errMessage}`
+      }
+    }
+  }
+
+  async executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.respondApprovalFn) {
+      this.log(`[BridgeActionExecutor] questionReply has no respondApprovalFn — promptId=${action.promptId}`)
+      return notWired('questionReply', action.promptId)
+    }
+    this.log(`[BridgeActionExecutor] questionReply promptId=${action.promptId} answerLen=${action.answer.length}`)
+    try {
+      const resolved = await this.deps.respondApprovalFn(action.promptId, 'accept', {
+        userInput: action.answer
+      })
+      if (resolved) {
+        return {
+          executed: true,
+          message: `Question "${action.promptId}" answered`,
+          data: { promptId: action.promptId, answerLength: action.answer.length }
+        }
+      }
+      return {
+        executed: false,
+        message: `No pending question found for promptId="${action.promptId}" (already resolved, expired, or never registered)`
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] questionReply failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Question reply dispatch failed: ${errMessage}`
+      }
+    }
+  }
+
+  async executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.respondApprovalFn) {
+      this.log(`[BridgeActionExecutor] questionReject has no respondApprovalFn — promptId=${action.promptId}`)
+      return notWired('questionReject', action.promptId)
+    }
+    this.log(`[BridgeActionExecutor] questionReject promptId=${action.promptId}`)
+    try {
+      const resolved = await this.deps.respondApprovalFn(action.promptId, 'decline')
+      if (resolved) {
+        return {
+          executed: true,
+          message: `Question "${action.promptId}" rejected`,
+          data: { promptId: action.promptId }
+        }
+      }
+      return {
+        executed: false,
+        message: `No pending question found for promptId="${action.promptId}" (already resolved, expired, or never registered)`
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] questionReject failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Question reject dispatch failed: ${errMessage}`
+      }
+    }
+  }
+
+  async executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.composerPromptFn) {
+      this.log(`[BridgeActionExecutor] composerPrompt has no composerPromptFn — threadId=${action.threadId}`)
+      return notWired('composerPrompt', action.threadId)
+    }
+    this.log(`[BridgeActionExecutor] composerPrompt provider=${action.provider} ws=${action.workspaceId} thread=${action.threadId}`)
+    try {
+      const result = await this.deps.composerPromptFn(action)
+      if (result.dispatched && result.appRunId) {
+        return {
+          executed: true,
+          message: `Run dispatched for workspace "${action.workspaceId}" (provider="${action.provider}"); appRunId=${result.appRunId}`,
+          data: {
+            appRunId: result.appRunId,
+            workspaceId: action.workspaceId,
+            threadId: action.threadId,
+            provider: action.provider
+          }
+        }
+      }
+      return {
+        executed: false,
+        message: `Composer prompt could not be dispatched${result.reason ? `: ${result.reason}` : ''}`
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] composerPrompt failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Composer prompt dispatch failed: ${errMessage}`
+      }
+    }
+  }
+
+  async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
+    this.log(`[BridgeActionExecutor] cancelRun provider=${action.provider} runId=${action.runId}`)
+    try {
+      const result = await this.deps.cancelRunFn(action.provider, action.runId)
+      return {
+        executed: true,
+        message: `Run "${action.runId}" cancellation dispatched to provider "${action.provider}"`,
+        data: { cancelResult: serializableOrNull(result), runId: action.runId, provider: action.provider }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] cancelRun failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `Cancel dispatch failed: ${errMessage}`
+      }
+    }
+  }
+
+  async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.registerApnsTokenFn) {
+      this.log(`[BridgeActionExecutor] registerApnsToken has no registerApnsTokenFn — pairID=${action.pairID}`)
+      return notWired('registerApnsToken', action.pairID)
+    }
+    this.log(`[BridgeActionExecutor] registerApnsToken pairID=${action.pairID} env=${action.env}`)
+    try {
+      const result = await this.deps.registerApnsTokenFn(action)
+      if (result.registered) {
+        return {
+          executed: true,
+          message: `APNs token registered for pairID="${action.pairID}" (env=${action.env})`,
+          data: { pairID: action.pairID, env: action.env }
+        }
+      }
+      return {
+        executed: false,
+        message: `APNs token registration declined${result.reason ? `: ${result.reason}` : ''}`
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] registerApnsToken failed: ${errMessage}`)
+      return {
+        executed: false,
+        message: `APNs token registration failed: ${errMessage}`
+      }
+    }
+  }
+}
+
+/** Best-effort coercion of a service-returned value into something
+ * JSON-safe for the executor result. Strings/numbers/booleans/objects
+ * pass through; functions / undefined become null. */
+function serializableOrNull(value: unknown): unknown {
+  if (value === undefined || typeof value === 'function') return null
+  try {
+    // Round-trip through JSON to strip non-serializable bits.
+    return JSON.parse(JSON.stringify(value))
+  } catch {
+    return null
+  }
+}

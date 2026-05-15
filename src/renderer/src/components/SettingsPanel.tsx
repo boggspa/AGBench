@@ -31,6 +31,7 @@ import {
   resolveComposerFontFamily,
   type TypefaceOption
 } from '../lib/typefaceOptions';
+import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel';
 
 interface SettingsPanelProps {
   mode: AppearanceMode;
@@ -181,7 +182,7 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ];
 
-type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system';
+type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system' | 'remote-workspaces';
 
 type LocalFontData = {
   family?: string;
@@ -302,6 +303,7 @@ export function SettingsPanel({
     { id: 'behavior', label: 'Behavior' },
     { id: 'providers', label: 'Providers' },
     { id: 'system', label: 'System' },
+    { id: 'remote-workspaces', label: 'Remote Workspaces' },
   ];
 
   return (
@@ -966,6 +968,9 @@ export function SettingsPanel({
       </div>
 
       </> /* end system */}
+
+      {/* ── Remote Workspaces (Phase C4) ─────────────────────────────── */}
+      {activeTab === 'remote-workspaces' && <RemoteWorkspacesPanel />}
 
       </div>{/* end settings-panel-content */}
     </div>

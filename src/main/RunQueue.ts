@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
+import type { ProviderId, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
 
 export type RunQueueJobInput = Omit<
   RunQueueJob,
@@ -183,4 +183,24 @@ export function sortRunQueueJobs(jobs: RunQueueJob[]): RunQueueJob[] {
     if (a.priority !== b.priority) return b.priority - a.priority
     return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
   })
+}
+
+/**
+ * Scheduling decision: find the first runnable job whose provider isn't
+ * currently busy. Pure function — the caller supplies an `isProviderBusy`
+ * predicate so this stays decoupled from React refs / RunManager singletons.
+ *
+ * Extracted from the renderer's pump effect (App.tsx ~7374) so the same
+ * decision can run in main (for future bridge-driven dequeues) without
+ * forking the logic.
+ *
+ * Returns the index into `jobs` of the chosen job, or -1 when no job is
+ * runnable (queue empty, or every queued job's provider is already busy).
+ */
+export function findNextRunnableQueueIndex<T extends { provider: ProviderId }>(
+  jobs: T[],
+  isProviderBusy: (provider: ProviderId) => boolean
+): number {
+  if (!jobs || jobs.length === 0) return -1
+  return jobs.findIndex((job) => !isProviderBusy(job.provider))
 }
