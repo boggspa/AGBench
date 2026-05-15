@@ -107,15 +107,39 @@ export class BridgeDaemonClient {
     this.requestTimeoutMs = options.requestTimeoutMs ?? 10_000
   }
 
-  /** Resolve the daemon binary location. Dev builds live alongside the
-   * Swift package; production bundles will ship the binary as a resource
-   * and override via `options.binaryPath`. */
+  /** Resolve the daemon binary location.
+   *
+   * Resolution order:
+   *   1. Explicit `options.binaryPath` (tests / smokes override this).
+   *   2. Packaged Electron build: `process.resourcesPath/bridge/
+   *      GuiGeminiBridgeDaemon`. `electron-builder.yml`'s mac
+   *      `extraResources` block places the release binary there, and
+   *      `scripts/build-bridge-daemon.cjs` builds it just before
+   *      electron-builder packs.
+   *   3. Dev tree: `swift/GuiGeminiBridge/.build/debug/...` (after
+   *      `swift build`) or `.../release/...` (after `swift build -c
+   *      release`).
+   *
+   * Returning a non-existent path is acceptable — `start()` checks
+   * existsSync and surfaces a clear error so the developer can run
+   * `swift build` (or check that the packaged binary embedded). */
   private resolveBinaryPath(): string {
     if (this.options.binaryPath) return this.options.binaryPath
-    // Resolve relative to repo root: src/main/ → ../../swift/GuiGeminiBridge/...
-    const devPath = join(__dirname, '..', '..', 'swift', 'GuiGeminiBridge', '.build', 'debug', 'GuiGeminiBridgeDaemon')
-    if (existsSync(devPath)) return devPath
-    // Release-build fallback (still dev — production wiring is Phase C-late).
+
+    // Packaged build: check the embedded resource path. process.resourcesPath
+    // is set in any Electron main process; in a packaged .app it points
+    // inside the bundle (e.g. .../AGBench.app/Contents/Resources). In
+    // dev (electron-vite), it points at electron's vendored resources
+    // and our daemon won't be there — fall through to the dev path.
+    if (process.resourcesPath) {
+      const bundled = join(process.resourcesPath, 'bridge', 'GuiGeminiBridgeDaemon')
+      if (existsSync(bundled)) return bundled
+    }
+
+    // Dev: prefer debug, fall back to release. Path is relative to
+    // src/main/ → repo root.
+    const devDebug = join(__dirname, '..', '..', 'swift', 'GuiGeminiBridge', '.build', 'debug', 'GuiGeminiBridgeDaemon')
+    if (existsSync(devDebug)) return devDebug
     return join(__dirname, '..', '..', 'swift', 'GuiGeminiBridge', '.build', 'release', 'GuiGeminiBridgeDaemon')
   }
 

@@ -20,6 +20,23 @@ async function validateNativeModules(context) {
   }
 
   console.log(`Validated node-pty native binding: ${nodePtyBindings[0]}`)
+
+  // macOS-only: confirm the Swift GuiGeminiBridgeDaemon was embedded
+  // as an extraResource. The mac build chains run
+  // `prebuild:bridge-daemon` before electron-builder; this is the safety
+  // net that surfaces a clear error if the binary failed to land in the
+  // bundle for any reason (broken swift toolchain, missing config, etc.).
+  if (platform === 'darwin') {
+    const daemonPath = path.join(resourcesDir, 'bridge', 'GuiGeminiBridgeDaemon')
+    if (!fs.existsSync(daemonPath)) {
+      throw new Error(`GuiGeminiBridgeDaemon was not packaged at ${daemonPath}. Did \`npm run prebuild:bridge-daemon\` run before electron-builder?`)
+    }
+    const stat = fs.statSync(daemonPath)
+    if (!stat.isFile() || stat.size === 0) {
+      throw new Error(`GuiGeminiBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`)
+    }
+    console.log(`Validated GuiGeminiBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
+  }
 }
 
 function isCompatibleNodePtyBinding(normalizedPath, platform, arch) {

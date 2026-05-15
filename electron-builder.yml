@@ -31,6 +31,15 @@ mac:
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  # Bundle the Swift GuiGeminiBridgeDaemon as an extraResource so the
+  # main process can spawn it from the packaged .app. The binary is
+  # compiled by `scripts/build-bridge-daemon.cjs` (run via the
+  # `prebuild:bridge-daemon` npm script in all mac build targets).
+  # macOS-only: the daemon uses Apple Network framework + Bonjour +
+  # CryptoKit and is not built on other platforms.
+  extraResources:
+    - from: swift/GuiGeminiBridge/.build/release/GuiGeminiBridgeDaemon
+      to: bridge/GuiGeminiBridgeDaemon
 dmg:
   artifactName: AGBench-${version}.${ext}
 linux:
