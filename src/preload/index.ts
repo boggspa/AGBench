@@ -114,6 +114,13 @@ const api = {
   }) => ipcRenderer.invoke('bridge-allowlist-upsert', entry),
   bridgeAllowlistRemove: (workspaceId: string) => ipcRenderer.invoke('bridge-allowlist-remove', workspaceId),
   bridgeAllowlistClear: () => ipcRenderer.invoke('bridge-allowlist-clear'),
+  bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
+    ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
+  onBridgePairingResponseReceived: (callback: (params: unknown) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, params: unknown) => callback(params)
+    ipcRenderer.on('bridge-pairing-response-received', listener)
+    return () => ipcRenderer.removeListener('bridge-pairing-response-received', listener)
+  },
 
   // Store APIs
   getSettings: () => ipcRenderer.invoke('get-settings'),

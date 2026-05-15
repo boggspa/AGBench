@@ -8008,6 +8008,8 @@ app.whenReady().then(() => {
   // production startup until Phase C-late). On macOS the daemon imports
   // BridgeCore and proves the GUIGemini product configuration loads cleanly.
   // Phase C1+ will replace this proof-of-life with real stdio JSON-RPC.
+  let bridgeDaemon: BridgeDaemonClient | null = null
+
   if (process.platform === 'darwin' &&
       (process.env.AGBENCH_BRIDGE_DAEMON === '1' || process.env.AGBENCH_BRIDGE_DAEMON === 'true')) {
     // Phase C-late: action executor wires policy-cleared actions to real
@@ -8115,7 +8117,7 @@ app.whenReady().then(() => {
       bridgeAllowlist,
       bridgeActionExecutor
     )
-    const bridgeDaemon = new BridgeDaemonClient({
+    bridgeDaemon = new BridgeDaemonClient({
       onHello: (hello) => {
         // eslint-disable-next-line no-console
         console.log('[BridgeDaemon] hello:', JSON.stringify(hello))
@@ -8136,6 +8138,12 @@ app.whenReady().then(() => {
       onNotification: (method, params) => {
         // eslint-disable-next-line no-console
         console.log(`[BridgeDaemon notif] ${method}`, JSON.stringify(params))
+        if (method === 'bridge.didReceivePairingResponse' &&
+            mainWindow &&
+            !mainWindow.isDestroyed() &&
+            !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send('bridge-pairing-response-received', params)
+        }
       },
       // Phase C3.6: daemon-issued requests (e.g. `bridge.requestActionAck`,
       // `bridge.requestPrepareStartTurnAck`) flow into the router. The router
@@ -8171,7 +8179,7 @@ app.whenReady().then(() => {
     // Ensure the daemon is torn down when the app quits.
     app.on('will-quit', () => {
       unsubscribeBridgeRunSink()
-      bridgeDaemon.dispose()
+      bridgeDaemon?.dispose()
     })
   }
 
@@ -8251,6 +8259,16 @@ app.whenReady().then(() => {
   ipcMain.handle('bridge-allowlist-clear', () => {
     bridgeAllowlist.clear()
     return true
+  })
+  ipcMain.handle('bridge-finalize-pairing', async (_, sessionID: string, userConfirmed: boolean) => {
+    const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')
+    if (!bridgeDaemon) {
+      throw new Error('Bridge daemon is not running')
+    }
+    return bridgeDaemon.request('bridge.finalizePairing', {
+      pairingSessionID,
+      userConfirmed: Boolean(userConfirmed)
+    })
   })
 
   // Settings

@@ -10,6 +10,7 @@ import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel } from './components/SettingsPanel'
+import { IncomingPairingPrompt } from './components/IncomingPairingPrompt'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
@@ -9655,6 +9656,7 @@ function App(): React.JSX.Element {
           </div>
         </div>
       )}
+      <IncomingPairingPrompt />
     </div>
   )
 }

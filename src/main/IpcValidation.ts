@@ -111,7 +111,8 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'start-pty': ['workspacePath', 'optionalString'],
   'stop-pty': ['optionalString'],
   'pty-write': ['string', 'optionalString'],
-  'pty-resize': ['number', 'number', 'optionalString']
+  'pty-resize': ['number', 'number', 'optionalString'],
+  'bridge-finalize-pairing': ['nonEmptyString', 'boolean']
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

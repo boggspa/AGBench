@@ -176,6 +176,8 @@ declare global {
       }) => Promise<RemoteWorkspaceEntry>
       bridgeAllowlistRemove: (workspaceId: string) => Promise<boolean>
       bridgeAllowlistClear: () => Promise<boolean>
+      bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) => Promise<unknown>
+      onBridgePairingResponseReceived: (callback: (params: unknown) => void) => () => void
 
       getSettings: () => Promise<AppSettings>
       updateSettings: (partial: Partial<AppSettings>) => Promise<void>
