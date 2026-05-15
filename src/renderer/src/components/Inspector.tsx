@@ -1,10 +1,12 @@
 import { useEffect, useState, type RefObject } from 'react';
 import { DiffViewer } from './DiffViewer';
 import { TerminalPanel } from './TerminalPanel';
-import type { DiffFileSummary, ProviderId, ExternalPathGrant, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderToolingCapability } from '../../../main/store/types';
+import { BackgroundTasksPanel } from './BackgroundTasksPanel';
+import type { ChatRecord, DiffFileSummary, ProviderId, ExternalPathGrant, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderToolingCapability } from '../../../main/store/types';
+import { extractDelegationAuditItems, providerDelegationChips, summarizeDelegationActivity } from '../lib/DelegationAudit';
 
-type InspectorTab = 'diff' | 'raw' | 'safety' | 'capabilities';
-type CapabilityKind = 'mcp' | 'extensions' | 'skills';
+type InspectorTab = 'diff' | 'raw' | 'delegation' | 'safety' | 'capabilities' | 'background-tasks';
+type CapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents';
 type CapabilityFormat = 'json' | 'raw' | 'error';
 
 interface GeminiCapabilityItem {
@@ -35,11 +37,12 @@ interface GeminiCapabilitiesState {
   sections: Record<CapabilityKind, GeminiCapabilitySection>;
 }
 
-const CAPABILITY_ORDER: CapabilityKind[] = ['mcp', 'extensions', 'skills'];
+const CAPABILITY_ORDER: CapabilityKind[] = ['mcp', 'extensions', 'skills', 'agents'];
 const CAPABILITY_LABELS: Record<CapabilityKind, string> = {
   mcp: 'MCP servers',
   extensions: 'Extensions',
   skills: 'Skills',
+  agents: 'Agents',
 };
 
 function providerLabel(provider: ProviderId): string {
@@ -98,27 +101,38 @@ interface InspectorProps {
   onClearCodexUsageCredential?: () => void;
   onInstallGeminiMcpBridge?: () => void;
   onRefreshGeminiMcpBridgeStatus?: () => void;
+  /** Current chat — used by the Background tasks tab to list live subagents. */
+  currentChat?: ChatRecord | null;
 }
 
 export function Inspector(props: InspectorProps) {
   return (
     <div className="app-inspector">
       <div className="inspector-tabs">
-        {(['diff', 'raw', 'safety', 'capabilities'] as const).map(tab => (
+        {(['diff', 'raw', 'delegation', 'safety', 'capabilities', 'background-tasks'] as const).map(tab => (
           <button
             key={tab}
             className={`inspector-tab ${props.rightTab === tab ? 'active' : ''}`}
             onClick={() => props.setRightTab(tab)}
           >
-            {tab === 'diff' ? 'Diff Studio' : tab === 'raw' ? 'Raw Events' : tab === 'safety' ? 'Safety' : 'Capabilities'}
+            {tab === 'diff' ? 'Diff Studio'
+              : tab === 'raw' ? 'Raw Events'
+              : tab === 'delegation' ? 'Delegation'
+              : tab === 'safety' ? 'Safety'
+              : tab === 'capabilities' ? 'Capabilities'
+              : 'Background tasks'}
           </button>
         ))}
       </div>
       <div className="inspector-body">
         {props.rightTab === 'diff' && <DiffTab {...props} />}
         {props.rightTab === 'raw' && <RawTab {...props} />}
+        {props.rightTab === 'delegation' && <DelegationTab {...props} />}
         {props.rightTab === 'safety' && <SafetyTab {...props} />}
         {props.rightTab === 'capabilities' && <CapabilitiesTab {...props} />}
+        {props.rightTab === 'background-tasks' && (
+          <BackgroundTasksPanel chat={props.currentChat || undefined} provider={props.provider} />
+        )}
       </div>
     </div>
   );
@@ -264,6 +278,112 @@ function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }:
       </div>
     </div>
   );
+}
+
+function DelegationTab(props: InspectorProps) {
+  const activities = extractDelegationAuditItems(props.rawLogs, props.provider, props.providerCapabilities);
+  const chips = providerDelegationChips(props.provider, props.providerCapabilities);
+  const openFloatingAudit = () => {
+    const auditWindow = window.open('', 'agbench-agent-audit', 'width=560,height=760');
+    if (!auditWindow) return;
+    const rows = activities.length
+      ? activities.map((activity) => `<li><strong>${escapeHtml(activity.name)}</strong><br/><span>${escapeHtml(summarizeDelegationActivity(activity))}</span></li>`).join('')
+      : '<li>No delegated agent activity detected yet.</li>';
+    auditWindow.document.write(`<!doctype html><html><head><title>AGBench Agent Audit</title><style>
+      body{margin:0;padding:20px;background:#111;color:#eee;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+      h1{font-size:18px;margin:0 0 12px}
+      .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px}
+      .chip{border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 8px;color:#b8d7ff;background:rgba(255,255,255,.06)}
+      li{margin:0 0 14px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.05)}
+      span{color:#bbb;line-height:1.45}
+    </style></head><body><h1>AGBench Agent Audit</h1><div class="chips">${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('')}</div><ol>${rows}</ol></body></html>`);
+    auditWindow.document.close();
+  };
+
+  return (
+    <div className="safety-panel">
+      <div className="diff-studio-toolbar">
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
+            Provider delegation audit
+          </div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
+            {activities.length} delegated {activities.length === 1 ? 'activity' : 'activities'} detected from raw/tool events
+          </div>
+        </div>
+        <button className="btn btn-sm btn-ghost" onClick={openFloatingAudit}>
+          Floating audit
+        </button>
+      </div>
+
+      <div className="safety-card">
+        <h4>{providerLabel(props.provider)} delegation model</h4>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-xs)', marginTop: 'var(--space-sm)' }}>
+          {chips.map((chip) => (
+            <span
+              key={chip}
+              style={{
+                fontSize: 'var(--font-size-xs)',
+                color: chip.includes('AGBench') ? 'var(--success)' : 'var(--text-secondary)',
+                border: '1px solid var(--panel-border)',
+                borderRadius: 999,
+                padding: '3px 8px',
+                background: 'rgba(255,255,255,0.04)'
+              }}
+            >
+              {chip}
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {activities.length === 0 ? (
+        <div className="safety-card">
+          <h4>No child agents yet</h4>
+          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+            Ask {providerLabel(props.provider)} to spawn or delegate to subagents. AGBench will render native provider events here when they appear in the stream.
+          </p>
+        </div>
+      ) : (
+        activities.map((activity) => (
+          <div key={activity.activityId} className="safety-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)', alignItems: 'flex-start' }}>
+              <h4 style={{ marginBottom: 0 }}>{activity.name}</h4>
+              <span style={{ fontSize: 'var(--font-size-xs)', color: activity.status === 'failed' ? 'var(--danger)' : activity.status === 'success' ? 'var(--success)' : 'var(--warning)', whiteSpace: 'nowrap' }}>
+                {activity.status}
+              </span>
+            </div>
+            <div className="safety-row"><span>Kind</span><span>{activity.kind}</span></div>
+            <div className="safety-row"><span>Provider</span><span>{providerLabel(activity.provider || props.provider)}</span></div>
+            {activity.model && <div className="safety-row"><span>Model</span><span>{activity.model}</span></div>}
+            {activity.providerAgentId && <div className="safety-row"><span>Agent id</span><span>{activity.providerAgentId}</span></div>}
+            {activity.parentToolCallId && <div className="safety-row"><span>Parent tool</span><span>{activity.parentToolCallId}</span></div>}
+            {activity.toolPolicy && <div className="safety-row"><span>Tool policy</span><span>{activity.toolPolicy}</span></div>}
+            {activity.mcpPolicy && <div className="safety-row"><span>MCP policy</span><span>{activity.mcpPolicy}</span></div>}
+            {(activity.promptPreview || activity.summary) && (
+              <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 'var(--space-sm) 0 0 0', lineHeight: 1.45 }}>
+                {activity.summary || activity.promptPreview}
+              </p>
+            )}
+            {(activity.rawEventRefs || []).length > 0 && (
+              <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)', marginTop: 'var(--space-sm)' }}>
+                Raw refs {(activity.rawEventRefs || []).slice(0, 3).map((ref) => ref.sequence ? `#${ref.sequence}` : ref.toolCallId || ref.spanId || 'event').join(', ')}
+              </div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 function formatCapabilityTime(value?: string): string {
@@ -536,7 +656,7 @@ function CapabilitiesTab(props: InspectorProps) {
         <div className="safety-card">
           <h4>Workspace required</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
-            Select a workspace to inspect MCP servers, extensions, and skills in that Gemini CLI context.
+            Select a workspace to inspect MCP servers, extensions, skills, and agents in that Gemini CLI context.
           </p>
         </div>
       )}

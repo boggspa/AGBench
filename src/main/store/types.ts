@@ -25,6 +25,7 @@ export type ThemeAppearance =
 export type ThemeCornerStyle = 'rounded' | 'hard';
 export type ThemeAccentStyle = 'system' | 'blue' | 'purple' | 'pink' | 'orange' | 'green' | 'red' | 'yellow';
 export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic';
+export type ComposerStyle = 'default' | 'codex' | 'claude' | 'gemini' | 'kimi';
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi';
 export type ChatScope = 'workspace' | 'global';
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools';
@@ -242,10 +243,28 @@ export interface AdvancedFxSettings {
   intensity: Exclude<FunFxMode, 'off'>;
 }
 
+export interface ProviderApiKeyStatus {
+  available: boolean;
+  authState: string;
+  apiKeyConfigured: boolean;
+  encryptionAvailable: boolean;
+  version?: string;
+  binaryPath?: string | null;
+}
+
 export interface AppSettings {
   activeProvider?: ProviderId;
+  windowBounds?: {
+    x?: number;
+    y?: number;
+    width: number;
+    height: number;
+    isMaximized?: boolean;
+  };
   claudeBinaryPath?: string;
+  claudeApiKey?: string;
   kimiBinaryPath?: string;
+  kimiApiKey?: string;
   codexUsageCredential?: {
     encryptedAccessToken?: string;
     accountId?: string;
@@ -264,6 +283,9 @@ export interface AppSettings {
   themeCornerStyle: ThemeCornerStyle;
   themeAccentStyle: ThemeAccentStyle;
   promptSurfaceStyle: PromptSurfaceStyle;
+  composerStyle: ComposerStyle;
+  transcriptFontFamily?: string;
+  composerFontFamily?: string;
   funFxEnabled: boolean;
   funFxMode: FunFxMode;
   advancedFx: AdvancedFxSettings;
@@ -552,6 +574,7 @@ export type RunEventKind =
   | 'provider_error'
   | 'provider_exit'
   | 'timeline'
+  | 'delegation'
   | 'tool'
   | 'approval_request'
   | 'approval_response'
@@ -596,6 +619,57 @@ export interface RunEventRecord {
   summary?: string;
   payload?: unknown;
   artifacts?: RunEventArtifactRef[];
+}
+
+export type AgentActivityKind =
+  | 'root'
+  | 'subagent'
+  | 'fork'
+  | 'handoff'
+  | 'tool'
+  | 'approval'
+  | 'artifact'
+  | 'progress';
+
+export type AgentActivityStatus =
+  | 'queued'
+  | 'running'
+  | 'waiting'
+  | 'success'
+  | 'failed'
+  | 'cancelled'
+  | 'unknown';
+
+export interface AgentActivity {
+  activityId: string;
+  parentActivityId?: string;
+  runId?: string;
+  turnId?: string;
+  provider?: ProviderId;
+  providerThreadId?: string;
+  providerAgentId?: string;
+  parentToolCallId?: string;
+  kind: AgentActivityKind;
+  name: string;
+  model?: string;
+  status: AgentActivityStatus;
+  promptPreview?: string;
+  summary?: string;
+  toolPolicy?: string;
+  mcpPolicy?: string;
+  approvalMode?: string;
+  filesTouched?: string[];
+  tokenUsage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+  };
+  rawEventRefs?: Array<{
+    sequence?: number;
+    hash?: string;
+    toolCallId?: string;
+    spanId?: string;
+  }>;
 }
 
 export type RunEventInput = Omit<RunEventRecord, 'schemaVersion' | 'id' | 'sequence' | 'timestamp'> &
@@ -762,6 +836,7 @@ export interface ScheduledTask {
   geminiWorktree?: GeminiWorktreeConfig;
   codexReasoningEffort?: string | null;
   codexServiceTier?: string | null;
+  kimiThinkingEnabled?: boolean;
   runtimeProfileId?: string;
   handoffSourceRunId?: string;
   runAt: string;
@@ -813,6 +888,7 @@ export interface RunQueueRequestSnapshot {
   codexNativeReview?: boolean;
   codexReasoningEffort?: string | null;
   codexServiceTier?: string | null;
+  kimiThinkingEnabled?: boolean;
   scheduledTaskId?: string;
   preserveComposer?: boolean;
   runtimeProfileId?: string;
@@ -966,11 +1042,62 @@ export interface ToolActivity {
   diffSummary?: ToolDiffSummary;
   rawUseEvent?: unknown;
   rawResultEvent?: unknown;
+  /** If this tool call was emitted by a sub-agent, the tool_use id of the parent Task / Agent call that spawned it. */
+  parentToolCallId?: string;
   // Legacy fields preserved for backward compatibility
   affectedFilePath?: string;
   operationCategory?: 'update_topic' | 'read_file' | 'edit_file' | 'search' | 'shell' | 'unknown';
   outputSummary?: string;
   rawEventRefs?: string[];
+}
+
+export type ChildAgentKind = 'claude-task' | 'codex-background' | 'kimi-swarm' | 'gemini-subagent' | 'manual';
+export type ChildAgentInteractivity = 'interactive' | 'oneshot' | 'observe-only';
+export type ChildAgentState = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface ChildAgentThread {
+  id: string;
+  parentChatId?: string;
+  parentRunId?: string;
+  /** The tool_use id of the Task/Agent call that produced this thread (when applicable). */
+  parentToolCallId?: string;
+  provider: ProviderId;
+  kind: ChildAgentKind;
+  interactivity: ChildAgentInteractivity;
+  name: string;
+  role?: string;
+  state: ChildAgentState;
+  startedAt?: string;
+  endedAt?: string;
+  durationMs?: number;
+  seedPrompt?: string;
+  finalResult?: string;
+  /** Tool activity ids that belong to this child thread. */
+  toolActivityIds: string[];
+  /** Visual identity (display name + color) assigned by `assignAgentIdentity`.
+   * For Codex this may carry a platform-extracted name; for other providers it
+   * comes from our scientist-surname pool. Persisted to
+   * `ChatRecord.providerMetadata.agentIdentities` so the same thread keeps the
+   * same identity across renders and app reloads. */
+  identity?: AgentIdentity;
+}
+
+/** Source of a subagent's display identity. */
+export type AgentIdentitySource = 'pool' | 'platform' | 'manual';
+
+/** Visual identity for a single sub-agent. Indexed by `ChildAgentThread.id`
+ * inside `ChatRecord.providerMetadata.agentIdentities`. */
+export interface AgentIdentity {
+  agentId: string;
+  /** Display name shown in chips, cards, panels. */
+  name: string;
+  /** Accent color (hex). Drives chip color, card name color, dot color. */
+  color: string;
+  /** Optional role label (e.g. "explorer", "reviewer"). */
+  role?: string;
+  source: AgentIdentitySource;
+  /** ISO timestamp the identity was assigned. */
+  assignedAt: string;
 }
 
 export type TrustStatus = 'trusted' | 'untrusted' | 'inherited' | 'unknown' | 'not_checked';

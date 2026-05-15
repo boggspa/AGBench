@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
-import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
+import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges, deriveToolDiffSummary } from './lib/ToolParser'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import { useAppearance } from './hooks/useAppearance'
@@ -14,7 +14,9 @@ import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
+import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLane } from './lib/RunLanes'
+import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 
 type SkyWeatherKind = 'clear' | 'partly_cloudy' | 'cloudy' | 'overcast' | 'rain' | 'heavy_rain' | 'snow' | 'mist' | 'fog' | 'storm' | 'unknown'
 
@@ -324,6 +326,34 @@ function RunSymbolIcon() {
   )
 }
 
+// Claude-style send: the native Claude composer uses a "return" arrow glyph
+// (↵) inside the send button instead of a play triangle. Used when
+// appearance.composerStyle === 'claude' so the send/stop pair reads native.
+function ClaudeReturnSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M12.5 4v2.5a2 2 0 0 1-2 2H4" />
+        <path d="M6.5 6.5 4 8.5l2.5 2" />
+      </svg>
+    </span>
+  )
+}
+
+// Up-arrow send glyph — used by Codex/Gemini/Kimi composers whose native
+// send buttons all feature a filled circular `↑`. The button background +
+// shape come from each composer-style's CSS; this just supplies the glyph.
+function ArrowUpSendIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 12.5V3.5" />
+        <path d="M4 7l4-3.5 4 3.5" />
+      </svg>
+    </span>
+  )
+}
+
 function StopSymbolIcon() {
   return (
     <span className="sf-symbol-icon" aria-hidden>
@@ -520,6 +550,33 @@ function XSymbolIcon() {
   )
 }
 
+function ContextWheel({ percent, label }: { percent: number; label: string }) {
+  const clamped = Math.max(0, Math.min(100, percent))
+  const radius = 5.5
+  const circumference = 2 * Math.PI * radius
+  const dash = (clamped / 100) * circumference
+  const remainingDash = circumference - dash
+  return (
+    <span className="context-wheel" title={label} aria-label={`Context ${Math.round(clamped)}% used (${label})`}>
+      <svg viewBox="0 0 14 14" width="14" height="14" aria-hidden>
+        <circle cx="7" cy="7" r={radius} fill="none" stroke="currentColor" strokeWidth="1.4" opacity="0.22" />
+        <circle
+          cx="7"
+          cy="7"
+          r={radius}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          strokeLinecap="round"
+          strokeDasharray={`${dash} ${remainingDash}`}
+          strokeDashoffset={circumference / 4}
+          transform="rotate(-90 7 7)"
+        />
+      </svg>
+    </span>
+  )
+}
+
 interface ModelUsageAggregate {
   provider: ProviderId
   model: string
@@ -546,6 +603,49 @@ interface UsageWindowAggregate {
   resetAt?: string
   trackingOnly?: boolean
   usedPercent?: number
+  remainingPercent?: number
+}
+
+type WelcomeUsageTab = 'overview' | 'models'
+type WelcomeUsageRange = 'all' | '30d' | '7d'
+
+interface WelcomeUsageDayCell {
+  dayKey: string
+  label: string
+  value: number
+  level: number
+  isToday: boolean
+}
+
+interface WelcomeUsageModelDatum {
+  id: string
+  provider: ProviderId
+  model: string
+  label: string
+  runs: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  percent: number
+  dailyTotals: Map<string, number>
+}
+
+interface WelcomeUsageDashboardData {
+  hasActivity: boolean
+  sessions: number
+  messages: number
+  totalTokens: number
+  activeDays: number
+  currentStreak: number
+  longestStreak: number
+  peakHour: string
+  favoriteModel: string
+  providerCount: number
+  comparisonText: string
+  heatmap: WelcomeUsageDayCell[]
+  chartDays: Array<{ dayKey: string; label: string; total: number }>
+  modelBreakdown: WelcomeUsageModelDatum[]
+  maxChartTotal: number
 }
 
 type RawLogEntry = {
@@ -1198,6 +1298,353 @@ const formatScheduledRunTime = (iso: string): string => {
   })
 }
 
+const WELCOME_USAGE_RANGE_LABELS: Array<{ value: WelcomeUsageRange; label: string }> = [
+  { value: 'all', label: 'All' },
+  { value: '30d', label: '30d' },
+  { value: '7d', label: '7d' }
+]
+
+const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'models', label: 'Models' }
+]
+
+const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
+
+const startOfLocalDay = (timestamp: number): number => {
+  const date = new Date(timestamp)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
+}
+
+const dayKeyFromTimestamp = (timestamp: number): string => {
+  const date = new Date(startOfLocalDay(timestamp))
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+const formatUsageDateLabel = (dayKey: string): string => {
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const date = new Date(year, (month || 1) - 1, day || 1)
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+const formatCompactUsageNumber = (value: number): string => {
+  const safe = Math.max(0, Number.isFinite(value) ? value : 0)
+  if (safe >= 1_000_000) return `${(safe / 1_000_000).toFixed(safe >= 10_000_000 ? 0 : 1)}M`
+  if (safe >= 1_000) return `${(safe / 1_000).toFixed(safe >= 100_000 ? 0 : 1)}k`
+  return String(Math.round(safe))
+}
+
+const formatPeakHour = (hour: number): string => {
+  if (!Number.isFinite(hour) || hour < 0) return 'n/a'
+  const normalized = ((Math.round(hour) % 24) + 24) % 24
+  const suffix = normalized >= 12 ? 'PM' : 'AM'
+  const display = normalized % 12 || 12
+  return `${display} ${suffix}`
+}
+
+const inferProviderFromModelName = (model: string): ProviderId => {
+  const normalized = model.toLowerCase()
+  if (normalized.includes('claude') || normalized.includes('opus') || normalized.includes('sonnet') || normalized.includes('haiku')) return 'claude'
+  if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2')) return 'kimi'
+  if (normalized.includes('codex') || normalized.includes('gpt') || normalized.includes('o3') || normalized.includes('o4') || normalized.includes('o5')) return 'codex'
+  return 'gemini'
+}
+
+const getWelcomeUsageRangeCutoff = (range: WelcomeUsageRange, now: number): number => {
+  if (range === '7d') return now - 7 * 24 * 60 * 60 * 1000
+  if (range === '30d') return now - 30 * 24 * 60 * 60 * 1000
+  return 0
+}
+
+const getWelcomeUsageHeatmapDayCount = (range: WelcomeUsageRange): number => {
+  if (range === '7d') return 7
+  if (range === '30d') return 30
+  return 84
+}
+
+const buildWelcomeUsageDashboardData = (
+  records: UsageRecord[],
+  chats: ChatRecord[],
+  range: WelcomeUsageRange,
+  now = Date.now()
+): WelcomeUsageDashboardData => {
+  const cutoff = getWelcomeUsageRangeCutoff(range, now)
+  const runRecords = records
+    .filter(record => record.usageKind !== 'reset_hint')
+    .filter(record => record.timestamp >= cutoff)
+  const messageEvents = chats.flatMap((chat) =>
+    (chat.messages || [])
+      .map((message) => {
+        const timestamp = new Date(message.timestamp || '').getTime()
+        return {
+          chatId: chat.appChatId,
+          timestamp
+        }
+      })
+      .filter(event => Number.isFinite(event.timestamp) && event.timestamp >= cutoff)
+  )
+
+  const activeDayKeys = new Set<string>()
+  const sessionIds = new Set<string>()
+  const providerIds = new Set<ProviderId>()
+  const hourlyTotals = new Array(24).fill(0) as number[]
+  const dailyTotals = new Map<string, number>()
+  const modelMap = new Map<string, WelcomeUsageModelDatum>()
+
+  for (const event of messageEvents) {
+    activeDayKeys.add(dayKeyFromTimestamp(event.timestamp))
+    sessionIds.add(event.chatId)
+  }
+
+  for (const record of runRecords) {
+    const provider = record.provider || inferProviderFromModelName(record.model || '')
+    const model = record.model || 'unknown'
+    const totalTokens = Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0))
+    const inputTokens = Math.max(0, Number(record.inputTokens || 0))
+    const outputTokens = Math.max(0, Number(record.outputTokens || 0))
+    const dayKey = dayKeyFromTimestamp(record.timestamp)
+    const hour = new Date(record.timestamp).getHours()
+    const modelId = `${provider}:${model}`
+
+    activeDayKeys.add(dayKey)
+    sessionIds.add(record.chatId)
+    providerIds.add(provider)
+    hourlyTotals[hour] += totalTokens || 1
+    dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
+
+    const existing = modelMap.get(modelId) || {
+      id: modelId,
+      provider,
+      model,
+      label: model,
+      runs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      percent: 0,
+      dailyTotals: new Map<string, number>()
+    }
+    existing.runs += 1
+    existing.inputTokens += inputTokens
+    existing.outputTokens += outputTokens
+    existing.totalTokens += totalTokens
+    existing.dailyTotals.set(dayKey, (existing.dailyTotals.get(dayKey) || 0) + totalTokens)
+    modelMap.set(modelId, existing)
+  }
+
+  const totalTokens = runRecords.reduce((sum, record) => sum + Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)), 0)
+  const modelBreakdown = Array.from(modelMap.values())
+    .sort((a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs)
+    .map(model => ({
+      ...model,
+      percent: totalTokens > 0 ? (model.totalTokens / totalTokens) * 100 : 0
+    }))
+
+  const todayStart = startOfLocalDay(now)
+  const activeDayStarts = Array.from(activeDayKeys)
+    .map(key => new Date(`${key}T00:00:00`).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => a - b)
+  const activeStartSet = new Set(activeDayStarts)
+  const countStreakEndingAt = (start: number): number => {
+    let count = 0
+    for (let cursor = start; activeStartSet.has(cursor); cursor -= 24 * 60 * 60 * 1000) {
+      count += 1
+    }
+    return count
+  }
+  const currentStreak = countStreakEndingAt(todayStart) || countStreakEndingAt(todayStart - 24 * 60 * 60 * 1000)
+  let longestStreak = 0
+  let runningStreak = 0
+  let previousDay = -1
+  for (const day of activeDayStarts) {
+    runningStreak = previousDay > 0 && day - previousDay === 24 * 60 * 60 * 1000 ? runningStreak + 1 : 1
+    longestStreak = Math.max(longestStreak, runningStreak)
+    previousDay = day
+  }
+
+  const peakHour = hourlyTotals.reduce((best, value, hour) => value > hourlyTotals[best] ? hour : best, 0)
+  const heatmapDayCount = getWelcomeUsageHeatmapDayCount(range)
+  const heatmapStart = todayStart - (heatmapDayCount - 1) * 24 * 60 * 60 * 1000
+  const maxDayValue = Math.max(1, ...Array.from(dailyTotals.values()))
+  const heatmap = Array.from({ length: heatmapDayCount }, (_, index) => {
+    const timestamp = heatmapStart + index * 24 * 60 * 60 * 1000
+    const dayKey = dayKeyFromTimestamp(timestamp)
+    const value = dailyTotals.get(dayKey) || 0
+    return {
+      dayKey,
+      label: formatUsageDateLabel(dayKey),
+      value,
+      level: value <= 0 ? 0 : Math.max(1, Math.min(4, Math.ceil((value / maxDayValue) * 4))),
+      isToday: timestamp === todayStart
+    }
+  })
+
+  const chartDayCount = range === '7d' ? 7 : 6
+  const activeChartDays = Array.from(dailyTotals.keys()).sort().slice(-chartDayCount)
+  const fallbackChartDays = Array.from({ length: chartDayCount }, (_, index) => {
+    const timestamp = todayStart - (chartDayCount - 1 - index) * 24 * 60 * 60 * 1000
+    return dayKeyFromTimestamp(timestamp)
+  })
+  const chartDayKeys = activeChartDays.length >= Math.min(2, chartDayCount) ? activeChartDays : fallbackChartDays
+  const chartDays = chartDayKeys.map(dayKey => ({
+    dayKey,
+    label: formatUsageDateLabel(dayKey),
+    total: dailyTotals.get(dayKey) || 0
+  }))
+  const maxChartTotal = Math.max(1, ...chartDays.map(day => day.total))
+  const favoriteModel = modelBreakdown[0]?.label || 'n/a'
+  const hasActivity = runRecords.length > 0 || messageEvents.length > 0
+
+  return {
+    hasActivity,
+    sessions: sessionIds.size,
+    messages: messageEvents.length || runRecords.length * 2,
+    totalTokens,
+    activeDays: activeDayKeys.size,
+    currentStreak,
+    longestStreak,
+    peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
+    favoriteModel,
+    providerCount: providerIds.size,
+    comparisonText: hasActivity
+      ? `You've tracked ${formatCompactUsageNumber(totalTokens)} tokens across ${providerIds.size || 1} provider${(providerIds.size || 1) === 1 ? '' : 's'}.`
+      : 'Start a provider run to seed workspace activity stats.',
+    heatmap,
+    chartDays,
+    modelBreakdown,
+    maxChartTotal
+  }
+}
+
+function WelcomeUsageDashboard({
+  data,
+  tab,
+  range,
+  onTabChange,
+  onRangeChange
+}: {
+  data: WelcomeUsageDashboardData
+  tab: WelcomeUsageTab
+  range: WelcomeUsageRange
+  onTabChange: (tab: WelcomeUsageTab) => void
+  onRangeChange: (range: WelcomeUsageRange) => void
+}) {
+  const topModels = data.modelBreakdown.slice(0, 4)
+  const statItems = [
+    { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
+    { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
+    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) },
+    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) },
+    { label: 'Current streak', value: `${data.currentStreak || 0}d` },
+    { label: 'Longest streak', value: `${data.longestStreak || 0}d` },
+    { label: 'Peak hour', value: data.peakHour },
+    { label: 'Favorite model', value: data.favoriteModel }
+  ]
+
+  return (
+    <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
+      <div className="welcome-usage-dashboard-header">
+        <div className="welcome-usage-tabs" role="tablist" aria-label="Usage view">
+          {WELCOME_USAGE_TABS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`welcome-usage-tab ${tab === option.value ? 'active' : ''}`}
+              onClick={() => onTabChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="welcome-usage-range" aria-label="Usage range">
+          {WELCOME_USAGE_RANGE_LABELS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`welcome-usage-range-btn ${range === option.value ? 'active' : ''}`}
+              onClick={() => onRangeChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'overview' ? (
+        <>
+          <div className="welcome-usage-stat-grid">
+            {statItems.map((item) => (
+              <div key={item.label} className="welcome-usage-stat">
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="welcome-usage-heatmap" aria-label="Daily activity heatmap">
+            {data.heatmap.map((cell) => (
+              <span
+                key={cell.dayKey}
+                className={`welcome-usage-cell level-${cell.level} ${cell.isToday ? 'today' : ''}`}
+                title={`${cell.label}: ${formatCompactUsageNumber(cell.value)} tokens`}
+              />
+            ))}
+          </div>
+          <p className="welcome-usage-footnote">{data.comparisonText}</p>
+        </>
+      ) : (
+        <>
+          <div className="welcome-usage-chart" aria-label="Model usage by day">
+            <div className="welcome-usage-y-axis">
+              {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
+                <span key={fraction}>{formatCompactUsageNumber(data.maxChartTotal * fraction)}</span>
+              ))}
+            </div>
+            <div className="welcome-usage-bars">
+              {data.chartDays.map((day) => (
+                <div key={day.dayKey} className="welcome-usage-bar-column">
+                  <div className="welcome-usage-bar-track">
+                    {topModels.map((model) => {
+                      const value = model.dailyTotals.get(day.dayKey) || 0
+                      if (value <= 0) return null
+                      return (
+                        <span
+                          key={model.id}
+                          className={`welcome-usage-bar-segment ${providerModelColorClass(model.provider)}`}
+                          style={{ height: `${Math.max(4, (value / data.maxChartTotal) * 100)}%` }}
+                          title={`${model.label}: ${formatCompactUsageNumber(value)} tokens`}
+                        />
+                      )
+                    })}
+                  </div>
+                  <span className="welcome-usage-bar-label">{day.label}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="welcome-usage-model-list">
+            {topModels.length > 0 ? topModels.map((model) => (
+              <div key={model.id} className="welcome-usage-model-row">
+                <span className={`welcome-usage-model-dot ${providerModelColorClass(model.provider)}`} />
+                <span className="welcome-usage-model-name">{model.label}</span>
+                <span className="welcome-usage-model-tokens">
+                  {formatCompactUsageNumber(model.inputTokens)} in · {formatCompactUsageNumber(model.outputTokens)} out
+                </span>
+                <strong>{model.percent.toFixed(model.percent >= 10 ? 1 : 1)}%</strong>
+              </div>
+            )) : (
+              <div className="welcome-usage-empty">No model-level usage has been tracked yet.</div>
+            )}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
 const getImageName = (value: string): string => {
   return value.split(/[/\\]/).filter(Boolean).pop() || value
 }
@@ -1468,6 +1915,7 @@ const normalizeModelName = (model: string): string => {
 
 const normalizeGeminiResumeTarget = (value?: string): string | undefined => {
   const target = value?.trim()
+  if (!target || target.toLowerCase() === 'unknown') return undefined
   return target && /^[a-zA-Z0-9][a-zA-Z0-9._:@/-]{0,511}$/.test(target) ? target : undefined
 }
 
@@ -1476,7 +1924,9 @@ const sanitizeContextText = (value: string, maxLength: number): string => {
   return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength)}...`
 }
 
-const renderGeminiMessage = (text: string): React.JSX.Element => <MarkdownMessage content={text} />
+// (Previously: `renderGeminiMessage(text)` returned `<MarkdownMessage content={text} />`.
+// Removed — the transcript now calls `<MarkdownMessage content chat>` directly so
+// the chat is available for `[@Name](agent://uuid)` chip lookups.)
 
 const formatApprovalChangePreview = (changes: any): string => {
   if (!Array.isArray(changes) || changes.length === 0) return ''
@@ -1814,8 +2264,12 @@ const extractUsageCount = (stats: any, keys: Array<string | string[]>): number =
   return extractNestedNumber(stats, keys) || 0
 }
 
+const sumUsageCounts = (stats: any, keys: Array<string | string[]>): number => {
+  return keys.reduce((total, key) => total + extractUsageCount(stats, [key]), 0)
+}
+
 const extractUsageCountsFromCandidate = (stats: any): { inputTokens: number; outputTokens: number; totalTokens: number } => {
-  const inputTokens = extractUsageCount(stats, [
+  const inputBaseTokens = extractUsageCount(stats, [
     ['input_tokens'],
     ['inputTokens'],
     ['prompt_tokens'],
@@ -1827,8 +2281,21 @@ const extractUsageCountsFromCandidate = (stats: any): { inputTokens: number; out
     ['tokenCounts', 'input'],
     ['token_counts', 'input']
   ])
+  const cacheInputTokens = stats?._agentbench_input_includes_cache
+    ? 0
+    : sumUsageCounts(stats, [
+        ['cache_creation_input_tokens'],
+        ['cache_read_input_tokens'],
+        ['cached_input_tokens'],
+        ['input_cache_creation'],
+        ['input_cache_read']
+      ])
+  const inputAudioTokens = stats?._agentbench_input_includes_cache
+    ? 0
+    : sumUsageCounts(stats, [['input_audio_tokens']])
+  const inputTokens = inputBaseTokens + cacheInputTokens + inputAudioTokens
 
-  const outputTokens = extractUsageCount(stats, [
+  const outputBaseTokens = extractUsageCount(stats, [
     ['output_tokens'],
     ['outputTokens'],
     ['completion_tokens'],
@@ -1839,8 +2306,9 @@ const extractUsageCountsFromCandidate = (stats: any): { inputTokens: number; out
     ['tokenCounts', 'output'],
     ['token_counts', 'output']
   ])
+  const outputTokens = outputBaseTokens + sumUsageCounts(stats, [['output_audio_tokens']])
 
-  const totalTokens = extractUsageCount(stats, [
+  const explicitTotalTokens = extractUsageCount(stats, [
     ['total_tokens'],
     ['totalTokens'],
     ['all_tokens'],
@@ -1849,6 +2317,7 @@ const extractUsageCountsFromCandidate = (stats: any): { inputTokens: number; out
     ['tokenCounts', 'total'],
     ['token_counts', 'total']
   ])
+  const totalTokens = explicitTotalTokens > 0 ? explicitTotalTokens : inputTokens + outputTokens
 
   return {
     inputTokens: Math.trunc(Math.max(0, inputTokens)),
@@ -2171,6 +2640,8 @@ interface QueuedRunRequest {
   codexNativeReview?: boolean
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  kimiThinkingEnabled?: boolean
   scheduledTaskId?: string
   workspaceRecord?: WorkspaceRecord
   chatRecord?: ChatRecord
@@ -2244,22 +2715,29 @@ const DEFAULT_AGENTIC_SERVICES: AgenticServicesSettings = {
   mcpTools: 'ask',
   networkAccess: 'allow'
 }
+const CLAUDE_THINKING_EFFORTS = [
+  { reasoningEffort: 'off' },
+  { reasoningEffort: 'low' },
+  { reasoningEffort: 'medium' },
+  { reasoningEffort: 'high' }
+]
 const CLAUDE_DEFAULT_MODELS = [
-  { id: 'default', label: 'Default' },
-  { id: 'sonnet', label: 'Sonnet' },
-  { id: 'opus', label: 'Opus' },
-  { id: 'haiku', label: 'Haiku' },
-  { id: 'best', label: 'Best available' },
+  { id: 'default', label: 'Default', description: 'Claude Code configured default', isDefault: true, supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', description: 'Most capable — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-opus-4-7-1m', label: 'Claude Opus 4.7 1M', description: '1M context window — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', description: 'Balanced — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 Legacy', description: 'Previous Opus generation', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
 ] satisfies CodexModelOption[]
 const KIMI_DEFAULT_MODELS = [
-  { id: 'default', label: 'Default' },
-  { id: 'kimi-k2', label: 'Kimi K2' },
-  { id: 'kimi-k2-turbo', label: 'Kimi K2 Turbo' },
-  { id: 'kimi-latest', label: 'Kimi Latest' },
+  { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI model', isDefault: true },
 ] satisfies CodexModelOption[]
+const KIMI_DEFAULT_MODEL = KIMI_DEFAULT_MODELS[0].id
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
-const CLAUDE_MODEL_IDS = new Set(['default', 'sonnet', 'opus', 'haiku', 'best', 'custom'])
-const KIMI_MODEL_IDS = new Set(['default', 'kimi-k2', 'kimi-k2-turbo', 'kimi-latest', 'custom'])
+const CLAUDE_MODEL_IDS = new Set(['default', 'sonnet', 'opus', 'haiku', 'custom', 'claude-opus-4-7', 'claude-opus-4-7-1m', 'claude-sonnet-4-6', 'claude-haiku-4-5', 'claude-opus-4-6'])
+const KIMI_MODEL_IDS = new Set(KIMI_DEFAULT_MODELS.map((model) => model.id))
+const CLAUDE_AGENT_SDK_CREDIT_NOTICE = 'Claude runs inside AGBench use Agent SDK or claude -p programmatic paths. From 2026-06-15 Anthropic says these use separate Agent SDK credit, not normal interactive Claude Code subscription limits.'
+const CLAUDE_API_KEY_PAYG_NOTICE = 'Claude runs inside AGBench use the saved Anthropic API key when configured, so usage is API/PAYG rather than normal interactive Claude Code subscription limits.'
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
@@ -2278,7 +2756,7 @@ const getProviderLabel = (provider: ProviderId): string => {
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean => modelId.startsWith('gpt-') || modelId.includes('codex')
 const isClaudeModelId = (modelId: string): boolean => CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
-const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId) || modelId.includes('kimi')
+const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
 const normalizeProviderModelKey = (model?: string | null): string => String(model || '').trim().toLowerCase()
 const isCompletedCodexRunStatus = (status?: string): boolean => status === 'success' || status === 'success_with_warnings'
 
@@ -2582,7 +3060,7 @@ const buildCodexUsageWindows = (records: UsageRecord[], model: string, now: numb
           totalTokens: 0,
           limitLabel: windowEntry.limitLabel || `${Math.round(remainingPercent)}% remaining`,
           resetAt: windowEntry.resetAt,
-          trackingOnly: true,
+          trackingOnly: false,
           usedPercent: remainingPercent
         }
       })
@@ -2700,6 +3178,9 @@ type SettingsPanelUpdate = {
   themeCornerStyle?: AppSettings['themeCornerStyle']
   themeAccentStyle?: AppSettings['themeAccentStyle']
   promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
+  composerStyle?: AppSettings['composerStyle']
+  transcriptFontFamily?: AppSettings['transcriptFontFamily']
+  composerFontFamily?: AppSettings['composerFontFamily']
   funFxEnabled?: boolean
   funFxMode?: AppSettings['funFxMode']
   advancedFx?: AppSettings['advancedFx']
@@ -2750,9 +3231,14 @@ function App(): React.JSX.Element {
   const [providerCapabilitiesByProvider, setProviderCapabilitiesByProvider] = useState<Partial<Record<ProviderId, ProviderCapabilityContract>>>({})
   const [codexReasoningEffort, setCodexReasoningEffort] = useState<string>('medium')
   const [codexServiceTier, setCodexServiceTier] = useState<string>('')
+  const [claudeReasoningEffort, setClaudeReasoningEffort] = useState<string>('off')
+  const [kimiThinkingEnabled, setKimiThinkingEnabled] = useState<boolean>(true)
   const [approvalMode, setApprovalMode] = useState<string>('default')
   const [claudeBinaryPath, setClaudeBinaryPath] = useState('')
   const [kimiBinaryPath, setKimiBinaryPath] = useState('')
+  const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
+  const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
+  const [claudeLoginState, setClaudeLoginState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [agenticServices, setAgenticServices] = useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
   const [agenticWorkspaceGrantCount, setAgenticWorkspaceGrantCount] = useState(0)
   const [geminiMcpBridgeEnabled, setGeminiMcpBridgeEnabledState] = useState(false)
@@ -2783,7 +3269,7 @@ function App(): React.JSX.Element {
   const preSnapshotRef = useRef<any>(null)
   
   // Right Panel Tabs
-  const [rightTab, setRightTab] = useState<'diff' | 'raw' | 'safety' | 'capabilities'>('diff')
+  const [rightTab, setRightTab] = useState<'diff' | 'raw' | 'delegation' | 'safety' | 'capabilities' | 'background-tasks'>('diff')
   
   // Version Preflight
   const [geminiVersion, setGeminiVersion] = useState<string>('unknown')
@@ -2805,10 +3291,23 @@ function App(): React.JSX.Element {
   const [runCompleteNotice, setRunCompleteNotice] = useState<RunCompleteNotice | null>(null)
   const [chatContextNotice, setChatContextNotice] = useState<{ id: string; message: string } | null>(null)
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
+  const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
+  const [welcomeUsageTab, setWelcomeUsageTab] = useState<WelcomeUsageTab>('overview')
+  const [welcomeUsageRange, setWelcomeUsageRange] = useState<WelcomeUsageRange>('all')
+  const saveChatTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const lastUsageWindowsByProviderRef = useRef<Record<ProviderId, UsageWindowAggregate[]>>({
+    gemini: [],
+    codex: [],
+    claude: [],
+    kimi: []
+  })
+  const usageSummarySignatureRef = useRef('')
+  const usageRecordsSignatureRef = useRef('')
   const [imageAttachmentsByChatId, setImageAttachmentsByChatId] = useState<Record<string, ImageAttachment[]>>({})
   const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<Record<string, ComposerPermissionState>>({})
   const [pendingAgentApprovalByChatId, setPendingAgentApprovalByChatId] = useState<Record<string, AgentApprovalRequest | null>>({})
   const [isSendConfirming, setIsSendConfirming] = useState(false)
+  const [createPrState, setCreatePrState] = useState<{ status: 'idle' | 'pending' | 'success' | 'error'; message?: string }>({ status: 'idle' })
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
   const [pendingPlanChoiceByChatId, setPendingPlanChoiceByChatId] = useState<Record<string, PlanChoiceState | null>>({})
   const [commandPaletteOpenByChatId, setCommandPaletteOpenByChatId] = useState<Record<string, boolean>>({})
@@ -2837,7 +3336,20 @@ function App(): React.JSX.Element {
   const rawLogsEndRef = useRef<HTMLDivElement>(null)
   const geminiTerminalEndRef = useRef<HTMLDivElement>(null)
   const appTranscriptRef = useRef<HTMLDivElement>(null)
+  const transcriptScrollRef = useRef<HTMLDivElement>(null)
+  // autoFollowRef tracks whether the transcript should auto-stick to the bottom
+  // as new content streams in. The user "owns" scroll: once they scroll away
+  // from the bottom (beyond ~120px), auto-follow disengages until they scroll
+  // back near the bottom (within ~40px). Stored in a ref to avoid re-renders.
+  const autoFollowRef = useRef(true)
   const composerAreaRef = useRef<HTMLDivElement>(null)
+  // Composer textarea + @-mention popover state. AgentMentionMenu reads the
+  // anchor + query and inserts `[@Name](agent://uuid)` at the caret on select.
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  // Caret position of the `@` that opened the menu (so we know what to replace).
+  const mentionAnchorIndexRef = useRef<number | null>(null)
   const adapterRef = useRef<GeminiStreamAdapter | null>(null)
   const activeRunsRef = useRef<Map<string, ActiveRunContext>>(new Map())
   const fxProfileRef = useRef({
@@ -3292,27 +3804,34 @@ function App(): React.JSX.Element {
       return prev.map(chat => chat.appChatId === chatId ? updated : chat)
     })
     setCurrentChat(prev => prev?.appChatId === chatId ? updated : prev)
-    window.api.saveChat(updated).catch(() => {})
+    const existingTimer = saveChatTimersRef.current.get(chatId)
+    if (existingTimer) clearTimeout(existingTimer)
+    const timer = setTimeout(() => {
+      saveChatTimersRef.current.delete(chatId)
+      const latest = chatByIdRef.current.get(chatId) || updated
+      window.api.saveChat(latest).catch(() => {})
+    }, 200)
+    saveChatTimersRef.current.set(chatId, timer)
     return updated
   }
 
   const getProviderModelOptions = (provider: ProviderId): CodexModelOption[] => {
     if (provider === 'codex') return codexModels
     if (provider === 'claude') return agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
-    if (provider === 'kimi') return agentModelsByProvider.kimi || KIMI_DEFAULT_MODELS
+    if (provider === 'kimi') return KIMI_DEFAULT_MODELS
     return []
   }
 
   const getDefaultModelForProvider = (provider: ProviderId): string => {
     if (provider === 'codex') return codexModels[0]?.id || CODEX_DEFAULT_MODEL
     if (provider === 'claude') return 'default'
-    if (provider === 'kimi') return 'default'
+    if (provider === 'kimi') return KIMI_DEFAULT_MODEL
     return 'flash-lite'
   }
 
   const isValidModelForProvider = (provider: ProviderId, modelId: string | undefined | null): modelId is string => {
     if (!modelId) return false
-    if (modelId === 'custom') return true
+    if (modelId === 'custom') return provider !== 'kimi'
     if (provider === 'codex') return isCodexModelId(modelId)
     if (provider === 'claude') return isClaudeModelId(modelId)
     if (provider === 'kimi') return isKimiModelId(modelId)
@@ -3348,7 +3867,13 @@ function App(): React.JSX.Element {
         : modelOption?.defaultReasoningEffort || 'medium',
       codexServiceTier: typeof metadata.codexServiceTier === 'string'
         ? metadata.codexServiceTier
-        : ''
+        : '',
+      claudeReasoningEffort: typeof metadata.claudeReasoningEffort === 'string'
+        ? metadata.claudeReasoningEffort
+        : 'off',
+      kimiThinkingEnabled: typeof metadata.kimiThinkingEnabled === 'boolean'
+        ? metadata.kimiThinkingEnabled
+        : true
     }
   }
 
@@ -3363,6 +3888,8 @@ function App(): React.JSX.Element {
     setApprovalMode(selection.approvalMode)
     setCodexReasoningEffort(selection.codexReasoningEffort)
     setCodexServiceTier(selection.codexServiceTier)
+    setClaudeReasoningEffort(selection.claudeReasoningEffort)
+    setKimiThinkingEnabled(selection.kimiThinkingEnabled)
     setRuntimeProfileForChat(chat.appChatId, getRuntimeProfileIdForChat(chat, selection.provider) || '')
     if (selection.provider === 'gemini' && selection.selectedModelType !== 'custom') {
       syncPersistentModelSelection(selection.selectedModelType)
@@ -3417,9 +3944,11 @@ function App(): React.JSX.Element {
     if (typeof window.api.getAgentModels === 'function') {
       window.api.getAgentModels(provider)
         .then((models) => {
-          const normalized = Array.isArray(models) && models.length > 0
-            ? models.map((model) => ({ ...model, label: model.label || model.id }))
-            : provider === 'claude' ? CLAUDE_DEFAULT_MODELS : provider === 'kimi' ? KIMI_DEFAULT_MODELS : CODEX_DEFAULT_MODELS
+          const normalized = provider === 'kimi'
+            ? KIMI_DEFAULT_MODELS
+            : Array.isArray(models) && models.length > 0
+              ? models.map((model) => ({ ...model, label: model.label || model.id }))
+              : provider === 'claude' ? CLAUDE_DEFAULT_MODELS : CODEX_DEFAULT_MODELS
           if (provider === 'codex') {
             setCodexModels(normalized)
           } else {
@@ -3488,6 +4017,34 @@ function App(): React.JSX.Element {
           ...runDiffValue.deletedFiles,
         ]
     return candidates.filter(isFileSummaryRecord)
+  }
+
+  const getLiveToolFileDiffSummaries = (messages: ChatMessage[] = [], workspacePath?: string | null): DiffFileSummary[] => {
+    const fileMap = new Map<string, DiffFileSummary>()
+    for (const message of messages) {
+      for (const activity of message.toolActivities || []) {
+        const summary = activity.diffSummary || deriveToolDiffSummary(activity.toolName, activity.parameters, activity.resultSummary || activity.outputPreview)
+        const files = summary?.files || []
+        for (const file of files) {
+          if (!file.path) continue
+          const path = normalizeDiffPath(file.path, workspacePath)
+          const status = file.status === 'created'
+            ? 'created'
+            : file.status === 'deleted'
+              ? 'deleted'
+              : 'modified'
+          const existing = fileMap.get(path)
+          fileMap.set(path, {
+            path,
+            status: existing?.status === 'created' ? 'created' : status,
+            additions: (existing?.additions || 0) + (file.additions || 0),
+            deletions: (existing?.deletions || 0) + (file.deletions || 0),
+            previewKind: existing?.previewKind || 'none'
+          })
+        }
+      }
+    }
+    return Array.from(fileMap.values()).filter(isFileSummaryRecord)
   }
 
   const summarizeWriteToolForDiff = (activity: ToolActivity, workspacePath?: string | null): { path: string; status: 'created' | 'modified' | 'deleted'; additions: number; deletions: number } | null => {
@@ -3643,6 +4200,12 @@ function App(): React.JSX.Element {
     if (typeof window.api.getProductOperationsStatus === 'function') {
       void window.api.getProductOperationsStatus().then(setProductOperationsStatus).catch(() => {})
     }
+    if (typeof window.api.getClaudeAuthStatus === 'function') {
+      void window.api.getClaudeAuthStatus().then(setClaudeAuthStatus).catch(() => {})
+    }
+    if (typeof window.api.getKimiAuthStatus === 'function') {
+      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
+    }
     const [wsList, allChats, profiles, handoffs] = await Promise.all([
       window.api.getWorkspaces(),
       window.api.getChats(),
@@ -3707,6 +4270,18 @@ function App(): React.JSX.Element {
     if (next.promptSurfaceStyle !== undefined) {
       settingsPatch.promptSurfaceStyle = next.promptSurfaceStyle
       appearance.update({ promptSurfaceStyle: next.promptSurfaceStyle })
+    }
+    if (next.composerStyle !== undefined) {
+      settingsPatch.composerStyle = next.composerStyle
+      appearance.update({ composerStyle: next.composerStyle })
+    }
+    if (next.transcriptFontFamily !== undefined) {
+      settingsPatch.transcriptFontFamily = next.transcriptFontFamily
+      appearance.update({ transcriptFontFamily: next.transcriptFontFamily })
+    }
+    if (next.composerFontFamily !== undefined) {
+      settingsPatch.composerFontFamily = next.composerFontFamily
+      appearance.update({ composerFontFamily: next.composerFontFamily })
     }
     if (next.funFxEnabled !== undefined) {
       settingsPatch.funFxEnabled = next.funFxEnabled
@@ -3788,6 +4363,54 @@ function App(): React.JSX.Element {
     }
   }
 
+  const handleTriggerClaudeLogin = async () => {
+    if (typeof window.api.triggerClaudeLogin !== 'function') return
+    setClaudeLoginState('loading')
+    try {
+      await window.api.triggerClaudeLogin()
+      setClaudeLoginState('success')
+      setTimeout(() => setClaudeLoginState('idle'), 4000)
+      if (typeof window.api.getClaudeAuthStatus === 'function') {
+        void window.api.getClaudeAuthStatus().then(setClaudeAuthStatus).catch(() => {})
+      }
+    } catch {
+      setClaudeLoginState('error')
+      setTimeout(() => setClaudeLoginState('idle'), 4000)
+    }
+  }
+
+  const handleStoreClaudeApiKey = async (key: string) => {
+    if (typeof window.api.storeClaudeApiKey !== 'function') return
+    await window.api.storeClaudeApiKey(key).catch(() => {})
+    if (typeof window.api.getClaudeAuthStatus === 'function') {
+      void window.api.getClaudeAuthStatus().then(setClaudeAuthStatus).catch(() => {})
+    }
+  }
+
+  const handleClearClaudeApiKey = async () => {
+    if (typeof window.api.clearClaudeApiKey !== 'function') return
+    await window.api.clearClaudeApiKey().catch(() => {})
+    if (typeof window.api.getClaudeAuthStatus === 'function') {
+      void window.api.getClaudeAuthStatus().then(setClaudeAuthStatus).catch(() => {})
+    }
+  }
+
+  const handleStoreKimiApiKey = async (key: string) => {
+    if (typeof window.api.storeKimiApiKey !== 'function') return
+    await window.api.storeKimiApiKey(key).catch(() => {})
+    if (typeof window.api.getKimiAuthStatus === 'function') {
+      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
+    }
+  }
+
+  const handleClearKimiApiKey = async () => {
+    if (typeof window.api.clearKimiApiKey !== 'function') return
+    await window.api.clearKimiApiKey().catch(() => {})
+    if (typeof window.api.getKimiAuthStatus === 'function') {
+      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
+    }
+  }
+
   const handleProviderChange = async (provider: ProviderId) => {
     if (currentChat && isCurrentChatProviderLocked && provider !== currentProvider) {
       setRawLogs(prev => [...prev, {
@@ -3802,12 +4425,16 @@ function App(): React.JSX.Element {
       selectedModelType: nextModel,
       customModel: '',
       approvalMode,
+      ...(provider === 'kimi' ? { kimiThinkingEnabled: true } : {}),
       runtimeProfileId: nextRuntimeProfileId
     }
     setActiveProvider(provider)
     setSelectedModelType(nextModel)
     setLastNonCustomModelType(nextModel)
     setCustomModel('')
+    if (provider === 'kimi') {
+      setKimiThinkingEnabled(true)
+    }
     setRuntimeProfileForChat(currentChat?.appChatId, nextRuntimeProfileId)
     if (provider === 'gemini') {
       syncPersistentModelSelection(nextModel)
@@ -4012,135 +4639,138 @@ function App(): React.JSX.Element {
     setTrustResult(tr)
   }
 
-  const refreshUsageSummary = async (workspaceId?: string, providerHint?: ProviderId, codexStatusHint?: any) => {
-    if (!workspaceId) {
-      setUsageSummary([])
-      return
-    }
-
-    const records: UsageRecord[] = await window.api.getUsage(workspaceId)
-    const grouped = new Map<string, ModelUsageAggregate>()
-    const groupedRecords = new Map<string, UsageRecord[]>()
+  const refreshUsageSummary = async (_workspaceId?: string, _providerHint?: ProviderId, codexStatusHint?: any) => {
     const now = Date.now()
-
-    for (const record of records) {
-      const provider = record.provider || 'gemini'
-      const modelName = normalizeModelName(record.model || 'unknown')
-      const groupKey = `${provider}:${modelName}`
-      const existing = grouped.get(groupKey)
-      const isResetHint = record.usageKind === 'reset_hint'
-      groupedRecords.set(groupKey, [...(groupedRecords.get(groupKey) || []), record])
-
-      if (existing) {
-        if (!isResetHint) {
-          existing.runs += 1
-          existing.inputTokens += record.inputTokens || 0
-          existing.outputTokens += record.outputTokens || 0
-          existing.totalTokens += record.totalTokens || 0
-          existing.durationMs += record.durationMs || 0
-        }
-        if (record.inputTokenLimit && !existing.inputTokenLimit) {
-          existing.inputTokenLimit = record.inputTokenLimit
-        } else if (record.inputTokenLimit && existing.inputTokenLimit) {
-          existing.inputTokenLimit = Math.max(existing.inputTokenLimit, record.inputTokenLimit)
-        }
-        if (record.outputTokenLimit && !existing.outputTokenLimit) {
-          existing.outputTokenLimit = record.outputTokenLimit
-        } else if (record.outputTokenLimit && existing.outputTokenLimit) {
-          existing.outputTokenLimit = Math.max(existing.outputTokenLimit, record.outputTokenLimit)
-        }
-        if (record.totalTokenLimit && !existing.totalTokenLimit) {
-          existing.totalTokenLimit = record.totalTokenLimit
-        } else if (record.totalTokenLimit && existing.totalTokenLimit) {
-          existing.totalTokenLimit = Math.max(existing.totalTokenLimit, record.totalTokenLimit)
-        }
-        const mergedReset = mergeUsageReset(
-          { resetAt: existing.resetAt, resetText: existing.resetText },
-          { resetAt: record.resetAt, resetText: record.resetText }
-        )
-        existing.resetAt = mergedReset.resetAt
-        existing.resetText = mergedReset.resetText
-      } else {
-        grouped.set(groupKey, {
-          provider,
-          model: modelName,
-          runs: isResetHint ? 0 : 1,
-          inputTokens: isResetHint ? 0 : record.inputTokens || 0,
-          outputTokens: isResetHint ? 0 : record.outputTokens || 0,
-          totalTokens: isResetHint ? 0 : record.totalTokens || 0,
-          durationMs: isResetHint ? 0 : record.durationMs || 0,
-          inputTokenLimit: record.inputTokenLimit || undefined,
-          outputTokenLimit: record.outputTokenLimit || undefined,
-          totalTokenLimit: record.totalTokenLimit || undefined,
-          resetAt: record.resetAt || undefined,
-          resetText: record.resetText || undefined
-        })
-      }
-    }
-
     const effectiveCodexStatus = codexStatusHint ?? codexStatus
-    const selectedChat = currentChatIdRef.current ? chatByIdRef.current.get(currentChatIdRef.current) : currentChat
-    const effectiveProvider = providerHint || (selectedChat ? getChatProvider(selectedChat) : currentProvider)
-    const hasAuthoritativeCodexWindows = Array.isArray(effectiveCodexStatus?.codexUsage?.windows) && effectiveCodexStatus.codexUsage.windows.length > 0
-    const hasCodexRateLimitWindows = Boolean(effectiveCodexStatus?.rateLimits) || Boolean(
-      effectiveCodexStatus?.rateLimitsByLimitId &&
-      typeof effectiveCodexStatus.rateLimitsByLimitId === 'object' &&
-      Object.keys(effectiveCodexStatus.rateLimitsByLimitId).length > 0
-    )
-    const hasCodexUsage = Array.from(grouped.values()).some((aggregate) => aggregate.provider === 'codex')
 
-    const shouldUseCodexQuotaOnly = effectiveProvider === 'codex' || hasCodexUsage || hasAuthoritativeCodexWindows || hasCodexRateLimitWindows
+    const [geminiSnap, claudeSnap, kimiSnap, allUsageRecords] = await Promise.all([
+      window.api.getAgentRateLimits('gemini').catch(() => null),
+      window.api.getAgentRateLimits('claude').catch(() => null),
+      window.api.getAgentRateLimits('kimi').catch(() => null),
+      window.api.getUsage().catch(() => [])
+    ])
 
-    if (shouldUseCodexQuotaOnly) {
-      for (const [groupKey, aggregate] of Array.from(grouped.entries())) {
-        if (aggregate.provider === 'codex') {
-          grouped.delete(groupKey)
-          groupedRecords.delete(groupKey)
-        }
-      }
+    const normalizedUsageRecords = Array.isArray(allUsageRecords) ? allUsageRecords : []
+    const nextUsageRecordsSignature = JSON.stringify(normalizedUsageRecords.map((record) => [
+      record.id,
+      record.timestamp,
+      record.provider || '',
+      record.model,
+      record.totalTokens,
+      record.chatId
+    ]))
+    if (usageRecordsSignatureRef.current !== nextUsageRecordsSignature) {
+      usageRecordsSignatureRef.current = nextUsageRecordsSignature
+      setUsageRecords(normalizedUsageRecords)
+    }
 
-      const codexUsageGroupKey = 'codex:usage-limits'
-      grouped.set(codexUsageGroupKey, {
-        provider: 'codex',
-        model: 'usage limits',
+    const normalizeQuotaWindow = (provider: ProviderId, windowEntry: any, fallbackId: string): UsageWindowAggregate | null => {
+      const label = String(windowEntry?.label || '').trim()
+      const limitLabel = String(windowEntry?.limitLabel || '').trim()
+      if (!label || !limitLabel) return null
+      const rawRemainingPercent = Number(windowEntry?.remainingPercent)
+      const rawUsedPercent = Number(windowEntry?.usedPercent)
+      const displayPercent = provider === 'claude'
+        ? Number.isFinite(rawRemainingPercent)
+          ? rawRemainingPercent
+          : Number.isFinite(rawUsedPercent)
+            ? 100 - rawUsedPercent
+            : undefined
+        : Number.isFinite(rawRemainingPercent)
+          ? rawRemainingPercent
+          : Number.isFinite(rawUsedPercent)
+            ? rawUsedPercent
+            : undefined
+      const clampedPercent = Number.isFinite(displayPercent) ? Math.max(0, Math.min(100, displayPercent as number)) : undefined
+      return {
+        id: String(windowEntry?.id || fallbackId),
+        label,
         runs: 0,
-        inputTokens: 0,
-        outputTokens: 0,
         totalTokens: 0,
-        durationMs: 0,
-        windows: buildCodexUsageWindows([], 'usage limits', now, effectiveCodexStatus, true)
-      })
-      groupedRecords.set(codexUsageGroupKey, [])
-    } else {
-      for (const [groupKey, aggregate] of grouped.entries()) {
-        if (aggregate.provider === 'codex') {
-          aggregate.windows = buildCodexUsageWindows(
-            groupedRecords.get(groupKey) || [],
-            aggregate.model,
-            now,
-            effectiveCodexStatus,
-            true
-          )
-        }
+        limitLabel,
+        resetAt: typeof windowEntry?.resetAt === 'string' ? windowEntry.resetAt : undefined,
+        trackingOnly: false,
+        usedPercent: clampedPercent,
+        remainingPercent: clampedPercent
       }
     }
 
-    const visibleAggregates = Array.from(grouped.values()).filter((aggregate) => aggregate.provider === effectiveProvider)
-    const sorted = visibleAggregates.sort((a, b) => {
-      if (shouldUseCodexQuotaOnly) {
-        const aIsCodexQuota = a.provider === 'codex' && a.model === 'usage limits'
-        const bIsCodexQuota = b.provider === 'codex' && b.model === 'usage limits'
-        if (aIsCodexQuota !== bIsCodexQuota) {
-          return aIsCodexQuota ? -1 : 1
-        }
-      }
-      if (b.totalTokens === a.totalTokens) {
-        return b.runs - a.runs
-      }
-      return b.totalTokens - a.totalTokens
+    const buildQuotaAggregate = (provider: ProviderId, windows: UsageWindowAggregate[]): ModelUsageAggregate => ({
+      provider,
+      model: 'usage limits',
+      runs: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      durationMs: 0,
+      windows
     })
 
-    setUsageSummary(sorted)
+    const ordered: ModelUsageAggregate[] = []
+
+    const resolveWithCache = (provider: ProviderId, fresh: UsageWindowAggregate[]): UsageWindowAggregate[] => {
+      if (fresh.length > 0) {
+        lastUsageWindowsByProviderRef.current[provider] = fresh
+        return fresh
+      }
+      return lastUsageWindowsByProviderRef.current[provider] || []
+    }
+
+    // Gemini — only Pro 3.1 (preview), Flash 3 (preview), Flash Lite 3.1 (preview)
+    const geminiAllowed = new Set(['Pro 3.1 (preview)', 'Flash 3 (preview)', 'Flash Lite 3.1 (preview)'])
+    const geminiFresh = (Array.isArray(geminiSnap?.windows) ? geminiSnap.windows : [])
+      .filter((w: any) => geminiAllowed.has(String(w?.label || '').trim()))
+      .map((w: any, i: number) => normalizeQuotaWindow('gemini', w, `gemini-quota-${i}`))
+      .filter((w): w is UsageWindowAggregate => Boolean(w))
+    const geminiWindows = resolveWithCache('gemini', geminiFresh)
+    if (geminiWindows.length > 0) {
+      ordered.push(buildQuotaAggregate('gemini', geminiWindows))
+    }
+
+    // Codex — 5H + weekly + (Pro only) GPT-5.3-Codex-Spark windows, real quotas only
+    const codexWindowsRaw = buildCodexUsageWindows([], 'usage limits', now, effectiveCodexStatus, true)
+    const codexFresh = codexWindowsRaw.filter((w) => w.usedPercent !== undefined)
+    const codexWindows = resolveWithCache('codex', codexFresh)
+    if (codexWindows.length > 0) {
+      ordered.push(buildQuotaAggregate('codex', codexWindows))
+    }
+
+    // Claude — 5H (Session), Weekly, (Max-gated) Sonnet Weekly, (Max20x) Opus Weekly
+    const claudeFresh = (Array.isArray(claudeSnap?.windows) ? claudeSnap.windows : [])
+      .map((w: any, i: number) => normalizeQuotaWindow('claude', w, `claude-quota-${i}`))
+      .filter((w): w is UsageWindowAggregate => Boolean(w))
+    const claudeWindows = resolveWithCache('claude', claudeFresh)
+    if (claudeWindows.length > 0) {
+      ordered.push(buildQuotaAggregate('claude', claudeWindows))
+    }
+
+    // Kimi — only 5H and Weekly
+    const kimiAllowed = new Set(['5H', 'Weekly'])
+    const kimiFresh = (Array.isArray(kimiSnap?.windows) ? kimiSnap.windows : [])
+      .filter((w: any) => kimiAllowed.has(String(w?.label || '').trim()))
+      .map((w: any, i: number) => normalizeQuotaWindow('kimi', w, `kimi-quota-${i}`))
+      .filter((w): w is UsageWindowAggregate => Boolean(w))
+    const kimiWindows = resolveWithCache('kimi', kimiFresh)
+    if (kimiWindows.length > 0) {
+      ordered.push(buildQuotaAggregate('kimi', kimiWindows))
+    }
+
+    const nextUsageSignature = JSON.stringify(ordered.map((entry) => ({
+      provider: entry.provider,
+      model: entry.model,
+      windows: (entry.windows || []).map((windowEntry) => ({
+        id: windowEntry.id,
+        label: windowEntry.label,
+        limitLabel: windowEntry.limitLabel,
+        resetAt: windowEntry.resetAt || '',
+        usedPercent: windowEntry.usedPercent ?? null,
+        remainingPercent: windowEntry.remainingPercent ?? null
+      }))
+    })))
+    if (usageSummarySignatureRef.current !== nextUsageSignature) {
+      usageSummarySignatureRef.current = nextUsageSignature
+      setUsageSummary(ordered)
+    }
   }
 
   const handleSelectWorkspace = async () => {
@@ -4481,8 +5111,14 @@ function App(): React.JSX.Element {
       return
     }
 
+    let lastWrittenHeight = -1
     const updateComposerReservation = () => {
       const height = Math.ceil(composerArea.getBoundingClientRect().height)
+      // Skip CSS-var writes when the height hasn't actually changed — otherwise
+      // we trigger a style recalc which cascades into the transcript
+      // ResizeObserver below and produces a feedback loop / flicker.
+      if (height === lastWrittenHeight) return
+      lastWrittenHeight = height
       transcript.style.setProperty('--composer-reserved-height', `${height}px`)
     }
 
@@ -4501,18 +5137,90 @@ function App(): React.JSX.Element {
       resizeObserver.disconnect()
       window.removeEventListener('resize', updateComposerReservation)
     }
-  }, [
-    currentProvider,
-    showGeminiTerminal,
-    geminiTerminalHeight,
-    imageAttachments.length,
-    codexExternalPathGrants.length,
-    permissionRequestPaths.length,
-    Boolean(pendingAgentApproval),
-    isCommandPaletteOpen,
-    isMemoryInspectorOpen,
-    prompt
-  ])
+    // Mount-once: ResizeObserver natively responds to every size change
+    // (typing, attachments, approvals, terminal toggles) without us needing
+    // to tear down + reinstall the observer on each state change. The previous
+    // dependency array included `prompt`, which re-ran this effect on every
+    // keystroke — each remount fired the observer callback, which mutated
+    // a CSS var that the transcript layout reads, which fed back into the
+    // composer's measured height. That was a primary source of UI flicker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ----- Transcript auto-follow scrolling -------------------------------
+  // Pins the transcript to the bottom while messages stream in, *unless*
+  // the user has scrolled up to read older content. Replaced an earlier
+  // ResizeObserver-based implementation that introduced a feedback loop:
+  // the composer-area ResizeObserver wrote a CSS variable that drove the
+  // transcript's margin-bottom; observing the transcript content fed
+  // every composer height tick back into a scrollTop write, which
+  // re-laid-out the transcript, which fired the composer observer again.
+  // That loop manifested as freezes-on-typing (severe enough to disconnect
+  // bluetooth keyboards) and the transcript appearing to slide under the
+  // composer.
+  //
+  // Current design — no ResizeObservers in the transcript path:
+  //  1. Scroll listener flips autoFollowRef based on distance-from-bottom,
+  //     with hysteresis (engage <40px, disengage >120px) and rAF throttling.
+  //  2. Layout-effect on `currentChat?.messages` snaps to bottom when new
+  //     messages arrive — but only if autoFollow is still engaged.
+  //  3. Chat-switch effect resets autoFollow + snaps to bottom on the new
+  //     thread's last message.
+  useEffect(() => {
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+
+    let rafId: number | null = null
+    const evaluate = () => {
+      rafId = null
+      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      // Tight engage / wide disengage: user must be essentially at the bottom
+      // (within ~8px) to opt back into auto-follow, but a single meaningful
+      // upward scroll (>40px) immediately disengages so a slow scrolljump
+      // from one stream tick doesn't fight the user trying to read.
+      if (distanceFromBottom <= 8) {
+        autoFollowRef.current = true
+      } else if (distanceFromBottom > 40) {
+        autoFollowRef.current = false
+      }
+    }
+    const onScroll = () => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(evaluate)
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
+  // Stick to bottom when the messages array reference changes. Streaming
+  // updates produce a fresh `currentChat.messages` array via immutable
+  // updates, so this fires once per render that affects messages — never
+  // mid-layout, never inside a ResizeObserver callback.
+  useLayoutEffect(() => {
+    if (!autoFollowRef.current) return
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+    // Single scrollTop write per messages-update; the browser clamps to
+    // [0, scrollHeight - clientHeight] so we don't need to compute target.
+    scroller.scrollTop = scroller.scrollHeight
+  }, [currentChat?.messages])
+
+  useEffect(() => {
+    // When the active chat changes, snap to the bottom and re-arm auto-follow
+    // so the user lands on the latest message in their new thread.
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+    autoFollowRef.current = true
+    // Defer one frame so the new messages render before we measure.
+    const rafId = requestAnimationFrame(() => {
+      scroller.scrollTop = scroller.scrollHeight
+    })
+    return () => cancelAnimationFrame(rafId)
+  }, [currentChat?.appChatId])
+  // ---------------------------------------------------------------------
 
   useEffect(() => {
     if (!showTerminal && currentWorkspace) {
@@ -4580,9 +5288,15 @@ function App(): React.JSX.Element {
 
   useEffect(() => {
     if (rightTab === 'raw') {
-      rawLogsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      const rawEventsBody = rawLogsEndRef.current?.closest('.raw-events-body') as HTMLElement | null
+      if (rawEventsBody) {
+        rawEventsBody.scrollTo({
+          top: rawEventsBody.scrollHeight,
+          behavior: appearance.reduceMotion ? 'auto' : 'smooth'
+        })
+      }
     }
-  }, [rawLogs, rightTab])
+  }, [rawLogs.length, rawFilter, rightTab, appearance.reduceMotion])
 
   useEffect(() => {
     if (showGeminiTerminal) {
@@ -5029,6 +5743,7 @@ function App(): React.JSX.Element {
     ...(request.codexNativeReview ? { codexNativeReview: true } : {}),
     ...(request.codexReasoningEffort !== undefined ? { codexReasoningEffort: request.codexReasoningEffort } : {}),
     ...(request.codexServiceTier !== undefined ? { codexServiceTier: request.codexServiceTier } : {}),
+    ...(request.kimiThinkingEnabled !== undefined ? { kimiThinkingEnabled: request.kimiThinkingEnabled } : {}),
     ...(request.scheduledTaskId ? { scheduledTaskId: request.scheduledTaskId } : {}),
     ...(request.runtimeProfileId ? { runtimeProfileId: request.runtimeProfileId } : {}),
     ...(request.handoffSourceRunId ? { handoffSourceRunId: request.handoffSourceRunId } : {}),
@@ -5091,13 +5806,16 @@ function App(): React.JSX.Element {
     const scope = job.scope === 'global' || job.request.scope === 'global' || isGlobalChat(chatRecord) ? 'global' : 'workspace'
     if (!chatRecord || (scope !== 'global' && !workspaceRecord)) return null
     const request = job.request
+    const selectedModel = isValidModelForProvider(job.provider, request.selectedModelType)
+      ? request.selectedModelType
+      : getDefaultModelForProvider(job.provider)
     return {
       appRunId: job.runId,
       scope,
       provider: job.provider,
       prompt: request.prompt,
       displayPrompt: request.displayPrompt,
-      selectedModelType: request.selectedModelType,
+      selectedModelType: selectedModel,
       customModel: request.customModel,
       approvalMode: request.approvalMode,
       sessionTrust: request.sessionTrust,
@@ -5111,6 +5829,7 @@ function App(): React.JSX.Element {
       codexNativeReview: request.codexNativeReview,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      kimiThinkingEnabled: request.kimiThinkingEnabled,
       scheduledTaskId: request.scheduledTaskId,
       runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
       handoffSourceRunId: job.handoffSourceRunId || request.handoffSourceRunId,
@@ -5213,9 +5932,12 @@ function App(): React.JSX.Element {
     const selectedWorkspace = scope === 'global' ? null : getWorkspaceForChat(selectedChat) || currentWorkspace
     const provider = selectedChat ? getChatProvider(selectedChat) : currentProvider
     const composerSelection = selectedChat ? getChatComposerSelection(selectedChat, provider) : null
-    const requestModel = overrideModel
+    const rawRequestModel = overrideModel
       ? selectedModelType
       : composerSelection?.selectedModelType || selectedModelType
+    const requestModel = isValidModelForProvider(provider, rawRequestModel)
+      ? rawRequestModel
+      : getDefaultModelForProvider(provider)
     const requestCustomModel = composerSelection?.customModel ?? customModel
     const requestApprovalMode = composerSelection?.approvalMode || approvalMode
     const requestReasoningEffort = provider === 'codex'
@@ -5224,6 +5946,12 @@ function App(): React.JSX.Element {
     const requestServiceTier = provider === 'codex'
       ? (composerSelection?.codexServiceTier || codexServiceTier)
       : codexServiceTier
+    const requestKimiThinkingEnabled = provider === 'kimi'
+      ? composerSelection?.kimiThinkingEnabled ?? kimiThinkingEnabled
+      : kimiThinkingEnabled
+    const requestClaudeReasoningEffort = provider === 'claude'
+      ? (composerSelection?.claudeReasoningEffort || claudeReasoningEffort)
+      : claudeReasoningEffort
     const externalPathGrants = provider === 'codex'
       && scope !== 'global'
       ? normalizeExternalPathGrants(selectedChat?.providerMetadata?.codexExternalPathGrants)
@@ -5245,6 +5973,8 @@ function App(): React.JSX.Element {
       geminiWorktree: scope === 'global' ? undefined : resolveGeminiWorktreeConfig(selectedWorkspace),
       codexReasoningEffort: requestReasoningEffort,
       codexServiceTier: requestServiceTier,
+      claudeReasoningEffort: requestClaudeReasoningEffort,
+      kimiThinkingEnabled: requestKimiThinkingEnabled,
       runtimeProfileId: getRuntimeProfileIdForChat(selectedChat, provider),
       workspaceRecord: selectedWorkspace || undefined,
       chatRecord: selectedChat || undefined
@@ -5426,15 +6156,25 @@ function App(): React.JSX.Element {
       ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {})
     }
     chatToUpdate.runs = [...(chatToUpdate.runs || []), newRun]
-    let contextTurnsForRun = runProvider !== 'gemini' || resumeSessionId ? 0 : clampContextTurns(chatContextTurns)
-    let contextualPrompt = runProvider !== 'gemini' || resumeSessionId
-      ? finalPrompt
-      : appendConversationContext(finalPrompt, chatToUpdate.messages, contextTurnsForRun, finalPrompt)
-    let contextApplicationLog = runProvider !== 'gemini'
-      ? `Context turns: 0 (${getProviderLabel(runProvider)} provider/session history is authoritative when available)`
-      : resumeSessionId
-        ? 'Context turns: 0 (resuming Gemini CLI session context)'
-        : `Context turns: ${contextTurnsForRun} (sending compact context + current request)`
+    // Kimi's Wire protocol --resume only restores a session token, not the actual
+    // conversation transcript, so the model loses prior context across turns. To
+    // make Kimi behave like the other providers we always append a compact
+    // conversation-context block for Kimi runs (whether or not we have a resume
+    // session id). Gemini still relies on its CLI's resume to carry context.
+    const kimiNeedsContextInjection = runProvider === 'kimi'
+    const geminiNeedsContextInjection = runProvider === 'gemini' && !resumeSessionId
+    const shouldAppendContextForRun = kimiNeedsContextInjection || geminiNeedsContextInjection
+    let contextTurnsForRun = shouldAppendContextForRun ? clampContextTurns(chatContextTurns) : 0
+    let contextualPrompt = shouldAppendContextForRun
+      ? appendConversationContext(finalPrompt, chatToUpdate.messages, contextTurnsForRun, finalPrompt)
+      : finalPrompt
+    let contextApplicationLog = kimiNeedsContextInjection
+      ? `Context turns: ${contextTurnsForRun} (Kimi: appending compact conversation context because Wire protocol --resume does not restore message history)`
+      : runProvider !== 'gemini'
+        ? `Context turns: 0 (${getProviderLabel(runProvider)} provider/session history is authoritative when available)`
+        : resumeSessionId
+          ? 'Context turns: 0 (resuming Gemini CLI session context)'
+          : `Context turns: ${contextTurnsForRun} (sending compact context + current request)`
 
     if (runProvider === 'codex') {
       const lastCompletedModel = getLastCompletedCodexRunModel(runChat)
@@ -5465,6 +6205,7 @@ function App(): React.JSX.Element {
       const geminiWriteToolPreamble = [
         'AGBench runtime note: this Gemini workspace run is write-capable.',
         'Use the AGBench MCP tools directly for file changes: read_file, list_directory, write_file, replace, and run_shell_command.',
+        'If Gemini exposes MCP-qualified names, use agentbench__read_file, agentbench__list_directory, agentbench__write_file, agentbench__replace, and agentbench__run_shell_command.',
         'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit AGBench write tools.',
         'If any of those tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
       ].join('\n')
@@ -5684,7 +6425,7 @@ function App(): React.JSX.Element {
           }
         } else if (event.type === 'run_started') {
           const sessionId = normalizeGeminiResumeTarget(event.session_id)
-          if (sessionId && !event.fallback) {
+          if (sessionId && (runProvider !== 'gemini' || !event.fallback)) {
             if (runProvider !== 'gemini') {
               updated.linkedProviderSessionId = sessionId
             } else {
@@ -5694,7 +6435,7 @@ function App(): React.JSX.Element {
           const runs = [...(updated.runs || [])]
           if (runs.length > 0) {
             runs[runs.length - 1].actualModel = event.model
-            if (runProvider !== 'gemini' && !event.fallback) {
+            if (runProvider !== 'gemini') {
               runs[runs.length - 1].providerThreadId = sessionId || runs[runs.length - 1].providerThreadId
             }
           }
@@ -5702,6 +6443,10 @@ function App(): React.JSX.Element {
         } else if (event.type === 'run_finished') {
           if (isVisibleRunChat()) setIsThinking(false)
           const runs = [...(updated.runs || [])]
+          const finishedSessionId = normalizeGeminiResumeTarget(event.providerThreadId)
+          if (finishedSessionId && runProvider !== 'gemini') {
+            updated.linkedProviderSessionId = finishedSessionId
+          }
           const resolvedRunModel = runs.length > 0 ? (runs[runs.length - 1].actualModel || runs[runs.length - 1].requestedModel || 'unknown') : 'unknown'
           const runUsageEntries = extractModelUsageEntriesFromStats(event.stats || {}, resolvedRunModel)
 
@@ -5709,6 +6454,9 @@ function App(): React.JSX.Element {
             runs[runs.length - 1].status = event.status
             runs[runs.length - 1].stats = event.stats
             runs[runs.length - 1].endedAt = new Date().toISOString()
+            if (finishedSessionId && runProvider !== 'gemini') {
+              runs[runs.length - 1].providerThreadId = finishedSessionId
+            }
           }
           updated.runs = runs
 
@@ -5868,6 +6616,8 @@ function App(): React.JSX.Element {
           model: modelToPass,
           reasoningEffort: runProvider === 'codex' ? ((request.codexReasoningEffort ?? codexReasoningEffort) || null) : null,
           serviceTier: runProvider === 'codex' ? ((request.codexServiceTier ?? codexServiceTier) || null) : null,
+          claudeReasoningEffort: runProvider === 'claude' ? ((request.claudeReasoningEffort ?? claudeReasoningEffort) || null) : null,
+          kimiThinking: runProvider === 'kimi' ? request.kimiThinkingEnabled ?? true : null,
           approvalMode: modeToPass,
           imagePaths: request.imageAttachments.map(item => item.path),
           providerSessionId: resumeSessionId,
@@ -5982,6 +6732,7 @@ function App(): React.JSX.Element {
       geminiWorktree: request.geminiWorktree,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      kimiThinkingEnabled: request.kimiThinkingEnabled,
       runtimeProfileId: request.runtimeProfileId,
       handoffSourceRunId: request.handoffSourceRunId,
       runAt: runAtDate.toISOString(),
@@ -6040,6 +6791,10 @@ function App(): React.JSX.Element {
     const workspace = getWorkspaceForChat(chat) || undefined
     const provider = lane.provider || getChatProvider(chat)
     const selection = getChatComposerSelection(chat, provider)
+    const requestedRetryModel = run?.requestedModel
+    const retryModel = isValidModelForProvider(provider, requestedRetryModel)
+      ? requestedRetryModel
+      : selection.selectedModelType
     const request: QueuedRunRequest = {
       appRunId: createAppRunId(),
       scope: getChatScope(chat),
@@ -6047,7 +6802,7 @@ function App(): React.JSX.Element {
       prompt: sourcePrompt,
       displayPrompt: `[retry] ${sourcePrompt}`,
       existingPrompt: sourcePrompt,
-      selectedModelType: run?.requestedModel || selection.selectedModelType,
+      selectedModelType: retryModel,
       customModel: selection.customModel,
       approvalMode: run?.approvalMode || selection.approvalMode,
       sessionTrust,
@@ -6056,6 +6811,7 @@ function App(): React.JSX.Element {
       geminiWorktree: getChatScope(chat) === 'global' ? undefined : resolveGeminiWorktreeConfig(workspace || null),
       codexReasoningEffort: selection.codexReasoningEffort,
       codexServiceTier: selection.codexServiceTier,
+      kimiThinkingEnabled: selection.kimiThinkingEnabled,
       runtimeProfileId: lane.runtimeProfileId || getRuntimeProfileIdForChat(chat, provider),
       handoffSourceRunId: lane.handoffSourceRunId,
       workspaceRecord: getChatScope(chat) === 'global' ? undefined : workspace,
@@ -6196,13 +6952,19 @@ function App(): React.JSX.Element {
       chatByIdRef.current.set(chat.appChatId, chat)
       setCurrentChat(chat)
       applyChatComposerSelection(chat, task.provider)
-      setSelectedModelType(task.selectedModelType)
+      const taskSelectedModel = isValidModelForProvider(task.provider, task.selectedModelType)
+        ? task.selectedModelType
+        : getDefaultModelForProvider(task.provider)
+      setSelectedModelType(taskSelectedModel)
       setCustomModel(task.customModel)
       setApprovalMode(task.approvalMode)
       setSessionTrust(task.sessionTrust)
       if (task.provider === 'codex') {
         setCodexReasoningEffort(task.codexReasoningEffort || 'medium')
         setCodexServiceTier(task.codexServiceTier || '')
+      }
+      if (task.provider === 'kimi') {
+        setKimiThinkingEnabled(task.kimiThinkingEnabled !== false)
       }
 
       await window.api.updateScheduledTask(task.id, { status: 'running', firedAt: task.firedAt || new Date().toISOString() })
@@ -6212,7 +6974,7 @@ function App(): React.JSX.Element {
         provider: task.provider,
         prompt: task.prompt,
         displayPrompt: task.displayPrompt || `[scheduled ${formatScheduledRunTime(task.runAt)}] ${task.prompt}`,
-        selectedModelType: task.selectedModelType,
+        selectedModelType: taskSelectedModel,
         customModel: task.customModel,
         approvalMode: task.approvalMode,
         sessionTrust: task.sessionTrust,
@@ -6221,6 +6983,7 @@ function App(): React.JSX.Element {
         geminiWorktree: task.geminiWorktree,
         codexReasoningEffort: task.codexReasoningEffort,
         codexServiceTier: task.codexServiceTier,
+        kimiThinkingEnabled: task.kimiThinkingEnabled,
         runtimeProfileId: task.runtimeProfileId,
         handoffSourceRunId: task.handoffSourceRunId,
         scheduledTaskId: task.id,
@@ -6420,7 +7183,9 @@ function App(): React.JSX.Element {
         void handleReviewCurrentDiff()
       } else if (item.command === '/fast') {
         if (codexSupportsFast) {
-          setCodexServiceTier(current => current === 'fast' ? '' : 'fast')
+          const nextTier = codexServiceTier === 'fast' ? '' : 'fast'
+          setCodexServiceTier(nextTier)
+          rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
         }
       } else if (item.command === '/fork') {
         const threadId = currentChat?.linkedProviderSessionId
@@ -6969,8 +7734,60 @@ function App(): React.JSX.Element {
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
   const isCurrentComposerLocked = isCurrentChatRunning
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
+  const cumulativeChatTokens = (currentChat?.runs || []).reduce((sum, run) => {
+    const counts = extractUsageCountsFromCandidate(run?.stats)
+    return sum + (counts.totalTokens || 0)
+  }, 0)
+  const latestRunLimits = extractUsageLimits(currentRun?.stats)
+  const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
+  const contextWindowSize = resolveContextWindow(currentProvider, contextModelId, latestRunLimits.totalTokenLimit)
+  const contextUsedPercent = contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
+  const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
+  const latestRunDiffStats = (() => {
+    // Prefer a live aggregate from tool activities on the current run so the
+    // above-composer bar updates mid-task rather than only after runDiff lands.
+    const runId = currentRun?.runId
+    if (currentChat && runId) {
+      let liveAdditions = 0
+      let liveDeletions = 0
+      const liveFiles = new Set<string>()
+      let hasAnyDiff = false
+      for (const message of currentChat.messages || []) {
+        if (message.runId && message.runId !== runId) continue
+        for (const activity of message.toolActivities || []) {
+          const diff = activity.diffSummary
+          if (!diff) continue
+          if (typeof diff.additions === 'number') liveAdditions += diff.additions
+          if (typeof diff.deletions === 'number') liveDeletions += diff.deletions
+          for (const file of diff.files || []) {
+            if (file?.path) liveFiles.add(file.path)
+          }
+          hasAnyDiff = true
+        }
+      }
+      if (hasAnyDiff) {
+        return { additions: liveAdditions, deletions: liveDeletions, filesChanged: liveFiles.size }
+      }
+    }
+    // Fallback: completed-run snapshot from main-process diff state
+    const files: DiffFileSummary[] = Array.isArray(runDiff) ? runDiff : []
+    let additions = 0
+    let deletions = 0
+    for (const file of files) {
+      additions += Number(file?.additions || 0)
+      deletions += Number(file?.deletions || 0)
+    }
+    return {
+      additions,
+      deletions,
+      filesChanged: files.length
+    }
+  })()
   const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
+  const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
+    ? selectedModelType
+    : getDefaultModelForProvider(currentProvider)
   const currentAgentStatus = currentProvider === 'codex' ? codexStatus : agentStatusByProvider[currentProvider]
   const currentAgentMcpStatus = currentProvider === 'codex' ? codexMcpStatus : agentMcpStatusByProvider[currentProvider]
   const currentProviderCapabilities = providerCapabilitiesByProvider[currentProvider]
@@ -7010,11 +7827,20 @@ function App(): React.JSX.Element {
     : currentProvider === 'codex'
       ? 'New Codex thread'
       : `New ${currentProviderLabel} session`
-  const currentCodexModelOption = codexModels.find((model) => model.id === selectedModelType)
+  const currentCodexModelOption = codexModels.find((model) => model.id === selectedComposerModelType)
   const codexReasoningOptions = currentCodexModelOption?.supportedReasoningEfforts?.length
     ? currentCodexModelOption.supportedReasoningEfforts
     : [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }, { reasoningEffort: 'high' }, { reasoningEffort: 'xhigh' }]
   const codexSupportsFast = Boolean(currentCodexModelOption?.additionalSpeedTiers?.includes('fast'))
+  const currentClaudeModelOption = currentProvider === 'claude'
+    ? (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS).find((model) => model.id === selectedComposerModelType)
+    : undefined
+  const claudeReasoningOptions = currentClaudeModelOption?.supportedReasoningEfforts?.length
+    ? currentClaudeModelOption.supportedReasoningEfforts
+    : CLAUDE_THINKING_EFFORTS
+  const claudeUsesApiKey = Boolean(claudeAuthStatus?.apiKeyConfigured)
+  const claudeRuntimeLabel = claudeUsesApiKey ? 'Claude API / PAYG' : 'Claude SDK credit'
+  const claudeRuntimeNotice = claudeUsesApiKey ? CLAUDE_API_KEY_PAYG_NOTICE : CLAUDE_AGENT_SDK_CREDIT_NOTICE
   const hasAgenticApprovalGate =
     agenticServices.shellCommands !== 'allow' ||
     agenticServices.fileChanges !== 'allow' ||
@@ -7062,13 +7888,16 @@ function App(): React.JSX.Element {
       ? 'Tool permission requested'
       : 'Attachment access requested'
   const currentRunDiff = currentRun?.runDiff
-  const fileChangeSummaries = getRunFileDiffSummaries(runDiff || currentRunDiff || null)
+  const exactFileChangeSummaries = getRunFileDiffSummaries(runDiff || currentRunDiff || null)
+  const liveToolFileChangeSummaries = getLiveToolFileDiffSummaries(currentChat?.messages || [], currentWorkspace?.path)
+  const fileChangeSummaries = exactFileChangeSummaries.length > 0 ? exactFileChangeSummaries : liveToolFileChangeSummaries
+  const fileChangeSummaryEstimated = exactFileChangeSummaries.length === 0 && liveToolFileChangeSummaries.length > 0
   const displayFileChangeSummaries = fileChangeSummaries.filter((item) => !item.isNoise)
   const createdChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'created').length
   const modifiedChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'modified').length
   const deletedChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'deleted').length
   const fileChangeSummaryText = displayFileChangeSummaries.length > 0
-    ? `Created ${createdChangeCount} · Edited ${modifiedChangeCount} · Deleted ${deletedChangeCount}`
+    ? `Created ${createdChangeCount} · Edited ${modifiedChangeCount} · Deleted ${deletedChangeCount}${fileChangeSummaryEstimated ? ' · live est.' : ''}`
     : 'No file changes detected.'
   const fileChangeAdds = displayFileChangeSummaries.reduce((total, item) => total + (item.additions || 0), 0)
   const fileChangeDels = displayFileChangeSummaries.reduce((total, item) => total + (item.deletions || 0), 0)
@@ -7089,6 +7918,11 @@ function App(): React.JSX.Element {
     !isCurrentChatRunning &&
     !showFallbackUX
   )
+  const welcomeUsageDashboardData = useMemo(
+    () => buildWelcomeUsageDashboardData(usageRecords, chats, welcomeUsageRange),
+    [usageRecords, chats, welcomeUsageRange]
+  )
+  const shouldShowWelcomeUsageDashboard = isWelcomeChat && welcomeUsageDashboardData.hasActivity
   const visibleTranscriptMessages = isWelcomeChat ? [] : transcriptMessages
   const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
   const runCompleteDurationText = shouldShowRunCompleteNotice && runCompleteNotice
@@ -7219,6 +8053,32 @@ function App(): React.JSX.Element {
     }
   }
 
+  const handleCreateGithubPr = async () => {
+    if (createPrState.status === 'pending') return
+    const workspacePath = currentWorkspace?.path
+    if (!workspacePath) {
+      setCreatePrState({ status: 'error', message: 'Open a workspace to create a PR.' })
+      window.setTimeout(() => setCreatePrState({ status: 'idle' }), 5000)
+      return
+    }
+    if (typeof window.api.createGithubPr !== 'function') {
+      setRightTab('diff')
+      return
+    }
+    setCreatePrState({ status: 'pending' })
+    try {
+      const result = await window.api.createGithubPr({ workspacePath, openInBrowser: true })
+      if (result?.ok) {
+        setCreatePrState({ status: 'success', message: result.url ? `Opened ${result.url}` : 'Pull request created.' })
+      } else {
+        setCreatePrState({ status: 'error', message: result?.error || 'Failed to create pull request.' })
+      }
+    } catch (error) {
+      setCreatePrState({ status: 'error', message: error instanceof Error ? error.message : 'Failed to create pull request.' })
+    }
+    window.setTimeout(() => setCreatePrState({ status: 'idle' }), 6000)
+  }
+
   const commandPaletteItems = currentProvider === 'codex'
     ? CODEX_COMMAND_PALETTE_CORE
     : currentProvider === 'claude' || currentProvider === 'kimi'
@@ -7234,11 +8094,30 @@ function App(): React.JSX.Element {
     : commandPaletteItems
   const commandPaletteGroups: CommandPaletteGroup[] = ['Core', 'Discovery', 'Memory', 'Inspectors', 'Custom']
   const appMainStyle = showWorkspaceSidebar ? ({ '--sidebar-width': `${workspaceSidebarWidth}px` } as CSSProperties) : undefined
+  const interfaceStyle = appearance.composerStyle
+  const providerShellEnabled = interfaceStyle === 'codex' || interfaceStyle === 'claude'
+  const providerShellClass = providerShellEnabled ? `provider-shell provider-shell-${interfaceStyle}` : 'provider-shell-default'
+  const providerShellCapabilityChips = providerShellEnabled
+    ? [
+        { id: 'native-session', label: currentProvider === 'gemini' ? 'AGBench bridge' : 'Native session' },
+        { id: 'workspace-write', label: permissionModeLabel },
+        {
+          id: 'approval-policy',
+          label: currentProvider === 'claude'
+            ? 'Provider approvals'
+            : currentProvider === 'gemini'
+              ? 'AGBench approvals'
+              : 'AGBench approvals'
+        },
+        { id: 'audit', label: 'AGBench audit' },
+        ...(usageSummary ? [{ id: 'usage', label: 'Usage metered' }] : [])
+      ]
+    : []
 
   return (
-    <div className={`app-root ${fxBurstClass} ${appAgentAuraClass}`}>
+    <div className={`app-root ${fxBurstClass} ${appAgentAuraClass} ${providerShellClass}`}>
       <div className="window-drag-strip" aria-hidden />
-      <div className={`app-main ${isChatExpanded ? 'chat-expanded' : ''}`} style={appMainStyle}>
+      <div className={`app-main ${isChatExpanded ? 'chat-expanded' : ''} ${providerShellClass}`} style={appMainStyle}>
         {showWorkspaceSidebar && (
           <>
             <Sidebar
@@ -7275,7 +8154,7 @@ function App(): React.JSX.Element {
 
         <div
           ref={appTranscriptRef}
-          className={`app-transcript provider-${currentProvider} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''}`}
+          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''}`}
           style={showGeminiTerminal && currentProvider === 'gemini' ? ({ '--gemini-terminal-height': `${geminiTerminalHeight}px` } as CSSProperties) : undefined}
         >
           {chatContextNotice && (
@@ -7401,18 +8280,28 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          <div className="transcript-scroll">
+          <div className="transcript-scroll" ref={transcriptScrollRef}>
             <div className="transcript-inner">
               {visibleTranscriptMessages.map((msg) => (
                 msg.role === 'tool' ? (
-                  <ActivityStack key={msg.id} activities={msg.toolActivities || []} workspacePath={currentWorkspace?.path} />
+                  <ActivityStack
+                    key={msg.id}
+                    activities={msg.toolActivities || []}
+                    workspacePath={currentWorkspace?.path}
+                    provider={getChatProvider(currentChat)}
+                    chatId={currentChat?.appChatId}
+                    runId={msg.runId}
+                    chat={currentChat || undefined}
+                  />
                 ) : (
                 <div key={msg.id} className={`message-group`}>
                     <div className="message-meta">
                       {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
                     </div>
                     <div className={`message-bubble ${msg.role}`}>
-                      {msg.role === 'assistant' ? renderGeminiMessage(msg.content) : msg.content}
+                      {msg.role === 'assistant'
+                        ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
+                        : msg.content}
                     </div>
                     {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
                       <div className="plan-choice-card">
@@ -7598,7 +8487,7 @@ function App(): React.JSX.Element {
             </>
           )}
 
-          <div className="composer-area" ref={composerAreaRef}>
+          <div className={`composer-area interface-${interfaceStyle}`} ref={composerAreaRef}>
               {isWelcomeChat && (
                 <div className="welcome-hero">
                 <h1>
@@ -7609,7 +8498,75 @@ function App(): React.JSX.Element {
                 <p>{welcomeCopy.subheading}</p>
               </div>
               )}
+              {shouldShowWelcomeUsageDashboard && (
+                <WelcomeUsageDashboard
+                  data={welcomeUsageDashboardData}
+                  tab={welcomeUsageTab}
+                  range={welcomeUsageRange}
+                  onTabChange={setWelcomeUsageTab}
+                  onRangeChange={setWelcomeUsageRange}
+                />
+              )}
               {shouldShowGhostCompanion && <GhostCompanion />}
+              {providerShellEnabled && (
+                <div className={`provider-shell-status-row style-${interfaceStyle}`} aria-label={`${currentProviderLabel} shell capabilities`}>
+                  <span className="provider-shell-status-provider">{currentProviderLabel}</span>
+                  {providerShellCapabilityChips.map((chip) => (
+                    <span key={chip.id} className={`provider-shell-status-chip chip-${chip.id}`}>
+                      {chip.label}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {appearance.composerStyle === 'codex' && (latestRunDiffStats.filesChanged > 0 || latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                <div className="composer-above-bar style-codex">
+                  <span className="composer-above-bar-summary">
+                    <strong>{latestRunDiffStats.filesChanged}</strong> {latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'} changed
+                    <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
+                    <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                  </span>
+                  <button
+                    type="button"
+                    className="composer-above-bar-action"
+                    onClick={() => setRightTab('diff')}
+                    title="Review changes"
+                  >
+                    Review changes
+                  </button>
+                </div>
+              )}
+              {(appearance.composerStyle === 'claude' || appearance.composerStyle === 'default') && (currentWorkspace?.branch || latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                <div className={`composer-above-bar style-${appearance.composerStyle}`}>
+                  <span className="composer-above-bar-branch">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="7" r="1.6"/>
+                      <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5"/>
+                    </svg>
+                    <span>{currentWorkspace?.branch || 'detached'}</span>
+                  </span>
+                  {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                    <span className="composer-above-bar-stats">
+                      <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
+                      <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
+                    onClick={handleCreateGithubPr}
+                    disabled={createPrState.status === 'pending'}
+                    title={createPrState.message || 'Run `gh pr create --fill` against the current branch'}
+                  >
+                    {createPrState.status === 'pending'
+                      ? 'Creating…'
+                      : createPrState.status === 'success'
+                        ? 'PR opened'
+                        : createPrState.status === 'error'
+                          ? 'Retry PR'
+                          : 'Create PR'}
+                  </button>
+                </div>
+              )}
               <div
                 className={`composer-surface ${isComposerDragOver ? 'is-drag-over' : ''} ${composerAgentAuraClass}`}
                 onDragEnter={handleComposerDragEnter}
@@ -7701,9 +8658,38 @@ function App(): React.JSX.Element {
 
               <textarea
                 className="composer-textarea"
+                ref={composerTextareaRef}
                 value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                placeholder={`Enter prompt for ${currentProviderLabel}…`}
+                onChange={e => {
+                  const nextValue = e.target.value
+                  setPrompt(nextValue)
+                  // @-mention trigger detection. Scan back from the caret to
+                  // find an unclosed `@<query>` token (no whitespace between).
+                  // If found, open the popover; otherwise close it.
+                  const caret = e.target.selectionStart ?? nextValue.length
+                  const before = nextValue.slice(0, caret)
+                  const atMatch = before.match(/@([\w-]*)$/)
+                  if (atMatch) {
+                    mentionAnchorIndexRef.current = caret - atMatch[0].length
+                    setMentionQuery(atMatch[1] || '')
+                    setMentionMenuOpen(true)
+                  } else if (mentionMenuOpen) {
+                    setMentionMenuOpen(false)
+                    setMentionQuery('')
+                    mentionAnchorIndexRef.current = null
+                  }
+                }}
+                placeholder={
+                  appearance.composerStyle === 'codex'
+                    ? 'Ask Codex anything. @ to use plugins or mention files'
+                    : appearance.composerStyle === 'claude'
+                      ? 'Describe a task or ask a question'
+                      : appearance.composerStyle === 'gemini'
+                        ? 'Ask Gemini'
+                        : appearance.composerStyle === 'kimi'
+                          ? 'Type "/" to quickly access skills'
+                          : `Enter prompt for ${currentProviderLabel}…`
+                }
                 aria-label={`Prompt for ${currentProviderLabel}`}
                 rows={3}
                 disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
@@ -7713,6 +8699,43 @@ function App(): React.JSX.Element {
                     triggerSendConfirmation()
                     handleRun()
                   }
+                }}
+              />
+              <AgentMentionMenu
+                chat={currentChat || undefined}
+                provider={currentProvider}
+                prompt={prompt}
+                open={mentionMenuOpen}
+                anchorRef={composerTextareaRef}
+                query={mentionQuery}
+                onDismiss={() => {
+                  setMentionMenuOpen(false)
+                  setMentionQuery('')
+                  mentionAnchorIndexRef.current = null
+                }}
+                onPick={({ agentId, name }) => {
+                  const anchor = mentionAnchorIndexRef.current
+                  if (anchor === null) {
+                    setMentionMenuOpen(false)
+                    setMentionQuery('')
+                    return
+                  }
+                  const before = prompt.slice(0, anchor)
+                  const afterQuery = prompt.slice(anchor + 1 + mentionQuery.length)
+                  const mentionMarkdown = `[@${name}](agent://${agentId}) `
+                  const next = `${before}${mentionMarkdown}${afterQuery}`
+                  setPrompt(next)
+                  setMentionMenuOpen(false)
+                  setMentionQuery('')
+                  mentionAnchorIndexRef.current = null
+                  // Restore caret after the inserted mention.
+                  requestAnimationFrame(() => {
+                    const ta = composerTextareaRef.current
+                    if (!ta) return
+                    const newCaret = before.length + mentionMarkdown.length
+                    ta.focus()
+                    ta.setSelectionRange(newCaret, newCaret)
+                  })
                 }}
               />
               <div className="composer-control-footer">
@@ -7979,6 +9002,7 @@ function App(): React.JSX.Element {
                       aria-label="Add attachment"
                       onClick={handlePickImages}
                       disabled={isCurrentComposerLocked}
+                      data-composer-control="attach"
                     >
                       <PlusSymbolIcon />
                     </button>
@@ -8003,7 +9027,7 @@ function App(): React.JSX.Element {
                         </select>
                       </label>
                     )}
-                    <label className="composer-picker-label" title="Provider">
+                    <label className="composer-picker-label" title="Provider" data-composer-control="provider">
                       <LinkCircleSymbolIcon />
                       <select
                         className="composer-inline-picker"
@@ -8018,12 +9042,12 @@ function App(): React.JSX.Element {
                         <option value="kimi">Kimi</option>
                       </select>
                     </label>
-                    <label className="composer-picker-label" title="Model">
+                    <label className="composer-picker-label" title="Model" data-composer-control="model">
                       <ModelSymbolIcon />
                       <select
                         className="composer-inline-picker"
                         aria-label={`${currentProviderLabel} model`}
-                        value={selectedModelType}
+                        value={selectedComposerModelType}
                         onChange={e => {
                           const nextModel = e.target.value
                           if (nextModel !== 'custom') {
@@ -8065,11 +9089,11 @@ function App(): React.JSX.Element {
                             {currentProviderModelOptions.map((model) => (
                               <option key={model.id} value={model.id}>{model.label || model.id}</option>
                             ))}
-                            <option value="custom">Custom…</option>
+                            {currentProvider !== 'kimi' && <option value="custom">Custom…</option>}
                           </>
                         )}
                       </select>
-                      {selectedModelType === 'custom' && (
+                      {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
                         <span className="composer-inline-custom-model">
                           <input
                             className="composer-inline-input"
@@ -8110,28 +9134,100 @@ function App(): React.JSX.Element {
                     </label>
 
                     {currentProvider === 'codex' && (
-                    <label className="composer-picker-label" title="Reasoning effort">
+                    <>
+                      <label className="composer-picker-label" title="Reasoning effort">
+                        <QuestionmarkCircleSymbolIcon />
+                        <select
+                          className="composer-inline-picker"
+                          aria-label="Codex reasoning effort"
+                          value={codexReasoningEffort}
+                          onChange={(event) => {
+                            setCodexReasoningEffort(event.target.value)
+                            rememberCurrentChatComposerSelection({ codexReasoningEffort: event.target.value })
+                          }}
+                          disabled={isCurrentComposerLocked}
+                        >
+                          {codexReasoningOptions.map((option) => (
+                            <option key={option.reasoningEffort} value={option.reasoningEffort}>
+                              {option.reasoningEffort}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label
+                        className="composer-picker-label"
+                        title={codexSupportsFast ? 'Codex speed tier' : 'The selected Codex model only supports standard speed'}
+                      >
+                        <ClockSymbolIcon />
+                        <select
+                          className="composer-inline-picker"
+                          aria-label="Codex speed tier"
+                          value={codexServiceTier === 'fast' ? 'fast' : ''}
+                          onChange={(event) => {
+                            const nextTier = event.target.value === 'fast' ? 'fast' : ''
+                            setCodexServiceTier(nextTier)
+                            rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
+                          }}
+                          disabled={isCurrentComposerLocked || !codexSupportsFast}
+                        >
+                          <option value="">Standard</option>
+                          <option value="fast">Fast</option>
+                        </select>
+                      </label>
+                    </>
+                    )}
+
+                    {currentProvider === 'kimi' && (
+                    <label className="composer-picker-label" title="Kimi thinking mode">
                       <QuestionmarkCircleSymbolIcon />
                       <select
                         className="composer-inline-picker"
-                        aria-label="Codex reasoning effort"
-                        value={codexReasoningEffort}
+                        aria-label="Kimi thinking mode"
+                        value={kimiThinkingEnabled ? 'on' : 'off'}
                         onChange={(event) => {
-                          setCodexReasoningEffort(event.target.value)
-                          rememberCurrentChatComposerSelection({ codexReasoningEffort: event.target.value })
+                          const nextThinking = event.target.value !== 'off'
+                          setKimiThinkingEnabled(nextThinking)
+                          rememberCurrentChatComposerSelection({ kimiThinkingEnabled: nextThinking })
                         }}
                         disabled={isCurrentComposerLocked}
                       >
-                        {codexReasoningOptions.map((option) => (
+                        <option value="on">Thinking on</option>
+                        <option value="off">Thinking off</option>
+                      </select>
+                    </label>
+                    )}
+
+                    {currentProvider === 'claude' && claudeReasoningOptions.some(o => o.reasoningEffort !== 'off') && (
+                    <label className="composer-picker-label" title="Extended thinking">
+                      <QuestionmarkCircleSymbolIcon />
+                      <select
+                        className="composer-inline-picker"
+                        aria-label="Claude thinking"
+                        value={claudeReasoningEffort}
+                        onChange={(event) => {
+                          setClaudeReasoningEffort(event.target.value)
+                          rememberCurrentChatComposerSelection({ claudeReasoningEffort: event.target.value })
+                        }}
+                        disabled={isCurrentComposerLocked}
+                      >
+                        {claudeReasoningOptions.map((option) => (
                           <option key={option.reasoningEffort} value={option.reasoningEffort}>
-                            {option.reasoningEffort}
+                            {option.reasoningEffort === 'off'
+                              ? 'Thinking off'
+                              : `${option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)} thinking`}
                           </option>
                         ))}
                       </select>
                     </label>
                     )}
 
-                    <label className="composer-picker-label" title="Permissions">
+                    {currentProvider === 'claude' && (
+                    <span className="composer-picker-label composer-claude-runtime-chip" title={claudeRuntimeNotice} data-composer-control="claude-runtime">
+                      <span className="composer-control-label-text">{claudeRuntimeLabel}</span>
+                    </span>
+                    )}
+
+                    <label className="composer-picker-label" title="Permissions" data-composer-control="permission">
                       <PermissionSymbolIcon />
                       <select
                         className="composer-inline-picker"
@@ -8298,6 +9394,7 @@ function App(): React.JSX.Element {
                     )}
                   </div>
                   <div className="composer-inline-actions">
+                    <ContextWheel percent={contextUsedPercent} label={contextLabel} />
                     {isCurrentProviderRunning ? (
                       <>
                       <button
@@ -8338,7 +9435,13 @@ function App(): React.JSX.Element {
                         aria-keyshortcuts="Meta+Enter Control+Enter"
                         type="button"
                       >
-                        <RunSymbolIcon />
+                        {appearance.composerStyle === 'claude'
+                          ? <ClaudeReturnSymbolIcon />
+                          : (appearance.composerStyle === 'codex'
+                              || appearance.composerStyle === 'gemini'
+                              || appearance.composerStyle === 'kimi')
+                            ? <ArrowUpSendIcon />
+                            : <RunSymbolIcon />}
                       </button>
                     )}
                   </div>
@@ -8347,6 +9450,51 @@ function App(): React.JSX.Element {
                   <div className="composer-inline-warning" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--warning)' }}>Workspace trust is not established. Enable session trust or use Trust Assistant.</div>
                 )}
               </div>
+              {appearance.composerStyle === 'codex' && (
+                <div className="composer-codex-footer" aria-hidden>
+                  {currentWorkspace && (
+                    <span className="composer-codex-chip">
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 5.5c0-.83.67-1.5 1.5-1.5h2.69c.4 0 .78.16 1.06.44L8.5 5.69h4c.83 0 1.5.67 1.5 1.5v4.31c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V5.5z"/></svg>
+                      <span>{currentWorkspace.displayName}</span>
+                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
+                    </span>
+                  )}
+                  <label className="composer-codex-chip is-provider" title="Provider">
+                    <LinkCircleSymbolIcon />
+                    <select
+                      aria-label="Provider"
+                      value={currentProvider}
+                      onChange={(event) => void handleProviderChange(event.target.value as ProviderId)}
+                      disabled={isCurrentComposerLocked || isCurrentChatProviderLocked}
+                    >
+                      <option value="gemini">Gemini</option>
+                      <option value="codex">Codex</option>
+                      <option value="claude">Claude</option>
+                      <option value="kimi">Kimi</option>
+                    </select>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
+                  </label>
+                  <span className="composer-codex-chip">
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="8.5" rx="1.5"/><line x1="6" y1="13.5" x2="10" y2="13.5"/><line x1="8" y1="11.5" x2="8" y2="13.5"/></svg>
+                    <span>Work locally</span>
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
+                  </span>
+                  {currentWorkspace?.branch && (
+                    <span className="composer-codex-chip">
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="7" r="1.6"/><path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5"/></svg>
+                      <span>{currentWorkspace.branch}</span>
+                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
+                    </span>
+                  )}
+                </div>
+              )}
+              {/* Claude composer: previously rendered a satellite "footer" row below
+                * the textarea with workspace + provider + branch chips. Removed —
+                * native Claude doesn't have one, and the chips now live inline in
+                * the composer's action row (workspace info is in the above-bar's
+                * branch indicator, and the Provider picker sits in the gap between
+                * `+` and the model picker via the data-composer-control="provider"
+                * marker, unhidden in claude mode by main.css). */}
               {visibleScheduledTasks.length > 0 && (
                 <div className="scheduled-task-strip">
                   {visibleScheduledTasks.map((task) => (
@@ -8470,6 +9618,7 @@ function App(): React.JSX.Element {
               onClearCodexUsageCredential={handleClearCodexUsageCredential}
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
+              currentChat={currentChat}
             />
           </>
         )}
@@ -8508,8 +9657,11 @@ function App(): React.JSX.Element {
             role="dialog"
             aria-modal="true"
             aria-label="Settings"
+            className="settings-floater"
             style={{
-            width: 'min(420px, calc(100vw - 32px))', maxHeight: 'calc(100dvh - 32px)',
+            width: 'min(1080px, calc(100vw - 64px))',
+            height: 'min(640px, 70vh)',
+            maxHeight: 'calc(100dvh - 48px)',
             background: 'var(--panel-bg-solid)',
             border: '1px solid var(--panel-border)',
             borderRadius: 'var(--radius-lg)',
@@ -8524,6 +9676,9 @@ function App(): React.JSX.Element {
               themeCornerStyle={appearance.themeCornerStyle}
               themeAccentStyle={appearance.themeAccentStyle}
               promptSurfaceStyle={appearance.promptSurfaceStyle}
+              composerStyle={appearance.composerStyle}
+              transcriptFontFamily={appearance.transcriptFontFamily}
+              composerFontFamily={appearance.composerFontFamily}
               reduceTransparency={appearance.reduceTransparency}
               reduceMotion={appearance.reduceMotion}
               compactDensity={appearance.compactDensity}
@@ -8543,6 +9698,14 @@ function App(): React.JSX.Element {
               advancedFx={appearance.advancedFx}
               updateChannel={updateChannel}
               productOperationsStatus={productOperationsStatus}
+              claudeAuthStatus={claudeAuthStatus}
+              kimiAuthStatus={kimiAuthStatus}
+              claudeLoginState={claudeLoginState}
+              onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
+              onStoreClaudeApiKey={(key) => void handleStoreClaudeApiKey(key)}
+              onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
+              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
+              onClearKimiApiKey={() => void handleClearKimiApiKey()}
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
               onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}

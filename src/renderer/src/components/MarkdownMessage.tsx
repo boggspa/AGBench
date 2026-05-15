@@ -2,9 +2,13 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HighlightedCodeBlock } from './HighlightedCodeBlock';
+import { AgentIdentityContext, AgentMention } from './AgentMention';
+import type { ChatRecord } from '../../../main/store/types';
 
 interface MarkdownMessageProps {
   content: string;
+  /** Chat used to look up subagent identities for `[@Name](agent://id)` chips. */
+  chat?: ChatRecord;
 }
 
 async function copyText(text: string): Promise<void> {
@@ -39,13 +43,21 @@ function MarkdownCodeBlock({ content, language }: { content: string; language?: 
   );
 }
 
-export function MarkdownMessage({ content }: MarkdownMessageProps) {
+export function MarkdownMessage({ content, chat }: MarkdownMessageProps) {
   return (
+    <AgentIdentityContext.Provider value={chat}>
     <div className="message-markdown message-markdown-pro">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
           a({ href, children }) {
+            // Subagent @-mention: [@Name](agent://<uuid>) renders as a colored
+            // inline chip via AgentMention, looked up against the current
+            // chat's identity registry through AgentIdentityContext.
+            if (typeof href === 'string' && href.startsWith('agent://')) {
+              const agentId = href.slice('agent://'.length).trim();
+              return <AgentMention agentId={agentId}>{children}</AgentMention>;
+            }
             const external = typeof href === 'string' && /^https?:\/\//i.test(href);
             return (
               <a href={href} target={external ? '_blank' : undefined} rel={external ? 'noreferrer' : undefined}>
@@ -73,5 +85,6 @@ export function MarkdownMessage({ content }: MarkdownMessageProps) {
         {content}
       </ReactMarkdown>
     </div>
+    </AgentIdentityContext.Provider>
   );
 }

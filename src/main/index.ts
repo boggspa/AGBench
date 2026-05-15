@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage, screen } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -59,11 +59,12 @@ const SKIP_EDITOR_DIRS = new Set([
   'coverage',
   '.cache'
 ])
-const GEMINI_CAPABILITY_KINDS = ['mcp', 'extensions', 'skills'] as const
+const GEMINI_CAPABILITY_KINDS = ['mcp', 'extensions', 'skills', 'agents'] as const
 const GEMINI_CAPABILITY_COMMANDS = {
   mcp: ['mcp', 'list'],
   extensions: ['extensions', 'list'],
-  skills: ['skills', 'list']
+  skills: ['skills', 'list'],
+  agents: ['agents', 'list']
 } as const
 const GEMINI_CAPABILITY_TIMEOUT_MS = 8_000
 const MAX_CAPABILITY_OUTPUT_CHARS = 200_000
@@ -75,6 +76,11 @@ const GEMINI_MCP_TOKEN_ARG = '--token'
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
 const AGENTBENCH_MCP_TOOLS = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory'] as const
 type AGBenchMcpToolName = typeof AGENTBENCH_MCP_TOOLS[number]
+type GeminiMcpRegistrationScope = 'user' | 'project'
+const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
+  ...AGENTBENCH_MCP_TOOLS,
+  ...AGENTBENCH_MCP_TOOLS.map((tool) => `${GEMINI_MCP_SERVER_NAME}__${tool}`)
+]
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 let geminiMcpBridgeInstalledForCurrentToken = false
@@ -181,6 +187,8 @@ interface AgentRunPayload {
   model?: string
   reasoningEffort?: string | null
   serviceTier?: string | null
+  claudeReasoningEffort?: string | null
+  kimiThinking?: boolean | null
   approvalMode?: string
   imagePaths?: string[]
   providerSessionId?: string | null
@@ -260,21 +268,46 @@ const CODEX_STATIC_MODELS = [
   { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
   { id: 'gpt-5.3-codex-spark', label: 'GPT-5.3 Codex Spark', description: 'Research preview where available' }
 ]
+const CLAUDE_THINKING_EFFORTS = [
+  { reasoningEffort: 'off' },
+  { reasoningEffort: 'low' },
+  { reasoningEffort: 'medium' },
+  { reasoningEffort: 'high' }
+]
+const CLAUDE_THINKING_BUDGET: Record<string, number> = { low: 2048, medium: 8000, high: 16000 }
 const CLAUDE_STATIC_MODELS = [
-  { id: 'default', label: 'Default', description: 'Claude Code configured default', isDefault: true },
-  { id: 'sonnet', label: 'Sonnet' },
-  { id: 'opus', label: 'Opus' },
-  { id: 'haiku', label: 'Haiku' },
-  { id: 'best', label: 'Best available' },
+  { id: 'default', label: 'Default', description: 'Claude Code configured default', isDefault: true, supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-opus-4-7', label: 'Claude Opus 4.7', description: 'Most capable — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-opus-4-7-1m', label: 'Claude Opus 4.7 1M', description: '1M context window — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6', description: 'Balanced — extended thinking', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
+  { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  { id: 'claude-opus-4-6', label: 'Claude Opus 4.6 Legacy', description: 'Previous Opus generation', supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS },
   { id: 'custom', label: 'Custom model ID' }
 ]
 const KIMI_STATIC_MODELS = [
-  { id: 'default', label: 'Default', description: 'Kimi configured default', isDefault: true },
-  { id: 'kimi-k2', label: 'Kimi K2' },
-  { id: 'kimi-k2-turbo', label: 'Kimi K2 Turbo' },
-  { id: 'kimi-latest', label: 'Kimi Latest' },
-  { id: 'custom', label: 'Custom model ID' }
+  { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI configured default model', isDefault: true }
 ]
+const KIMI_DEFAULT_MODEL = 'kimi-k2.6'
+const KIMI_CLI_MODEL_IDS = new Set(KIMI_STATIC_MODELS.map((model) => model.id))
+const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
+  ['default', 'kimi-k2.6'],
+  ['cli-default', 'kimi-k2.6'],
+  ['custom', 'kimi-k2.6'],
+  ['best', 'kimi-k2.6'],
+  ['kimi-latest', 'kimi-k2.6'],
+  ['kimi-k2', 'kimi-k2.6'],
+  ['kimi-k2-1t', 'kimi-k2.6'],
+  ['kimi-thinking-preview', 'kimi-k2.6'],
+  ['kimi-k2.5', 'kimi-k2.6'],
+  ['kimi-k2-thinking-turbo', 'kimi-k2.6'],
+  ['kimi-k2-thinking', 'kimi-k2.6'],
+  ['kimi-k2-turbo-preview', 'kimi-k2.6'],
+  ['kimi-k2-0905-preview', 'kimi-k2.6'],
+  ['kimi-k2-0711-preview', 'kimi-k2.6'],
+  ['kimi-k2-0905', 'kimi-k2.6'],
+  ['kimi-k2-0711', 'kimi-k2.6'],
+  ['kimi-k2-turbo', 'kimi-k2.6']
+])
 const pendingCodexApprovals = new Map<string, { rpcId: number | string; method: string; params: any; service?: AgenticServiceId; workspacePath?: string; runId?: string }>()
 const pendingKimiApprovals = new Map<string, { child: ChildProcess; rpcId: number | string; params: any; runId?: string }>()
 const pendingGeminiToolApprovals = new Map<string, AgenticApprovalWaiter>()
@@ -295,6 +328,7 @@ const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
 }
 const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'activeProvider',
+  'windowBounds',
   'claudeBinaryPath',
   'kimiBinaryPath',
   'codexUsageCredential',
@@ -309,6 +343,9 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'themeCornerStyle',
   'themeAccentStyle',
   'promptSurfaceStyle',
+  'composerStyle',
+  'transcriptFontFamily',
+  'composerFontFamily',
   'reduceTransparency',
   'reduceMotion',
   'compactDensity',
@@ -328,6 +365,10 @@ const MIN_INSPECTOR_WIDTH = 300;
 const MAX_INSPECTOR_WIDTH = 720;
 const MIN_SIDEBAR_WIDTH = 220;
 const MAX_SIDEBAR_WIDTH = 440;
+const DEFAULT_WINDOW_WIDTH = 1400;
+const DEFAULT_WINDOW_HEIGHT = 900;
+const MIN_WINDOW_WIDTH = 900;
+const MIN_WINDOW_HEIGHT = 600;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -377,6 +418,21 @@ function clampDimension(value: unknown, min: number, max: number, fallback = 0):
     : Number(value)
   if (!Number.isFinite(next)) return fallback
   return Math.max(min, Math.min(max, Math.round(next)))
+}
+
+function sanitizeWindowBounds(value: unknown): AppSettings['windowBounds'] | undefined {
+  if (!isRecord(value)) return undefined
+  const width = clampDimension(value.width, MIN_WINDOW_WIDTH, 10_000, DEFAULT_WINDOW_WIDTH)
+  const height = clampDimension(value.height, MIN_WINDOW_HEIGHT, 10_000, DEFAULT_WINDOW_HEIGHT)
+  const x = optionalNumber(value.x)
+  const y = optionalNumber(value.y)
+  return {
+    ...(x !== undefined ? { x: Math.round(x) } : {}),
+    ...(y !== undefined ? { y: Math.round(y) } : {}),
+    width,
+    height,
+    ...(typeof value.isMaximized === 'boolean' ? { isMaximized: value.isMaximized } : {})
+  }
 }
 
 function canonicalPath(value: string): string {
@@ -534,6 +590,7 @@ function sanitizeRunQueueRequestSnapshot(value: unknown): RunQueueRequestSnapsho
     codexNativeReview: Boolean(value.codexNativeReview) || undefined,
     codexReasoningEffort: optionalStringOrNull(value.codexReasoningEffort),
     codexServiceTier: optionalStringOrNull(value.codexServiceTier),
+    kimiThinkingEnabled: typeof value.kimiThinkingEnabled === 'boolean' ? value.kimiThinkingEnabled : undefined,
     scheduledTaskId: optionalString(value.scheduledTaskId),
     preserveComposer: Boolean(value.preserveComposer) || undefined,
     runtimeProfileId: optionalString(value.runtimeProfileId),
@@ -669,6 +726,8 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     model: optionalString(payload.model),
     reasoningEffort: optionalStringOrNull(payload.reasoningEffort),
     serviceTier: optionalStringOrNull(payload.serviceTier),
+    claudeReasoningEffort: optionalStringOrNull(payload.claudeReasoningEffort),
+    kimiThinking: typeof payload.kimiThinking === 'boolean' ? payload.kimiThinking : undefined,
     approvalMode: scope === 'global'
       ? (optionalString(payload.approvalMode) === 'plan' ? 'plan' : 'default')
       : optionalString(payload.approvalMode),
@@ -961,6 +1020,14 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
   if ('advancedFx' in sanitized) {
     sanitized.advancedFx = sanitizeAdvancedFxSettings(sanitized.advancedFx, AppStore.getSettings().advancedFx)
   }
+  if ('windowBounds' in sanitized) {
+    const bounds = sanitizeWindowBounds(sanitized.windowBounds)
+    if (bounds) {
+      sanitized.windowBounds = bounds
+    } else {
+      delete sanitized.windowBounds
+    }
+  }
   for (const key of ['chatContextTurns', 'inspectorWidth', 'sidebarWidth'] as const) {
     if (key in sanitized) {
       const value = Number(sanitized[key])
@@ -1074,6 +1141,21 @@ function appendDurableRunEvent(input: RunEventInput): void {
   getRunRepository().appendRunEvent(input)
 }
 
+const runEventChatMetadataCache = new Map<string, { workspaceId?: string; workspacePath?: string }>()
+
+function getRunEventChatMetadata(chatId?: string): { workspaceId?: string; workspacePath?: string } {
+  if (!chatId) return {}
+  const cached = runEventChatMetadataCache.get(chatId)
+  if (cached) return cached
+  const chat = AppStore.getChat(chatId)
+  const metadata = {
+    workspaceId: chat?.workspaceId,
+    workspacePath: chat?.workspacePath
+  }
+  runEventChatMetadataCache.set(chatId, metadata)
+  return metadata
+}
+
 function appendDurableRunEventForRoute(
   provider: ProviderId,
   route: AgentRunRoute | null | undefined,
@@ -1088,12 +1170,12 @@ function appendDurableRunEventForRoute(
   if (!runId) return
 
   const chatId = route?.appChatId || session?.appChatId
-  const chat = chatId ? AppStore.getChat(chatId) : null
+  const chatMetadata = getRunEventChatMetadata(chatId)
   appendDurableRunEvent({
     runId,
     chatId,
-    workspaceId: chat?.workspaceId,
-    workspacePath: session?.workspacePath || chat?.workspacePath,
+    workspaceId: chatMetadata.workspaceId,
+    workspacePath: session?.workspacePath || chatMetadata.workspacePath,
     provider,
     providerSessionId: session?.providerSessionId,
     providerRunId: session?.providerRunId,
@@ -1938,7 +2020,17 @@ async function readClaudeAuthState(resolved: ResolvedProviderBinary): Promise<st
   if (!resolved.binaryPath) return 'unknown'
   const output = await captureProcessOutput(resolved.binaryPath, ['auth', 'status'], undefined, 8_000)
   if (output.code === 0) return 'authenticated'
-  if ((output.stdout + output.stderr).toLowerCase().includes('not')) return 'missing'
+  const combined = (output.stdout + output.stderr).toLowerCase()
+  if (
+    combined.includes('not logged') ||
+    combined.includes('not authenticated') ||
+    combined.includes('unauthenticated') ||
+    combined.includes('login required') ||
+    combined.includes('please log') ||
+    combined.includes('api key') ||
+    combined.includes('apikey') ||
+    combined.includes('not')
+  ) return 'missing'
   return process.env.ANTHROPIC_API_KEY ? 'api-key' : 'unknown'
 }
 
@@ -2189,6 +2281,31 @@ function storedCodexUsageCredential(): CodexUsageCredential | null {
   }
 }
 
+function encryptApiKey(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  if (!safeStorage.isEncryptionAvailable()) return trimmed
+  return safeStorage.encryptString(trimmed).toString('base64')
+}
+
+function decryptApiKey(stored?: string | null): string | null {
+  if (!stored) return null
+  if (!safeStorage.isEncryptionAvailable()) return stored
+  try {
+    return safeStorage.decryptString(Buffer.from(stored, 'base64'))
+  } catch {
+    return null
+  }
+}
+
+function getStoredClaudeApiKey(): string | null {
+  return decryptApiKey(AppStore.getSettings().claudeApiKey)
+}
+
+function getStoredKimiApiKey(): string | null {
+  return decryptApiKey(AppStore.getSettings().kimiApiKey)
+}
+
 function storeCodexUsageCredential(credential: CodexUsageCredential) {
   inMemoryCodexUsageCredential = credential
   const encryptionAvailable = safeStorage.isEncryptionAvailable()
@@ -2365,6 +2482,549 @@ async function fetchCodexUsageSnapshot(): Promise<any> {
   return normalizeCodexUsagePayload(payload, credential)
 }
 
+const GEMINI_OAUTH_CLIENT_ID = '681255809395-oo8ft2oprdrnp9e3aqf6av3hmdib135j.apps.googleusercontent.com'
+const GEMINI_OAUTH_CLIENT_SECRET = '__OAUTH_SECRET_REMOVED__'
+const GEMINI_QUOTA_FRESH_TTL_MS = 90_000
+const GEMINI_QUOTA_STALE_TTL_MS = 30 * 60_000
+const GEMINI_OAUTH_REFRESH_BUFFER_MS = 5 * 60_000
+const GEMINI_OAUTH_REFRESH_RETRY_MS = 60_000
+
+let geminiQuotaCache: { snapshot: any; fetchedAt: number } | null = null
+let geminiRefreshedToken: { accessToken: string; expiresAt: number } | null = null
+let geminiRefreshPromise: Promise<string | null> | null = null
+let geminiLastRefreshFailureAt = 0
+
+function geminiCliRootPath(): string {
+  const configured = process.env.GEMINI_CLI_HOME || process.env.GEMINI_HOME
+  return configured && configured.trim() ? expandHomePath(configured.trim()) : join(os.homedir(), '.gemini')
+}
+
+async function readGeminiOAuthCredentials(): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: number } | null> {
+  try {
+    const raw = await fs.readFile(join(geminiCliRootPath(), 'oauth_creds.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    const accessToken = String(parsed?.access_token || '').trim()
+    if (!accessToken) return null
+    const refreshToken = typeof parsed?.refresh_token === 'string' ? parsed.refresh_token.trim() : undefined
+    const expiryDate = Number(parsed?.expiry_date || 0)
+    return {
+      accessToken,
+      refreshToken: refreshToken || undefined,
+      expiresAt: Number.isFinite(expiryDate) && expiryDate > 0 ? expiryDate : undefined
+    }
+  } catch {
+    return null
+  }
+}
+
+async function refreshGeminiAccessToken(refreshToken: string): Promise<string | null> {
+  if (geminiRefreshPromise) {
+    return geminiRefreshPromise
+  }
+  geminiRefreshPromise = (async () => {
+    try {
+      const response = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json'
+        },
+        body: new URLSearchParams({
+          client_id: GEMINI_OAUTH_CLIENT_ID,
+          client_secret: GEMINI_OAUTH_CLIENT_SECRET,
+          refresh_token: refreshToken,
+          grant_type: 'refresh_token'
+        })
+      })
+      if (!response.ok) {
+        geminiLastRefreshFailureAt = Date.now()
+        return null
+      }
+      const payload = await response.json()
+      const accessToken = String(payload?.access_token || '').trim()
+      if (!accessToken) {
+        geminiLastRefreshFailureAt = Date.now()
+        return null
+      }
+      const expiresInSeconds = Math.max(60, Number(payload?.expires_in || 3600))
+      geminiRefreshedToken = {
+        accessToken,
+        expiresAt: Date.now() + expiresInSeconds * 1000
+      }
+      geminiLastRefreshFailureAt = 0
+      return accessToken
+    } catch {
+      geminiLastRefreshFailureAt = Date.now()
+      return null
+    } finally {
+      geminiRefreshPromise = null
+    }
+  })()
+  return geminiRefreshPromise
+}
+
+async function getGeminiAccessToken(): Promise<string | null> {
+  if (geminiRefreshedToken && Date.now() + GEMINI_OAUTH_REFRESH_BUFFER_MS < geminiRefreshedToken.expiresAt) {
+    return geminiRefreshedToken.accessToken
+  }
+
+  const credentials = await readGeminiOAuthCredentials()
+  if (!credentials) return null
+
+  if (!credentials.expiresAt || Date.now() + GEMINI_OAUTH_REFRESH_BUFFER_MS < credentials.expiresAt) {
+    return credentials.accessToken
+  }
+
+  if (!credentials.refreshToken || Date.now() - geminiLastRefreshFailureAt < GEMINI_OAUTH_REFRESH_RETRY_MS) {
+    return credentials.accessToken
+  }
+
+  return await refreshGeminiAccessToken(credentials.refreshToken) || credentials.accessToken
+}
+
+function parseGeminiQuotaReset(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
+}
+
+function geminiQuotaPriority(modelId: string): number {
+  const id = modelId.toLowerCase()
+  const generation = id.includes('3.1') ? 0 : id.includes('3-') || id.endsWith('-3') ? 10 : id.includes('2.5') ? 20 : 30
+  const family = id.includes('flash-lite') ? 2 : id.includes('flash') ? 1 : id.includes('pro') ? 0 : 3
+  return generation + family
+}
+
+function geminiQuotaDisplayName(modelId: string): string {
+  const id = modelId.toLowerCase()
+  const family = id.includes('flash-lite') ? 'Flash Lite' : id.includes('flash') ? 'Flash' : id.includes('pro') ? 'Pro' : modelId
+  const generation = id.includes('3.1') ? '3.1' : id.includes('3-') || id.endsWith('-3') ? '3' : id.includes('2.5') ? '2.5' : ''
+  const base = [family, generation].filter(Boolean).join(' ')
+  return id.includes('preview') ? `${base} (preview)` : base
+}
+
+function normalizeGeminiQuotaSnapshot(payload: any): any {
+  const buckets = Array.isArray(payload?.buckets) ? payload.buckets : []
+  const sorted = buckets.slice().sort((a: any, b: any) => {
+    const aModel = String(a?.modelId || '')
+    const bModel = String(b?.modelId || '')
+    const priorityDelta = geminiQuotaPriority(aModel) - geminiQuotaPriority(bModel)
+    if (priorityDelta !== 0) return priorityDelta
+    const aUsed = 1 - Number(a?.remainingFraction ?? 1)
+    const bUsed = 1 - Number(b?.remainingFraction ?? 1)
+    return bUsed - aUsed
+  })
+  const windows = sorted.flatMap((bucket: any, index: number) => {
+    const modelId = String(bucket?.modelId || '').trim()
+    const remainingFraction = Number(bucket?.remainingFraction)
+    if (!modelId || !Number.isFinite(remainingFraction)) return []
+    const remainingPercent = Math.max(0, Math.min(100, remainingFraction * 100))
+    return [{
+      id: `gemini-${modelId || index}`,
+      label: geminiQuotaDisplayName(modelId),
+      runs: 0,
+      totalTokens: 0,
+      limitLabel: `${Math.round(remainingPercent)}% remaining`,
+      resetAt: parseGeminiQuotaReset(bucket?.resetTime),
+      trackingOnly: false,
+      usedPercent: remainingPercent,
+      sourceModelId: modelId
+    }]
+  })
+  return {
+    provider: 'gemini',
+    source: 'gemini-live-quota',
+    configured: true,
+    fetchedAt: new Date().toISOString(),
+    windows
+  }
+}
+
+async function fetchGeminiUsageSnapshot(): Promise<any> {
+  const now = Date.now()
+  if (geminiQuotaCache && now - geminiQuotaCache.fetchedAt < GEMINI_QUOTA_FRESH_TTL_MS) {
+    return geminiQuotaCache.snapshot
+  }
+
+  const accessToken = await getGeminiAccessToken()
+  if (!accessToken) {
+    return {
+      provider: 'gemini',
+      source: 'gemini-live-quota',
+      configured: false,
+      error: 'Gemini OAuth credentials were not found. Run Gemini CLI once to refresh ~/.gemini/oauth_creds.json.'
+    }
+  }
+
+  try {
+    const response = await fetch('https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json'
+      },
+      body: JSON.stringify({ project: 'default' })
+    })
+    if (!response.ok) {
+      throw new Error(`Gemini live quota endpoint returned HTTP ${response.status}.`)
+    }
+    const payload = await response.json()
+    const snapshot = normalizeGeminiQuotaSnapshot(payload)
+    geminiQuotaCache = { snapshot, fetchedAt: Date.now() }
+    return snapshot
+  } catch (error) {
+    if (geminiQuotaCache && now - geminiQuotaCache.fetchedAt < GEMINI_QUOTA_STALE_TTL_MS) {
+      return {
+        ...geminiQuotaCache.snapshot,
+        stale: true,
+        error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
+      }
+    }
+    return {
+      provider: 'gemini',
+      source: 'gemini-live-quota',
+      configured: true,
+      error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
+    }
+  }
+}
+
+const KIMI_USAGE_FRESH_TTL_MS = 90_000
+const KIMI_USAGE_STALE_TTL_MS = 30 * 60_000
+let kimiUsageCache: { snapshot: any; fetchedAt: number } | null = null
+
+async function readKimiOAuthAccessToken(): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(join(os.homedir(), '.kimi', 'credentials', 'kimi-code.json'), 'utf8')
+    const parsed = JSON.parse(raw)
+    const accessToken = String(parsed?.access_token || '').trim()
+    if (!accessToken) return null
+    const expiresAt = Number(parsed?.expires_at || 0)
+    if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt * 1000 <= Date.now()) {
+      return null
+    }
+    return accessToken
+  } catch {
+    return null
+  }
+}
+
+async function getKimiUsageAccessToken(): Promise<string | null> {
+  return getStoredKimiApiKey() || await readKimiOAuthAccessToken()
+}
+
+function numericUsageValue(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
+function kimiDurationLabel(window: any): string {
+  const duration = numericUsageValue(window?.duration)
+  const unit = String(window?.timeUnit || window?.time_unit || '').toUpperCase()
+  if (!duration || !unit) return 'Rolling'
+  const rounded = Math.round(duration)
+  if (unit.includes('MINUTE')) {
+    return rounded % 60 === 0 ? `${Math.round(rounded / 60)}H` : `${rounded}M`
+  }
+  if (unit.includes('HOUR')) {
+    if (rounded === 5) return '5H'
+    return `${rounded}H`
+  }
+  if (unit.includes('DAY')) {
+    if (rounded === 7) return 'Weekly'
+    return `${rounded}D`
+  }
+  return 'Rolling'
+}
+
+function kimiQuotaWindow(id: string, label: string, detail: any) {
+  const limit = numericUsageValue(detail?.limit)
+  const remaining = numericUsageValue(detail?.remaining)
+  if (limit === undefined && remaining === undefined) return null
+  const remainingPercent = limit && limit > 0 && remaining !== undefined
+    ? Math.max(0, Math.min(100, (remaining / limit) * 100))
+    : 100
+  const limitLabel = limit && remaining !== undefined
+    ? `${Math.round(remaining).toLocaleString()} / ${Math.round(limit).toLocaleString()} remaining`
+    : remaining !== undefined
+      ? `${Math.round(remaining).toLocaleString()} remaining`
+      : `${Math.round(remainingPercent)}% remaining`
+  return {
+    id,
+    label,
+    runs: 0,
+    totalTokens: 0,
+    limitLabel,
+    resetAt: parseGeminiQuotaReset(detail?.resetTime ?? detail?.reset_time ?? detail?.resetAt ?? detail?.reset_at),
+    trackingOnly: false,
+    usedPercent: remainingPercent,
+    remainingPercent
+  }
+}
+
+function normalizeKimiUsageSnapshot(payload: any): any {
+  const windows: any[] = []
+  const limits = Array.isArray(payload?.limits) ? payload.limits : []
+  limits.forEach((limit: any, index: number) => {
+    const detail = limit?.detail && typeof limit.detail === 'object' ? limit.detail : limit
+    const windowEntry = kimiQuotaWindow(`kimi-limit-${index}`, kimiDurationLabel(limit?.window), detail)
+    if (windowEntry) windows.push(windowEntry)
+  })
+  if (payload?.usage && typeof payload.usage === 'object') {
+    const weekly = kimiQuotaWindow('kimi-weekly', 'Weekly', payload.usage)
+    if (weekly) windows.push(weekly)
+  }
+  return {
+    provider: 'kimi',
+    source: 'kimi-live-usage',
+    configured: true,
+    fetchedAt: new Date().toISOString(),
+    windows
+  }
+}
+
+async function fetchKimiUsageSnapshot(): Promise<any> {
+  const now = Date.now()
+  if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_FRESH_TTL_MS) {
+    return kimiUsageCache.snapshot
+  }
+
+  const accessToken = await getKimiUsageAccessToken()
+  if (!accessToken) {
+    return {
+      provider: 'kimi',
+      source: 'kimi-live-usage',
+      configured: false,
+      error: 'Kimi credentials were not found. Run Kimi Code once or configure a Kimi API token.'
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.kimi.com/coding/v1/usages', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json'
+      }
+    })
+    if (!response.ok) {
+      throw new Error(`Kimi usage endpoint returned HTTP ${response.status}.`)
+    }
+    const payload = await response.json()
+    const snapshot = normalizeKimiUsageSnapshot(payload)
+    kimiUsageCache = { snapshot, fetchedAt: Date.now() }
+    return snapshot
+  } catch (error) {
+    if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_STALE_TTL_MS) {
+      return {
+        ...kimiUsageCache.snapshot,
+        stale: true,
+        error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
+      }
+    }
+    return {
+      provider: 'kimi',
+      source: 'kimi-live-usage',
+      configured: true,
+      error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
+    }
+  }
+}
+
+const CLAUDE_USAGE_FRESH_TTL_MS = 2 * 60_000
+const CLAUDE_USAGE_STALE_TTL_MS = 4 * 60 * 60_000
+let claudeUsageCache: { snapshot: any; fetchedAt: number } | null = null
+
+interface ClaudeOAuthCredential {
+  accessToken: string
+  subscriptionType?: string
+  expiresAt?: number
+}
+
+async function readClaudeCredentialsFile(): Promise<ClaudeOAuthCredential | null> {
+  const candidates = [
+    join(os.homedir(), '.claude', '.credentials.json'),
+    join(os.homedir(), '.claude', 'credentials.json'),
+    join(os.homedir(), '.config', 'claude', 'credentials.json')
+  ]
+  for (const path of candidates) {
+    try {
+      const raw = await fs.readFile(path, 'utf8')
+      const parsed = JSON.parse(raw)
+      const inner = parsed?.claudeAiOauth || parsed?.claude_ai_oauth || parsed
+      const accessToken = String(inner?.accessToken || inner?.access_token || '').trim()
+      if (!accessToken) continue
+      const expiresAt = Number(inner?.expiresAt || inner?.expires_at || 0)
+      if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < Date.now()) {
+        continue
+      }
+      const subscriptionType = String(inner?.subscriptionType || inner?.subscription_type || '').toLowerCase() || undefined
+      return { accessToken, subscriptionType, expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : undefined }
+    } catch {
+      continue
+    }
+  }
+  return null
+}
+
+async function readClaudeKeychainCredential(): Promise<ClaudeOAuthCredential | null> {
+  if (process.platform !== 'darwin') return null
+  return new Promise((resolve) => {
+    try {
+      const { spawn } = require('child_process') as typeof import('child_process')
+      const proc = spawn('security', ['find-generic-password', '-s', 'Claude Code-credentials', '-w'])
+      let out = ''
+      proc.stdout.on('data', (chunk: Buffer) => { out += chunk.toString('utf8') })
+      proc.on('error', () => resolve(null))
+      proc.on('close', (code: number) => {
+        if (code !== 0) return resolve(null)
+        const raw = out.trim()
+        if (!raw) return resolve(null)
+        try {
+          const parsed = JSON.parse(raw)
+          const inner = parsed?.claudeAiOauth || parsed?.claude_ai_oauth || parsed
+          const accessToken = String(inner?.accessToken || inner?.access_token || raw).trim()
+          if (!accessToken) return resolve(null)
+          const expiresAt = Number(inner?.expiresAt || inner?.expires_at || 0)
+          if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt < Date.now()) {
+            return resolve(null)
+          }
+          const subscriptionType = String(inner?.subscriptionType || inner?.subscription_type || '').toLowerCase() || undefined
+          resolve({ accessToken, subscriptionType, expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : undefined })
+        } catch {
+          resolve({ accessToken: raw })
+        }
+      })
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
+async function readClaudeLegacyTokenFile(): Promise<ClaudeOAuthCredential | null> {
+  try {
+    const raw = await fs.readFile(join(os.homedir(), '.claude', '.oauth_token'), 'utf8')
+    const token = raw.trim()
+    if (!token) return null
+    return { accessToken: token }
+  } catch {
+    return null
+  }
+}
+
+async function getClaudeOAuthCredential(): Promise<ClaudeOAuthCredential | null> {
+  return (
+    (await readClaudeCredentialsFile()) ||
+    (await readClaudeKeychainCredential()) ||
+    (await readClaudeLegacyTokenFile())
+  )
+}
+
+function parseClaudeIsoDate(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return undefined
+  return date.toISOString()
+}
+
+function claudeUsageWindow(id: string, label: string, payload: any): any | null {
+  if (!payload || typeof payload !== 'object') return null
+  const utilization = numericUsageValue(payload.utilization)
+  if (utilization === undefined) return null
+  const usedPercent = Math.max(0, Math.min(100, utilization))
+  const remainingPercent = Math.max(0, 100 - usedPercent)
+  return {
+    id,
+    label,
+    runs: 0,
+    totalTokens: 0,
+    limitLabel: `${Math.round(remainingPercent)}% remaining`,
+    resetAt: parseClaudeIsoDate(payload.resetAt ?? payload.reset_at),
+    trackingOnly: false,
+    usedPercent
+  }
+}
+
+function normalizeClaudeUsageSnapshot(payload: any, credential: ClaudeOAuthCredential): any {
+  const windows: any[] = []
+  const fiveHour = claudeUsageWindow('claude-5h', 'Session', payload?.fiveHour ?? payload?.five_hour)
+  if (fiveHour) windows.push(fiveHour)
+  const sevenDay = claudeUsageWindow('claude-weekly', 'Weekly', payload?.sevenDay ?? payload?.seven_day)
+  if (sevenDay) windows.push(sevenDay)
+  const sevenDaySonnet = payload?.sevenDaySonnet ?? payload?.seven_day_sonnet
+  if (sevenDaySonnet?.resetAt || sevenDaySonnet?.reset_at) {
+    const sonnetWindow = claudeUsageWindow('claude-weekly-sonnet', 'Sonnet Weekly', sevenDaySonnet)
+    if (sonnetWindow) windows.push(sonnetWindow)
+  }
+  const sevenDayOpus = payload?.sevenDayOpus ?? payload?.seven_day_opus
+  if (sevenDayOpus?.resetAt || sevenDayOpus?.reset_at) {
+    const opusWindow = claudeUsageWindow('claude-weekly-opus', 'Opus Weekly', sevenDayOpus)
+    if (opusWindow) windows.push(opusWindow)
+  }
+  return {
+    provider: 'claude',
+    source: 'claude-oauth-usage',
+    configured: true,
+    subscriptionType: credential.subscriptionType,
+    fetchedAt: new Date().toISOString(),
+    windows
+  }
+}
+
+async function fetchClaudeUsageSnapshot(): Promise<any> {
+  const now = Date.now()
+  if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_FRESH_TTL_MS) {
+    return claudeUsageCache.snapshot
+  }
+
+  const credential = await getClaudeOAuthCredential()
+  if (!credential) {
+    return {
+      provider: 'claude',
+      source: 'claude-oauth-usage',
+      configured: false,
+      error: 'Claude OAuth credentials were not found. Run Claude Code once to populate ~/.claude/.credentials.json.'
+    }
+  }
+
+  try {
+    const response = await fetch('https://api.anthropic.com/api/oauth/usage', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${credential.accessToken}`,
+        'anthropic-beta': 'oauth-2025-04-20',
+        Accept: 'application/json'
+      }
+    })
+    if (!response.ok) {
+      throw new Error(`Claude OAuth usage endpoint returned HTTP ${response.status}.`)
+    }
+    const payload = await response.json()
+    const snapshot = normalizeClaudeUsageSnapshot(payload, credential)
+    claudeUsageCache = { snapshot, fetchedAt: Date.now() }
+    return snapshot
+  } catch (error) {
+    if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_STALE_TTL_MS) {
+      return {
+        ...claudeUsageCache.snapshot,
+        stale: true,
+        error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
+      }
+    }
+    return {
+      provider: 'claude',
+      source: 'claude-oauth-usage',
+      configured: true,
+      error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
+    }
+  }
+}
+
 async function importCodexUsageCredential(event: Electron.IpcMainInvokeEvent, requestedPath?: string | null) {
   const credentialPath = await resolveCodexUsageImportPath(event, requestedPath)
   if (!credentialPath) {
@@ -2409,16 +3069,40 @@ function getStaticProviderModels(provider: ProviderId) {
 
 function normalizeCliProviderModel(provider: ProviderId, model?: string | null): string {
   const trimmed = typeof model === 'string' ? model.trim() : ''
-  if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom') return 'default'
-  if (provider === 'claude' && ['default', 'sonnet', 'opus', 'haiku', 'best'].includes(trimmed)) return trimmed
-  if (provider === 'kimi' && ['default', 'kimi-k2', 'kimi-k2-turbo', 'kimi-latest'].includes(trimmed)) return trimmed
+  const lowered = trimmed.toLowerCase()
+  if (provider === 'kimi') {
+    if (!lowered) return KIMI_DEFAULT_MODEL
+    const alias = KIMI_CLI_MODEL_ALIASES.get(lowered)
+    if (alias) return alias
+    if (KIMI_CLI_MODEL_IDS.has(lowered)) return lowered
+    return KIMI_DEFAULT_MODEL
+  }
+  if (!trimmed || trimmed === 'cli-default' || trimmed === 'custom' || trimmed === 'best') return 'default'
+  if (provider === 'claude') {
+    if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
+    if (trimmed.startsWith('claude-')) return trimmed  // pass full model IDs (e.g. claude-opus-4-7)
+  }
   return trimmed || 'default'
+}
+
+function appendKimiThinkingArgs(args: string[], kimiThinking?: boolean | null): void {
+  args.push(kimiThinking === false ? '--no-thinking' : '--thinking')
+}
+
+function kimiCliModelArg(model: string): string | null {
+  const normalized = model.trim().toLowerCase()
+  if (!normalized || normalized === 'default' || normalized === KIMI_DEFAULT_MODEL) return null
+  return model
+}
+
+function appendKimiModelArgs(args: string[], model: string): void {
+  const cliModel = kimiCliModelArg(model)
+  if (cliModel) args.push('--model', cliModel)
 }
 
 function claudePermissionModeForApproval(approvalMode?: string): string {
   if (approvalMode === 'plan') return 'plan'
-  if (approvalMode === 'auto_edit') return 'acceptEdits'
-  return 'default'
+  return 'acceptEdits'
 }
 
 function contentPartsToText(value: any): string {
@@ -2450,19 +3134,113 @@ function extractProviderText(event: any): string {
   return ''
 }
 
-function extractProviderUsage(provider: ProviderId, event: any): any {
-  const usage = event?.usage || event?.message?.usage || event?.params?.payload?.token_usage || event?.params?.token_usage
-  if (!usage) return null
-  if (provider === 'kimi') {
-    const input = Number(usage.input_other || 0) + Number(usage.input_cache_read || 0) + Number(usage.input_cache_creation || 0)
-    const output = Number(usage.output || 0)
-    return { input_tokens: input, output_tokens: output, total_tokens: input + output }
+function providerUsageNumber(source: Record<string, unknown>, key: string): number {
+  const value = source[key]
+  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0
+}
+
+function firstProviderUsageNumber(source: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = providerUsageNumber(source, key)
+    if (value > 0) return value
   }
-  return usage
+  return 0
+}
+
+function sumProviderUsageNumbers(source: Record<string, unknown>, keys: string[]): number {
+  return keys.reduce((total, key) => total + providerUsageNumber(source, key), 0)
+}
+
+function normalizeProviderUsage(provider: ProviderId, usage: any): any {
+  if (!isRecord(usage)) return usage
+
+  const inputBase = provider === 'kimi'
+    ? firstProviderUsageNumber(usage, ['input_other', 'input_tokens', 'inputTokens', 'prompt_tokens', 'promptTokens', 'input'])
+    : firstProviderUsageNumber(usage, ['input_tokens', 'inputTokens', 'prompt_tokens', 'promptTokens', 'input', 'input_other'])
+  const cacheInput = sumProviderUsageNumbers(usage, [
+    'cache_creation_input_tokens',
+    'cache_read_input_tokens',
+    'cached_input_tokens',
+    'input_cache_creation',
+    'input_cache_read'
+  ])
+  const audioInput = sumProviderUsageNumbers(usage, ['input_audio_tokens'])
+  const outputBase = firstProviderUsageNumber(usage, ['output_tokens', 'outputTokens', 'completion_tokens', 'completionTokens', 'output'])
+  const outputAudio = sumProviderUsageNumbers(usage, ['output_audio_tokens'])
+  const inputTokens = Math.trunc(inputBase + cacheInput + audioInput)
+  const outputTokens = Math.trunc(outputBase + outputAudio)
+  const explicitTotal = firstProviderUsageNumber(usage, ['total_tokens', 'totalTokens', 'all_tokens', 'total'])
+  const computedTotal = inputTokens + outputTokens
+  const totalTokens = Math.trunc(explicitTotal > 0 ? explicitTotal : computedTotal)
+
+  if (inputTokens <= 0 && outputTokens <= 0 && totalTokens <= 0) return usage
+
+  return {
+    ...usage,
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    total_tokens: totalTokens,
+    _agentbench_input_includes_cache: cacheInput > 0 || audioInput > 0 || provider === 'kimi'
+  }
+}
+
+function extractProviderUsage(provider: ProviderId, event: any): any {
+  const usage = event?.usage || event?.message?.usage || event?.stats || event?.params?.payload?.token_usage || event?.params?.token_usage
+  if (!usage) return null
+  return normalizeProviderUsage(provider, usage)
 }
 
 function extractProviderSessionId(event: any): string | null {
-  return event?.session_id || event?.sessionId || event?.session?.id || event?.message?.session_id || event?.params?.session_id || null
+  const candidates = [
+    event?.session_id,
+    event?.sessionId,
+    event?.session?.id,
+    event?.session?.session_id,
+    event?.message?.session_id,
+    event?.params?.session_id,
+    event?.result?.session_id,
+    event?.result?.sessionId,
+    event?.result?.session?.id,
+    event?.result?.session?.session_id
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) return candidate.trim()
+  }
+  return null
+}
+
+function updateCliProviderSession(
+  state: CliProviderStreamState,
+  sessionId: string | null | undefined,
+  emitRunStarted = false
+): boolean {
+  const normalized = typeof sessionId === 'string' ? sessionId.trim() : ''
+  if (!normalized || normalized === state.providerSessionId) return false
+  state.providerSessionId = normalized
+  if (state.appRunId) {
+    runManager.registerProviderSession(state.appRunId, normalized)
+    runManager.setState(state.appRunId, state)
+  }
+  if (emitRunStarted) {
+    sendAgentCompatLine(state.sender, state.provider, {
+      type: 'init',
+      session_id: normalized,
+      model: state.model,
+      timestamp: new Date().toISOString(),
+      provider: state.provider,
+      fallback: state.fallback
+    }, state)
+  }
+  return true
+}
+
+function claudeProgrammaticUsageWarning(runtime: 'sdk' | 'cli-print', usesApiKey: boolean): string {
+  const runtimeLabel = runtime === 'sdk' ? 'Claude Agent SDK' : 'Claude Code CLI print mode (`claude -p`)'
+  if (usesApiKey) {
+    return `${runtimeLabel} is a programmatic Claude path. AGBench is using the saved Anthropic API key for this run, so usage is billed through API/PAYG rather than normal interactive Claude Code subscription limits.`
+  }
+  return `${runtimeLabel} is a programmatic Claude path. Anthropic says programmatic Claude usage uses separate Agent SDK credit from 2026-06-15, not the normal interactive Claude Code subscription limit. Use interactive Claude in a terminal when you need native Claude Code subscription-limit behavior.`
 }
 
 function emitCliProviderToolEvent(state: CliProviderStreamState, event: any) {
@@ -2531,7 +3309,7 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: any) {
 
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const sessionId = extractProviderSessionId(event)
-  if (sessionId) state.providerSessionId = sessionId
+  updateCliProviderSession(state, sessionId)
   const usage = extractProviderUsage(state.provider, event)
   if (usage) state.tokenUsage = usage
   emitCliProviderToolEvent(state, event)
@@ -2580,7 +3358,7 @@ function runCliProviderProcess(
   command: string,
   args: string[],
   payload: AgentRunPayload,
-  options: { fallback: boolean; warning?: string } = { fallback: true }
+  options: { fallback: boolean; warning?: string; extraEnv?: Record<string, string> } = { fallback: true }
 ) {
   const route = routeWithRunId(provider, payload)
   const cwd = payload.workspace!
@@ -2620,7 +3398,7 @@ function runCliProviderProcess(
   const child = spawn(command, args, {
     cwd,
     shell: false,
-    env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '' }, command)
+    env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '', ...(options.extraEnv || {}) }, command)
   })
   child.stdin?.end()
   runManager.attachProcess(route.appRunId!, child)
@@ -2695,11 +3473,129 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
   }
 }
 
-async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload, sdk: any): Promise<boolean> {
+function claudeAgenticServiceForTool(toolName: string): AgenticServiceId | null {
+  const normalized = toolName.trim().toLowerCase()
+  if (!normalized) return null
+  if (normalized === 'bash' || normalized === 'shell' || normalized === 'run_shell_command' || normalized.includes('shell_command')) {
+    return 'shellCommands'
+  }
+  if (
+    normalized === 'write' ||
+    normalized === 'edit' ||
+    normalized === 'multiedit' ||
+    normalized === 'notebookedit' ||
+    normalized === 'writefile' ||
+    normalized === 'strreplacefile' ||
+    normalized === 'replace' ||
+    normalized === 'write_file' ||
+    normalized.includes('write_file') ||
+    normalized.includes('replace_file') ||
+    normalized.includes('str_replace')
+  ) {
+    return 'fileChanges'
+  }
+  if (normalized.startsWith('mcp__') || normalized.includes('__')) {
+    return 'mcpTools'
+  }
+  return null
+}
+
+function normalizeClaudeCanUseToolArgs(toolNameOrRequest: unknown, input?: unknown): { toolName: string; input: unknown } {
+  if (typeof toolNameOrRequest === 'string') {
+    return { toolName: toolNameOrRequest, input }
+  }
+  if (isRecord(toolNameOrRequest)) {
+    const toolName = String(
+      toolNameOrRequest.toolName ||
+      toolNameOrRequest.tool_name ||
+      toolNameOrRequest.name ||
+      toolNameOrRequest.tool ||
+      'tool'
+    )
+    return {
+      toolName,
+      input: input ?? toolNameOrRequest.input ?? toolNameOrRequest.parameters ?? toolNameOrRequest.params ?? {}
+    }
+  }
+  return { toolName: 'tool', input }
+}
+
+function previewClaudeToolInput(input: unknown): string {
+  try {
+    if (typeof input === 'string') return input.slice(0, 2_000)
+    return JSON.stringify(input ?? {}, null, 2).slice(0, 2_000)
+  } catch {
+    return String(input ?? '').slice(0, 2_000)
+  }
+}
+
+function claudeToolApprovalPreview(toolName: string, input: unknown, service: AgenticServiceId): any {
+  if (service === 'shellCommands') {
+    const command = isRecord(input)
+      ? String(input.command || input.cmd || input.description || previewClaudeToolInput(input))
+      : previewClaudeToolInput(input)
+    return {
+      kind: 'command',
+      command,
+      params: input
+    }
+  }
+  if (service === 'fileChanges') {
+    const path = isRecord(input)
+      ? String(input.file_path || input.filePath || input.path || input.notebook_path || '')
+      : ''
+    return {
+      kind: 'fileChange',
+      changes: path ? [{ kind: toolName.toLowerCase().includes('write') ? 'write' : 'edit', path }] : [],
+      patchPreview: previewClaudeToolInput(input)
+    }
+  }
+  return {
+    kind: 'tool',
+    toolName,
+    params: input
+  }
+}
+
+async function canUseClaudeSdkTool(
+  sender: Electron.WebContents,
+  route: AgentRunRoute,
+  payload: AgentRunPayload,
+  toolNameOrRequest: unknown,
+  input?: unknown
+): Promise<{ behavior: 'allow' } | { behavior: 'deny'; message: string }> {
+  const { toolName, input: normalizedInput } = normalizeClaudeCanUseToolArgs(toolNameOrRequest, input)
+  const service = claudeAgenticServiceForTool(toolName)
+  if (!service) {
+    return { behavior: 'allow' }
+  }
+  const allowed = await requestAgenticServiceApproval(
+    sender,
+    'claude',
+    service,
+    payload.scope === 'global' ? undefined : payload.workspace,
+    {
+      method: 'claude/canUseTool',
+      title: service === 'shellCommands'
+        ? 'Approve Claude shell command'
+        : service === 'fileChanges'
+          ? 'Approve Claude file change'
+          : 'Approve Claude tool call',
+      body: toolName,
+      preview: claudeToolApprovalPreview(toolName, normalizedInput, service),
+      runId: route.appRunId
+    }
+  )
+  return allowed
+    ? { behavior: 'allow' }
+    : { behavior: 'deny', message: `AGBench denied Claude tool ${toolName}.` }
+}
+
+async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload, sdk: any, route: AgentRunRoute): Promise<boolean> {
   const query = sdk?.query || sdk?.default?.query
   if (typeof query !== 'function') return false
   const model = normalizeCliProviderModel('claude', payload.model)
-  const route = routeWithRunId('claude', payload)
+  const claudeApiKey = getStoredClaudeApiKey()
   const controller = new AbortController()
   cliProviderAbortControllers.set('claude', controller)
   const state: CliProviderStreamState = {
@@ -2724,7 +3620,18 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
     provider: 'claude',
     fallback: false
   }, state)
+  sendAgentCompatLine(event.sender, 'claude', {
+    type: 'provider_warning',
+    provider: 'claude',
+    message: claudeProgrammaticUsageWarning('sdk', Boolean(claudeApiKey)),
+    runtime: 'agent-sdk',
+    billingMode: claudeApiKey ? 'api-key-payg' : 'agent-sdk-credit',
+    fallback: false
+  }, state)
 
+  const thinkingBudgetSdk = payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
+    ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
+    : null
   const stream = query({
     prompt: payload.prompt,
     options: {
@@ -2732,7 +3639,11 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
       model: model === 'default' ? undefined : model,
       permissionMode: claudePermissionModeForApproval(payload.approvalMode),
       resume: payload.providerSessionId || undefined,
-      abortController: controller
+      abortController: controller,
+      canUseTool: (toolNameOrRequest: unknown, input?: unknown) => canUseClaudeSdkTool(event.sender, route, payload, toolNameOrRequest, input),
+      ...(payload.imagePaths?.length ? { images: payload.imagePaths } : {}),
+      ...(thinkingBudgetSdk ? { maxThinkingTokens: thinkingBudgetSdk } : {}),
+      ...(claudeApiKey ? { env: { ANTHROPIC_API_KEY: claudeApiKey } } : {})
     }
   })
 
@@ -2757,12 +3668,13 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
 }
 
 async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
+  const route = routeWithRunId('claude', payload)
   const sdk = await loadOptionalClaudeSdk()
   if (sdk) {
     try {
-      if (await tryRunClaudeSdk(event, payload, sdk)) return
+      if (await tryRunClaudeSdk(event, payload, sdk, route)) return
     } catch (error) {
-      sendAgentCompatError(event.sender, 'claude', `Claude Agent SDK failed; falling back to Claude Code CLI. Reason: ${error instanceof Error ? error.message : String(error)}`)
+      sendAgentCompatError(event.sender, 'claude', `Claude Agent SDK failed; falling back to Claude Code CLI. Reason: ${error instanceof Error ? error.message : String(error)}`, route)
     } finally {
       cliProviderAbortControllers.delete('claude')
     }
@@ -2770,15 +3682,16 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 
   const resolved = await resolveCliProviderBinary('claude', payload.runtimeProfile)
   if (!resolved.binaryPath) {
-    sendAgentCompatError(event.sender, 'claude', resolved.error || 'Claude CLI is not configured.')
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(event.sender, 'claude', resolved.error || 'Claude CLI is not configured.', route)
     sendAgentCompatLine(event.sender, 'claude', {
       type: 'result',
       status: 'failed',
       stats: {},
       provider: 'claude',
       setupRequired: true
-    })
-    sendAgentCompatExit(event.sender, 'claude', 1)
+    }, route)
+    sendAgentCompatExit(event.sender, 'claude', 1, route)
     return
   }
 
@@ -2786,9 +3699,20 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   const args = ['-p', payload.prompt, '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', claudePermissionModeForApproval(payload.approvalMode)]
   if (model !== 'default') args.push('--model', model)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
+  const thinkingBudgetCli = payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
+    ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
+    : null
+  if (thinkingBudgetCli) args.push('--budget-tokens', String(thinkingBudgetCli))
+  for (const imagePath of payload.imagePaths || []) {
+    args.push('--image', imagePath)
+  }
+  const claudeKey = getStoredClaudeApiKey()
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
     fallback: true,
-    warning: sdk ? 'Using Claude Code CLI fallback for this run.' : 'Claude Agent SDK is not bundled in this app build; using Claude Code CLI stream-json fallback for this run.'
+    warning: sdk
+      ? `Using Claude Code CLI fallback for this run. ${claudeProgrammaticUsageWarning('cli-print', Boolean(claudeKey))}`
+      : `Claude Agent SDK is not bundled in this app build; using Claude Code CLI stream-json fallback for this run. ${claudeProgrammaticUsageWarning('cli-print', Boolean(claudeKey))}`,
+    extraEnv: claudeKey ? { ANTHROPIC_API_KEY: claudeKey } : undefined
   })
 }
 
@@ -2796,9 +3720,96 @@ function respondToKimiWireRequest(child: ChildProcess, requestId: string | numbe
   child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', id: requestId, result }) + '\n')
 }
 
+const KIMI_WIRE_PROTOCOL_FALLBACK = '1.9'
+const KIMI_WIRE_PROTOCOL_INFO_TIMEOUT_MS = 3_000
+
+function extractKimiWireProtocol(value: unknown, depth = 0): string | null {
+  if (depth > 4 || !value) return null
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return /^\d+(?:\.\d+){0,2}$/.test(trimmed) ? trimmed : null
+  }
+  if (!isRecord(value)) return null
+  const directKeys = [
+    'wire_protocol_version',
+    'wireProtocolVersion',
+    'protocol_version',
+    'protocolVersion',
+    'wireVersion',
+    'wire_version'
+  ]
+  for (const key of directKeys) {
+    const extracted = extractKimiWireProtocol(value[key], depth + 1)
+    if (extracted) return extracted
+  }
+  for (const nestedKey of ['wire', 'protocol', 'capabilities']) {
+    const extracted = extractKimiWireProtocol(value[nestedKey], depth + 1)
+    if (extracted) return extracted
+  }
+  return null
+}
+
+async function resolveKimiWireProtocol(binaryPath: string): Promise<{ protocolVersion: string; source: 'cli-info' | 'fallback'; error?: string }> {
+  return new Promise((resolveProtocol) => {
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    let child: ChildProcess | null = null
+    const finish = (protocolVersion: string, source: 'cli-info' | 'fallback', error?: string) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      resolveProtocol({ protocolVersion, source, error })
+    }
+    const timeout = setTimeout(() => {
+      child?.kill()
+      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', 'Timed out reading Kimi Wire protocol metadata.')
+    }, KIMI_WIRE_PROTOCOL_INFO_TIMEOUT_MS)
+    try {
+      child = spawn(binaryPath, ['info', '--json'], {
+        shell: false,
+        env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, binaryPath)
+      })
+    } catch (error) {
+      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', error instanceof Error ? error.message : String(error))
+      return
+    }
+    const spawned = child
+    if (!spawned) {
+      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', 'Kimi CLI did not start.')
+      return
+    }
+    spawned.stdout?.on('data', (chunk) => {
+      stdout += chunk.toString()
+      if (stdout.length > 200_000) stdout = stdout.slice(-200_000)
+    })
+    spawned.stderr?.on('data', (chunk) => {
+      stderr += chunk.toString()
+      if (stderr.length > 20_000) stderr = stderr.slice(-20_000)
+    })
+    spawned.on('error', (error) => {
+      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', error.message)
+    })
+    spawned.on('close', () => {
+      try {
+        const parsed = stdout.trim() ? JSON.parse(stripAnsi(stdout)) : null
+        const protocolVersion = extractKimiWireProtocol(parsed)
+        if (protocolVersion) {
+          finish(protocolVersion, 'cli-info')
+          return
+        }
+      } catch {
+        // Non-JSON output is expected for older Kimi CLIs; fall back to the known-compatible protocol.
+      }
+      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', stderr.trim() || 'Kimi CLI did not expose Wire protocol metadata.')
+    })
+  })
+}
+
 async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload, binaryPath: string): Promise<boolean> {
   const model = normalizeCliProviderModel('kimi', payload.model)
   const route = routeWithRunId('kimi', payload)
+  const wireProtocol = await resolveKimiWireProtocol(binaryPath)
   const state: CliProviderStreamState = {
     provider: 'kimi',
     sender: event.sender,
@@ -2821,16 +3832,26 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     provider: 'kimi',
     fallback: false
   }, state)
+  sendAgentCompatLine(event.sender, 'kimi', {
+    type: 'provider_diagnostic',
+    provider: 'kimi',
+    message: `Using Kimi Wire protocol ${wireProtocol.protocolVersion}${wireProtocol.source === 'fallback' ? ' (fallback)' : ''}.`,
+    protocolVersion: wireProtocol.protocolVersion,
+    source: wireProtocol.source,
+    error: wireProtocol.error
+  }, state)
 
   const args = ['--wire', '--work-dir', payload.workspace!]
-  if (model !== 'default') args.push('--model', model)
+  appendKimiModelArgs(args, model)
+  appendKimiThinkingArgs(args, payload.kimiThinking)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
+  const kimiKey = getStoredKimiApiKey()
   return new Promise((resolveWire) => {
     const child = spawn(binaryPath, args, {
       cwd: payload.workspace!,
       shell: false,
-      env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '' }, binaryPath)
+      env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '', ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {}) }, binaryPath)
     })
     cliProviderProcesses.set('kimi', child)
     runManager.attachProcess(route.appRunId!, child)
@@ -2880,10 +3901,23 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
         try {
           const message = JSON.parse(trimmed)
           if (message.id === initializeId) {
+            updateCliProviderSession(state, extractProviderSessionId(message), true)
             sendPrompt()
             continue
           }
           if (message.id === promptId) {
+            const promptError = message.error
+            const promptErrorMessage = promptError
+              ? typeof promptError === 'string'
+                ? promptError
+                : typeof promptError.message === 'string'
+                  ? promptError.message
+                  : JSON.stringify(promptError)
+              : ''
+            if (promptErrorMessage) {
+              sendAgentCompatError(event.sender, 'kimi', promptErrorMessage, state)
+            }
+            updateCliProviderSession(state, extractProviderSessionId(message), false)
             state.completed = true
             sendAgentCompatLine(event.sender, 'kimi', {
               type: 'result',
@@ -3005,7 +4039,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
       id: initializeId,
       method: 'initialize',
       params: {
-        protocol_version: '1.9',
+        protocol_version: wireProtocol.protocolVersion,
         client: { name: 'GUIGemini', version: app.getVersion() },
         capabilities: { supports_question: false, supports_plan_mode: true }
       }
@@ -3047,11 +4081,14 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
 
   const model = normalizeCliProviderModel('kimi', payload.model)
   const args = ['--print', '--plan', '--output-format', 'stream-json', '--work-dir', payload.workspace!, '--prompt', payload.prompt]
-  if (model !== 'default') args.push('--model', model)
+  appendKimiModelArgs(args, model)
+  appendKimiThinkingArgs(args, payload.kimiThinking)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
+  const kimiKey = getStoredKimiApiKey()
   runCliProviderProcess(event, 'kimi', resolved.binaryPath, args, payload, {
     fallback: true,
-    warning: 'Kimi Wire mode did not complete startup; using print-mode stream-json fallback for this one-shot run.'
+    warning: 'Kimi Wire mode did not complete startup; using print-mode stream-json fallback for this one-shot run.',
+    extraEnv: kimiKey ? { MOONSHOT_API_KEY: kimiKey } : undefined
   })
 }
 
@@ -3626,6 +4663,26 @@ function handleCodexNotification(message: any) {
       emitCodexPlanItem(state, item)
       return
     }
+    if (item?.type === 'collabToolCall') {
+      const itemId = codexTimelineItemId(params, 'codex-collab-tool-call')
+      state.timelineStartedItemIds.add(itemId)
+      sendAgentCompatLine(state.sender, 'codex', {
+        type: 'tool_use',
+        tool_id: itemId,
+        tool_name: 'collabToolCall',
+        parameters: {
+          title: item.name || item.agentName || item.agentType || 'Codex subagent',
+          prompt: codexString(item.prompt || item.input || item.description || ''),
+          summary: codexString(item.summary || item.status || ''),
+          providerThreadId: params.threadId || params.thread?.id,
+          childThreadId: item.newThreadId || item.receiverThreadId || item.threadId,
+          parentToolCallId: item.parentToolCallId || item.parent_tool_call_id,
+          raw: item
+        },
+        provider: 'codex'
+      }, state)
+      return
+    }
     const toolUse = codexToolUseFromItem(item)
     if (toolUse) {
       state.timelineStartedItemIds.add(String(toolUse.tool_id))
@@ -3680,6 +4737,19 @@ function handleCodexNotification(message: any) {
       const itemId = codexTimelineItemId(params, 'codex-file-change')
       const cached = state.filePatchByItemId.get(itemId)
       sendCodexSyntheticToolResult(state, itemId, cached?.preview || summarizeCodexFileChanges(item.changes || []), item.status === 'failed' ? 'error' : 'success')
+      return
+    }
+    if (item?.type === 'collabToolCall') {
+      const itemId = codexTimelineItemId(params, 'codex-collab-tool-call')
+      sendAgentCompatLine(state.sender, 'codex', {
+        type: 'tool_result',
+        tool_id: itemId,
+        tool_name: 'collabToolCall',
+        status: item.status === 'failed' ? 'error' : item.status === 'cancelled' ? 'cancelled' : 'success',
+        output: codexString(item.result || item.output || item.summary || item.error || item.errorMessage || ''),
+        result: item,
+        provider: 'codex'
+      }, state)
       return
     }
     const toolResult = codexToolResultFromItem(item)
@@ -5255,7 +6325,7 @@ function hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): b
   if (/Application Support\/agentbench\//i.test(raw) && !socketPath.includes('/Application Support/agentbench/')) {
     return true
   }
-  return app.isPackaged && raw.includes(GEMINI_MCP_BRIDGE_ARG) && !raw.includes(process.execPath)
+  return app.isPackaged && !raw.includes(process.execPath)
 }
 
 function normalizeMcpToolArguments(value: unknown): Record<string, any> {
@@ -5533,6 +6603,12 @@ function mcpToolDefinitions() {
     {
       name: 'run_shell_command',
       description: 'Run a shell command in the active AGBench workspace after AGBench approval policy allows it.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -5545,6 +6621,12 @@ function mcpToolDefinitions() {
     {
       name: 'write_file',
       description: 'Write a UTF-8 text file inside the active AGBench workspace after approval.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -5557,6 +6639,12 @@ function mcpToolDefinitions() {
     {
       name: 'replace',
       description: 'Replace text in a UTF-8 file inside the active AGBench workspace after approval.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -5571,6 +6659,12 @@ function mcpToolDefinitions() {
     {
       name: 'read_file',
       description: 'Read a UTF-8 text file inside the active AGBench workspace after tool policy allows it.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -5582,6 +6676,12 @@ function mcpToolDefinitions() {
     {
       name: 'list_directory',
       description: 'List a directory inside the active AGBench workspace after tool policy allows it.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
       inputSchema: {
         type: 'object',
         properties: {
@@ -5923,7 +7023,7 @@ async function getGeminiMcpBridgeStatus(options: { autoRepairIfEnabled?: boolean
   }
   if (options.autoRepairIfEnabled && settings.geminiMcpBridgeEnabled && !status.available) {
     try {
-      return await repairGeminiMcpBridge()
+      return await repairGeminiMcpBridge(options.cwd)
     } catch (error) {
       const repairMessage = error instanceof Error ? error.message : String(error)
       const repairedStatus: GeminiMcpBridgeStatus = {
@@ -5942,43 +7042,108 @@ async function getGeminiMcpBridgeStatus(options: { autoRepairIfEnabled?: boolean
   return status
 }
 
-async function installGeminiMcpBridge(): Promise<GeminiMcpBridgeStatus> {
-  await startGeminiMcpBroker()
-  const resolved = await resolveCliProviderBinary('gemini')
-  if (!resolved.binaryPath) {
-    throw new Error(resolved.error || 'Gemini CLI is not configured.')
-  }
-  const socketPath = geminiMcpSocketPath()
-  await captureProcessOutput(resolved.binaryPath, ['mcp', 'remove', '--scope', 'user', GEMINI_MCP_SERVER_NAME], undefined, 8_000)
-  const addResult = await captureProcessOutput(resolved.binaryPath, [
+function buildGeminiMcpBridgeAddArgs(scope: GeminiMcpRegistrationScope, socketPath: string): string[] {
+  return [
     'mcp',
     'add',
-    '--scope',
-    'user',
     GEMINI_MCP_SERVER_NAME,
     process.execPath,
     GEMINI_MCP_BRIDGE_ARG,
     GEMINI_MCP_SOCKET_ARG,
     socketPath,
     GEMINI_MCP_TOKEN_ARG,
-    geminiMcpBrokerToken
-  ], undefined, 15_000)
+    geminiMcpBrokerToken,
+    '--scope',
+    scope,
+    '--trust',
+    ...AGENTBENCH_MCP_TOOLS.map((tool) => `--include-tools=${tool}`)
+  ]
+}
+
+function redactGeminiMcpBridgeArgs(args: string[]): string[] {
+  return args.map((arg, index) => args[index - 1] === GEMINI_MCP_TOKEN_ARG ? '[redacted-token]' : arg)
+}
+
+async function addGeminiMcpBridgeRegistration(
+  geminiBinaryPath: string,
+  scope: GeminiMcpRegistrationScope,
+  socketPath: string,
+  cwd?: string
+): Promise<void> {
+  const addArgs = buildGeminiMcpBridgeAddArgs(scope, socketPath)
+  const addResult = await captureProcessOutput(geminiBinaryPath, addArgs, cwd, 15_000)
   if (addResult.code !== 0) {
-    throw new Error((addResult.stderr || addResult.stdout || addResult.error || 'gemini mcp add failed.').trim())
+    const output = (addResult.stderr || addResult.stdout || addResult.error || 'gemini mcp add failed.').trim()
+    const safeArgs = redactGeminiMcpBridgeArgs(addArgs)
+    throw new Error(`Gemini MCP bridge ${scope} registration failed (exit ${addResult.code ?? 'unknown'}): gemini ${safeArgs.join(' ')}\n${output}`)
+  }
+}
+
+function projectGeminiMcpBridgeNeedsRepair(cwd: string, socketPath: string): boolean {
+  const settingsPath = join(resolve(cwd), '.gemini', 'settings.json')
+  try {
+    const raw = fsSync.readFileSync(settingsPath, 'utf-8')
+    const settings = JSON.parse(raw)
+    const server = settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME]
+    if (!server) {
+      return false
+    }
+    const args = Array.isArray(server.args) ? server.args.map(String) : []
+    const includeTools = Array.isArray(server.includeTools) ? server.includeTools.map(String) : []
+    return (
+      server.command !== process.execPath ||
+      server.trust !== true ||
+      !args.includes(GEMINI_MCP_BRIDGE_ARG) ||
+      !args.includes(socketPath) ||
+      !args.includes(geminiMcpBrokerToken) ||
+      !AGENTBENCH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
+    )
+  } catch {
+    return false
+  }
+}
+
+async function repairProjectGeminiMcpBridgeIfNeeded(geminiBinaryPath: string, cwd: string, socketPath: string): Promise<void> {
+  if (!projectGeminiMcpBridgeNeedsRepair(cwd, socketPath)) {
+    return
+  }
+  await addGeminiMcpBridgeRegistration(geminiBinaryPath, 'project', socketPath, cwd)
+}
+
+async function installGeminiMcpBridge(cwd?: string): Promise<GeminiMcpBridgeStatus> {
+  await startGeminiMcpBroker()
+  const resolved = await resolveCliProviderBinary('gemini')
+  if (!resolved.binaryPath) {
+    throw new Error(resolved.error || 'Gemini CLI is not configured.')
+  }
+  const socketPath = geminiMcpSocketPath()
+  await addGeminiMcpBridgeRegistration(resolved.binaryPath, 'user', socketPath)
+  if (cwd) {
+    await repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
   }
   await captureProcessOutput(resolved.binaryPath, ['mcp', 'enable', GEMINI_MCP_SERVER_NAME], undefined, 8_000)
   geminiMcpBridgeInstalledForCurrentToken = true
   AppStore.updateSettings({ geminiMcpBridgeEnabled: true })
-  return getGeminiMcpBridgeStatus()
+  return getGeminiMcpBridgeStatus(cwd ? { cwd } : undefined)
 }
 
-async function repairGeminiMcpBridge(): Promise<GeminiMcpBridgeStatus> {
+async function repairGeminiMcpBridge(cwd?: string): Promise<GeminiMcpBridgeStatus> {
   if (!geminiMcpBridgeRepairPromise) {
-    geminiMcpBridgeRepairPromise = installGeminiMcpBridge().finally(() => {
+    geminiMcpBridgeRepairPromise = installGeminiMcpBridge(cwd).finally(() => {
       geminiMcpBridgeRepairPromise = null
     })
   }
-  return geminiMcpBridgeRepairPromise
+  const status = await geminiMcpBridgeRepairPromise
+  if (!cwd) {
+    return status
+  }
+  const resolved = await resolveCliProviderBinary('gemini')
+  if (!resolved.binaryPath) {
+    return status
+  }
+  const socketPath = geminiMcpSocketPath()
+  await repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
+  return getGeminiMcpBridgeStatus({ cwd })
 }
 
 async function setGeminiMcpBridgeEnabled(enabled: boolean): Promise<GeminiMcpBridgeStatus> {
@@ -6024,7 +7189,7 @@ async function prepareGeminiMcpBridgeForRun(
     }
     await startGeminiMcpBroker()
     if (!geminiMcpBridgeInstalledForCurrentToken) {
-      await repairGeminiMcpBridge()
+      await repairGeminiMcpBridge(resolvedCwd)
     }
     const status = await getGeminiMcpBridgeStatus({
       autoRepairIfEnabled: true,
@@ -6181,7 +7346,7 @@ function normalizeGeminiResumeTarget(value?: string | null): string | null {
   }
 
   const target = value.trim()
-  if (!target) {
+  if (!target || target.toLowerCase() === 'unknown') {
     return null
   }
 
@@ -6348,6 +7513,9 @@ function appendGeminiCliSessionArgs(
 
   if (allowAgentbenchMcp) {
     args.push('--allowed-mcp-server-names', GEMINI_MCP_SERVER_NAME)
+    for (const toolName of GEMINI_MCP_ALLOWED_TOOL_NAMES) {
+      args.push(`--allowed-tools=${toolName}`)
+    }
   }
 
   if (checkpointingEnabled) {
@@ -6603,12 +7771,14 @@ async function discoverGeminiMemory(workspace: string): Promise<GeminiMemoryDisc
 
 const applyNativeGlassToWindow = (targetWindow: BrowserWindow, settings: AppSettings): void => {
   const isMac = process.platform === 'darwin'
-  const useNativeGlass = isMac && settings.appearanceMode === 'native_glass' && !settings.reduceTransparency
-  const nextState = `${useNativeGlass ? NATIVE_GLASS_VIBRANCY : 'off'}:${settings.appearanceMode}:${settings.reduceTransparency ? 'reduced' : 'normal'}`
+  const useGlassWindow = isMac
+    && (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass')
+    && !settings.reduceTransparency
+  const nextState = `${useGlassWindow ? NATIVE_GLASS_VIBRANCY : 'off'}:${settings.appearanceMode}:${settings.reduceTransparency ? 'reduced' : 'normal'}`
   if (targetWindow === mainWindow && appliedNativeGlassState === nextState) {
     return
   }
-  if (useNativeGlass) {
+  if (useGlassWindow) {
     targetWindow.setVibrancy(NATIVE_GLASS_VIBRANCY)
     targetWindow.setBackgroundColor('#00000000')
   } else {
@@ -6620,25 +7790,81 @@ const applyNativeGlassToWindow = (targetWindow: BrowserWindow, settings: AppSett
   }
 }
 
+function windowBoundsAreVisible(bounds: AppSettings['windowBounds']): boolean {
+  if (!bounds || bounds.x === undefined || bounds.y === undefined) return false
+  const minimumVisibleSize = 80
+  return screen.getAllDisplays().some((display) => {
+    const area = display.workArea
+    const right = bounds.x! + bounds.width
+    const bottom = bounds.y! + bounds.height
+    const overlapWidth = Math.min(right, area.x + area.width) - Math.max(bounds.x!, area.x)
+    const overlapHeight = Math.min(bottom, area.y + area.height) - Math.max(bounds.y!, area.y)
+    return overlapWidth >= minimumVisibleSize && overlapHeight >= minimumVisibleSize
+  })
+}
+
+function resolveInitialWindowPlacement(settings: AppSettings) {
+  const savedBounds = sanitizeWindowBounds(settings.windowBounds)
+  const shouldUseSavedPosition = windowBoundsAreVisible(savedBounds)
+  return {
+    width: savedBounds?.width || DEFAULT_WINDOW_WIDTH,
+    height: savedBounds?.height || DEFAULT_WINDOW_HEIGHT,
+    ...(shouldUseSavedPosition ? { x: savedBounds!.x, y: savedBounds!.y } : {}),
+    isMaximized: Boolean(savedBounds?.isMaximized)
+  }
+}
+
+let windowBoundsSaveTimer: ReturnType<typeof setTimeout> | null = null
+let lastPersistedWindowBoundsJson = ''
+
+function persistMainWindowBounds(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isMinimized()) return
+  const bounds = mainWindow.getNormalBounds()
+  const windowBounds = {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    isMaximized: mainWindow.isMaximized()
+  }
+  const nextJson = JSON.stringify(windowBounds)
+  if (nextJson === lastPersistedWindowBoundsJson) return
+  lastPersistedWindowBoundsJson = nextJson
+  AppStore.updateSettings({ windowBounds })
+}
+
+function schedulePersistMainWindowBounds(): void {
+  if (windowBoundsSaveTimer) clearTimeout(windowBoundsSaveTimer)
+  windowBoundsSaveTimer = setTimeout(() => {
+    windowBoundsSaveTimer = null
+    persistMainWindowBounds()
+  }, 1000)
+}
+
 function createWindow(): void {
   const isMac = process.platform === 'darwin'
   const settings = AppStore.getSettings()
-  const useNativeGlass = isMac && settings.appearanceMode === 'native_glass' && !settings.reduceTransparency
-  const nativeVibrancy = resolveNativeVibrancy(useNativeGlass)
+  const useGlassWindow = isMac
+    && (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass')
+    && !settings.reduceTransparency
+  const nativeVibrancy = resolveNativeVibrancy(useGlassWindow)
+  const initialPlacement = resolveInitialWindowPlacement(settings)
 
   mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
-    minWidth: 900,
-    minHeight: 600,
+    width: initialPlacement.width,
+    height: initialPlacement.height,
+    ...(initialPlacement.x !== undefined ? { x: initialPlacement.x } : {}),
+    ...(initialPlacement.y !== undefined ? { y: initialPlacement.y } : {}),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     vibrancy: nativeVibrancy,
-    backgroundMaterial: (!isMac && settings.appearanceMode === 'native_glass' && !settings.reduceTransparency) ? 'acrylic' : undefined,
+    backgroundMaterial: (!isMac && (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') && !settings.reduceTransparency) ? 'acrylic' : undefined,
     visualEffectState: 'active',
     transparent: false,
-    backgroundColor: useNativeGlass ? '#00000000' : '#1e1e1e',
+    backgroundColor: useGlassWindow ? '#00000000' : '#1e1e1e',
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -6650,9 +7876,24 @@ function createWindow(): void {
     }
   })
 
+  if (initialPlacement.isMaximized) {
+    mainWindow.maximize()
+  }
+
   mainWindow.on('ready-to-show', () => {
     mainWindow?.show()
     emitDueScheduledTasks()
+  })
+  mainWindow.on('resize', schedulePersistMainWindowBounds)
+  mainWindow.on('move', schedulePersistMainWindowBounds)
+  mainWindow.on('maximize', persistMainWindowBounds)
+  mainWindow.on('unmaximize', persistMainWindowBounds)
+  mainWindow.on('close', () => {
+    if (windowBoundsSaveTimer) {
+      clearTimeout(windowBoundsSaveTimer)
+      windowBoundsSaveTimer = null
+    }
+    persistMainWindowBounds()
   })
   mainWindow.on('focus', () => {
     if (mainWindow) {
@@ -7066,6 +8307,15 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-agent-rate-limits', async (_, provider: ProviderId) => {
     provider = assertProviderId(provider)
+    if (provider === 'gemini') {
+      return fetchGeminiUsageSnapshot()
+    }
+    if (provider === 'kimi') {
+      return fetchKimiUsageSnapshot()
+    }
+    if (provider === 'claude') {
+      return fetchClaudeUsageSnapshot()
+    }
     if (provider !== 'codex') {
       return null
     }
@@ -7085,6 +8335,139 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-codex-usage-snapshot', async () => {
     return fetchCodexUsageSnapshot()
+  })
+
+  ipcMain.handle('create-github-pr', async (_event, payload?: { workspacePath?: string; title?: string; body?: string; draft?: boolean; openInBrowser?: boolean }) => {
+    const requestedPath = expandHomePath(payload?.workspacePath || '')
+    if (!requestedPath) {
+      return { ok: false, error: 'A workspace path is required to open a pull request.' }
+    }
+    try {
+      const stat = await fs.stat(requestedPath)
+      if (!stat.isDirectory()) {
+        return { ok: false, error: 'Workspace path is not a directory.' }
+      }
+    } catch {
+      return { ok: false, error: 'Workspace path does not exist on disk.' }
+    }
+    const args = ['pr', 'create']
+    const title = typeof payload?.title === 'string' ? payload.title.trim() : ''
+    const body = typeof payload?.body === 'string' ? payload.body.trim() : ''
+    if (title) {
+      args.push('--title', title)
+    }
+    if (body) {
+      args.push('--body', body)
+    }
+    if (!title && !body) {
+      args.push('--fill')
+    }
+    if (payload?.draft) {
+      args.push('--draft')
+    }
+    return await new Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>((resolve) => {
+      let stdout = ''
+      let stderr = ''
+      let settled = false
+      let child: ReturnType<typeof spawn>
+      try {
+        child = spawn('gh', args, { cwd: requestedPath, env: { ...process.env }, stdio: ['ignore', 'pipe', 'pipe'] })
+      } catch (error) {
+        resolve({ ok: false, error: `Failed to launch \`gh\`: ${error instanceof Error ? error.message : String(error)}` })
+        return
+      }
+      const settle = (result: { ok: boolean; url?: string; error?: string; stderr?: string }) => {
+        if (settled) return
+        settled = true
+        resolve(result)
+      }
+      child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
+      child.stderr?.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf8') })
+      child.on('error', (error) => {
+        const message = (error as NodeJS.ErrnoException)?.code === 'ENOENT'
+          ? 'GitHub CLI (`gh`) is not installed or not on PATH. Install it from https://cli.github.com.'
+          : `Failed to launch \`gh\`: ${error.message}`
+        settle({ ok: false, error: message })
+      })
+      child.on('close', (code) => {
+        const trimmedOut = stdout.trim()
+        const trimmedErr = stderr.trim()
+        if (code === 0) {
+          const url = trimmedOut.match(/https?:\/\/[^\s]+/)?.[0]
+          if (url && payload?.openInBrowser !== false) {
+            shell.openExternal(url).catch(() => {})
+          }
+          settle({ ok: true, url, stderr: trimmedErr || undefined })
+        } else {
+          settle({
+            ok: false,
+            error: trimmedErr || trimmedOut || `\`gh pr create\` exited with code ${code}.`,
+            stderr: trimmedErr || undefined
+          })
+        }
+      })
+      setTimeout(() => settle({ ok: false, error: '`gh pr create` timed out after 30s.' }), 30_000)
+    })
+  })
+
+  ipcMain.handle('get-claude-auth-status', async () => {
+    const encryptionAvailable = safeStorage.isEncryptionAvailable()
+    const apiKeyConfigured = Boolean(AppStore.getSettings().claudeApiKey)
+    const resolved = await resolveCliProviderBinary('claude')
+    if (!resolved.binaryPath) {
+      return { available: false, authState: 'missing', apiKeyConfigured, encryptionAvailable, binaryPath: null } satisfies import('./store/types').ProviderApiKeyStatus
+    }
+    const [authState, version] = await Promise.all([readClaudeAuthState(resolved), readResolvedCliVersion(resolved)])
+    return { available: true, authState, apiKeyConfigured, encryptionAvailable, version, binaryPath: resolved.binaryPath } satisfies import('./store/types').ProviderApiKeyStatus
+  })
+
+  ipcMain.handle('store-claude-api-key', async (_, rawKey: string) => {
+    const encrypted = encryptApiKey(String(rawKey || ''))
+    AppStore.updateSettings({ claudeApiKey: encrypted || undefined })
+    return { stored: Boolean(encrypted), encryptionAvailable: safeStorage.isEncryptionAvailable() }
+  })
+
+  ipcMain.handle('clear-claude-api-key', async () => {
+    AppStore.updateSettings({ claudeApiKey: undefined })
+    return true
+  })
+
+  ipcMain.handle('trigger-claude-login', async () => {
+    const resolved = await resolveCliProviderBinary('claude')
+    if (!resolved.binaryPath) {
+      return { ok: false, error: 'Claude CLI not found. Install with: npm install -g @anthropic-ai/claude-code' }
+    }
+    return new Promise<{ ok: boolean; error?: string; code?: number | null }>((resolve) => {
+      const child = spawn(resolved.binaryPath!, ['auth', 'login'], {
+        shell: false,
+        stdio: 'ignore',
+        env: createCliEnv({}, resolved.binaryPath)
+      })
+      child.on('close', (code) => resolve({ ok: code === 0, code }))
+      child.on('error', (err) => resolve({ ok: false, error: err.message }))
+    })
+  })
+
+  ipcMain.handle('get-kimi-auth-status', async () => {
+    const encryptionAvailable = safeStorage.isEncryptionAvailable()
+    const apiKeyConfigured = Boolean(AppStore.getSettings().kimiApiKey)
+    const resolved = await resolveCliProviderBinary('kimi')
+    if (!resolved.binaryPath) {
+      return { available: false, authState: 'missing', apiKeyConfigured, encryptionAvailable, binaryPath: null } satisfies import('./store/types').ProviderApiKeyStatus
+    }
+    const version = await readResolvedCliVersion(resolved)
+    return { available: true, authState: apiKeyConfigured ? 'api-key' : 'unknown', apiKeyConfigured, encryptionAvailable, version, binaryPath: resolved.binaryPath } satisfies import('./store/types').ProviderApiKeyStatus
+  })
+
+  ipcMain.handle('store-kimi-api-key', async (_, rawKey: string) => {
+    const encrypted = encryptApiKey(String(rawKey || ''))
+    AppStore.updateSettings({ kimiApiKey: encrypted || undefined })
+    return { stored: Boolean(encrypted), encryptionAvailable: safeStorage.isEncryptionAvailable() }
+  })
+
+  ipcMain.handle('clear-kimi-api-key', async () => {
+    AppStore.updateSettings({ kimiApiKey: undefined })
+    return true
   })
 
   ipcMain.handle('get-agent-mcp-status', async (_, provider: ProviderId) => {

@@ -1,6 +1,6 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
 
-type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills'
+type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
 
 interface GeminiCapabilityItem {
@@ -56,6 +56,8 @@ interface AgentRunPayload {
   model?: string
   reasoningEffort?: string | null
   serviceTier?: string | null
+  claudeReasoningEffort?: string | null
+  kimiThinking?: boolean | null
   approvalMode?: string
   imagePaths?: string[]
   providerSessionId?: string | null
@@ -112,6 +114,14 @@ declare global {
       importCodexUsageCredential: (filePath?: string) => Promise<any>
       clearCodexUsageCredential: () => Promise<boolean>
       getCodexUsageSnapshot: () => Promise<any>
+      createGithubPr: (payload: { workspacePath?: string; title?: string; body?: string; draft?: boolean; openInBrowser?: boolean }) => Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>
+      getClaudeAuthStatus: () => Promise<ProviderApiKeyStatus>
+      storeClaudeApiKey: (key: string) => Promise<void>
+      clearClaudeApiKey: () => Promise<void>
+      triggerClaudeLogin: () => Promise<{ ok: boolean; code?: number | null; error?: string }>
+      getKimiAuthStatus: () => Promise<ProviderApiKeyStatus>
+      storeKimiApiKey: (key: string) => Promise<void>
+      clearKimiApiKey: () => Promise<void>
       getAgentMcpStatus: (provider: ProviderId) => Promise<any>
       listAgentThreads: (provider: ProviderId, params?: any) => Promise<any>
       forkAgentThread: (provider: ProviderId, threadId: string, params?: any) => Promise<any>

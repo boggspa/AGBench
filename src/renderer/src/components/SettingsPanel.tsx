@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type {
   AgenticNetworkPolicy,
   AgenticServicePolicy,
@@ -6,16 +7,30 @@ import type {
   CodexSandboxFallbackMode,
   AppSettings,
   GeminiMcpBridgeStatus,
+  ProviderApiKeyStatus,
   ProviderCapabilityContract,
   ProviderId,
   ProductOperationsStatus,
   ProductUpdateChannel,
   PromptSurfaceStyle,
+  ComposerStyle,
   ThemeAccentStyle,
   ThemeAppearance,
   ThemeCornerStyle,
   VisualEffectStyle
 } from '../../../main/store/types';
+import {
+  COMPOSER_FONT_MATCH_TRANSCRIPT,
+  COMPOSER_FONT_OPTIONS,
+  CUSTOM_FONT_FALLBACK,
+  CUSTOM_FONT_SELECT_VALUE,
+  FONT_STACKS,
+  TRANSCRIPT_FONT_OPTIONS,
+  getFontSelectValue,
+  quoteInstalledFontFamily,
+  resolveComposerFontFamily,
+  type TypefaceOption
+} from '../lib/typefaceOptions';
 
 interface SettingsPanelProps {
   mode: AppearanceMode;
@@ -24,6 +39,9 @@ interface SettingsPanelProps {
   themeCornerStyle: ThemeCornerStyle;
   themeAccentStyle: ThemeAccentStyle;
   promptSurfaceStyle: PromptSurfaceStyle;
+  composerStyle: ComposerStyle;
+  transcriptFontFamily: string;
+  composerFontFamily: string;
   reduceTransparency: boolean;
   reduceMotion: boolean;
   compactDensity: boolean;
@@ -43,6 +61,14 @@ interface SettingsPanelProps {
   advancedFx: AppSettings['advancedFx'];
   updateChannel: ProductUpdateChannel;
   productOperationsStatus: ProductOperationsStatus | null;
+  claudeAuthStatus?: ProviderApiKeyStatus | null;
+  kimiAuthStatus?: ProviderApiKeyStatus | null;
+  claudeLoginState?: 'idle' | 'loading' | 'success' | 'error';
+  onTriggerClaudeLogin?: () => void;
+  onStoreClaudeApiKey?: (key: string) => void;
+  onClearClaudeApiKey?: () => void;
+  onStoreKimiApiKey?: (key: string) => void;
+  onClearKimiApiKey?: () => void;
   onInstallGeminiMcpBridge: () => void;
   onRefreshGeminiMcpBridgeStatus: () => void;
   onRefreshProductOperationsStatus: () => void;
@@ -55,6 +81,9 @@ interface SettingsPanelProps {
     themeCornerStyle?: ThemeCornerStyle;
     themeAccentStyle?: ThemeAccentStyle;
     promptSurfaceStyle?: PromptSurfaceStyle;
+    composerStyle?: ComposerStyle;
+    transcriptFontFamily?: string;
+    composerFontFamily?: string;
     reduceTransparency?: boolean;
     reduceMotion?: boolean;
     compactDensity?: boolean;
@@ -119,6 +148,13 @@ const PROMPT_SURFACE_OPTIONS: Array<{ value: PromptSurfaceStyle; label: string }
   { value: 'classic', label: 'Poor man glass' },
   { value: 'solid', label: 'Solid' }
 ];
+const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helper: string }> = [
+  { value: 'default', label: 'AGBench native', helper: 'Provider chrome off; keep the existing AGBench shell.' },
+  { value: 'codex', label: 'Codex shell', helper: 'Codex-like sidebar, transcript, status bar, and composer hierarchy.' },
+  { value: 'claude', label: 'Claude shell', helper: 'Claude-like sidebar, transcript, status bar, and composer hierarchy.' },
+  { value: 'gemini', label: 'Gemini shell', helper: 'Gemini-like minimal pill composer, centered welcome, blue focus glow.' },
+  { value: 'kimi', label: 'Kimi shell', helper: 'Kimi-like dark rounded composer, green-yellow accent, minimal sidebar.' }
+];
 const AGENTIC_SERVICE_POLICY_OPTIONS: Array<{ value: AgenticServicePolicy; label: string }> = [
   { value: 'workspace', label: 'Ask, then allow workspace' },
   { value: 'ask', label: 'Ask every time' },
@@ -145,6 +181,18 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ];
 
+type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system';
+
+type LocalFontData = {
+  family?: string;
+  fullName?: string;
+  postscriptName?: string;
+};
+
+type LocalFontWindow = Window & {
+  queryLocalFonts?: () => Promise<LocalFontData[]>;
+};
+
 export function SettingsPanel({
   mode,
   visualEffectStyle,
@@ -152,6 +200,9 @@ export function SettingsPanel({
   themeCornerStyle,
   themeAccentStyle,
   promptSurfaceStyle,
+  composerStyle,
+  transcriptFontFamily,
+  composerFontFamily,
   reduceTransparency,
   reduceMotion,
   compactDensity,
@@ -171,6 +222,14 @@ export function SettingsPanel({
   advancedFx,
   updateChannel,
   productOperationsStatus,
+  claudeAuthStatus,
+  kimiAuthStatus,
+  claudeLoginState = 'idle',
+  onTriggerClaudeLogin,
+  onStoreClaudeApiKey,
+  onClearClaudeApiKey,
+  onStoreKimiApiKey,
+  onClearKimiApiKey,
   onInstallGeminiMcpBridge,
   onRefreshGeminiMcpBridgeStatus,
   onRefreshProductOperationsStatus,
@@ -179,21 +238,95 @@ export function SettingsPanel({
   onChange,
   onClose
 }: SettingsPanelProps) {
+  const [claudeKeyInput, setClaudeKeyInput] = useState('');
+  const [kimiKeyInput, setKimiKeyInput] = useState('');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
+  const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([]);
+  const [installedFontStatus, setInstalledFontStatus] = useState('');
   const safeTurns = Number.isFinite(chatContextTurns) ? Math.max(0, Math.trunc(chatContextTurns)) : 6;
   const boundedTurns = Math.min(20, safeTurns);
+  const transcriptFontOptions = [...TRANSCRIPT_FONT_OPTIONS, ...installedFontOptions];
+  const composerFontOptions = [...COMPOSER_FONT_OPTIONS, ...installedFontOptions];
+  const transcriptFontSelectValue = getFontSelectValue(transcriptFontOptions, transcriptFontFamily || FONT_STACKS.agbench);
+  const composerFontSelectValue = getFontSelectValue(
+    composerFontOptions,
+    composerFontFamily || COMPOSER_FONT_MATCH_TRANSCRIPT
+  );
+  const previewComposerFontFamily = resolveComposerFontFamily(composerFontFamily, transcriptFontFamily);
+  const canLoadInstalledFonts =
+    typeof window !== 'undefined' &&
+    typeof (window as LocalFontWindow).queryLocalFonts === 'function';
   const updateAgenticService = <K extends keyof AgenticServicesSettings>(key: K, value: AgenticServicesSettings[K]) => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } });
+  };
+  const handleLoadInstalledFonts = async () => {
+    const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts;
+    if (!queryLocalFonts) {
+      setInstalledFontStatus('Installed font discovery is not available in this runtime.');
+      return;
+    }
+
+    setInstalledFontStatus('Requesting local font access...');
+    try {
+      const fonts = await queryLocalFonts();
+      const families = Array.from(new Set(
+        fonts
+          .map(font => font.family || font.fullName || font.postscriptName || '')
+          .map(name => name.trim())
+          .filter(Boolean)
+      ))
+        .sort((a, b) => a.localeCompare(b))
+        .slice(0, 160);
+
+      setInstalledFontOptions(
+        families.map(family => ({
+          label: family,
+          value: quoteInstalledFontFamily(family)
+        }))
+      );
+      setInstalledFontStatus(
+        families.length > 0
+          ? `${families.length} installed font families loaded.`
+          : 'No installed font families were returned.'
+      );
+    } catch {
+      setInstalledFontStatus('Local font access was denied or unavailable.');
+    }
   };
   const updateAdvancedFx = (partial: Partial<AppSettings['advancedFx']>) => {
     onChange({ advancedFx: { ...advancedFx, ...partial } });
   };
 
+  const TABS: Array<{ id: SettingsTab; label: string }> = [
+    { id: 'appearance', label: 'Appearance' },
+    { id: 'behavior', label: 'Behavior' },
+    { id: 'providers', label: 'Providers' },
+    { id: 'system', label: 'System' },
+  ];
+
   return (
     <div className="settings-panel">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h4 className="sidebar-section-title" style={{ margin: 0 }}>Appearance</h4>
+      {/* Sticky header with tabs */}
+      <div className="settings-panel-header">
+        <div className="settings-tab-bar">
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
         <button className="btn btn-sm btn-ghost" onClick={onClose}>Done</button>
       </div>
+
+      <div className="settings-panel-content">
+
+      {/* ── Appearance ─────────────────────────────────── */}
+      {activeTab === 'appearance' && <>
 
       <div className="settings-group">
         <label className="settings-label">Glass</label>
@@ -275,6 +408,132 @@ export function SettingsPanel({
       </div>
 
       <div className="settings-group">
+        <label className="settings-label">Interface shell</label>
+        <select
+          className="settings-select"
+          value={composerStyle}
+          onChange={(e) => onChange({ composerStyle: e.target.value as ComposerStyle })}
+        >
+          {COMPOSER_STYLE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <p className="settings-hint">
+          {COMPOSER_STYLE_OPTIONS.find((option) => option.value === composerStyle)?.helper}
+        </p>
+      </div>
+
+      <div className="settings-group settings-typography-group">
+        <label className="settings-label">Typography</label>
+        <div className="settings-typography-grid">
+          <div className="settings-field">
+            <span className="settings-field-label">Transcript font</span>
+            <select
+              className="settings-select"
+              value={transcriptFontSelectValue}
+              onChange={(e) => {
+                const value = e.target.value;
+                onChange({
+                  transcriptFontFamily:
+                    value === CUSTOM_FONT_SELECT_VALUE
+                      ? (transcriptFontSelectValue === CUSTOM_FONT_SELECT_VALUE ? transcriptFontFamily : CUSTOM_FONT_FALLBACK)
+                      : value
+                });
+              }}
+            >
+              {TRANSCRIPT_FONT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              <option value={CUSTOM_FONT_SELECT_VALUE}>Custom...</option>
+              {installedFontOptions.length > 0 && (
+                <optgroup label="Installed fonts">
+                  {installedFontOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            {transcriptFontSelectValue === CUSTOM_FONT_SELECT_VALUE && (
+              <input
+                className="settings-input settings-font-custom-input"
+                value={transcriptFontFamily}
+                onChange={(e) => onChange({ transcriptFontFamily: e.target.value })}
+                placeholder='"Avenir Next", system-ui, sans-serif'
+              />
+            )}
+          </div>
+
+          <div className="settings-field">
+            <span className="settings-field-label">Composer font</span>
+            <select
+              className="settings-select"
+              value={composerFontSelectValue}
+              onChange={(e) => {
+                const value = e.target.value;
+                onChange({
+                  composerFontFamily:
+                    value === CUSTOM_FONT_SELECT_VALUE
+                      ? (composerFontSelectValue === CUSTOM_FONT_SELECT_VALUE ? composerFontFamily : CUSTOM_FONT_FALLBACK)
+                      : value
+                });
+              }}
+            >
+              {COMPOSER_FONT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+              <option value={CUSTOM_FONT_SELECT_VALUE}>Custom...</option>
+              {installedFontOptions.length > 0 && (
+                <optgroup label="Installed fonts">
+                  {installedFontOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+            </select>
+            {composerFontSelectValue === CUSTOM_FONT_SELECT_VALUE && (
+              <input
+                className="settings-input settings-font-custom-input"
+                value={composerFontFamily}
+                onChange={(e) => onChange({ composerFontFamily: e.target.value })}
+                placeholder='"Avenir Next", system-ui, sans-serif'
+              />
+            )}
+          </div>
+        </div>
+        <div className="settings-font-actions">
+          <button
+            className="btn btn-sm btn-ghost"
+            type="button"
+            disabled={!canLoadInstalledFonts}
+            onClick={() => void handleLoadInstalledFonts()}
+          >
+            Load installed fonts
+          </button>
+          <span className="settings-font-status">
+            {installedFontStatus || (canLoadInstalledFonts ? 'Optional local font permission.' : 'Installed font discovery unavailable; custom CSS font-family still works.')}
+          </span>
+        </div>
+        <div className="settings-typography-preview">
+          <div className="settings-typography-preview-text" style={{ fontFamily: transcriptFontFamily || FONT_STACKS.agbench }}>
+            Assistant transcript text uses this typeface.
+          </div>
+          <div className="settings-typography-preview-composer" style={{ fontFamily: previewComposerFontFamily }}>
+            Composer prompt placeholder preview
+          </div>
+        </div>
+      </div>
+
+      <div className="settings-group">
         <label className="settings-label">Window material</label>
         <div className="settings-option-list settings-option-list-inline">
           {(['solid', 'soft_glass', 'native_glass'] as AppearanceMode[]).map(m => (
@@ -326,7 +585,7 @@ export function SettingsPanel({
         </p>
       </div>
 
-      <div className="settings-group settings-fx-labs">
+      <div className="settings-group settings-fx-labs span-all">
         <label className="settings-label">FX Labs</label>
         <p className="settings-hint">
           Opt-in visual layers for agent ambience, workspace atmosphere, and live run telemetry. Disabled automatically when Reduce motion is enabled.
@@ -396,6 +655,11 @@ export function SettingsPanel({
         <p className="settings-hint">Tighter spacing throughout the interface.</p>
       </div>
 
+      </> /* end appearance */}
+
+      {/* ── Behavior ─────────────────────────────────── */}
+      {activeTab === 'behavior' && <>
+
       <div className="settings-group">
         <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
           <input type="checkbox" checked={geminiCheckpointingEnabled} onChange={e => onChange({ geminiCheckpointingEnabled: e.target.checked })} />
@@ -422,7 +686,12 @@ export function SettingsPanel({
         </p>
       </div>
 
-      <div className="settings-group">
+      </> /* end behavior */}
+
+      {/* ── Providers ─────────────────────────────────── */}
+      {activeTab === 'providers' && <>
+
+      <div className="settings-group span-all">
         <h4 className="sidebar-section-title" style={{ margin: 0 }}>Agentic services</h4>
         <div className="settings-service-list">
           <label className="settings-service-row">
@@ -531,6 +800,135 @@ export function SettingsPanel({
       </div>
 
       <div className="settings-group">
+        <h4 className="sidebar-section-title" style={{ margin: 0 }}>Claude</h4>
+
+        {claudeAuthStatus && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)' }}>
+            {!claudeAuthStatus.available ? (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>● Binary not found</span>
+            ) : claudeAuthStatus.apiKeyConfigured ? (
+              <span style={{ fontSize: '0.78rem', color: 'var(--accent)' }}>● API key configured</span>
+            ) : claudeAuthStatus.authState && !['not logged in', 'not authenticated', 'unauthenticated', 'error'].some(p => claudeAuthStatus.authState.toLowerCase().includes(p)) ? (
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-success, #3fb950)' }}>● Authenticated</span>
+            ) : (
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-warning, #d29922)' }}>● Not authenticated</span>
+            )}
+            {claudeAuthStatus.version && (
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{claudeAuthStatus.version}</span>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', flexWrap: 'wrap', marginBottom: 'var(--space-xs)' }}>
+          <button
+            className="btn btn-sm"
+            disabled={claudeLoginState === 'loading'}
+            onClick={onTriggerClaudeLogin}
+          >
+            {claudeLoginState === 'loading' ? 'Opening browser...' : 'Login with Claude Code →'}
+          </button>
+          {claudeLoginState === 'success' && (
+            <span className="settings-hint" style={{ margin: 0, color: 'var(--color-success, #3fb950)' }}>Browser opened</span>
+          )}
+          {claudeLoginState === 'error' && (
+            <span className="settings-hint" style={{ margin: 0, color: 'var(--color-danger, #f85149)' }}>Login failed — check CLI is installed</span>
+          )}
+        </div>
+        <p className="settings-hint">
+          Claude runs inside AGBench use Agent SDK / <code>claude -p</code> programmatic paths. From 2026-06-15 Anthropic says these use separate Agent SDK credit, not normal interactive Claude Code subscription limits. Use Claude in an interactive terminal when you specifically need native Claude Code subscription-limit behavior.
+        </p>
+
+        <label className="settings-label">Anthropic API key</label>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)' }}>
+          <input
+            className="settings-select"
+            type="password"
+            value={claudeKeyInput}
+            onChange={(e) => setClaudeKeyInput(e.target.value)}
+            placeholder={claudeAuthStatus?.apiKeyConfigured ? '••••••••••• (saved)' : 'sk-ant-...'}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="btn btn-sm"
+            disabled={!claudeKeyInput.trim()}
+            onClick={() => { onStoreClaudeApiKey?.(claudeKeyInput); setClaudeKeyInput(''); }}
+          >
+            Save
+          </button>
+          {claudeAuthStatus?.apiKeyConfigured && (
+            <button className="btn btn-sm btn-ghost" onClick={onClearClaudeApiKey}>
+              Clear
+            </button>
+          )}
+        </div>
+        <p className="settings-hint">API key takes priority over the Claude Code login session and uses API/PAYG billing. Stored encrypted on-device.</p>
+
+        <label className="settings-label">Claude CLI binary</label>
+        <input
+          className="settings-select"
+          value={claudeBinaryPath}
+          onChange={(e) => onChange({ claudeBinaryPath: e.target.value })}
+          placeholder="Auto-detect, or /Users/you/.local/bin/claude"
+        />
+        <p className="settings-hint">Optional path override.</p>
+      </div>
+
+      <div className="settings-group">
+        <h4 className="sidebar-section-title" style={{ margin: 0 }}>Kimi</h4>
+
+        {kimiAuthStatus && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)' }}>
+            {!kimiAuthStatus.available ? (
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>● Binary not found</span>
+            ) : kimiAuthStatus.apiKeyConfigured ? (
+              <span style={{ fontSize: '0.78rem', color: 'var(--accent)' }}>● API key configured</span>
+            ) : (
+              <span style={{ fontSize: '0.78rem', color: 'var(--color-warning, #d29922)' }}>● No API key</span>
+            )}
+          </div>
+        )}
+
+        <label className="settings-label">Moonshot API key</label>
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xs)' }}>
+          <input
+            className="settings-select"
+            type="password"
+            value={kimiKeyInput}
+            onChange={(e) => setKimiKeyInput(e.target.value)}
+            placeholder={kimiAuthStatus?.apiKeyConfigured ? '••••••••••• (saved)' : 'moonshot-...'}
+            style={{ flex: 1 }}
+          />
+          <button
+            className="btn btn-sm"
+            disabled={!kimiKeyInput.trim()}
+            onClick={() => { onStoreKimiApiKey?.(kimiKeyInput); setKimiKeyInput(''); }}
+          >
+            Save
+          </button>
+          {kimiAuthStatus?.apiKeyConfigured && (
+            <button className="btn btn-sm btn-ghost" onClick={onClearKimiApiKey}>
+              Clear
+            </button>
+          )}
+        </div>
+        <p className="settings-hint">Your Moonshot API key (MOONSHOT_API_KEY). Stored encrypted on-device.</p>
+
+        <label className="settings-label">Kimi CLI binary</label>
+        <input
+          className="settings-select"
+          value={kimiBinaryPath}
+          onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
+          placeholder="Auto-detect, or /path/to/kimi"
+        />
+        <p className="settings-hint">Optional path override for Kimi Code CLI.</p>
+      </div>
+
+      </> /* end providers */}
+
+      {/* ── System ─────────────────────────────────── */}
+      {activeTab === 'system' && <>
+
+      <div className="settings-group span-all">
         <h4 className="sidebar-section-title" style={{ margin: 0 }}>Product operations</h4>
         <label className="settings-service-row">
           <span>Update channel</span>
@@ -567,28 +965,9 @@ export function SettingsPanel({
         )}
       </div>
 
-      <div className="settings-group">
-        <label className="settings-label">Claude CLI binary</label>
-        <input
-          className="settings-select"
-          value={claudeBinaryPath}
-          onChange={(e) => onChange({ claudeBinaryPath: e.target.value })}
-          placeholder="Auto-detect, or /Users/you/.local/bin/claude"
-        />
-        <p className="settings-hint">Optional override. Credentials stay in Claude Code; this app only launches the binary.</p>
-      </div>
+      </> /* end system */}
 
-      <div className="settings-group">
-        <label className="settings-label">Kimi CLI binary</label>
-        <input
-          className="settings-select"
-          value={kimiBinaryPath}
-          onChange={(e) => onChange({ kimiBinaryPath: e.target.value })}
-          placeholder="Auto-detect, or /path/to/kimi"
-        />
-        <p className="settings-hint">Optional override for Kimi Code CLI. Credential files are not parsed by the app.</p>
-      </div>
-
+      </div>{/* end settings-panel-content */}
     </div>
   );
 }

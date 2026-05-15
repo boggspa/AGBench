@@ -24,6 +24,27 @@ export function extractToolId(event: any): string {
   );
 }
 
+export function extractParentToolCallId(event: any): string | undefined {
+  if (!event || typeof event !== 'object') return undefined;
+  const candidates = [
+    event.parent_tool_use_id,
+    event.parentToolUseId,
+    event.parent_tool_call_id,
+    event.parentToolCallId,
+    event.parent_id,
+    event.parentId,
+    event.params?.parent_tool_use_id,
+    event.params?.parentToolUseId,
+    event.message?.parent_tool_use_id
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+  return undefined;
+}
+
 export function extractParameters(event: any): Record<string, unknown> {
   if (!event || typeof event !== 'object') return {};
   return (
@@ -288,6 +309,7 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
   const category = getToolCategory(toolName);
   const displayName = getToolDisplayName(toolName, parameters);
   const filePath = (parameters.file_path as string) || (parameters.path as string) || undefined;
+  const parentToolCallId = extractParentToolCallId(toolUseEvent);
 
   return {
     id: extractToolId(toolUseEvent),
@@ -300,6 +322,7 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
     filePath,
     diffSummary: deriveToolDiffSummary(toolName, parameters),
     rawUseEvent: toolUseEvent,
+    parentToolCallId,
     // Legacy fields
     operationCategory: category as any,
     affectedFilePath: filePath,

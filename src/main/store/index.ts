@@ -46,6 +46,9 @@ const defaultSettings: AppSettings = {
   themeCornerStyle: 'rounded',
   themeAccentStyle: 'system',
   promptSurfaceStyle: 'liquid_glass',
+  composerStyle: 'default',
+  transcriptFontFamily: '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
+  composerFontFamily: 'match-transcript',
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,
@@ -666,7 +669,9 @@ export class AppStore {
     const fd = fs.openSync(filePath, 'a');
     try {
       fs.writeFileSync(fd, serializeRunEventRecord(record), 'utf-8');
-      fs.fsyncSync(fd);
+      if (input.kind === 'lifecycle' || sequence % 25 === 0) {
+        fs.fsyncSync(fd);
+      }
     } finally {
       fs.closeSync(fd);
     }

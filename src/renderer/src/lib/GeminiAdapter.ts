@@ -5,7 +5,7 @@ export type NormalizedEvent =
   | { type: 'assistant_message_complete'; content: string }
   | { type: 'tool_event'; name: string; data: any; timestamp: string; isUse: boolean; isResult: boolean }
   | { type: 'error'; message: string; timestamp: string }
-  | { type: 'run_finished'; status: string; stats: any; timestamp: string }
+  | { type: 'run_finished'; status: string; stats: any; timestamp: string; providerThreadId?: string }
   | { type: 'raw_event'; data: any }
   | { type: 'malformed_json'; text: string };
 
@@ -55,7 +55,7 @@ export class GeminiStreamAdapter {
       case 'init':
         this.onEvent({
           type: 'run_started',
-          session_id: parsed.session_id || 'unknown',
+          session_id: parsed.session_id || parsed.providerThreadId || parsed.provider_thread_id || '',
           model: parsed.model || 'unknown',
           timestamp: parsed.timestamp || new Date().toISOString(),
           fallback: Boolean(parsed.fallback)
@@ -93,7 +93,8 @@ export class GeminiStreamAdapter {
           type: 'run_finished',
           status: parsed.status || 'unknown',
           stats: parsed.stats || {},
-          timestamp: parsed.timestamp || new Date().toISOString()
+          timestamp: parsed.timestamp || new Date().toISOString(),
+          providerThreadId: parsed.providerThreadId || parsed.provider_thread_id || parsed.session_id || parsed.sessionId
         });
         break;
       case 'error':
@@ -116,6 +117,7 @@ export class GeminiStreamAdapter {
           });
         } else {
           const isUse = parsed.type === 'tool_use' || parsed.type === 'tool_call';
+          const isSubagentEvent = String(parsed.params?.type || parsed.item?.type || parsed.params?.item?.type || '').toLowerCase() === 'subagentevent';
           const isResult = parsed.type === 'tool_result' || parsed.type === 'tool_output' || parsed.type === 'tool_response';
           const toolName =
             parsed.tool_name ||
@@ -123,14 +125,25 @@ export class GeminiStreamAdapter {
             parsed.name ||
             parsed.function?.name ||
             parsed.tool ||
+            parsed.params?.type ||
+            parsed.item?.type ||
+            parsed.params?.item?.type ||
             parsed.type ||
             'unknown';
+          const normalizedData = isSubagentEvent
+            ? {
+                ...parsed,
+                type: 'tool_use',
+                tool_name: toolName,
+                tool_id: parsed.params?.agent_id || parsed.params?.parent_tool_call_id || parsed.id || `${toolName}-${Date.now()}`
+              }
+            : parsed;
           this.onEvent({
             type: 'tool_event',
             name: toolName,
-            data: parsed,
+            data: normalizedData,
             timestamp: parsed.timestamp || new Date().toISOString(),
-            isUse,
+            isUse: isUse || isSubagentEvent,
             isResult
           });
         }

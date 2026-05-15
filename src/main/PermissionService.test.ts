@@ -24,6 +24,7 @@ const settings: AppSettings = {
   themeCornerStyle: 'rounded',
   themeAccentStyle: 'system',
   promptSurfaceStyle: 'liquid_glass',
+  composerStyle: 'default',
   funFxEnabled: true,
   funFxMode: 'cinematic',
   advancedFx: {

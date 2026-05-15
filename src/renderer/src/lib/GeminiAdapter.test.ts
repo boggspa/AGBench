@@ -168,4 +168,22 @@ describe('GeminiStreamAdapter', () => {
       isResult: true
     }));
   });
+
+  it('normalizes Kimi SubagentEvent records as visible delegated tool activity', () => {
+    const onEvent = vi.fn();
+    const adapter = new GeminiStreamAdapter(onEvent);
+
+    adapter.appendChunk('{"method":"event","params":{"type":"SubagentEvent","agent_id":"agent-42","parent_tool_call_id":"tool-1","subagent_type":"explore"}}\n');
+
+    expect(onEvent).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'tool_event',
+      name: 'SubagentEvent',
+      isUse: true,
+      data: expect.objectContaining({
+        type: 'tool_use',
+        tool_name: 'SubagentEvent',
+        tool_id: 'agent-42'
+      })
+    }));
+  });
 });

@@ -2,12 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import type {
   AppSettings,
   AppearanceMode,
+  ComposerStyle,
   PromptSurfaceStyle,
   ThemeAccentStyle,
   ThemeAppearance,
   ThemeCornerStyle,
   VisualEffectStyle
 } from '../../../main/store/types';
+import {
+  COMPOSER_FONT_MATCH_TRANSCRIPT,
+  FONT_STACKS,
+  normalizeComposerFontFamily,
+  normalizeFontFamily,
+  resolveComposerFontFamily
+} from '../lib/typefaceOptions';
 
 const DEFAULT_ADVANCED_FX: AppSettings['advancedFx'] = {
   agentAura: true,
@@ -23,6 +31,9 @@ export interface AppearanceState {
   themeCornerStyle: ThemeCornerStyle;
   themeAccentStyle: ThemeAccentStyle;
   promptSurfaceStyle: PromptSurfaceStyle;
+  composerStyle: ComposerStyle;
+  transcriptFontFamily: string;
+  composerFontFamily: string;
   funFxEnabled: boolean;
   funFxMode: AppSettings['funFxMode'];
   advancedFx: AppSettings['advancedFx'];
@@ -73,6 +84,9 @@ function getInitialState(): AppearanceState {
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
     promptSurfaceStyle: 'liquid_glass',
+    composerStyle: 'default',
+    transcriptFontFamily: FONT_STACKS.agbench,
+    composerFontFamily: COMPOSER_FONT_MATCH_TRANSCRIPT,
     funFxEnabled: true,
     funFxMode: 'cinematic',
     advancedFx: DEFAULT_ADVANCED_FX,
@@ -125,6 +139,9 @@ export function useAppearance() {
         themeCornerStyle: settings.themeCornerStyle || 'rounded',
         themeAccentStyle: settings.themeAccentStyle || 'system',
         promptSurfaceStyle: settings.promptSurfaceStyle || 'liquid_glass',
+        composerStyle: settings.composerStyle || 'default',
+        transcriptFontFamily: normalizeFontFamily(settings.transcriptFontFamily, FONT_STACKS.agbench),
+        composerFontFamily: normalizeComposerFontFamily(settings.composerFontFamily),
         funFxEnabled: typeof settings.funFxEnabled === 'boolean' ? settings.funFxEnabled : getInitialState().funFxEnabled,
         funFxMode,
         advancedFx: normalizeAdvancedFx(
@@ -160,6 +177,8 @@ export function useAppearance() {
     root.setAttribute('data-corners', next.themeCornerStyle);
     root.setAttribute('data-accent', next.themeAccentStyle);
     root.setAttribute('data-prompt-surface', next.promptSurfaceStyle);
+    root.setAttribute('data-composer-style', next.composerStyle);
+    root.setAttribute('data-interface-style', next.composerStyle);
     root.setAttribute('data-reduce-transparency', String(next.reduceTransparency));
     root.setAttribute('data-reduce-motion', String(next.reduceMotion));
     root.setAttribute('data-fx-enabled', String(next.funFxEnabled));
@@ -169,6 +188,10 @@ export function useAppearance() {
     root.setAttribute('data-advanced-fx-data-viz', String(next.funFxEnabled && !next.reduceMotion && next.advancedFx.dataViz));
     root.setAttribute('data-advanced-fx-intensity', next.advancedFx.intensity);
     root.setAttribute('data-compact', String(next.compactDensity));
+    const transcriptFontFamily = normalizeFontFamily(next.transcriptFontFamily, FONT_STACKS.agbench);
+    const composerFontFamily = resolveComposerFontFamily(next.composerFontFamily, transcriptFontFamily);
+    root.style.setProperty('--transcript-font-family', transcriptFontFamily);
+    root.style.setProperty('--composer-font-family', composerFontFamily);
     root.style.setProperty('--inspector-width', `${next.inspectorWidth}px`);
     root.style.setProperty('--sidebar-width', `${next.sidebarWidth}px`);
   }, []);
@@ -198,6 +221,9 @@ export function useAppearance() {
         themeCornerStyle: next.themeCornerStyle,
         themeAccentStyle: next.themeAccentStyle,
         promptSurfaceStyle: next.promptSurfaceStyle,
+        composerStyle: next.composerStyle,
+        transcriptFontFamily: next.transcriptFontFamily,
+        composerFontFamily: next.composerFontFamily,
         funFxEnabled: next.funFxEnabled,
         funFxMode: next.funFxMode,
         advancedFx: next.advancedFx,
@@ -228,11 +254,28 @@ export function useAppearance() {
     }
 
     const handlePreferenceChange = () => {
-      setState(prev => ({
-        ...prev,
-        reduceMotion: prev.reduceMotion || motionQuery?.matches || false,
-        reduceTransparency: prev.reduceTransparency || transparencyQuery?.matches || false,
-      }));
+      setState(prev => {
+        const nextReduceMotion = prev.reduceMotion || motionQuery?.matches || false;
+        const nextReduceTransparency = prev.reduceTransparency || transparencyQuery?.matches || false;
+        // Skip the state update entirely when neither resolved value changes —
+        // otherwise we return a fresh object reference, which fires the
+        // applyToDocument effect and rewrites ~17 attributes on
+        // documentElement, restarting any infinite CSS animations gated by
+        // those attributes. macOS fires these matchMedia events on focus,
+        // Mission Control, OS theme auto-switches, low-power-mode, etc.,
+        // which the user perceived as "flicker out of nowhere".
+        if (
+          nextReduceMotion === prev.reduceMotion &&
+          nextReduceTransparency === prev.reduceTransparency
+        ) {
+          return prev;
+        }
+        return {
+          ...prev,
+          reduceMotion: nextReduceMotion,
+          reduceTransparency: nextReduceTransparency,
+        };
+      });
     };
 
     motionQuery?.addEventListener?.('change', handlePreferenceChange);

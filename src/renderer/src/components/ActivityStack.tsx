@@ -1,11 +1,18 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { ToolActivity, ToolDiffSummary } from '../../../main/store/types';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ChatRecord, ChildAgentThread, ProviderId, ToolActivity, ToolDiffSummary } from '../../../main/store/types';
 import { deriveToolDiffSummary, estimateLineChanges } from '../lib/ToolParser';
+import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface ActivityStackProps {
   activities: ToolActivity[];
-  workspacePath?: string
+  workspacePath?: string;
+  provider?: ProviderId;
+  chatId?: string;
+  runId?: string;
+  /** Chat record — when present, subagent threads pick up a stable visual
+   * identity (name + color) via `assignAgentIdentity`. */
+  chat?: ChatRecord;
 }
 
 const WRITER_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file', 'delete_file'];
@@ -13,6 +20,9 @@ const SEARCH_PARAM_KEYS = ['query', 'search_query', 'pattern', 'regex', 'term'];
 const COMMAND_PARAM_KEYS = ['command', 'cmd', 'script'];
 const CONTENT_PARAM_KEYS = ['content', 'new_string', 'old_string'];
 const PATH_PARAM_KEYS = ['file_path', 'filePath', 'path', 'target', 'target_file', 'target_file_path'];
+type ActivityTimelineItem =
+  | { type: 'activity'; activity: ToolActivity }
+  | { type: 'compact-group'; id: string; activities: ToolActivity[] };
 
 interface SanitizedDetail {
   rows: Array<{ label: string; value: string }>;
@@ -35,6 +45,22 @@ function truncateText(value: string, maxLength = 420): string {
     return normalized;
   }
   return `${normalized.slice(0, maxLength)}...`;
+}
+
+function cleanProgressText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = value
+    .replace(/^[\s#>*![\]A-Z:_-]*(Topic|Summary|Intent|Strategic intent)\s*:\s*/gim, '')
+    .replace(/\*\*(Topic|Summary|Intent|Strategic intent)\s*:\*\*/gim, '')
+    .replace(/\[!STRATEGY\]/gi, '')
+    .replace(/[📂📁]/g, '')
+    .replace(/\*\*/g, '')
+    .replace(/^#+\s*/gm, '')
+    .replace(/^>\s?/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  if (!cleaned || cleaned === '...' || cleaned === '…') return undefined;
+  return truncateText(cleaned, 360);
 }
 
 function countLines(value: string): number {
@@ -212,6 +238,237 @@ function getFileActionLabel(activity: ToolActivity): string {
   return activity.displayName || activity.toolName || 'Used tool';
 }
 
+function getProgressNote(activity: ToolActivity): { title: string; body?: string } | null {
+  if (activity.category !== 'task') return null;
+  const parameters = activity.parameters || {};
+  const title = cleanProgressText(parameters.title) ||
+    cleanProgressText(parameters.topic) ||
+    cleanProgressText(activity.displayName) ||
+    'Progress update';
+  const body = cleanProgressText(parameters.strategic_intent) ||
+    cleanProgressText(parameters.intent) ||
+    cleanProgressText(parameters.summary) ||
+    cleanProgressText(parameters.message) ||
+    cleanProgressText(activity.resultSummary) ||
+    cleanProgressText(activity.outputPreview);
+
+  if (!title && !body) return null;
+  return {
+    title: title || 'Progress update',
+    ...(body && body !== title ? { body } : {})
+  };
+}
+
+function ToolCategoryIcon({ category }: { category?: string }) {
+  const cls = 'activity-category-icon';
+  switch (category) {
+    case 'read':
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="2" y="1" width="9" height="11" rx="1.5" />
+          <line x1="4" y1="4.5" x2="9" y2="4.5" />
+          <line x1="4" y1="6.5" x2="9" y2="6.5" />
+          <line x1="4" y1="8.5" x2="7.5" y2="8.5" />
+        </svg>
+      );
+    case 'write':
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M8.5,2 L11,4.5 L4.5,11 L2,11.5 L2.5,9 Z" />
+          <line x1="7" y1="3.5" x2="9.5" y2="6" />
+        </svg>
+      );
+    case 'shell':
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1" y="2" width="11" height="9" rx="1.5" />
+          <polyline points="3.5,5.5 6,7 3.5,8.5" />
+          <line x1="7" y1="9" x2="10" y2="9" />
+        </svg>
+      );
+    case 'search':
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <circle cx="5.5" cy="5.5" r="3.5" />
+          <line x1="8.1" y1="8.1" x2="11" y2="11" />
+        </svg>
+      );
+    case 'task':
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6.5,1.5 L7.8,5 L11.5,5 L8.5,7.3 L9.8,11 L6.5,8.8 L3.2,11 L4.5,7.3 L1.5,5 L5.2,5 Z" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className={cls} width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+          <circle cx="6.5" cy="6.5" r="4.5" strokeDasharray="2.5 1.5" />
+          <circle cx="6.5" cy="6.5" r="1.5" />
+        </svg>
+      );
+  }
+}
+
+function ActivityStatusIcon({ status }: { status: ToolActivity['status'] }) {
+  switch (status) {
+    case 'running':
+      return (
+        <span className="activity-status running">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+            <circle cx="7" cy="7" r="5" strokeDasharray="20 11" className="activity-status-spin" />
+          </svg>
+        </span>
+      );
+    case 'success':
+      return (
+        <span className="activity-status success">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="7" cy="7" r="5.5" />
+            <polyline points="4.5,7 6.2,8.8 9.5,5.2" />
+          </svg>
+        </span>
+      );
+    case 'warning':
+      return (
+        <span className="activity-status warning">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="7,1.5 13,12.5 1,12.5" />
+            <line x1="7" y1="5.5" x2="7" y2="8.5" />
+            <circle cx="7" cy="10.5" r="0.5" fill="currentColor" stroke="none" />
+          </svg>
+        </span>
+      );
+    case 'error':
+      return (
+        <span className="activity-status error">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round">
+            <circle cx="7" cy="7" r="5.5" />
+            <line x1="4.8" y1="4.8" x2="9.2" y2="9.2" />
+            <line x1="9.2" y1="4.8" x2="4.8" y2="9.2" />
+          </svg>
+        </span>
+      );
+    default:
+      return (
+        <span className="activity-status" style={{ color: 'var(--text-muted)' }}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="7" cy="7" r="5.5" strokeDasharray="3 2" opacity="0.5" />
+          </svg>
+        </span>
+      );
+  }
+}
+
+function getActivityDurationTotal(activities: ToolActivity[]): number | undefined {
+  const total = activities.reduce((sum, activity) => sum + (activity.durationMs || 0), 0);
+  return total > 0 ? total : undefined;
+}
+
+function isCompactGroupCandidate(activity: ToolActivity): boolean {
+  if (activity.status === 'error' || activity.status === 'running' || activity.status === 'pending') return false;
+  return activity.category === 'read' || isSearchActivity(activity);
+}
+
+function buildTimelineItems(activities: ToolActivity[]): ActivityTimelineItem[] {
+  const items: ActivityTimelineItem[] = [];
+  let index = 0;
+
+  while (index < activities.length) {
+    const activity = activities[index];
+    if (!isCompactGroupCandidate(activity)) {
+      items.push({ type: 'activity', activity });
+      index += 1;
+      continue;
+    }
+
+    const group: ToolActivity[] = [];
+    while (index < activities.length && isCompactGroupCandidate(activities[index])) {
+      group.push(activities[index]);
+      index += 1;
+    }
+
+    if (group.length >= 3) {
+      items.push({ type: 'compact-group', id: `${group[0].id}-${group.length}`, activities: group });
+    } else {
+      for (const groupedActivity of group) {
+        items.push({ type: 'activity', activity: groupedActivity });
+      }
+    }
+  }
+
+  return items;
+}
+
+function ActivityProgressNote({ activity }: { activity: ToolActivity }) {
+  const note = getProgressNote(activity);
+  if (!note) return null;
+
+  return (
+    <div className={`activity-progress-note status-${activity.status}`}>
+      <ActivityStatusIcon status={activity.status} />
+      <div className="activity-progress-note-body">
+        <div className="activity-progress-note-title">
+          <span>{note.title}</span>
+          {activity.durationMs !== undefined && <span className="activity-progress-note-duration">{activity.durationMs}ms</span>}
+        </div>
+        {note.body && <p>{note.body}</p>}
+      </div>
+    </div>
+  );
+}
+
+function ActivityCompactGroup({ activities, workspacePath }: { activities: ToolActivity[]; workspacePath?: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const searchCount = activities.filter(isSearchActivity).length;
+  const readCount = activities.length - searchCount;
+  const durationMs = getActivityDurationTotal(activities);
+  const label = searchCount > 0 && readCount > 0
+    ? `Read ${readCount} ${readCount === 1 ? 'file' : 'files'} and searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+    : searchCount > 0
+      ? `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+      : `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`;
+  const primaryCategory = searchCount > readCount ? 'search' : 'read';
+  const chips = activities
+    .map((activity) => getFilePathFromActivity(activity) || getStringParam(activity.parameters || {}, SEARCH_PARAM_KEYS))
+    .filter((value): value is string => Boolean(value))
+    .slice(0, 6);
+
+  return (
+    <div className={`activity-compact-group ${expanded ? 'expanded' : 'collapsed'}`}>
+      <button className="activity-compact-group-header" type="button" onClick={() => setExpanded(current => !current)}>
+        <ToolCategoryIcon category={primaryCategory} />
+        <span className="activity-compact-group-title">{label}</span>
+        <span className="activity-compact-group-meta">
+          {durationMs !== undefined && <span className="activity-compact-group-duration">{durationMs}ms</span>}
+          <span className="activity-count-badge">{activities.length}</span>
+        </span>
+        <span className="activity-compact-group-caret">
+          <svg className={`activity-compact-chevron ${expanded ? 'expanded' : ''}`} width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="3,4.5 6,7.5 9,4.5" />
+          </svg>
+        </span>
+      </button>
+      {!expanded && chips.length > 0 && (
+        <div className="activity-compact-group-chips">
+          {chips.map((chip, index) => (
+            <span key={`${chip}-${index}`} className="activity-compact-chip">
+              {getBaseName(chip)}
+            </span>
+          ))}
+          {activities.length > chips.length && <span className="activity-compact-chip muted">+{activities.length - chips.length}</span>}
+        </div>
+      )}
+      {expanded && (
+        <div className="activity-compact-group-list">
+          {activities.map(activity => (
+            <ActivityRow key={activity.id} activity={activity} workspacePath={workspacePath} forceCompact />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getInlineActivityTitle(activity: ToolActivity, filePath?: string): ReactNode {
   if (filePath) {
     return <ActivityTitle activity={activity} filePath={filePath} />;
@@ -292,24 +549,169 @@ function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][num
   );
 }
 
-export function ActivityStack({ activities, workspacePath }: ActivityStackProps) {
+/**
+ * Spawn block — collapsed summary that precedes the individual
+ * `ChildAgentThreadCard`s when 2+ subagents are spawned in the same message.
+ * Mirrors Codex's "Spawned N agents" disclosure: one colored row per agent
+ * with name + role + instructions preview, click to scroll to the card.
+ */
+function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
+  const [expanded, setExpanded] = useState(true);
+  if (!threads || threads.length < 2) return null;
+
+  const scrollToAgent = (agentId: string) => {
+    if (typeof document === 'undefined') return;
+    const target = document.querySelector(`[data-agent-id="${CSS.escape(agentId)}"]`);
+    if (target instanceof HTMLElement) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      target.classList.add('child-agent-thread-flash');
+      window.setTimeout(() => target.classList.remove('child-agent-thread-flash'), 1200);
+    }
+  };
+
+  return (
+    <div className={`child-agent-spawn-block ${expanded ? 'is-expanded' : 'is-collapsed'}`}>
+      <button
+        type="button"
+        className="child-agent-spawn-block-header"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <svg
+          className={`child-agent-spawn-block-chevron ${expanded ? 'expanded' : ''}`}
+          width="11"
+          height="11"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <polyline points="3,4.5 6,7.5 9,4.5" />
+        </svg>
+        <span className="child-agent-spawn-block-title">
+          Spawned <strong>{threads.length}</strong> agents
+        </span>
+        {!expanded && (
+          <span className="child-agent-spawn-block-collapsed-pills" aria-hidden>
+            {threads.map((thread) => (
+              <span
+                key={thread.id}
+                className="child-agent-spawn-block-pill"
+                style={thread.identity ? { color: thread.identity.color, borderColor: thread.identity.color } : undefined}
+              >
+                {thread.identity?.name || thread.name}
+              </span>
+            ))}
+          </span>
+        )}
+      </button>
+      {expanded && (
+        <div className="child-agent-spawn-block-body">
+          {threads.map((thread) => {
+            const identity = thread.identity;
+            const preview = thread.seedPrompt
+              ? thread.seedPrompt.length > 140
+                ? `${thread.seedPrompt.slice(0, 137)}…`
+                : thread.seedPrompt
+              : '';
+            return (
+              <button
+                key={thread.id}
+                type="button"
+                className="child-agent-spawn-block-row"
+                onClick={() => scrollToAgent(thread.id)}
+                title="Scroll to this agent's card"
+              >
+                <span
+                  className="child-agent-spawn-block-dot"
+                  style={identity ? { background: identity.color } : undefined}
+                  aria-hidden
+                />
+                <span
+                  className="child-agent-spawn-block-name"
+                  style={identity ? { color: identity.color } : undefined}
+                >
+                  {identity?.name || thread.name}
+                </span>
+                {(identity?.role || thread.role) && (
+                  <span className="child-agent-spawn-block-role">({identity?.role || thread.role})</span>
+                )}
+                {preview && <span className="child-agent-spawn-block-preview">{preview}</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ActivityStack({ activities, workspacePath, provider, chatId, runId, chat }: ActivityStackProps) {
+  const childThreads = useMemo(() => {
+    if (!provider || !activities || activities.length === 0) return [] as ChildAgentThread[];
+    return deriveChildAgentThreadsFromActivities(provider, chatId, runId, activities, chat);
+  }, [provider, chatId, runId, activities, chat]);
+
+  const { topLevelActivities, threadByParentId, threadActivityById } = useMemo(() => {
+    const childIds = new Set<string>();
+    const byParent = new Map<string, ChildAgentThread>();
+    const byActivityId = new Map<string, ToolActivity>();
+    for (const thread of childThreads) {
+      if (thread.parentToolCallId) byParent.set(thread.parentToolCallId, thread);
+      for (const id of thread.toolActivityIds) childIds.add(id);
+    }
+    for (const activity of activities || []) {
+      if (childIds.has(activity.id)) byActivityId.set(activity.id, activity);
+    }
+    const topLevel = (activities || []).filter((activity) => !childIds.has(activity.id));
+    return { topLevelActivities: topLevel, threadByParentId: byParent, threadActivityById: byActivityId };
+  }, [activities, childThreads]);
+
   if (!activities || activities.length === 0) return null;
-  const aggregate = aggregateDiffSummary(activities);
+  const aggregate = aggregateDiffSummary(topLevelActivities);
+  const timelineItems = buildTimelineItems(topLevelActivities);
+
+  const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
+    return thread.toolActivityIds
+      .map((id) => threadActivityById.get(id))
+      .filter((activity): activity is ToolActivity => Boolean(activity));
+  };
 
   return (
     <div className="activity-timeline">
       {aggregate && (
         <div className={`activity-run-edit-counter confidence-${aggregate.confidence}`}>
-          <span className="activity-run-edit-label">Live edits</span>
-          <span key={`run-add-${aggregate.additions || 0}`} className="activity-counter-value roll-up">+{aggregate.additions || 0}</span>
-          <span key={`run-del-${aggregate.deletions || 0}`} className="activity-counter-value roll-down">-{aggregate.deletions || 0}</span>
+          <span className="activity-run-edit-label">Edits</span>
+          <div className="diff-stat-slot">
+            <span key={`run-add-${aggregate.additions || 0}`} className="activity-counter-value activity-counter-add roll-up">+{aggregate.additions || 0}</span>
+          </div>
+          <span className="activity-run-edit-sep">/</span>
+          <div className="diff-stat-slot">
+            <span key={`run-del-${aggregate.deletions || 0}`} className="activity-counter-value activity-counter-del roll-down">-{aggregate.deletions || 0}</span>
+          </div>
           <span className="activity-run-edit-files">{aggregate.files?.length || 0} {(aggregate.files?.length || 0) === 1 ? 'file' : 'files'}</span>
-          {aggregate.confidence !== 'exact' && <span className="activity-run-edit-estimated">est.</span>}
+          {aggregate.confidence !== 'exact' && <span className="activity-run-edit-estimated">~</span>}
         </div>
       )}
-      {activities.map(activity => (
-        <ActivityRow key={activity.id} activity={activity} workspacePath={workspacePath} />
-      ))}
+      {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
+      {timelineItems.map(item => {
+        if (item.type === 'compact-group') {
+          return <ActivityCompactGroup key={item.id} activities={item.activities} workspacePath={workspacePath} />;
+        }
+        const thread = threadByParentId.get(item.activity.id);
+        return (
+          <ActivityRow
+            key={item.activity.id}
+            activity={item.activity}
+            workspacePath={workspacePath}
+            childThread={thread}
+            childActivities={thread ? resolveThreadActivities(thread) : undefined}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -379,7 +781,156 @@ function ActivityDiffFiles({ diffSummary, workspacePath }: { diffSummary?: ToolD
   );
 }
 
-function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; workspacePath?: string }) {
+function ChildAgentThreadCard({
+  thread,
+  activities,
+  workspacePath
+}: {
+  thread: ChildAgentThread;
+  activities: ToolActivity[];
+  workspacePath?: string;
+}) {
+  const [expanded, setExpanded] = useState(thread.state === 'running');
+  const interactivityLabel = thread.interactivity === 'interactive'
+    ? 'Interactive'
+    : thread.interactivity === 'observe-only'
+      ? 'Observe-only'
+      : 'One-shot';
+  const stateLabel = thread.state === 'running'
+    ? 'Running'
+    : thread.state === 'completed'
+      ? 'Completed'
+      : thread.state === 'failed'
+        ? 'Failed'
+        : thread.state === 'cancelled'
+          ? 'Cancelled'
+          : 'Queued';
+
+  // Resolve identity (assigned via assignAgentIdentity during thread derive).
+  // When present, the colored name + dot replace the generic "Task #N" label.
+  const identity = thread.identity;
+  const displayName = identity?.name || thread.name;
+  const identityRole = identity?.role || thread.role;
+  const identityColor = identity?.color;
+
+  return (
+    <div
+      className={`child-agent-thread state-${thread.state} interactivity-${thread.interactivity}`}
+      data-agent-id={thread.id}
+      style={identityColor ? ({ ['--agent-identity-color' as string]: identityColor } as Record<string, string>) : undefined}
+    >
+      <button
+        type="button"
+        className="child-agent-thread-header"
+        aria-expanded={expanded}
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span
+          className={`child-agent-thread-avatar status-${thread.state}`}
+          aria-hidden
+          style={identityColor ? { color: identityColor } : undefined}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="5" width="10" height="8" rx="2" />
+            <circle cx="6.5" cy="9" r="0.9" fill="currentColor" stroke="none" />
+            <circle cx="9.5" cy="9" r="0.9" fill="currentColor" stroke="none" />
+            <path d="M8 5V3M6 3h4" />
+          </svg>
+        </span>
+        <span
+          className="child-agent-thread-name"
+          style={identityColor ? { color: identityColor } : undefined}
+        >
+          {displayName}
+        </span>
+        {identityRole && <span className="child-agent-thread-role">{identityRole}</span>}
+        <span className={`child-agent-thread-state state-${thread.state}`}>{stateLabel}</span>
+        <span className="child-agent-thread-interactivity">{interactivityLabel}</span>
+        {typeof thread.durationMs === 'number' && (
+          <span className="child-agent-thread-duration">{thread.durationMs}ms</span>
+        )}
+        <svg
+          className={`child-agent-thread-chevron ${expanded ? 'expanded' : ''}`}
+          width="11"
+          height="11"
+          viewBox="0 0 12 12"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <polyline points="3,4.5 6,7.5 9,4.5" />
+        </svg>
+      </button>
+      {expanded && (
+        <div className="child-agent-thread-body">
+          {thread.seedPrompt && (
+            <div className="child-agent-section">
+              <div className="child-agent-section-title">Seed prompt</div>
+              <pre className="child-agent-seed-prompt">{thread.seedPrompt}</pre>
+            </div>
+          )}
+          {activities.length > 0 && (
+            <div className="child-agent-section">
+              <div className="child-agent-section-title">Child activity · {activities.length}</div>
+              <div className="child-agent-activities">
+                {activities.map((childActivity) => (
+                  <ActivityRow
+                    key={childActivity.id}
+                    activity={childActivity}
+                    workspacePath={workspacePath}
+                    forceCompact
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          {thread.finalResult && (
+            <div className="child-agent-section">
+              <div className="child-agent-section-title">Final result</div>
+              <div className="child-agent-result">{thread.finalResult}</div>
+            </div>
+          )}
+          {!thread.seedPrompt && activities.length === 0 && !thread.finalResult && (
+            <div className="child-agent-empty">No child agent output captured yet.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityRow({
+  activity,
+  workspacePath,
+  forceCompact = false,
+  childThread,
+  childActivities
+}: {
+  activity: ToolActivity;
+  workspacePath?: string;
+  forceCompact?: boolean;
+  childThread?: ChildAgentThread;
+  childActivities?: ToolActivity[];
+}) {
+  const progressNote = getProgressNote(activity);
+  if (progressNote && !forceCompact) {
+    return (
+      <>
+        <ActivityProgressNote activity={activity} />
+        {childThread && (
+          <ChildAgentThreadCard
+            thread={childThread}
+            activities={childActivities || []}
+            workspacePath={workspacePath}
+          />
+        )}
+      </>
+    );
+  }
+
   const defaultCollapsed = activity.category === 'task' || activity.category === 'shell' || activity.category === 'read' || activity.category === 'search';
   const [expanded, setExpanded] = useState(!defaultCollapsed);
 
@@ -390,16 +941,6 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
       setExpanded(true)
     }
   }, [activity.status])
-
-  const StatusIcon = () => {
-    switch (activity.status) {
-      case 'running': return <span className="activity-status running">◐</span>;
-      case 'success': return <span className="activity-status success">✓</span>;
-      case 'warning': return <span className="activity-status warning">⚠</span>;
-      case 'error': return <span className="activity-status error">✗</span>;
-      default: return <span className="activity-status" style={{ color: 'var(--text-muted)' }}>○</span>;
-    }
-  };
 
   const isUnknown = activity.toolName === 'unknown' || !activity.toolName;
   const showDebugWarning = Boolean(isUnknown && (activity.rawUseEvent || activity.rawResultEvent));
@@ -428,8 +969,11 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
   const toggleExpanded = () => setExpanded(current => !current);
 
   return (
+    <>
       <div
         className={`activity-row ${isInlineActivity ? 'activity-row-inline' : 'activity-row-card'} ${expanded ? 'expanded' : 'collapsed'}`}
+        data-category={activity.category || 'unknown'}
+        data-status={activity.status}
         role="button"
         tabIndex={0}
         aria-expanded={expanded}
@@ -441,7 +985,7 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
           }
         }}
       >
-      <StatusIcon />
+      <ActivityStatusIcon status={activity.status} />
       <div className="activity-body">
         <div className="activity-header">
           <div className="activity-label">
@@ -449,17 +993,24 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
               {isWriteAction && activityFilePath && !isInlineActivity ? (
                 <FileTypeIcon path={activityFilePath} size={14} className="activity-file-type-icon" workspacePath={workspacePath} />
               ) : null}
+              {!isInlineActivity && !(isWriteAction && activityFilePath) && (
+                <ToolCategoryIcon category={activity.category} />
+              )}
+              {isInlineActivity && <span className={`activity-category-pip category-${activity.category || 'unknown'}`} />}
               {isInlineActivity ? getInlineActivityTitle(activity, activityFilePath) : <ActivityTitle activity={activity} filePath={activityFilePath} />}
+              {hasLineChanges && (
+                <span className="activity-line-stats">
+                  <span className="diff-stat-slot">
+                    <span key={`add-${addedLines || 0}`} className="activity-line-stat activity-line-stat-add roll-up">+{addedLines || 0}</span>
+                  </span>
+                  <span className="diff-stat-slot">
+                    <span key={`del-${deletedLines || 0}`} className="activity-line-stat activity-line-stat-delete roll-down">-{deletedLines || 0}</span>
+                  </span>
+                  {diffSummary?.confidence && diffSummary.confidence !== 'exact' && <span className="activity-line-stat-estimated">~</span>}
+                </span>
+              )}
             </span>
           </div>
-          {hasLineChanges && (
-            <div className="activity-line-stats">
-              <span key={`add-${addedLines || 0}`} className="activity-line-stat activity-line-stat-add roll-up">+{addedLines || 0}</span>
-              <span className="activity-line-stat-divider">|</span>
-              <span key={`del-${deletedLines || 0}`} className="activity-line-stat activity-line-stat-delete roll-down">-{deletedLines || 0}</span>
-              {diffSummary?.confidence && diffSummary.confidence !== 'exact' && <span className="activity-line-stat-estimated">est.</span>}
-            </div>
-          )}
         </div>
         {metaText && (
           <div className="activity-meta">{metaText}</div>
@@ -497,5 +1048,13 @@ function ActivityRow({ activity, workspacePath }: { activity: ToolActivity; work
         )}
       </div>
     </div>
+    {childThread && (
+      <ChildAgentThreadCard
+        thread={childThread}
+        activities={childActivities || []}
+        workspacePath={workspacePath}
+      />
+    )}
+    </>
   );
 }

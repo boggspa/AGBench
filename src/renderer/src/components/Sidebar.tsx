@@ -1,6 +1,17 @@
 import { useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
 
+const ageTickListeners = new Set<() => void>();
+if (typeof window !== 'undefined') {
+  window.setInterval(() => {
+    ageTickListeners.forEach((listener) => listener());
+  }, 60000);
+}
+function subscribeAgeTick(listener: () => void): () => void {
+  ageTickListeners.add(listener);
+  return () => { ageTickListeners.delete(listener); };
+}
+
 interface SidebarProps {
   workspaces: WorkspaceRecord[];
   currentWorkspace: WorkspaceRecord | null;
@@ -30,6 +41,7 @@ interface SidebarProps {
       resetAt?: string;
       trackingOnly?: boolean;
       usedPercent?: number;
+      remainingPercent?: number;
     }>;
   }>;
   runningChatIds?: string[];
@@ -54,14 +66,12 @@ function FolderSymbolIcon() {
   );
 }
 
-function ChatBubbleSymbolIcon() {
+function GearSymbolIcon() {
   return (
     <span className="sf-symbol-icon" aria-hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M3.3 3.9h9.4a2 2 0 0 1 2 2v3.4a2 2 0 0 1-2 2H9.3l-2.2 2.1v-2H3.3a2 2 0 0 1-2-2V5.9a2 2 0 0 1 2-2z" />
-        <circle cx="5.8" cy="6.8" r=".6" />
-        <circle cx="8" cy="6.8" r=".6" />
-        <circle cx="10.2" cy="6.8" r=".6" />
+        <circle cx="8" cy="8" r="2.2" />
+        <path d="M8 2.5v1M8 12.5v1M2.5 8h1M12.5 8h1M4.2 4.2l.7.7M11.1 11.1l.7.7M11.1 4.9l-.7.7M4.9 11.1l-.7.7" />
       </svg>
     </span>
   );
@@ -207,6 +217,37 @@ function workspaceMatchesSearch(workspace: WorkspaceRecord, query: string): bool
   ].join(' ').toLowerCase().includes(query);
 }
 
+function ChatAgeLabel({ timestamp }: { timestamp: number }): ReactNode {
+  const [label, setLabel] = useState(() =>
+    Number.isFinite(timestamp) ? formatChatAge(timestamp, Date.now()) : ''
+  );
+
+  useEffect(() => {
+    if (!Number.isFinite(timestamp)) {
+      setLabel((prev) => (prev === '' ? prev : ''));
+      return;
+    }
+    const compute = () => formatChatAge(timestamp, Date.now());
+    setLabel((prev) => {
+      const next = compute();
+      return prev === next ? prev : next;
+    });
+    return subscribeAgeTick(() => {
+      setLabel((prev) => {
+        const next = compute();
+        return prev === next ? prev : next;
+      });
+    });
+  }, [timestamp]);
+
+  if (!label) return null;
+  return (
+    <span className="sidebar-chat-age" title={formatChatAgeTitle(timestamp)}>
+      {label}
+    </span>
+  );
+}
+
 function formatChatAge(timestamp: number, now: number): string {
   if (!Number.isFinite(timestamp)) return '';
   const elapsedMs = Math.max(0, now - timestamp);
@@ -304,7 +345,6 @@ export function Sidebar({
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState('');
-  const [ageNow, setAgeNow] = useState(() => Date.now());
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem(EXPANDED_WORKSPACES_STORAGE_KEY);
@@ -360,11 +400,6 @@ export function Sidebar({
     }
     onNewGlobalChat();
   };
-
-  useEffect(() => {
-    const interval = window.setInterval(() => setAgeNow(Date.now()), 60000);
-    return () => window.clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id));
@@ -439,21 +474,6 @@ export function Sidebar({
     return entry.resetText;
   };
 
-  const formatResetTitle = (entry: { resetAt?: string; resetText?: string }) => {
-    if (entry.resetAt) {
-      const parsed = new Date(entry.resetAt);
-      if (!Number.isNaN(parsed.getTime())) {
-        return `Resets ${parsed.toLocaleString([], {
-          month: 'short',
-          day: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-        })}`;
-      }
-    }
-    return entry.resetText ? `Resets ${entry.resetText}` : undefined;
-  };
-
     return (
       <div className="app-sidebar">
         <div className="sidebar-content">
@@ -481,37 +501,32 @@ export function Sidebar({
           </div>
 
           <div className="sidebar-search-section">
-            <div className="sidebar-section-header sidebar-search-header">
-              <h4 className="sidebar-section-title">Command search</h4>
-              {isSidebarSearchActive && (
-                <span className="sidebar-search-result-count">
-                  {sidebarSearchResultCount}
-                </span>
-              )}
-            </div>
             <label className="sidebar-search-field">
               <SearchSymbolIcon />
               <input
                 type="search"
                 value={sidebarSearch}
                 onChange={(event) => setSidebarSearch(event.target.value)}
-                placeholder="Find workspaces or threads"
+                placeholder="Search workspaces & threads"
                 aria-label="Search workspaces and chats"
                 spellCheck={false}
               />
               {!isSidebarSearchActive && (
-                <span className="sidebar-search-hint">Filter</span>
+                <span className="sidebar-search-hint">⌘F</span>
               )}
               {isSidebarSearchActive && (
-                <button
-                  type="button"
-                  className="sidebar-search-clear"
-                  onClick={() => setSidebarSearch('')}
-                  title="Clear search"
-                  aria-label="Clear workspace and thread search"
-                >
-                  <XSymbolIcon />
-                </button>
+                <>
+                  <span className="sidebar-search-result-count">{sidebarSearchResultCount}</span>
+                  <button
+                    type="button"
+                    className="sidebar-search-clear"
+                    onClick={() => setSidebarSearch('')}
+                    title="Clear search"
+                    aria-label="Clear workspace and thread search"
+                  >
+                    <XSymbolIcon />
+                  </button>
+                </>
               )}
             </label>
           </div>
@@ -614,7 +629,6 @@ export function Sidebar({
                     <div className="sidebar-chat-list">
                       {visibleChats.map((chat) => {
                         const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
-                        const chatAgeLabel = formatChatAge(chatAgeTimestamp, ageNow);
                         const isChatRunning = runningChatIdSet.has(chat.appChatId);
                         const lastRunStatus = getLastRunStatus(chat);
                         return (
@@ -624,7 +638,6 @@ export function Sidebar({
                             className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                             onClick={() => onSelectChat(chat)}
                           >
-                            <ChatBubbleSymbolIcon />
                             <span className="sidebar-chat-copy" title={chat.title}>
                               <span className="sidebar-chat-title-line">
                                 <SidebarProviderLabel provider={chat.provider} />
@@ -632,23 +645,22 @@ export function Sidebar({
                                   <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
                                 </span>
                               </span>
-                              <span className="sidebar-chat-subline">
-                                {lastRunStatus && (
-                                  <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
-                                    {lastRunStatus.label}
-                                  </span>
-                                )}
-                                <span>{getProviderName(chat.provider)} thread</span>
-                              </span>
+                              {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted')) && (
+                                <span className="sidebar-chat-subline">
+                                  {isChatRunning ? (
+                                    <span className="sidebar-run-status tone-warning">Running</span>
+                                  ) : lastRunStatus ? (
+                                    <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                                      {lastRunStatus.label}
+                                    </span>
+                                  ) : null}
+                                </span>
+                              )}
                             </span>
                             {isChatRunning && (
                               <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
                             )}
-                            {chatAgeLabel && (
-                              <span className="sidebar-chat-age" title={formatChatAgeTitle(chatAgeTimestamp)}>
-                                {chatAgeLabel}
-                              </span>
-                            )}
+                            {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
                           </button>
                         );
                       })}
@@ -674,17 +686,15 @@ export function Sidebar({
               <div className="sidebar-chat-list sidebar-global-chat-list">
                 {visibleGlobalChats.map((chat) => {
                   const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
-                  const chatAgeLabel = formatChatAge(chatAgeTimestamp, ageNow);
                   const isChatRunning = runningChatIdSet.has(chat.appChatId);
                   const lastRunStatus = getLastRunStatus(chat);
                     return (
                       <button
                         type="button"
                         key={chat.appChatId}
-                      className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                        className={`sidebar-item sidebar-chat-item sidebar-global-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                         onClick={() => onSelectChat(chat)}
                       >
-                      <ChatBubbleSymbolIcon />
                       <span className="sidebar-chat-copy" title={chat.title}>
                         <span className="sidebar-chat-title-line">
                           <SidebarProviderLabel provider={chat.provider} />
@@ -692,23 +702,22 @@ export function Sidebar({
                             <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
                           </span>
                         </span>
-                        <span className="sidebar-chat-subline">
-                          {lastRunStatus && (
-                            <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
-                              {lastRunStatus.label}
-                            </span>
-                          )}
-                          <span>System thread</span>
-                        </span>
+                        {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted')) && (
+                          <span className="sidebar-chat-subline">
+                            {isChatRunning ? (
+                              <span className="sidebar-run-status tone-warning">Running</span>
+                            ) : lastRunStatus ? (
+                              <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                                {lastRunStatus.label}
+                              </span>
+                            ) : null}
+                          </span>
+                        )}
                       </span>
                       {isChatRunning && (
                         <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
                       )}
-                      {chatAgeLabel && (
-                        <span className="sidebar-chat-age" title={formatChatAgeTitle(chatAgeTimestamp)}>
-                          {chatAgeLabel}
-                        </span>
-                      )}
+                      {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
                     </button>
                   );
                 })}
@@ -736,78 +745,46 @@ export function Sidebar({
             <div className="run-summary-title">Model Usage</div>
             <div className="model-usage-list">
               {(() => {
-                const maxTokens = Math.max(...usageSummary.map((u) => u.totalTokens), 1)
-                return usageSummary.map((entry) => {
-                  const isCodexQuotaOnly = entry.provider === 'codex' && entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
-                  const limitPercent = entry.totalTokenLimit ? Math.max(0, Math.min(100, (entry.totalTokens / entry.totalTokenLimit) * 100)) : undefined
-                  const widthPercent = limitPercent ?? Math.max(0, Math.min(100, (entry.totalTokens / maxTokens) * 100))
-                  const ceilingText = entry.totalTokenLimit
-                    ? `${entry.totalTokens.toLocaleString()} / ${entry.totalTokenLimit.toLocaleString()}`
-                    : `${entry.totalTokens.toLocaleString()} total`
-                  const remaining = entry.totalTokenLimit
-                    ? Math.max(0, entry.totalTokenLimit - entry.totalTokens)
-                    : undefined
-                  const percentText = limitPercent !== undefined ? `${Math.round(limitPercent)}%` : undefined
-                  const resetText = formatResetShort(entry)
-                  const resetTitle = formatResetTitle(entry)
-                  const runText = `${entry.runs} run${entry.runs === 1 ? '' : 's'}`
-                  const tokenDetailText = `${entry.inputTokens.toLocaleString()} / ${entry.outputTokens.toLocaleString()} in/out${remaining !== undefined ? ` · ${remaining.toLocaleString()} rem` : ''}`
-                  return (
-                    <div key={`${entry.provider}-${entry.model}`} className={`model-usage-item provider-${entry.provider} ${isCodexQuotaOnly ? 'quota-only' : ''}`}>
-                      {!isCodexQuotaOnly && (
-                        <div className="run-summary-row">
-                          <span title={`${getProviderName(entry.provider)} / ${entry.model}`} className="model-usage-model">
-                            <SidebarProviderLabel provider={entry.provider} showModel={entry.model} />
-                          </span>
-                          <span>{ceilingText}</span>
-                        </div>
-                      )}
-                      {!isCodexQuotaOnly && (
-                        <>
-                          <div className="model-usage-meter-track">
-                            <div className="model-usage-meter-fill" style={{ width: `${widthPercent}%` }} />
-                          </div>
-                          <div className="model-usage-meta">
-                            <span title={tokenDetailText}>{percentText || runText}</span>
-                            <span title={resetTitle || tokenDetailText}>{resetText || tokenDetailText}</span>
-                          </div>
-                        </>
-                      )}
-                      {entry.provider === 'codex' && entry.windows && entry.windows.length > 0 && (
-                        <div className="model-usage-window-list">
-                          {entry.windows.map((windowEntry) => {
-                            const usedPercent = windowEntry.usedPercent
-                            const isRateLimitWindow = usedPercent !== undefined;
-                            const windowPercent = windowEntry.runLimitMax
-                              ? Math.max(0, Math.min(100, (windowEntry.runs / windowEntry.runLimitMax) * 100))
-                              : isRateLimitWindow
-                                ? Math.max(3, Math.min(100, usedPercent))
-                                : Math.max(6, Math.min(100, entry.runs > 0 ? (windowEntry.runs / entry.runs) * 100 : 6))
-                            const windowReset = formatResetShort({ resetAt: windowEntry.resetAt })
-                            const title = isRateLimitWindow
-                              ? `${windowEntry.label}: ${windowEntry.limitLabel}${windowReset ? ` · resets ${windowReset}` : ''}`
-                              : `${windowEntry.runs} local message${windowEntry.runs === 1 ? '' : 's'} · ${windowEntry.totalTokens.toLocaleString()} tokens · ${windowEntry.limitLabel}`
-                            return (
-                              <div key={`${entry.model}-${windowEntry.id}`} className="model-usage-window" title={title}>
-                                <div className="model-usage-window-row">
-                                  <span>{windowEntry.label}</span>
-                                  <span>{isRateLimitWindow ? windowEntry.limitLabel : windowEntry.trackingOnly ? `${windowEntry.runs} msg${windowEntry.runs === 1 ? '' : 's'} · ${windowEntry.limitLabel}` : `${windowEntry.runs} / ${windowEntry.limitLabel}`}</span>
-                                </div>
-                                <div className="model-usage-meter-track model-usage-window-track">
-                                  <div className="model-usage-meter-fill model-usage-window-fill" style={{ width: `${windowPercent}%` }} />
-                                </div>
-                                <div className="model-usage-window-meta">
-                                  <span>{isRateLimitWindow ? 'Rate limits remaining' : `${windowEntry.totalTokens.toLocaleString()} tokens`}</span>
-                                  {windowReset && <span>{isRateLimitWindow ? 'resets' : 'rolls'} {windowReset}</span>}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )
+                const providerOrder: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+                const orderedEntries = [...usageSummary].sort((a, b) => {
+                  const aIdx = providerOrder.indexOf(a.provider)
+                  const bIdx = providerOrder.indexOf(b.provider)
+                  return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx)
                 })
+                return orderedEntries
+                  .filter((entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0)
+                  .map((entry) => (
+                    <div key={`${entry.provider}-${entry.model}`} className={`model-usage-item provider-${entry.provider} quota-only`}>
+                      <div className="model-usage-provider-heading">
+                        <SidebarProviderLabel provider={entry.provider} />
+                      </div>
+                      <div className="model-usage-window-list">
+                        {entry.windows!.map((windowEntry) => {
+                          const meterPercent = windowEntry.remainingPercent ?? windowEntry.usedPercent
+                          const windowPercent = Number.isFinite(meterPercent)
+                            ? Math.max(3, Math.min(100, meterPercent as number))
+                            : 0
+                          const windowReset = formatResetShort({ resetAt: windowEntry.resetAt })
+                          const title = `${windowEntry.label}: ${windowEntry.limitLabel}${windowReset ? ` · resets ${windowReset}` : ''}`
+                          return (
+                            <div key={`${entry.provider}-${windowEntry.id}`} className="model-usage-window" title={title}>
+                              <div className="model-usage-window-row">
+                                <span>{windowEntry.label}</span>
+                                <span>{windowEntry.limitLabel}</span>
+                              </div>
+                              <div className="model-usage-meter-track model-usage-window-track">
+                                <div className="model-usage-meter-fill model-usage-window-fill" style={{ width: `${windowPercent}%` }} />
+                              </div>
+                              <div className="model-usage-window-meta">
+                                <span>Usage limit</span>
+                                {windowReset && <span>resets {windowReset}</span>}
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))
               })()}
             </div>
           </div>
@@ -816,8 +793,9 @@ export function Sidebar({
 
       {/* Footer */}
       <div className="sidebar-footer">
-        <button className="btn btn-sm btn-ghost" style={{ flex: 1 }} onClick={onOpenSettings}>
-          Settings
+        <button className="sidebar-footer-settings" onClick={onOpenSettings} title="Settings" aria-label="Open settings">
+          <GearSymbolIcon />
+          <span>Settings</span>
         </button>
       </div>
     </div>
