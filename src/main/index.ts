@@ -4308,6 +4308,30 @@ function getCodexClient(): CodexAppServerClient {
   if (!codexClient) {
     codexClient = new CodexAppServerClient()
   }
+  // Phase I2: refresh the MCP config on every accessor call so the
+  // toggle in Settings → MCP Bridge takes effect on the NEXT Codex
+  // app-server start. We don't restart the running app-server when
+  // the toggle flips (that would tear down in-flight threads); the
+  // user reopens Codex (or relaunches AGBench) to pick up the new
+  // setting. The Codex MCP integration mirrors the existing Gemini
+  // gate (geminiMcpBridgeEnabled) — one user toggle, both providers.
+  const settings = AppStore.getSettings()
+  if (settings.geminiMcpBridgeEnabled) {
+    codexClient.setMcpConfig({
+      enabled: true,
+      bridgeBinaryPath: process.execPath,
+      bridgeArgs: [
+        GEMINI_MCP_BRIDGE_ARG,
+        GEMINI_MCP_SOCKET_ARG,
+        geminiMcpSocketPath(),
+        GEMINI_MCP_TOKEN_ARG,
+        geminiMcpBrokerToken
+      ],
+      parentProvider: 'codex'
+    })
+  } else {
+    codexClient.setMcpConfig(null)
+  }
   return codexClient
 }
 
@@ -4406,6 +4430,46 @@ function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext |
     }
   }
   return activeGeminiToolContext
+}
+
+/**
+ * Phase I2: provider-aware MCP tool context resolver. The agentbench
+ * MCP server is shared across Gemini / Codex / Claude / Kimi (each CLI
+ * registers it via `-c mcp_servers.agentbench.*`), and the bridge
+ * subprocess stamps `parentProvider` on every broker request based on
+ * the `AGENTBENCH_PARENT_PROVIDER` env var. This helper consumes that
+ * stamp and returns the right run-context for the parent provider:
+ *
+ *  - For Gemini we still go through `getGeminiToolContext` so the
+ *    Phase F3 + I1 flow (which stores the `GeminiToolContext` in the
+ *    runManager session.state) is preserved.
+ *  - For Codex / Claude / Kimi we derive sender + workspace + chat
+ *    from the runManager directly. Their session.state shapes are
+ *    provider-specific (CodexRunState etc.), but every session has a
+ *    `sender`, `workspacePath`, `appChatId`, `runId` at the top level.
+ *
+ * Returns null when no active run for that provider exists — the MCP
+ * tool call then errors back to the agent with a clear message.
+ */
+function getAgentToolContext(parentProvider: ProviderId, route?: AgentRunRoute | null): GeminiToolContext | null {
+  if (parentProvider === 'gemini') {
+    return getGeminiToolContext(route)
+  }
+  const session = getRuntimeSession(parentProvider, route) || runManager.getLatestByProvider(parentProvider)
+  const sender = session?.sender as Electron.WebContents | undefined
+  if (!sender || !session) {
+    return null
+  }
+  const workspacePath = session.workspacePath ? resolve(session.workspacePath) : undefined
+  return {
+    sender,
+    scope: workspacePath ? 'workspace' : 'global',
+    cwd: workspacePath || globalRunCwd(),
+    workspacePath,
+    appRunId: session.runId,
+    appChatId: session.appChatId,
+    providerSessionId: session.providerSessionId
+  }
 }
 
 function enrichAgentPayload(provider: ProviderId, payload: any, route?: AgentRunRoute | null) {
@@ -5747,7 +5811,13 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     GEMINI_SANDBOX: 'true',
     AGENTBENCH_RUN_ID: route.appRunId || '',
     AGENTBENCH_CHAT_ID: route.appChatId || '',
-    AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || ''
+    AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+    // Phase I2: every CLI spawn now carries the parent provider so
+    // the agentbench MCP bridge subprocess (inherited via env) stamps
+    // broker requests with the right routing key. Codex's persistent
+    // app-server sets this via `-c mcp_servers.agentbench.env` in
+    // CodexAppServerClient.
+    AGENTBENCH_PARENT_PROVIDER: 'gemini'
   }, resolved.binaryPath)
 
   const child = spawn(resolved.binaryPath, args, {
@@ -6631,10 +6701,10 @@ function formatHostCommandResult(result: HostCommandResult): string {
   return parts.join('\n\n')
 }
 
-async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null): Promise<{ text: string; isError?: boolean }> {
-  const context = getGeminiToolContext(route)
+async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null, parentProvider: ProviderId = 'gemini'): Promise<{ text: string; isError?: boolean }> {
+  const context = getAgentToolContext(parentProvider, route)
   if (!context) {
-    return { text: 'AGBench has no active Gemini workspace context for this MCP tool call.', isError: true }
+    return { text: `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`, isError: true }
   }
 
   const baseCwd = resolve(context.cwd || context.workspacePath || globalRunCwd())
@@ -6642,34 +6712,34 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
   const args = normalizeMcpToolArguments(rawArgs)
   const cwd = resolveScopedDirectory(context.scope, baseCwd, workspacePath, String(args.cwd || args.working_directory || args.workdir || ''))
   const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context)
-  const allowed = await requestAgenticServiceApproval(context.sender, 'gemini', approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
-    method: `gemini-mcp/${toolName}`,
+  const allowed = await requestAgenticServiceApproval(context.sender, parentProvider, approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
+    method: `${parentProvider}-mcp/${toolName}`,
     title: approvalPreview.title,
     body: approvalPreview.body,
     preview: approvalPreview.preview,
     runId: context.appRunId,
     forcePrompt: context.scope === 'global'
   })
-  const toolId = `gemini-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  const toolId = `${parentProvider}-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-  sendAgentCompatLine(context.sender, 'gemini', {
+  sendAgentCompatLine(context.sender, parentProvider, {
     type: 'tool_use',
     tool_id: toolId,
     tool_name: toolName,
     parameters: { ...args, cwd },
-    provider: 'gemini',
+    provider: parentProvider,
     server: GEMINI_MCP_SERVER_NAME
   })
 
   if (!allowed) {
     const text = `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
-    sendAgentCompatLine(context.sender, 'gemini', {
+    sendAgentCompatLine(context.sender, parentProvider, {
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: 'error',
       output: text,
-      provider: 'gemini',
+      provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
     return { text, isError: true }
@@ -6684,14 +6754,14 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       const result = await runHostCommand(command, cwd)
       text = formatHostCommandResult(result)
       const isError = Boolean(result.error || result.timedOut || (result.exitCode !== null && result.exitCode !== 0))
-      sendAgentCompatLine(context.sender, 'gemini', {
+      sendAgentCompatLine(context.sender, parentProvider, {
         type: 'tool_result',
         tool_id: toolId,
         tool_name: toolName,
         status: isError ? 'error' : 'success',
         output: text,
         result: { exitCode: result.exitCode, durationMs: result.durationMs },
-        provider: 'gemini',
+        provider: parentProvider,
         server: GEMINI_MCP_SERVER_NAME
       })
       return { text, isError }
@@ -6763,24 +6833,32 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       if (!promptArg) {
         throw new Error('delegate_to_subthread: prompt is required.')
       }
-      // Phase I1.b: approval gate. Every delegation prompts the user
-      // (or auto-allows/declines per workspace/session policy) before
-      // any sub-thread is created. The 'ask' default means an agent
-      // can SUGGEST delegation but nothing spawns until the user
+      // Phase I1.b + I2: approval gate. Every delegation prompts the
+      // user (or auto-allows/declines per workspace/session policy)
+      // before any sub-thread is created. The 'ask' default means an
+      // agent can SUGGEST delegation but nothing spawns until the user
       // clicks accept. "Allow for workspace" lets the user opt into
       // frictionless multi-provider delegation in trusted workspaces.
+      //
+      // Phase I2: `parentProvider` is now the runtime stamp from the
+      // MCP bridge subprocess (was hardcoded 'gemini'); the approval +
+      // audit + per-provider grant lookup all key off it. So when
+      // Codex calls delegate_to_subthread the approval modal reads
+      // "Codex wants to delegate to Claude" and the workspace grant
+      // applies to Codex specifically — Gemini's grant doesn't auto-
+      // allow Codex delegation in the same workspace.
       const targetProviderLabel = providerLabel(providerArg)
-      const parentProviderLabel = providerLabel('gemini')
+      const parentProviderLabel = providerLabel(parentProvider)
       const promptPreview = promptArg.length > 500
         ? `${promptArg.slice(0, 500)}\n…(${promptArg.length - 500} more chars)`
         : promptArg
       const delegationApproved = await requestAgenticServiceApproval(
         context.sender,
-        'gemini',
+        parentProvider,
         'subThreadDelegation',
         context.scope === 'global' ? undefined : context.workspacePath,
         {
-          method: 'gemini-mcp/delegate_to_subthread',
+          method: `${parentProvider}-mcp/delegate_to_subthread`,
           title: `${parentProviderLabel} wants to delegate to ${targetProviderLabel} sub-thread`,
           body:
             `Delegation prompt:\n${promptPreview}\n\n` +
@@ -6788,7 +6866,7 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
             `This consumes ${targetProviderLabel} usage allowances.`,
           preview: {
             kind: 'subthread-delegation',
-            parentProvider: 'gemini',
+            parentProvider,
             targetProvider: providerArg,
             delegationPrompt: promptArg,
             returnResultToParent: returnResult,
@@ -6806,13 +6884,13 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
           `Sub-thread delegation to ${targetProviderLabel} was declined by AGBench policy. ` +
           `${parentProviderLabel} continues without delegating; ` +
           `the user can change the policy in Settings → Behavior → Agentic Services → Sub-thread delegation.`
-        sendAgentCompatLine(context.sender, 'gemini', {
+        sendAgentCompatLine(context.sender, parentProvider, {
           type: 'tool_result',
           tool_id: toolId,
           tool_name: toolName,
           status: 'error',
           output: declineText,
-          provider: 'gemini',
+          provider: parentProvider,
           server: GEMINI_MCP_SERVER_NAME
         })
         return { text: declineText, isError: true }
@@ -6824,18 +6902,20 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         returnResultToParent: returnResult
       })
       try {
-        // The active Gemini-MCP context belongs to the Gemini
-        // provider — this is the agentbench MCP server which only
-        // ships in Gemini runs. The audit event records that the
-        // Gemini-run agent delegated.
+        // Phase I2: the audit event records the actual parent provider
+        // (could be Gemini, Codex, Claude or Kimi), so cross-provider
+        // delegation chains are traceable. Source stays
+        // 'mcp:delegate_to_subthread' since the tool lives on the
+        // shared agentbench MCP server across all CLIs.
         appendDurableRunEventForRoute(
-          'gemini',
+          parentProvider,
           { appRunId: context.appRunId, appChatId: parentChatId },
           'subthread_spawned',
           'control',
-          `Agent delegated to ${providerArg} sub-thread`,
+          `${parentProviderLabel} agent delegated to ${providerArg} sub-thread`,
           {
             subThreadId: subThread.appChatId,
+            parentProvider,
             provider: providerArg,
             delegationPrompt: promptArg,
             returnResultToParent: returnResult,
@@ -6880,29 +6960,42 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
           : '. Navigate to the sub-thread in the sidebar to follow progress.')
     }
 
-    sendAgentCompatLine(context.sender, 'gemini', {
+    sendAgentCompatLine(context.sender, parentProvider, {
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: 'success',
       output: text,
-      provider: 'gemini',
+      provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
     return { text }
   } catch (error) {
     const text = error instanceof Error ? error.message : String(error)
-    sendAgentCompatLine(context.sender, 'gemini', {
+    sendAgentCompatLine(context.sender, parentProvider, {
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: 'error',
       output: text,
-      provider: 'gemini',
+      provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
     return { text, isError: true }
   }
+}
+
+// Phase I2: providers that can drive the shared agentbench MCP bridge.
+// The bridge subprocess stamps `parentProvider` from
+// AGENTBENCH_PARENT_PROVIDER env; if it's missing or unrecognised we
+// fall back to 'gemini' to preserve pre-I2 broker behaviour.
+const VALID_BROKER_PARENT_PROVIDERS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+
+function normalizeBrokerParentProvider(value: unknown): ProviderId {
+  if (typeof value === 'string' && VALID_BROKER_PARENT_PROVIDERS.has(value as ProviderId)) {
+    return value as ProviderId
+  }
+  return 'gemini'
 }
 
 async function handleGeminiMcpBrokerRequest(request: any): Promise<any> {
@@ -6913,7 +7006,13 @@ async function handleGeminiMcpBrokerRequest(request: any): Promise<any> {
   if (!isAGBenchMcpToolName(toolName)) {
     return { ok: false, error: `Unknown AGBench MCP tool: ${String(toolName || 'unknown')}` }
   }
-  const result = await executeGeminiMcpTool(toolName, request?.arguments ?? request?.args ?? request?.input, normalizeRunRoute(request))
+  const parentProvider = normalizeBrokerParentProvider(request?.parentProvider)
+  const result = await executeGeminiMcpTool(
+    toolName,
+    request?.arguments ?? request?.args ?? request?.input,
+    normalizeRunRoute(request),
+    parentProvider
+  )
   return { ok: !result.isError, ...result }
 }
 
@@ -7208,13 +7307,20 @@ function handleMcpJsonRpcMessage(socketPath: string, brokerToken: string, messag
   if (method === 'tools/call') {
     const name = message?.params?.name
     const args = message?.params?.arguments || {}
+    // Phase I2: the bridge subprocess stamps the parent provider on
+    // every broker request so AGBench main can route tool execution +
+    // approvals to the correct provider. Codex's persistent app-server
+    // spawns the bridge once with AGENTBENCH_PARENT_PROVIDER=codex (set
+    // via -c mcp_servers.agentbench.env), so the same bridge binary
+    // serves all four providers' MCP needs without code duplication.
     brokerRequest(socketPath, {
       id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       token: brokerToken,
       tool: name,
       arguments: args,
       appRunId: process.env.AGENTBENCH_RUN_ID,
-      appChatId: process.env.AGENTBENCH_CHAT_ID
+      appChatId: process.env.AGENTBENCH_CHAT_ID,
+      parentProvider: process.env.AGENTBENCH_PARENT_PROVIDER || 'gemini'
     }).then((result) => {
       const text = result?.text || result?.error || ''
       writeMcpResponse(id, {
@@ -9690,7 +9796,11 @@ app.whenReady().then(() => {
       FORCE_COLOR: '1',
       GEMINI_SANDBOX: 'true',
       AGENTBENCH_RUN_ID: routedSession.appRunId || '',
-      AGENTBENCH_CHAT_ID: routedSession.appChatId || ''
+      AGENTBENCH_CHAT_ID: routedSession.appChatId || '',
+      // Phase I2: tag the Gemini interactive session so the bridge
+      // subprocess stamps broker requests as parent='gemini'. Without
+      // this the new I2 default could mis-route session tool calls.
+      AGENTBENCH_PARENT_PROVIDER: 'gemini'
     }, resolved.binaryPath)
 
     try {

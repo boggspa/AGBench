@@ -262,10 +262,21 @@ agent access to these tools when running in Gemini-CLI bridge mode:
     - The sub-thread runs with `approvalMode: 'default'` and
       `model: 'cli-default'`. Future revs may expose the full
       composer surface as additional tool args.
-    - Currently only available to Gemini agents (via the agentbench
-      MCP server). Phase I2/I3/I4 extends this to Codex/Claude/Kimi
-      agents via their native tool surfaces; the approval gate is
-      shared.
+    - **Phase I2: Codex agents now have access to the same MCP tool
+      surface.** AGBench registers the `agentbench` MCP server with
+      Codex CLI's `app-server` at spawn time via `-c
+      mcp_servers.agentbench.*` config overrides, so Codex agents see
+      `agentbench__delegate_to_subthread` (and the other 5 AGBench
+      tools) in their tool list without any user setup. The bridge
+      subprocess stamps `parentProvider='codex'` on every broker
+      request (via `AGENTBENCH_PARENT_PROVIDER` env), so the approval
+      modal reads "Codex wants to delegate to Claude" and the
+      workspace grant applies to Codex specifically — Gemini's grant
+      doesn't auto-allow Codex delegation in the same workspace.
+    - **Phase I3 / I4 (deferred):** Claude / Kimi agents will get the
+      same tool surface. The approval-gate + broker plumbing is
+      already provider-agnostic; only the CLI-side MCP registration
+      remains.
 
 Future MCP additions:
 

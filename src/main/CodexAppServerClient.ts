@@ -16,6 +16,32 @@ export interface CodexApprovalResponse {
   action: 'accept' | 'acceptForSession' | 'decline' | 'cancel'
 }
 
+/**
+ * Phase I2: Codex's app-server is spawned once per AGBench session
+ * (long-lived JSON-RPC daemon). To give Codex agents the same MCP
+ * tool surface that Gemini gets — including the new
+ * `delegate_to_subthread` tool — we register an inline MCP server via
+ * the CLI's `-c mcp_servers.<name>.*` config-override syntax at spawn
+ * time. The bridge subprocess inherits AGENTBENCH_PARENT_PROVIDER
+ * from the Codex CLI's env (via either process env inheritance OR
+ * the explicit `mcp_servers.agentbench.env` config) so it can stamp
+ * every broker request with `parentProvider='codex'`. AGBench main
+ * then routes the approval modal + audit event to Codex specifically
+ * — Gemini's workspace grants don't auto-allow Codex delegation.
+ *
+ * Callers populate this via `setMcpConfig` before `ensureStarted`.
+ * Leaving it null (or `enabled=false`) preserves the pre-I2
+ * behaviour: Codex spawns without the agentbench MCP server, so the
+ * Codex agent can't call `delegate_to_subthread` — useful when the
+ * user has the agentbench MCP bridge toggle disabled.
+ */
+export interface CodexMcpAgentbenchConfig {
+  enabled: boolean
+  bridgeBinaryPath: string
+  bridgeArgs: string[]
+  parentProvider: 'codex'
+}
+
 function createCliEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   const pathEntries = [
     ...(process.env.PATH || '').split(delimiter),
@@ -38,6 +64,42 @@ function createCliEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   }
 }
 
+/**
+ * Format a JS string for safe embedding inside a TOML double-quoted
+ * string (i.e. the value half of a `-c key="value"` Codex CLI
+ * override). TOML's basic-string rules require escaping `"` and `\`,
+ * plus control characters. The values we feed in here are filesystem
+ * paths + hex tokens + CLI flag literals, so we don't expect control
+ * chars in practice — but escaping defensively keeps the surface
+ * resilient if Electron ever returns a path containing a backslash
+ * (notably on Windows builds).
+ */
+function tomlEscapeString(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t')
+}
+
+/**
+ * Build the `-c mcp_servers.agentbench.*` CLI argument list for
+ * Codex CLI. Exported so the I2 tests can pin the exact shape of
+ * the inline MCP config (TOML escaping + arg order matter).
+ */
+export function buildCodexAgentbenchMcpArgs(config: CodexMcpAgentbenchConfig): string[] {
+  if (!config.enabled) return []
+  const command = tomlEscapeString(config.bridgeBinaryPath)
+  const args = config.bridgeArgs.map((arg) => `"${tomlEscapeString(arg)}"`).join(', ')
+  const parentProvider = tomlEscapeString(config.parentProvider)
+  return [
+    '-c', `mcp_servers.agentbench.command="${command}"`,
+    '-c', `mcp_servers.agentbench.args=[${args}]`,
+    '-c', `mcp_servers.agentbench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
+  ]
+}
+
 export class CodexAppServerClient {
   private proc: ChildProcessWithoutNullStreams | null = null
   private stdoutReader: ReadlineInterface | null = null
@@ -47,6 +109,7 @@ export class CodexAppServerClient {
   private notificationHandler: ((message: any) => void) | null = null
   private requestHandler: ((message: any) => void) | null = null
   private stderrHandler: ((chunk: string) => void) | null = null
+  private mcpConfig: CodexMcpAgentbenchConfig | null = null
 
   setNotificationHandler(handler: ((message: any) => void) | null) {
     this.notificationHandler = handler
@@ -58,6 +121,18 @@ export class CodexAppServerClient {
 
   setStderrHandler(handler: ((chunk: string) => void) | null) {
     this.stderrHandler = handler
+  }
+
+  /**
+   * Phase I2: configure the agentbench MCP server that Codex CLI
+   * registers at spawn. Must be called BEFORE `ensureStarted` —
+   * once Codex's app-server is running we don't restart it just to
+   * pick up new MCP config (Codex would lose its in-flight threads).
+   * Pass `null` to clear; the next start spawns without any MCP
+   * config overrides. Safe to call multiple times before start.
+   */
+  setMcpConfig(config: CodexMcpAgentbenchConfig | null): void {
+    this.mcpConfig = config
   }
 
   async ensureStarted(appVersion: string): Promise<void> {
@@ -124,13 +199,26 @@ export class CodexAppServerClient {
   }
 
   private async start(appVersion: string): Promise<void> {
-    this.proc = spawn('codex', ['app-server'], {
+    // Phase I2: prepend `-c mcp_servers.agentbench.*` config flags so
+    // the Codex CLI registers the AGBench MCP bridge as an MCP server
+    // for the whole app-server lifetime. The bridge subprocess
+    // inherits AGENTBENCH_PARENT_PROVIDER='codex' from the env map AND
+    // from the inline `mcp_servers.agentbench.env` override (belt &
+    // braces — Codex CLI strips inherited env from MCP subprocesses
+    // on some platforms, so we set it both ways).
+    const mcpArgs = buildCodexAgentbenchMcpArgs(this.mcpConfig ?? { enabled: false, bridgeBinaryPath: '', bridgeArgs: [], parentProvider: 'codex' })
+    const codexArgs = [...mcpArgs, 'app-server']
+    const codexEnv: Record<string, string> = {
+      FORCE_COLOR: '0',
+      NO_COLOR: '1'
+    }
+    if (this.mcpConfig?.enabled) {
+      codexEnv.AGENTBENCH_PARENT_PROVIDER = this.mcpConfig.parentProvider
+    }
+    this.proc = spawn('codex', codexArgs, {
       shell: false,
       stdio: 'pipe',
-      env: createCliEnv({
-        FORCE_COLOR: '0',
-        NO_COLOR: '1'
-      })
+      env: createCliEnv(codexEnv)
     })
 
     this.stdoutReader = createInterface({ input: this.proc.stdout })
