@@ -114,6 +114,7 @@ const api = {
   }) => ipcRenderer.invoke('bridge-allowlist-upsert', entry),
   bridgeAllowlistRemove: (workspaceId: string) => ipcRenderer.invoke('bridge-allowlist-remove', workspaceId),
   bridgeAllowlistClear: () => ipcRenderer.invoke('bridge-allowlist-clear'),
+  bridgeNetworkingStatus: () => ipcRenderer.invoke('bridge-networking-status'),
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
   onBridgePairingResponseReceived: (callback: (params: unknown) => void) => {

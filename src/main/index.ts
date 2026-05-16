@@ -22,6 +22,7 @@ import {
   DEFAULT_APPROVAL_TIMEOUT_POLICY,
   type ApprovalTimeoutReason
 } from './ApprovalTimeoutScheduler'
+import { detectTailscale } from './TailscaleDetector'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -8564,6 +8565,33 @@ app.whenReady().then(() => {
   ipcMain.handle('bridge-allowlist-clear', () => {
     bridgeAllowlist.clear()
     return true
+  })
+
+  // Phase E3: Bridge Networking — detection + status for the
+  // Settings panel. Returns the LAN serviceName (used for Bonjour
+  // discovery) and the Tailscale status (cached for ~5 seconds so
+  // refresh clicks don't re-run the CLI on every keystroke).
+  let cachedTailscaleStatus: Awaited<ReturnType<typeof detectTailscale>> | null = null
+  let cachedTailscaleAt = 0
+  const TAILSCALE_CACHE_TTL_MS = 5_000
+  ipcMain.handle('bridge-networking-status', async () => {
+    const now = Date.now()
+    if (!cachedTailscaleStatus || now - cachedTailscaleAt > TAILSCALE_CACHE_TTL_MS) {
+      cachedTailscaleStatus = await detectTailscale()
+      cachedTailscaleAt = now
+    }
+    return {
+      lan: {
+        enabled: process.platform === 'darwin' &&
+          (process.env.AGBENCH_BRIDGE_DAEMON === '1' ||
+            process.env.AGBENCH_BRIDGE_DAEMON === 'true'),
+        bonjourServiceType: '_guigemini-bridge._tcp',
+        // Hostname the daemon broadcasts under. Currently the OS
+        // hostname; future revs may make this configurable.
+        hostname: os.hostname()
+      },
+      tailscale: cachedTailscaleStatus
+    }
   })
   ipcMain.handle('bridge-finalize-pairing', async (_, sessionID: string, userConfirmed: boolean) => {
     const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')

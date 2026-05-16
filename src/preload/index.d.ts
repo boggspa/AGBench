@@ -176,6 +176,24 @@ declare global {
       }) => Promise<RemoteWorkspaceEntry>
       bridgeAllowlistRemove: (workspaceId: string) => Promise<boolean>
       bridgeAllowlistClear: () => Promise<boolean>
+      bridgeNetworkingStatus: () => Promise<{
+        lan: {
+          enabled: boolean
+          bonjourServiceType: string
+          hostname: string
+        }
+        tailscale: {
+          available: boolean
+          cliPath?: string
+          version?: string
+          tailnetIPv4?: string
+          tailnetIPv6?: string
+          hostname?: string
+          tailnetName?: string
+          magicDNSEnabled?: boolean
+          reason?: string
+        }
+      }>
       bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) => Promise<unknown>
       onBridgePairingResponseReceived: (callback: (params: unknown) => void) => () => void
 

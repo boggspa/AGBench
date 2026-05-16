@@ -33,6 +33,7 @@ import {
 } from '../lib/typefaceOptions';
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel';
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel';
+import { BridgeNetworkingPanel } from './BridgeNetworkingPanel';
 
 interface SettingsPanelProps {
   mode: AppearanceMode;
@@ -183,7 +184,7 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ];
 
-type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system' | 'remote-workspaces' | 'approval-ledger';
+type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system' | 'remote-workspaces' | 'approval-ledger' | 'bridge-networking';
 
 type LocalFontData = {
   family?: string;
@@ -305,6 +306,7 @@ export function SettingsPanel({
     { id: 'providers', label: 'Providers' },
     { id: 'system', label: 'System' },
     { id: 'remote-workspaces', label: 'Remote Workspaces' },
+    { id: 'bridge-networking', label: 'Bridge Networking' },
     { id: 'approval-ledger', label: 'Approval Ledger' },
   ];
 
@@ -976,6 +978,9 @@ export function SettingsPanel({
 
       {/* ── Approval Ledger (Phase E2) ───────────────────────────────── */}
       {activeTab === 'approval-ledger' && <ApprovalLedgerPanel />}
+
+      {/* ── Bridge Networking (Phase E3) ─────────────────────────────── */}
+      {activeTab === 'bridge-networking' && <BridgeNetworkingPanel />}
 
       </div>{/* end settings-panel-content */}
     </div>
