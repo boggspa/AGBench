@@ -96,6 +96,21 @@ describe('makeBridgeRunEventSink', () => {
     expect((forwardedShape.payload as Record<string, unknown>).appChatId).toBe('chat-42')
   })
 
+  it('extracts explicit threadId from synthetic approval events', () => {
+    const notify = vi.fn()
+    const sink = makeBridgeRunEventSink({ notifier: { notify } })
+    sink.handle(sampleEvent({
+      payload: {
+        type: 'approval_pending',
+        approvalId: 'approval-1',
+        appRunId: 'run-1',
+        threadId: 'chat-approval'
+      }
+    }))
+    const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
+    expect(forwardedShape.threadId).toBe('chat-approval')
+  })
+
   it('extracts appChatId from a nested data wrapper (sendAgentCompatLine shape)', () => {
     const notify = vi.fn()
     const sink = makeBridgeRunEventSink({ notifier: { notify } })

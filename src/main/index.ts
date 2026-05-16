@@ -9332,6 +9332,9 @@ app.whenReady().then(() => {
     getApnsTokenStore: () => bridgeApnsTokenStoreRef,
     isUserAtDesktop: userIsAtDesktop,
     workspaceIdForPath: workspaceIdForApprovalPush,
+    publishApprovalRunEvent: (approvalEvent) => {
+      publishRunEvent('agent-output', approvalEvent.provider, approvalEvent)
+    },
     getApprovalTimeoutSettings: () => AppStore.getSettings().approvalTimeouts,
     log: (line) => {
       // eslint-disable-next-line no-console

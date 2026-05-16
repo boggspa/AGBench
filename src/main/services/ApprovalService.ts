@@ -142,6 +142,20 @@ export interface ScheduleTimeoutArgs {
   kind?: string
 }
 
+export type ApprovalRunEventType = 'approval_pending' | 'approval_resolved'
+
+export interface ApprovalRunEvent {
+  type: ApprovalRunEventType
+  approvalId: string
+  provider: ProviderId
+  workspaceId: string
+  threadId: string
+  appRunId?: string
+  appChatId?: string
+  action?: AgentApprovalAction
+  decisionSource?: 'user' | 'system'
+}
+
 // ──────────────────────────────────────────────────────────────────
 // Injected dependencies.
 // ──────────────────────────────────────────────────────────────────
@@ -200,6 +214,8 @@ export interface ApprovalServiceDeps {
   isUserAtDesktop: () => boolean
   /** Workspace path → workspace id mapping. */
   workspaceIdForPath: (workspacePath: string | undefined) => string
+  /** Bridge-only run-event publisher for Live Activity approval counts. */
+  publishApprovalRunEvent: (event: ApprovalRunEvent) => void
   /** Settings lookup for the user-tunable timeout policy. */
   getApprovalTimeoutSettings: () => {
     enabled: boolean
@@ -237,22 +253,43 @@ export class ApprovalService {
 
   registerMain(approvalId: string, info: PendingMainApproval): void {
     this.pendingMain.set(approvalId, info)
+    this.emitApprovalRunEvent('approval_pending', approvalId, info.provider, {
+      appRunId: info.runId,
+      workspacePath: info.workspacePath
+    })
   }
 
   registerGeminiTool(approvalId: string, info: PendingGeminiToolApproval): void {
     this.pendingGeminiTool.set(approvalId, info)
+    this.emitApprovalRunEvent('approval_pending', approvalId, info.provider, {
+      appRunId: info.runId,
+      workspacePath: info.workspacePath
+    })
   }
 
   registerCodex(approvalId: string, info: PendingCodexApproval): void {
     this.pendingCodex.set(approvalId, info)
+    this.emitApprovalRunEvent('approval_pending', approvalId, 'codex', {
+      appRunId: info.runId,
+      workspacePath: info.workspacePath
+    })
   }
 
   registerKimi(approvalId: string, info: PendingKimiApproval): void {
     this.pendingKimi.set(approvalId, info)
+    this.emitApprovalRunEvent('approval_pending', approvalId, 'kimi', {
+      appRunId: info.runId
+    })
   }
 
   registerHostCommand(approvalId: string, info: PendingHostCommandApproval): void {
     this.pendingHostCommand.set(approvalId, info)
+    this.emitApprovalRunEvent('approval_pending', approvalId, info.provider, {
+      appRunId: info.appRunId,
+      appChatId: info.appChatId,
+      workspacePath: info.workspacePath,
+      threadId: info.threadId
+    })
   }
 
   // ──── accessors for callers that need to peek at registry state ──
@@ -460,6 +497,13 @@ export class ApprovalService {
         { requestId, action, workspacePath: pendingMain.workspacePath }
       )
       this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+      this.emitApprovalRunEvent('approval_resolved', requestId, pendingMain.provider, {
+        appRunId: session?.runId || pendingMain.runId,
+        appChatId: session?.appChatId,
+        workspacePath: pendingMain.workspacePath,
+        action,
+        decisionSource
+      })
       this.pendingMain.delete(requestId)
       this.deps.runManager.clearApproval(requestId)
       pendingMain.resolve(this.deps.permissionService.isApprovedAction(action))
@@ -485,6 +529,13 @@ export class ApprovalService {
         }
       )
       this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+      this.emitApprovalRunEvent('approval_resolved', requestId, pendingGeminiTool.provider, {
+        appRunId: session?.runId || pendingGeminiTool.runId,
+        appChatId: session?.appChatId,
+        workspacePath: pendingGeminiTool.workspacePath,
+        action,
+        decisionSource
+      })
       this.pendingGeminiTool.delete(requestId)
       this.deps.runManager.clearApproval(requestId)
       const allowed = this.deps.permissionService.applyApprovalDecision({
@@ -515,6 +566,14 @@ export class ApprovalService {
         }
       )
       this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+      this.emitApprovalRunEvent('approval_resolved', requestId, pendingHostCommand.provider, {
+        appRunId: pendingHostCommand.appRunId,
+        appChatId: pendingHostCommand.appChatId,
+        workspacePath: pendingHostCommand.workspacePath,
+        threadId: pendingHostCommand.threadId,
+        action,
+        decisionSource
+      })
       this.deps.runManager.clearApproval(requestId)
       if (action === 'accept') {
         return this.deps.runApprovedHostCommand(requestId)
@@ -555,6 +614,12 @@ export class ApprovalService {
         }
       )
       this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+      this.emitApprovalRunEvent('approval_resolved', requestId, 'kimi', {
+        appRunId: session?.runId || pendingKimi.runId,
+        appChatId: session?.appChatId,
+        action,
+        decisionSource
+      })
       this.pendingKimi.delete(requestId)
       this.deps.runManager.clearApproval(requestId)
       const params = pendingKimi.params as { payload?: { id?: string } } | null
@@ -600,6 +665,13 @@ export class ApprovalService {
       }
     )
     this.deps.resolveApprovalLedger(requestId, action, decisionSource, extraMetadata)
+    this.emitApprovalRunEvent('approval_resolved', requestId, 'codex', {
+      appRunId: session?.runId || pending.runId,
+      appChatId: session?.appChatId,
+      workspacePath: pending.workspacePath,
+      action,
+      decisionSource
+    })
     this.pendingCodex.delete(requestId)
     this.deps.runManager.clearApproval(requestId)
 
@@ -659,6 +731,46 @@ export class ApprovalService {
       codex: this.pendingCodex.size,
       kimi: this.pendingKimi.size,
       hostCommand: this.pendingHostCommand.size
+    }
+  }
+
+  private emitApprovalRunEvent(
+    type: ApprovalRunEventType,
+    approvalId: string,
+    provider: ProviderId,
+    context: {
+      appRunId?: string
+      appChatId?: string
+      workspacePath?: string
+      threadId?: string
+      action?: AgentApprovalAction
+      decisionSource?: 'user' | 'system'
+    }
+  ): void {
+    try {
+      const session = this.deps.runManager.get(context.appRunId)
+      const appRunId = session?.runId ?? context.appRunId
+      const appChatId = session?.appChatId ?? context.appChatId
+      const workspaceId = this.deps.workspaceIdForPath(
+        context.workspacePath ?? session?.workspacePath
+      )
+      const threadId = appChatId ?? context.threadId ?? appRunId ?? approvalId
+      const event: ApprovalRunEvent = {
+        type,
+        approvalId,
+        provider,
+        workspaceId,
+        threadId
+      }
+      if (appRunId) event.appRunId = appRunId
+      if (appChatId) event.appChatId = appChatId
+      if (context.action) event.action = context.action
+      if (context.decisionSource) event.decisionSource = context.decisionSource
+      this.deps.publishApprovalRunEvent(event)
+    } catch (err) {
+      this.deps.log(
+        `[ApprovalService] approval run-event publish failed for ${approvalId}: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 }

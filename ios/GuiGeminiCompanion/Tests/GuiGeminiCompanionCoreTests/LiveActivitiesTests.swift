@@ -209,6 +209,51 @@ final class LiveActivitiesTests: XCTestCase {
         XCTAssertEqual(responseState.pendingApprovalCount, 0)
     }
 
+    func testReducerTracksSyntheticApprovalPendingAndResolvedEvents() {
+        var reducer = AGBenchRunActivityEventReducer()
+        _ = reducer.apply(event(
+            channel: .agentOutput,
+            provider: "codex",
+            payload: ["appRunId": "run-synthetic", "type": "run_started"]
+        ))
+
+        let pending = reducer.apply(event(
+            channel: .agentOutput,
+            provider: "codex",
+            payload: [
+                "appRunId": "run-synthetic",
+                "threadId": "thread-synthetic",
+                "workspaceId": "workspace-1",
+                "type": "approval_pending",
+                "approvalId": "approval-synthetic"
+            ],
+            seconds: 1
+        ))
+        guard case .update(_, let pendingState) = pending else {
+            XCTFail("expected pending update, got \(String(describing: pending))")
+            return
+        }
+        XCTAssertEqual(pendingState.pendingApprovalCount, 1)
+
+        let resolved = reducer.apply(event(
+            channel: .agentOutput,
+            provider: "codex",
+            payload: [
+                "appRunId": "run-synthetic",
+                "threadId": "thread-synthetic",
+                "workspaceId": "workspace-1",
+                "type": "approval_resolved",
+                "approvalId": "approval-synthetic"
+            ],
+            seconds: 2
+        ))
+        guard case .update(_, let resolvedState) = resolved else {
+            XCTFail("expected resolved update, got \(String(describing: resolved))")
+            return
+        }
+        XCTAssertEqual(resolvedState.pendingApprovalCount, 0)
+    }
+
     private func event(
         channel: BridgeRunEvent.Channel,
         provider: String,

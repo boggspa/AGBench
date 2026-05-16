@@ -183,12 +183,19 @@ public struct AGBenchRunActivityEventReducer: Sendable {
             snapshot.state.pendingApprovalCount = snapshot.pendingApprovalIds.count
             return
         }
+        let explicitType = firstString(
+            keys: ["type", "kind", "status", "state"],
+            in: payload,
+            nested
+        )?.lowercased()
         let approvalId = firstString(
             keys: ["approvalId", "approvalID", "toolCallId", "tool_call_id", "id"],
             in: payload,
             nested
         ) ?? UUID().uuidString
-        if marker.contains("response")
+        if explicitType == "approval_resolved"
+            || marker.contains("resolved")
+            || marker.contains("response")
             || marker.contains("approved")
             || marker.contains("denied")
             || marker.contains("timeout")

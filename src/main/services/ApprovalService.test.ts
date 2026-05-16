@@ -48,6 +48,7 @@ function makeDeps(overrides: Partial<ApprovalServiceDeps> = {}): {
     runApprovedHostCommand: ReturnType<typeof vi.fn>
     isUserAtDesktop: ReturnType<typeof vi.fn>
     workspaceIdForPath: ReturnType<typeof vi.fn>
+    publishApprovalRunEvent: ReturnType<typeof vi.fn>
     getApprovalTimeoutSettings: ReturnType<typeof vi.fn>
     log: ReturnType<typeof vi.fn>
   }
@@ -74,6 +75,7 @@ function makeDeps(overrides: Partial<ApprovalServiceDeps> = {}): {
     runApprovedHostCommand: vi.fn(async () => true),
     isUserAtDesktop: vi.fn(() => false),
     workspaceIdForPath: vi.fn((p?: string) => p ?? 'global'),
+    publishApprovalRunEvent: vi.fn(),
     getApprovalTimeoutSettings: vi.fn(() => ({
       enabled: true,
       perProviderMs: { gemini: 120_000, codex: 30_000, claude: 120_000, kimi: 60_000 },
@@ -97,6 +99,7 @@ function makeDeps(overrides: Partial<ApprovalServiceDeps> = {}): {
       getApnsTokenStore: () => null,
       isUserAtDesktop: spies.isUserAtDesktop,
       workspaceIdForPath: spies.workspaceIdForPath,
+      publishApprovalRunEvent: spies.publishApprovalRunEvent,
       getApprovalTimeoutSettings: spies.getApprovalTimeoutSettings,
       log: spies.log,
       ...overrides
@@ -111,8 +114,8 @@ describe('ApprovalService — registries', () => {
     expect(svc.has('any-id')).toBe(false)
   })
 
-  it('registerMain → has() returns true', () => {
-    const { deps } = makeDeps()
+  it('registerMain → has() returns true and publishes approval_pending', () => {
+    const { deps, spies } = makeDeps()
     const svc = new ApprovalService(deps)
     const resolveFn = vi.fn()
     svc.registerMain('m-1', {
@@ -122,6 +125,17 @@ describe('ApprovalService — registries', () => {
       resolve: resolveFn
     })
     expect(svc.has('m-1')).toBe(true)
+    expect(spies.publishApprovalRunEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'approval_pending',
+        approvalId: 'm-1',
+        provider: 'gemini',
+        workspaceId: '/ws',
+        appRunId: 'r-1',
+        appChatId: 'c-1',
+        threadId: 'c-1'
+      })
+    )
   })
 
   it('pendingCounts() reflects all 5 registries', () => {
@@ -362,10 +376,24 @@ describe('ApprovalService — resolve dispatch', () => {
       runId: 'r-1'
     }
     svc.registerCodex('c-1', codex)
+    spies.publishApprovalRunEvent.mockClear()
     await svc.resolve('c-1', 'accept')
     expect(spies.codexClient.respond).toHaveBeenCalledWith(
       99,
       expect.objectContaining({ scope: 'turn', permissions: codexParams.permissions })
+    )
+    expect(spies.publishApprovalRunEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'approval_resolved',
+        approvalId: 'c-1',
+        provider: 'codex',
+        workspaceId: '/ws',
+        appRunId: 'r-1',
+        appChatId: 'c-1',
+        threadId: 'c-1',
+        action: 'accept',
+        decisionSource: 'user'
+      })
     )
   })
 
@@ -400,11 +428,13 @@ describe('ApprovalService — resolve dispatch', () => {
   })
 
   it('returns false when codex client is unavailable', async () => {
-    const { deps } = makeDeps({ getCodexClient: () => null })
+    const { deps, spies } = makeDeps({ getCodexClient: () => null })
     const svc = new ApprovalService(deps)
     svc.registerCodex('c-1', { rpcId: 1, method: 'item/permissions/requestApproval', params: {} })
+    spies.publishApprovalRunEvent.mockClear()
     const ok = await svc.resolve('c-1', 'accept')
     expect(ok).toBe(false)
+    expect(spies.publishApprovalRunEvent).not.toHaveBeenCalled()
   })
 
   it('auto-deny path: decisionSource=system + extraMetadata threaded through', async () => {

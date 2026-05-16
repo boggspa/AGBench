@@ -121,12 +121,20 @@ function extractThreadId(payload: unknown): string | null {
   if (typeof record.appChatId === 'string' && record.appChatId.length > 0) {
     return record.appChatId
   }
+  // Synthetic approval events are bridge-only and carry the routing
+  // identifier as `threadId` directly.
+  if (typeof record.threadId === 'string' && record.threadId.length > 0) {
+    return record.threadId
+  }
   // The payload may also be a nested `{provider, data, appRunId, appChatId}`
   // shape (sendAgentCompatLine's wrapper). Check one level deep.
   if (typeof record.data === 'object' && record.data !== null) {
     const inner = record.data as Record<string, unknown>
     if (typeof inner.appChatId === 'string' && inner.appChatId.length > 0) {
       return inner.appChatId
+    }
+    if (typeof inner.threadId === 'string' && inner.threadId.length > 0) {
+      return inner.threadId
     }
   }
   return null
