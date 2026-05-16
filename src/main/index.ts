@@ -24,6 +24,7 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { AuditService } from './services/AuditService'
 import { ApprovalService, handleApprovalTimeout } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { RunCoordinator } from './services/RunCoordinator'
@@ -1370,83 +1371,16 @@ function recordApprovalLedgerDecision(input: ApprovalLedgerRequestInput): void {
   }
 }
 
-function resolveApprovalLedgerResponse(
-  approvalId: string,
-  action: AgentApprovalAction,
-  decisionSource: 'user' | 'system' = 'user',
-  extraMetadata: Record<string, unknown> = {}
-): void {
-  try {
-    permissionService.resolveApprovalResponse(approvalId, action, decisionSource, extraMetadata)
-  } catch (error) {
-    console.error('Failed to resolve approval ledger request', error)
+const auditService = new AuditService({
+  runManager,
+  resolveApprovalResponse: (approvalId, action, decisionSource, extraMetadata) =>
+    permissionService.resolveApprovalResponse(approvalId, action, decisionSource, extraMetadata),
+  recordApprovalLedgerDecision,
+  approvalRouteContext,
+  logError: (message, error) => {
+    console.error(message, error)
   }
-}
-
-function recordAutomaticApprovalDecision(
-  provider: ProviderId,
-  route: AgentRunRoute | null | undefined,
-  service: AgenticServiceId,
-  workspacePath: string | undefined,
-  request: {
-    method: string
-    title: string
-    body: string
-    preview?: unknown
-  },
-  decision: 'autoAllow' | 'autoDeny',
-  decisionSource: 'policy' | 'workspace_grant' | 'session_grant',
-  grantedScope: 'request' | 'session' | 'workspace',
-  metadata: Record<string, unknown> = {}
-): void {
-  const now = new Date().toISOString()
-  const context = approvalRouteContext(provider, route)
-  recordApprovalLedgerDecision({
-    approvalId: `${decision}-${service}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    provider,
-    service,
-    method: request.method,
-    title: request.title,
-    body: request.body,
-    preview: request.preview,
-    actions: [],
-    status: decision === 'autoAllow' ? 'approved' : 'denied',
-    requestedAt: now,
-    respondedAt: now,
-    decision,
-    decisionSource,
-    grantedScope,
-    expiration: decision === 'autoDeny'
-      ? {
-          mode: 'on_decision',
-          description: 'Denied automatically by the current AGBench policy.',
-          expiresAt: now,
-          expiredAt: now,
-          expiredReason: 'policy_denied'
-        }
-      : grantedScope === 'workspace'
-        ? {
-            mode: 'workspace_revocation',
-            description: 'Workspace approval remains active until the workspace grant is revoked.'
-          }
-        : grantedScope === 'session'
-          ? {
-              mode: 'session_end',
-              description: 'Session approval expires when the active provider runtime session ends.'
-            }
-          : {
-              mode: 'none',
-              description: 'Allowed automatically by the current AGBench policy for this request.'
-            },
-    runId: context.runId,
-    chatId: context.chatId,
-    workspaceId: context.workspaceId,
-    workspacePath: workspacePath || context.workspacePath,
-    providerSessionId: context.session?.providerSessionId,
-    providerRunId: context.session?.providerRunId,
-    metadata
-  })
-}
+})
 
 function expireRunScopedApprovalLedger(session: { runId: string; provider: ProviderId; workspacePath?: string; status?: string }): void {
   if (session.status !== 'completed' && session.status !== 'failed' && session.status !== 'cancelled') return
@@ -1505,7 +1439,7 @@ async function requestAgenticServiceApproval(
   const label = AGENTIC_SERVICE_LABELS[service]
 
   if (decision === 'deny') {
-    recordAutomaticApprovalDecision(
+    auditService.recordAutomaticApprovalDecision(
       provider,
       { appRunId: request.runId },
       service,
@@ -1520,7 +1454,7 @@ async function requestAgenticServiceApproval(
     return false
   }
   if (decision === 'allow' && !(request.forcePrompt && !sessionGrantAllowed)) {
-    recordAutomaticApprovalDecision(
+    auditService.recordAutomaticApprovalDecision(
       provider,
       { appRunId: request.runId },
       service,
@@ -5044,7 +4978,7 @@ function handleCodexServerRequest(message: any) {
 
   if (service && policy === 'deny') {
     const label = AGENTIC_SERVICE_LABELS[service]
-    recordAutomaticApprovalDecision(
+    auditService.recordAutomaticApprovalDecision(
       'codex',
       { appRunId: state.appRunId, appChatId: state.appChatId },
       service,
@@ -5069,7 +5003,7 @@ function handleCodexServerRequest(message: any) {
     const hasSessionGrant = permissionService.hasSessionGrant('codex', isGlobalScope ? undefined : state.workspacePath, service, state.appRunId)
     const hasWorkspaceGrant = !isGlobalScope && policy === 'workspace' && hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
     if (hasSessionGrant || (!isGlobalScope && policy === 'allow') || hasWorkspaceGrant) {
-      recordAutomaticApprovalDecision(
+      auditService.recordAutomaticApprovalDecision(
         'codex',
         { appRunId: state.appRunId, appChatId: state.appChatId },
         service,
@@ -9243,7 +9177,7 @@ app.whenReady().then(() => {
     runManager,
     permissionService,
     appendDurableRunEventForRoute,
-    resolveApprovalLedger: resolveApprovalLedgerResponse,
+    resolveApprovalLedger: auditService.resolveApprovalLedgerResponse.bind(auditService),
     getCodexClient: () => codexClient,
     sendAgentCompatLine,
     respondToKimiWireRequest,
