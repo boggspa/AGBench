@@ -39,6 +39,7 @@ import {
   CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
+import { shouldRenderWelcome } from './lib/welcomeState'
 import {
   HEATMAP_DAY_COUNT,
   HEATMAP_HOUR_COUNT,
@@ -8224,20 +8225,21 @@ function App(): React.JSX.Element {
   const fileChangeDisplayDels = fileChangeHasLineStats ? fileChangeDels : deletedChangeCount
   const fileChangeShouldShowStats = fileChangeHasLineStats || displayFileChangeSummaries.length > 0
   const transcriptMessages = currentChat?.messages || EMPTY_CHAT_MESSAGES
-  const hasConversationContent = useMemo(
-    () => transcriptMessages.some((message) =>
-      message.role === 'user' ||
-      message.role === 'assistant' ||
-      message.role === 'tool' ||
-      message.role === 'error'
-    ),
-    [transcriptMessages]
-  )
-  const isWelcomeChat = Boolean(
-    currentChat &&
-    !hasConversationContent &&
-    !isCurrentChatRunning &&
-    !showFallbackUX
+  // Welcome-surface gate. Extracted into `lib/welcomeState` so the
+  // predicate is independently unit-tested (see `welcomeState.test.ts`).
+  // The helper centralises the rule that a chat is in welcome state iff
+  // a chat is selected, has no real conversation content, is not running,
+  // and the Gemini fallback retry card is not showing — preventing the
+  // welcome hero from rendering on top of a transcript that should be
+  // visible.
+  const isWelcomeChat = useMemo(
+    () => shouldRenderWelcome({
+      currentChat,
+      messages: transcriptMessages,
+      isCurrentChatRunning,
+      showFallbackUX
+    }),
+    [currentChat, transcriptMessages, isCurrentChatRunning, showFallbackUX]
   )
   const welcomeUsageDashboardData = useMemo(
     () => buildWelcomeUsageDashboardData(usageRecords, chats, 'all'),
@@ -8610,7 +8612,20 @@ function App(): React.JSX.Element {
             onOpenSubThread={handleOpenCockpitThread}
           />
 
+          {/*
+           * Keying the transcript on the current chat id guarantees a
+           * full unmount + remount when the user switches chats. Without
+           * the key, React would reconcile the existing
+           * `<TranscriptPanel>` instance: messages from the previous
+           * chat could remain in the DOM for a frame while React diffed
+           * the children, and absolute-positioned welcome / composer
+           * layers would render on top of the stale transcript. The
+           * remount tears the previous chat's DOM tree down
+           * synchronously so the welcome surface paints over a clean
+           * transcript region every time.
+           */}
           <TranscriptPanel
+            key={currentChat?.appChatId || 'no-chat'}
             scrollRef={transcriptScrollRef}
             endRef={logsEndRef}
             messages={transcriptMessages}

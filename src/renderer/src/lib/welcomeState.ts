@@ -1,0 +1,87 @@
+import type { ChatMessage, ChatRecord } from '../../../main/store/types'
+
+/**
+ * A subset of `ChatMessage` that the welcome-state helper actually
+ * needs to inspect. Keeping the type narrow means this module stays
+ * test-friendly without depending on the full message type from the
+ * main process.
+ */
+export interface WelcomeMessageLike {
+  role: ChatMessage['role']
+}
+
+/**
+ * A subset of `ChatRecord` that the welcome-state helper needs. Same
+ * rationale as `WelcomeMessageLike`: the helper inspects only the
+ * fields that decide whether the welcome surface should render.
+ */
+export type WelcomeChatLike = Pick<ChatRecord, 'appChatId'> | null
+
+/**
+ * Inputs the renderer feeds into `shouldRenderWelcome`. Encoded as a
+ * single object so call sites stay readable at the App.tsx scale and
+ * adding a new gate (e.g. "show welcome only when bridge is reachable")
+ * does not require touching every test.
+ */
+export interface WelcomeStateInput {
+  /** Currently selected chat. `null` if the user hasn't picked one. */
+  currentChat: WelcomeChatLike
+  /** Messages on the currently selected chat. The helper only looks at
+   * `role` so any iterable of role-shaped objects works. */
+  messages: ReadonlyArray<WelcomeMessageLike>
+  /** True when the current chat has a live run on the run queue. The
+   * welcome surface must hide for running chats because the transcript
+   * is about to fill in. */
+  isCurrentChatRunning: boolean
+  /** True when the Gemini fallback retry card is showing. Stack the
+   * fallback above an empty transcript, never on top of welcome copy. */
+  showFallbackUX: boolean
+}
+
+/**
+ * Roles that represent real conversation content. Tool activity rows
+ * count: a chat that already invoked a tool is not a welcome surface
+ * candidate, even if no assistant text has streamed in yet.
+ */
+const CONVERSATION_ROLES: ReadonlyArray<ChatMessage['role']> = [
+  'user',
+  'assistant',
+  'tool',
+  'error'
+]
+
+/**
+ * True when at least one message in `messages` represents real
+ * conversation (`user` / `assistant` / `tool` / `error`).
+ * System bookkeeping messages alone do not promote a chat out of the
+ * welcome surface.
+ */
+export function hasConversationContent(
+  messages: ReadonlyArray<WelcomeMessageLike>
+): boolean {
+  for (const message of messages) {
+    if (CONVERSATION_ROLES.indexOf(message.role) !== -1) {
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * Decide whether the welcome / new-chat surface (hero greeting, starter
+ * cards, usage dashboard) should render in place of the transcript.
+ *
+ * Extracted from `App.tsx` so the renderer can unit-test the gate
+ * without standing up the entire chat shell. The renderer also uses
+ * this value to gate the transcript message map — when this returns
+ * `true`, `App.tsx` skips iterating the chat's `messages` so a stale
+ * cross-workspace transcript cannot bleed through behind the welcome
+ * hero.
+ */
+export function shouldRenderWelcome(input: WelcomeStateInput): boolean {
+  if (!input.currentChat) return false
+  if (input.isCurrentChatRunning) return false
+  if (input.showFallbackUX) return false
+  if (hasConversationContent(input.messages)) return false
+  return true
+}
