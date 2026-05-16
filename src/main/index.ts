@@ -24,6 +24,8 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { RunCoordinator } from './services/RunCoordinator'
+import { SettingsService } from './services/SettingsService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -405,12 +407,16 @@ const HOST_WEATHER_TIMEOUT_MS = 5_000
 let hostWeatherCache: HostWeatherState | null = null
 let hostWeatherCacheAt = 0
 
-interface AgentRunRoute {
+// Phase B1: AgentRunPayload + AgentRunRoute exported so the extracted
+// `services/RunCoordinator.ts` can type its public surface without an
+// awkward import-from-index. Future Phase B slices will follow the
+// same pattern.
+export interface AgentRunRoute {
   appRunId?: string
   appChatId?: string
 }
 
-interface AgentRunPayload {
+export interface AgentRunPayload {
   provider: ProviderId
   scope: ChatScope
   workspace?: string
@@ -8753,6 +8759,24 @@ app.whenReady().then(() => {
       // Window may be destroyed during a long-running download — ignore.
     }
   })
+  const settingsService = new SettingsService({
+    getSettings: () => AppStore.getSettings(),
+    updateSettings: (partial) => AppStore.updateSettings(partial),
+    sanitizeSettingsPatch,
+    sideEffects: [
+      ({ sanitizedPatch }) => {
+        // Phase G2: re-configure the auto-updater when the user flips
+        // the updateChannel. Settings → System gets the live effect
+        // without a restart.
+        if (sanitizedPatch.updateChannel !== undefined) {
+          updateService.configure({
+            channel: sanitizedPatch.updateChannel,
+            enabled: autoUpdateEnabled
+          })
+        }
+      }
+    ]
+  })
   ipcMain.handle('update-snapshot', () => updateService.snapshot())
   ipcMain.handle('check-for-updates', async () => {
     await updateService.checkForUpdates()
@@ -8783,20 +8807,8 @@ app.whenReady().then(() => {
   })
 
   // Settings
-  ipcMain.handle('get-settings', () => AppStore.getSettings())
-  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => {
-    const sanitized = sanitizeSettingsPatch(partial)
-    AppStore.updateSettings(sanitized)
-    // Phase G2: re-configure the auto-updater when the user flips the
-    // updateChannel. Settings → System gets the live effect without a
-    // restart.
-    if (sanitized.updateChannel !== undefined) {
-      updateService.configure({
-        channel: sanitized.updateChannel,
-        enabled: autoUpdateEnabled
-      })
-    }
-  })
+  ipcMain.handle('get-settings', () => settingsService.getSettings())
+  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => settingsService.updateSettings(partial))
 
   // Runtime profiles
   ipcMain.handle('get-runtime-profiles', (_, provider?: ProviderId) => {
@@ -9502,28 +9514,25 @@ app.whenReady().then(() => {
   // those events the same way they would for a renderer-initiated run,
   // so the iOS-initiated run shows up in the desktop transcript live.
   //
-  // The function never throws — adapter errors flow through
-  // `sendAgentCompatError` / `sendAgentCompatExit` to the sender.
-  const dispatchAgentRun = async (
+  // Phase B1: dispatchAgentRun is now a thin adapter around the
+  // extracted RunCoordinator service. The actual dispatch logic lives
+  // in src/main/services/RunCoordinator.ts where it's testable with
+  // mocked dependencies. Behaviour is byte-identical to the previous
+  // inline version.
+  const runCoordinator = new RunCoordinator({
+    normalizePayload: normalizeAgentRunPayload,
+    routeWithRunId,
+    applyRuntimeProfileToPayload,
+    ensureProviderRunPreflight,
+    getAdapter: (provider) => providerAdapters.require(provider),
+    sendError: sendAgentCompatError,
+    sendExit: sendAgentCompatExit
+  })
+  const dispatchAgentRun = (
     payload: AgentRunPayload,
     event: Electron.IpcMainInvokeEvent
   ): Promise<{ dispatched: boolean; appRunId: string }> => {
-    const normalizedPayload = normalizeAgentRunPayload(payload)
-    normalizedPayload.appRunId = routeWithRunId(normalizedPayload.provider, normalizedPayload).appRunId
-    try {
-      applyRuntimeProfileToPayload(normalizedPayload)
-    } catch (error) {
-      const route = routeWithRunId(normalizedPayload.provider, normalizedPayload)
-      sendAgentCompatError(event.sender, normalizedPayload.provider, error instanceof Error ? error.message : String(error), route)
-      sendAgentCompatExit(event.sender, normalizedPayload.provider, -1, route)
-      return { dispatched: false, appRunId: normalizedPayload.appRunId ?? '' }
-    }
-    const adapter = providerAdapters.require(normalizedPayload.provider)
-    if (!(await ensureProviderRunPreflight(event.sender, normalizedPayload))) {
-      return { dispatched: false, appRunId: normalizedPayload.appRunId ?? '' }
-    }
-    await adapter.run({ event, payload: normalizedPayload })
-    return { dispatched: true, appRunId: normalizedPayload.appRunId ?? '' }
+    return runCoordinator.dispatch(payload, event)
   }
 
   ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
