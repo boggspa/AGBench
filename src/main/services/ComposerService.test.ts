@@ -235,6 +235,32 @@ describe('ComposerService', () => {
     expect(payload.kimiThinking).toBe(true)
   })
 
+  it('teaches Kimi about cross-provider delegate_to_subthread (Phase I4)', () => {
+    // The runtime note must point Kimi at agentbench__delegate_to_subthread
+    // so it doesn't reach for a built-in generalist agent when asked to
+    // delegate to Gemini / Codex / Claude.
+    const payload = compose({ provider: 'kimi' }, {})
+    expect(payload.prompt).toContain('agentbench MCP server')
+    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
+    expect(payload.prompt).toContain("provider: 'claude'")
+    expect(payload.prompt).toContain('NEVER use any built-in generalist-agent path')
+  })
+
+  it('omits the Kimi delegation preamble in plan mode (read-only sessions)', () => {
+    const payload = compose({ provider: 'kimi' }, { approvalMode: 'plan' })
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
+  })
+
+  it('omits the Kimi delegation preamble for global-scope runs (no workspace)', () => {
+    const payload = compose({ provider: 'kimi', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
+  })
+
   it('strips internal plan markdown blocks and forces plan approval mode', () => {
     const payload = compose(
       { provider: 'kimi' },

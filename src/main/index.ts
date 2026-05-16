@@ -59,6 +59,10 @@ import {
   extendClaudeCliArgsWithAgentbenchMcp,
   type ClaudeAgentbenchMcpInput
 } from './ClaudeAgentbenchMcp'
+import {
+  buildKimiMcpBridgeAddArgs,
+  redactKimiMcpBridgeAddArgs
+} from './KimiMcpBridge'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -117,6 +121,14 @@ const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 let geminiMcpBridgeInstalledForCurrentToken = false
+// Phase I4 (Kimi initiator): the Kimi CLI registers the agentbench MCP
+// server via `kimi mcp add` (config at `~/.kimi/mcp.json`). Each AGBench
+// launch generates a fresh `geminiMcpBrokerToken`, so we track whether
+// the on-disk Kimi registration matches the current token to avoid
+// re-running `kimi mcp add` on every spawn. Mirrors
+// `geminiMcpBridgeInstalledForCurrentToken`.
+let kimiMcpBridgeInstalledForCurrentToken = false
+let kimiMcpBridgeRepairPromise: Promise<void> | null = null
 
 // Late-bound APNs handles. Constructed inside `app.whenReady()` (because
 // the token store needs `app.getPath('userData')`). Kept at module scope
@@ -4174,6 +4186,14 @@ async function runKimiWireProvider(
   appendKimiThinkingArgs(args, payload.kimiThinking)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
+  // Phase I4 (Kimi initiator): register the agentbench MCP server with
+  // Kimi before spawn (idempotent: only re-runs `kimi mcp add` if the
+  // broker token rotated since the last registration). Failure is
+  // surfaced as a non-fatal warning chip; the Kimi run still launches
+  // so the agent can do single-provider work even when cross-provider
+  // delegation isn't wired up.
+  await prepareKimiMcpBridgeForRun(event.sender)
+
   const kimiKey = getStoredKimiApiKey()
   return new Promise((resolveWire) => {
     const child = spawn(binaryPath, args, {
@@ -4184,6 +4204,14 @@ async function runKimiWireProvider(
           FORCE_COLOR: '0',
           NO_COLOR: '1',
           AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+          // Phase I4 (Kimi initiator): belt-and-braces env stamp on the
+          // Kimi CLI process itself. The per-server env block in
+          // ~/.kimi/mcp.json already stamps AGENTBENCH_PARENT_PROVIDER=
+          // kimi on the bridge subprocess, but stamping on Kimi's own
+          // process env means the bridge inherits the value even on
+          // platforms / Kimi internals that strip env on grandchild
+          // spawn. Matches the Gemini / Codex / Claude pattern.
+          AGENTBENCH_PARENT_PROVIDER: 'kimi',
           ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
         },
         binaryPath
@@ -4512,11 +4540,23 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   appendKimiModelArgs(args, model)
   appendKimiThinkingArgs(args, payload.kimiThinking)
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
+  // Phase I4 (Kimi initiator): the print-mode fallback also gets the
+  // agentbench MCP registration so a plan-mode read-only Kimi run can
+  // still call delegate_to_subthread when the user explicitly asks
+  // for cross-provider work. (Wire mode already ran prepare; if that
+  // returned without setting the installed-flag — e.g. broker failure —
+  // this second call is the belt; harmless when already installed.)
+  await prepareKimiMcpBridgeForRun(event.sender)
   const kimiKey = getStoredKimiApiKey()
   runCliProviderProcess(event, 'kimi', resolved.binaryPath, args, payload, {
     fallback: true,
     warning: 'Kimi Wire mode did not complete startup; using print-mode stream-json fallback for this one-shot run.',
-    extraEnv: kimiKey ? { MOONSHOT_API_KEY: kimiKey } : undefined
+    // Phase I4: belt-and-braces parent-provider env stamp on the
+    // fallback CLI's spawn env. Matches the Wire-mode stamp.
+    extraEnv: {
+      AGENTBENCH_PARENT_PROVIDER: 'kimi',
+      ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
+    }
   })
 }
 
@@ -8149,6 +8189,98 @@ async function prepareGeminiMcpBridgeForRun(
   }
   registerRunSession('gemini', sender, routed, scope === 'workspace' ? resolvedCwd : undefined, activeGeminiToolContext, activeGeminiToolContext.providerSessionId || null)
   return routed
+}
+
+// ============================================================================
+// Phase I4 (Kimi initiator): mirror the Gemini install / repair / prepare
+// helpers for Kimi so a Kimi agent can call delegate_to_subthread on other
+// providers via the agentbench MCP server. The bridge subprocess and broker
+// are shared with Gemini / Codex / Claude — only the registration plumbing
+// is provider-specific. Kimi CLI 1.43.0 syntax:
+//
+//   kimi mcp add agentbench --transport stdio \
+//     --env AGENTBENCH_PARENT_PROVIDER=kimi \
+//     -- <bridgeBinaryPath> <bridgeArgs...>
+//
+// Gated on the same `geminiMcpBridgeEnabled` toggle Gemini / Codex / Claude
+// use (toggle name is now provider-misleading; rename deferred).
+// ============================================================================
+
+async function addKimiMcpBridgeRegistration(kimiBinaryPath: string, socketPath: string): Promise<void> {
+  const addArgs = buildKimiMcpBridgeAddArgs({
+    bridgeBinaryPath: process.execPath,
+    bridgeArgs: [
+      GEMINI_MCP_BRIDGE_ARG,
+      GEMINI_MCP_SOCKET_ARG,
+      socketPath,
+      GEMINI_MCP_TOKEN_ARG,
+      geminiMcpBrokerToken
+    ]
+  })
+  const addResult = await captureProcessOutput(kimiBinaryPath, addArgs, undefined, 15_000)
+  if (addResult.code !== 0) {
+    const output = (addResult.stderr || addResult.stdout || addResult.error || 'kimi mcp add failed.').trim()
+    const safeArgs = redactKimiMcpBridgeAddArgs(addArgs)
+    throw new Error(`Kimi MCP bridge registration failed (exit ${addResult.code ?? 'unknown'}): kimi ${safeArgs.join(' ')}\n${output}`)
+  }
+}
+
+async function installKimiMcpBridge(): Promise<void> {
+  await startGeminiMcpBroker()
+  const resolved = await resolveCliProviderBinary('kimi')
+  if (!resolved.binaryPath) {
+    // Kimi CLI not configured — skip silently. The Kimi MCP bridge is a
+    // best-effort capability layered on the toggle; without the CLI we
+    // can't register anything, but Gemini / Codex / Claude still work.
+    return
+  }
+  const socketPath = geminiMcpSocketPath()
+  await addKimiMcpBridgeRegistration(resolved.binaryPath, socketPath)
+  kimiMcpBridgeInstalledForCurrentToken = true
+}
+
+async function repairKimiMcpBridge(): Promise<void> {
+  if (!kimiMcpBridgeRepairPromise) {
+    kimiMcpBridgeRepairPromise = installKimiMcpBridge().finally(() => {
+      kimiMcpBridgeRepairPromise = null
+    })
+  }
+  await kimiMcpBridgeRepairPromise
+}
+
+/**
+ * Idempotent best-effort Kimi MCP bridge prep, called from `runKimiProvider`
+ * / `runKimiWireProvider` before spawning the Kimi CLI. Mirrors
+ * `prepareGeminiMcpBridgeForRun`'s "broker + repair" flow but without the
+ * write-tool self-test (Kimi doesn't require AGBench's write tools to
+ * launch — the MCP bridge is purely additive for cross-provider
+ * delegation).
+ *
+ * Failure is non-fatal: if the broker can't start or `kimi mcp add` fails
+ * (e.g. the Kimi CLI isn't installed), we log a warning to the renderer
+ * and let the Kimi run proceed without the bridge. The agent will simply
+ * not see `delegate_to_subthread` in its tool list for that run.
+ */
+async function prepareKimiMcpBridgeForRun(sender: Electron.WebContents): Promise<void> {
+  const settings = AppStore.getSettings()
+  if (!settings.geminiMcpBridgeEnabled) {
+    return
+  }
+  try {
+    await startGeminiMcpBroker()
+    if (!kimiMcpBridgeInstalledForCurrentToken) {
+      await repairKimiMcpBridge()
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    sendAgentCompatLine(sender, 'kimi', {
+      type: 'provider_warning',
+      provider: 'kimi',
+      severity: 'warning',
+      title: 'Kimi MCP bridge registration failed',
+      message: `AGBench could not register the agentbench MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
+    })
+  }
 }
 
 function resolveNativeVibrancy(useNativeGlass: boolean): BrowserWindowConstructorOptions['vibrancy'] | undefined {

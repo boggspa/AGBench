@@ -292,5 +292,82 @@ describe('PermissionService', () => {
         service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
       ).toBe('ask')
     })
+
+    // Phase I4 (Kimi initiator): with Kimi now able to spawn cross-
+    // provider sub-threads via `kimi mcp add agentbench`, the gate must
+    // route through 'provider: kimi' on every broker request. Pin the
+    // ask + grant + provider-scope semantics for the Kimi path so the
+    // approval modal and workspace-grant logic stay symmetric with
+    // Gemini / Codex / Claude.
+    it("Kimi-initiated delegation triggers the gate with provider: 'kimi'", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      // Default 'ask' policy: every Kimi-initiated delegate_to_subthread
+      // hits the approval modal until a grant exists.
+      expect(
+        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, settings).decision
+      ).toBe('ask')
+    })
+
+    it("Kimi workspace grant auto-allows subsequent Kimi delegations (and only Kimi's)", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const withKimiGrant: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        },
+        agenticWorkspaceGrants: [{
+          id: 'grant-kimi-delegation',
+          provider: 'kimi',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      // Kimi parent → allow.
+      expect(
+        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+      ).toBe('allow')
+      // Gemini parent → still ask (provider-scoped grant; Gemini grant
+      // does not auto-allow Kimi delegation in the same workspace).
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+      ).toBe('ask')
+      // Codex parent → still ask.
+      expect(
+        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+      ).toBe('ask')
+      // Claude parent → still ask.
+      expect(
+        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+      ).toBe('ask')
+    })
+
+    it('reverse-direction: a Gemini workspace grant does NOT auto-allow Kimi delegation', () => {
+      // Mirror of the "Claude grant doesn't auto-allow Gemini" test for
+      // the new Kimi parent provider. Phase I4 closes the matrix so
+      // every combination of grant-direction needs to be provider-scoped.
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const withGeminiGrant: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        },
+        agenticWorkspaceGrants: [{
+          id: 'grant-gemini-for-kimi-test',
+          provider: 'gemini',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      // Kimi parent → ask (no Kimi grant; provider-scoped).
+      expect(
+        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+      ).toBe('ask')
+    })
   })
 })

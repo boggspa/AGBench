@@ -302,6 +302,21 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     contextualPrompt = `${claudeDelegationPreamble}\n\n${contextualPrompt}`
   }
 
+  // (5) Phase I4 (Kimi initiator): Kimi workspace runs (non-global)
+  // outside plan mode get the same delegation preamble — register the
+  // agentbench MCP tool list and forbid built-in generalist-agent paths
+  // for cross-provider work. Kimi's MCP host inherits the tools from
+  // `~/.kimi/mcp.json` (installed by `kimi mcp add agentbench …`).
+  if (provider === 'kimi' && !isGlobalRun && approvalMode !== 'plan') {
+    const kimiDelegationPreamble = [
+      'AGBench runtime note: this Kimi workspace run has access to the agentbench MCP server (delegate_to_subthread + filesystem helpers).',
+      'For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Codex to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use any built-in generalist-agent path for cross-provider work, those run inside Kimi\'s process and cannot reach other AGBench providers.',
+      "Example: agentbench__delegate_to_subthread({ provider: 'claude', prompt: 'Review this design doc...', returnResult: true }).",
+      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+    ].join('\n')
+    contextualPrompt = `${kimiDelegationPreamble}\n\n${contextualPrompt}`
+  }
+
   return {
     contextualPrompt,
     contextTurnsApplied,
