@@ -5978,6 +5978,13 @@ function App(): React.JSX.Element {
   }
 
   const executeRun = async (runRequest?: QueuedRunRequest) => {
+    // Diagnostic fix (send-message regression investigation, 2026-05-16):
+    // Every call site invokes this via `void executeRun(...)` which
+    // discards the returned promise. Without a function-level try/catch
+    // any uncaught exception silently rejects — producing the reported
+    // "clicking Send does nothing" symptom. Wrap the entire body so the
+    // user always sees an error if something escapes the inner catches.
+    try {
     const baseRequest = runRequest ?? buildRunRequest()
     const request = baseRequest.appRunId ? baseRequest : { ...baseRequest, appRunId: createAppRunId() }
     const runChat = request.chatRecord || currentChat
@@ -6031,9 +6038,28 @@ function App(): React.JSX.Element {
         chatSnapshot: runChat
       })
     } catch (error) {
+      // Diagnostic fix (send-message regression investigation, 2026-05-16):
+      // Previously this catch wrote only to the Inspector raw log, which a
+      // user without the Inspector tab open never sees — producing the
+      // exact "clicking Send does nothing" symptom that was reported.
+      // Surface the failure as an error-role chat message + a queue-job
+      // failure, mirroring the runAgent catch at lines 6513-6523. This
+      // does not fix any underlying composeRun bug — it makes one visible.
       const message = `Failed to compose ${getProviderLabel(runProvider)} run: ${redactLog(String(error))}`
       updateRunQueueJobStatus(currentRunId, 'failed', 'Run payload composition failed.', message)
       appendThreadRawLog(runChat.appChatId, { type: 'stderr', content: message })
+      updateChatById(runChat.appChatId, (source) => ({
+        ...source,
+        messages: [
+          ...source.messages,
+          {
+            id: Date.now().toString(),
+            role: 'error',
+            content: message,
+            timestamp: new Date().toISOString()
+          }
+        ]
+      }))
       return
     }
     const composerMetadata = composedPayload.composer
@@ -6522,6 +6548,31 @@ function App(): React.JSX.Element {
       }))
     }
     setChats(await window.api.getChats())
+    } catch (error) {
+      // Last line of defense — any uncaught exception in the function
+      // body (between the inner try/catches that wrap composeRun + the
+      // runAgent dispatch) surfaces here. Without this catch the void
+      // promise rejection vanishes silently.
+      // eslint-disable-next-line no-console
+      console.warn('[executeRun] uncaught exception:', error)
+      const message = `Run execution failed unexpectedly: ${redactLog(String(error))}`
+      const chatId = runRequest?.chatRecord?.appChatId || currentChat?.appChatId
+      if (chatId) {
+        appendThreadRawLog(chatId, { type: 'stderr', content: message })
+        updateChatById(chatId, (source) => ({
+          ...source,
+          messages: [
+            ...source.messages,
+            {
+              id: Date.now().toString(),
+              role: 'error',
+              content: message,
+              timestamp: new Date().toISOString()
+            }
+          ]
+        }))
+      }
+    }
   }
 
   const handleReviewCurrentDiff = async () => {
