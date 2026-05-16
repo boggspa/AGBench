@@ -67,17 +67,35 @@ const smokeAnswer = {
 }
 
 const fireRequestId = randomUUID()
+const fakeTailscaleStatus = {
+  Version: '1.56.1-smoke',
+  TailscaleIPs: ['100.64.10.20', 'fd7a:115c:a1e0::1'],
+  Self: {
+    HostName: 'smoke-mac',
+    DNSName: 'smoke-mac.tail-smoke.ts.net',
+    TailscaleIPs: ['100.64.10.20', 'fd7a:115c:a1e0::1']
+  },
+  BackendState: 'Running'
+}
 
 let helloSeen = false
+let tailnetEndpointSeen = false
 let inboundEchoHandled = false
 let fireRequestResponseSeen = false
 let stderrTail = ''
 
-const proc = spawn(BIN_PATH, [], { shell: false, stdio: 'pipe' })
+const proc = spawn(BIN_PATH, [], {
+  shell: false,
+  stdio: 'pipe',
+  env: {
+    ...process.env,
+    AGBENCH_BRIDGE_TAILSCALE_STATUS_JSON: JSON.stringify(fakeTailscaleStatus)
+  }
+})
 
 const timer = setTimeout(() => {
   fail(
-    `Timed out after ${TIMEOUT_MS}ms. helloSeen=${helloSeen} inboundEchoHandled=${inboundEchoHandled} fireRequestResponseSeen=${fireRequestResponseSeen}`
+    `Timed out after ${TIMEOUT_MS}ms. helloSeen=${helloSeen} tailnetEndpointSeen=${tailnetEndpointSeen} inboundEchoHandled=${inboundEchoHandled} fireRequestResponseSeen=${fireRequestResponseSeen}`
   )
 }, TIMEOUT_MS)
 timer.unref?.()
@@ -113,7 +131,7 @@ function fail(reason) {
 }
 
 function maybeFinish() {
-  if (helloSeen && inboundEchoHandled && fireRequestResponseSeen) pass()
+  if (helloSeen && tailnetEndpointSeen && inboundEchoHandled && fireRequestResponseSeen) pass()
 }
 
 function writeStdinLine(envelope) {
@@ -167,6 +185,19 @@ stdoutReader.on('line', (line) => {
   // Daemon hello (one-shot, first line)
   if (parsed.kind === 'daemon-hello') {
     helloSeen = true
+    const endpoints = Array.isArray(parsed.directEndpoints) ? parsed.directEndpoints : []
+    const tailnetEndpoint = endpoints.find(
+      (endpoint) =>
+        endpoint &&
+        endpoint.kind === 'quicTailscale' &&
+        endpoint.host === '100.64.10.20' &&
+        endpoint.port === 38747
+    )
+    if (!tailnetEndpoint || parsed.tailscaleEndpoint?.ipv4 !== '100.64.10.20') {
+      fail(`daemon hello did not advertise fake tailnet endpoint: ${JSON.stringify(parsed)}`)
+      return
+    }
+    tailnetEndpointSeen = true
     sendFireRequest()
     return
   }
@@ -220,7 +251,7 @@ proc.stderr.on('data', (chunk) => {
 })
 
 proc.on('exit', (code, signal) => {
-  const incomplete = !(helloSeen && inboundEchoHandled && fireRequestResponseSeen)
+  const incomplete = !(helloSeen && tailnetEndpointSeen && inboundEchoHandled && fireRequestResponseSeen)
   if (incomplete) {
     fail(`daemon exited early (code=${code} signal=${signal})`)
   }

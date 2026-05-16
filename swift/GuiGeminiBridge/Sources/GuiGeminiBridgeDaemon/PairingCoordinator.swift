@@ -82,6 +82,7 @@ public actor PairingCoordinator {
     private let macDeviceID: DeviceID
     private let macIdentitySigningKey: DeviceIdentitySigningKey
     private let now: @Sendable () -> Date
+    private let tailscaleEndpointHintProvider: @Sendable () -> String?
     private let sessionLifetime: TimeInterval
     private var pendingByID: [String: PendingPairing] = [:]
 
@@ -91,6 +92,7 @@ public actor PairingCoordinator {
         macDeviceID: DeviceID,
         macIdentitySigningKey: DeviceIdentitySigningKey,
         sessionLifetime: TimeInterval = 300, // 5 minutes
+        tailscaleEndpointHintProvider: @escaping @Sendable () -> String? = { nil },
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.deviceStore = deviceStore
@@ -98,6 +100,7 @@ public actor PairingCoordinator {
         self.macDeviceID = macDeviceID
         self.macIdentitySigningKey = macIdentitySigningKey
         self.sessionLifetime = sessionLifetime
+        self.tailscaleEndpointHintProvider = tailscaleEndpointHintProvider
         self.now = now
     }
 
@@ -124,7 +127,7 @@ public actor PairingCoordinator {
             macNonce: nonce,
             expiresAt: now().addingTimeInterval(sessionLifetime),
             bonjourServiceName: BridgeProductConfiguration.current.bonjourServiceType,
-            tailscaleEndpointHint: nil,
+            tailscaleEndpointHint: tailscaleEndpointHintProvider(),
             quicTransportCertificateSHA256: nil
         )
 

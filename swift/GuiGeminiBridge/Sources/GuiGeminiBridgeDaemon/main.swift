@@ -73,13 +73,49 @@ func writeLine(_ line: String) {
 
 // MARK: - Proof-of-life announcement
 
+let tailscaleEndpointResolver = TailscaleEndpointResolver()
+let startupTailscaleEndpoint = tailscaleEndpointResolver.current()
+
+struct DaemonDirectEndpoint: Encodable {
+    let kind: String
+    let transport: String
+    let host: String?
+    let port: UInt16
+    let serviceName: String?
+}
+
+func advertisedDirectEndpoints(tailscaleEndpoint: TailscaleEndpoint) -> [DaemonDirectEndpoint] {
+    var endpoints = [
+        DaemonDirectEndpoint(
+            kind: "quicBonjour",
+            transport: "quic",
+            host: nil,
+            port: BridgeProductConfiguration.current.directQUICPort,
+            serviceName: BridgeProductConfiguration.current.bonjourQUICServiceType
+        )
+    ]
+    if let ipv4 = tailscaleEndpoint.ipv4 {
+        endpoints.append(DaemonDirectEndpoint(
+            kind: "quicTailscale",
+            transport: "quic",
+            host: ipv4,
+            port: BridgeProductConfiguration.current.directQUICPort,
+            serviceName: nil
+        ))
+    }
+    return endpoints
+}
+
 struct DaemonHello: Encodable {
     let kind: String
     let daemon: String
     let protocolVersion: String
     let displayName: String
     let bonjourServiceType: String
+    let bonjourQUICServiceType: String
     let quicALPN: String
+    let directEndpoints: [DaemonDirectEndpoint]
+    let tailscaleEndpoint: TailscaleEndpoint
     let pid: Int32
     let timestamp: String
 }
@@ -90,7 +126,10 @@ let hello = DaemonHello(
     protocolVersion: protocolVersion,
     displayName: guiGeminiConfiguration.displayName,
     bonjourServiceType: guiGeminiConfiguration.bonjourServiceType,
+    bonjourQUICServiceType: guiGeminiConfiguration.bonjourQUICServiceType,
     quicALPN: BridgeProductConfiguration.current.quicTransport.alpn,
+    directEndpoints: advertisedDirectEndpoints(tailscaleEndpoint: startupTailscaleEndpoint),
+    tailscaleEndpoint: startupTailscaleEndpoint,
     pid: ProcessInfo.processInfo.processIdentifier,
     timestamp: ISO8601DateFormatter().string(from: Date())
 )
@@ -146,7 +185,12 @@ let pairingCoordinator = PairingCoordinator(
     deviceStore: trustedDeviceStore,
     secretStore: secretStore,
     macDeviceID: macDeviceID,
-    macIdentitySigningKey: macIdentitySigningKey
+    macIdentitySigningKey: macIdentitySigningKey,
+    tailscaleEndpointHintProvider: { @Sendable () -> String? in
+        tailscaleEndpointResolver.current().quicEndpointHint(
+            port: BridgeProductConfiguration.current.directQUICPort
+        )
+    }
 )
 
 // Notifier for daemon → Electron JSON-RPC notifications. Used by the
@@ -169,7 +213,10 @@ let transportListener = TransportListener(
     secretStore: secretStore,
     macDeviceID: macDeviceID,
     notifier: bridgeNotifier,
-    requester: bridgeRequester
+    requester: bridgeRequester,
+    tailscaleEndpointProvider: { @Sendable () -> TailscaleEndpoint in
+        tailscaleEndpointResolver.current()
+    }
 )
 
 // Phase D1-pair: TCP pairing listener for the iOS pairing handshake.

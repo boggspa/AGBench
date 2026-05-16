@@ -23,6 +23,9 @@ public actor TransportListener {
         public let running: Bool
         public let bonjourServiceType: String
         public let port: UInt16?
+        public let tailnetIPv4: String?
+        public let tailnetEndpoint: String?
+        public let tailnetListenerRunning: Bool
         public let trustedControllerCount: Int
         public let lastError: String?
     }
@@ -50,8 +53,11 @@ public actor TransportListener {
     private let requester: BridgeRequester
     private let watchedThreadsStore: WatchedThreadsStore
     private let ackTimeoutSeconds: TimeInterval
+    private let tailscaleEndpointProvider: @Sendable () -> TailscaleEndpoint
 
     private var server: QUICBridgeServer?
+    private var tailnetServer: EndpointBoundQUICBridgeServer?
+    private var activeTailnetEndpoint: TailscaleEndpoint?
     private var lastErrorMessage: String?
     private var trustedControllerCount: Int = 0
 
@@ -62,6 +68,7 @@ public actor TransportListener {
         notifier: BridgeNotifier,
         requester: BridgeRequester,
         watchedThreadsStore: WatchedThreadsStore = WatchedThreadsStore(),
+        tailscaleEndpointProvider: @escaping @Sendable () -> TailscaleEndpoint = { TailscaleEndpoint() },
         ackTimeoutSeconds: TimeInterval = 10.0
     ) {
         self.deviceStore = deviceStore
@@ -70,6 +77,7 @@ public actor TransportListener {
         self.notifier = notifier
         self.requester = requester
         self.watchedThreadsStore = watchedThreadsStore
+        self.tailscaleEndpointProvider = tailscaleEndpointProvider
         self.ackTimeoutSeconds = ackTimeoutSeconds
     }
 
@@ -285,7 +293,32 @@ public actor TransportListener {
             throw TransportListenerError.underlying(error)
         }
 
+        let tailscaleEndpoint = tailscaleEndpointProvider()
+        var tailnetServer: EndpointBoundQUICBridgeServer?
+        if let tailnetIPv4 = tailscaleEndpoint.ipv4 {
+            let scopedServer = EndpointBoundQUICBridgeServer(
+                bindHost: tailnetIPv4,
+                port: cfg.directQUICPort,
+                macDeviceID: macDeviceID,
+                trustedControllers: controllers,
+                handlers: handlers
+            )
+            do {
+                try await scopedServer.start()
+                tailnetServer = scopedServer
+                FileHandle.standardError.write(Data(
+                    "[TransportListener] tailnet QUIC listener started on \(tailnetIPv4):\(cfg.directQUICPort)\n".utf8
+                ))
+            } catch {
+                FileHandle.standardError.write(Data(
+                    "[TransportListener] WARN: failed to start tailnet QUIC listener on \(tailnetIPv4):\(cfg.directQUICPort): \(error.localizedDescription)\n".utf8
+                ))
+            }
+        }
+
         self.server = server
+        self.tailnetServer = tailnetServer
+        self.activeTailnetEndpoint = tailscaleEndpoint
         self.trustedControllerCount = controllers.count
         self.lastErrorMessage = nil
     }
@@ -295,16 +328,25 @@ public actor TransportListener {
             throw TransportListenerError.notRunning
         }
         await server.stop()
+        if let tailnetServer {
+            await tailnetServer.stop()
+        }
         self.server = nil
+        self.tailnetServer = nil
+        self.activeTailnetEndpoint = nil
         self.trustedControllerCount = 0
     }
 
     public func status() async -> Status {
         let cfg = BridgeProductConfiguration.current
+        let tailnetEndpointHint = activeTailnetEndpoint?.quicEndpointHint(port: cfg.directQUICPort)
         return Status(
             running: server != nil,
             bonjourServiceType: cfg.bonjourQUICServiceType,
             port: server != nil ? cfg.directQUICPort : nil,
+            tailnetIPv4: activeTailnetEndpoint?.ipv4,
+            tailnetEndpoint: tailnetEndpointHint,
+            tailnetListenerRunning: tailnetServer != nil,
             trustedControllerCount: trustedControllerCount,
             lastError: lastErrorMessage
         )
@@ -321,6 +363,7 @@ public actor TransportListener {
         guard let server else { return } // not running → nothing to refresh
         let controllers = try await loadTrustedControllers()
         await server.updateTrustedControllers(controllers)
+        await tailnetServer?.updateTrustedControllers(controllers)
         trustedControllerCount = controllers.count
     }
 
@@ -354,8 +397,10 @@ public actor TransportListener {
         if let threadID,
            let watchingPairs = await watchedThreadsStore.pairsWatching(threadID: threadID) {
             await server.broadcast(envelope, toPairIDs: watchingPairs)
+            await tailnetServer?.broadcast(envelope, toPairIDs: watchingPairs)
         } else {
             await server.broadcast(envelope)
+            await tailnetServer?.broadcast(envelope)
         }
     }
 

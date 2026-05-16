@@ -47,6 +47,10 @@ let package = Package(
                 .product(name: "WorkspaceSecurity", package: "CodexBridge"),
                 .product(name: "GitBridge", package: "CodexBridge")
             ]
+        ),
+        .testTarget(
+            name: "GuiGeminiBridgeDaemonTests",
+            dependencies: ["GuiGeminiBridgeDaemon"]
         )
     ]
 )
