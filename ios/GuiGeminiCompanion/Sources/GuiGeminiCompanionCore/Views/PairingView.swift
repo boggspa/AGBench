@@ -21,28 +21,54 @@ public struct PairingView: View {
     @State private var showPasteFallback: Bool = false
     @State private var permissionDenied: Bool = false
     @State private var scannerError: String?
+    @State private var wantsCameraScanner: Bool = false
 
     public init(viewModel: PairingViewModel) {
         self.viewModel = viewModel
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Pair with Mac")
-                .font(.largeTitle.bold())
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.section) {
+                    pairingHeader
 
-            switch viewModel.state {
-            case .idle, .scanning, .failed:
-                scanScreen
-            case .confirmingCode(let code, let displayName):
-                confirmingScreen(code: code, displayName: displayName)
-            case .confirmed:
-                Text("Paired ✓")
-                    .font(.title2)
-                    .foregroundStyle(.green)
+                    switch viewModel.state {
+                    case .idle, .scanning, .failed:
+                        scanScreen
+                    case .confirmingCode(let code, let displayName):
+                        confirmingScreen(code: code, displayName: displayName)
+                    case .confirmed:
+                        confirmedScreen
+                    }
+                }
+                .padding(Theme.Spacing.screen)
             }
+            .scrollIndicators(.hidden)
         }
-        .padding()
+    }
+
+    @ViewBuilder
+    private var pairingHeader: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            Image(systemName: "iphone.and.arrow.forward")
+                .font(Theme.Typography.iconLarge)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 68, height: 68)
+                .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                        .stroke(Theme.strongBorder, lineWidth: 1)
+                )
+            Text("Pair with Mac")
+                .font(Theme.Typography.appTitle)
+                .foregroundStyle(Theme.Text.primary)
+            Text("Connect this iPhone to the desktop bridge by scanning the QR code shown on your Mac.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder
@@ -54,6 +80,8 @@ public struct PairingView: View {
         #endif
         if case .scanning = viewModel.state {
             ProgressView()
+                .tint(Theme.accent)
+                .frame(maxWidth: .infinity)
         }
     }
 
@@ -65,105 +93,278 @@ public struct PairingView: View {
             Button("Use camera instead") {
                 showPasteFallback = false
                 scannerError = nil
+                wantsCameraScanner = false
                 viewModel.reset()
             }
-            .padding(.top, 8)
+            .font(Theme.Typography.caption)
+            .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity, alignment: .center)
         } else if permissionDenied {
-            VStack(spacing: 12) {
-                Image(systemName: "camera.slash")
-                    .font(.largeTitle)
-                Text("Camera access is required to scan the pairing QR.")
-                    .multilineTextAlignment(.center)
-                Text("Open Settings → GUIGemini → Camera, or paste the QR's JSON instead.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Button("Paste JSON instead") { showPasteFallback = true }
-                    .buttonStyle(.borderedProminent)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
+            permissionDeniedCard
+        } else if wantsCameraScanner {
+            cameraScannerSurface
         } else {
+            cameraPermissionCTA
+        }
+    }
+
+    @ViewBuilder
+    private var cameraPermissionCTA: some View {
+        VStack(spacing: Theme.Spacing.control) {
+            Image(systemName: "camera.viewfinder")
+                .font(Theme.Typography.iconHero)
+                .foregroundStyle(Theme.accent)
+                .frame(width: 90, height: 90)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                        .stroke(Theme.accent.opacity(0.24), lineWidth: 1)
+                )
+            Text("Scan the pairing QR")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Text.primary)
+            Text("The next screen will ask for camera access so GUIGemini can read the QR code on your Mac.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button {
+                withAnimation(Theme.Motion.quick) {
+                    wantsCameraScanner = true
+                }
+            } label: {
+                Label("Grant camera access", systemImage: "camera.fill")
+                    .font(Theme.Typography.sectionTitle)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            Button("Paste JSON instead") { showPasteFallback = true }
+                .font(Theme.Typography.caption)
+                .buttonStyle(.bordered)
+            failureMessage
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    @ViewBuilder
+    private var cameraScannerSurface: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
             Text("Point your camera at the QR shown on your Mac.")
-                .foregroundStyle(.secondary)
-            QRScannerView(
-                onScan: { bytes in
-                    viewModel.scan(bootstrapJSON: bytes)
-                },
-                onPermissionDenied: { permissionDenied = true },
-                onError: { message in scannerError = message }
-            )
-            .frame(maxWidth: .infinity, minHeight: 280)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+            ZStack {
+                QRScannerView(
+                    onScan: { bytes in
+                        viewModel.scan(bootstrapJSON: bytes)
+                    },
+                    onPermissionDenied: { permissionDenied = true },
+                    onError: { message in scannerError = message }
+                )
+                .frame(maxWidth: .infinity, minHeight: 300)
+                .clipShape(RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .stroke(Theme.accent.opacity(0.72), style: StrokeStyle(lineWidth: 2, dash: [10, 8]))
+                    .padding(52)
+                    .allowsHitTesting(false)
+            }
             .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(.secondary.opacity(0.3), lineWidth: 1)
+                RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                    .stroke(Theme.strongBorder, lineWidth: 1)
             )
             if let scannerError {
-                Text(scannerError)
-                    .font(.caption)
-                    .foregroundStyle(.red)
+                InlineMessage(icon: "exclamationmark.triangle.fill", message: scannerError, color: Theme.destructive)
             }
-            if case .failed(let message) = viewModel.state {
-                Text(message)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                Button("Try again", action: viewModel.reset)
-            }
+            failureMessage
             Button("Paste JSON instead") { showPasteFallback = true }
-                .font(.caption)
+                .font(Theme.Typography.caption)
                 .buttonStyle(.bordered)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
+        .padding(Theme.Spacing.section)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    @ViewBuilder
+    private var permissionDeniedCard: some View {
+        VStack(spacing: Theme.Spacing.control) {
+            Image(systemName: "camera.slash")
+                .font(Theme.Typography.iconHero)
+                .foregroundStyle(Theme.destructive)
+                .frame(width: 90, height: 90)
+                .background(Theme.destructive.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+            Text("Camera access is required to scan the pairing QR.")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Text.primary)
+                .multilineTextAlignment(.center)
+            Text("Open Settings -> GUIGemini -> Camera, or paste the QR's JSON instead.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Paste JSON instead") { showPasteFallback = true }
+                .font(Theme.Typography.sectionTitle)
+                .buttonStyle(.borderedProminent)
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.destructive.opacity(0.24), lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
     }
     #endif
 
     @ViewBuilder
     private var macPasteScreen: some View {
-        Text("Paste the QR's JSON payload below.")
-            .foregroundStyle(.secondary)
-        TextEditor(text: $pastedJSON)
-            .font(.system(.caption, design: .monospaced))
-            .frame(minHeight: 120)
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(.secondary.opacity(0.3)))
-        Button("Scan") {
-            guard let bytes = pastedJSON.data(using: .utf8) else {
-                return
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            Label("Paste QR JSON", systemImage: "doc.on.clipboard")
+                .font(Theme.Typography.sectionTitle)
+                .foregroundStyle(Theme.Text.primary)
+            Text("Paste the QR's JSON payload below.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+            TextEditor(text: $pastedJSON)
+                .font(Theme.Typography.code)
+                .frame(minHeight: 132)
+                .padding(8)
+                .scrollContentBackground(.hidden)
+                .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                        .stroke(Theme.border, lineWidth: 1)
+                )
+            Button {
+                guard let bytes = pastedJSON.data(using: .utf8) else {
+                    return
+                }
+                viewModel.scan(bootstrapJSON: bytes)
+            } label: {
+                Label("Scan", systemImage: "qrcode.viewfinder")
+                    .font(Theme.Typography.sectionTitle)
             }
-            viewModel.scan(bootstrapJSON: bytes)
+            .buttonStyle(.borderedProminent)
+            .disabled(pastedJSON.isEmpty)
+            failureMessage
         }
-        .disabled(pastedJSON.isEmpty)
-        if case .failed(let message) = viewModel.state {
-            Text(message)
-                .font(.callout)
-                .foregroundStyle(.red)
-            Button("Try again", action: viewModel.reset)
-        }
+        .padding(Theme.Spacing.section)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
     }
 
     @ViewBuilder
     private func confirmingScreen(code: String, displayName: String) -> some View {
-        Text("Verify this code on your Mac")
-            .font(.headline)
-        Text(code)
-            .font(.system(.largeTitle, design: .monospaced).bold())
-            .tracking(8)
-            .padding(.vertical, 8)
-            .frame(maxWidth: .infinity)
-            .background(.secondary.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-        Text("Pairing as: \(displayName)")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        HStack(spacing: 12) {
-            Button(role: .destructive, action: viewModel.cancel) {
-                Text("Codes don't match")
+        VStack(alignment: .leading, spacing: Theme.Spacing.section) {
+            Label("Verify this code on your Mac", systemImage: "lock.shield")
+                .font(Theme.Typography.sectionTitle)
+                .foregroundStyle(Theme.Text.primary)
+            Text(code)
+                .font(Theme.Typography.codeDisplay)
+                .tracking(8)
+                .padding(.vertical, Theme.Spacing.control)
+                .frame(maxWidth: .infinity)
+                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                        .stroke(Theme.accent.opacity(0.26), lineWidth: 1)
+                )
+            Text("Pairing as: \(displayName)")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .lineLimit(2)
+            HStack(spacing: Theme.Spacing.control) {
+                Button(role: .destructive, action: viewModel.cancel) {
+                    Label("Codes don't match", systemImage: "xmark")
+                }
+                .buttonStyle(.bordered)
+                Spacer()
+                Button(action: viewModel.confirm) {
+                    Label("Confirm", systemImage: "checkmark")
+                        .font(Theme.Typography.sectionTitle)
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.bordered)
-            Spacer()
-            Button(action: viewModel.confirm) {
-                Text("Confirm")
-                    .font(.headline)
-            }
-            .buttonStyle(.borderedProminent)
         }
+        .padding(Theme.Spacing.section)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    @ViewBuilder
+    private var confirmedScreen: some View {
+        VStack(spacing: Theme.Spacing.control) {
+            Image(systemName: "checkmark.seal.fill")
+                .font(Theme.Typography.iconHero)
+                .foregroundStyle(Theme.success)
+            Text("Paired")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Text.primary)
+            Text("The companion is ready to receive transcript events, approvals, and composer actions.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.success.opacity(0.24), lineWidth: 1)
+        )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    @ViewBuilder
+    private var failureMessage: some View {
+        if case .failed(let message) = viewModel.state {
+            InlineMessage(icon: "exclamationmark.triangle.fill", message: message, color: Theme.destructive)
+            Button("Try again", action: viewModel.reset)
+                .font(Theme.Typography.caption)
+                .buttonStyle(.bordered)
+        }
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct InlineMessage: View {
+    let icon: String
+    let message: String
+    let color: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.tight) {
+            Image(systemName: icon)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(color)
+            Text(message)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.Text.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.control)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
     }
 }

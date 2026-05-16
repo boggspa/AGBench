@@ -5909,6 +5909,383 @@ input:disabled, select:disabled, textarea:disabled {
   cursor: not-allowed;
 }
 
+/* Remote Workspaces */
+.remote-workspaces-panel {
+  gap: 14px;
+  border-color: color-mix(in srgb, var(--panel-border) 62%, var(--text-primary) 14%);
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 16%, transparent) 0, transparent 38%),
+    linear-gradient(145deg, color-mix(in srgb, var(--panel-bg) 56%, transparent), color-mix(in srgb, var(--panel-elevated-bg) 34%, transparent));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 16%, transparent),
+    0 14px 34px color-mix(in srgb, #000 16%, transparent);
+  backdrop-filter: blur(16px) saturate(1.15);
+  -webkit-backdrop-filter: blur(16px) saturate(1.15);
+}
+
+.remote-workspaces-header,
+.remote-workspaces-entry-layout,
+.remote-workspaces-form-header,
+.remote-workspaces-meta,
+.remote-workspaces-chip-list,
+.remote-workspaces-toggle-grid,
+.remote-workspaces-footer {
+  display: flex;
+}
+
+.remote-workspaces-header {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remote-workspaces-title {
+  display: block;
+  font-weight: 720;
+}
+
+.remote-workspaces-kicker {
+  margin: 3px 0 0;
+  color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
+  font-size: var(--font-size-xs);
+}
+
+.remote-workspaces-count {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 92%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.remote-workspaces-hint {
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+  line-height: 1.45;
+}
+
+.remote-workspaces-error {
+  margin-bottom: 0;
+}
+
+.remote-workspaces-form,
+.remote-workspaces-entry-card,
+.remote-workspaces-empty {
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 7%, transparent), transparent),
+    color-mix(in srgb, var(--panel-bg) 42%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.remote-workspaces-form {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+}
+
+.remote-workspaces-form-header {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remote-workspaces-form-header span {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 690;
+}
+
+.remote-workspaces-form-header small {
+  color: color-mix(in srgb, var(--text-secondary) 76%, transparent);
+  font-size: var(--font-size-xs);
+}
+
+.remote-workspaces-form-grid {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) minmax(220px, 1.4fr);
+  gap: 10px;
+}
+
+.remote-workspaces-field {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.remote-workspaces-field > span,
+.remote-workspaces-fieldset > legend,
+.remote-workspaces-meta-label {
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.remote-workspaces-input {
+  width: 100%;
+  min-width: 0;
+  border-color: color-mix(in srgb, var(--panel-border) 82%, transparent);
+  background: color-mix(in srgb, var(--panel-bg-solid) 34%, transparent);
+}
+
+.remote-workspaces-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.remote-workspaces-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.remote-workspaces-fieldset > legend {
+  margin-bottom: 6px;
+  padding: 0;
+}
+
+.remote-workspaces-segmented {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.remote-workspaces-segment,
+.remote-workspaces-toggle-chip {
+  position: relative;
+  min-width: 0;
+  cursor: pointer;
+}
+
+.remote-workspaces-segment input,
+.remote-workspaces-toggle-chip input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.remote-workspaces-segment span,
+.remote-workspaces-toggle-chip span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 28px;
+  border-radius: 8px;
+  color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.remote-workspaces-segment:hover span,
+.remote-workspaces-toggle-chip:hover span {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.remote-workspaces-segment.active span,
+.remote-workspaces-toggle-chip.active span {
+  color: var(--text-primary);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 10%, transparent), transparent),
+    color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 14%, transparent),
+    0 6px 18px color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.remote-workspaces-segment:focus-within span,
+.remote-workspaces-toggle-chip:focus-within span {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.remote-workspaces-toggle-grid {
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.remote-workspaces-toggle-chip span {
+  width: auto;
+  min-height: 26px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 80%, transparent);
+  border-radius: 999px;
+  padding: 0 10px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.remote-workspaces-list-section {
+  margin-top: 2px;
+}
+
+.remote-workspaces-entry-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remote-workspaces-entry-card {
+  padding: 12px;
+  transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.remote-workspaces-entry-card:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--panel-border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent),
+    0 10px 24px color-mix(in srgb, #000 18%, transparent);
+}
+
+.remote-workspaces-entry-layout {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remote-workspaces-entry-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.remote-workspaces-entry-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.remote-workspaces-entry-id {
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 720;
+  overflow-wrap: anywhere;
+}
+
+.remote-workspaces-path {
+  margin-top: 4px;
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  font-size: var(--font-size-xs);
+  overflow-wrap: anywhere;
+}
+
+.remote-workspaces-meta {
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 10px;
+}
+
+.remote-workspaces-meta-group {
+  display: grid;
+  gap: 4px;
+}
+
+.remote-workspaces-chip-list {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.remote-workspaces-chip {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  max-width: 100%;
+  min-height: 20px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: 999px;
+  padding: 1px 7px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.remote-workspaces-mode-chip {
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--accent) 30%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 92%, transparent);
+}
+
+.remote-workspaces-mode-chip.is-write {
+  border-color: color-mix(in srgb, var(--warning) 34%, transparent);
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+}
+
+.remote-workspaces-chip.is-empty {
+  color: color-mix(in srgb, var(--text-secondary) 58%, transparent);
+}
+
+.remote-workspaces-remove {
+  flex: 0 0 auto;
+}
+
+.remote-workspaces-footer {
+  justify-content: flex-end;
+}
+
+.remote-workspaces-clear {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 34%, transparent);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+}
+
+.remote-workspaces-clear:hover {
+  color: color-mix(in srgb, var(--danger) 86%, var(--text-primary));
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.remote-workspaces-empty {
+  display: grid;
+  gap: 5px;
+  padding: 18px;
+  text-align: center;
+}
+
+.remote-workspaces-empty strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+}
+
+.remote-workspaces-empty span {
+  color: color-mix(in srgb, var(--text-secondary) 76%, transparent);
+}
+
+@media (max-width: 720px) {
+  .remote-workspaces-header,
+  .remote-workspaces-form-header,
+  .remote-workspaces-entry-layout {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .remote-workspaces-form-grid,
+  .remote-workspaces-segmented {
+    grid-template-columns: 1fr;
+  }
+
+  .remote-workspaces-remove,
+  .remote-workspaces-clear {
+    width: 100%;
+  }
+}
+
 /* Run Summary Card */
 .run-summary {
   background: color-mix(in srgb, var(--panel-elevated-bg) 66%, transparent);

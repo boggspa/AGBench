@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 
 interface PendingPairing {
   sessionID: string
@@ -48,7 +48,8 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 'var(--radius-md)',
     background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
     color: 'var(--text-primary)',
-    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+    fontFamily:
+      'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
     fontSize: '2rem',
     fontWeight: 750,
     letterSpacing: 0,
@@ -104,7 +105,7 @@ function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-export function IncomingPairingPrompt(): JSX.Element | null {
+export function IncomingPairingPrompt(): ReactElement | null {
   const [pending, setPending] = useState<PendingPairing | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -147,12 +148,20 @@ export function IncomingPairingPrompt(): JSX.Element | null {
         aria-describedby="incoming-pairing-description"
         style={styles.panel}
       >
-        <h2 id="incoming-pairing-title" style={styles.header}>iPhone wants to pair</h2>
-        <p id="incoming-pairing-description" style={styles.label}>{pending.controllerDisplayName}</p>
+        <h2 id="incoming-pairing-title" style={styles.header}>
+          iPhone wants to pair
+        </h2>
+        <p id="incoming-pairing-description" style={styles.label}>
+          {pending.controllerDisplayName}
+        </p>
         <div style={styles.code} aria-label={`Pairing confirmation code ${pending.code}`}>
           {pending.code}
         </div>
-        {error && <p style={styles.error} role="alert">{error}</p>}
+        {error && (
+          <p style={styles.error} role="alert">
+            {error}
+          </p>
+        )}
         <div style={styles.actions}>
           <button
             type="button"
@@ -160,7 +169,7 @@ export function IncomingPairingPrompt(): JSX.Element | null {
             onClick={() => void finalize(false)}
             disabled={isSubmitting}
           >
-            Codes don't match
+            Codes don&apos;t match
           </button>
           <button
             type="button"

@@ -15,88 +15,147 @@ public struct ApprovalCardsView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            header
-            if viewModel.pending.isEmpty {
-                empty
-            } else {
-                ForEach(viewModel.pending) { approval in
-                    card(for: approval)
+        ZStack {
+            Theme.background.ignoresSafeArea()
+            ScrollView {
+                VStack(alignment: .leading, spacing: Theme.Spacing.section) {
+                    header
+                    if viewModel.pending.isEmpty {
+                        empty
+                            .frame(maxWidth: .infinity)
+                    } else {
+                        ForEach(viewModel.pending) { approval in
+                            card(for: approval)
+                        }
+                    }
+                    if let result = viewModel.lastResultMessage {
+                        Text(result)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Text.secondary)
+                            .padding(Theme.Spacing.control)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                                    .stroke(Theme.border, lineWidth: 1)
+                            )
+                    }
                 }
+                .padding(Theme.Spacing.screen)
             }
-            if let result = viewModel.lastResultMessage {
-                Text(result)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 4)
-            }
+            .scrollIndicators(.hidden)
         }
-        .padding()
     }
 
     @ViewBuilder
     private var header: some View {
-        HStack {
-            Text("Approvals")
-                .font(.title2.bold())
+        HStack(alignment: .center, spacing: Theme.Spacing.control) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Approval Queue")
+                    .font(Theme.Typography.screenTitle)
+                    .foregroundStyle(Theme.Text.primary)
+                Text("Review desktop tool requests before they run.")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Text.secondary)
+            }
             Spacer()
             if !viewModel.pending.isEmpty {
                 Text("\(viewModel.pending.count) pending")
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(.orange.opacity(0.2), in: Capsule())
-                    .foregroundStyle(.orange)
+                    .font(Theme.Typography.caption)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.warning.opacity(0.16), in: Capsule())
+                    .foregroundStyle(Theme.warning)
             }
         }
+        .padding(Theme.Spacing.section)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
     }
 
     @ViewBuilder
     private var empty: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: Theme.Spacing.control) {
             Image(systemName: "checkmark.shield")
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text("No approvals pending")
-                .foregroundStyle(.secondary)
+                .font(Theme.Typography.iconHero)
+                .foregroundStyle(Theme.success)
+                .frame(width: 86, height: 86)
+                .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                        .stroke(Theme.strongBorder, lineWidth: 1)
+                )
+            Text("Nothing needs approval")
+                .font(Theme.Typography.headline)
+                .foregroundStyle(Theme.Text.primary)
+            Text("When a provider asks to run a guarded tool, its decision card will appear here.")
+                .font(Theme.Typography.callout)
+                .foregroundStyle(Theme.Text.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
+        .padding(Theme.Spacing.screen)
+        .frame(maxWidth: 340)
     }
 
     @ViewBuilder
     private func card(for approval: PendingApproval) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(approval.summary)
-                .font(.body)
-            HStack(spacing: 6) {
-                Label(approval.workspaceId, systemImage: "folder")
-                Text("·")
-                Label(approval.threadId, systemImage: "bubble.left.and.bubble.right")
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            HStack(alignment: .top, spacing: Theme.Spacing.control) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .font(Theme.Typography.sectionTitle)
+                    .foregroundStyle(Theme.warning)
+                    .frame(width: 34, height: 34)
+                    .background(Theme.warning.opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(approval.summary)
+                        .font(Theme.Typography.body)
+                        .foregroundStyle(Theme.Text.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    HStack(spacing: 6) {
+                        Label(approval.workspaceId, systemImage: "folder")
+                        Text("/")
+                        Label(approval.threadId, systemImage: "bubble.left.and.bubble.right")
+                    }
+                    .font(Theme.Typography.code)
+                    .foregroundStyle(Theme.Text.secondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                }
             }
-            .font(.caption.monospaced())
-            .foregroundStyle(.secondary)
-            HStack(spacing: 8) {
-                Button("Decline", role: .destructive) {
+            HStack(spacing: Theme.Spacing.tight) {
+                Button(role: .destructive) {
                     Task { await viewModel.respond(to: approval, decision: .decline) }
+                } label: {
+                    Label("Decline", systemImage: "xmark")
                 }
                 .buttonStyle(.bordered)
                 Spacer()
-                Button("Once") {
+                Button {
                     Task { await viewModel.respond(to: approval, decision: .accept) }
+                } label: {
+                    Label("Once", systemImage: "checkmark")
                 }
                 .buttonStyle(.bordered)
-                Button("For session") {
+                Button {
                     Task { await viewModel.respond(to: approval, decision: .acceptForSession) }
+                } label: {
+                    Label("For session", systemImage: "checkmark.seal.fill")
                 }
                 .buttonStyle(.borderedProminent)
             }
+            .font(Theme.Typography.caption)
         }
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .padding(Theme.Spacing.section)
+        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.orange.opacity(0.3), lineWidth: 1)
+            RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous)
+                .stroke(Theme.warning.opacity(0.30), lineWidth: 1)
         )
+        .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
     }
 }
