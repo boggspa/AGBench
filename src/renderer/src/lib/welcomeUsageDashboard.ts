@@ -3,12 +3,32 @@ import type { ChatRecord, ProviderId, UsageRecord } from '../../../main/store/ty
 export type WelcomeUsageTab = 'overview' | 'models'
 export type WelcomeUsageRange = 'all' | '30d' | '7d'
 
+export const HEATMAP_DAY_COUNT = 30
+export const HEATMAP_HOUR_COUNT = 24
+
 export interface WelcomeUsageDayCell {
   dayKey: string
   label: string
   value: number
   level: number
   isToday: boolean
+}
+
+export interface WelcomeUsageHourCell {
+  /** Local-time day, formatted as YYYY-MM-DD. */
+  dayKey: string
+  /** Hour-of-day, 0-23 (local time). */
+  hour: number
+  /** Display label like "Mar 14 03:00". */
+  label: string
+  /** Sum of tokens for this hour bucket. */
+  totalTokens: number
+  /** Per-provider token totals for this hour bucket. */
+  providerTotals: Record<ProviderId, number>
+  /** Intensity 0..4 (0 = empty, 4 = strongest). */
+  level: number
+  /** True when this cell corresponds to the current local hour. */
+  isCurrentHour: boolean
 }
 
 export interface WelcomeUsageModelDatum {
@@ -37,6 +57,12 @@ export interface WelcomeUsageDashboardData {
   providerCount: number
   comparisonText: string
   heatmap: WelcomeUsageDayCell[]
+  /**
+   * Hourly grid covering the most recent {@link HEATMAP_DAY_COUNT} days × 24
+   * hours, ordered chronologically (oldest first, by day then hour). Used by
+   * the dense activity grid in the welcome dashboard.
+   */
+  hourlyHeatmap: WelcomeUsageHourCell[]
   chartDays: Array<{ dayKey: string; label: string; total: number }>
   modelBreakdown: WelcomeUsageModelDatum[]
   maxChartTotal: number
@@ -47,12 +73,32 @@ const startOfLocalDay = (timestamp: number): number => {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
 }
 
+const startOfLocalHour = (timestamp: number): number => {
+  const date = new Date(timestamp)
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()).getTime()
+}
+
 const dayKeyFromTimestamp = (timestamp: number): string => {
   const date = new Date(startOfLocalDay(timestamp))
   const year = date.getFullYear()
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+const emptyProviderTotals = (): Record<ProviderId, number> => ({
+  gemini: 0,
+  codex: 0,
+  claude: 0,
+  kimi: 0
+})
+
+const formatHourLabel = (dayKey: string, hour: number): string => {
+  const [year, month, day] = dayKey.split('-').map(Number)
+  const date = new Date(year, (month || 1) - 1, day || 1, hour)
+  const dayLabel = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+  const hourLabel = date.toLocaleTimeString([], { hour: 'numeric' })
+  return `${dayLabel} ${hourLabel}`
 }
 
 const formatUsageDateLabel = (dayKey: string): string => {
@@ -124,6 +170,12 @@ export const buildWelcomeUsageDashboardData = (
   const hourlyTotals = new Array(24).fill(0) as number[]
   const dailyTotals = new Map<string, number>()
   const modelMap = new Map<string, WelcomeUsageModelDatum>()
+  /**
+   * Hourly buckets keyed by the local-time hour start (ms epoch). We bucket
+   * usage records here so the dense 30×24 welcome heatmap can render
+   * provider-coloured intensity without re-scanning records in the component.
+   */
+  const hourBuckets = new Map<number, { totalTokens: number; providerTotals: Record<ProviderId, number> }>()
 
   for (const event of messageEvents) {
     activeDayKeys.add(dayKeyFromTimestamp(event.timestamp))
@@ -145,6 +197,16 @@ export const buildWelcomeUsageDashboardData = (
     providerIds.add(provider)
     hourlyTotals[hour] += totalTokens || 1
     dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
+
+    const hourStart = startOfLocalHour(record.timestamp)
+    const bucket = hourBuckets.get(hourStart) || { totalTokens: 0, providerTotals: emptyProviderTotals() }
+    // Use raw token count when present; otherwise count the run as a single
+    // unit so the cell still shows activity even for usage records that lack
+    // explicit token totals (mirrors the existing hourlyTotals heuristic).
+    const cellWeight = totalTokens || 1
+    bucket.totalTokens += cellWeight
+    bucket.providerTotals[provider] += cellWeight
+    hourBuckets.set(hourStart, bucket)
 
     const existing = modelMap.get(modelId) || {
       id: modelId,
@@ -214,6 +276,42 @@ export const buildWelcomeUsageDashboardData = (
     }
   })
 
+  // Build the dense 30-day × 24-hour grid. The grid is anchored on the current
+  // local hour so the most recent activity occupies the last cell. The grid is
+  // returned in chronological order (oldest first), giving the renderer a
+  // flat list it can slot into a fixed-size CSS grid.
+  const nowHourStart = startOfLocalHour(now)
+  const oneHour = 60 * 60 * 1000
+  const hourlyHeatmapTotalCells = HEATMAP_DAY_COUNT * HEATMAP_HOUR_COUNT
+  const hourlyHeatmapStart = nowHourStart - (hourlyHeatmapTotalCells - 1) * oneHour
+  let maxHourlyValue = 0
+  for (let index = 0; index < hourlyHeatmapTotalCells; index += 1) {
+    const cellStart = hourlyHeatmapStart + index * oneHour
+    const bucket = hourBuckets.get(cellStart)
+    if (bucket && bucket.totalTokens > maxHourlyValue) maxHourlyValue = bucket.totalTokens
+  }
+  const hourlyHeatmap: WelcomeUsageHourCell[] = Array.from({ length: hourlyHeatmapTotalCells }, (_, index) => {
+    const cellStart = hourlyHeatmapStart + index * oneHour
+    const cellDate = new Date(cellStart)
+    const dayKey = dayKeyFromTimestamp(cellStart)
+    const hour = cellDate.getHours()
+    const bucket = hourBuckets.get(cellStart)
+    const total = bucket?.totalTokens || 0
+    const providerTotals = bucket ? { ...bucket.providerTotals } : emptyProviderTotals()
+    const level = total <= 0 ? 0 : maxHourlyValue > 0
+      ? Math.max(1, Math.min(4, Math.ceil((total / maxHourlyValue) * 4)))
+      : 1
+    return {
+      dayKey,
+      hour,
+      label: formatHourLabel(dayKey, hour),
+      totalTokens: total,
+      providerTotals,
+      level,
+      isCurrentHour: cellStart === nowHourStart
+    }
+  })
+
   const chartDayCount = range === '7d' ? 7 : 6
   const activeChartDays = Array.from(dailyTotals.keys()).sort().slice(-chartDayCount)
   const fallbackChartDays = Array.from({ length: chartDayCount }, (_, index) => {
@@ -245,8 +343,44 @@ export const buildWelcomeUsageDashboardData = (
       ? `You've tracked ${formatCompactUsageNumber(totalTokens)} tokens across ${providerIds.size || 1} provider${(providerIds.size || 1) === 1 ? '' : 's'}.`
       : 'Start a provider run to seed workspace activity stats.',
     heatmap,
+    hourlyHeatmap,
     chartDays,
     modelBreakdown,
     maxChartTotal
   }
+}
+
+/**
+ * Mix provider colours weighted by token share. Returns a CSS colour string
+ * suitable for use as a chip background. Empty input returns an empty string,
+ * letting the caller fall back to the default empty-cell background.
+ */
+export const mixProviderColors = (
+  providerTotals: Record<ProviderId, number>,
+  providerColors: Record<ProviderId, string>
+): string => {
+  const entries = (Object.keys(providerTotals) as ProviderId[])
+    .map((provider) => ({ provider, weight: providerTotals[provider] }))
+    .filter(({ weight }) => weight > 0)
+  if (entries.length === 0) return ''
+  const totalWeight = entries.reduce((sum, item) => sum + item.weight, 0)
+  if (totalWeight <= 0) return ''
+  if (entries.length === 1) {
+    return providerColors[entries[0].provider]
+  }
+  // color-mix only takes two colours at a time so we fold left, mixing each
+  // additional colour by its share of the *remaining* weight. This gives a
+  // weighted average without depending on a runtime RGB parser.
+  let accumulatedWeight = entries[0].weight
+  let blend = `${providerColors[entries[0].provider]}`
+  for (let i = 1; i < entries.length; i += 1) {
+    const next = entries[i]
+    const nextWeight = next.weight
+    const blendWeight = accumulatedWeight
+    accumulatedWeight += nextWeight
+    const blendPercent = Math.round((blendWeight / accumulatedWeight) * 100)
+    const nextPercent = 100 - blendPercent
+    blend = `color-mix(in srgb, ${blend} ${blendPercent}%, ${providerColors[next.provider]} ${nextPercent}%)`
+  }
+  return blend
 }

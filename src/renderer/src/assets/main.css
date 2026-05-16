@@ -3045,9 +3045,26 @@ button.sidebar-item {
 
 .composer-area > .provider-shell-status-row,
 .composer-area > .composer-above-bar,
+.composer-area > .composer-header-row,
 .composer-area > .scheduled-task-strip {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));
+}
+
+/*
+ * Codex-only top row that hosts the External path picker. Keeps the picker
+ * out of the bottom inline-pickers strip so the Provider/Model controls don't
+ * shift horizontally when the user toggles providers.
+ */
+.composer-header-row {
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: auto;
+  padding: 0;
+}
+
+.composer-header-row .composer-header-external-path {
+  margin: 0;
 }
 
 .gemini-terminal-open .composer-area {
@@ -3055,7 +3072,11 @@ button.sidebar-item {
 }
 
 .welcome-mode .composer-area {
-  top: 61%;
+  /* Welcome-mode composer/greeting offset. Lowered from 61% to 56% to halve
+   * the visual gap between the activity dashboard's bottom edge and the
+   * greeting/composer block above the input surface. The translateY keeps the
+   * block anchored to its own internal flow so the gap shrinks evenly. */
+  top: 56%;
   bottom: auto;
   transform: translateY(-18%);
   padding-bottom: 0;
@@ -3382,6 +3403,53 @@ button.sidebar-item {
     inset 0 0 0 1px color-mix(in srgb, var(--text-primary) 64%, transparent),
     0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent),
     0 0 14px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/*
+ * Dense provider-coloured activity grid (30 days × 24 hours). Replaces the
+ * legacy daily heatmap on the welcome screen. Grid template dimensions are
+ * applied inline so the JS-side constants remain the source of truth. The
+ * chip height is fixed (not aspect-ratio:1) to keep the panel from becoming
+ * unreasonably tall; the chips simply scale wider as the dashboard does.
+ */
+.welcome-usage-activity-grid {
+  display: grid;
+  gap: 1px;
+  margin-top: 8px;
+  border-radius: 6px;
+  padding: 2px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 4%, transparent), transparent);
+}
+
+.welcome-usage-hour-cell {
+  min-width: 0;
+  height: 7px;
+  border-radius: 1.5px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 6%, transparent), color-mix(in srgb, var(--panel-border) 18%, transparent));
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--panel-border) 32%, transparent);
+  transition: filter 120ms ease;
+}
+
+.welcome-usage-hour-cell.level-0 {
+  /* Empty hours render with the default empty-cell background only. */
+}
+
+.welcome-usage-hour-cell.level-1,
+.welcome-usage-hour-cell.level-2,
+.welcome-usage-hour-cell.level-3,
+.welcome-usage-hour-cell.level-4 {
+  /* Provider colour & opacity are applied via inline style. The box-shadow
+   * adds a subtle inner edge so chips read distinctly against each other. */
+  box-shadow:
+    inset 0 0 0 0.5px color-mix(in srgb, #000000 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+
+.welcome-usage-hour-cell.current {
+  outline: 1px solid color-mix(in srgb, var(--text-primary) 64%, transparent);
+  outline-offset: 1px;
 }
 
 .welcome-usage-footnote {

@@ -29,10 +29,13 @@ import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
 import {
+  HEATMAP_DAY_COUNT,
+  HEATMAP_HOUR_COUNT,
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
+  mixProviderColors,
   type WelcomeUsageDashboardData,
-  type WelcomeUsageRange,
+  type WelcomeUsageHourCell,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
 
@@ -1262,12 +1265,6 @@ const formatScheduledRunTime = (iso: string): string => {
   })
 }
 
-const WELCOME_USAGE_RANGE_LABELS: Array<{ value: WelcomeUsageRange; label: string }> = [
-  { value: 'all', label: 'All' },
-  { value: '30d', label: '30d' },
-  { value: '7d', label: '7d' }
-]
-
 const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
   { value: 'overview', label: 'Overview' },
   { value: 'models', label: 'Models' }
@@ -1275,18 +1272,74 @@ const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
 
 const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
+/**
+ * Provider palette used by the dense activity grid. Kept in TS so we can mix
+ * colours at runtime via {@link mixProviderColors}. The matching CSS variables
+ * live in main.css under :root for consistency with the rest of the UI.
+ */
+const PROVIDER_GRID_COLORS: Record<ProviderId, string> = {
+  gemini: '#2563EB',
+  codex: '#6366F1',
+  claude: '#D97706',
+  kimi: '#84A33B'
+}
+
+const HEATMAP_LEVEL_OPACITY: Record<number, number> = {
+  0: 0,
+  1: 0.38,
+  2: 0.58,
+  3: 0.78,
+  4: 1
+}
+
+/**
+ * Renders the dense 30 days × 24 hours activity grid that replaces the legacy
+ * daily heatmap. Each chip's background is a provider-weighted mix of the
+ * palette in {@link PROVIDER_GRID_COLORS}, with opacity tied to the hourly
+ * intensity level. Empty hours render with no chip fill, falling through to the
+ * empty-cell background defined in CSS.
+ */
+function ActivityHourGrid({ cells }: { cells: WelcomeUsageHourCell[] }) {
+  return (
+    <div
+      className="welcome-usage-activity-grid"
+      role="img"
+      aria-label={`Hourly activity grid for the last ${HEATMAP_DAY_COUNT} days`}
+      style={{
+        gridTemplateColumns: `repeat(${HEATMAP_DAY_COUNT}, minmax(0, 1fr))`,
+        gridTemplateRows: `repeat(${HEATMAP_HOUR_COUNT}, minmax(0, 1fr))`
+      }}
+    >
+      {cells.map((cell) => {
+        const color = cell.level > 0 ? mixProviderColors(cell.providerTotals, PROVIDER_GRID_COLORS) : ''
+        const opacity = HEATMAP_LEVEL_OPACITY[cell.level] ?? 0
+        const style: CSSProperties = color
+          ? { backgroundColor: color, opacity }
+          : {}
+        const tokenSummary = cell.totalTokens > 0
+          ? `${formatCompactUsageNumber(cell.totalTokens)} tokens`
+          : 'no activity'
+        return (
+          <span
+            key={`${cell.dayKey}-${cell.hour}`}
+            className={`welcome-usage-hour-cell level-${cell.level} ${cell.isCurrentHour ? 'current' : ''}`}
+            style={style}
+            title={`${cell.label} - ${tokenSummary}`}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 function WelcomeUsageDashboard({
   data,
   tab,
-  range,
-  onTabChange,
-  onRangeChange
+  onTabChange
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
-  range: WelcomeUsageRange
   onTabChange: (tab: WelcomeUsageTab) => void
-  onRangeChange: (range: WelcomeUsageRange) => void
 }) {
   const topModels = data.modelBreakdown.slice(0, 4)
   const statItems = [
@@ -1315,18 +1368,6 @@ function WelcomeUsageDashboard({
             </button>
           ))}
         </div>
-        <div className="welcome-usage-range" aria-label="Usage range">
-          {WELCOME_USAGE_RANGE_LABELS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`welcome-usage-range-btn ${range === option.value ? 'active' : ''}`}
-              onClick={() => onRangeChange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
 
       {tab === 'overview' ? (
@@ -1339,15 +1380,7 @@ function WelcomeUsageDashboard({
               </div>
             ))}
           </div>
-          <div className="welcome-usage-heatmap" aria-label="Daily activity heatmap">
-            {data.heatmap.map((cell) => (
-              <span
-                key={cell.dayKey}
-                className={`welcome-usage-cell level-${cell.level} ${cell.isToday ? 'today' : ''}`}
-                title={`${cell.label}: ${formatCompactUsageNumber(cell.value)} tokens`}
-              />
-            ))}
-          </div>
+          <ActivityHourGrid cells={data.hourlyHeatmap} />
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
       ) : (
@@ -3188,7 +3221,6 @@ function App(): React.JSX.Element {
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
   const [welcomeUsageTab, setWelcomeUsageTab] = useState<WelcomeUsageTab>('overview')
-  const [welcomeUsageRange, setWelcomeUsageRange] = useState<WelcomeUsageRange>('all')
   const saveChatTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const lastUsageWindowsByProviderRef = useRef<Record<ProviderId, UsageWindowAggregate[]>>({
     gemini: [],
@@ -4055,6 +4087,23 @@ function App(): React.JSX.Element {
       // Sort by lastOpenedAt descending
       const sorted = [...wsList].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
       handleSelectExistingWorkspace(sorted[0])
+    } else {
+      // First-launch / zero-workspace case: prefer an existing global chat so
+      // the composer is immediately usable in workspace-less mode, falling
+      // back to creating a fresh global chat. Both paths route through
+      // selectGlobalChat which sets scope='global' on the active chat.
+      const existingGlobalChats = allChats
+        .filter((chat) => isGlobalChat(chat))
+        .sort((a, b) => (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0))
+      if (existingGlobalChats.length > 0) {
+        await selectGlobalChat(existingGlobalChats[0])
+      } else {
+        try {
+          await handleNewGlobalChat()
+        } catch (error) {
+          console.warn('[AGBench] Failed to create initial global chat for workspace-less first launch:', error)
+        }
+      }
     }
   }
 
@@ -7868,8 +7917,8 @@ function App(): React.JSX.Element {
     !showFallbackUX
   )
   const welcomeUsageDashboardData = useMemo(
-    () => buildWelcomeUsageDashboardData(usageRecords, chats, welcomeUsageRange),
-    [usageRecords, chats, welcomeUsageRange]
+    () => buildWelcomeUsageDashboardData(usageRecords, chats, 'all'),
+    [usageRecords, chats]
   )
   const shouldShowWelcomeUsageDashboard = isWelcomeChat && welcomeUsageDashboardData.hasActivity
   const runCompleteDurationText = runCompleteNotice && !isWelcomeChat
@@ -8325,9 +8374,7 @@ function App(): React.JSX.Element {
               <WelcomeUsageDashboard
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}
-                range={welcomeUsageRange}
                 onTabChange={setWelcomeUsageTab}
-                onRangeChange={setWelcomeUsageRange}
               />
             </div>
           )}
@@ -8342,6 +8389,29 @@ function App(): React.JSX.Element {
                       {chip.label}
                     </span>
                   ))}
+                </div>
+              )}
+              {currentProvider === 'codex' && !isCurrentGlobalChat && (
+                <div className="composer-header-row" aria-label="Codex thread header controls">
+                  <label className="composer-picker-label composer-header-external-path" title="Grant Codex access to a file or folder outside this workspace">
+                    <PermissionSymbolIcon />
+                    <select
+                      className="composer-inline-picker"
+                      aria-label="Grant external path access"
+                      value=""
+                      disabled={isCurrentComposerLocked || !currentWorkspace || !currentChat}
+                      onChange={(event) => {
+                        const access = event.target.value as 'read' | 'write'
+                        if (access === 'read' || access === 'write') {
+                          void handlePickExternalPathGrant(access)
+                        }
+                      }}
+                    >
+                      <option value="">External path</option>
+                      <option value="read">Grant read...</option>
+                      <option value="write">Grant edit...</option>
+                    </select>
+                  </label>
                 </div>
               )}
               {isWelcomeChat && (
@@ -8842,27 +8912,6 @@ function App(): React.JSX.Element {
                     >
                       <PlusSymbolIcon />
                     </button>
-                    {currentProvider === 'codex' && !isCurrentGlobalChat && (
-                      <label className="composer-picker-label" title="Grant Codex access to a file or folder outside this workspace">
-                        <PermissionSymbolIcon />
-                        <select
-                          className="composer-inline-picker"
-                          aria-label="Grant external path access"
-                          value=""
-                          disabled={isCurrentComposerLocked || !currentWorkspace || !currentChat}
-                          onChange={(event) => {
-                            const access = event.target.value as 'read' | 'write'
-                            if (access === 'read' || access === 'write') {
-                              void handlePickExternalPathGrant(access)
-                            }
-                          }}
-                        >
-                          <option value="">External path</option>
-                          <option value="read">Grant read...</option>
-                          <option value="write">Grant edit...</option>
-                        </select>
-                      </label>
-                    )}
                     <label className="composer-picker-label" title="Provider" data-composer-control="provider">
                       <LinkCircleSymbolIcon />
                       <select
