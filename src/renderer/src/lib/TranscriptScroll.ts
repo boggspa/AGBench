@@ -93,3 +93,76 @@ export function shouldRepinAfterFrame(input: {
   if (input.userScrolledAwayInThisFrame) return false
   return true
 }
+
+/**
+ * DOM event name dispatched (bubbling) by each `HighlightedCodeBlock`
+ * when its rendered element resizes after the initial CodeMirror
+ * measurement pass. The transcript scroll effect listens for this on
+ * the scroll container and runs the standard rAF re-pin path.
+ *
+ * Why this is safe even though a ResizeObserver feedback loop is the
+ * documented historical bug: the previous loop observed the _entire
+ * transcript content_ via a single ResizeObserver wrapping the scroll
+ * container. That observer fired on every scrollTop write (because
+ * any reflow during the write changed the observed element's content
+ * rect), so its callback could chain back into more scroll writes and
+ * keep oscillating.
+ *
+ * The observers here are scoped to individual code-block elements and
+ * fire only when CodeMirror itself recomputes the block's measured
+ * height (i.e. once shortly after the block first mounts, then on
+ * subsequent content/font/wrap changes — none of which are caused by
+ * the scroll write). Setting `scrollTop` on an ancestor scroller does
+ * not change the code block's own bounding rect, so dispatching this
+ * event and re-pinning the scroller from its handler cannot feed back.
+ */
+export const CODE_BLOCK_RESIZE_EVENT = 'agbench:code-block-resized'
+
+/**
+ * Payload shape carried on a `CODE_BLOCK_RESIZE_EVENT`. The receiver
+ * uses the `width`/`height` fields only for diagnostics; the actual
+ * re-pin decision is driven by `shouldRepinAfterCodeBlockResize`.
+ */
+export interface CodeBlockResizeDetail {
+  /** Pixel width of the resized block at the time the entry fired. */
+  width: number
+  /** Pixel height of the resized block at the time the entry fired. */
+  height: number
+}
+
+/**
+ * Build the `CustomEventInit` for a code-block resize dispatch. Used
+ * by `HighlightedCodeBlock` and asserted by tests so the event shape
+ * stays in lockstep with the listener in App.tsx.
+ *
+ * Defensive against malformed `ResizeObserverEntry` inputs (jsdom and
+ * some embedded browsers don't expose `contentRect`).
+ */
+export function buildCodeBlockResizeEventInit(
+  entry: { contentRect?: { width?: number; height?: number } } | undefined | null
+): CustomEventInit<CodeBlockResizeDetail> {
+  const width = entry?.contentRect?.width
+  const height = entry?.contentRect?.height
+  return {
+    bubbles: true,
+    composed: true,
+    detail: {
+      width: typeof width === 'number' && Number.isFinite(width) ? width : 0,
+      height: typeof height === 'number' && Number.isFinite(height) ? height : 0
+    }
+  }
+}
+
+/**
+ * Decide whether a code-block-resize event should trigger a re-pin.
+ * Same guarding rules as `shouldRepinAfterFrame` — never fight a
+ * deliberate scroll-up, never re-pin when auto-follow is already
+ * disengaged. Kept as its own helper so the test surface stays
+ * symmetrical with the frame-based re-pin.
+ */
+export function shouldRepinAfterCodeBlockResize(input: {
+  autoFollow: boolean
+  userScrolledAwayInThisFrame: boolean
+}): boolean {
+  return shouldRepinAfterFrame(input)
+}

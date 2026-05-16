@@ -34,7 +34,9 @@ import { visibleRunningChatIds } from './lib/runningChatVisibility'
 import {
   shouldEngageAutoFollow,
   shouldDisengageAutoFollow,
-  shouldRepinAfterFrame
+  shouldRepinAfterFrame,
+  shouldRepinAfterCodeBlockResize,
+  CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import {
@@ -5235,6 +5237,58 @@ function App(): React.JSX.Element {
       scroller.removeEventListener('touchmove', onTouchMove)
       scroller.removeEventListener('touchend', onTouchEnd)
       scroller.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
+  // Listen for `CODE_BLOCK_RESIZE_EVENT` from individual
+  // `HighlightedCodeBlock` instances. CodeMirror measures fenced code
+  // asynchronously after mount: the block paints small, then resizes
+  // once the editor view computes its real layout. In long Kimi
+  // transcripts (lots of fenced code in tool output) that late growth
+  // happens _after_ the messages-update layoutEffect has already
+  // snapped to bottom, leaving the user stranded above the new bottom
+  // ("view scrolls upward each time a new message arrives"). The
+  // bubbling custom event arrives at this scroller and we run the
+  // standard rAF re-pin under the same guards as the messages-update
+  // path — never fighting a deliberate scroll-away.
+  //
+  // The observers live on individual code-block elements (see
+  // `HighlightedCodeBlock`), NOT on the scroll container. The
+  // historical ResizeObserver feedback loop (documented in App.tsx
+  // and `TranscriptScroll.ts`) observed the whole transcript, where
+  // every scrollTop write fed back into more reflows. A scoped
+  // observer on a code block's own bounds is not affected by ancestor
+  // `scrollTop` writes, so this path cannot loop.
+  useEffect(() => {
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+
+    let rafId: number | null = null
+    const onCodeBlockResize = () => {
+      // Coalesce bursts of resize events (multiple code blocks in one
+      // assistant message all measuring on the same frame) into a
+      // single rAF re-pin.
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        const node = transcriptScrollRef.current
+        if (!node) return
+        if (
+          !shouldRepinAfterCodeBlockResize({
+            autoFollow: autoFollowRef.current,
+            userScrolledAwayInThisFrame: userScrolledAwayInFrameRef.current
+          })
+        ) {
+          return
+        }
+        node.scrollTop = node.scrollHeight
+      })
+    }
+
+    scroller.addEventListener(CODE_BLOCK_RESIZE_EVENT, onCodeBlockResize)
+    return () => {
+      scroller.removeEventListener(CODE_BLOCK_RESIZE_EVENT, onCodeBlockResize)
+      if (rafId !== null) cancelAnimationFrame(rafId)
     }
   }, [])
 
