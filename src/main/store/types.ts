@@ -351,6 +351,21 @@ export interface AppSettings {
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus;
   codexSandboxFallback: CodexSandboxFallbackMode;
   updateChannel: ProductUpdateChannel;
+  /** Per-provider + main-authority approval timeout policy (Phase E1.1).
+   * When an approval enters the pending registry, a timer fires after
+   * the matching ms value and auto-denies the request. `enabled: false`
+   * disables the entire scheduler (same effect as
+   * `AGBENCH_APPROVAL_TIMEOUT_OFF=1`). */
+  approvalTimeouts: {
+    enabled: boolean;
+    perProviderMs: {
+      gemini: number;
+      codex: number;
+      claude: number;
+      kimi: number;
+    };
+    mainAuthorityMs: number;
+  };
 }
 
 export type ProductCrashSource =

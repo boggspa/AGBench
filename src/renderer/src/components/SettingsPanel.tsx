@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import type {
   AgenticNetworkPolicy,
   AgenticServicePolicy,
@@ -63,6 +63,7 @@ interface SettingsPanelProps {
   funFxMode: AppSettings['funFxMode'];
   advancedFx: AppSettings['advancedFx'];
   updateChannel: ProductUpdateChannel;
+  approvalTimeouts: AppSettings['approvalTimeouts'];
   productOperationsStatus: ProductOperationsStatus | null;
   claudeAuthStatus?: ProviderApiKeyStatus | null;
   kimiAuthStatus?: ProviderApiKeyStatus | null;
@@ -101,6 +102,7 @@ interface SettingsPanelProps {
     funFxMode?: AppSettings['funFxMode'];
     advancedFx?: AppSettings['advancedFx'];
     updateChannel?: ProductUpdateChannel;
+    approvalTimeouts?: AppSettings['approvalTimeouts'];
   }) => void;
   onClose: () => void;
 }
@@ -224,6 +226,7 @@ export function SettingsPanel({
   funFxMode,
   advancedFx,
   updateChannel,
+  approvalTimeouts,
   productOperationsStatus,
   claudeAuthStatus,
   kimiAuthStatus,
@@ -240,7 +243,7 @@ export function SettingsPanel({
   onRepairProductInstall,
   onChange,
   onClose
-}: SettingsPanelProps) {
+}: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('');
   const [kimiKeyInput, setKimiKeyInput] = useState('');
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
@@ -259,10 +262,10 @@ export function SettingsPanel({
   const canLoadInstalledFonts =
     typeof window !== 'undefined' &&
     typeof (window as LocalFontWindow).queryLocalFonts === 'function';
-  const updateAgenticService = <K extends keyof AgenticServicesSettings>(key: K, value: AgenticServicesSettings[K]) => {
+  const updateAgenticService = <K extends keyof AgenticServicesSettings>(key: K, value: AgenticServicesSettings[K]): void => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } });
   };
-  const handleLoadInstalledFonts = async () => {
+  const handleLoadInstalledFonts = async (): Promise<void> => {
     const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts;
     if (!queryLocalFonts) {
       setInstalledFontStatus('Installed font discovery is not available in this runtime.');
@@ -296,7 +299,7 @@ export function SettingsPanel({
       setInstalledFontStatus('Local font access was denied or unavailable.');
     }
   };
-  const updateAdvancedFx = (partial: Partial<AppSettings['advancedFx']>) => {
+  const updateAdvancedFx = (partial: Partial<AppSettings['advancedFx']>): void => {
     onChange({ advancedFx: { ...advancedFx, ...partial } });
   };
 
@@ -692,6 +695,66 @@ export function SettingsPanel({
         </p>
       </div>
 
+      {/* ── Approval timeouts (Phase E1.1) ────────────────────────── */}
+      <div className="settings-group">
+        <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={approvalTimeouts.enabled}
+            onChange={(e) => onChange({ approvalTimeouts: { ...approvalTimeouts, enabled: e.target.checked } })}
+          />
+          Auto-deny approvals after a timeout
+        </label>
+        <p className="settings-hint">
+          When enabled, approvals sitting unanswered (in the desktop modal or
+          on a paired iPhone) are automatically declined after the per-provider
+          window below. Disable for hands-off testing, where the run should
+          block indefinitely.
+        </p>
+      </div>
+
+      <div className="settings-group">
+        <label className="settings-label">Timeout windows (seconds)</label>
+        <div className="approval-timeout-grid">
+          <ApprovalTimeoutField
+            label="Gemini"
+            valueMs={approvalTimeouts.perProviderMs.gemini}
+            disabled={!approvalTimeouts.enabled}
+            onChange={(ms) => onChange({ approvalTimeouts: { ...approvalTimeouts, perProviderMs: { ...approvalTimeouts.perProviderMs, gemini: ms } } })}
+          />
+          <ApprovalTimeoutField
+            label="Codex"
+            valueMs={approvalTimeouts.perProviderMs.codex}
+            disabled={!approvalTimeouts.enabled}
+            onChange={(ms) => onChange({ approvalTimeouts: { ...approvalTimeouts, perProviderMs: { ...approvalTimeouts.perProviderMs, codex: ms } } })}
+          />
+          <ApprovalTimeoutField
+            label="Claude"
+            valueMs={approvalTimeouts.perProviderMs.claude}
+            disabled={!approvalTimeouts.enabled}
+            onChange={(ms) => onChange({ approvalTimeouts: { ...approvalTimeouts, perProviderMs: { ...approvalTimeouts.perProviderMs, claude: ms } } })}
+          />
+          <ApprovalTimeoutField
+            label="Kimi"
+            valueMs={approvalTimeouts.perProviderMs.kimi}
+            disabled={!approvalTimeouts.enabled}
+            onChange={(ms) => onChange({ approvalTimeouts: { ...approvalTimeouts, perProviderMs: { ...approvalTimeouts.perProviderMs, kimi: ms } } })}
+          />
+          <ApprovalTimeoutField
+            label="Main authority"
+            valueMs={approvalTimeouts.mainAuthorityMs}
+            disabled={!approvalTimeouts.enabled}
+            onChange={(ms) => onChange({ approvalTimeouts: { ...approvalTimeouts, mainAuthorityMs: ms } })}
+          />
+        </div>
+        <p className="settings-hint">
+          Per-provider deadline before an unanswered approval is auto-denied.
+          Defaults (Codex 30s, Claude/Gemini 120s, Kimi 60s, Main 60s) reflect
+          how tolerant each runtime is of paused tool calls — Codex sandbox
+          commands hang faster than long-think Claude prompts.
+        </p>
+      </div>
+
       </> /* end behavior */}
 
       {/* ── Providers ─────────────────────────────────── */}
@@ -984,5 +1047,67 @@ export function SettingsPanel({
 
       </div>{/* end settings-panel-content */}
     </div>
+  );
+}
+
+interface ApprovalTimeoutFieldProps {
+  label: string;
+  valueMs: number;
+  disabled?: boolean;
+  onChange: (ms: number) => void;
+}
+
+/**
+ * ApprovalTimeoutField — labeled seconds input for the per-provider
+ * timeout settings. Displays seconds (more readable than ms) but
+ * persists ms in the underlying setting.
+ */
+function ApprovalTimeoutField({ label, valueMs, disabled, onChange }: ApprovalTimeoutFieldProps): React.JSX.Element {
+  const [draftSec, setDraftSec] = useState<string>(String(Math.round(valueMs / 1000)));
+
+  // Sync local draft when the upstream value changes (e.g. parent
+  // re-renders with a fresh settings snapshot). Defer to microtask so
+  // React's cascading-render lint guard treats the setState as a
+  // detached update rather than a synchronous one.
+  useEffect(() => {
+    void Promise.resolve().then(() => setDraftSec(String(Math.round(valueMs / 1000))));
+  }, [valueMs]);
+
+  const commit = (raw: string): void => {
+    const parsed = Math.round(Number(raw));
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      // Reset to last valid value rather than persisting a bad number.
+      setDraftSec(String(Math.round(valueMs / 1000)));
+      return;
+    }
+    // Floor + ceil bounds — keep timeouts in a sensible range.
+    const clamped = Math.max(5, Math.min(parsed, 3600));
+    setDraftSec(String(clamped));
+    onChange(clamped * 1000);
+  };
+
+  return (
+    <label className="approval-timeout-field">
+      <span className="approval-timeout-field-label">{label}</span>
+      <span className="approval-timeout-field-input-wrap">
+        <input
+          type="number"
+          min={5}
+          max={3600}
+          step={5}
+          className="approval-timeout-field-input"
+          value={draftSec}
+          disabled={disabled}
+          onChange={(e) => setDraftSec(e.target.value)}
+          onBlur={(e) => commit(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              commit((e.target as HTMLInputElement).value);
+            }
+          }}
+        />
+        <span className="approval-timeout-field-unit">s</span>
+      </span>
+    </label>
   );
 }

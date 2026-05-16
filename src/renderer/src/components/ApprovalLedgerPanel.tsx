@@ -385,10 +385,27 @@ function formatTimestamp(iso: string): string {
   }
 }
 
+/** True when the record was auto-denied by the Phase E1 timer (vs
+ * auto-denied by policy). Detected by the metadata flag the timeout
+ * path attaches in `index.ts`. */
+function wasAutoDeniedByTimeout(record: ApprovalLedgerRecord): boolean {
+  return (
+    record.decision === 'autoDeny' &&
+    typeof record.metadata?.autoDeniedByTimeout === 'boolean' &&
+    record.metadata.autoDeniedByTimeout === true
+  )
+}
+
 /** Human-friendly outcome label that includes auto-denial via timeout
  * as a distinct value the user cares about. */
 function formatOutcome(record: ApprovalLedgerRecord): string {
   if (record.status === 'pending') return 'Pending'
+  if (wasAutoDeniedByTimeout(record)) {
+    const timeoutMs = typeof record.metadata?.timeoutMs === 'number'
+      ? record.metadata.timeoutMs
+      : undefined
+    return timeoutMs ? `Auto-denied · ${Math.round(timeoutMs / 1000)}s timeout` : 'Auto-denied · timeout'
+  }
   if (record.decision === 'autoAllow') return 'Auto-allowed'
   if (record.decision === 'autoDeny') return 'Auto-denied'
   if (record.decision === 'expired') return 'Expired'
@@ -402,6 +419,7 @@ function formatOutcome(record: ApprovalLedgerRecord): string {
 /** Short kind code used for badge + row CSS variants. */
 function outcomeKindFor(record: ApprovalLedgerRecord): string {
   if (record.status === 'pending') return 'pending'
+  if (wasAutoDeniedByTimeout(record)) return 'auto-deny-timeout'
   if (record.decision === 'autoAllow') return 'auto-allow'
   if (record.decision === 'autoDeny') return 'auto-deny'
   if (record.decision === 'expired' || record.status === 'expired') return 'expired'

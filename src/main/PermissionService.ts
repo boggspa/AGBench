@@ -109,8 +109,13 @@ export class PermissionService {
     AppStore.recordApprovalRequest(input)
   }
 
-  resolveApprovalResponse(approvalId: string, action: AgentApprovalAction): void {
-    AppStore.resolveApprovalRequest(approvalId, action)
+  resolveApprovalResponse(
+    approvalId: string,
+    action: AgentApprovalAction,
+    decisionSource: 'user' | 'system' = 'user',
+    extraMetadata: Record<string, unknown> = {}
+  ): void {
+    AppStore.resolveApprovalRequest(approvalId, action, decisionSource, extraMetadata)
   }
 
   applyApprovalDecision(input: ApprovalDecisionInput): boolean {

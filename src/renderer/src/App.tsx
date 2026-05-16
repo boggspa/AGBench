@@ -3144,6 +3144,7 @@ type SettingsPanelUpdate = {
   geminiMcpBridgeEnabled?: boolean
   codexSandboxFallback?: CodexSandboxFallbackMode
   updateChannel?: ProductUpdateChannel
+  approvalTimeouts?: AppSettings['approvalTimeouts']
 }
 
 function App(): React.JSX.Element {
@@ -3194,6 +3195,11 @@ function App(): React.JSX.Element {
   const [geminiMcpBridgeStatus, setGeminiMcpBridgeStatus] = useState<GeminiMcpBridgeStatus | null>(null)
   const [codexSandboxFallback, setCodexSandboxFallback] = useState<CodexSandboxFallbackMode>('ask_rerun')
   const [updateChannel, setUpdateChannel] = useState<ProductUpdateChannel>('debug')
+  const [approvalTimeouts, setApprovalTimeouts] = useState<AppSettings['approvalTimeouts']>({
+    enabled: true,
+    perProviderMs: { gemini: 120_000, codex: 30_000, claude: 120_000, kimi: 60_000 },
+    mainAuthorityMs: 60_000
+  })
   const [productOperationsStatus, setProductOperationsStatus] = useState<ProductOperationsStatus | null>(null)
   
   // Trust & Session
@@ -4141,6 +4147,9 @@ function App(): React.JSX.Element {
     setGeminiMcpBridgeStatus(s.geminiMcpBridgeLastStatus || null)
     setCodexSandboxFallback(s.codexSandboxFallback || 'ask_rerun')
     setUpdateChannel(s.updateChannel || 'debug')
+    if (s.approvalTimeouts) {
+      setApprovalTimeouts(s.approvalTimeouts)
+    }
     setChatContextTurns(clampContextTurns(s.chatContextTurns))
     setGeminiCheckpointingEnabled(Boolean(s.geminiCheckpointingEnabled))
     void refreshProviderMetadata(s.activeProvider || 'gemini')
@@ -4303,6 +4312,10 @@ function App(): React.JSX.Element {
     if (next.updateChannel !== undefined) {
       setUpdateChannel(next.updateChannel)
       settingsPatch.updateChannel = next.updateChannel
+    }
+    if (next.approvalTimeouts !== undefined) {
+      setApprovalTimeouts(next.approvalTimeouts)
+      settingsPatch.approvalTimeouts = next.approvalTimeouts
     }
 
     if (Object.keys(settingsPatch).length > 0) {
@@ -9675,6 +9688,7 @@ function App(): React.JSX.Element {
               funFxMode={appearance.funFxMode}
               advancedFx={appearance.advancedFx}
               updateChannel={updateChannel}
+              approvalTimeouts={approvalTimeouts}
               productOperationsStatus={productOperationsStatus}
               claudeAuthStatus={claudeAuthStatus}
               kimiAuthStatus={kimiAuthStatus}

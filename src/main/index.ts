@@ -124,6 +124,10 @@ let approvalTimeoutSchedulerRef: ApprovalTimeoutScheduler | null = null
  * so the .set() call sites stay terse. Logs the resolved timeout to
  * the durable run-event log so the audit trail records "this approval
  * has a Ns deadline" the moment it's armed.
+ *
+ * Reads the user's `approvalTimeouts` settings on every call so a UI
+ * change takes effect on the next approval without restart. A
+ * disabled gate (settings or env var) is a silent no-op.
  */
 function scheduleApprovalTimeout(args: {
   approvalId: string
@@ -138,6 +142,21 @@ function scheduleApprovalTimeout(args: {
       process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === 'true') {
     return
   }
+  // Read user-tunable timeouts from settings (Phase E1.1). If the
+  // settings haven't been persisted yet, the store fills in the
+  // plan-file defaults via `defaultSettings`.
+  const userSettings = AppStore.getSettings()
+  if (!userSettings.approvalTimeouts.enabled) return
+  const userPerProvider = userSettings.approvalTimeouts.perProviderMs
+  scheduler.updatePolicy({
+    defaultTimeoutsMs: {
+      gemini: userPerProvider.gemini,
+      codex: userPerProvider.codex,
+      claude: userPerProvider.claude,
+      kimi: userPerProvider.kimi
+    },
+    mainTimeoutMs: userSettings.approvalTimeouts.mainAuthorityMs
+  })
   const { appliedMs, source } = scheduler.schedule({
     approvalId: args.approvalId,
     provider: args.provider,
@@ -1489,9 +1508,14 @@ function recordApprovalLedgerDecision(input: ApprovalLedgerRequestInput): void {
   }
 }
 
-function resolveApprovalLedgerResponse(approvalId: string, action: AgentApprovalAction): void {
+function resolveApprovalLedgerResponse(
+  approvalId: string,
+  action: AgentApprovalAction,
+  decisionSource: 'user' | 'system' = 'user',
+  extraMetadata: Record<string, unknown> = {}
+): void {
   try {
-    permissionService.resolveApprovalResponse(approvalId, action)
+    permissionService.resolveApprovalResponse(approvalId, action, decisionSource, extraMetadata)
   } catch (error) {
     console.error('Failed to resolve approval ledger request', error)
   }
@@ -9322,8 +9346,19 @@ app.whenReady().then(() => {
        * other methods / providers. Empty/undefined preserves today's
        * behavior (renderer-driven approvals don't pass typed answers). */
       userInput?: string
+      /** Phase E1.2: who decided. Defaults to `'user'` (renderer click
+       * or iOS reply). Pass `'system'` from the timer auto-deny path so
+       * the ledger records `decisionSource: system` and `decision:
+       * autoDeny` instead of treating the auto-deny as a manual one. */
+      decisionSource?: 'user' | 'system'
+      /** Optional metadata merged into the ledger record. Used by the
+       * timeout path to record `{ autoDeniedByTimeout: true,
+       * timeoutMs, timeoutSource }`. */
+      extraMetadata?: Record<string, unknown>
     }
   ): Promise<boolean> => {
+    const decisionSource = options?.decisionSource ?? 'user'
+    const extraMetadata = options?.extraMetadata ?? {}
     // Cancel the auto-deny timer the moment any decision lands —
     // regardless of which registry holds this approvalId. Safe to
     // call for unknown ids (no-op).
@@ -9344,7 +9379,7 @@ app.whenReady().then(() => {
           workspacePath: pendingMain.workspacePath
         }
       )
-      resolveApprovalLedgerResponse(requestId, action)
+      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
       pendingMainApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       pendingMain.resolve(permissionService.isApprovedAction(action))
@@ -9367,7 +9402,7 @@ app.whenReady().then(() => {
           workspacePath: pendingGeminiTool.workspacePath
         }
       )
-      resolveApprovalLedgerResponse(requestId, action)
+      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
       pendingGeminiToolApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       const allowed = permissionService.applyApprovalDecision({
@@ -9396,7 +9431,7 @@ app.whenReady().then(() => {
           cwd: pendingHostCommand.cwd
         }
       )
-      resolveApprovalLedgerResponse(requestId, action)
+      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
       runManager.clearApproval(requestId)
       if (action === 'accept') {
         return runApprovedHostCommand(requestId)
@@ -9429,7 +9464,7 @@ app.whenReady().then(() => {
           params: pendingKimi.params
         }
       )
-      resolveApprovalLedgerResponse(requestId, action)
+      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
       pendingKimiApprovals.delete(requestId)
       runManager.clearApproval(requestId)
       const payload = pendingKimi.params?.payload || {}
@@ -9466,7 +9501,7 @@ app.whenReady().then(() => {
         workspacePath: pending.workspacePath
       }
     )
-    resolveApprovalLedgerResponse(requestId, action)
+    resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
     pendingCodexApprovals.delete(requestId)
     runManager.clearApproval(requestId)
 
@@ -9533,6 +9568,45 @@ app.whenReady().then(() => {
   // is in scope so the onTimeout callback can reference it directly.
   // Module-scope ref `approvalTimeoutSchedulerRef` is then populated
   // so the top-level approval-registry call sites can also reach it.
+  /**
+   * Find which provider's registry holds an approval id and what its
+   * route is (appRunId + appChatId). Used by the timeout callback to
+   * emit a dedicated `approval_timer_timeout` durable event before
+   * the auto-deny dispatch happens. Returns null when no registry
+   * holds the id (already resolved, expired, never existed).
+   */
+  function lookupApprovalRoute(approvalId: string): {
+    provider: ProviderId
+    appRunId?: string
+    appChatId?: string
+  } | null {
+    const main = pendingMainApprovals.get(approvalId)
+    if (main) {
+      const session = runManager.get(main.runId)
+      return { provider: main.provider, appRunId: main.runId, appChatId: session?.appChatId }
+    }
+    const gemini = pendingGeminiToolApprovals.get(approvalId)
+    if (gemini) {
+      const session = runManager.get(gemini.runId)
+      return { provider: gemini.provider, appRunId: gemini.runId, appChatId: session?.appChatId }
+    }
+    const host = pendingHostCommandApprovals.get(approvalId)
+    if (host) {
+      return { provider: host.provider, appRunId: host.appRunId, appChatId: host.appChatId }
+    }
+    const kimi = pendingKimiApprovals.get(approvalId)
+    if (kimi) {
+      const session = runManager.get(kimi.runId)
+      return { provider: 'kimi', appRunId: kimi.runId, appChatId: session?.appChatId }
+    }
+    const codex = pendingCodexApprovals.get(approvalId)
+    if (codex) {
+      const session = runManager.get(codex.runId)
+      return { provider: 'codex', appRunId: codex.runId, appChatId: session?.appChatId }
+    }
+    return null
+  }
+
   const approvalTimeoutScheduler = new ApprovalTimeoutScheduler(
     DEFAULT_APPROVAL_TIMEOUT_POLICY,
     async (reason: ApprovalTimeoutReason) => {
@@ -9540,6 +9614,31 @@ app.whenReady().then(() => {
       console.warn(
         `[ApprovalTimeout] approvalId=${reason.approvalId} auto-deny after ${reason.appliedMs}ms (source=${reason.source})`
       )
+
+      // Phase E1.2: emit a dedicated `approval_timer_timeout` durable
+      // event so the ledger UX can distinguish "user clicked Decline"
+      // (writes `approval_response`) from "agent waited too long"
+      // (writes both this and `approval_response`).
+      const route = lookupApprovalRoute(reason.approvalId)
+      if (route?.appRunId) {
+        try {
+          appendDurableRunEventForRoute(
+            route.provider,
+            { appRunId: route.appRunId, appChatId: route.appChatId },
+            'approval_timer_timeout',
+            'control',
+            `Approval timer fired after ${reason.appliedMs}ms`,
+            {
+              approvalId: reason.approvalId,
+              appliedMs: reason.appliedMs,
+              source: reason.source
+            }
+          )
+        } catch {
+          // Run may have been cleared; auto-deny still proceeds.
+        }
+      }
+
       // Surface a prominent toast in the desktop UI so a user returning
       // to the desk understands why their run paused. The renderer
       // listens for `agent-approval-timeout` and pops a destructive
@@ -9554,7 +9653,14 @@ app.whenReady().then(() => {
         // Window may be destroyed; auto-deny still proceeds.
       }
       try {
-        await processAgentApprovalResponse(reason.approvalId, 'decline')
+        await processAgentApprovalResponse(reason.approvalId, 'decline', {
+          decisionSource: 'system',
+          extraMetadata: {
+            autoDeniedByTimeout: true,
+            timeoutMs: reason.appliedMs,
+            timeoutSource: reason.source
+          }
+        })
       } catch (err) {
         // eslint-disable-next-line no-console
         console.warn(

@@ -209,6 +209,52 @@ describe('ApprovalTimeoutScheduler', () => {
     expect(scheduler.has('a')).toBe(false)
   })
 
+  it('updatePolicy replaces values for future schedules without affecting armed timers', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(DEFAULT_APPROVAL_TIMEOUT_POLICY, onTimeout, {
+      setTimeoutFn: clock.setTimeoutFn,
+      clearTimeoutFn: clock.clearTimeoutFn
+    })
+    // Arm a Codex timer with the original 30s policy.
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    // Now bump Codex to 90s — should only affect a2, not a1.
+    scheduler.updatePolicy({
+      defaultTimeoutsMs: {
+        ...DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs,
+        codex: 90_000
+      }
+    })
+    scheduler.schedule({ approvalId: 'a2', provider: 'codex' })
+    await clock.advance(30_000)
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+    expect(onTimeout.mock.calls[0][0].approvalId).toBe('a1')
+    expect(onTimeout.mock.calls[0][0].appliedMs).toBe(30_000)
+    await clock.advance(60_000)
+    expect(onTimeout).toHaveBeenCalledTimes(2)
+    expect(onTimeout.mock.calls[1][0].approvalId).toBe('a2')
+    expect(onTimeout.mock.calls[1][0].appliedMs).toBe(90_000)
+  })
+
+  it('updatePolicy preserves per-kind overrides when not specified', () => {
+    const scheduler = new ApprovalTimeoutScheduler(
+      {
+        ...DEFAULT_APPROVAL_TIMEOUT_POLICY,
+        perKindOverridesMs: { 'hostCommand/rerun': 90_000 }
+      },
+      vi.fn()
+    )
+    scheduler.updatePolicy({
+      mainTimeoutMs: 999_000
+    })
+    const { ms } = scheduler.resolveTimeout({
+      approvalId: 'a',
+      provider: 'codex',
+      kind: 'hostCommand/rerun'
+    })
+    expect(ms).toBe(90_000)
+  })
+
   it('default policy matches plan-file numbers', () => {
     expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.codex).toBe(30_000)
     expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.claude).toBe(120_000)

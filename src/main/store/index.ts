@@ -74,6 +74,19 @@ const defaultSettings: AppSettings = {
   geminiMcpBridgeLastStatus: undefined,
   codexSandboxFallback: 'ask_rerun',
   updateChannel: 'debug',
+  approvalTimeouts: {
+    enabled: true,
+    // Defaults mirror DEFAULT_APPROVAL_TIMEOUT_POLICY in
+    // ApprovalTimeoutScheduler.ts. Keep them in sync — these are the
+    // numbers from the original plan-file decisions.
+    perProviderMs: {
+      gemini: 120_000,
+      codex: 30_000,
+      claude: 120_000,
+      kimi: 60_000
+    },
+    mainAuthorityMs: 60_000
+  },
 };
 
 function readJson<T>(filePath: string, defaultData: T): T {
@@ -234,7 +247,15 @@ export class AppStore {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
       },
-      agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants) ? stored.agenticWorkspaceGrants : []
+      agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants) ? stored.agenticWorkspaceGrants : [],
+      approvalTimeouts: {
+        ...defaultSettings.approvalTimeouts,
+        ...(stored.approvalTimeouts || {}),
+        perProviderMs: {
+          ...defaultSettings.approvalTimeouts.perProviderMs,
+          ...(stored.approvalTimeouts?.perProviderMs || {})
+        }
+      }
     };
   }
 
@@ -751,11 +772,22 @@ export class AppStore {
     return index >= 0 ? records[index] : record;
   }
 
-  static resolveApprovalRequest(approvalId: string, action: AgentApprovalAction): ApprovalLedgerRecord | null {
+  static resolveApprovalRequest(
+    approvalId: string,
+    action: AgentApprovalAction,
+    decisionSource: 'user' | 'system' = 'user',
+    extraMetadata: Record<string, unknown> = {}
+  ): ApprovalLedgerRecord | null {
     const records = this.recoverExpiredApprovalLedger();
     const index = records.findIndex((record) => record.approvalId === approvalId);
     if (index < 0) return null;
-    const updated = resolveApprovalLedgerRecord(records[index], action);
+    const updated = resolveApprovalLedgerRecord(
+      records[index],
+      action,
+      undefined,
+      decisionSource,
+      extraMetadata
+    );
     records[index] = updated;
     writeJson(approvalLedgerPath, records);
     return updated;

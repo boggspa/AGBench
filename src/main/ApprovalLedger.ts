@@ -109,16 +109,31 @@ export function createApprovalLedgerRecord(
 export function resolveApprovalLedgerRecord(
   record: ApprovalLedgerRecord,
   action: AgentApprovalAction,
-  decidedAt: string = new Date().toISOString()
+  decidedAt: string = new Date().toISOString(),
+  /** Phase E1.2: the actor responsible for the decision. Defaults to
+   * `'user'` (renderer click / iOS reply). Pass `'system'` for the
+   * auto-deny path that fires when an approval timer elapses. */
+  decisionSource: 'user' | 'system' = 'user',
+  /** Optional metadata to merge — used by the timeout path to record
+   * `{ autoDeniedByTimeout: true, timeoutMs, timeoutSource }` so the
+   * ledger UX can render a distinct badge. */
+  extraMetadata: Record<string, unknown> = {}
 ): ApprovalLedgerRecord {
+  // For the timeout auto-deny we override the user-action decision
+  // with `'autoDeny'` so the ledger explicitly distinguishes it from
+  // a manual decline.
+  const decision = decisionSource === 'system' && action === 'decline' ? 'autoDeny' : action
   return {
     ...record,
     status: statusForApprovalAction(action),
     respondedAt: decidedAt,
-    decision: action,
-    decisionSource: 'user',
+    decision,
+    decisionSource,
     grantedScope: scopeForApprovalAction(action),
-    expiration: expirationForApprovalAction(action, decidedAt)
+    expiration: expirationForApprovalAction(action, decidedAt),
+    metadata: Object.keys(extraMetadata).length > 0
+      ? { ...(record.metadata || {}), ...extraMetadata }
+      : record.metadata
   }
 }
 

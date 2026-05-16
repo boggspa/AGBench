@@ -169,6 +169,25 @@ export class ApprovalTimeoutScheduler {
     return true
   }
 
+  /** Replace the policy used for FUTURE schedule() calls. Existing
+   * armed timers continue to use the values they were scheduled with —
+   * a settings change applies to the next approval, not in-flight ones.
+   * Per-kind overrides survive a partial update if not specified. */
+  updatePolicy(partial: Partial<ApprovalTimeoutPolicy>): void {
+    this.policy = {
+      ...this.policy,
+      ...partial,
+      defaultTimeoutsMs: {
+        ...this.policy.defaultTimeoutsMs,
+        ...(partial.defaultTimeoutsMs || {})
+      },
+      perKindOverridesMs: {
+        ...this.policy.perKindOverridesMs,
+        ...(partial.perKindOverridesMs || {})
+      }
+    }
+  }
+
   cancelAll(): void {
     for (const handle of this.timers.values()) {
       this.clearTimeoutFn(handle)

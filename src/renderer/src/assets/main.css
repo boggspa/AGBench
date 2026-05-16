@@ -12649,3 +12649,60 @@ input:disabled, select:disabled, textarea:disabled {
   display: flex;
   gap: 8px;
 }
+
+/* ── Approval timeout fields (Phase E1.1) ───────────────────────────── */
+.approval-timeout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.approval-timeout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.approval-timeout-field-label {
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+}
+.approval-timeout-field-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+}
+.approval-timeout-field-input {
+  width: 100%;
+  padding: 6px 22px 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font: inherit;
+  text-align: right;
+}
+.approval-timeout-field-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.approval-timeout-field-unit {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.78em;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
+
+/* ── Approval ledger: auto-deny-timeout badge (Phase E2.1) ──────────── */
+.approval-ledger-badge-auto-deny-timeout {
+  background: rgba(220, 110, 60, 0.18);
+  color: rgba(255, 200, 160, 0.96);
+  border: 1px solid rgba(220, 110, 60, 0.32);
+}
+.approval-ledger-row-auto-deny-timeout {
+  border-color: rgba(220, 110, 60, 0.22);
+}

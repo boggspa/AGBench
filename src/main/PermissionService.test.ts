@@ -48,7 +48,12 @@ const settings: AppSettings = {
   agenticWorkspaceGrants: [],
   geminiMcpBridgeEnabled: false,
   codexSandboxFallback: 'ask_rerun',
-  updateChannel: 'debug'
+  updateChannel: 'debug',
+  approvalTimeouts: {
+    enabled: true,
+    perProviderMs: { gemini: 120_000, codex: 30_000, claude: 120_000, kimi: 60_000 },
+    mainAuthorityMs: 60_000
+  }
 }
 
 describe('PermissionService', () => {
