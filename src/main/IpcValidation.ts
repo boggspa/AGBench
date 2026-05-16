@@ -94,6 +94,10 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'start-agent-review': ['provider', 'string', 'optionalObject'],
   'get-agent-models': ['provider'],
   'run-agent': ['runPayload'],
+  // Phase B6 ComposerService: renderer calls compose-run with the
+  // ComposerRunInput shape (single object) and receives a fully
+  // constructed AgentRunPayload + composer metadata back.
+  'compose-run': ['object'],
   'cancel-agent-run': ['optionalProvider', 'optionalString'],
   'respond-agent-approval': ['nonEmptyString', 'approvalAction'],
   'run-gemini': ['workspacePath', 'string', 'optionalString', 'optionalString', 'optionalBoolean', 'optionalArray', 'optionalString', 'any', 'optionalObject'],

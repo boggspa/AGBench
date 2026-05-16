@@ -50,6 +50,26 @@ describe('IpcValidation', () => {
     expect(() => validateIpcArgs('select-external-path-grant', ['execute'])).toThrow(/read or write/)
   })
 
+  // Regression test for the bug discovered 2026-05-16: the Phase B6
+  // ComposerService extraction added a `compose-run` IPC handler but
+  // forgot to register a schema in IPC_SCHEMAS, which made the
+  // IpcValidation layer throw `No IPC schema registered for
+  // compose-run` on every Send-message attempt. Pin the schema's
+  // presence so the same bug can't sneak back.
+  it('accepts compose-run payloads', () => {
+    expect(() =>
+      validateIpcArgs('compose-run', [{
+        chatId: 'chat-1',
+        provider: 'gemini',
+        scope: 'workspace',
+        workspace: '/tmp/workspace',
+        userInput: 'hello'
+      }])
+    ).not.toThrow()
+    // Non-object args still rejected.
+    expect(() => validateIpcArgs('compose-run', ['just a string'])).toThrow()
+  })
+
   it('does not expose renderer-written durable run events', () => {
     expect(() => validateIpcArgs('append-run-event', [{ runId: 'run-1' }])).toThrow(/No IPC schema/)
     expect(() => validateIpcArgs('append-run-events', [[]])).toThrow(/No IPC schema/)
