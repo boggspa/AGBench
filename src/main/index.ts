@@ -8587,7 +8587,24 @@ function appendGeminiCliSessionArgs(
   worktree: GeminiWorktreeLaunchOption = null,
   allowAgentbenchMcp: boolean = false
 ): string | null {
-  args.push('--sandbox', '--approval-mode', approvalMode)
+  args.push('--approval-mode', approvalMode)
+
+  // Sandbox vs. AGBench MCP bridge: Gemini CLI's `--sandbox` flag wraps
+  // the agent in macOS `sandbox-exec` with a seatbelt profile that
+  // restricts subprocess spawning. That blocks the agentbench MCP
+  // bridge from launching at session init, leaving Gemini-CLI with a
+  // dead transport and every `agentbench__*` tool call returning
+  // "Not connected" to the agent (the user reproduced this with
+  // delegate_to_subthread on 2026-05-16). Skip sandboxing when the MCP
+  // bridge is enabled — AGBench's broker-level approval gates already
+  // mediate every tool call (file edits, shell commands, sub-thread
+  // delegation), giving us equivalent isolation through a different
+  // mechanism. For read-only Gemini runs (where MCP isn't registered)
+  // we still want the seatbelt sandbox, so keep `--sandbox` on that
+  // path.
+  if (!allowAgentbenchMcp) {
+    args.push('--sandbox')
+  }
 
   if (allowAgentbenchMcp) {
     args.push('--allowed-mcp-server-names', GEMINI_MCP_SERVER_NAME)
