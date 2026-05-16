@@ -214,6 +214,15 @@ declare global {
       getChat: (chatId: string) => Promise<ChatRecord | null>
       createChat: (workspaceId: string, workspacePath: string) => Promise<ChatRecord>
       createGlobalChat: () => Promise<ChatRecord>
+      createSubThread: (args: {
+        parentChatId: string
+        provider: ProviderId
+        delegationPrompt: string
+        returnResultToParent: boolean
+        workspaceId?: string
+        workspacePath?: string
+      }) => Promise<ChatRecord>
+      getSubThreads: (parentChatId: string) => Promise<ChatRecord[]>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
       clearChats: (workspaceId?: string) => Promise<void>

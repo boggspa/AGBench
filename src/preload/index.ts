@@ -141,6 +141,15 @@ const api = {
   getChat: (chatId: string) => ipcRenderer.invoke('get-chat', chatId),
   createChat: (workspaceId: string, workspacePath: string) => ipcRenderer.invoke('create-chat', workspaceId, workspacePath),
   createGlobalChat: () => ipcRenderer.invoke('create-global-chat'),
+  createSubThread: (args: {
+    parentChatId: string
+    provider: string
+    delegationPrompt: string
+    returnResultToParent: boolean
+    workspaceId?: string
+    workspacePath?: string
+  }) => ipcRenderer.invoke('create-sub-thread', args),
+  getSubThreads: (parentChatId: string) => ipcRenderer.invoke('get-sub-threads', parentChatId),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),
   deleteChat: (chatId: string) => ipcRenderer.invoke('delete-chat', chatId),
   clearChats: (workspaceId?: string) => ipcRenderer.invoke('clear-chats', workspaceId),

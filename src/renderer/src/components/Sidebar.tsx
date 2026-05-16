@@ -52,6 +52,10 @@ interface SidebarProps {
   onNewGlobalChat: () => void;
   onSelectChat: (chat: ChatRecord) => void;
   onOpenSettings: () => void;
+  /** Phase F1: open the SubThreadCreator with `parent` as the parent
+   * chat. When undefined the delegate affordance is hidden — keeps
+   * the prop optional for any caller that doesn't yet wire it. */
+  onCreateSubThread?: (parent: ChatRecord) => void;
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
@@ -342,6 +346,7 @@ export function Sidebar({
   onNewGlobalChat,
   onSelectChat,
   onOpenSettings,
+  onCreateSubThread,
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -385,6 +390,21 @@ export function Sidebar({
     visibleWorkspaceEntries.reduce((total, entry) => total + entry.visibleChats.length, 0) +
     visibleGlobalChats.length;
   const totalChatCount = chats.filter((chat) => !chat.archived).length;
+  // Phase F1: index child chats by parentChatId so we can render
+  // each parent immediately followed by its children, indented. We
+  // build it once per render — sidebar size is bounded so cost is
+  // negligible.
+  const subThreadsByParentId = new Map<string, ChatRecord[]>();
+  for (const chat of chats) {
+    if (!chat.parentChatId) continue;
+    const bucket = subThreadsByParentId.get(chat.parentChatId);
+    if (bucket) bucket.push(chat);
+    else subThreadsByParentId.set(chat.parentChatId, [chat]);
+  }
+  // Sort each bucket oldest-first for stable presentation.
+  for (const bucket of subThreadsByParentId.values()) {
+    bucket.sort((a, b) => a.createdAt - b.createdAt);
+  }
   const currentScopeTitle = currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'AGBench');
   const currentScopeMeta = currentWorkspace
     ? getWorkspaceMeta(currentWorkspace)
@@ -627,43 +647,107 @@ export function Sidebar({
                   </div>
                   {visibleChats.length > 0 && expanded ? (
                     <div className="sidebar-chat-list">
-                      {visibleChats.map((chat) => {
-                        const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
-                        const isChatRunning = runningChatIdSet.has(chat.appChatId);
-                        const lastRunStatus = getLastRunStatus(chat);
-                        return (
-                          <button
-                            type="button"
-                            key={chat.appChatId}
-                            className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
-                            onClick={() => onSelectChat(chat)}
-                          >
-                            <span className="sidebar-chat-copy" title={chat.title}>
-                              <span className="sidebar-chat-title-line">
-                                <SidebarProviderLabel provider={chat.provider} />
-                                <span className="sidebar-chat-title">
-                                  <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
-                                </span>
-                              </span>
-                              {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted')) && (
-                                <span className="sidebar-chat-subline">
-                                  {isChatRunning ? (
-                                    <span className="sidebar-run-status tone-warning">Running</span>
-                                  ) : lastRunStatus ? (
-                                    <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
-                                      {lastRunStatus.label}
+                      {visibleChats
+                        // Phase F1: hide sub-threads here — they render
+                        // nested under their parent below.
+                        .filter((chat) => !chat.parentChatId)
+                        .map((chat) => {
+                          const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
+                          const isChatRunning = runningChatIdSet.has(chat.appChatId);
+                          const lastRunStatus = getLastRunStatus(chat);
+                          const subThreads = subThreadsByParentId.get(chat.appChatId) ?? [];
+                          return (
+                            <div key={chat.appChatId} className="sidebar-chat-family">
+                              <button
+                                type="button"
+                                className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
+                                onClick={() => onSelectChat(chat)}
+                              >
+                                <span className="sidebar-chat-copy" title={chat.title}>
+                                  <span className="sidebar-chat-title-line">
+                                    <SidebarProviderLabel provider={chat.provider} />
+                                    <span className="sidebar-chat-title">
+                                      <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
                                     </span>
-                                  ) : null}
+                                  </span>
+                                  {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted')) && (
+                                    <span className="sidebar-chat-subline">
+                                      {isChatRunning ? (
+                                        <span className="sidebar-run-status tone-warning">Running</span>
+                                      ) : lastRunStatus ? (
+                                        <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
+                                          {lastRunStatus.label}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  )}
                                 </span>
+                                {isChatRunning && (
+                                  <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
+                                )}
+                                {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
+                                {onCreateSubThread && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="sidebar-chat-delegate"
+                                    title="Delegate to a sub-thread"
+                                    aria-label="Delegate to a sub-thread"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onCreateSubThread(chat);
+                                    }}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' || e.key === ' ') {
+                                        e.stopPropagation();
+                                        onCreateSubThread(chat);
+                                      }
+                                    }}
+                                  >
+                                    ↪
+                                  </span>
+                                )}
+                              </button>
+                              {subThreads.length > 0 && (
+                                <div className="sidebar-chat-children">
+                                  {subThreads.map((subChat) => {
+                                    const subRunning = runningChatIdSet.has(subChat.appChatId);
+                                    const subLastStatus = getLastRunStatus(subChat);
+                                    return (
+                                      <button
+                                        type="button"
+                                        key={subChat.appChatId}
+                                        className={`sidebar-item sidebar-chat-item sidebar-sub-thread provider-${subChat.provider || 'gemini'} ${currentChat?.appChatId === subChat.appChatId ? 'active' : ''} ${subRunning ? 'running' : ''}`}
+                                        onClick={() => onSelectChat(subChat)}
+                                      >
+                                        <span className="sidebar-sub-thread-prefix" aria-hidden>↳</span>
+                                        <span className="sidebar-chat-copy" title={subChat.title}>
+                                          <span className="sidebar-chat-title-line">
+                                            <SidebarProviderLabel provider={subChat.provider} />
+                                            <span className="sidebar-chat-title">
+                                              <HighlightMatch text={subChat.title} query={sidebarSearchQuery} />
+                                            </span>
+                                          </span>
+                                          {(subRunning || (subLastStatus && subLastStatus.tone !== 'success' && subLastStatus.tone !== 'muted')) && (
+                                            <span className="sidebar-chat-subline">
+                                              {subRunning ? (
+                                                <span className="sidebar-run-status tone-warning">Running</span>
+                                              ) : subLastStatus ? (
+                                                <span className={`sidebar-run-status tone-${subLastStatus.tone}`}>
+                                                  {subLastStatus.label}
+                                                </span>
+                                              ) : null}
+                                            </span>
+                                          )}
+                                        </span>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
                               )}
-                            </span>
-                            {isChatRunning && (
-                              <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
-                            )}
-                            {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
-                          </button>
-                        );
-                      })}
+                            </div>
+                          );
+                        })}
                     </div>
                   ) : null}
                 </div>

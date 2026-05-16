@@ -10,6 +10,7 @@ import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel } from './components/SettingsPanel'
+import { SubThreadCreator } from './components/SubThreadCreator'
 import { IncomingPairingPrompt } from './components/IncomingPairingPrompt'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
@@ -3232,6 +3233,9 @@ function App(): React.JSX.Element {
   // Appearance & Settings
   const appearance = useAppearance()
   const [showSettings, setShowSettings] = useState(false)
+  // Phase F1: sub-thread creator modal state. Null when closed; holds
+  // the parent chat when open so the modal knows what to delegate from.
+  const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   const [showFileEditor, setShowFileEditor] = useState(false)
@@ -4837,6 +4841,31 @@ function App(): React.JSX.Element {
 
   const handleWelcomeSuggestion = (suggestion: string) => {
     setPrompt(suggestion)
+  }
+
+  // Phase F1: navigate to a freshly-spawned sub-thread and pre-fill its
+  // composer with the delegation prompt the user wrote in the modal.
+  // The user reviews/edits + sends manually — v1 doesn't auto-submit.
+  const handleSubThreadCreated = async (
+    subThread: ChatRecord,
+    delegationPrompt: string
+  ): Promise<void> => {
+    setSubThreadCreatorParent(null)
+    const refreshed = await window.api.getChats()
+    setChats(refreshed)
+    const provider = getChatProvider(subThread)
+    if (subThread.scope === 'global') {
+      await selectGlobalChat(subThread)
+    } else {
+      currentChatIdRef.current = subThread.appChatId
+      chatByIdRef.current.set(subThread.appChatId, subThread)
+      setCurrentChat(subThread)
+      applyChatComposerSelection(subThread, provider)
+      setRawLogs(rawLogsByChatIdRef.current.get(subThread.appChatId) || [])
+      hydrateThreadRawLogsFromEvents(subThread.appChatId)
+    }
+    // Pre-fill the composer for the new sub-thread (per-chat draft).
+    setChatPromptDraft(subThread.appChatId, delegationPrompt)
   }
 
   const refreshCommandDiscovery = async (workspacePath: string | undefined = currentWorkspace?.path) => {
@@ -8123,6 +8152,7 @@ function App(): React.JSX.Element {
               onNewGlobalChat={handleNewGlobalChat}
               onSelectChat={handleSelectChat}
               onOpenSettings={() => setShowSettings(true)}
+              onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
             />
             <div
               className="workspace-sidebar-resize-handle"
@@ -9710,6 +9740,15 @@ function App(): React.JSX.Element {
         </div>
       )}
       <IncomingPairingPrompt />
+      {subThreadCreatorParent && (
+        <SubThreadCreator
+          parentChat={subThreadCreatorParent}
+          onCreated={(subThread, delegationPrompt) => {
+            void handleSubThreadCreated(subThread, delegationPrompt)
+          }}
+          onCancel={() => setSubThreadCreatorParent(null)}
+        />
+      )}
     </div>
   )
 }

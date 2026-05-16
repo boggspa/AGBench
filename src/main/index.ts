@@ -8671,6 +8671,55 @@ app.whenReady().then(() => {
     return AppStore.createChat(workspaceId, canonicalPath(workspacePath))
   })
   ipcMain.handle('create-global-chat', () => AppStore.createGlobalChat())
+  // Phase F1: sub-thread creation. The renderer passes the parent chat
+  // id plus user choices (provider, delegation prompt, return-result
+  // flag). AppStore enforces max-depth-1; we surface any error so the
+  // renderer can show it.
+  ipcMain.handle('create-sub-thread', (_, args: {
+    parentChatId: string
+    provider: ProviderId
+    delegationPrompt: string
+    returnResultToParent: boolean
+    workspaceId?: string
+    workspacePath?: string
+  }) => {
+    const parentChatId = requireNonEmptyString(args?.parentChatId, 'Parent chat id')
+    const provider = assertProviderId(args?.provider)
+    const delegationPrompt = requireNonEmptyString(args?.delegationPrompt, 'Delegation prompt')
+    const returnResultToParent = Boolean(args?.returnResultToParent)
+    const subThread = AppStore.createSubThread({
+      parentChatId,
+      provider,
+      delegationPrompt,
+      returnResultToParent,
+      workspaceId: args?.workspaceId,
+      workspacePath: args?.workspacePath
+    })
+    // Audit: write a durable run-event under the PARENT chat so the
+    // parent's transcript/event log shows the delegation happened. The
+    // sub-thread's own runs will be recorded under its own appChatId.
+    try {
+      appendDurableRunEventForRoute(
+        AppStore.getChat(parentChatId)?.provider ?? 'gemini',
+        { appChatId: parentChatId },
+        'subthread_spawned',
+        'control',
+        `Delegated to ${provider} sub-thread`,
+        {
+          subThreadId: subThread.appChatId,
+          provider,
+          delegationPrompt,
+          returnResultToParent
+        }
+      )
+    } catch {
+      // Parent run may not be active — durable trace is best-effort.
+    }
+    return subThread
+  })
+  ipcMain.handle('get-sub-threads', (_, parentChatId: string) => {
+    return AppStore.getChildChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
+  })
   ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
     AppStore.saveChat(sanitizeChatForSave(chat))
   })

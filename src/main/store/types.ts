@@ -632,6 +632,42 @@ export interface ChatRecord {
     approvalMode: string;
     sandboxEnabled: boolean;
   };
+  /** Phase F1 — Multi-Provider Sub-Threads. When set, this chat was
+   * spawned as a sub-thread of `parentChatId`. The parent and child
+   * are context-isolated (each has its own provider session, message
+   * history, and run state) but topologically linked so the sidebar
+   * can show parent-child nesting and the user can navigate between
+   * them. Sub-threads inherit the parent's workspaceId/workspacePath
+   * by default but can pick a different provider — that's the entire
+   * point of the feature: hand off CLI work to Codex while Claude
+   * runs the parent plan, etc.
+   *
+   * v1 constraint: max depth 1. A sub-thread cannot itself spawn a
+   * sub-thread (UI affordance disabled when `parentChatId` is set).
+   * Future revs can lift this. */
+  parentChatId?: string;
+  /** Phase F1 — delegation metadata, present only when `parentChatId`
+   * is set. Records WHY this sub-thread exists so the audit trail +
+   * future auto-orchestration can reconstruct intent. */
+  delegationContext?: {
+    /** When the delegation was created (ms since epoch). */
+    createdAt: number;
+    /** Provider running the parent thread at the moment of delegation
+     * — preserved even if the parent later switches provider. */
+    parentProvider: ProviderId;
+    /** The user-supplied (or future: auto-generated) delegation
+     * prompt that primes the sub-thread's first turn. Persisted for
+     * the parent-thread "↪ Delegated to X" surface to show. */
+    delegationPrompt: string;
+    /** Whether the user asked for the sub-thread's final assistant
+     * message to be auto-propagated back to the parent transcript
+     * when the sub-thread completes. v1 records the flag but does
+     * NOT auto-propagate yet (manual navigation only); F2 will wire
+     * the back-propagation. */
+    returnResultToParent: boolean;
+    /** Set when the result has actually been propagated (F2+). */
+    resultReturnedAt?: number;
+  };
 }
 
 export type RunEventKind =
@@ -645,6 +681,8 @@ export type RunEventKind =
   | 'approval_response'
   | 'approval_timer_armed'
   | 'approval_timer_timeout'
+  | 'subthread_spawned'
+  | 'subthread_returned'
   | 'diff'
   | 'final_message'
   | 'lifecycle';

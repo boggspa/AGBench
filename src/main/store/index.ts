@@ -498,6 +498,101 @@ export class AppStore {
     return chat;
   }
 
+  /** Phase F1: spawn a sub-thread under an existing parent chat.
+   *
+   * The sub-thread inherits the parent's workspace by default (the
+   * "parent's workspace" interpretation is the safe one — we don't
+   * want a delegation to silently jump to a different workspace). The
+   * caller picks the provider — that's the whole point of the
+   * feature. The delegation prompt is recorded for audit + future
+   * auto-propagation; v1 doesn't auto-send it (renderer pre-fills the
+   * composer and lets the user confirm before submitting).
+   *
+   * v1 constraint: rejects creation when `parentChat.parentChatId` is
+   * itself set, enforcing the max-depth-1 invariant.
+   */
+  static createSubThread(args: {
+    parentChatId: string;
+    provider: ProviderId;
+    delegationPrompt: string;
+    returnResultToParent: boolean;
+    /** Override the workspace if the user explicitly picked a
+     * different one. Defaults to inheriting the parent's workspace. */
+    workspaceId?: string;
+    workspacePath?: string;
+  }): ChatRecord {
+    const parent = this.getChat(args.parentChatId);
+    if (!parent) {
+      throw new Error(`Cannot create sub-thread: parent chat ${args.parentChatId} not found`);
+    }
+    if (parent.parentChatId) {
+      throw new Error(
+        `Cannot create sub-thread: parent ${args.parentChatId} is itself a sub-thread (max depth 1 in v1)`
+      );
+    }
+    const settings = this.getSettings();
+    const inheritWorkspace = args.workspaceId === undefined && args.workspacePath === undefined;
+    const workspaceId = inheritWorkspace ? parent.workspaceId : args.workspaceId;
+    const workspacePath = inheritWorkspace ? parent.workspacePath : args.workspacePath;
+    const chat: ChatRecord = {
+      appChatId: randomUUID(),
+      // Scope inherited from parent — a sub-thread of a workspace
+      // chat stays a workspace chat; a sub-thread of a global chat
+      // stays global.
+      scope: parent.scope ?? 'workspace',
+      provider: args.provider,
+      title: `Sub-thread (${args.provider})`,
+      workspaceId,
+      workspacePath,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      archived: false,
+      messages: [],
+      runs: [],
+      parentChatId: parent.appChatId,
+      delegationContext: {
+        createdAt: Date.now(),
+        parentProvider: parent.provider ?? settings.activeProvider ?? 'gemini',
+        delegationPrompt: args.delegationPrompt,
+        returnResultToParent: args.returnResultToParent
+      }
+    };
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat);
+    }
+    return chat;
+  }
+
+  /** Phase F1: every chat whose `parentChatId` is `parentChatId`,
+   * sorted by createdAt ascending (oldest first). Reads the full
+   * chats directory and filters — fine for typical workloads (small
+   * fanout per parent), no index needed yet. */
+  static getChildChats(parentChatId: string): ChatRecord[] {
+    return this.getChats()
+      .filter((chat) => chat.parentChatId === parentChatId)
+      .sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  /** Phase F1: walk up to the topmost ancestor of a chat. Used by the
+   * sidebar to group sub-threads under their root and by audit code
+   * that needs the "thread family" of a delegation. Returns the input
+   * chat if it has no parent. */
+  static getRootChat(chatId: string): ChatRecord | null {
+    let current = this.getChat(chatId);
+    const visited = new Set<string>();
+    while (current?.parentChatId) {
+      if (visited.has(current.appChatId)) {
+        // Defensive: malformed data with a cycle. Treat as root.
+        return current;
+      }
+      visited.add(current.appChatId);
+      const parent = this.getChat(current.parentChatId);
+      if (!parent) return current;
+      current = parent;
+    }
+    return current;
+  }
+
   static saveChat(chat: ChatRecord) {
     const settings = this.getSettings();
     if (!settings.storeLocalChatHistory) return;
