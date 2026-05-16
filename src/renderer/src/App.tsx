@@ -17,6 +17,7 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
+import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import {
   DEFAULT_CONTEXT_TURNS,
   clampContextTurns,
@@ -2473,9 +2474,6 @@ const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
   source: null
 }
 
-const applyStateAction = <T,>(value: T | ((previous: T) => T), previous: T): T =>
-  typeof value === 'function' ? (value as (previous: T) => T)(previous) : value
-
 function CockpitPanel({
   lanes,
   handoffCards,
@@ -2914,7 +2912,7 @@ function App(): React.JSX.Element {
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [currentChat, setCurrentChat] = useState<ChatRecord | null>(null)
 
-  const [composerDraftsByChatId, setComposerDraftsByChatId] = useState<Record<string, string>>({})
+  const [composerDraftsByChatId, setComposerDraftForChat] = usePerChatState('')
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
   const [runQueueJobs, setRunQueueJobs] = useState<RunQueueJob[]>([])
@@ -2996,7 +2994,7 @@ function App(): React.JSX.Element {
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
-  const [geminiTerminalInputByChatId, setGeminiTerminalInputByChatId] = useState<Record<string, string>>({})
+  const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
   const [geminiTerminalHeight, setGeminiTerminalHeight] = useState(DEFAULT_GEMINI_TERMINAL_HEIGHT)
   const [showGhostCompanion, setShowGhostCompanion] = useState(getStoredGhostCompanionEnabled)
   const [showSkyVisualFx, setShowSkyVisualFx] = useState(getStoredSkyVisualFxEnabled)
@@ -3020,20 +3018,24 @@ function App(): React.JSX.Element {
   const usageRecordsSignatureRef = useRef('')
   const [imageAttachmentsByChatId, setImageAttachmentsByChatId] = useState<Record<string, ImageAttachment[]>>({})
   const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<Record<string, ComposerPermissionState>>({})
-  const [pendingAgentApprovalByChatId, setPendingAgentApprovalByChatId] = useState<Record<string, AgentApprovalRequest | null>>({})
+  const [
+    pendingAgentApprovalByChatId,
+    setPendingAgentApprovalForChatId,
+    setPendingAgentApprovalByChatId
+  ] = usePerChatState<AgentApprovalRequest | null>(null)
   const [isSendConfirming, setIsSendConfirming] = useState(false)
   const [createPrState, setCreatePrState] = useState<{ status: 'idle' | 'pending' | 'success' | 'error'; message?: string }>({ status: 'idle' })
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
-  const [pendingPlanChoiceByChatId, setPendingPlanChoiceByChatId] = useState<Record<string, PlanChoiceState | null>>({})
-  const [commandPaletteOpenByChatId, setCommandPaletteOpenByChatId] = useState<Record<string, boolean>>({})
-  const [commandPaletteQueryByChatId, setCommandPaletteQueryByChatId] = useState<Record<string, string>>({})
+  const [pendingPlanChoiceByChatId, setPendingPlanChoiceForChat] = usePerChatState<PlanChoiceState | null>(null)
+  const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
+  const [commandPaletteQueryByChatId, setCommandPaletteQueryForChat] = usePerChatState('')
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
   const [commandDiscoveryStatus, setCommandDiscoveryStatus] = useState('Static Gemini commands loaded.')
   const [isMemoryInspectorOpen, setIsMemoryInspectorOpen] = useState(false)
   const [geminiMemoryFiles, setGeminiMemoryFiles] = useState<GeminiMemoryFile[]>([])
   const [geminiMemoryStatus, setGeminiMemoryStatus] = useState('GEMINI.md memory has not been inspected yet.')
   const [scheduledTasks, setScheduledTasks] = useState<ScheduledTask[]>([])
-  const [scheduleRunAtByChatId, setScheduleRunAtByChatId] = useState<Record<string, string>>({})
+  const [scheduleRunAtByChatId, setScheduleRunAtForChat] = usePerChatState('')
   const [dueScheduledTasks, setDueScheduledTasks] = useState<ScheduledTask[]>([])
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(new Set())
   const [runningProviders, setRunningProviders] = useState<Set<ProviderId>>(new Set())
@@ -3137,17 +3139,7 @@ function App(): React.JSX.Element {
     : runtimeProfiles.find((profile) => profile.provider === currentProvider)?.id || ''
   const currentProviderRuntimeProfiles = runtimeProfiles.filter((profile) => profile.provider === currentProvider)
   const setChatPromptDraft = (chatId: string | null | undefined, value: string) => {
-    if (!chatId) return
-    setComposerDraftsByChatId(prev => {
-      if (!value) {
-        if (!(chatId in prev)) return prev
-        const next = { ...prev }
-        delete next[chatId]
-        return next
-      }
-      if (prev[chatId] === value) return prev
-      return { ...prev, [chatId]: value }
-    })
+    setComposerDraftForChat(chatId, value)
   }
   const setPrompt = (value: string) => {
     setChatPromptDraft(currentChatIdRef.current || currentComposerChatId, value)
@@ -3180,61 +3172,33 @@ function App(): React.JSX.Element {
   const setPermissionRequestSource = (source: GeminiPermissionRequest['source'] | null) => updatePermissionRequestState({ source })
   const setPendingAgentApproval = (value: AgentApprovalRequest | null | ((previous: AgentApprovalRequest | null) => AgentApprovalRequest | null)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setPendingAgentApprovalByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || null)
-    }))
+    setPendingAgentApprovalForChatId(chatId, value)
   }
   const setPendingAgentApprovalForChat = (
     chatId: string | null | undefined,
     value: AgentApprovalRequest | null | ((previous: AgentApprovalRequest | null) => AgentApprovalRequest | null)
   ) => {
-    if (!chatId) return
-    setPendingAgentApprovalByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || null)
-    }))
+    setPendingAgentApprovalForChatId(chatId, value)
   }
   const setPendingPlanChoice = (value: PlanChoiceState | null | ((previous: PlanChoiceState | null) => PlanChoiceState | null)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setPendingPlanChoiceByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || null)
-    }))
+    setPendingPlanChoiceForChat(chatId, value)
   }
   const setCommandPaletteQuery = (value: string | ((previous: string) => string)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setCommandPaletteQueryByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || '')
-    }))
+    setCommandPaletteQueryForChat(chatId, value)
   }
   const setIsCommandPaletteOpen = (value: boolean | ((previous: boolean) => boolean)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setCommandPaletteOpenByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, Boolean(prev[chatId]))
-    }))
+    setCommandPaletteOpenForChat(chatId, value)
   }
   const setScheduleRunAt = (value: string | ((previous: string) => string)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setScheduleRunAtByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || '')
-    }))
+    setScheduleRunAtForChat(chatId, value)
   }
   const setGeminiTerminalInput = (value: string | ((previous: string) => string)) => {
     const chatId = getCurrentComposerStateChatId()
-    if (!chatId) return
-    setGeminiTerminalInputByChatId(prev => ({
-      ...prev,
-      [chatId]: applyStateAction(value, prev[chatId] || '')
-    }))
+    setGeminiTerminalInputForChat(chatId, value)
   }
   const setRuntimeProfileForChat = (chatId: string | null | undefined, runtimeProfileId: string) => {
     if (!chatId) return
