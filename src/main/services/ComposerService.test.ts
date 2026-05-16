@@ -156,6 +156,18 @@ describe('ComposerService', () => {
     expect(payload.composer.contextTurnsApplied).toBe(6)
   })
 
+  it('teaches Gemini about cross-provider delegate_to_subthread (Phase I3.1)', () => {
+    // The runtime note must mention delegate_to_subthread + the
+    // cross-provider rule so Gemini doesn't quietly fall back to its
+    // built-in invoke_agent when the user asks for "delegate to Kimi".
+    const payload = compose({ provider: 'gemini' }, {})
+    expect(payload.prompt).toContain('delegate_to_subthread')
+    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
+    expect(payload.prompt).toContain("provider: 'kimi'")
+    expect(payload.prompt).toContain('NEVER use your built-in invoke_agent')
+  })
+
   it('keeps Gemini plan-mode resumes and skips duplicated context', () => {
     const payload = compose(
       {

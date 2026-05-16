@@ -50,6 +50,7 @@ import { createProviderAdapterRegistry, defaultProviderDescriptor, providerLabel
 import { buildDiagnosticsSnapshot, buildProductOperationsStatus, serializeDiagnosticsSnapshot } from './ProductOperations'
 import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
+import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMessage } from './CrossProviderDelegationDetector'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -1300,6 +1301,54 @@ function appendDurableRunEventForRoute(
     summary,
     payload
   })
+}
+
+/**
+ * Phase I3.x — runs that have already received the cross-provider warning
+ * chip. Keyed by appRunId so we fire at most once per run; otherwise a
+ * verbose Gemini stream would spam the renderer with the same redirect
+ * notice on every stdout chunk. */
+const geminiCrossProviderWarningsFired = new Set<string>()
+
+/**
+ * Phase I3.x — bridge between the pure detector and the durable run-event
+ * stream. Inspects a Gemini stdout chunk; if it looks like a built-in
+ * invoke_agent call AND the user's prompt expressed cross-provider intent,
+ * emits a single `provider_warning` event with the redirect hint so the
+ * renderer surfaces a chip without blocking the run. */
+function maybeEmitGeminiCrossProviderWarning(
+  sender: Electron.WebContents,
+  route: AgentRunRoute,
+  userPrompt: string,
+  stdoutChunk: string
+): void {
+  const runId = route.appRunId
+  if (!runId) return
+  if (geminiCrossProviderWarningsFired.has(runId)) return
+
+  const detection = detectCrossProviderDelegationMisuse({
+    userPrompt,
+    stdoutChunk
+  })
+  if (!detection.shouldWarn) return
+
+  geminiCrossProviderWarningsFired.add(runId)
+
+  // We piggyback on the existing `provider_warning` lane the renderer
+  // already understands (NON_EXECUTION_TOOL_EVENT_NAMES whitelists it).
+  try {
+    sendAgentCompatLine(sender, 'gemini', {
+      type: 'provider_warning',
+      provider: 'gemini',
+      severity: 'warning',
+      title: 'Cross-provider delegation bypassed',
+      message: crossProviderDelegationWarningMessage(),
+      details: detection.reason
+    }, route)
+  } catch {
+    // Best-effort surface. Detection only fires once per run; drop quietly
+    // if the renderer is gone.
+  }
 }
 
 function recordStartupRecoveryEvents(records: RunRecoveryRecord[]): void {
@@ -5832,6 +5881,11 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     const text = data.toString()
     appendDurableRunEventForRoute('gemini', route, 'provider_raw', 'raw', 'Gemini stdout', { data: text }, 'provider')
     publishRunEvent('gemini-output', 'gemini', { provider: 'gemini', data: text, ...route }, event.sender)
+    // Phase I3.x — detect-and-redirect heuristic. If Gemini emits an
+    // invoke_agent tool_call when the user asked for cross-provider
+    // delegation, surface a single non-blocking warning chip so the
+    // user understands the call didn't reach AGBench's MCP bridge.
+    maybeEmitGeminiCrossProviderWarning(event.sender, route, payload.prompt, text)
   })
 
   child.stderr?.on('data', (data) => {
@@ -5847,6 +5901,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       geminiProcess = null
     }
     runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
+    if (route.appRunId) geminiCrossProviderWarningsFired.delete(route.appRunId)
     if (!geminiSessionProcess) {
       const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
       activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
@@ -5863,6 +5918,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       geminiProcess = null
     }
     runManager.finish(route.appRunId, 'failed')
+    if (route.appRunId) geminiCrossProviderWarningsFired.delete(route.appRunId)
     if (!geminiSessionProcess) {
       const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
       activeGeminiToolContext = latestGemini?.sender ? latestGemini : null

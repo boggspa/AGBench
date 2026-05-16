@@ -269,13 +269,18 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // (3) Gemini write-tool preamble: workspace runs (non-global) outside plan
   // mode get a leading instruction so Gemini reaches for the AGBench MCP
   // tools instead of delegating writes to invoke_agent (which loses write
-  // capability).
+  // capability). Phase I3.1 additionally surfaces the cross-provider
+  // delegation tool so Gemini doesn't quietly fall back to its built-in
+  // invoke_agent for tasks the user expressed should be handled by Kimi
+  // / Codex / Claude.
   if (provider === 'gemini' && !isGlobalRun && approvalMode !== 'plan') {
     const geminiWriteToolPreamble = [
       'AGBench runtime note: this Gemini workspace run is write-capable.',
-      'Use the AGBench MCP tools directly for file changes: read_file, list_directory, write_file, replace, and run_shell_command.',
-      'If Gemini exposes MCP-qualified names, use agentbench__read_file, agentbench__list_directory, agentbench__write_file, agentbench__replace, and agentbench__run_shell_command.',
+      'Use the AGBench MCP tools directly for file changes: read_file, list_directory, write_file, replace, run_shell_command, and delegate_to_subthread.',
+      'If Gemini exposes MCP-qualified names, use agentbench__read_file, agentbench__list_directory, agentbench__write_file, agentbench__replace, agentbench__run_shell_command, and agentbench__delegate_to_subthread.',
       'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit AGBench write tools.',
+      'For CROSS-PROVIDER delegation (e.g. asking Kimi or Codex to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use your built-in invoke_agent / generalist agent for cross-provider work, those run inside your own process and cannot reach other AGBench providers.',
+      "Example: agentbench__delegate_to_subthread({ provider: 'kimi', prompt: 'Generate 9 song data tables...', returnResult: true }).",
       'If any of those tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${geminiWriteToolPreamble}\n\n${contextualPrompt}`
