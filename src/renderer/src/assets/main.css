@@ -1049,6 +1049,24 @@ button.sidebar-item {
   height: 18px;
 }
 
+.chat-corner-count {
+  position: absolute;
+  right: -5px;
+  top: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--provider-accent, var(--accent)) 52%, rgba(255, 255, 255, 0.22));
+  background: color-mix(in srgb, var(--provider-accent, var(--accent)) 56%, rgba(8, 10, 14, 0.92));
+  color: var(--text-primary);
+  font-size: 8px;
+  font-weight: 800;
+  line-height: 13px;
+  letter-spacing: 0.01em;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.22);
+}
+
 .chat-corner-controls {
   z-index: 9;
   gap: 2px;
@@ -1069,6 +1087,7 @@ button.sidebar-item {
 }
 
 .chat-corner-controls .chat-corner-btn {
+  position: relative;
   background: transparent;
   border-color: transparent;
   box-shadow: none;
@@ -4568,6 +4587,231 @@ button.sidebar-item {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.chat-media-panel {
+  position: absolute;
+  top: 56px;
+  right: 18px;
+  z-index: 44;
+  width: min(420px, calc(100% - 36px));
+  max-height: min(620px, calc(100% - 96px));
+  overflow: auto;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 76%, rgba(255, 255, 255, 0.18));
+  border-radius: 20px;
+  background:
+    linear-gradient(150deg, color-mix(in srgb, var(--provider-accent, var(--accent)) 14%, transparent), transparent 42%),
+    color-mix(in srgb, var(--bg-primary) 88%, rgba(20, 22, 28, 0.94));
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px) saturate(1.15);
+}
+
+.chat-media-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.chat-media-panel-kicker {
+  color: color-mix(in srgb, var(--provider-accent, var(--accent)) 76%, var(--text-secondary));
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chat-media-panel h2 {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 750;
+  letter-spacing: -0.02em;
+}
+
+.chat-media-panel-close {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--panel-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+.chat-media-panel-close:hover {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--provider-accent, var(--accent)) 42%, var(--panel-border));
+}
+
+.chat-media-empty {
+  padding: 24px 18px;
+  border: 1px dashed color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: 16px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+  line-height: 1.45;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.chat-media-section + .chat-media-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 62%, transparent);
+}
+
+.chat-media-section-title {
+  margin-bottom: 10px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.chat-media-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 10px;
+}
+
+.chat-media-image-card,
+.chat-media-file-row {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  background: rgba(255, 255, 255, 0.045);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-media-image-card {
+  min-width: 0;
+  padding: 7px;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.chat-media-image-card:hover,
+.chat-media-file-row:hover {
+  border-color: color-mix(in srgb, var(--provider-accent, var(--accent)) 42%, var(--panel-border));
+  background: color-mix(in srgb, var(--provider-accent, var(--accent)) 8%, rgba(255, 255, 255, 0.06));
+}
+
+.chat-media-image-card img,
+.chat-media-file-fallback {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  object-fit: cover;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.chat-media-file-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-media-image-card span:last-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.chat-media-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chat-media-file-row {
+  min-width: 0;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-media-file-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-secondary);
+}
+
+.chat-media-file-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-media-file-name,
+.chat-media-file-path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-media-file-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.chat-media-file-path {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.chat-media-source {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chat-media-source.source-external_path {
+  color: color-mix(in srgb, var(--provider-accent, var(--accent)) 72%, var(--text-secondary));
+}
+
+@media (max-width: 760px) {
+  .chat-media-panel {
+    right: 10px;
+    left: 10px;
+    width: auto;
+  }
 }
 
 .composer-image-remove {
