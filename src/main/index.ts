@@ -27,6 +27,7 @@ import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { ChatService } from './services/ChatService'
 import { RunCoordinator } from './services/RunCoordinator'
 import { SettingsService } from './services/SettingsService'
+import { WorkspaceService } from './services/WorkspaceService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -732,18 +733,6 @@ function sanitizeChatForSave(chat: ChatRecord): ChatRecord {
   }
 }
 
-function safeWorkspacePartial(partial: Partial<WorkspaceRecord> = {}): Partial<WorkspaceRecord> {
-  const allowed: Partial<WorkspaceRecord> = {}
-  if (typeof partial.displayName === 'string') allowed.displayName = partial.displayName
-  if (typeof partial.branch === 'string') allowed.branch = partial.branch
-  if (typeof partial.pinned === 'boolean') allowed.pinned = partial.pinned
-  if ('geminiWorktree' in partial) {
-    const geminiWorktree = sanitizeWorkspaceGeminiWorktree(partial.geminiWorktree)
-    if (geminiWorktree) allowed.geminiWorktree = geminiWorktree
-  }
-  return allowed
-}
-
 function sanitizeWorkspaceGeminiWorktree(value: unknown): WorkspaceRecord['geminiWorktree'] | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined
@@ -778,12 +767,6 @@ function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'):
     throw new Error(`${label} must be selected through AGBench before it can be used.`)
   }
   return normalized
-}
-
-function addWorkspaceFromNativeSelection(workspacePath: string): WorkspaceRecord {
-  const normalized = canonicalPath(requireNonEmptyString(workspacePath, 'Workspace'))
-  assertSafeWorkspaceRoot(normalized)
-  return AppStore.addOrUpdateWorkspace(normalized)
 }
 
 function sanitizeRunQueueStatus(value: unknown, fallback: RunQueueJobStatus = 'queued'): RunQueueJobStatus {
@@ -8400,6 +8383,22 @@ app.whenReady().then(() => {
       console.log(line)
     }
   })
+  const workspaceService = new WorkspaceService({
+    appStore: AppStore,
+    allowlist: bridgeAllowlist,
+    canonicalPath,
+    selectDirectory: async () => {
+      if (!mainWindow) return null
+      const result = await dialog.showOpenDialog(mainWindow, {
+        properties: ['openDirectory']
+      })
+      if (result.canceled || result.filePaths.length === 0) {
+        return null
+      }
+      return result.filePaths[0]
+    },
+    checkTrust: (workspacePath) => TrustStatusService.checkTrust(workspacePath)
+  })
 
   // Phase C5 scaffold: APNs wake-on-approval. Today both the pusher and
   // token store are wired as no-ops / persistent stubs; the real APNs
@@ -8648,7 +8647,7 @@ app.whenReady().then(() => {
   // which persists at `<userData>/bridge/remote-workspaces.json`. They are
   // unconditionally registered so the renderer can manage allowlist entries
   // even when the daemon is not running.
-  ipcMain.handle('bridge-allowlist-list', () => bridgeAllowlist.list())
+  ipcMain.handle('bridge-allowlist-list', () => workspaceService.listRemoteAllowlist())
   ipcMain.handle(
     'bridge-allowlist-upsert',
     (_, entry: {
@@ -8658,44 +8657,12 @@ app.whenReady().then(() => {
       allowedProviders: string[]
       allowedApprovalModes: string[]
       expiresAt?: number
-    }) => {
-      // Defensive validation — the renderer is trusted but we don't want a
-      // typo to silently land an unusable entry. Throw early with a clear
-      // message so the UI can surface it.
-      if (!entry || typeof entry !== 'object') {
-        throw new Error('bridge-allowlist-upsert: entry must be an object')
-      }
-      const workspaceId = requireNonEmptyString(entry.workspaceId, 'workspaceId')
-      const path = requireNonEmptyString(entry.path, 'path')
-      if (entry.mode !== 'read-only' && entry.mode !== 'read-write') {
-        throw new Error(`bridge-allowlist-upsert: mode must be 'read-only' or 'read-write' (got '${entry.mode}')`)
-      }
-      if (!Array.isArray(entry.allowedProviders) || !entry.allowedProviders.every((p) => typeof p === 'string')) {
-        throw new Error('bridge-allowlist-upsert: allowedProviders must be string[]')
-      }
-      if (!Array.isArray(entry.allowedApprovalModes) || !entry.allowedApprovalModes.every((p) => typeof p === 'string')) {
-        throw new Error('bridge-allowlist-upsert: allowedApprovalModes must be string[]')
-      }
-      if (entry.expiresAt !== undefined && (typeof entry.expiresAt !== 'number' || entry.expiresAt <= 0)) {
-        throw new Error('bridge-allowlist-upsert: expiresAt must be a positive number (ms since epoch)')
-      }
-      return bridgeAllowlist.upsert({
-        workspaceId,
-        path,
-        mode: entry.mode,
-        allowedProviders: entry.allowedProviders,
-        allowedApprovalModes: entry.allowedApprovalModes,
-        expiresAt: entry.expiresAt
-      })
-    }
+    }) => workspaceService.upsertRemoteAllowlist(entry)
   )
-  ipcMain.handle('bridge-allowlist-remove', (_, workspaceId: string) => {
-    return bridgeAllowlist.remove(requireNonEmptyString(workspaceId, 'workspaceId'))
-  })
-  ipcMain.handle('bridge-allowlist-clear', () => {
-    bridgeAllowlist.clear()
-    return true
-  })
+  ipcMain.handle('bridge-allowlist-remove', (_, workspaceId: string) =>
+    workspaceService.removeRemoteAllowlist(workspaceId)
+  )
+  ipcMain.handle('bridge-allowlist-clear', () => workspaceService.clearRemoteAllowlist())
 
   // Phase E3: Bridge Networking — detection + status for the
   // Settings panel. Returns the LAN serviceName (used for Bonjour
@@ -8838,13 +8805,12 @@ app.whenReady().then(() => {
   ipcMain.handle('delete-handoff-card', (_, id: string) => AppStore.deleteHandoffCard(requireNonEmptyString(id, 'Handoff card id')))
 
   // Workspaces
-  ipcMain.handle('get-workspaces', () => AppStore.getWorkspaces())
+  ipcMain.handle('get-workspaces', () => workspaceService.getWorkspaces())
   ipcMain.handle('add-or-update-workspace', (_, path: string, partial: Partial<WorkspaceRecord>) => {
-    const workspacePath = requireRegisteredWorkspace(path)
-    return AppStore.addOrUpdateWorkspace(workspacePath, safeWorkspacePartial(partial))
+    return workspaceService.addOrUpdateWorkspace(path, partial)
   })
-  ipcMain.handle('remove-workspace', (_, id: string) => AppStore.removeWorkspace(id))
-  ipcMain.handle('clear-workspaces', () => AppStore.clearWorkspaces())
+  ipcMain.handle('remove-workspace', (_, id: string) => workspaceService.removeWorkspace(id))
+  ipcMain.handle('clear-workspaces', () => workspaceService.clearWorkspaces())
 
   // Chats
   ipcMain.handle('get-chats', (_, workspaceId?: string) => chatService.getChats(workspaceId))
@@ -9041,17 +9007,7 @@ app.whenReady().then(() => {
   ipcMain.handle('list-gemini-sessions', async () => listGeminiSessions())
 
   // IPC Handlers
-  ipcMain.handle('select-workspace', async () => {
-    if (!mainWindow) return null
-    const result = await dialog.showOpenDialog(mainWindow, {
-      properties: ['openDirectory']
-    })
-    if (result.canceled || result.filePaths.length === 0) {
-      return null
-    }
-    const path = result.filePaths[0]
-    return addWorkspaceFromNativeSelection(path)
-  })
+  ipcMain.handle('select-workspace', async () => workspaceService.selectWorkspace())
 
   ipcMain.handle('select-image-files', async () => {
     if (!mainWindow) return []
@@ -10105,9 +10061,7 @@ app.whenReady().then(() => {
   })
 
   // Trust Status
-  ipcMain.handle('check-trust', (_, workspacePath: string) => {
-    return TrustStatusService.checkTrust(requireRegisteredWorkspace(workspacePath))
-  })
+  ipcMain.handle('check-trust', (_, workspacePath: string) => workspaceService.checkTrust(workspacePath))
 
   // PTY for Trust Assistant
   const ptyProcesses = new Map<string, pty.IPty>()
