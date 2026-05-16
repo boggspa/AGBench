@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import BridgeCore
+import AGBenchRunActivityShared
 
 /// TranscriptViewModel — consumes a `GuiGeminiBridgeClient.runEvents`
 /// stream and renders an append-only list of events for the UI.
@@ -30,9 +31,15 @@ public final class TranscriptViewModel {
     private var runEventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
     private var routeTask: Task<Void, Never>?
+    private let liveActivityController: AGBenchLiveActivityController?
+    private var liveActivityReducer = AGBenchRunActivityEventReducer()
 
-    public init(maxRetained: Int = 500) {
+    public init(
+        maxRetained: Int = 500,
+        liveActivityController: AGBenchLiveActivityController? = nil
+    ) {
         self.maxRetained = maxRetained
+        self.liveActivityController = liveActivityController
     }
 
     /// Subscribe to a client's streams. Cancels any previous
@@ -67,6 +74,7 @@ public final class TranscriptViewModel {
         statusTask = nil
         routeTask?.cancel()
         routeTask = nil
+        liveActivityReducer = AGBenchRunActivityEventReducer()
     }
 
     /// Wipe the buffer — usually wired to a "clear transcript" button.
@@ -80,6 +88,12 @@ public final class TranscriptViewModel {
         events.append(event)
         if events.count > maxRetained {
             events.removeFirst(events.count - maxRetained)
+        }
+        guard let effect = liveActivityReducer.apply(event),
+              let liveActivityController
+        else { return }
+        Task {
+            await liveActivityController.apply(effect)
         }
     }
 

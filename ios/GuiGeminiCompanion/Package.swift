@@ -8,7 +8,8 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
-        .library(name: "GuiGeminiCompanionCore", targets: ["GuiGeminiCompanionCore"])
+        .library(name: "GuiGeminiCompanionCore", targets: ["GuiGeminiCompanionCore"]),
+        .library(name: "AGBenchRunActivityShared", targets: ["AGBenchRunActivityShared"])
     ],
     dependencies: [
         // BridgeCore + sibling shared packages from CodexBridge.
@@ -19,8 +20,12 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "AGBenchRunActivityShared"
+        ),
+        .target(
             name: "GuiGeminiCompanionCore",
             dependencies: [
+                "AGBenchRunActivityShared",
                 .product(name: "BridgeCore", package: "CodexBridge"),
                 .product(name: "BridgeCryptoPairing", package: "CodexBridge"),
                 .product(name: "BridgeLANTransport", package: "CodexBridge")
@@ -28,7 +33,10 @@ let package = Package(
         ),
         .testTarget(
             name: "GuiGeminiCompanionCoreTests",
-            dependencies: ["GuiGeminiCompanionCore"]
+            dependencies: [
+                "GuiGeminiCompanionCore",
+                "AGBenchRunActivityShared"
+            ]
         )
     ]
 )

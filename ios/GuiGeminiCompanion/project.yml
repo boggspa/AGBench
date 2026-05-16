@@ -6,6 +6,8 @@ settings:
     SWIFT_VERSION: 6.0
     CODE_SIGN_STYLE: Automatic
     DEVELOPMENT_TEAM: <your-team-id>
+    MARKETING_VERSION: 0.1.0
+    CURRENT_PROJECT_VERSION: 1
 packages:
   # Local SwiftPM package containing the library target consumed by the
   # iOS app. The `.` path is relative to this project.yml file.
@@ -21,6 +23,7 @@ targets:
     dependencies:
       - package: GuiGeminiCompanionPackage
         product: GuiGeminiCompanionCore
+      - target: AGBenchRunActivityExtension
     settings:
       base:
         PRODUCT_NAME: "GUIGemini"
@@ -30,6 +33,22 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
         SUPPORTED_INTERFACE_ORIENTATIONS: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+  AGBenchRunActivityExtension:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - Apps/AGBenchRunActivity
+    dependencies:
+      - package: GuiGeminiCompanionPackage
+        product: AGBenchRunActivityShared
+    settings:
+      base:
+        PRODUCT_NAME: "AGBenchRunActivity"
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.AGBench.ios.AGBenchRunActivity
+        INFOPLIST_FILE: Apps/AGBenchRunActivity/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Apps/AGBenchRunActivity/AGBenchRunActivity.entitlements
+        SKIP_INSTALL: "NO"
 schemes:
   GuiGeminiCompanion:
     build:
@@ -37,3 +56,7 @@ schemes:
         GuiGeminiCompanion: all
     run:
       config: Debug
+  AGBenchRunActivityExtension:
+    build:
+      targets:
+        AGBenchRunActivityExtension: all

@@ -39,7 +39,9 @@ final class AppState {
     func connect(with pair: GuiGeminiBridgeClient.Pair) async {
         let client = GuiGeminiBridgeClient(pair: pair)
         self.bridgeClient = client
-        let transcript = TranscriptViewModel()
+        let transcript = TranscriptViewModel(
+            liveActivityController: AGBenchLiveActivityController()
+        )
         transcript.attach(to: client)
         self.transcriptViewModel = transcript
         self.approvalViewModel = ApprovalViewModel(client: client)

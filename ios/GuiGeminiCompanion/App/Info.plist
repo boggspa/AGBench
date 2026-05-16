@@ -41,6 +41,10 @@
     <array>
         <string>remote-notification</string>
     </array>
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
     <!--
       Bonjour services we discover. Matches the desktop daemon's
       `BridgeProductConfiguration.guiGemini.bonjourQUICServiceType` =
