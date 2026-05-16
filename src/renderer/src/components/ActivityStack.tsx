@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChatRecord, ChildAgentThread, ProviderId, ToolActivity, ToolDiffSummary } from '../../../main/store/types';
-import { deriveToolDiffSummary, estimateLineChanges } from '../lib/ToolParser';
+import { deriveToolDiffSummary } from '../lib/ToolParser';
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads';
 import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMode';
+import { inlineStatsForActivity } from '../lib/ActivityInlineStats';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface ActivityStackProps {
@@ -672,7 +673,6 @@ export function ActivityStack({ activities, workspacePath, provider, chatId, run
   }, [activities, childThreads]);
 
   if (!activities || activities.length === 0) return null;
-  const aggregate = aggregateDiffSummary(topLevelActivities);
   const timelineItems = buildTimelineItems(topLevelActivities);
 
   const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
@@ -683,20 +683,6 @@ export function ActivityStack({ activities, workspacePath, provider, chatId, run
 
   return (
     <div className="activity-timeline">
-      {aggregate && (
-        <div className={`activity-run-edit-counter confidence-${aggregate.confidence}`}>
-          <span className="activity-run-edit-label">Edits</span>
-          <div className="diff-stat-slot">
-            <span key={`run-add-${aggregate.additions || 0}`} className="activity-counter-value activity-counter-add roll-up">+{aggregate.additions || 0}</span>
-          </div>
-          <span className="activity-run-edit-sep">/</span>
-          <div className="diff-stat-slot">
-            <span key={`run-del-${aggregate.deletions || 0}`} className="activity-counter-value activity-counter-del roll-down">-{aggregate.deletions || 0}</span>
-          </div>
-          <span className="activity-run-edit-files">{aggregate.files?.length || 0} {(aggregate.files?.length || 0) === 1 ? 'file' : 'files'}</span>
-          {aggregate.confidence !== 'exact' && <span className="activity-run-edit-estimated">~</span>}
-        </div>
-      )}
       {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
       {timelineItems.map(item => {
         if (item.type === 'compact-group') {
@@ -715,47 +701,6 @@ export function ActivityStack({ activities, workspacePath, provider, chatId, run
       })}
     </div>
   );
-}
-
-function aggregateDiffSummary(activities: ToolActivity[]): ToolDiffSummary | null {
-  const summaries = activities
-    .map((activity) => activity.diffSummary || deriveToolDiffSummary(activity.toolName, activity.parameters, activity.resultSummary || activity.outputPreview))
-    .filter((summary): summary is ToolDiffSummary => Boolean(summary));
-
-  if (summaries.length === 0) return null;
-
-  const fileMap = new Map<string, NonNullable<ToolDiffSummary['files']>[number]>();
-  let additions = 0;
-  let deletions = 0;
-  let hasStats = false;
-  let confidence: ToolDiffSummary['confidence'] = 'exact';
-
-  for (const summary of summaries) {
-    if (summary.confidence !== 'exact') confidence = summary.confidence === 'unknown' ? 'unknown' : confidence === 'unknown' ? 'unknown' : 'estimated';
-    if (summary.additions !== undefined || summary.deletions !== undefined) hasStats = true;
-    additions += summary.additions || 0;
-    deletions += summary.deletions || 0;
-    for (const file of summary.files || []) {
-      const key = file.path || `unknown-${fileMap.size}`;
-      const existing = fileMap.get(key);
-      fileMap.set(key, {
-        ...existing,
-        ...file,
-        additions: (existing?.additions || 0) + (file.additions || 0),
-        deletions: (existing?.deletions || 0) + (file.deletions || 0)
-      });
-    }
-  }
-
-  if (!hasStats && fileMap.size === 0) return null;
-
-  return {
-    additions: hasStats ? additions : undefined,
-    deletions: hasStats ? deletions : undefined,
-    files: [...fileMap.values()],
-    source: 'unknown',
-    confidence
-  };
 }
 
 function ActivityDiffFiles({ diffSummary, workspacePath }: { diffSummary?: ToolDiffSummary; workspacePath?: string }) {
@@ -954,15 +899,17 @@ function ActivityRow({
   const metaText = chipText.join(' · ');
   const parameters = activity.parameters || {};
   const diffSummary = activity.diffSummary || deriveToolDiffSummary(activity.toolName, parameters, activity.resultSummary || activity.outputPreview);
-  const lineChanges = estimateLineChanges(parameters);
-  const hasFileContent = typeof parameters.content === 'string';
-  const lineChangesFromContent = hasFileContent && ['write_file', 'create_file', 'edit_file'].includes((activity.toolName || '').toLowerCase())
-    ? { additions: (parameters.content as string).split('\n').length, deletions: 0 }
-    : { additions: undefined, deletions: undefined };
-  const addedLines = diffSummary?.additions ?? lineChanges.additions ?? lineChangesFromContent.additions;
-  const deletedLines = diffSummary?.deletions ?? lineChanges.deletions ?? lineChangesFromContent.deletions;
-  const hasLineChanges = addedLines !== undefined || deletedLines !== undefined;
-  const sanitizedDetail = buildSanitizedDetail(activity, activityFilePath, addedLines, deletedLines);
+  // Pure helper that decides whether the per-row Codex-style `+X -Y` odometer
+  // renders and what numbers it carries — handles MultiEdit `edits[]`,
+  // Claude `Write` content, Gemini MCP write tools, and suppresses `+0 -0`
+  // for pending edits that have not reported back yet.
+  const inlineStats = inlineStatsForActivity(activity);
+  const sanitizedDetail = buildSanitizedDetail(
+    activity,
+    activityFilePath,
+    inlineStats.visible ? inlineStats.additions : diffSummary?.additions,
+    inlineStats.visible ? inlineStats.deletions : diffSummary?.deletions
+  );
   const hasSanitizedDetail = sanitizedDetail.rows.length > 0 || sanitizedDetail.previews.length > 0;
   const shouldShowRawEvent = showDebugWarning || (isUnknown && !hasSanitizedDetail);
   const diffFileCount = diffSummary?.files?.length || 0;
@@ -1016,15 +963,15 @@ function ActivityRow({
               )}
               {isInlineActivity && <span className={`activity-category-pip category-${activity.category || 'unknown'}`} />}
               {isInlineActivity ? getInlineActivityTitle(activity, activityFilePath) : <ActivityTitle activity={activity} filePath={activityFilePath} />}
-              {hasLineChanges && (
+              {inlineStats.visible && (
                 <span className="activity-line-stats">
                   <span className="diff-stat-slot">
-                    <span key={`add-${addedLines || 0}`} className="activity-line-stat activity-line-stat-add roll-up">+{addedLines || 0}</span>
+                    <span key={`add-${inlineStats.additions}`} className="activity-line-stat activity-line-stat-add roll-up">+{inlineStats.additions}</span>
                   </span>
                   <span className="diff-stat-slot">
-                    <span key={`del-${deletedLines || 0}`} className="activity-line-stat activity-line-stat-delete roll-down">-{deletedLines || 0}</span>
+                    <span key={`del-${inlineStats.deletions}`} className="activity-line-stat activity-line-stat-delete roll-down">-{inlineStats.deletions}</span>
                   </span>
-                  {diffSummary?.confidence && diffSummary.confidence !== 'exact' && <span className="activity-line-stat-estimated">~</span>}
+                  {inlineStats.confidence && inlineStats.confidence !== 'exact' && <span className="activity-line-stat-estimated">~</span>}
                 </span>
               )}
             </span>

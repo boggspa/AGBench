@@ -10383,54 +10383,9 @@ input:disabled, select:disabled, textarea:disabled {
   max-height: 560px;
 }
 
-/* Live tool diff telemetry */
-.activity-run-edit-counter {
-  position: sticky;
-  top: 6px;
-  z-index: 2;
-  display: inline-flex;
-  align-self: flex-start;
-  align-items: center;
-  gap: 5px;
-  margin: 0 0 6px 16px;
-  padding: 4px 10px;
-  border: 1px solid rgb(var(--agent-accent-rgb) / 0.22);
-  border-radius: 999px;
-  background:
-    linear-gradient(180deg, rgb(255 255 255 / 0.085), rgb(255 255 255 / 0.03)),
-    color-mix(in srgb, var(--app-bg-elevated) 88%, transparent);
-  color: var(--text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: 520;
-  font-variant-numeric: tabular-nums;
-  box-shadow:
-    0 4px 16px rgb(0 0 0 / 0.18),
-    inset 0 1px 0 rgb(255 255 255 / 0.06);
-  /* GPU: dropped on activity-run pill — blur invisible at chip size. */
-}
-
-.activity-run-edit-label {
-  color: var(--text-muted);
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.activity-counter-add {
-  color: var(--success);
-  font-weight: 660;
-}
-
-.activity-counter-del {
-  color: var(--danger);
-  font-weight: 660;
-}
-
-.activity-run-edit-sep {
-  color: var(--text-muted);
-  font-weight: 400;
-  padding: 0 1px;
-}
+/* Live tool diff telemetry — per-row inline odometer ("+46 -23" next to
+ * file names). The standalone "EDITS +0 / -4 N file" aggregate pill was
+ * removed; we rely on the per-row stats rendered by `ActivityRow`. */
 
 /* Overflow-clipped window that creates the mechanical counter roll */
 .diff-stat-slot {
@@ -10440,7 +10395,6 @@ input:disabled, select:disabled, textarea:disabled {
   line-height: 1;
 }
 
-.activity-counter-value,
 .activity-line-stat {
   display: inline-block;
   font-variant-numeric: tabular-nums;
@@ -10454,8 +10408,6 @@ input:disabled, select:disabled, textarea:disabled {
   animation: stat-roll-down 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.activity-run-edit-files,
-.activity-run-edit-estimated,
 .activity-line-stat-estimated {
   color: var(--text-muted);
   font-size: 0.72rem;
@@ -10538,7 +10490,6 @@ input:disabled, select:disabled, textarea:disabled {
 
 :root[data-reduce-motion="true"] .roll-up,
 :root[data-reduce-motion="true"] .roll-down,
-:root[data-reduce-motion="true"] .activity-counter-value,
 :root[data-reduce-motion="true"] .activity-line-stat {
   animation: none !important;
 }
