@@ -31,8 +31,15 @@ describe('MarkdownMessage', () => {
   it('escapes raw html instead of rendering it', () => {
     const html = renderToStaticMarkup(<MarkdownMessage content={'<img src=x onerror=alert(1)> **safe**'} />);
 
+    // The XSS gate: no real `<img>` element exists in the DOM, and no
+    // tag-style `onerror=` attribute attaches to a real element. The
+    // escaped text content (`onerror=alert(1)` inside `&lt;img …&gt;`)
+    // is harmless — the browser will display it as literal characters,
+    // not parse it as markup. Checking for the literal string `onerror`
+    // anywhere in the document was a too-strict assertion that flagged
+    // the safe escaped form.
     expect(html).not.toContain('<img');
-    expect(html).not.toContain('onerror');
+    expect(html).not.toMatch(/<[a-z][^>]*\bonerror\s*=/i);
     expect(html).toContain('&lt;img');
     expect(html).toContain('<strong>safe</strong>');
   });

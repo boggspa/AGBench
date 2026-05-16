@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage, screen } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, dialog, safeStorage, screen, powerMonitor } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -16,6 +16,7 @@ import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
+import { isUserAtDesktop as pureIsUserAtDesktop } from './ApnsIdleGate'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -104,6 +105,28 @@ let bridgeApnsTokenStoreRef: BridgeApnsTokenStore | null = null
 let bridgeApnsPusherRef: BridgeApnsPusher | null = null
 
 /**
+ * Live wrapper around `isUserAtDesktop` (pure logic in
+ * `./ApnsIdleGate.ts`). Reads window-focus + system-idle from the
+ * Electron runtime; the pure helper handles the env-var gating and
+ * threshold logic. Fail-open: any throw returns false so an approval
+ * push always goes out when in doubt.
+ */
+function userIsAtDesktop(): boolean {
+  try {
+    return pureIsUserAtDesktop({
+      idleGateEnv: process.env.AGBENCH_APNS_IDLE_GATE,
+      idleThresholdEnv: process.env.AGBENCH_APNS_IDLE_THRESHOLD_S,
+      windowFocused: mainWindow?.isFocused?.() === true,
+      idleSec: typeof powerMonitor?.getSystemIdleTime === 'function'
+        ? powerMonitor.getSystemIdleTime()
+        : 0
+    })
+  } catch {
+    return false
+  }
+}
+
+/**
  * Notify all paired iOS devices that an approval needs the user's
  * decision. Best-effort: fires per-device pushes via APNs in parallel,
  * doesn't block the caller, and silently no-ops when APNs is
@@ -130,6 +153,16 @@ function notifyPairedDevicesOfApproval(args: {
   if (!tokenStore || !pusher) return
   const tokens = tokenStore.list()
   if (tokens.length === 0) return
+  // Idle-detection gate: don't waste a push when the user is already at
+  // the desktop — they'll see the in-app modal. Override via env
+  // `AGBENCH_APNS_IDLE_GATE=off`.
+  if (userIsAtDesktop()) {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[APNs] skipping approval push for ${args.approvalId} — user is at desktop`
+    )
+    return
+  }
   // The Http2ApnsPusher exposes pushApprovalToToken; NoopApnsPusher
   // doesn't. Duck-type the check rather than narrow by import.
   const maybePushable = pusher as unknown as {
