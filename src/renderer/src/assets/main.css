@@ -2875,6 +2875,102 @@ button.sidebar-item {
   padding: var(--space-xs) var(--space-md);
 }
 
+.subthread-return-message {
+  width: min(100%, 900px);
+}
+
+.subthread-return-card {
+  width: min(100%, 860px);
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.2);
+  border-left: 3px solid rgb(var(--agent-accent-rgb) / 0.62);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgb(var(--agent-accent-rgb) / 0.12), transparent 58%),
+    rgb(255 255 255 / 0.035);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.024),
+    0 14px 34px rgb(0 0 0 / 0.16);
+  color: var(--text-primary);
+  padding: 0.78rem 0.9rem 0.9rem;
+}
+
+.subthread-return-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  margin-bottom: 0.72rem;
+}
+
+.subthread-return-heading {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.subthread-return-glyph {
+  color: var(--accent);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.subthread-return-label {
+  white-space: nowrap;
+}
+
+.subthread-return-provider {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.24);
+  border-radius: 7px;
+  background: rgb(var(--agent-accent-rgb) / 0.11);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.26rem 0.45rem;
+}
+
+.subthread-return-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subthread-return-open {
+  flex: 0 0 auto;
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.26);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.045);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.46rem 0.58rem;
+}
+
+.subthread-return-open:hover {
+  border-color: rgb(var(--agent-accent-rgb) / 0.42);
+  background: rgb(var(--agent-accent-rgb) / 0.12);
+}
+
+.subthread-return-body {
+  color: var(--text-primary);
+}
+
+.subthread-return-body .message-markdown-pro {
+  max-width: 100%;
+}
+
 .message-bubble.error {
   align-self: center;
   background: rgba(229, 77, 77, 0.08);

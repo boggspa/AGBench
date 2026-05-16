@@ -16,6 +16,7 @@ import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
+import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import {
@@ -8011,15 +8012,25 @@ function App(): React.JSX.Element {
                     chat={currentChat || undefined}
                   />
                 ) : (
-                <div key={msg.id} className={`message-group`}>
-                    <div className="message-meta">
-                      {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
-                    </div>
-                    <div className={`message-bubble ${msg.role}`}>
-                      {msg.role === 'assistant'
-                        ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
-                        : msg.content}
-                    </div>
+                <div key={msg.id} className={`message-group ${isSubThreadReturnMessage(msg) ? 'subthread-return-message' : ''}`}>
+                    {isSubThreadReturnMessage(msg) ? (
+                      <SubThreadReturnCard
+                        message={msg}
+                        chat={currentChat || undefined}
+                        onOpenSubThread={handleOpenCockpitThread}
+                      />
+                    ) : (
+                      <>
+                        <div className="message-meta">
+                          {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
+                        </div>
+                        <div className={`message-bubble ${msg.role}`}>
+                          {msg.role === 'assistant'
+                            ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
+                            : msg.content}
+                        </div>
+                      </>
+                    )}
                     {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
                       <div className="plan-choice-card">
                         <div className="plan-choice-question">{pendingPlanChoice.question}</div>
