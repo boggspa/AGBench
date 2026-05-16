@@ -5,7 +5,7 @@ import { BackgroundTasksPanel } from './BackgroundTasksPanel';
 import type { ChatRecord, DiffFileSummary, ProviderId, ExternalPathGrant, GeminiMcpBridgeStatus, ProviderCapabilityContract, ProviderToolingCapability } from '../../../main/store/types';
 import { extractDelegationAuditItems, providerDelegationChips, summarizeDelegationActivity } from '../lib/DelegationAudit';
 
-type InspectorTab = 'diff' | 'raw' | 'delegation' | 'safety' | 'capabilities' | 'background-tasks';
+type InspectorTab = 'diff' | 'raw' | 'delegation' | 'timeline' | 'safety' | 'capabilities' | 'background-tasks';
 type CapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents';
 type CapabilityFormat = 'json' | 'raw' | 'error';
 
@@ -103,13 +103,22 @@ interface InspectorProps {
   onRefreshGeminiMcpBridgeStatus?: () => void;
   /** Current chat — used by the Background tasks tab to list live subagents. */
   currentChat?: ChatRecord | null;
+  /** Phase I3.3 — full chat list, used by the Delegation Timeline tab to
+   * reconstruct the parent → sub-thread tree for the active chat. */
+  chats?: ChatRecord[];
+  /** Phase I3.3 — chat ids that currently have an active run, so the
+   * timeline can label nodes as "running" vs "completed". */
+  runningChatIds?: string[];
+  /** Phase I3.3 — navigate to a specific chat when the user clicks a
+   * timeline node. */
+  onOpenSubThread?: (chatId: string) => void;
 }
 
 export function Inspector(props: InspectorProps) {
   return (
     <div className="app-inspector">
       <div className="inspector-tabs">
-        {(['diff', 'raw', 'delegation', 'safety', 'capabilities', 'background-tasks'] as const).map(tab => (
+        {(['diff', 'raw', 'delegation', 'timeline', 'safety', 'capabilities', 'background-tasks'] as const).map(tab => (
           <button
             key={tab}
             className={`inspector-tab ${props.rightTab === tab ? 'active' : ''}`}
@@ -118,6 +127,7 @@ export function Inspector(props: InspectorProps) {
             {tab === 'diff' ? 'Diff Studio'
               : tab === 'raw' ? 'Raw Events'
               : tab === 'delegation' ? 'Delegation'
+              : tab === 'timeline' ? 'Delegation Timeline'
               : tab === 'safety' ? 'Safety'
               : tab === 'capabilities' ? 'Capabilities'
               : 'Background tasks'}
@@ -128,6 +138,7 @@ export function Inspector(props: InspectorProps) {
         {props.rightTab === 'diff' && <DiffTab {...props} />}
         {props.rightTab === 'raw' && <RawTab {...props} />}
         {props.rightTab === 'delegation' && <DelegationTab {...props} />}
+        {props.rightTab === 'timeline' && <DelegationTimelineTab {...props} />}
         {props.rightTab === 'safety' && <SafetyTab {...props} />}
         {props.rightTab === 'capabilities' && <CapabilitiesTab {...props} />}
         {props.rightTab === 'background-tasks' && (
@@ -375,6 +386,200 @@ function DelegationTab(props: InspectorProps) {
       )}
     </div>
   );
+}
+
+/** Phase I3.3 — node in the rendered delegation tree. */
+interface DelegationTimelineNode {
+  chat: ChatRecord;
+  children: DelegationTimelineNode[];
+  isCurrent: boolean;
+}
+
+/** Pure helper: given a chat list + a focus chat id, return the root of
+ * its delegation tree (walks up parentChatId, then collects descendants). */
+export function buildDelegationTree(
+  chats: ChatRecord[],
+  focusChatId?: string
+): DelegationTimelineNode | null {
+  if (!chats.length) return null;
+  const byId = new Map(chats.map((chat) => [chat.appChatId, chat]));
+  const childrenByParent = new Map<string, ChatRecord[]>();
+  for (const chat of chats) {
+    if (!chat.parentChatId) continue;
+    const bucket = childrenByParent.get(chat.parentChatId);
+    if (bucket) bucket.push(chat);
+    else childrenByParent.set(chat.parentChatId, [chat]);
+  }
+  for (const bucket of childrenByParent.values()) {
+    bucket.sort((a, b) => a.createdAt - b.createdAt);
+  }
+
+  let rootChat: ChatRecord | undefined = focusChatId ? byId.get(focusChatId) : undefined;
+  if (!rootChat) return null;
+  while (rootChat.parentChatId) {
+    const parent: ChatRecord | undefined = byId.get(rootChat.parentChatId);
+    if (!parent) break;
+    rootChat = parent;
+  }
+
+  const build = (chat: ChatRecord): DelegationTimelineNode => {
+    const kids = (childrenByParent.get(chat.appChatId) ?? []).map(build);
+    return {
+      chat,
+      children: kids,
+      isCurrent: chat.appChatId === focusChatId
+    };
+  };
+  return build(rootChat);
+}
+
+function timelineNodeStatus(
+  node: DelegationTimelineNode,
+  runningChatIds: Set<string>
+): { label: string; tone: 'running' | 'completed' | 'failed' | 'cancelled' | 'idle' } {
+  if (runningChatIds.has(node.chat.appChatId)) return { label: 'running', tone: 'running' };
+  const lastRun = node.chat.runs?.[node.chat.runs.length - 1];
+  if (!lastRun) return { label: 'idle', tone: 'idle' };
+  if (lastRun.status === 'success' || lastRun.status === 'success_with_warnings') {
+    return { label: 'completed', tone: 'completed' };
+  }
+  if (lastRun.status === 'failed') return { label: 'failed', tone: 'failed' };
+  if (lastRun.status === 'cancelled') return { label: 'cancelled', tone: 'cancelled' };
+  if (!lastRun.endedAt) return { label: 'running', tone: 'running' };
+  return { label: lastRun.status || 'idle', tone: 'idle' };
+}
+
+function formatTimelineElapsed(epochMs?: number): string {
+  if (!epochMs || !Number.isFinite(epochMs)) return '';
+  const elapsed = Math.max(0, Date.now() - epochMs);
+  if (elapsed < 60_000) return `started ${Math.floor(elapsed / 1000)}s ago`;
+  if (elapsed < 3_600_000) return `started ${Math.floor(elapsed / 60_000)}m ago`;
+  if (elapsed < 86_400_000) return `started ${Math.floor(elapsed / 3_600_000)}h ago`;
+  return new Date(epochMs).toLocaleString();
+}
+
+function DelegationTimelineTreeNode({
+  node,
+  depth,
+  runningChatIds,
+  onOpenSubThread
+}: {
+  node: DelegationTimelineNode;
+  depth: number;
+  runningChatIds: Set<string>;
+  onOpenSubThread?: (chatId: string) => void;
+}) {
+  const status = timelineNodeStatus(node, runningChatIds);
+  const provider = node.chat.provider || 'gemini';
+  const providerColor = `var(--provider-${provider}-color)`;
+  const isClickable = Boolean(onOpenSubThread);
+  const lastRun = node.chat.runs?.[node.chat.runs.length - 1];
+  const elapsed = formatTimelineElapsed(
+    lastRun?.startedAt ? Date.parse(lastRun.startedAt) : node.chat.createdAt
+  );
+  const resultReturned = Boolean(node.chat.delegationContext?.resultReturnedAt);
+  const lastAssistant = resultReturned
+    ? [...node.chat.messages].reverse().find((m) => m.role === 'assistant')
+    : undefined;
+  const resultPreview = lastAssistant?.content
+    ? lastAssistant.content.slice(0, 120)
+    : undefined;
+
+  return (
+    <div className="delegation-timeline-node" style={{ paddingLeft: depth === 0 ? 0 : `${depth * 18}px` }}>
+      <button
+        type="button"
+        className={`delegation-timeline-row provider-${provider} status-${status.tone} ${node.isCurrent ? 'is-current' : ''}`}
+        onClick={isClickable ? () => onOpenSubThread?.(node.chat.appChatId) : undefined}
+        disabled={!isClickable}
+        title={node.chat.title}
+      >
+        <span className="delegation-timeline-dot" aria-hidden="true" style={{ background: providerColor }} />
+        <span className="delegation-timeline-label">
+          <strong>{providerLabel(provider)}</strong>
+          <span className="delegation-timeline-title">{node.chat.title}</span>
+        </span>
+        <span className="delegation-timeline-meta">
+          <span>{elapsed}</span>
+          <span className={`delegation-timeline-status status-${status.tone}`}>{status.label}</span>
+        </span>
+      </button>
+      {resultReturned && resultPreview && (
+        <div className="delegation-timeline-result" style={{ paddingLeft: `${(depth + 1) * 18}px` }}>
+          <span aria-hidden="true">↩</span>
+          <span>Result back-propagated · {resultPreview.length} chars preview</span>
+        </div>
+      )}
+      {status.tone === 'running' && node.children.length === 0 && (
+        <div className="delegation-timeline-empty" style={{ paddingLeft: `${(depth + 1) * 18}px` }}>
+          [waiting for completion]
+        </div>
+      )}
+      {node.children.map((child) => (
+        <DelegationTimelineTreeNode
+          key={child.chat.appChatId}
+          node={child}
+          depth={depth + 1}
+          runningChatIds={runningChatIds}
+          onOpenSubThread={onOpenSubThread}
+        />
+      ))}
+    </div>
+  );
+}
+
+function DelegationTimelineTab(props: InspectorProps) {
+  const chats = props.chats ?? [];
+  const runningChatIds = new Set(props.runningChatIds ?? []);
+  const tree = buildDelegationTree(chats, props.currentChat?.appChatId);
+
+  if (!tree) {
+    return (
+      <div className="safety-panel">
+        <div className="safety-card">
+          <h4>No active chat selected</h4>
+          <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+            Open a chat to see its delegation tree.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const totalNodes = countTreeNodes(tree);
+  const liveNodes = countLiveTreeNodes(tree, runningChatIds);
+
+  return (
+    <div className="safety-panel">
+      <div className="diff-studio-toolbar">
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
+            Delegation timeline
+          </div>
+          <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
+            {totalNodes} chat{totalNodes === 1 ? '' : 's'} in this tree · {liveNodes} running
+          </div>
+        </div>
+      </div>
+      <div className="delegation-timeline-tree">
+        <DelegationTimelineTreeNode
+          node={tree}
+          depth={0}
+          runningChatIds={runningChatIds}
+          onOpenSubThread={props.onOpenSubThread}
+        />
+      </div>
+    </div>
+  );
+}
+
+function countTreeNodes(node: DelegationTimelineNode): number {
+  return 1 + node.children.reduce((sum, child) => sum + countTreeNodes(child), 0);
+}
+
+function countLiveTreeNodes(node: DelegationTimelineNode, running: Set<string>): number {
+  const self = running.has(node.chat.appChatId) ? 1 : 0;
+  return self + node.children.reduce((sum, child) => sum + countLiveTreeNodes(child, running), 0);
 }
 
 function escapeHtml(value: string): string {

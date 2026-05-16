@@ -7609,6 +7609,140 @@ input:disabled, select:disabled, textarea:disabled {
   max-height: 180px;
 }
 
+/* Phase I3.3 — subthread-delegation approval gets a bespoke layout with
+ * the cross-provider arc and a clear usage-allowance note. */
+.agent-approval-preview-subthread {
+  gap: 0.5rem;
+}
+
+.subthread-approval-arc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+}
+
+.subthread-approval-usage-note {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  border-top: 1px dashed rgb(255 255 255 / 0.08);
+  padding-top: 0.4rem;
+  margin-top: 0.2rem;
+  line-height: 1.45;
+}
+
+/* Phase I3.3 — Delegation Timeline tree view inside the Inspector. */
+.delegation-timeline-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  padding: var(--space-sm) var(--space-sm) var(--space-md);
+  font-size: var(--font-size-xs);
+}
+
+.delegation-timeline-node {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+}
+
+.delegation-timeline-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  background: rgb(255 255 255 / 0.025);
+  border: 1px solid rgb(255 255 255 / 0.06);
+  border-radius: 7px;
+  padding: 0.35rem 0.55rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.delegation-timeline-row:hover {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.045);
+}
+
+.delegation-timeline-row:disabled {
+  cursor: default;
+}
+
+.delegation-timeline-row.is-current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.delegation-timeline-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.delegation-timeline-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.delegation-timeline-title {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.delegation-timeline-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.delegation-timeline-status {
+  border-radius: 999px;
+  padding: 0.06rem 0.45rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.delegation-timeline-status.status-running {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.delegation-timeline-status.status-completed {
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+  color: var(--success);
+}
+
+.delegation-timeline-status.status-failed {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.delegation-timeline-status.status-cancelled,
+.delegation-timeline-status.status-idle {
+  background: rgb(255 255 255 / 0.05);
+  color: var(--text-tertiary);
+}
+
+.delegation-timeline-result,
+.delegation-timeline-empty {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 0.18rem 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+}
+
 /* ====================================================================== */
 /* Commercial Polish: Sidebar / Inspector / File Editor                    */
 /* Pure additive overrides — no functional changes, smoother UX surfaces.  */

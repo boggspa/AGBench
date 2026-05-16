@@ -3221,7 +3221,7 @@ function App(): React.JSX.Element {
   const preSnapshotRef = useRef<any>(null)
   
   // Right Panel Tabs
-  const [rightTab, setRightTab] = useState<'diff' | 'raw' | 'delegation' | 'safety' | 'capabilities' | 'background-tasks'>('diff')
+  const [rightTab, setRightTab] = useState<'diff' | 'raw' | 'delegation' | 'timeline' | 'safety' | 'capabilities' | 'background-tasks'>('diff')
   
   // Version Preflight
   const [geminiVersion, setGeminiVersion] = useState<string>('unknown')
@@ -9633,6 +9633,9 @@ function App(): React.JSX.Element {
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
               currentChat={currentChat}
+              chats={chats}
+              runningChatIds={runningChatIdsArray}
+              onOpenSubThread={handleOpenCockpitThread}
             />
           </>
         )}
