@@ -23,11 +23,11 @@ import {
   DEFAULT_CONTEXT_TURNS,
   clampContextTurns
 } from '../../main/PromptComposition'
-import { findNextRunnableQueueIndex } from '../../main/RunQueue'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
 import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLane } from './lib/RunLanes'
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
+import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
 import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,

@@ -3824,7 +3824,9 @@ function extractKimiWireProtocol(value: unknown, depth = 0): string | null {
   return null
 }
 
-async function resolveKimiWireProtocol(binaryPath: string): Promise<{ protocolVersion: string; source: 'cli-info' | 'fallback'; error?: string }> {
+async function resolveKimiWireProtocol(
+  binaryPath: string
+): Promise<{ protocolVersion: string; source: 'cli-info' | 'fallback'; error?: string }> {
   return new Promise((resolveProtocol) => {
     let stdout = ''
     let stderr = ''
@@ -3838,7 +3840,11 @@ async function resolveKimiWireProtocol(binaryPath: string): Promise<{ protocolVe
     }
     const timeout = setTimeout(() => {
       child?.kill()
-      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', 'Timed out reading Kimi Wire protocol metadata.')
+      finish(
+        KIMI_WIRE_PROTOCOL_FALLBACK,
+        'fallback',
+        'Timed out reading Kimi Wire protocol metadata.'
+      )
     }, KIMI_WIRE_PROTOCOL_INFO_TIMEOUT_MS)
     try {
       child = spawn(binaryPath, ['info', '--json'], {
@@ -3846,7 +3852,11 @@ async function resolveKimiWireProtocol(binaryPath: string): Promise<{ protocolVe
         env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, binaryPath)
       })
     } catch (error) {
-      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', error instanceof Error ? error.message : String(error))
+      finish(
+        KIMI_WIRE_PROTOCOL_FALLBACK,
+        'fallback',
+        error instanceof Error ? error.message : String(error)
+      )
       return
     }
     const spawned = child
@@ -3876,12 +3886,20 @@ async function resolveKimiWireProtocol(binaryPath: string): Promise<{ protocolVe
       } catch {
         // Non-JSON output is expected for older Kimi CLIs; fall back to the known-compatible protocol.
       }
-      finish(KIMI_WIRE_PROTOCOL_FALLBACK, 'fallback', stderr.trim() || 'Kimi CLI did not expose Wire protocol metadata.')
+      finish(
+        KIMI_WIRE_PROTOCOL_FALLBACK,
+        'fallback',
+        stderr.trim() || 'Kimi CLI did not expose Wire protocol metadata.'
+      )
     })
   })
 }
 
-async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload, binaryPath: string): Promise<boolean> {
+async function runKimiWireProvider(
+  event: Electron.IpcMainInvokeEvent,
+  payload: AgentRunPayload,
+  binaryPath: string
+): Promise<boolean> {
   const model = normalizeCliProviderModel('kimi', payload.model)
   const route = routeWithRunId('kimi', payload)
   const wireProtocol = await resolveKimiWireProtocol(binaryPath)
@@ -3896,25 +3914,48 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     providerSessionId: payload.providerSessionId || null,
     ...route
   }
-  registerRunSession('kimi', event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
-  void emitProviderCapabilityWarnings(event.sender, 'kimi', payload.workspace, payload.approvalMode, state)
+  registerRunSession(
+    'kimi',
+    event.sender,
+    route,
+    payload.scope === 'global' ? undefined : payload.workspace,
+    state,
+    payload.providerSessionId || null
+  )
+  void emitProviderCapabilityWarnings(
+    event.sender,
+    'kimi',
+    payload.workspace,
+    payload.approvalMode,
+    state
+  )
 
-  sendAgentCompatLine(event.sender, 'kimi', {
-    type: 'init',
-    session_id: state.providerSessionId || '',
-    model,
-    timestamp: new Date().toISOString(),
-    provider: 'kimi',
-    fallback: false
-  }, state)
-  sendAgentCompatLine(event.sender, 'kimi', {
-    type: 'provider_diagnostic',
-    provider: 'kimi',
-    message: `Using Kimi Wire protocol ${wireProtocol.protocolVersion}${wireProtocol.source === 'fallback' ? ' (fallback)' : ''}.`,
-    protocolVersion: wireProtocol.protocolVersion,
-    source: wireProtocol.source,
-    error: wireProtocol.error
-  }, state)
+  sendAgentCompatLine(
+    event.sender,
+    'kimi',
+    {
+      type: 'init',
+      session_id: state.providerSessionId || '',
+      model,
+      timestamp: new Date().toISOString(),
+      provider: 'kimi',
+      fallback: false
+    },
+    state
+  )
+  sendAgentCompatLine(
+    event.sender,
+    'kimi',
+    {
+      type: 'provider_diagnostic',
+      provider: 'kimi',
+      message: `Using Kimi Wire protocol ${wireProtocol.protocolVersion}${wireProtocol.source === 'fallback' ? ' (fallback)' : ''}.`,
+      protocolVersion: wireProtocol.protocolVersion,
+      source: wireProtocol.source,
+      error: wireProtocol.error
+    },
+    state
+  )
 
   const args = ['--wire', '--work-dir', payload.workspace!]
   appendKimiModelArgs(args, model)
@@ -3926,7 +3967,15 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
     const child = spawn(binaryPath, args, {
       cwd: payload.workspace!,
       shell: false,
-      env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1', AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '', ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {}) }, binaryPath)
+      env: createCliEnv(
+        {
+          FORCE_COLOR: '0',
+          NO_COLOR: '1',
+          AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+          ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
+        },
+        binaryPath
+      )
     })
     cliProviderProcesses.set('kimi', child)
     runManager.attachProcess(route.appRunId!, child)
@@ -3944,26 +3993,36 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
       resolveWire(false)
     }, 7_000)
 
-    const sendPrompt = () => {
+    const sendPrompt = (): void => {
       if (promptSent) return
       promptSent = true
       if (payload.approvalMode === 'plan') {
-        child.stdin?.write(JSON.stringify({
-          jsonrpc: '2.0',
-          id: `plan-${Date.now()}`,
-          method: 'set_plan_mode',
-          params: { enabled: true }
-        }) + '\n')
+        child.stdin?.write(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id: `plan-${Date.now()}`,
+            method: 'set_plan_mode',
+            params: { enabled: true }
+          }) + '\n'
+        )
       }
       const promptInput: any = payload.imagePaths?.length
-        ? [{ type: 'text', text: payload.prompt }, ...payload.imagePaths.map((imagePath) => ({ type: 'image_url', image_url: { url: imagePath } }))]
+        ? [
+            { type: 'text', text: payload.prompt },
+            ...payload.imagePaths.map((imagePath) => ({
+              type: 'image_url',
+              image_url: { url: imagePath }
+            }))
+          ]
         : payload.prompt
-      child.stdin?.write(JSON.stringify({
-        jsonrpc: '2.0',
-        id: promptId,
-        method: 'prompt',
-        params: { user_input: promptInput }
-      }) + '\n')
+      child.stdin?.write(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: promptId,
+          method: 'prompt',
+          params: { user_input: promptInput }
+        }) + '\n'
+      )
     }
 
     child.stdout?.on('data', (chunk) => {
@@ -3994,14 +4053,24 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
             }
             updateCliProviderSession(state, extractProviderSessionId(message), false)
             state.completed = true
-            sendAgentCompatLine(event.sender, 'kimi', {
-              type: 'result',
-              status: message.result?.status === 'cancelled' ? 'cancelled' : message.error ? 'failed' : 'success',
-              stats: { ...(state.tokenUsage || {}), duration_ms: Date.now() - state.startedAt },
-              provider: 'kimi',
-              providerThreadId: state.providerSessionId || undefined,
-              fallback: false
-            }, state)
+            sendAgentCompatLine(
+              event.sender,
+              'kimi',
+              {
+                type: 'result',
+                status:
+                  message.result?.status === 'cancelled'
+                    ? 'cancelled'
+                    : message.error
+                      ? 'failed'
+                      : 'success',
+                stats: { ...(state.tokenUsage || {}), duration_ms: Date.now() - state.startedAt },
+                provider: 'kimi',
+                providerThreadId: state.providerSessionId || undefined,
+                fallback: false
+              },
+              state
+            )
             sendAgentCompatExit(event.sender, 'kimi', message.error ? 1 : 0, state)
             child.kill()
             settled = true
@@ -4015,7 +4084,12 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
             const requestType = message.params?.type
             if (requestType === 'ApprovalRequest') {
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
-              approvalService?.registerKimi(approvalId, { child, rpcId: message.id, params: message.params, runId: route.appRunId })
+              approvalService?.registerKimi(approvalId, {
+                child,
+                rpcId: message.id,
+                params: message.params,
+                runId: route.appRunId
+              })
               runManager.registerApproval(route.appRunId, approvalId)
               scheduleApprovalTimeout({
                 approvalId,
@@ -4033,13 +4107,29 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                 method: 'request/ApprovalRequest',
                 params: message.params,
                 title: 'Approve Kimi action',
-                body: message.params?.payload?.description || message.params?.payload?.action || 'Kimi is requesting permission to continue.',
-                actions: ['accept', 'acceptForSession', 'decline', 'cancel'] as AgentApprovalAction[],
+                body:
+                  message.params?.payload?.description ||
+                  message.params?.payload?.action ||
+                  'Kimi is requesting permission to continue.',
+                actions: [
+                  'accept',
+                  'acceptForSession',
+                  'decline',
+                  'cancel'
+                ] as AgentApprovalAction[],
                 preview: {
                   kind: 'tool',
-                  toolName: message.params?.payload?.sender || message.params?.payload?.action || 'kimi_action',
+                  toolName:
+                    message.params?.payload?.sender ||
+                    message.params?.payload?.action ||
+                    'kimi_action',
                   params: message.params?.payload,
-                  actions: ['accept', 'acceptForSession', 'decline', 'cancel'] as AgentApprovalAction[]
+                  actions: [
+                    'accept',
+                    'acceptForSession',
+                    'decline',
+                    'cancel'
+                  ] as AgentApprovalAction[]
                 }
               }
               appendDurableRunEventForRoute(
@@ -4072,18 +4162,30 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                   'Kimi is requesting permission to continue.'
               })
             } else if (requestType === 'QuestionRequest') {
-              respondToKimiWireRequest(child, message.id, { response: 'User input is not available in this non-interactive run.' })
+              respondToKimiWireRequest(child, message.id, {
+                response: 'User input is not available in this non-interactive run.'
+              })
             } else {
               respondToKimiWireRequest(child, message.id, {
                 tool_call_id: message.params?.payload?.id,
-                return_value: { is_error: true, output: '', message: 'External app tools are not wired in v1.', display: [] }
+                return_value: {
+                  is_error: true,
+                  output: '',
+                  message: 'External app tools are not wired in v1.',
+                  display: []
+                }
               })
             }
             continue
           }
           handleCliProviderJsonEvent(state, message)
         } catch {
-          sendAgentCompatLine(event.sender, 'kimi', { type: 'content', text: line + '\n', provider: 'kimi', fallback: false }, state)
+          sendAgentCompatLine(
+            event.sender,
+            'kimi',
+            { type: 'content', text: line + '\n', provider: 'kimi', fallback: false },
+            state
+          )
         }
       }
     })
@@ -4132,16 +4234,18 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
       resolveWire(true)
     })
 
-    child.stdin?.write(JSON.stringify({
-      jsonrpc: '2.0',
-      id: initializeId,
-      method: 'initialize',
-      params: {
-        protocol_version: wireProtocol.protocolVersion,
-        client: { name: 'GUIGemini', version: app.getVersion() },
-        capabilities: { supports_question: false, supports_plan_mode: true }
-      }
-    }) + '\n')
+    child.stdin?.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: initializeId,
+        method: 'initialize',
+        params: {
+          protocol_version: wireProtocol.protocolVersion,
+          client: { name: 'GUIGemini', version: app.getVersion() },
+          capabilities: { supports_question: false, supports_plan_mode: true }
+        }
+      }) + '\n'
+    )
   })
 }
 
