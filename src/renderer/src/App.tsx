@@ -31,6 +31,11 @@ import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
 import { visibleRunningChatIds } from './lib/runningChatVisibility'
+import {
+  shouldEngageAutoFollow,
+  shouldDisengageAutoFollow,
+  shouldRepinAfterFrame
+} from './lib/TranscriptScroll'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import {
   HEATMAP_DAY_COUNT,
@@ -3307,9 +3312,20 @@ function App(): React.JSX.Element {
   const transcriptScrollRef = useRef<HTMLDivElement>(null)
   // autoFollowRef tracks whether the transcript should auto-stick to the bottom
   // as new content streams in. The user "owns" scroll: once they scroll away
-  // from the bottom (beyond ~120px), auto-follow disengages until they scroll
-  // back near the bottom (within ~40px). Stored in a ref to avoid re-renders.
+  // from the bottom auto-follow disengages until they scroll back near the
+  // bottom. Thresholds and the post-frame re-pin policy live in
+  // `lib/TranscriptScroll` so they can be unit-tested. Stored in a ref to
+  // avoid re-renders.
   const autoFollowRef = useRef(true)
+  // Tracks whether the user has initiated a real upward scroll (wheel,
+  // touchmove, page-up/arrow-up) since the last paint. The post-frame
+  // re-pin in the messages-update layoutEffect is suppressed when this is
+  // true, so a deliberate scroll-away is never fought by the rAF callback.
+  // Cleared at the start of each layoutEffect pass.
+  const userScrolledAwayInFrameRef = useRef(false)
+  // Holds the rAF id for the pending post-frame re-pin so consecutive
+  // streaming updates can coalesce into a single re-pin write per frame.
+  const repinRafIdRef = useRef<number | null>(null)
   const composerAreaRef = useRef<HTMLDivElement>(null)
   // Composer textarea + @-mention popover state. AgentMentionMenu reads the
   // anchor + query and inserts `[@Name](agent://uuid)` at the caret on select.
@@ -5110,10 +5126,18 @@ function App(): React.JSX.Element {
   //
   // Current design — no ResizeObservers in the transcript path:
   //  1. Scroll listener flips autoFollowRef based on distance-from-bottom,
-  //     with hysteresis (engage <40px, disengage >120px) and rAF throttling.
-  //  2. Layout-effect on `currentChat?.messages` snaps to bottom when new
-  //     messages arrive — but only if autoFollow is still engaged.
-  //  3. Chat-switch effect resets autoFollow + snaps to bottom on the new
+  //     with hysteresis (engage / disengage thresholds live in
+  //     `lib/TranscriptScroll`) and rAF throttling.
+  //  2. Wheel/touch/keyboard listeners record real user-initiated
+  //     scroll-aways into `userScrolledAwayInFrameRef`. The post-frame
+  //     re-pin honours this flag so a deliberate scroll-up is never
+  //     fought by the rAF callback.
+  //  3. Layout-effect on `currentChat?.messages` snaps to bottom when new
+  //     messages arrive, then schedules one extra rAF re-pin so any
+  //     late-mount layout shift (CodeMirror chat code blocks,
+  //     ActivityStack collapsing on tool-result arrival — frequent in
+  //     Kimi runs) cannot leave the user stranded above the new bottom.
+  //  4. Chat-switch effect resets autoFollow + snaps to bottom on the new
   //     thread's last message.
   useEffect(() => {
     const scroller = transcriptScrollRef.current
@@ -5123,13 +5147,18 @@ function App(): React.JSX.Element {
     const evaluate = () => {
       rafId = null
       const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-      // Tight engage / wide disengage: user must be essentially at the bottom
-      // (within ~8px) to opt back into auto-follow, but a single meaningful
-      // upward scroll (>40px) immediately disengages so a slow scrolljump
-      // from one stream tick doesn't fight the user trying to read.
-      if (distanceFromBottom <= 8) {
+      // Hysteresis: user must be essentially at the bottom to opt back
+      // into auto-follow, but a single meaningful upward scroll
+      // immediately disengages so a slow scroll-up from one stream tick
+      // doesn't fight the user trying to read. Thresholds in
+      // `lib/TranscriptScroll`.
+      if (shouldEngageAutoFollow(distanceFromBottom)) {
         autoFollowRef.current = true
-      } else if (distanceFromBottom > 40) {
+        // Once the user lands at the bottom again we forget any
+        // previously-recorded scroll-away so the next stream tick can
+        // re-pin without delay.
+        userScrolledAwayInFrameRef.current = false
+      } else if (shouldDisengageAutoFollow(distanceFromBottom)) {
         autoFollowRef.current = false
       }
     }
@@ -5144,17 +5173,123 @@ function App(): React.JSX.Element {
     }
   }, [])
 
+  // Detect _real_ user-initiated upward scroll attempts. The plain
+  // `scroll` event fires for both user input and programmatic writes
+  // (including the browser clamping `scrollTop` when content shrinks),
+  // so it cannot by itself distinguish "user wants to read older
+  // content" from "layout just shifted underneath them". The wheel +
+  // touch + keyboard listeners below capture the user-intent signal
+  // and feed it into `userScrolledAwayInFrameRef`, which gates the
+  // post-frame re-pin.
+  useEffect(() => {
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+
+    const handleUpwardIntent = (deltaY: number) => {
+      // Only treat _upward_ movement as a scroll-away signal: scrolling
+      // further toward the bottom should not flip the flag (we'd just
+      // immediately re-engage on the next scroll event anyway).
+      if (deltaY >= 0) return
+      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      // Only react when there's actually somewhere up to scroll. At the
+      // very top (distance ≈ scrollHeight) the wheel event is a no-op
+      // and should not change auto-follow state.
+      if (distanceFromBottom > 0) {
+        userScrolledAwayInFrameRef.current = true
+      }
+    }
+
+    const onWheel = (event: WheelEvent) => handleUpwardIntent(event.deltaY)
+
+    let lastTouchY: number | null = null
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY ?? null
+      if (currentY === null || lastTouchY === null) return
+      // Touch dragging _down_ scrolls _up_ — invert the delta to match
+      // wheel semantics (negative = upward intent).
+      handleUpwardIntent(lastTouchY - currentY)
+      lastTouchY = currentY
+    }
+    const onTouchEnd = () => {
+      lastTouchY = null
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'PageUp' || event.key === 'ArrowUp' || (event.key === 'Home')) {
+        handleUpwardIntent(-1)
+      }
+    }
+
+    scroller.addEventListener('wheel', onWheel, { passive: true })
+    scroller.addEventListener('touchstart', onTouchStart, { passive: true })
+    scroller.addEventListener('touchmove', onTouchMove, { passive: true })
+    scroller.addEventListener('touchend', onTouchEnd, { passive: true })
+    scroller.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      scroller.removeEventListener('wheel', onWheel)
+      scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('touchmove', onTouchMove)
+      scroller.removeEventListener('touchend', onTouchEnd)
+      scroller.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
+
   // Stick to bottom when the messages array reference changes. Streaming
   // updates produce a fresh `currentChat.messages` array via immutable
   // updates, so this fires once per render that affects messages — never
   // mid-layout, never inside a ResizeObserver callback.
+  //
+  // After the synchronous scrollTop write we schedule exactly one rAF
+  // re-pin. This is the fix for the "Kimi transcript snaps upward" bug:
+  // the synchronous write captures the post-render `scrollHeight` _before_
+  // child useEffects fire (e.g. `ActivityStack`'s tool-status auto-collapse,
+  // CodeMirror measuring fenced code blocks). Those side effects mutate
+  // `scrollHeight` in the next frame; without a follow-up write the
+  // browser clamps `scrollTop` to the now-smaller maximum and the visible
+  // content shifts upward. The rAF callback re-asserts the snap once those
+  // layout shifts have settled. The `userScrolledAwayInFrameRef` guard
+  // ensures we never fight a deliberate user scroll-up that happened
+  // between the layout effect and the next animation frame.
   useLayoutEffect(() => {
     if (!autoFollowRef.current) return
     const scroller = transcriptScrollRef.current
     if (!scroller) return
+    // Clear the per-frame scroll-away flag at the start of each pass.
+    // Wheel/touch/key listeners may set it again before the rAF fires.
+    userScrolledAwayInFrameRef.current = false
     // Single scrollTop write per messages-update; the browser clamps to
     // [0, scrollHeight - clientHeight] so we don't need to compute target.
     scroller.scrollTop = scroller.scrollHeight
+    // Schedule a follow-up rAF re-pin. The cleanup returned below cancels
+    // it when the effect re-runs (next messages update) or the component
+    // unmounts, so consecutive streaming updates coalesce naturally into
+    // one rAF write per frame.
+    repinRafIdRef.current = requestAnimationFrame(() => {
+      repinRafIdRef.current = null
+      const node = transcriptScrollRef.current
+      if (!node) return
+      if (
+        !shouldRepinAfterFrame({
+          autoFollow: autoFollowRef.current,
+          userScrolledAwayInThisFrame: userScrolledAwayInFrameRef.current
+        })
+      ) {
+        return
+      }
+      node.scrollTop = node.scrollHeight
+    })
+    return () => {
+      // Cancel any pending re-pin if the effect is torn down (component
+      // unmount or the next layout pass scheduling its own rAF).
+      if (repinRafIdRef.current !== null) {
+        cancelAnimationFrame(repinRafIdRef.current)
+        repinRafIdRef.current = null
+      }
+    }
   }, [currentChat?.messages, runCompleteNotice, showFallbackUX])
 
   useEffect(() => {
@@ -5163,6 +5298,7 @@ function App(): React.JSX.Element {
     const scroller = transcriptScrollRef.current
     if (!scroller) return
     autoFollowRef.current = true
+    userScrolledAwayInFrameRef.current = false
     // Defer one frame so the new messages render before we measure.
     const rafId = requestAnimationFrame(() => {
       scroller.scrollTop = scroller.scrollHeight
