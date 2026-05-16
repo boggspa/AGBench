@@ -1,10 +1,10 @@
+import type { ProviderAdapter, ProviderRunContext } from './ProviderAdapters'
 import type {
-  ProviderAdapter,
+  ProviderId,
   ProviderAdapterDescriptor,
   ProviderCapabilityContract,
-  ProviderRunContext
-} from './ProviderAdapters'
-import type { ProviderId } from './store/types'
+  ProviderAdapterTransport
+} from './store/types'
 
 /**
  * ProviderAdapterContract — generic conformance test battery for any
@@ -187,7 +187,8 @@ export function runProviderAdapterContractTests<TPayload = unknown, TEvent = unk
         transport: adapter.transport,
         runChannel: adapter.runChannel,
         capabilitySource: adapter.capabilitySource,
-        features: adapter.features
+        features: adapter.features,
+        capabilities: adapter.capabilities
       }
       // Descriptor projection should be identity for the descriptor fields.
       expect(descriptor.provider).toBe(adapter.provider)
@@ -218,7 +219,10 @@ export function makeFakeProviderAdapter(
   return {
     provider,
     label: provider.charAt(0).toUpperCase() + provider.slice(1),
-    transport: 'fake-transport',
+    // Cast: 'fake-transport' is a contract-test sentinel that doesn't
+    // belong in the production `ProviderAdapterTransport` union. The
+    // test battery only inspects the field name; the value is opaque.
+    transport: 'fake-transport' as unknown as ProviderAdapterTransport,
     runChannel: 'run-agent',
     capabilitySource: 'mixed',
     features: {

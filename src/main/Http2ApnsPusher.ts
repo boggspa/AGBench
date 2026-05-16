@@ -120,7 +120,7 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     this.now = config.now ?? (() => new Date())
   }
 
-  async pushApprovalNeeded(payload: BridgeApprovalPushPayload): Promise<BridgeApnsPushResult> {
+  async pushApprovalNeeded(_payload: BridgeApprovalPushPayload): Promise<BridgeApnsPushResult> {
     // The caller (ApprovalService) passes the device token via a
     // separate path. This signature predates the credentialed pusher;
     // we keep the BridgeApnsPusher contract intact and read the token

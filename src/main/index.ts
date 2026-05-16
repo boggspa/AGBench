@@ -4230,7 +4230,10 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
                 workspaceId: workspaceIdForApprovalPush(
                   payload.scope === 'global' ? undefined : payload.workspace
                 ),
-                threadId: route.appChatId,
+                // `appChatId` is optional on AgentRunRoute; fall back to the
+                // run id and finally the approval id so the push always has
+                // a routable identifier.
+                threadId: route.appChatId ?? route.appRunId ?? approvalId,
                 summary:
                   message.params?.payload?.description ||
                   message.params?.payload?.action ||
@@ -8367,8 +8370,13 @@ app.whenReady().then(() => {
         // run path, so a duck-typed shim is sufficient.
         const fakeEvent = { sender } as unknown as Electron.IpcMainInvokeEvent
         const payload: AgentRunPayload = {
+          // iOS-initiated runs are always scoped to a workspace (the
+          // bridge router only forwards actions whose workspaceId is in
+          // the RemoteWorkspaceAllowlist, and that list rejects global
+          // scope). The earlier 'chat' literal was a pre-existing typo
+          // that the typechecker now catches.
           provider: assertProviderId(action.provider),
-          scope: 'chat',
+          scope: 'workspace',
           workspace: workspaceRecord.path,
           prompt: action.text,
           appChatId: action.threadId,
@@ -8457,9 +8465,15 @@ app.whenReady().then(() => {
     //
     // Subscribed only while the daemon is enabled — when daemon is off
     // the bus runs with just the Electron IPC sink (legacy behavior).
+    // Pin a non-null reference for the closure; the daemon is guaranteed
+    // initialized at this point (we're inside the AGBENCH_BRIDGE_DAEMON
+    // guard + the `new BridgeDaemonClient(...)` block above), but TS
+    // narrows `let bridgeDaemon: BridgeDaemonClient | null` back to the
+    // union as soon as it crosses a closure boundary.
+    const bridgeDaemonForSink = bridgeDaemon
     const unsubscribeBridgeRunSink = runEventBus.subscribe(
       makeBridgeRunEventSink({
-        notifier: { notify: (method, params) => bridgeDaemon.notify(method, params) },
+        notifier: { notify: (method, params) => bridgeDaemonForSink.notify(method, params) },
         log: process.env.AGBENCH_DEBUG_BUS === '1'
           ? // eslint-disable-next-line no-console
             (line) => console.log(line)

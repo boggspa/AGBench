@@ -628,6 +628,8 @@ export type RunEventKind =
   | 'tool'
   | 'approval_request'
   | 'approval_response'
+  | 'approval_timer_armed'
+  | 'approval_timer_timeout'
   | 'diff'
   | 'final_message'
   | 'lifecycle';

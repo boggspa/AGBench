@@ -5628,15 +5628,17 @@ function App(): React.JSX.Element {
         // visible "auto-denied" note. The main process has already
         // dispatched action='decline' through the same processAgentApprovalResponse
         // path the renderer would use — this is just the UI tidy-up.
+        // Raw-log uses `stderr` (red-toned in the existing UI) rather
+        // than introducing a new `error` kind to the union.
         setPendingAgentApprovalByChatId((prev) => {
           let matched = false
           const next: Record<string, AgentApprovalRequest | null> = {}
           for (const [chatId, request] of Object.entries(prev)) {
-            if (request && (request.approvalId === timeout.approvalId || request.id === timeout.approvalId)) {
+            if (request && request.id === timeout.approvalId) {
               matched = true
               next[chatId] = null
               appendThreadRawLog(chatId, {
-                type: 'error',
+                type: 'stderr',
                 content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout). Run will need manual intervention if it stalled.`
               })
             } else {
@@ -5649,7 +5651,7 @@ function App(): React.JSX.Element {
             const fallbackChatId = currentChatIdRef.current
             if (fallbackChatId) {
               appendThreadRawLog(fallbackChatId, {
-                type: 'error',
+                type: 'stderr',
                 content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout).`
               })
             }
