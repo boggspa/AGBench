@@ -653,6 +653,10 @@ export interface ChatRecord {
   createdAt: number;
   updatedAt: number;
   archived: boolean;
+  /** When true the chat is rendered in the sidebar's "Pinned" section
+   * and excluded from "Recents". Default false. Persisted via the
+   * existing `save-chat` IPC. */
+  pinned?: boolean;
   linkedProviderSessionId?: string;
   providerMetadata?: Record<string, unknown>;
   linkedGeminiSessionId?: string;
@@ -700,6 +704,21 @@ export interface ChatRecord {
     returnResultToParent: boolean;
     /** Set when the result has actually been propagated (F2+). */
     resultReturnedAt?: number;
+    /** Populated when the agent-driven dispatch that should have
+     * started this sub-thread's first run failed before the adapter
+     * was reached (null `runCoordinatorRef`, thrown `dispatch`, etc.).
+     * The sub-thread record exists (the user can still see + open it
+     * in the sidebar) but `runs` will stay empty until the user kicks
+     * off a manual run. The renderer surfaces this so the parent's
+     * delegation card no longer hangs on "Pending" forever — it flips
+     * to a "Failed to dispatch" state with the message below. */
+    dispatchError?: {
+      /** ms since epoch when the failure was observed. */
+      at: number;
+      /** Short user-readable failure message — already sanitized for
+       * display, no stack traces. */
+      message: string;
+    };
   };
 }
 
@@ -716,6 +735,7 @@ export type RunEventKind =
   | 'approval_timer_timeout'
   | 'subthread_spawned'
   | 'subthread_returned'
+  | 'subthread_dispatch_failed'
   | 'diff'
   | 'final_message'
   | 'lifecycle';

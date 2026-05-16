@@ -315,6 +315,154 @@ body {
   gap: var(--space-md);
 }
 
+/* --- Sidebar: Pinned + Recents sections ------------------------------- */
+.sidebar-pinned-section,
+.sidebar-recents-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: var(--space-sm);
+}
+
+.sidebar-pinned-list,
+.sidebar-recents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-pinned-item,
+.sidebar-recents-item {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: color-mix(in srgb, var(--sidebar-text) 86%, transparent);
+  font: inherit;
+  font-size: var(--sidebar-row-font-size);
+  text-align: left;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 140ms cubic-bezier(0.22, 1, 0.36, 1), color 140ms ease;
+}
+
+.sidebar-pinned-item:hover,
+.sidebar-recents-item:hover {
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.sidebar-pinned-item:focus-visible,
+.sidebar-recents-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  outline: none;
+}
+
+.sidebar-pinned-item.active,
+.sidebar-recents-item.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent) 17%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 7%, transparent) 60%,
+    transparent 100%
+  );
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.sidebar-pinned-item.active::before,
+.sidebar-recents-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.sidebar-pinned-label,
+.sidebar-recents-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-provider-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.sidebar-recents-item .sidebar-chat-age {
+  opacity: 0.6;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Pin / unpin button — appears on hover for regular rows, always
+ * visible when the row is pinned so the user can find it again. */
+.sidebar-pin-toggle {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-hit-sm);
+  height: var(--control-hit-sm);
+  min-width: var(--control-hit-sm);
+  min-height: var(--control-hit-sm);
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease, color 140ms ease, background-color 140ms ease;
+}
+
+.sidebar-pin-toggle.is-pinned {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.sidebar-pinned-item:hover .sidebar-pin-toggle,
+.sidebar-pinned-item:focus-within .sidebar-pin-toggle,
+.sidebar-recents-item:hover .sidebar-pin-toggle,
+.sidebar-recents-item:focus-within .sidebar-pin-toggle,
+.sidebar-chat-item:hover .sidebar-pin-toggle,
+.sidebar-chat-item:focus-within .sidebar-pin-toggle {
+  opacity: 1;
+}
+
+.sidebar-pin-toggle:hover,
+.sidebar-pin-toggle:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  outline: none;
+}
+
+.sidebar-pin-toggle.is-pinned:hover,
+.sidebar-pin-toggle.is-pinned:focus-visible {
+  color: var(--accent);
+}
+
+.sidebar-chat-pin {
+  margin-left: 2px;
+}
+
 .sidebar-workspace-scroll {
   flex: 1;
   min-height: 0;

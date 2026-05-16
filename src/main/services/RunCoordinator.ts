@@ -79,21 +79,44 @@ export interface DispatchResult {
   appRunId: string
 }
 
+/**
+ * Minimum event-shape `dispatch` actually needs. The real
+ * `Electron.IpcMainInvokeEvent` is a superset (it carries `frameId`,
+ * `processId`, `senderFrame`, etc.) but the dispatch path + every
+ * production `ProviderAdapter.run` only ever touch `event.sender`.
+ *
+ * Widening the public type to this structural interface makes the
+ * delegation path (MCP tool `delegate_to_subthread`, F3) honest: it
+ * synthesizes a `{ sender }` object and used to need a `as
+ * IpcMainInvokeEvent` cast that silently skipped the type check. With
+ * this structural contract the cast is gone, the renderer call site
+ * is unaffected (an `IpcMainInvokeEvent` trivially satisfies
+ * `{ sender }`), and adapters that DO need more fields would fail at
+ * the type level the moment they reached for them.
+ */
+export interface RunDispatchEvent {
+  sender: Electron.WebContents
+}
+
 export class RunCoordinator {
   constructor(private deps: RunCoordinatorDeps) {}
 
   /** Dispatch a run on behalf of either the renderer (via the
    * `run-agent` IPC handler) or the bridge action executor (iOS-
-   * initiated run). Behaviour is identical for both callers — the
-   * difference is purely in how the `sender` was constructed.
+   * initiated run) or the agent-driven sub-thread delegation path
+   * (MCP `delegate_to_subthread`). Behaviour is identical for all
+   * callers — the difference is purely in how the `sender` was
+   * constructed.
    *
-   * Never throws. Returns `{ dispatched: false }` on any preflight /
-   * runtime-profile / adapter-resolution failure; in those cases the
-   * sender has already received the corresponding compat-line
-   * error / exit. */
+   * Returns `{ dispatched: false }` on handled preflight /
+   * runtime-profile failures; in those cases the sender has already
+   * received the corresponding compat-line error / exit. Adapter
+   * resolution and adapter runtime failures intentionally propagate so
+   * non-IPC callers such as `delegate_to_subthread` can surface the
+   * failed child-run dispatch instead of leaving a sub-thread pending. */
   async dispatch(
     payload: AgentRunPayload,
-    event: Electron.IpcMainInvokeEvent
+    event: RunDispatchEvent
   ): Promise<DispatchResult> {
     const normalizedPayload = this.deps.normalizePayload(payload)
     normalizedPayload.appRunId = this.deps.routeWithRunId(

@@ -1264,6 +1264,111 @@ async function maybePropagateSubThreadResult(chatId: string | undefined): Promis
   }
 }
 
+/**
+ * Surface a sub-thread-dispatch failure on every channel that matters
+ * to the user. Called from the `delegate_to_subthread` MCP tool's
+ * fire-and-forget dispatch path whenever the run never actually
+ * started (null `runCoordinatorRef`, thrown dispatch, etc.).
+ *
+ * Without this the sub-thread record exists (the user can open it in
+ * the sidebar) but `runs` stays empty forever, and the parent's
+ * delegation card hangs on "Pending" with no signal that anything
+ * went wrong. We:
+ *   1. Stamp `delegationContext.dispatchError` on the sub-thread so
+ *      the renderer can flip its card from "Pending" to "Failed to
+ *      dispatch — open to retry manually".
+ *   2. Emit a `provider_warning` (severity 'error') on the PARENT
+ *      sender so the active parent transcript shows an inline chip.
+ *   3. Append a durable `subthread_dispatch_failed` run event so the
+ *      Inspector's audit timeline records the failure.
+ *   4. Push `chat-updated` for the sub-thread so the sidebar re-renders.
+ *
+ * Best-effort: every individual surface wrapped in try/catch so a
+ * destroyed window or already-deleted chat doesn't crash the main
+ * process.
+ */
+function surfaceSubThreadDispatchFailure(args: {
+  subThread: ChatRecord
+  parentChatId: string
+  parentProvider: ProviderId
+  parentRunId?: string
+  parentSender: Electron.WebContents
+  reason: string
+}): void {
+  const { subThread, parentChatId, parentProvider, parentRunId, parentSender, reason } = args
+  const subThreadProviderLabel = subThread.provider ? providerLabel(subThread.provider) : 'sub-thread'
+  // Persist the failure on the sub-thread record so the renderer can
+  // render a "Failed to dispatch" badge instead of "Pending forever".
+  try {
+    const current = AppStore.getChat(subThread.appChatId)
+    if (current && current.delegationContext) {
+      const updated: ChatRecord = {
+        ...current,
+        delegationContext: {
+          ...current.delegationContext,
+          dispatchError: {
+            at: Date.now(),
+            message: reason
+          }
+        },
+        updatedAt: Date.now()
+      }
+      AppStore.saveChat(updated)
+      try {
+        mainWindow?.webContents.send('chat-updated', updated)
+      } catch {
+        // Renderer not attached — non-fatal.
+      }
+    }
+  } catch {
+    // Sub-thread record gone (deleted between spawn + dispatch) —
+    // nothing to mark; the warning chip + audit event still fire.
+  }
+  // Renderer-visible chip on the PARENT transcript. severity 'error'
+  // matches the existing detect-and-redirect heuristic (cc97b8d)
+  // pattern so the renderer's provider_warning lane handles it
+  // uniformly.
+  try {
+    sendAgentCompatLine(
+      parentSender,
+      parentProvider,
+      {
+        type: 'provider_warning',
+        provider: parentProvider,
+        severity: 'error',
+        title: `${subThreadProviderLabel} sub-thread failed to start`,
+        message:
+          `AGBench created the sub-thread "${subThread.title}" but the agent-driven run never dispatched. ` +
+          `Open the sub-thread from the sidebar and run a prompt manually to continue.`,
+        details: reason
+      },
+      { appChatId: parentChatId, appRunId: parentRunId }
+    )
+  } catch {
+    // Best-effort — sender may be destroyed.
+  }
+  // Durable audit event keyed on the parent run so the Inspector
+  // timeline shows the failure alongside the original spawn event.
+  try {
+    appendDurableRunEventForRoute(
+      parentProvider,
+      { appRunId: parentRunId, appChatId: parentChatId },
+      'subthread_dispatch_failed',
+      'control',
+      `Failed to dispatch ${subThreadProviderLabel} sub-thread run`,
+      {
+        subThreadId: subThread.appChatId,
+        subThreadProvider: subThread.provider,
+        parentProvider,
+        reason,
+        source: 'mcp:delegate_to_subthread'
+      }
+    )
+  } catch {
+    // Best-effort.
+  }
+}
+
 function emitRunEventsChanged(record: { runId: string; chatId?: string; workspaceId?: string; sequence: number }) {
   mainWindow?.webContents.send('run-events-changed', {
     runId: record.runId,
@@ -7252,16 +7357,46 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         approvalMode: 'default',
         model: 'cli-default'
       }
-      const fakeEvent = { sender: context.sender } as Electron.IpcMainInvokeEvent
+      // RunCoordinator.dispatch now accepts the structural
+      // `RunDispatchEvent` shape (just `{ sender }`); no cast required.
+      // The previous `as IpcMainInvokeEvent` cast silently widened the
+      // type and made every dispatch failure (e.g. null
+      // `runCoordinatorRef`) invisible — surfaced now via
+      // `surfaceSubThreadDispatchFailure`.
+      const dispatchEvent: { sender: Electron.WebContents } = { sender: context.sender }
       void (async () => {
+        if (!runCoordinatorRef) {
+          surfaceSubThreadDispatchFailure({
+            subThread,
+            parentChatId,
+            parentProvider,
+            parentRunId: context.appRunId,
+            parentSender: context.sender,
+            reason: 'RunCoordinator is not initialised yet — the app may still be starting up.'
+          })
+          return
+        }
         try {
-          await runCoordinatorRef?.dispatch(runPayload, fakeEvent)
+          const result = await runCoordinatorRef.dispatch(runPayload, dispatchEvent)
+          if (!result.dispatched) {
+            surfaceSubThreadDispatchFailure({
+              subThread,
+              parentChatId,
+              parentProvider,
+              parentRunId: context.appRunId,
+              parentSender: context.sender,
+              reason: 'RunCoordinator completed preflight without dispatching the provider run.'
+            })
+          }
         } catch (err) {
-          // eslint-disable-next-line no-console
-          console.warn(
-            `[delegate_to_subthread] run dispatch failed for subThreadId=${subThread.appChatId}:`,
-            err instanceof Error ? err.message : String(err)
-          )
+          surfaceSubThreadDispatchFailure({
+            subThread,
+            parentChatId,
+            parentProvider,
+            parentRunId: context.appRunId,
+            parentSender: context.sender,
+            reason: err instanceof Error ? err.message : String(err)
+          })
         }
       })()
       try {

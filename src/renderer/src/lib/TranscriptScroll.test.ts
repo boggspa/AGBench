@@ -6,6 +6,7 @@ import {
   shouldDisengageAutoFollow,
   shouldRepinAfterFrame,
   shouldRepinAfterCodeBlockResize,
+  shouldRepinAfterTranscriptResize,
   buildCodeBlockResizeEventInit,
   CODE_BLOCK_RESIZE_EVENT
 } from './TranscriptScroll'
@@ -121,6 +122,124 @@ describe('TranscriptScroll', () => {
           userScrolledAwayInThisFrame: true
         })
       ).toBe(false)
+    })
+  })
+
+  describe('shouldRepinAfterTranscriptResize', () => {
+    it('re-pins when auto-follow is engaged and the user has not scrolled away', () => {
+      // The transcript-content resize path (Codex follow-up to the
+      // Kimi code-block fix) shares the exact same guards as both
+      // `shouldRepinAfterFrame` and `shouldRepinAfterCodeBlockResize`.
+      // This test pins the symmetry so the three helpers cannot
+      // diverge by accident — they all need to agree that "re-pin
+      // when at the bottom and the user has not moved".
+      expect(
+        shouldRepinAfterTranscriptResize({
+          autoFollow: true,
+          userScrolledAwayInThisFrame: false
+        })
+      ).toBe(true)
+    })
+
+    it('respects auto-follow disengagement', () => {
+      // If the user has already scrolled away enough that auto-follow
+      // disengaged, a content resize must NOT yank them back to the
+      // bottom — they explicitly opted out of sticky mode.
+      expect(
+        shouldRepinAfterTranscriptResize({
+          autoFollow: false,
+          userScrolledAwayInThisFrame: false
+        })
+      ).toBe(false)
+    })
+
+    it('respects a user-initiated scroll-away in this frame', () => {
+      // Critical guard: a content resize fired mid-frame must not
+      // fight a deliberate user scroll-up that happened in the same
+      // frame. This mirrors the per-frame guard on the code-block
+      // resize path.
+      expect(
+        shouldRepinAfterTranscriptResize({
+          autoFollow: true,
+          userScrolledAwayInThisFrame: true
+        })
+      ).toBe(false)
+    })
+
+    it('matches shouldRepinAfterFrame for every input combination', () => {
+      // The two helpers are deliberately delegated to the same
+      // underlying gate. If a future change breaks the delegation,
+      // this exhaustive cross-check fails immediately rather than
+      // letting the three re-pin paths drift apart silently.
+      for (const autoFollow of [true, false]) {
+        for (const userScrolledAwayInThisFrame of [true, false]) {
+          const input = { autoFollow, userScrolledAwayInThisFrame }
+          expect(shouldRepinAfterTranscriptResize(input)).toBe(
+            shouldRepinAfterFrame(input)
+          )
+        }
+      }
+    })
+  })
+
+  // The Raw Events panel in the Inspector reuses these exact helpers
+  // (see App.tsx, search for `rawEventsAutoFollowRef`). Before the
+  // sticky-bottom fix the panel unconditionally scrolled to the bottom
+  // whenever a new event arrived, fighting users trying to read older
+  // events during an active run. The tests below pin the behaviour the
+  // raw-events surface depends on so a future refactor of these
+  // helpers cannot silently regress that fix.
+  describe('Raw Events panel (App.tsx Inspector) reuse', () => {
+    it('engages sticky-bottom at the same thresholds as the transcript', () => {
+      // Both surfaces use the same engage threshold so users get a
+      // consistent "near the bottom" feel between the two scrollers.
+      expect(shouldEngageAutoFollow(0)).toBe(true)
+      expect(shouldEngageAutoFollow(STICK_ENGAGE_PX)).toBe(true)
+      expect(shouldEngageAutoFollow(STICK_ENGAGE_PX + 1)).toBe(false)
+    })
+
+    it('disengages at the same hysteresis threshold as the transcript', () => {
+      expect(shouldDisengageAutoFollow(STICK_DISENGAGE_PX)).toBe(false)
+      expect(shouldDisengageAutoFollow(STICK_DISENGAGE_PX + 1)).toBe(true)
+    })
+
+    it('does not re-pin when the user has actively scrolled away', () => {
+      // This is the original bug: every new event force-scrolled to
+      // the bottom regardless of whether the user was reading older
+      // entries. With the fix in place the auto-scroll effect calls
+      // `shouldRepinAfterFrame` and bails out when the user has
+      // recorded a scroll-away intent in the current frame.
+      expect(
+        shouldRepinAfterFrame({
+          autoFollow: true,
+          userScrolledAwayInThisFrame: true
+        })
+      ).toBe(false)
+    })
+
+    it('does not re-pin when auto-follow has disengaged', () => {
+      // Once the user has scrolled past the disengage threshold,
+      // auto-follow flips off until they scroll back to the engage
+      // zone. The auto-scroll effect on the Raw Events panel must
+      // honour this even when the panel is the active tab.
+      expect(
+        shouldRepinAfterFrame({
+          autoFollow: false,
+          userScrolledAwayInThisFrame: false
+        })
+      ).toBe(false)
+    })
+
+    it('re-pins when at the bottom and the user has not moved', () => {
+      // The intended common case: user is at the bottom, a new event
+      // arrives, the panel scrolls down to show it without any user
+      // intervention.
+      expect(
+        shouldRepinAfterFrame({
+          autoFollow: true,
+          userScrolledAwayInThisFrame: false
+        })
+      ).toBe(true)
     })
   })
 

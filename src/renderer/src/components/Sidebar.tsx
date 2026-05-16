@@ -1,5 +1,6 @@
-import { useState, useEffect, type MouseEvent, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
+import { selectRecentChats } from '../lib/recentChatsList';
 
 const ageTickListeners = new Set<() => void>();
 if (typeof window !== 'undefined') {
@@ -56,6 +57,13 @@ interface SidebarProps {
    * chat. When undefined the delegate affordance is hidden — keeps
    * the prop optional for any caller that doesn't yet wire it. */
   onCreateSubThread?: (parent: ChatRecord) => void;
+  /** Toggle the `pinned` flag on a chat. Optional so any caller that
+   * hasn't wired persistence yet can omit it — the pin affordance is
+   * hidden in that case. */
+  onTogglePinChat?: (chatId: string) => void;
+  /** Toggle the `pinned` flag on a workspace. Optional for the same
+   * reason as `onTogglePinChat`. */
+  onTogglePinWorkspace?: (workspaceId: string) => void;
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
@@ -117,6 +125,17 @@ function XSymbolIcon() {
     <span className="sf-symbol-icon" aria-hidden>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
         <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" />
+      </svg>
+    </span>
+  );
+}
+
+function PinSymbolIcon({ filled = false }: { filled?: boolean }) {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill={filled ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9.5 2.2 13.8 6.5l-2.4.7-1.6 3.5-3.4-3.4L9.9 5.7l-.4-3.5Z" />
+        <path d="m6.6 9.4-3.4 3.4" />
       </svg>
     </span>
   );
@@ -347,6 +366,8 @@ export function Sidebar({
   onSelectChat,
   onOpenSettings,
   onCreateSubThread,
+  onTogglePinChat,
+  onTogglePinWorkspace,
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -390,6 +411,55 @@ export function Sidebar({
     visibleWorkspaceEntries.reduce((total, entry) => total + entry.visibleChats.length, 0) +
     visibleGlobalChats.length;
   const totalChatCount = chats.filter((chat) => !chat.archived).length;
+
+  // Pinned + Recents derivations. Both honor the search query so the
+  // sections collapse alongside the rest of the sidebar when the user
+  // is filtering. Computed via `useMemo` to keep React's render output
+  // stable across renders that don't actually touch chats/workspaces.
+  const pinnedWorkspaces = useMemo(
+    () => workspaces.filter((workspace) => workspace.pinned === true),
+    [workspaces],
+  );
+  const pinnedChats = useMemo(
+    () => chats.filter((chat) => chat.pinned === true && !chat.archived),
+    [chats],
+  );
+  const recentChats = useMemo(
+    () => selectRecentChats(chats, { limit: 5 }),
+    [chats],
+  );
+
+  const visiblePinnedWorkspaces = isSidebarSearchActive
+    ? pinnedWorkspaces.filter((workspace) => workspaceMatchesSearch(workspace, sidebarSearchQuery))
+    : pinnedWorkspaces;
+  const visiblePinnedChats = isSidebarSearchActive
+    ? pinnedChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
+    : pinnedChats;
+  const visibleRecentChats = isSidebarSearchActive
+    ? recentChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
+    : recentChats;
+
+  const handleTogglePinChatClick = (event: MouseEvent<HTMLSpanElement>, chatId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onTogglePinChat?.(chatId);
+  };
+  const handleTogglePinWorkspaceClick = (event: MouseEvent<HTMLButtonElement | HTMLSpanElement>, workspaceId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onTogglePinWorkspace?.(workspaceId);
+  };
+
+  const renderProviderDot = (provider: ProviderId | undefined): ReactNode => {
+    const providerKey = provider || 'gemini';
+    return (
+      <span
+        className="sidebar-provider-dot"
+        aria-hidden="true"
+        style={{ background: `var(--provider-${providerKey}-color)` }}
+      />
+    );
+  };
   // Phase F1: index child chats by parentChatId so we can render
   // each parent immediately followed by its children, indented. We
   // build it once per render — sidebar size is bounded so cost is
@@ -551,6 +621,153 @@ export function Sidebar({
             </label>
           </div>
 
+          {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
+            <div className="sidebar-pinned-section">
+              <div className="sidebar-section-header">
+                <h4 className="sidebar-section-title">Pinned</h4>
+              </div>
+              <div className="sidebar-pinned-list">
+                {visiblePinnedWorkspaces.map((workspace) => (
+                  <div
+                    key={`pinned-workspace-${workspace.id}`}
+                    role="button"
+                    tabIndex={0}
+                    className={`sidebar-pinned-item ${currentWorkspace?.id === workspace.id ? 'active' : ''}`}
+                    onClick={() => onSelectWorkspace(workspace)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectWorkspace(workspace);
+                      }
+                    }}
+                    title={workspace.path}
+                  >
+                    <FolderSymbolIcon />
+                    <span className="sidebar-pinned-label">
+                      <HighlightMatch text={workspace.displayName} query={sidebarSearchQuery} />
+                    </span>
+                    {onTogglePinWorkspace && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="sidebar-pin-toggle is-pinned"
+                        onClick={(event) => handleTogglePinWorkspaceClick(event, workspace.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onTogglePinWorkspace(workspace.id);
+                          }
+                        }}
+                        title="Unpin workspace"
+                        aria-label="Unpin workspace"
+                      >
+                        <PinSymbolIcon filled />
+                      </span>
+                    )}
+                  </div>
+                ))}
+                {visiblePinnedChats.map((chat) => (
+                  <div
+                    key={`pinned-chat-${chat.appChatId}`}
+                    role="button"
+                    tabIndex={0}
+                    className={`sidebar-pinned-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                    onClick={() => onSelectChat(chat)}
+                    onKeyDown={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onSelectChat(chat);
+                      }
+                    }}
+                    title={chat.title}
+                  >
+                    {renderProviderDot(chat.provider)}
+                    <span className="sidebar-pinned-label">
+                      <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
+                    </span>
+                    {onTogglePinChat && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        className="sidebar-pin-toggle is-pinned"
+                        onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            onTogglePinChat(chat.appChatId);
+                          }
+                        }}
+                        title="Unpin chat"
+                        aria-label="Unpin chat"
+                      >
+                        <PinSymbolIcon filled />
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {visibleRecentChats.length > 0 && (
+            <div className="sidebar-recents-section">
+              <div className="sidebar-section-header">
+                <h4 className="sidebar-section-title">Recents</h4>
+              </div>
+              <div className="sidebar-recents-list">
+                {visibleRecentChats.map((chat) => {
+                  const chatAgeTimestamp = chat.updatedAt || chat.createdAt;
+                  return (
+                    <div
+                      key={`recent-${chat.appChatId}`}
+                      role="button"
+                      tabIndex={0}
+                      className={`sidebar-recents-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''}`}
+                      onClick={() => onSelectChat(chat)}
+                      onKeyDown={(event) => {
+                        if (event.target !== event.currentTarget) return;
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          onSelectChat(chat);
+                        }
+                      }}
+                      title={chat.title}
+                    >
+                      {renderProviderDot(chat.provider)}
+                      <span className="sidebar-recents-label">
+                        <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
+                      </span>
+                      <ChatAgeLabel timestamp={chatAgeTimestamp} />
+                      {onTogglePinChat && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className="sidebar-pin-toggle"
+                          onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onTogglePinChat(chat.appChatId);
+                            }
+                          }}
+                          title="Pin chat"
+                          aria-label="Pin chat"
+                        >
+                          <PinSymbolIcon />
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="sidebar-workspace-scroll">
             <div className="sidebar-section-header">
               <h4 className="sidebar-section-title">Workspaces</h4>
@@ -634,6 +851,17 @@ export function Sidebar({
                     >
                       <PlusSymbolIcon />
                     </button>
+                    {onTogglePinWorkspace && (
+                      <button
+                        className={`btn btn-sm btn-ghost btn-icon sidebar-item-action sidebar-pin-toggle ${ws.pinned ? 'is-pinned' : ''}`}
+                        style={{ opacity: (hoveredWorkspace === ws.id || ws.pinned) ? 1 : 0, transition: 'opacity 0.1s' }}
+                        onClick={(event) => handleTogglePinWorkspaceClick(event, ws.id)}
+                        title={ws.pinned ? 'Unpin workspace' : 'Pin workspace'}
+                        aria-label={ws.pinned ? 'Unpin workspace' : 'Pin workspace'}
+                      >
+                        <PinSymbolIcon filled={!!ws.pinned} />
+                      </button>
+                    )}
                     {(hoveredWorkspace === ws.id || currentWorkspace?.id !== ws.id) && (
                       <button
                         className="btn btn-sm btn-ghost btn-icon sidebar-item-action"
@@ -706,6 +934,25 @@ export function Sidebar({
                                   <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
                                 )}
                                 {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
+                                {onTogglePinChat && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className={`sidebar-pin-toggle sidebar-chat-pin ${chat.pinned ? 'is-pinned' : ''}`}
+                                    onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        onTogglePinChat(chat.appChatId);
+                                      }
+                                    }}
+                                    title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+                                    aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+                                  >
+                                    <PinSymbolIcon filled={!!chat.pinned} />
+                                  </span>
+                                )}
                                 {onCreateSubThread && (
                                   <span
                                     role="button"
@@ -828,6 +1075,25 @@ export function Sidebar({
                         <span className="sidebar-chat-busy" title="Task running" aria-label="Task running" />
                       )}
                       {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
+                      {onTogglePinChat && (
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          className={`sidebar-pin-toggle sidebar-chat-pin ${chat.pinned ? 'is-pinned' : ''}`}
+                          onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              onTogglePinChat(chat.appChatId);
+                            }
+                          }}
+                          title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+                          aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
+                        >
+                          <PinSymbolIcon filled={!!chat.pinned} />
+                        </span>
+                      )}
                     </button>
                   );
                 })}

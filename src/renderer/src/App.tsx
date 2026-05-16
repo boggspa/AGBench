@@ -3,7 +3,8 @@ import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
-import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges, deriveToolDiffSummary } from './lib/ToolParser'
+import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
+import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import { useAppearance } from './hooks/useAppearance'
@@ -37,6 +38,7 @@ import {
   shouldDisengageAutoFollow,
   shouldRepinAfterFrame,
   shouldRepinAfterCodeBlockResize,
+  shouldRepinAfterTranscriptResize,
   CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
@@ -2889,6 +2891,20 @@ const isTerminalRunQueueStatus = (status?: RunQueueJobStatus): boolean =>
 
 type TranscriptPanelProps = {
   scrollRef: React.RefObject<HTMLDivElement | null>
+  /**
+   * Ref pinned to the SINGLE inner content div (`.transcript-inner`)
+   * inside the scroll container. The App-level scroll effect attaches
+   * one `ResizeObserver` to this node so ANY late-mount layout growth
+   * (CodeMirror code blocks, `ActivityStack` rows revealing
+   * tool-result output, shell-command stdout measuring, future
+   * content types) triggers a coalesced rAF re-pin via the shared
+   * `shouldRepinAfterTranscriptResize` gate. This is the
+   * follow-up to a12f913 — that fix observed individual code blocks,
+   * which missed Codex transcripts heavy with `Ran /bin/zsh -lc '...'`
+   * activity rows. One observer on the content div catches them all
+   * without per-component plumbing.
+   */
+  contentRef: React.RefObject<HTMLDivElement | null>
   endRef: React.RefObject<HTMLDivElement | null>
   messages: ChatMessage[]
   isWelcomeChat: boolean
@@ -2918,6 +2934,7 @@ type TranscriptPanelProps = {
 
 const TranscriptPanel = memo(function TranscriptPanel({
   scrollRef,
+  contentRef,
   endRef,
   messages,
   isWelcomeChat,
@@ -2960,7 +2977,7 @@ const TranscriptPanel = memo(function TranscriptPanel({
 
   return (
     <div className="transcript-scroll" ref={scrollRef}>
-      <div className="transcript-inner">
+      <div className="transcript-inner" ref={contentRef}>
         {visibleMessages.map((msg) => {
           const isDelegationCard = isSubThreadDelegationMessage(msg)
           const isReturnCard = isSubThreadReturnMessage(msg)
@@ -3161,6 +3178,7 @@ const TranscriptPanel = memo(function TranscriptPanel({
   )
 }, (previous, next) =>
   previous.scrollRef === next.scrollRef &&
+  previous.contentRef === next.contentRef &&
   previous.endRef === next.endRef &&
   previous.messages === next.messages &&
   previous.isWelcomeChat === next.isWelcomeChat &&
@@ -3368,6 +3386,16 @@ function App(): React.JSX.Element {
   const geminiTerminalEndRef = useRef<HTMLDivElement>(null)
   const appTranscriptRef = useRef<HTMLDivElement>(null)
   const transcriptScrollRef = useRef<HTMLDivElement>(null)
+  // Ref pinned to the SINGLE inner content div inside `transcriptScrollRef`
+  // (rendered as `.transcript-inner` in `TranscriptPanel`). A single
+  // `ResizeObserver` watches this node and dispatches a coalesced rAF
+  // re-pin whenever it grows or shrinks — catching ALL late-mount
+  // layout sources (CodeMirror code blocks, ActivityStack rows
+  // revealing tool-result output, shell-command stdout that measures
+  // asynchronously, future content types). See the
+  // `shouldRepinAfterTranscriptResize` doc comment for why this does
+  // NOT reintroduce the historical RO feedback loop.
+  const transcriptContentRef = useRef<HTMLDivElement>(null)
   // autoFollowRef tracks whether the transcript should auto-stick to the bottom
   // as new content streams in. The user "owns" scroll: once they scroll away
   // from the bottom auto-follow disengages until they scroll back near the
@@ -3384,6 +3412,16 @@ function App(): React.JSX.Element {
   // Holds the rAF id for the pending post-frame re-pin so consecutive
   // streaming updates can coalesce into a single re-pin write per frame.
   const repinRafIdRef = useRef<number | null>(null)
+  // Raw Events panel auto-follow mirror of the transcript pair above.
+  // The Inspector's Raw Events tab streams every run event as it arrives;
+  // an earlier implementation unconditionally scrolled the panel to the
+  // bottom whenever `rawLogs.length` changed, which made it impossible
+  // for the user to scroll up and read earlier events during an active
+  // run. The fix reuses the same `lib/TranscriptScroll` engage/disengage
+  // helpers and intent-detection wheel/touch/key listeners so the two
+  // surfaces share one truth source for "sticky bottom" semantics.
+  const rawEventsAutoFollowRef = useRef(true)
+  const rawEventsUserScrolledAwayRef = useRef(false)
   const composerAreaRef = useRef<HTMLDivElement>(null)
   // Composer textarea + @-mention popover state. AgentMentionMenu reads the
   // anchor + query and inserts `[@Name](agent://uuid)` at the caret on select.
@@ -3990,34 +4028,6 @@ function App(): React.JSX.Element {
           ...runDiffValue.deletedFiles,
         ]
     return candidates.filter(isFileSummaryRecord)
-  }
-
-  const getLiveToolFileDiffSummaries = (messages: ChatMessage[] = [], workspacePath?: string | null): DiffFileSummary[] => {
-    const fileMap = new Map<string, DiffFileSummary>()
-    for (const message of messages) {
-      for (const activity of message.toolActivities || []) {
-        const summary = activity.diffSummary || deriveToolDiffSummary(activity.toolName, activity.parameters, activity.resultSummary || activity.outputPreview)
-        const files = summary?.files || []
-        for (const file of files) {
-          if (!file.path) continue
-          const path = normalizeDiffPath(file.path, workspacePath)
-          const status = file.status === 'created'
-            ? 'created'
-            : file.status === 'deleted'
-              ? 'deleted'
-              : 'modified'
-          const existing = fileMap.get(path)
-          fileMap.set(path, {
-            path,
-            status: existing?.status === 'created' ? 'created' : status,
-            additions: (existing?.additions || 0) + (file.additions || 0),
-            deletions: (existing?.deletions || 0) + (file.deletions || 0),
-            previewKind: existing?.previewKind || 'none'
-          })
-        }
-      }
-    }
-    return Array.from(fileMap.values()).filter(isFileSummaryRecord)
   }
 
   const summarizeWriteToolForDiff = (activity: ToolActivity, workspacePath?: string | null): { path: string; status: 'created' | 'modified' | 'deleted'; additions: number; deletions: number } | null => {
@@ -4826,6 +4836,35 @@ function App(): React.JSX.Element {
     }
   }
 
+  const handleTogglePinChat = (chatId: string) => {
+    updateChatById(chatId, (source) => ({
+      ...source,
+      pinned: !source.pinned
+    }))
+  }
+
+  const handleTogglePinWorkspace = async (workspaceId: string) => {
+    const workspace = workspaces.find((item) => item.id === workspaceId)
+    if (!workspace) return
+
+    const optimisticWorkspace: WorkspaceRecord = {
+      ...workspace,
+      pinned: !workspace.pinned
+    }
+
+    setWorkspaces(prev => prev.map(item => item.id === workspaceId ? optimisticWorkspace : item))
+    setCurrentWorkspace(prev => prev?.id === workspaceId ? optimisticWorkspace : prev)
+
+    try {
+      const updatedWorkspace = await window.api.addOrUpdateWorkspace(workspace.path, { pinned: optimisticWorkspace.pinned })
+      setWorkspaces(prev => prev.map(item => item.id === updatedWorkspace.id ? updatedWorkspace : item))
+      setCurrentWorkspace(prev => prev?.id === updatedWorkspace.id ? updatedWorkspace : prev)
+    } catch {
+      setWorkspaces(prev => prev.map(item => item.id === workspaceId ? workspace : item))
+      setCurrentWorkspace(prev => prev?.id === workspaceId ? workspace : prev)
+    }
+  }
+
   const handleNewChat = async (wsId: string, wsPath: string) => {
     const newChat = await window.api.createChat(wsId, wsPath)
     const provider = getChatProvider(newChat)
@@ -5378,6 +5417,83 @@ function App(): React.JSX.Element {
     }
   }, [])
 
+  // Generalised re-pin: a SINGLE `ResizeObserver` on the inner transcript
+  // content div (`.transcript-inner`) catches every source of late layout
+  // growth in one place, not just CodeMirror code blocks.
+  //
+  // Follow-up to a12f913. That fix observed individual
+  // `HighlightedCodeBlock` instances and dispatched a custom event so
+  // the messages-update rAF re-pin could re-anchor the bottom after
+  // CodeMirror measured asynchronously. It worked for Kimi transcripts
+  // (heavy with fenced code blocks) but did NOT cover Codex chats heavy
+  // with `Ran /bin/zsh -lc '...'` activity rows — those bounced the user
+  // upward when:
+  //   * a shell-command activity row mounted with multi-line stdout
+  //     that measured asynchronously,
+  //   * a pending tool row transitioned to completed and revealed
+  //     previously-hidden output,
+  //   * new activity rows were appended during streaming faster than
+  //     the rAF re-pin coalesced.
+  //
+  // A content-level observer catches all of the above plus any future
+  // late-mount source (markdown tables expanding to fit, images
+  // loading, future activity types) without per-component plumbing.
+  //
+  // Why this does NOT reintroduce the documented ResizeObserver
+  // feedback loop:
+  //   * The historical bug observed the SCROLL CONTAINER itself — a
+  //     `scrollTop` write caused a reflow that re-fired the observer
+  //     and chained back into more scroll writes.
+  //   * Here we observe the INNER CONTENT div. Its border-box /
+  //     content-box dimensions are determined by its children's
+  //     intrinsic sizes, NOT by the ancestor scroller's `scrollTop`.
+  //     Writing `scrollTop` on the scroller cannot change the content
+  //     div's measured rect.
+  //   * The re-pin is gated on `shouldRepinAfterTranscriptResize`
+  //     which is identical to `shouldRepinAfterFrame` — same guards
+  //     as every other re-pin path (autoFollow engaged AND no user
+  //     scroll-away in this frame). Even in a pathological spurious
+  //     fire, `scrollTop = scrollHeight` is idempotent at the bottom.
+  //   * The per-`HighlightedCodeBlock` observer added in a12f913 is
+  //     intentionally left in place. The two paths are redundant but
+  //     not contradictory — both ultimately schedule the same rAF
+  //     re-pin and the rafId coalescing inside each handler prevents
+  //     multiple writes in one frame.
+  useEffect(() => {
+    const scroller = transcriptScrollRef.current
+    const content = transcriptContentRef.current
+    if (!scroller || !content) return
+    if (typeof ResizeObserver === 'undefined') return
+
+    let rafId: number | null = null
+    const observer = new ResizeObserver(() => {
+      // Coalesce bursts of resize entries from a single batched
+      // callback (multiple children resizing in the same frame) into
+      // a single rAF re-pin.
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        const node = transcriptScrollRef.current
+        if (!node) return
+        if (
+          !shouldRepinAfterTranscriptResize({
+            autoFollow: autoFollowRef.current,
+            userScrolledAwayInThisFrame: userScrolledAwayInFrameRef.current
+          })
+        ) {
+          return
+        }
+        node.scrollTop = node.scrollHeight
+      })
+    })
+
+    observer.observe(content)
+    return () => {
+      observer.disconnect()
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [])
+
   // Stick to bottom when the messages array reference changes. Streaming
   // updates produce a fresh `currentChat.messages` array via immutable
   // updates, so this fires once per render that affects messages — never
@@ -5586,15 +5702,147 @@ function App(): React.JSX.Element {
     void refreshGeminiMemory(currentWorkspace.path)
   }, [currentWorkspace?.path])
 
+  // ----- Raw Events auto-follow scrolling -------------------------------
+  // Mirrors the transcript auto-follow design (see the long block above
+  // anchored around `transcriptScrollRef`). The Raw Events panel streams
+  // a new entry for every run event; before this fix the effect below
+  // unconditionally wrote `scrollTop = scrollHeight` whenever
+  // `rawLogs.length` changed, which fought the user any time they tried
+  // to scroll up to inspect earlier events during an active run.
+  //
+  // Three effects implement the policy and intentionally reuse the same
+  // `lib/TranscriptScroll` helpers as the transcript so the two surfaces
+  // share one truth source:
+  //   1. Scroll listener flips `rawEventsAutoFollowRef` based on
+  //      distance-from-bottom with hysteresis
+  //      (`shouldEngageAutoFollow` / `shouldDisengageAutoFollow`).
+  //   2. Wheel/touch/keyboard listeners record real user-initiated
+  //      upward scrolls into `rawEventsUserScrolledAwayRef` so the
+  //      auto-scroll effect can stand down.
+  //   3. The auto-scroll effect (the original site of the bug) is gated
+  //      on `rawEventsAutoFollowRef`; when auto-follow is engaged it
+  //      writes once to the bottom, when disengaged it leaves the user
+  //      where they are.
+  //
+  // The scroll container is `.raw-events-body` — the inspector tab
+  // re-mounts each time `rightTab` flips, so the listener effects are
+  // keyed on `rightTab === 'raw'` to (a) bind only when the panel is
+  // present in the DOM and (b) re-bind cleanly when the user switches
+  // tabs and back.
   useEffect(() => {
-    if (rightTab === 'raw') {
-      const rawEventsBody = rawLogsEndRef.current?.closest('.raw-events-body') as HTMLElement | null
-      if (rawEventsBody) {
-        rawEventsBody.scrollTo({
-          top: rawEventsBody.scrollHeight,
-          behavior: appearance.reduceMotion ? 'auto' : 'smooth'
-        })
+    if (rightTab !== 'raw') return
+    const scroller = rawLogsEndRef.current?.closest('.raw-events-body') as HTMLElement | null
+    if (!scroller) return
+
+    let rafId: number | null = null
+    const evaluate = () => {
+      rafId = null
+      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      if (shouldEngageAutoFollow(distanceFromBottom)) {
+        rawEventsAutoFollowRef.current = true
+        // Returning to the bottom clears any prior user scroll-away so
+        // the next streamed entry can re-pin without delay.
+        rawEventsUserScrolledAwayRef.current = false
+      } else if (shouldDisengageAutoFollow(distanceFromBottom)) {
+        rawEventsAutoFollowRef.current = false
       }
+    }
+    const onScroll = () => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(evaluate)
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [rightTab])
+
+  // Detect real user-initiated upward scroll attempts on the Raw Events
+  // panel. Plain `scroll` events fire for both user input and the
+  // browser clamping `scrollTop` when content grows underneath, so the
+  // wheel + touch + keyboard listeners below capture the user-intent
+  // signal and feed it into `rawEventsUserScrolledAwayRef`. The
+  // auto-scroll effect then refuses to fight a deliberate scroll-up.
+  useEffect(() => {
+    if (rightTab !== 'raw') return
+    const scroller = rawLogsEndRef.current?.closest('.raw-events-body') as HTMLElement | null
+    if (!scroller) return
+
+    const handleUpwardIntent = (deltaY: number) => {
+      // Only upward intent counts: scrolling further down should not
+      // flip the flag (it would immediately re-engage anyway).
+      if (deltaY >= 0) return
+      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+      if (distanceFromBottom > 0) {
+        rawEventsUserScrolledAwayRef.current = true
+      }
+    }
+
+    const onWheel = (event: WheelEvent) => handleUpwardIntent(event.deltaY)
+
+    let lastTouchY: number | null = null
+    const onTouchStart = (event: TouchEvent) => {
+      lastTouchY = event.touches[0]?.clientY ?? null
+    }
+    const onTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY ?? null
+      if (currentY === null || lastTouchY === null) return
+      // Touch dragging down scrolls up — invert delta to match wheel
+      // semantics (negative = upward intent).
+      handleUpwardIntent(lastTouchY - currentY)
+      lastTouchY = currentY
+    }
+    const onTouchEnd = () => {
+      lastTouchY = null
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home') {
+        handleUpwardIntent(-1)
+      }
+    }
+
+    scroller.addEventListener('wheel', onWheel, { passive: true })
+    scroller.addEventListener('touchstart', onTouchStart, { passive: true })
+    scroller.addEventListener('touchmove', onTouchMove, { passive: true })
+    scroller.addEventListener('touchend', onTouchEnd, { passive: true })
+    scroller.addEventListener('keydown', onKeyDown)
+
+    return () => {
+      scroller.removeEventListener('wheel', onWheel)
+      scroller.removeEventListener('touchstart', onTouchStart)
+      scroller.removeEventListener('touchmove', onTouchMove)
+      scroller.removeEventListener('touchend', onTouchEnd)
+      scroller.removeEventListener('keydown', onKeyDown)
+    }
+  }, [rightTab])
+
+  // Auto-scroll the Raw Events panel to the bottom when new events
+  // arrive — but only when auto-follow is engaged. `shouldRepinAfterFrame`
+  // guards against scrolling while the user has actively scrolled away
+  // since the last paint, so a deliberate read-back is never fought.
+  // Switching filters / opening the panel also fires this effect, which
+  // is the expected "snap to bottom on (re)mount" behaviour.
+  useEffect(() => {
+    if (rightTab !== 'raw') return
+    if (
+      !shouldRepinAfterFrame({
+        autoFollow: rawEventsAutoFollowRef.current,
+        userScrolledAwayInThisFrame: rawEventsUserScrolledAwayRef.current
+      })
+    ) {
+      return
+    }
+    const rawEventsBody = rawLogsEndRef.current?.closest('.raw-events-body') as HTMLElement | null
+    if (rawEventsBody) {
+      rawEventsBody.scrollTo({
+        top: rawEventsBody.scrollHeight,
+        behavior: appearance.reduceMotion ? 'auto' : 'smooth'
+      })
+      // Clear the per-frame intent flag after a successful auto-scroll
+      // so a later wheel event in the same frame can still register.
+      rawEventsUserScrolledAwayRef.current = false
     }
   }, [rawLogs.length, rawFilter, rightTab, appearance.reduceMotion])
 
@@ -8321,7 +8569,7 @@ function App(): React.JSX.Element {
     [currentChat?.messages, currentWorkspace?.path]
   )
   const fileChangeSummaries = exactFileChangeSummaries.length > 0 ? exactFileChangeSummaries : liveToolFileChangeSummaries
-  const fileChangeSummaryEstimated = exactFileChangeSummaries.length === 0 && liveToolFileChangeSummaries.length > 0
+  const fileChangeSummaryEstimated = exactFileChangeSummaries.length === 0 && liveSummariesAreFuzzy(liveToolFileChangeSummaries)
   const displayFileChangeSummaries = useMemo(
     () => fileChangeSummaries.filter((item) => !item.isNoise),
     [fileChangeSummaries]
@@ -8574,6 +8822,8 @@ function App(): React.JSX.Element {
               onSelectChat={handleSelectChat}
               onOpenSettings={() => setShowSettings(true)}
               onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
+              onTogglePinChat={handleTogglePinChat}
+              onTogglePinWorkspace={handleTogglePinWorkspace}
             />
             <div
               className="workspace-sidebar-resize-handle"
@@ -8741,6 +8991,7 @@ function App(): React.JSX.Element {
           <TranscriptPanel
             key={currentChat?.appChatId || 'no-chat'}
             scrollRef={transcriptScrollRef}
+            contentRef={transcriptContentRef}
             endRef={logsEndRef}
             messages={transcriptMessages}
             isWelcomeChat={isWelcomeChat}

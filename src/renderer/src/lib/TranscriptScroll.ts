@@ -166,3 +166,57 @@ export function shouldRepinAfterCodeBlockResize(input: {
 }): boolean {
   return shouldRepinAfterFrame(input)
 }
+
+/**
+ * Decide whether a transcript-content resize should trigger a re-pin.
+ *
+ * Background — the bug this helper exists to address (Codex follow-up
+ * to the Kimi code-block fix in commit a12f913):
+ *
+ * The per-`HighlightedCodeBlock` ResizeObserver (a12f913) caught the
+ * CodeMirror late-measurement case but NOT every source of late layout
+ * growth. Codex chats heavy with `Ran /bin/zsh -lc '...'` rows still
+ * bounced the user upward when:
+ *
+ *   - A shell-command activity row mounted with multi-line stdout that
+ *     measured asynchronously (similar to CodeMirror).
+ *   - A pending tool row transitioned to completed and revealed
+ *     previously-hidden output.
+ *   - New activity rows were appended during streaming and pushed the
+ *     scroll height up faster than the messages-update rAF re-pin
+ *     could coalesce.
+ *
+ * The fix observes the SINGLE inner content div
+ * (`.transcript-inner`) with one ResizeObserver — catching ALL of the
+ * above plus any future content type — instead of plumbing
+ * per-component observers. The re-pin decision uses the same guards
+ * as the other re-pin paths so the gating logic stays unified.
+ *
+ * Why observing the inner content div does NOT re-introduce the
+ * documented ResizeObserver feedback loop:
+ *
+ *   - The historical loop observed the SCROLL CONTAINER itself (or a
+ *     wrapper whose content rect was implicitly tied to scrollHeight).
+ *     Every `scrollTop` write that caused a reflow re-entered the
+ *     observer callback.
+ *   - The inner content div's border-box / content-box / device-pixel
+ *     -content-box dimensions are determined by its children's
+ *     intrinsic sizes (and the flex/grid layout), NOT by the ancestor
+ *     scroll container's `scrollTop`. Writing `scrollTop` on the
+ *     ancestor cannot change the content div's measured rect, so the
+ *     re-pin path cannot loop.
+ *   - Even in a pathological spurious-fire scenario, the gate below
+ *     keeps us idempotent: when at the bottom and auto-follow is
+ *     engaged, `scrollTop = scrollHeight` is a no-op.
+ *
+ * Same delegation pattern as `shouldRepinAfterCodeBlockResize` so the
+ * three re-pin paths (messages-update frame, code-block resize,
+ * transcript-content resize) all share one truth source for the
+ * scroll-away / auto-follow guards.
+ */
+export function shouldRepinAfterTranscriptResize(input: {
+  autoFollow: boolean
+  userScrolledAwayInThisFrame: boolean
+}): boolean {
+  return shouldRepinAfterFrame(input)
+}

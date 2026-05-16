@@ -45,6 +45,13 @@ export function resolveDelegationStatus(
   if (!subThread) return { kind: 'unknown' };
   if (runningChatIds.has(subThread.appChatId)) return { kind: 'running' };
 
+  if (subThread.delegationContext?.dispatchError) {
+    return {
+      kind: 'failed',
+      reason: 'Failed to start'
+    };
+  }
+
   const lastRun = subThread.runs?.[subThread.runs.length - 1];
   if (!lastRun) {
     // Sub-thread created but no run dispatched yet — still warming up.
@@ -110,6 +117,7 @@ export function SubThreadDelegationCard({
   const subThread = subThreadId ? chats.find((chat) => chat.appChatId === subThreadId) : undefined;
   const runningSet = new Set(runningChatIds);
   const status = resolveDelegationStatus(subThread, runningSet);
+  const dispatchErrorMessage = textValue(subThread?.delegationContext?.dispatchError?.message);
 
   const parentColorVar = `var(--provider-${parentProvider || 'gemini'}-color)`;
   const targetColorVar = `var(--provider-${targetProvider || 'gemini'}-color)`;
@@ -171,6 +179,12 @@ export function SubThreadDelegationCard({
         <div className="subthread-delegation-footer">
           <span aria-hidden="true">↩</span>
           <span>Result back-propagated to this thread</span>
+        </div>
+      )}
+      {dispatchErrorMessage && (
+        <div className="subthread-delegation-footer">
+          <span aria-hidden="true">!</span>
+          <span>{dispatchErrorMessage}</span>
         </div>
       )}
     </article>

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { RunCoordinator, type RunCoordinatorDeps } from './RunCoordinator'
+import { RunCoordinator, type RunCoordinatorDeps, type RunDispatchEvent } from './RunCoordinator'
 import type { ProviderId } from '../store/types'
 import type { ProviderAdapter } from '../ProviderAdapters'
 import type { AgentRunPayload, AgentRunRoute } from '../index'
@@ -19,6 +19,14 @@ function makeFakeSender(): Electron.WebContents {
 
 function makeFakeEvent(): Electron.IpcMainInvokeEvent {
   return { sender: makeFakeSender() } as unknown as Electron.IpcMainInvokeEvent
+}
+
+/** Minimum-shape event the agent-driven `delegate_to_subthread` MCP
+ * tool synthesizes — used to pin the structural contract on
+ * `RunCoordinator.dispatch` so a future refactor that reaches for
+ * `event.frameId` etc. fails at the type level. */
+function makeMinimalDispatchEvent(): RunDispatchEvent {
+  return { sender: makeFakeSender() }
 }
 
 function makeFakeAdapter(provider: ProviderId): ProviderAdapter {
@@ -204,5 +212,48 @@ describe('RunCoordinator', () => {
     const coord = new RunCoordinator(deps)
     await coord.dispatch(samplePayload, makeFakeEvent())
     expect(spies.getAdapter).toHaveBeenCalledWith('codex')
+  })
+
+  // Sub-thread delegation contract: the agent-driven path synthesizes a
+  // bare `{ sender }` instead of receiving a real IpcMainInvokeEvent
+  // (it has no IPC round-trip — it's main calling main). If a future
+  // refactor adds an internal `event.frameId` or `event.preventDefault`
+  // call it will fail at the type level (dispatch's parameter is the
+  // narrower `RunDispatchEvent`) instead of silently no-op'ing and
+  // leaving the sub-thread stuck "Pending" forever.
+  it('dispatches with a minimal { sender } event shape (delegate_to_subthread contract)', async () => {
+    const { deps, adapter, spies } = makeDeps()
+    const coord = new RunCoordinator(deps)
+    const minimalEvent = makeMinimalDispatchEvent()
+    const result = await coord.dispatch(samplePayload, minimalEvent)
+    expect(result.dispatched).toBe(true)
+    expect(adapter.run).toHaveBeenCalledTimes(1)
+    // The minimal event must be forwarded to the adapter so the
+    // provider's runXxxProvider can call sendAgentCompatLine(event.sender, ...).
+    const adapterCall = (adapter.run as ReturnType<typeof vi.fn>).mock.calls[0]
+    const ctx = adapterCall[0] as { event: RunDispatchEvent }
+    expect(ctx.event.sender).toBe(minimalEvent.sender)
+    // Preflight + error/exit reporting only ever touch event.sender
+    // — no surprise reads of other fields.
+    const preflightCall = spies.ensureProviderRunPreflight.mock.calls[0]
+    expect(preflightCall[0]).toBe(minimalEvent.sender)
+  })
+
+  // Pin the contract the `delegate_to_subthread` MCP tool relies on:
+  // dispatch propagates adapter / lookup errors to the caller so the
+  // fire-and-forget IIFE's catch block can surface a `provider_warning`
+  // + a durable `subthread_dispatch_failed` event. If a future refactor
+  // ever swallows these errors inside dispatch, the sub-thread would
+  // silently stay "Pending" forever (the original bug) — this test
+  // makes the regression loud.
+  it('propagates dispatch errors to the caller (delegate_to_subthread surface relies on this)', async () => {
+    const { deps, spies } = makeDeps()
+    spies.getAdapter.mockImplementation(() => {
+      throw new Error('Provider adapter is not registered: kimi')
+    })
+    const coord = new RunCoordinator(deps)
+    await expect(
+      coord.dispatch(samplePayload, makeMinimalDispatchEvent())
+    ).rejects.toThrow(/not registered: kimi/)
   })
 })
