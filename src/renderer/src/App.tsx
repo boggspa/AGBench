@@ -4031,7 +4031,13 @@ function App(): React.JSX.Element {
 
   // Initialize
   useEffect(() => {
-    loadInitialData()
+    loadInitialData().catch((err) => {
+      // Defensive: unhandled rejection here would silently leave the
+      // sidebar empty until the user manually performs an action that
+      // re-fetches workspaces. Surface the failure so we have a chance
+      // to triage instead of presenting a blank app.
+      console.error('[loadInitialData] unhandled rejection:', err)
+    })
     window.api.getGeminiVersion().then(v => setGeminiVersion(v))
   }, [])
 
@@ -4128,12 +4134,36 @@ function App(): React.JSX.Element {
     if (typeof window.api.getKimiAuthStatus === 'function') {
       void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
     }
-    const [wsList, allChats, profiles, handoffs] = await Promise.all([
+    // Defensive: a previous regression where any of the four
+    // mount-time loads threw silently (e.g. one malformed chat JSON in
+    // `getChats`) would block the rest of the chain — `setWorkspaces`
+    // would never fire and the sidebar painted with the initial empty
+    // state until the user manually added a workspace, at which point
+    // `handleSelectWorkspace` re-fetched and all "previously loaded"
+    // workspaces suddenly appeared. Use `Promise.allSettled` so each
+    // load is independent, then apply whatever resolved.
+    const [wsResult, chatsResult, profilesResult, handoffsResult] = await Promise.allSettled([
       window.api.getWorkspaces(),
       window.api.getChats(),
       typeof window.api.getRuntimeProfiles === 'function' ? window.api.getRuntimeProfiles() : Promise.resolve([]),
       typeof window.api.getHandoffCards === 'function' ? window.api.getHandoffCards() : Promise.resolve([])
     ])
+    const wsList = wsResult.status === 'fulfilled' ? wsResult.value : []
+    const allChats = chatsResult.status === 'fulfilled' ? chatsResult.value : []
+    const profiles = profilesResult.status === 'fulfilled' ? profilesResult.value : []
+    const handoffs = handoffsResult.status === 'fulfilled' ? handoffsResult.value : []
+    if (wsResult.status === 'rejected') {
+      console.error('[loadInitialData] getWorkspaces failed:', wsResult.reason)
+    }
+    if (chatsResult.status === 'rejected') {
+      console.error('[loadInitialData] getChats failed:', chatsResult.reason)
+    }
+    if (profilesResult.status === 'rejected') {
+      console.error('[loadInitialData] getRuntimeProfiles failed:', profilesResult.reason)
+    }
+    if (handoffsResult.status === 'rejected') {
+      console.error('[loadInitialData] getHandoffCards failed:', handoffsResult.reason)
+    }
     setRuntimeProfiles(profiles)
     setHandoffCards(handoffs)
     setChats(allChats)
