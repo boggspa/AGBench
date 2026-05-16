@@ -5638,6 +5638,26 @@ button.diff-file-row {
   color: color-mix(in srgb, var(--text-muted) 88%, transparent);
 }
 
+/* Content-light rows with nothing to expand into are passive labels —
+ * no pointer affordance, no focus ring. */
+.activity-row.no-expand {
+  cursor: default;
+}
+.activity-row-inline.no-expand:focus-visible {
+  outline: none;
+}
+
+/* Small dot pulse for inline running/pending rows. Replaces the heavier
+ * `activity-border-pulse` border animation that only the card variant uses. */
+.activity-row-inline.is-pulsing .activity-category-pip {
+  animation: activity-inline-pip-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes activity-inline-pip-pulse {
+  0%, 100% { opacity: 0.35; transform: scale(1); }
+  50%      { opacity: 0.95; transform: scale(1.25); }
+}
+
 .activity-row:hover { background: rgba(255,255,255,0.04); }
 
 .activity-row.activity-row-inline:hover {

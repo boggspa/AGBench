@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ChatRecord, ChildAgentThread, ProviderId, ToolActivity, ToolDiffSummary } from '../../../main/store/types';
 import { deriveToolDiffSummary, estimateLineChanges } from '../lib/ToolParser';
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads';
+import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMode';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface ActivityStackProps {
@@ -964,26 +965,43 @@ function ActivityRow({
   const sanitizedDetail = buildSanitizedDetail(activity, activityFilePath, addedLines, deletedLines);
   const hasSanitizedDetail = sanitizedDetail.rows.length > 0 || sanitizedDetail.previews.length > 0;
   const shouldShowRawEvent = showDebugWarning || (isUnknown && !hasSanitizedDetail);
-  const isInlineActivity = !expanded && !shouldShowRawEvent;
+  const diffFileCount = diffSummary?.files?.length || 0;
+  const renderInputs = {
+    expanded,
+    detailRowCount: sanitizedDetail.rows.length,
+    previews: sanitizedDetail.previews,
+    diffFileCount,
+    shouldShowRawEvent,
+  };
+  // Content-light activities (no persistent body, no diff, no debug payload)
+  // collapse to a slim inline chip even when the user toggles expansion —
+  // otherwise we'd render an empty rectangular card around a one-line label.
+  const renderAsCard = shouldRenderAsCard(renderInputs);
+  const isInlineActivity = !renderAsCard;
+  const canExpand = hasExpandableDetail(activity, renderInputs);
+  const showInlinePulse = isInlineActivity && (activity.status === 'running' || activity.status === 'pending');
 
-  const toggleExpanded = () => setExpanded(current => !current);
+  const toggleExpanded = () => {
+    if (!canExpand) return;
+    setExpanded(current => !current);
+  };
 
   return (
     <>
       <div
-        className={`activity-row ${isInlineActivity ? 'activity-row-inline' : 'activity-row-card'} ${expanded ? 'expanded' : 'collapsed'}`}
+        className={`activity-row ${isInlineActivity ? 'activity-row-inline' : 'activity-row-card'} ${expanded ? 'expanded' : 'collapsed'}${!canExpand ? ' no-expand' : ''}${showInlinePulse ? ' is-pulsing' : ''}`}
         data-category={activity.category || 'unknown'}
         data-status={activity.status}
-        role="button"
-        tabIndex={0}
-        aria-expanded={expanded}
-        onClick={toggleExpanded}
-        onKeyDown={(event) => {
+        role={canExpand ? 'button' : undefined}
+        tabIndex={canExpand ? 0 : -1}
+        aria-expanded={canExpand ? expanded : undefined}
+        onClick={canExpand ? toggleExpanded : undefined}
+        onKeyDown={canExpand ? (event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
             toggleExpanded()
           }
-        }}
+        } : undefined}
       >
       <ActivityStatusIcon status={activity.status} />
       <div className="activity-body">
@@ -1016,7 +1034,7 @@ function ActivityRow({
           <div className="activity-meta">{metaText}</div>
         )}
 
-        {expanded && (
+        {renderAsCard && (
           <div className="activity-detail">
             {showDebugWarning && (
               <div style={{ color: 'var(--warning)' }}>Tool event missing name</div>
