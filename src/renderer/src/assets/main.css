@@ -12311,3 +12311,229 @@ input:disabled, select:disabled, textarea:disabled {
   font-style: italic;
   text-align: center;
 }
+
+/* ── ApprovalLedgerPanel (Phase E2) ─────────────────────────────────── */
+.approval-ledger-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.approval-ledger-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.approval-ledger-hint {
+  margin: 0;
+}
+.approval-ledger-error {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: rgba(220, 80, 80, 0.14);
+  color: rgba(255, 200, 200, 0.95);
+}
+.approval-ledger-controls {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.approval-ledger-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.approval-ledger-control-search {
+  grid-column: span 1;
+}
+.approval-ledger-control-label {
+  font-size: 0.75em;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.approval-ledger-select,
+.approval-ledger-input {
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  font: inherit;
+}
+.approval-ledger-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.approval-ledger-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+.approval-ledger-status-chip input[type='checkbox'] {
+  margin: 0;
+}
+.approval-ledger-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.approval-ledger-list {
+  margin-top: 8px;
+}
+.approval-ledger-rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.approval-ledger-row {
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  transition: background 120ms ease;
+}
+.approval-ledger-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.approval-ledger-row-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.approval-ledger-row-primary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+.approval-ledger-row-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approval-ledger-row-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 0.85em;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.approval-ledger-row-workspace {
+  max-width: 12em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.approval-ledger-row-details {
+  padding: 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.85em;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 12px;
+  background: rgba(0, 0, 0, 0.18);
+}
+.approval-ledger-detail-line {
+  display: flex;
+  gap: 12px;
+}
+.approval-ledger-detail-label {
+  flex: 0 0 9em;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  font-size: 0.75em;
+  letter-spacing: 0.02em;
+}
+.approval-ledger-detail-value {
+  flex: 1;
+  word-break: break-all;
+}
+.approval-ledger-row-body,
+.approval-ledger-row-metadata {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.approval-ledger-row-body-label {
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  font-size: 0.75em;
+  letter-spacing: 0.02em;
+}
+.approval-ledger-row-body-text {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  max-height: 18em;
+  overflow: auto;
+}
+.approval-ledger-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.7em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+.approval-ledger-badge-pending {
+  background: rgba(190, 160, 60, 0.18);
+  color: rgba(255, 220, 140, 0.95);
+}
+.approval-ledger-badge-approved {
+  background: rgba(60, 200, 130, 0.16);
+  color: rgba(170, 240, 200, 0.95);
+}
+.approval-ledger-badge-denied {
+  background: rgba(220, 80, 80, 0.16);
+  color: rgba(255, 190, 190, 0.95);
+}
+.approval-ledger-badge-cancelled {
+  background: rgba(160, 160, 160, 0.14);
+  color: rgba(220, 220, 220, 0.9);
+}
+.approval-ledger-badge-expired,
+.approval-ledger-badge-auto-deny {
+  background: rgba(220, 130, 60, 0.16);
+  color: rgba(255, 200, 150, 0.95);
+}
+.approval-ledger-badge-auto-allow {
+  background: rgba(60, 130, 200, 0.16);
+  color: rgba(170, 210, 250, 0.95);
+}
+.approval-ledger-badge-unknown {
+  background: rgba(120, 120, 120, 0.14);
+  color: var(--text-secondary);
+}

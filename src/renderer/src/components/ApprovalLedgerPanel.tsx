@@ -1,0 +1,417 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import type {
+  ApprovalLedgerRecord,
+  ApprovalLedgerStatus,
+  ProviderId
+} from '../../../main/store/types'
+
+/**
+ * ApprovalLedgerPanel — Phase E2 admin UI for the durable approval ledger.
+ *
+ * Surfaces every recorded approval decision (manual, auto-allowed by
+ * policy, auto-denied by timeout) so the user can audit what happened
+ * across runs. Self-contained — pulls state via the existing
+ * `api.getApprovalLedger(filter)` preload binding (wired since the
+ * ledger landed in commit `8752630`).
+ *
+ * Two filter axes:
+ *   - Status checkboxes (multi-select)
+ *   - Provider dropdown (single-select, plus "all")
+ * Plus a client-side date-range filter (last 24h / 7d / 30d / all)
+ * and an approvalId substring search.
+ *
+ * Export: JSON download of the currently-filtered set. Useful for
+ * forensics ("why did this run auto-deny at 02:14?") and for sharing
+ * audit excerpts.
+ *
+ * Refresh: pull-on-mount + manual refresh button + auto-refresh on
+ * focus (re-running approvals between visits should be visible
+ * without a manual reload).
+ */
+
+const ALL_PROVIDERS: Array<ProviderId | 'all'> = ['all', 'gemini', 'codex', 'claude', 'kimi']
+const ALL_STATUSES: ApprovalLedgerStatus[] = [
+  'pending',
+  'approved',
+  'denied',
+  'cancelled',
+  'expired'
+]
+const DATE_RANGES = [
+  { id: 'all', label: 'All time', windowMs: undefined as number | undefined },
+  { id: '24h', label: 'Last 24 hours', windowMs: 24 * 60 * 60 * 1000 },
+  { id: '7d', label: 'Last 7 days', windowMs: 7 * 24 * 60 * 60 * 1000 },
+  { id: '30d', label: 'Last 30 days', windowMs: 30 * 24 * 60 * 60 * 1000 }
+] as const
+
+type DateRangeId = (typeof DATE_RANGES)[number]['id']
+
+export function ApprovalLedgerPanel(): React.JSX.Element {
+  const [records, setRecords] = useState<ApprovalLedgerRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [providerFilter, setProviderFilter] = useState<ProviderId | 'all'>('all')
+  const [statusFilter, setStatusFilter] = useState<Set<ApprovalLedgerStatus>>(new Set(ALL_STATUSES))
+  const [dateRange, setDateRange] = useState<DateRangeId>('7d')
+  const [search, setSearch] = useState('')
+  const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const refresh = useCallback(async () => {
+    try {
+      setLoading(true)
+      // Server-side filters: provider + statuses + limit. Date range
+      // + search stay client-side for snappy interaction.
+      const filter: {
+        provider?: ProviderId
+        statuses?: ApprovalLedgerStatus[]
+        includeExpired?: boolean
+        limit?: number
+      } = {
+        statuses: Array.from(statusFilter),
+        includeExpired: statusFilter.has('expired'),
+        limit: 1000
+      }
+      if (providerFilter !== 'all') filter.provider = providerFilter
+      const result = (await window.api.getApprovalLedger(filter)) as ApprovalLedgerRecord[]
+      setRecords(Array.isArray(result) ? result : [])
+      setError(null)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setLoading(false)
+    }
+  }, [providerFilter, statusFilter])
+
+  // Initial load + refetch when filters change. Defer to microtask so
+  // the synchronous state burst doesn't trigger React's "cascading
+  // renders" lint guard.
+  useEffect(() => {
+    void Promise.resolve().then(() => refresh())
+  }, [refresh])
+
+  // Refresh on window focus so a decision made between visits shows up
+  // without a manual reload.
+  useEffect(() => {
+    const onFocus = (): void => {
+      void refresh()
+    }
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
+
+  // Client-side filters: date range + search. Date.now() is read at
+  // memo computation time — the cutoff is a snapshot the filter pass
+  // uses for the current render. The `react-hooks/purity` lint flags
+  // it but the snapshot pattern is correct here: re-renders pick a
+  // fresh cutoff, which is what the user wants for a "last N hours"
+  // filter.
+  const visibleRecords = useMemo(() => {
+    const rangeWindow = DATE_RANGES.find((r) => r.id === dateRange)?.windowMs
+    // eslint-disable-next-line react-hooks/purity
+    const cutoff = rangeWindow ? Date.now() - rangeWindow : 0
+    const needle = search.trim().toLowerCase()
+    return records
+      .filter((record) => {
+        if (rangeWindow) {
+          const requestedMs = Date.parse(record.requestedAt)
+          if (Number.isFinite(requestedMs) && requestedMs < cutoff) return false
+        }
+        if (needle) {
+          const haystack =
+            `${record.approvalId} ${record.title} ${record.method} ${record.workspacePath ?? ''}`.toLowerCase()
+          if (!haystack.includes(needle)) return false
+        }
+        return true
+      })
+      .sort((a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt))
+  }, [records, dateRange, search])
+
+  const toggleStatus = (status: ApprovalLedgerStatus): void => {
+    setStatusFilter((prev) => {
+      const next = new Set(prev)
+      if (next.has(status)) next.delete(status)
+      else next.add(status)
+      // Never let the filter become empty — that would hide everything.
+      if (next.size === 0) next.add(status)
+      return next
+    })
+  }
+
+  const handleExport = useCallback(() => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      filters: {
+        provider: providerFilter,
+        statuses: Array.from(statusFilter),
+        dateRange,
+        search: search || undefined
+      },
+      count: visibleRecords.length,
+      records: visibleRecords
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    link.download = `agbench-approval-ledger-${stamp}.json`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }, [providerFilter, statusFilter, dateRange, search, visibleRecords])
+
+  return (
+    <div className="approval-ledger-panel">
+      <div className="approval-ledger-header">
+        <label className="settings-label">Approval ledger</label>
+        <div className="settings-hint approval-ledger-hint">
+          Durable record of every approval decision (manual, auto-allowed by policy, auto-denied on
+          timeout). Useful for auditing why a run paused, was approved, or was denied unattended.
+        </div>
+      </div>
+
+      {error && <div className="settings-error approval-ledger-error">{error}</div>}
+
+      <div className="approval-ledger-controls">
+        <div className="approval-ledger-control-group">
+          <label className="approval-ledger-control-label">Provider</label>
+          <select
+            value={providerFilter}
+            onChange={(e) => setProviderFilter(e.target.value as ProviderId | 'all')}
+            className="approval-ledger-select"
+          >
+            {ALL_PROVIDERS.map((p) => (
+              <option key={p} value={p}>
+                {p === 'all' ? 'All providers' : p}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="approval-ledger-control-group">
+          <label className="approval-ledger-control-label">Time range</label>
+          <select
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value as DateRangeId)}
+            className="approval-ledger-select"
+          >
+            {DATE_RANGES.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="approval-ledger-control-group approval-ledger-control-search">
+          <label className="approval-ledger-control-label">Search</label>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="approval id, title, workspace…"
+            className="approval-ledger-input"
+          />
+        </div>
+      </div>
+
+      <div className="approval-ledger-status-row">
+        {ALL_STATUSES.map((status) => (
+          <label key={status} className="approval-ledger-status-chip">
+            <input
+              type="checkbox"
+              checked={statusFilter.has(status)}
+              onChange={() => toggleStatus(status)}
+            />
+            <span>{status}</span>
+          </label>
+        ))}
+      </div>
+
+      <div className="approval-ledger-actions">
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          onClick={() => void refresh()}
+          disabled={loading}
+        >
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </button>
+        <button
+          type="button"
+          className="btn btn-sm btn-ghost"
+          onClick={handleExport}
+          disabled={visibleRecords.length === 0}
+        >
+          Export JSON ({visibleRecords.length})
+        </button>
+      </div>
+
+      <div className="approval-ledger-list">
+        {loading && records.length === 0 ? (
+          <div className="settings-hint">Loading…</div>
+        ) : visibleRecords.length === 0 ? (
+          <div className="settings-hint">No matching approval records.</div>
+        ) : (
+          <ul className="approval-ledger-rows">
+            {visibleRecords.map((record) => (
+              <ApprovalLedgerRow
+                key={record.id}
+                record={record}
+                expanded={expandedId === record.id}
+                onToggleExpand={() => setExpandedId(expandedId === record.id ? null : record.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ApprovalLedgerRow({
+  record,
+  expanded,
+  onToggleExpand
+}: {
+  record: ApprovalLedgerRecord
+  expanded: boolean
+  onToggleExpand: () => void
+}): React.JSX.Element {
+  const requestedAt = useMemo(() => formatTimestamp(record.requestedAt), [record.requestedAt])
+  const respondedAt = useMemo(
+    () => (record.respondedAt ? formatTimestamp(record.respondedAt) : undefined),
+    [record.respondedAt]
+  )
+  const outcomeLabel = formatOutcome(record)
+  const outcomeKind = outcomeKindFor(record)
+
+  return (
+    <li className={`approval-ledger-row approval-ledger-row-${outcomeKind}`}>
+      <button
+        type="button"
+        className="approval-ledger-row-header"
+        onClick={onToggleExpand}
+        aria-expanded={expanded}
+      >
+        <div className="approval-ledger-row-primary">
+          <span className={`approval-ledger-badge approval-ledger-badge-${outcomeKind}`}>
+            {outcomeLabel}
+          </span>
+          <span className="approval-ledger-row-title">{record.title}</span>
+        </div>
+        <div className="approval-ledger-row-meta">
+          <span>{record.provider}</span>
+          <span aria-hidden>·</span>
+          <span>{requestedAt}</span>
+          {record.workspacePath && (
+            <>
+              <span aria-hidden>·</span>
+              <span className="approval-ledger-row-workspace" title={record.workspacePath}>
+                {workspaceBasename(record.workspacePath)}
+              </span>
+            </>
+          )}
+        </div>
+      </button>
+      {expanded && (
+        <div className="approval-ledger-row-details">
+          <DetailLine label="Approval id" value={record.approvalId} />
+          <DetailLine label="Method" value={record.method} />
+          {record.service && <DetailLine label="Service" value={record.service} />}
+          <DetailLine label="Status" value={record.status} />
+          {record.decision && <DetailLine label="Decision" value={record.decision} />}
+          {record.decisionSource && (
+            <DetailLine label="Decision source" value={record.decisionSource} />
+          )}
+          {record.grantedScope && <DetailLine label="Granted scope" value={record.grantedScope} />}
+          <DetailLine label="Requested" value={requestedAt} />
+          {respondedAt && <DetailLine label="Responded" value={respondedAt} />}
+          {record.expiration && (
+            <DetailLine
+              label="Expiration"
+              value={`${record.expiration.mode} — ${record.expiration.description}`}
+            />
+          )}
+          {record.runId && <DetailLine label="Run id" value={record.runId} />}
+          {record.chatId && <DetailLine label="Chat id" value={record.chatId} />}
+          {record.workspacePath && (
+            <DetailLine label="Workspace path" value={record.workspacePath} />
+          )}
+          {record.body && (
+            <div className="approval-ledger-row-body">
+              <div className="approval-ledger-row-body-label">Body</div>
+              <pre className="approval-ledger-row-body-text">{record.body}</pre>
+            </div>
+          )}
+          {record.metadata && Object.keys(record.metadata).length > 0 && (
+            <div className="approval-ledger-row-metadata">
+              <div className="approval-ledger-row-body-label">Metadata</div>
+              <pre className="approval-ledger-row-body-text">
+                {JSON.stringify(record.metadata, null, 2)}
+              </pre>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
+
+function DetailLine({ label, value }: { label: string; value: string }): React.JSX.Element {
+  return (
+    <div className="approval-ledger-detail-line">
+      <span className="approval-ledger-detail-label">{label}</span>
+      <span className="approval-ledger-detail-value">{value}</span>
+    </div>
+  )
+}
+
+function formatTimestamp(iso: string): string {
+  try {
+    const date = new Date(iso)
+    if (Number.isNaN(date.getTime())) return iso
+    return date.toLocaleString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  } catch {
+    return iso
+  }
+}
+
+/** Human-friendly outcome label that includes auto-denial via timeout
+ * as a distinct value the user cares about. */
+function formatOutcome(record: ApprovalLedgerRecord): string {
+  if (record.status === 'pending') return 'Pending'
+  if (record.decision === 'autoAllow') return 'Auto-allowed'
+  if (record.decision === 'autoDeny') return 'Auto-denied'
+  if (record.decision === 'expired') return 'Expired'
+  if (record.status === 'approved') return 'Approved'
+  if (record.status === 'denied') return 'Denied'
+  if (record.status === 'cancelled') return 'Cancelled'
+  if (record.status === 'expired') return 'Expired'
+  return record.decision ?? record.status
+}
+
+/** Short kind code used for badge + row CSS variants. */
+function outcomeKindFor(record: ApprovalLedgerRecord): string {
+  if (record.status === 'pending') return 'pending'
+  if (record.decision === 'autoAllow') return 'auto-allow'
+  if (record.decision === 'autoDeny') return 'auto-deny'
+  if (record.decision === 'expired' || record.status === 'expired') return 'expired'
+  if (record.status === 'approved') return 'approved'
+  if (record.status === 'denied') return 'denied'
+  if (record.status === 'cancelled') return 'cancelled'
+  return 'unknown'
+}
+
+function workspaceBasename(workspacePath: string): string {
+  const parts = workspacePath.split(/[/\\]/).filter(Boolean)
+  return parts[parts.length - 1] || workspacePath
+}

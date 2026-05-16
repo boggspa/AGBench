@@ -32,6 +32,7 @@ import {
   type TypefaceOption
 } from '../lib/typefaceOptions';
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel';
+import { ApprovalLedgerPanel } from './ApprovalLedgerPanel';
 
 interface SettingsPanelProps {
   mode: AppearanceMode;
@@ -182,7 +183,7 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ];
 
-type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system' | 'remote-workspaces';
+type SettingsTab = 'appearance' | 'behavior' | 'providers' | 'system' | 'remote-workspaces' | 'approval-ledger';
 
 type LocalFontData = {
   family?: string;
@@ -304,6 +305,7 @@ export function SettingsPanel({
     { id: 'providers', label: 'Providers' },
     { id: 'system', label: 'System' },
     { id: 'remote-workspaces', label: 'Remote Workspaces' },
+    { id: 'approval-ledger', label: 'Approval Ledger' },
   ];
 
   return (
@@ -971,6 +973,9 @@ export function SettingsPanel({
 
       {/* ── Remote Workspaces (Phase C4) ─────────────────────────────── */}
       {activeTab === 'remote-workspaces' && <RemoteWorkspacesPanel />}
+
+      {/* ── Approval Ledger (Phase E2) ───────────────────────────────── */}
+      {activeTab === 'approval-ledger' && <ApprovalLedgerPanel />}
 
       </div>{/* end settings-panel-content */}
     </div>
