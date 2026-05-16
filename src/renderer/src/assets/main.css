@@ -13559,3 +13559,45 @@ input:disabled, select:disabled, textarea:disabled {
   margin: 0;
   font-size: 0.85em;
 }
+
+/* User-message collapse — long pasted briefs are truncated by default with a
+ * "Show more" affordance under the bubble. Styling reuses the existing user
+ * bubble; we only need the inner content wrapper, the gradient fade, and the
+ * inline toggle button. */
+.message-bubble.user .user-message-content {
+  display: block;
+}
+.message-bubble.user.is-collapsible {
+  /* Slightly tighter bottom padding when the toggle row is present so the
+   * "Show more" button doesn't double-pad the bubble. */
+  padding-bottom: var(--space-sm);
+}
+.message-bubble.user.is-collapsed .user-message-content {
+  /* Subtle gradient fade indicating there is more content below. We use a
+   * webkit/standard mask so the bubble background still bleeds through. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, rgba(0, 0, 0, 0.35) 100%);
+  mask-image: linear-gradient(to bottom, #000 70%, rgba(0, 0, 0, 0.35) 100%);
+}
+.user-message-toggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  padding: 4px 0 0;
+  margin-top: var(--space-xs);
+  cursor: pointer;
+  align-self: flex-start;
+  line-height: 1.2;
+  border-radius: var(--radius-sm);
+  transition: color 120ms ease;
+}
+.user-message-toggle:hover,
+.user-message-toggle:focus-visible {
+  color: var(--text-primary);
+  outline: none;
+}
+.user-message-toggle:focus-visible {
+  text-decoration: underline;
+}

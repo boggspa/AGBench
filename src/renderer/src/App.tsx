@@ -42,6 +42,10 @@ import {
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import {
+  shouldCollapseUserMessage,
+  truncateUserMessagePreview
+} from './lib/UserMessageCollapse'
+import {
   HEATMAP_DAY_COUNT,
   HEATMAP_HOUR_COUNT,
   buildWelcomeUsageDashboardData,
@@ -2938,6 +2942,21 @@ const TranscriptPanel = memo(function TranscriptPanel({
 }: TranscriptPanelProps) {
   const visibleMessages = isWelcomeChat ? [] : messages
   const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
+  // Per-message expansion state for long user-message bubbles. Keyed by
+  // message.id so toggling one brief does not collapse others. Default for
+  // every long message is collapsed — see UserMessageCollapse for thresholds.
+  const [expandedUserMessages, setExpandedUserMessages] = useState<Set<string>>(new Set())
+  const toggleUserMessageExpanded = (id: string) => {
+    setExpandedUserMessages((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   return (
     <div className="transcript-scroll" ref={scrollRef}>
@@ -2980,11 +2999,46 @@ const TranscriptPanel = memo(function TranscriptPanel({
                   <div className="message-meta">
                     {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
                   </div>
-                  <div className={`message-bubble ${msg.role}`}>
-                    {msg.role === 'assistant'
-                      ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
-                      : msg.content}
-                  </div>
+                  {msg.role === 'user' ? (
+                    (() => {
+                      // Long pasted briefs would otherwise dominate the scroll
+                      // viewport. Collapse them by default and let the user
+                      // expand inline with "Show more". Toggle state lives in
+                      // `expandedUserMessages` so each bubble is independent.
+                      const collapsible = shouldCollapseUserMessage(msg.content)
+                      const isExpanded = expandedUserMessages.has(msg.id)
+                      const showCollapsed = collapsible && !isExpanded
+                      const preview = showCollapsed
+                        ? truncateUserMessagePreview(msg.content)
+                        : msg.content
+                      return (
+                        <div
+                          className={`message-bubble user${
+                            collapsible ? ' is-collapsible' : ''
+                          }${showCollapsed ? ' is-collapsed' : ''}`}
+                        >
+                          <div className="user-message-content">{preview}</div>
+                          {collapsible && (
+                            <button
+                              type="button"
+                              className="user-message-toggle"
+                              onClick={() => toggleUserMessageExpanded(msg.id)}
+                              aria-expanded={isExpanded}
+                              title={isExpanded ? 'Collapse message' : 'Show full message'}
+                            >
+                              {isExpanded ? 'Show less' : 'Show more'}
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })()
+                  ) : (
+                    <div className={`message-bubble ${msg.role}`}>
+                      {msg.role === 'assistant'
+                        ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
+                        : msg.content}
+                    </div>
+                  )}
                 </>
               )}
               {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
