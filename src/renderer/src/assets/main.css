@@ -3678,6 +3678,9 @@ button.sidebar-item {
  * applied inline so the JS-side constants remain the source of truth. The
  * chip height is fixed (not aspect-ratio:1) to keep the panel from becoming
  * unreasonably tall; the chips simply scale wider as the dashboard does.
+ * Row height was bumped from 7px to 13px so each chip reads as a readable
+ * band rather than a hairline strip; the composer block at top:56% still
+ * has sufficient safe area below the resulting panel.
  */
 .welcome-usage-activity-grid {
   display: grid;
@@ -3691,8 +3694,8 @@ button.sidebar-item {
 
 .welcome-usage-hour-cell {
   min-width: 0;
-  height: 7px;
-  border-radius: 1.5px;
+  height: 13px;
+  border-radius: 2px;
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 6%, transparent), color-mix(in srgb, var(--panel-border) 18%, transparent));
   box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--panel-border) 32%, transparent);
