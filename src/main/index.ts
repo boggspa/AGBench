@@ -3,7 +3,7 @@ import type { BrowserWindowConstructorOptions } from 'electron'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
-import { createHmac, randomBytes, randomUUID, timingSafeEqual } from 'crypto'
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
 import { promises as fs } from 'fs'
 import * as fsSync from 'fs'
 import { createConnection, createServer, Socket, Server as NetServer } from 'net'
@@ -26,13 +26,14 @@ import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { ChatService } from './services/ChatService'
 import { RunCoordinator } from './services/RunCoordinator'
+import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -559,8 +560,6 @@ let activeCodexRunState: CodexRunState | null = null
 const cliProviderProcesses = new Map<ProviderId, ChildProcess>()
 const cliProviderAbortControllers = new Map<ProviderId, AbortController>()
 const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
-const RUN_QUEUE_STATUSES = new Set<RunQueueJobStatus>(['queued', 'starting', 'active', 'paused', 'cancelling', 'cancelled', 'failed', 'completed'])
-const RUN_QUEUE_SOURCES = new Set<RunQueueJobSource>(['manual', 'scheduled', 'retry', 'permission_retry', 'review', 'host_rerun', 'system'])
 const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
   shellCommands: 'workspace',
   fileChanges: 'ask',
@@ -733,20 +732,6 @@ function sanitizeChatForSave(chat: ChatRecord): ChatRecord {
   }
 }
 
-function sanitizeWorkspaceGeminiWorktree(value: unknown): WorkspaceRecord['geminiWorktree'] | undefined {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return undefined
-  }
-  const record = value as Record<string, unknown>
-  const sanitized: WorkspaceRecord['geminiWorktree'] = {
-    enabled: Boolean(record.enabled)
-  }
-  if (typeof record.name === 'string' && record.name.trim()) {
-    sanitized.name = record.name.trim()
-  }
-  return sanitized
-}
-
 function assertSafeWorkspaceRoot(workspacePath: string): void {
   const normalized = canonicalPath(workspacePath)
   const root = parse(normalized).root
@@ -767,104 +752,6 @@ function requireRegisteredWorkspace(workspacePath: string, label = 'Workspace'):
     throw new Error(`${label} must be selected through AGBench before it can be used.`)
   }
   return normalized
-}
-
-function sanitizeRunQueueStatus(value: unknown, fallback: RunQueueJobStatus = 'queued'): RunQueueJobStatus {
-  return typeof value === 'string' && RUN_QUEUE_STATUSES.has(value as RunQueueJobStatus)
-    ? value as RunQueueJobStatus
-    : fallback
-}
-
-function sanitizeRunQueueSource(value: unknown): RunQueueJobSource {
-  return typeof value === 'string' && RUN_QUEUE_SOURCES.has(value as RunQueueJobSource)
-    ? value as RunQueueJobSource
-    : 'manual'
-}
-
-function sanitizeRunQueueRequestSnapshot(value: unknown): RunQueueRequestSnapshot | undefined {
-  if (!isRecord(value)) return undefined
-  const imageAttachments = Array.isArray(value.imageAttachments)
-    ? value.imageAttachments
-      .filter(isRecord)
-      .map((attachment) => ({
-        id: optionalString(attachment.id),
-        path: requireNonEmptyString(attachment.path, 'Image attachment path'),
-        name: optionalString(attachment.name)
-      }))
-    : []
-  const rawExternalPathGrants = Array.isArray(value.externalPathGrants)
-    ? value.externalPathGrants as ExternalPathGrant[]
-    : []
-  const externalPathGrants = normalizeExternalPathGrants(rawExternalPathGrants)
-  if (rawExternalPathGrants.length && externalPathGrants.length !== rawExternalPathGrants.length) {
-    throw new Error('Queued external path grants must be issued by AGBench in this app session.')
-  }
-  return {
-    scope: value.scope === 'global' ? 'global' : 'workspace',
-    prompt: typeof value.prompt === 'string' ? value.prompt : '',
-    displayPrompt: optionalString(value.displayPrompt),
-    selectedModelType: optionalString(value.selectedModelType) || 'cli-default',
-    customModel: typeof value.customModel === 'string' ? value.customModel : '',
-    approvalMode: optionalString(value.approvalMode) || 'default',
-    sessionTrust: Boolean(value.sessionTrust),
-    imageAttachments,
-    externalPathGrants: externalPathGrants.length ? externalPathGrants : undefined,
-    geminiWorktree: sanitizeWorkspaceGeminiWorktree(value.geminiWorktree),
-    codexNativeReview: Boolean(value.codexNativeReview) || undefined,
-    codexReasoningEffort: optionalStringOrNull(value.codexReasoningEffort),
-    codexServiceTier: optionalStringOrNull(value.codexServiceTier),
-    kimiThinkingEnabled: typeof value.kimiThinkingEnabled === 'boolean' ? value.kimiThinkingEnabled : undefined,
-    scheduledTaskId: optionalString(value.scheduledTaskId),
-    preserveComposer: Boolean(value.preserveComposer) || undefined,
-    runtimeProfileId: optionalString(value.runtimeProfileId),
-    handoffSourceRunId: optionalString(value.handoffSourceRunId)
-  }
-}
-
-function normalizeRunQueueJobRequest(value: unknown): Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'> {
-  const record = requireRecord(value, 'Run queue request')
-  const provider = assertProviderId(record.provider)
-  const runId = optionalString(record.runId) || optionalString(record.id) || randomUUID()
-  const chatId = optionalString(record.chatId)
-  const chat = chatId ? AppStore.getChat(chatId) : null
-  const scope: ChatScope = record.scope === 'global' || chatScope(chat) === 'global' ? 'global' : 'workspace'
-  let workspacePath: string | undefined
-  let workspaceId: string | undefined
-  if (scope === 'global') {
-    requireGlobalChat(chatId, 'Run queue global chat')
-  } else {
-    workspacePath = requireRegisteredWorkspace(requireNonEmptyString(record.workspacePath, 'Workspace'))
-    const workspace = findRegisteredWorkspace(workspacePath)
-    workspaceId = workspace?.id || optionalString(record.workspaceId)
-    validateChatWorkspaceIdentity(chatId, workspace)
-  }
-  const status = sanitizeRunQueueStatus(record.status, 'queued')
-  return {
-    id: optionalString(record.id) || runId,
-    runId,
-    provider,
-    scope,
-    workspacePath,
-    workspaceId,
-    chatId,
-    source: sanitizeRunQueueSource(record.source),
-    status: status === 'active' || status === 'cancelling' ? 'starting' : status,
-    priority: optionalNumber(record.priority),
-    attempt: optionalNumber(record.attempt),
-    promptPreview: optionalString(record.promptPreview),
-    request: sanitizeRunQueueRequestSnapshot(record.request),
-    providerSessionId: optionalString(record.providerSessionId),
-    providerRunId: optionalString(record.providerRunId),
-    parentRunId: optionalString(record.parentRunId),
-    runtimeProfileId: optionalString(record.runtimeProfileId),
-    handoffSourceRunId: optionalString(record.handoffSourceRunId),
-    statusReason: optionalString(record.statusReason),
-    lastError: optionalString(record.lastError)
-  }
-}
-
-function providerHasActiveRun(provider: ProviderId): boolean {
-  return runManager.getActiveByProvider(provider).length > 0
 }
 
 function externalGrantSigningPayload(grant: Pick<ExternalPathGrant, 'id' | 'provider' | 'path' | 'kind' | 'access' | 'duration' | 'createdAt'>): string {
@@ -1311,6 +1198,7 @@ const runManager = new RunManager<any>()
 const permissionService = new PermissionService({ runManager, sessionGrants: agenticSessionGrants })
 const providerPreflightService = new ProviderPreflightService()
 let runRepository: RunRepository | null = null
+let runQueueServiceRef: RunQueueService | null = null
 
 function getRunRepository(): RunRepository {
   if (!runRepository) {
@@ -1341,6 +1229,10 @@ function emitRunQueueChanged(): void {
 }
 
 function persistRunSessionQueueState(session: ReturnType<typeof runManager.get>): void {
+  if (runQueueServiceRef) {
+    runQueueServiceRef.persistSessionQueueState(session)
+    return
+  }
   getRunRepository().persistSessionQueueState(session)
 }
 
@@ -8399,6 +8291,17 @@ app.whenReady().then(() => {
     },
     checkTrust: (workspacePath) => TrustStatusService.checkTrust(workspacePath)
   })
+  const runQueueService = new RunQueueService({
+    appStore: AppStore,
+    getRunRepository,
+    normalizeExternalPathGrants,
+    requireGlobalChat,
+    requireRegisteredWorkspace,
+    findRegisteredWorkspace,
+    validateChatWorkspaceIdentity,
+    isProviderActive: (provider) => runManager.getActiveByProvider(provider).length > 0
+  })
+  runQueueServiceRef = runQueueService
 
   // Phase C5 scaffold: APNs wake-on-approval. Today both the pusher and
   // token store are wired as no-ops / persistent stubs; the real APNs
@@ -8864,36 +8767,19 @@ app.whenReady().then(() => {
   })
 
   // Durable run queue. Renderer requests and observes; main owns persistence and leases.
-  ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => getRunRepository().getRunQueueJobs(filter || {}))
+  ipcMain.handle('get-run-queue-jobs', (_, filter?: RunQueueJobFilter) => runQueueService.getJobs(filter))
   ipcMain.handle('get-run-recovery-records', (_, filter?: RunRecoveryFilter) => getRunRepository().getRunRecoveryRecords(filter || {}))
-  ipcMain.handle('request-run-queue-job', (_, job: any) => {
-    return getRunRepository().saveRunQueueJob(normalizeRunQueueJobRequest(job))
-  })
-  ipcMain.handle('lease-run-queue-job', (_, request: { runId?: string; provider?: ProviderId; statusReason?: string } = {}) => {
-    const provider = request?.provider ? assertProviderId(request.provider) : undefined
-    const runId = optionalString(request?.runId)
-    const candidate = runId ? AppStore.getRunQueueJob(runId) : AppStore.getRunQueueJobs({ provider, statuses: ['queued'] })[0]
-    if (!candidate || candidate.status !== 'queued') {
-      return null
-    }
-    if (provider && candidate.provider !== provider) {
-      return null
-    }
-    if (providerHasActiveRun(candidate.provider)) {
-      return null
-    }
-    return getRunRepository().leaseQueuedRun({
-      runId: candidate.runId,
-      provider: candidate.provider,
-      statusReason: optionalString(request?.statusReason) || 'Leased by AGBench main scheduler.'
-    })
-  })
-  ipcMain.handle('transition-run-queue-job', (_, runIdOrId: string, status: RunQueueJobStatus, partial: Partial<RunQueueJob> = {}) => {
-    return getRunRepository().transitionRunQueueJob(runIdOrId, sanitizeRunQueueStatus(status), {
-      statusReason: optionalString(partial?.statusReason),
-      lastError: optionalString(partial?.lastError)
-    })
-  })
+  ipcMain.handle('request-run-queue-job', (_, job: unknown) => runQueueService.requestJob(job))
+  ipcMain.handle(
+    'lease-run-queue-job',
+    (_, request: { runId?: string; provider?: ProviderId; statusReason?: string } = {}) =>
+      runQueueService.leaseJob(request)
+  )
+  ipcMain.handle(
+    'transition-run-queue-job',
+    (_, runIdOrId: string, status: RunQueueJobStatus, partial: Partial<RunQueueJob> = {}) =>
+      runQueueService.transitionJob(runIdOrId, status, partial)
+  )
 
   // Durable transcript/event store. Writes are main-owned; renderer may only read/replay.
   ipcMain.handle('get-run-events', (_, filter: any = {}) => getRunRepository().getRunEvents(filter || {}))
