@@ -27,6 +27,7 @@ import { findNextRunnableQueueIndex } from '../../main/RunQueue'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
 import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLane } from './lib/RunLanes'
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
+import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
@@ -621,16 +622,6 @@ interface UsageWindowAggregate {
   trackingOnly?: boolean
   usedPercent?: number
   remainingPercent?: number
-}
-
-type RawLogEntry = {
-  type: 'stdout' | 'stderr' | 'tool' | 'info'
-  content: string
-  sequence?: number
-  hash?: string
-  spanId?: string
-  toolCallId?: string
-  artifactCount?: number
 }
 
 interface CodexModelOption {
@@ -3295,38 +3286,6 @@ function App(): React.JSX.Element {
 
   const appendDurableRunEvent = (_event: RunEventInput) => {
     // Durable event writes are main-owned; renderer keeps local raw logs only.
-  }
-
-  const rawLogFromRunEvent = (event: RunEventRecord): RawLogEntry | null => {
-    const payload = event.payload
-    const payloadRecord = payload && typeof payload === 'object'
-      ? payload as Record<string, unknown>
-      : {}
-    const payloadText =
-      typeof payload === 'string'
-        ? payload
-        : typeof payloadRecord.data === 'string'
-          ? payloadRecord.data
-          : typeof payloadRecord.error === 'string'
-            ? payloadRecord.error
-            : typeof payloadRecord.preview === 'string'
-              ? payloadRecord.preview
-              : event.summary || ''
-    if (!payloadText.trim()) return null
-    const metadata = {
-      sequence: event.sequence,
-      hash: event.hash,
-      spanId: event.spanId,
-      toolCallId: event.toolCallId,
-      artifactCount: event.artifacts?.length
-    }
-    if (event.kind === 'provider_error') return { type: 'stderr', content: redactLog(payloadText), ...metadata }
-    if (event.kind === 'provider_raw') return { type: 'stdout', content: redactLog(payloadText), ...metadata }
-    if (event.kind === 'tool') return { type: 'tool', content: redactLog(payloadText), ...metadata }
-    if (event.kind === 'approval_request' || event.kind === 'approval_response' || event.kind === 'provider_exit' || event.kind === 'lifecycle') {
-      return { type: 'info', content: redactLog(payloadText), ...metadata }
-    }
-    return null
   }
 
   const hydrateThreadRawLogsFromEvents = (chatId: string) => {
