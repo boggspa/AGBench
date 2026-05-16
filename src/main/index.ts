@@ -42,6 +42,7 @@ import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './Di
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
 import { isPathInsideWorkspace } from './AgenticPolicy'
 import { RunManager } from './RunManager'
+import { decideKimiWireClose } from './KimiWireExitDecision'
 import { RunRepository } from './RunRepository'
 import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
@@ -4041,6 +4042,23 @@ async function runKimiWireProvider(
     let stdoutBuffer = ''
     let settled = false
     let promptSent = false
+    // Bug fix: every Kimi exit path MUST publish an `agent-exit` IPC
+    // event, otherwise the renderer never invokes `clearActiveRunContext`
+    // and the sidebar keeps painting "Running". `state.completed` flips
+    // true on the prompt-response branch AND on any `handleCliProviderJsonEvent`
+    // path that sees a `result`/`TurnEnd` notification, so the close
+    // handler used to early-return without sending exit when it raced
+    // in after a completion notification but before the final
+    // `prompt-${id}` response — leaving the sidebar stuck. Track exit
+    // emission explicitly so the close handler can backfill the IPC
+    // event without double-firing for the happy path. Other providers
+    // already publish exit unconditionally from their close handlers.
+    let exitSent = false
+    const emitKimiExit = (code: number | null): void => {
+      if (exitSent) return
+      exitSent = true
+      sendAgentCompatExit(event.sender, 'kimi', code, state)
+    }
     const initializeId = `initialize-${Date.now()}`
     const promptId = `prompt-${Date.now()}`
     const timeout = setTimeout(() => {
@@ -4130,7 +4148,7 @@ async function runKimiWireProvider(
               },
               state
             )
-            sendAgentCompatExit(event.sender, 'kimi', message.error ? 1 : 0, state)
+            emitKimiExit(message.error ? 1 : 0)
             child.kill()
             settled = true
             clearTimeout(timeout)
@@ -4263,22 +4281,17 @@ async function runKimiWireProvider(
     })
 
     child.on('close', (code) => {
-      if (settled) return
+      const decision = decideKimiWireClose({
+        settled,
+        promptSent,
+        stateCompleted: state.completed,
+        exitAlreadyEmitted: exitSent,
+        code
+      })
+      if (decision.ignore) return
       clearTimeout(timeout)
       if (cliProviderProcesses.get('kimi') === child) cliProviderProcesses.delete('kimi')
-      if (state.completed) {
-        runManager.finish(route.appRunId, 'completed')
-        settled = true
-        resolveWire(true)
-        return
-      }
-      if (!promptSent) {
-        settled = true
-        runManager.finish(route.appRunId, 'failed')
-        resolveWire(false)
-        return
-      }
-      if (!state.completed) {
+      if (decision.emitResultLine) {
         sendAgentCompatLine(event.sender, 'kimi', {
           type: 'result',
           status: code === 0 ? 'success' : 'failed',
@@ -4286,11 +4299,13 @@ async function runKimiWireProvider(
           provider: 'kimi',
           fallback: false
         })
-        sendAgentCompatExit(event.sender, 'kimi', code, state)
       }
-      runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
+      if (decision.emitExit) {
+        emitKimiExit(code)
+      }
+      runManager.finish(route.appRunId, decision.terminalStatus)
       settled = true
-      resolveWire(true)
+      resolveWire(decision.resolveWire)
     })
 
     child.stdin?.write(

@@ -1,0 +1,92 @@
+/**
+ * Pure decision helper for the Kimi wire-mode child-close handler.
+ *
+ * The historical close handler had three branches:
+ *   1. `state.completed`         -> finish('completed'), no exit emitted.
+ *   2. `!promptSent`             -> finish('failed'), wire resolves false.
+ *   3. otherwise                 -> emit synthetic result + exit, finish.
+ *
+ * Branch 1 is the bug: `state.completed` flips to true on the prompt
+ * response branch AND on any `handleCliProviderJsonEvent` reaction to a
+ * `result`/`TurnEnd` notification. The second path NEVER publishes
+ * `agent-exit`, so when the child closed after such a notification (or
+ * raced past the prompt response) the renderer never cleared the chat
+ * from `runningChatIds` and the sidebar kept showing "Running".
+ *
+ * Extracted as a pure function so the regression test below can pin
+ * the decision tree without spinning up an Electron child process.
+ */
+export interface KimiWireCloseInputs {
+  /** Whether the close handler already fired or another path settled the run. */
+  settled: boolean
+  /** Whether the `prompt` JSON-RPC request was written to stdin. */
+  promptSent: boolean
+  /** Whether any path has flipped `state.completed = true`. */
+  stateCompleted: boolean
+  /** Whether a previous code path already emitted `agent-exit`. */
+  exitAlreadyEmitted: boolean
+  /** The exit code reported to the close handler. */
+  code: number | null
+}
+
+export interface KimiWireCloseDecision {
+  /** True iff `child.on('close')` should early-return without side effects. */
+  ignore: boolean
+  /** True iff the handler should emit a synthetic `result` line for the renderer. */
+  emitResultLine: boolean
+  /** True iff the handler should emit `agent-exit` (gated by idempotence). */
+  emitExit: boolean
+  /** Terminal status to report to `RunManager.finish`. */
+  terminalStatus: 'completed' | 'failed'
+  /** Value to resolve the wire-mode promise with. */
+  resolveWire: boolean
+}
+
+export function decideKimiWireClose(inputs: KimiWireCloseInputs): KimiWireCloseDecision {
+  if (inputs.settled) {
+    return {
+      ignore: true,
+      emitResultLine: false,
+      emitExit: false,
+      terminalStatus: 'completed',
+      resolveWire: true
+    }
+  }
+
+  if (inputs.stateCompleted) {
+    // The fix: backfill exit when an upstream path (typically
+    // `handleCliProviderJsonEvent` reacting to a notification) flipped
+    // `state.completed` without publishing `agent-exit`. Idempotence is
+    // enforced separately by the caller.
+    return {
+      ignore: false,
+      emitResultLine: false,
+      emitExit: true,
+      terminalStatus: 'completed',
+      resolveWire: true
+    }
+  }
+
+  if (!inputs.promptSent) {
+    // Wire startup failed before we even sent the prompt. The caller
+    // falls back to print-mode, which publishes its own exit, so we
+    // leave the IPC alone here.
+    return {
+      ignore: false,
+      emitResultLine: false,
+      emitExit: false,
+      terminalStatus: 'failed',
+      resolveWire: false
+    }
+  }
+
+  // Prompt was sent but the child closed before signalling completion
+  // — synthesize the result + exit and report the exit code.
+  return {
+    ignore: false,
+    emitResultLine: true,
+    emitExit: true,
+    terminalStatus: inputs.code === 0 ? 'completed' : 'failed',
+    resolveWire: true
+  }
+}

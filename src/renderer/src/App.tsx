@@ -30,6 +30,7 @@ import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLa
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
+import { visibleRunningChatIds } from './lib/runningChatVisibility'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import {
   HEATMAP_DAY_COUNT,
@@ -7836,7 +7837,19 @@ function App(): React.JSX.Element {
   // Phase I3.2 — stable array view of the running-chat set so the
   // transcript/sidebar/header status surfaces can rely on referential
   // equality across renders (React.memo + Set semantics don't play well).
-  const runningChatIdsArray = useMemo(() => [...runningChatIds], [runningChatIds])
+  //
+  // Kimi-specific fix: the Kimi wire-mode child keeps the process alive
+  // while it waits for an `ApprovalRequest` response, so no `agent-exit`
+  // fires and `runningChatIds` would otherwise hold onto the chat. Drop
+  // Kimi chats with a pending approval from the "running" view so the
+  // sidebar badge clears while the user is mid-elicitation. Once they
+  // resolve the approval, the next `agent-output`/`agent-exit` traffic
+  // restores the badge via the existing `setRunningChatIds` path. Other
+  // providers retain the legacy semantics.
+  const runningChatIdsArray = useMemo(
+    () => visibleRunningChatIds(runningChatIds, pendingAgentApprovalByChatId),
+    [runningChatIds, pendingAgentApprovalByChatId]
+  )
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
   const isCurrentComposerLocked = isCurrentChatRunning
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
