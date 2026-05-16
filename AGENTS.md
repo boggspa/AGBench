@@ -208,6 +208,28 @@ agent access to these tools when running in Gemini-CLI bridge mode:
   sub-thread's final assistant message auto-appends to the parent
   transcript on completion (Phase F2 back-propagation).
 
+  **Approval gate (Phase I1):** every call routes through AGBench's
+  `subThreadDelegation` agentic-service policy before any sub-thread
+  is created. The user's workspace policy decides:
+
+    - `'ask'` (default) → user sees a modal showing parent provider +
+      target provider + the delegation prompt preview, then clicks
+      Accept / Allow for session / Allow for workspace / Decline.
+      Nothing spawns until the user clicks.
+    - `'workspace'` → first call prompts; subsequent calls in the
+      same workspace auto-approve until the workspace grant is
+      revoked.
+    - `'allow'` → silent auto-approve for all delegations in the
+      workspace.
+    - `'deny'` → silent auto-decline; tool_result returns an error.
+
+  **What this means for the agent:** treat the tool call as something
+  that might be DECLINED. Always check the tool_result for
+  `isError: true`; if declined, surface the decline gracefully to
+  the user (don't loop / retry) and continue the parent turn without
+  delegating. The decline text explains how the user can adjust
+  policy if they want.
+
   Typical agent use:
 
       Agent thinks: "This step needs sandbox-restricted CLI work that
@@ -220,12 +242,18 @@ agent access to these tools when running in Gemini-CLI bridge mode:
         returnResult: true
       })
 
-      → returns: "Spawned codex sub-thread (id=...). Running in the
+      → if approved: "Spawned codex sub-thread (id=...). Running in the
       background; its final result will append to this parent
       transcript on completion."
 
+      → if declined: "Sub-thread delegation to Codex was declined by
+      AGBench policy. Gemini continues without delegating; the user
+      can change the policy in Settings → Behavior → Agentic Services
+      → Sub-thread delegation."
+
       Agent then continues the parent turn with non-CLI work; the
-      result auto-arrives later as a synthetic system message.
+      result auto-arrives later as a synthetic system message (only
+      if the delegation was approved).
 
   v1 constraints:
     - Max depth 1 (sub-threads can't themselves delegate).
@@ -234,6 +262,10 @@ agent access to these tools when running in Gemini-CLI bridge mode:
     - The sub-thread runs with `approvalMode: 'default'` and
       `model: 'cli-default'`. Future revs may expose the full
       composer surface as additional tool args.
+    - Currently only available to Gemini agents (via the agentbench
+      MCP server). Phase I2/I3/I4 extends this to Codex/Claude/Kimi
+      agents via their native tool surfaces; the approval gate is
+      shared.
 
 Future MCP additions:
 

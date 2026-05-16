@@ -105,4 +105,146 @@ describe('PermissionService', () => {
     expect(service.resolvePermission('codex', 'shellCommands', undefined, undefined, settings).decision).toBe('allow')
     expect(service.hasWorkspaceGrant(settings, 'codex', undefined, 'shellCommands')).toBe(false)
   })
+
+  // Phase I1.b: approval gate on multi-provider delegation.
+  // The same resolvePermission / applyApprovalDecision machinery
+  // handles the new 'subThreadDelegation' service id generically —
+  // these tests pin that behaviour so a future regression in the
+  // gate (e.g. someone hardcodes a special case) trips immediately.
+  describe('subThreadDelegation service', () => {
+    it("default 'ask' policy returns ask decision", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, settings).decision
+      ).toBe('ask')
+    })
+
+    it("workspace grant for 'subThreadDelegation' auto-allows subsequent calls (with 'workspace' policy)", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const withGrant: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        },
+        agenticWorkspaceGrants: [{
+          id: 'grant-delegation',
+          provider: 'gemini',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant).decision
+      ).toBe('allow')
+    })
+
+    it("session grant survives a single run for 'subThreadDelegation'", () => {
+      const runManager = new RunManager()
+      runManager.create({ runId: 'delegating-run', provider: 'gemini', workspacePath: '/repo' })
+      const service = new PermissionService({ runManager, sessionGrants: new Set() })
+      // First call: ask.
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', 'delegating-run', settings).decision
+      ).toBe('ask')
+      // Apply "acceptForSession" → second call: allow.
+      service.applyApprovalDecision({
+        provider: 'gemini',
+        workspacePath: '/repo',
+        service: 'subThreadDelegation',
+        runId: 'delegating-run',
+        action: 'acceptForSession'
+      })
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', 'delegating-run', settings).decision
+      ).toBe('allow')
+    })
+
+    it("'deny' policy short-circuits to deny without prompting", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const denySettings: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'deny'
+        }
+      }
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, denySettings).decision
+      ).toBe('deny')
+    })
+
+    it("'allow' policy short-circuits to allow without prompting", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const allowSettings: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'allow'
+        }
+      }
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, allowSettings).decision
+      ).toBe('allow')
+    })
+
+    it("'workspace' policy returns ask until a workspace grant exists", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const workspaceSettings: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        }
+      }
+      // No grant yet → ask.
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, workspaceSettings).decision
+      ).toBe('ask')
+      // With grant → allow.
+      const withGrant: AppSettings = {
+        ...workspaceSettings,
+        agenticWorkspaceGrants: [{
+          id: 'grant-delegation-2',
+          provider: 'gemini',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant).decision
+      ).toBe('allow')
+    })
+
+    it('workspace grant is provider-scoped: a Gemini grant does not auto-allow Codex delegation', () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const withGeminiGrant: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        },
+        agenticWorkspaceGrants: [{
+          id: 'grant-gemini-delegation',
+          provider: 'gemini',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      // Gemini parent → allow (has grant matching its provider).
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+      ).toBe('allow')
+      // Codex parent → ask (no Codex grant; orthogonal to the Gemini one).
+      expect(
+        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+      ).toBe('ask')
+    })
+  })
 })

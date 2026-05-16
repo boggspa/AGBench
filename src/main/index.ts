@@ -6763,6 +6763,60 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       if (!promptArg) {
         throw new Error('delegate_to_subthread: prompt is required.')
       }
+      // Phase I1.b: approval gate. Every delegation prompts the user
+      // (or auto-allows/declines per workspace/session policy) before
+      // any sub-thread is created. The 'ask' default means an agent
+      // can SUGGEST delegation but nothing spawns until the user
+      // clicks accept. "Allow for workspace" lets the user opt into
+      // frictionless multi-provider delegation in trusted workspaces.
+      const targetProviderLabel = providerLabel(providerArg)
+      const parentProviderLabel = providerLabel('gemini')
+      const promptPreview = promptArg.length > 500
+        ? `${promptArg.slice(0, 500)}\n…(${promptArg.length - 500} more chars)`
+        : promptArg
+      const delegationApproved = await requestAgenticServiceApproval(
+        context.sender,
+        'gemini',
+        'subThreadDelegation',
+        context.scope === 'global' ? undefined : context.workspacePath,
+        {
+          method: 'gemini-mcp/delegate_to_subthread',
+          title: `${parentProviderLabel} wants to delegate to ${targetProviderLabel} sub-thread`,
+          body:
+            `Delegation prompt:\n${promptPreview}\n\n` +
+            `Spawning this sub-thread starts a new run on ${targetProviderLabel} using its current model. ` +
+            `This consumes ${targetProviderLabel} usage allowances.`,
+          preview: {
+            kind: 'subthread-delegation',
+            parentProvider: 'gemini',
+            targetProvider: providerArg,
+            delegationPrompt: promptArg,
+            returnResultToParent: returnResult,
+            workspacePath: context.scope === 'global' ? undefined : context.workspacePath
+          },
+          runId: context.appRunId,
+          forcePrompt: false
+        }
+      )
+      if (!delegationApproved) {
+        // Decline path: surface a clear tool_result to the agent so it
+        // can adjust + continue the parent turn without delegating.
+        // No sub-thread created, no run dispatched, no audit event.
+        const declineText =
+          `Sub-thread delegation to ${targetProviderLabel} was declined by AGBench policy. ` +
+          `${parentProviderLabel} continues without delegating; ` +
+          `the user can change the policy in Settings → Behavior → Agentic Services → Sub-thread delegation.`
+        sendAgentCompatLine(context.sender, 'gemini', {
+          type: 'tool_result',
+          tool_id: toolId,
+          tool_name: toolName,
+          status: 'error',
+          output: declineText,
+          provider: 'gemini',
+          server: GEMINI_MCP_SERVER_NAME
+        })
+        return { text: declineText, isError: true }
+      }
       const subThread = AppStore.createSubThread({
         parentChatId,
         provider: providerArg,
