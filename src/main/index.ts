@@ -24,6 +24,7 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { ChatService } from './services/ChatService'
 import { RunCoordinator } from './services/RunCoordinator'
 import { SettingsService } from './services/SettingsService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
@@ -8777,6 +8778,13 @@ app.whenReady().then(() => {
       }
     ]
   })
+  const chatService = new ChatService({
+    appStore: AppStore,
+    findRegisteredWorkspace,
+    canonicalPath,
+    sanitizeChatForSave,
+    appendDurableRunEventForRoute
+  })
   ipcMain.handle('update-snapshot', () => updateService.snapshot())
   ipcMain.handle('check-for-updates', async () => {
     await updateService.checkForUpdates()
@@ -8839,16 +8847,12 @@ app.whenReady().then(() => {
   ipcMain.handle('clear-workspaces', () => AppStore.clearWorkspaces())
 
   // Chats
-  ipcMain.handle('get-chats', (_, workspaceId?: string) => AppStore.getChats(workspaceId))
-  ipcMain.handle('get-chat', (_, chatId: string) => AppStore.getChat(chatId))
-  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) => {
-    const registered = findRegisteredWorkspace(workspacePath)
-    if (!registered || registered.id !== workspaceId) {
-      throw new Error('Chat workspace must be a registered AGBench workspace.')
-    }
-    return AppStore.createChat(workspaceId, canonicalPath(workspacePath))
-  })
-  ipcMain.handle('create-global-chat', () => AppStore.createGlobalChat())
+  ipcMain.handle('get-chats', (_, workspaceId?: string) => chatService.getChats(workspaceId))
+  ipcMain.handle('get-chat', (_, chatId: string) => chatService.getChat(chatId))
+  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) =>
+    chatService.createChat(workspaceId, workspacePath)
+  )
+  ipcMain.handle('create-global-chat', () => chatService.createGlobalChat())
   // Phase F1: sub-thread creation. The renderer passes the parent chat
   // id plus user choices (provider, delegation prompt, return-result
   // flag). AppStore enforces max-depth-1; we surface any error so the
@@ -8860,49 +8864,11 @@ app.whenReady().then(() => {
     returnResultToParent: boolean
     workspaceId?: string
     workspacePath?: string
-  }) => {
-    const parentChatId = requireNonEmptyString(args?.parentChatId, 'Parent chat id')
-    const provider = assertProviderId(args?.provider)
-    const delegationPrompt = requireNonEmptyString(args?.delegationPrompt, 'Delegation prompt')
-    const returnResultToParent = Boolean(args?.returnResultToParent)
-    const subThread = AppStore.createSubThread({
-      parentChatId,
-      provider,
-      delegationPrompt,
-      returnResultToParent,
-      workspaceId: args?.workspaceId,
-      workspacePath: args?.workspacePath
-    })
-    // Audit: write a durable run-event under the PARENT chat so the
-    // parent's transcript/event log shows the delegation happened. The
-    // sub-thread's own runs will be recorded under its own appChatId.
-    try {
-      appendDurableRunEventForRoute(
-        AppStore.getChat(parentChatId)?.provider ?? 'gemini',
-        { appChatId: parentChatId },
-        'subthread_spawned',
-        'control',
-        `Delegated to ${provider} sub-thread`,
-        {
-          subThreadId: subThread.appChatId,
-          provider,
-          delegationPrompt,
-          returnResultToParent
-        }
-      )
-    } catch {
-      // Parent run may not be active — durable trace is best-effort.
-    }
-    return subThread
-  })
-  ipcMain.handle('get-sub-threads', (_, parentChatId: string) => {
-    return AppStore.getChildChats(requireNonEmptyString(parentChatId, 'Parent chat id'))
-  })
-  ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
-    AppStore.saveChat(sanitizeChatForSave(chat))
-  })
-  ipcMain.handle('delete-chat', (_, chatId: string) => AppStore.deleteChat(chatId))
-  ipcMain.handle('clear-chats', (_, workspaceId?: string) => AppStore.clearChats(workspaceId))
+  }) => chatService.createSubThread(args))
+  ipcMain.handle('get-sub-threads', (_, parentChatId: string) => chatService.getSubThreads(parentChatId))
+  ipcMain.handle('save-chat', (_, chat: ChatRecord) => chatService.saveChat(chat))
+  ipcMain.handle('delete-chat', (_, chatId: string) => chatService.deleteChat(chatId))
+  ipcMain.handle('clear-chats', (_, workspaceId?: string) => chatService.clearChats(workspaceId))
   
   // Usage
   ipcMain.handle('record-usage', (_, usage: any) => AppStore.recordUsage(usage))
