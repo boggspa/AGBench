@@ -97,7 +97,7 @@ const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const GEMINI_MCP_SOCKET_ARG = '--socket'
 const GEMINI_MCP_TOKEN_ARG = '--token'
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
-const AGENTBENCH_MCP_TOOLS = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory'] as const
+const AGENTBENCH_MCP_TOOLS = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory', 'delegate_to_subthread'] as const
 type AGBenchMcpToolName = typeof AGENTBENCH_MCP_TOOLS[number]
 type GeminiMcpRegistrationScope = 'user' | 'project'
 const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
@@ -122,6 +122,16 @@ let bridgeApnsPusherRef: BridgeApnsPusher | null = null
 // `workspaceIdForApprovalPush` helpers are thin proxies that no-op
 // until the service is ready.
 let approvalService: ApprovalService | null = null
+
+// Phase F3: late-bound RunCoordinator ref. The coordinator is
+// constructed in whenReady (it needs the in-scope `providerAdapters`
+// + the inline helper functions for normalize / preflight / etc.),
+// but exposed at module scope so the agent-driven sub-thread
+// delegation path (MCP tool `delegate_to_subthread`, executed from
+// the top-level `executeGeminiMcpTool`) can fire-and-forget a run on
+// the newly-created sub-thread without going through the renderer.
+// Stays null until whenReady; the consumer null-checks.
+let runCoordinatorRef: RunCoordinator | null = null
 
 /**
  * Phase B3 — thin proxy. Delegates to `approvalService.scheduleTimeout`
@@ -6611,6 +6621,94 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         : original.replace(oldString, newString)
       await fs.writeFile(targetPath, updated, 'utf8')
       text = `Edited ${formatScopedPath(context, targetPath)}.`
+    } else if (toolName === 'delegate_to_subthread') {
+      // Phase F3: agent-driven sub-thread delegation. Spawns a
+      // sub-thread under the active parent (context.appChatId), then
+      // fire-and-forget dispatches a run on it with the user-supplied
+      // delegation prompt. The Gemini sender continues to receive
+      // events for both the parent + sub-thread chats; the renderer
+      // routes by appChatId so the sub-thread stream lands cleanly.
+      // On completion, F2 back-propagation auto-appends the sub-
+      // thread's final assistant message to the parent transcript.
+      const parentChatId = context.appChatId
+      if (!parentChatId) {
+        throw new Error('delegate_to_subthread requires an active parent chat context.')
+      }
+      const providerArgRaw = String(args.provider || '').trim()
+      const promptArg = String(args.prompt || '').trim()
+      const returnResult = args.returnResult !== false
+      let providerArg: ProviderId
+      try {
+        providerArg = assertProviderId(providerArgRaw)
+      } catch {
+        throw new Error(
+          `delegate_to_subthread: provider must be one of gemini/codex/claude/kimi (got: ${providerArgRaw}).`
+        )
+      }
+      if (!promptArg) {
+        throw new Error('delegate_to_subthread: prompt is required.')
+      }
+      const subThread = AppStore.createSubThread({
+        parentChatId,
+        provider: providerArg,
+        delegationPrompt: promptArg,
+        returnResultToParent: returnResult
+      })
+      try {
+        // The active Gemini-MCP context belongs to the Gemini
+        // provider — this is the agentbench MCP server which only
+        // ships in Gemini runs. The audit event records that the
+        // Gemini-run agent delegated.
+        appendDurableRunEventForRoute(
+          'gemini',
+          { appRunId: context.appRunId, appChatId: parentChatId },
+          'subthread_spawned',
+          'control',
+          `Agent delegated to ${providerArg} sub-thread`,
+          {
+            subThreadId: subThread.appChatId,
+            provider: providerArg,
+            delegationPrompt: promptArg,
+            returnResultToParent: returnResult,
+            source: 'mcp:delegate_to_subthread'
+          }
+        )
+      } catch {
+        // Best-effort.
+      }
+      const runPayload: AgentRunPayload = {
+        provider: providerArg,
+        scope: context.scope ?? 'workspace',
+        workspace: subThread.workspacePath,
+        prompt: promptArg,
+        appChatId: subThread.appChatId,
+        approvalMode: 'default',
+        model: 'cli-default'
+      }
+      const fakeEvent = { sender: context.sender } as Electron.IpcMainInvokeEvent
+      void (async () => {
+        try {
+          await runCoordinatorRef?.dispatch(runPayload, fakeEvent)
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[delegate_to_subthread] run dispatch failed for subThreadId=${subThread.appChatId}:`,
+            err instanceof Error ? err.message : String(err)
+          )
+        }
+      })()
+      try {
+        mainWindow?.webContents.send('chat-updated', subThread)
+      } catch {
+        // Window not yet ready — F2's back-propagation will fire
+        // chat-updated again on completion.
+      }
+      text =
+        `Spawned ${providerArg} sub-thread "${subThread.title}" (id=${subThread.appChatId}). ` +
+        `Running in the background` +
+        (returnResult
+          ? "; its final result will append to this parent transcript on completion."
+          : '. Navigate to the sub-thread in the sidebar to follow progress.')
     }
 
     sendAgentCompatLine(context.sender, 'gemini', {
@@ -6828,6 +6926,49 @@ function mcpToolDefinitions() {
         properties: {
           path: { type: 'string' }
         }
+      }
+    },
+    {
+      // Phase F3: agent-driven sub-thread delegation. Spawns a
+      // sub-thread under the active parent thread, optionally on a
+      // different provider, and (fire-and-forget) dispatches a run
+      // with the delegation prompt. Returns immediately with the
+      // sub-thread id; the result auto-propagates back to the
+      // parent transcript on sub-thread completion via the F2
+      // back-propagation path (when returnResult=true).
+      //
+      // The parent provider should mention to the user that they
+      // delegated, so the user knows to watch the sub-thread in the
+      // sidebar or wait for the synthetic ↩ Result message.
+      name: 'delegate_to_subthread',
+      description:
+        'Spawn a context-isolated sub-thread under the active parent thread, optionally on a different AGBench provider (gemini/codex/claude/kimi), and start a run with the delegation prompt. Returns immediately with the sub-thread id; when returnResult is true, the sub-thread\'s final assistant message auto-propagates back to the parent transcript on completion.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider: {
+            type: 'string',
+            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            description: 'Which AGBench provider should run the sub-thread.'
+          },
+          prompt: {
+            type: 'string',
+            description:
+              "User-facing delegation prompt that primes the sub-thread's first turn. Persisted for audit + pre-fills the sub-thread composer."
+          },
+          returnResult: {
+            type: 'boolean',
+            description:
+              "When true, the sub-thread's final assistant message auto-appends to the parent transcript on completion (Phase F2 back-propagation)."
+          }
+        },
+        required: ['provider', 'prompt']
       }
     }
   ]
@@ -9152,6 +9293,10 @@ app.whenReady().then(() => {
     sendError: sendAgentCompatError,
     sendExit: sendAgentCompatExit
   })
+  // Publish to module-scope so the MCP `delegate_to_subthread` tool
+  // (Phase F3) can dispatch agent-driven sub-thread runs without
+  // requiring a Gemini-renderer round-trip.
+  runCoordinatorRef = runCoordinator
   const dispatchAgentRun = (
     payload: AgentRunPayload,
     event: Electron.IpcMainInvokeEvent

@@ -192,21 +192,54 @@ pairing time.
 ## MCP
 
 AGBench exposes a bundled MCP server (`agentbench`) that gives the
-agent access to five tools when running in Gemini-CLI bridge mode:
+agent access to these tools when running in Gemini-CLI bridge mode:
 
 - `run_shell_command` — workspace-scoped shell with approval gate.
 - `write_file` — file write with approval gate + diff capture.
 - `replace` — multi-edit semantics, approval gate.
 - `read_file` — workspace-scoped read.
 - `list_directory` — workspace-scoped tree listing.
+- `delegate_to_subthread` — Phase F3, agent-driven sub-thread spawn.
+  Inputs: `{ provider: 'gemini'|'codex'|'claude'|'kimi', prompt:
+  string, returnResult?: boolean }`. Spawns a sub-thread under the
+  current parent thread, fires a run on the chosen provider with the
+  delegation prompt, returns immediately with the sub-thread id and a
+  short status message. When `returnResult` is true (default), the
+  sub-thread's final assistant message auto-appends to the parent
+  transcript on completion (Phase F2 back-propagation).
 
-Future Phase F2+ may add:
+  Typical agent use:
 
-- `delegate_to_subthread` — agent-driven sub-thread spawn.
+      Agent thinks: "This step needs sandbox-restricted CLI work that
+      Codex handles best. Let me delegate."
+
+      tools.delegate_to_subthread({
+        provider: 'codex',
+        prompt: 'Run `swift test` in this workspace and summarise the
+                 first 5 failures, if any.',
+        returnResult: true
+      })
+
+      → returns: "Spawned codex sub-thread (id=...). Running in the
+      background; its final result will append to this parent
+      transcript on completion."
+
+      Agent then continues the parent turn with non-CLI work; the
+      result auto-arrives later as a synthetic system message.
+
+  v1 constraints:
+    - Max depth 1 (sub-threads can't themselves delegate).
+    - Workspace inherited from parent — no cross-workspace
+      delegation in v1.
+    - The sub-thread runs with `approvalMode: 'default'` and
+      `model: 'cli-default'`. Future revs may expose the full
+      composer surface as additional tool args.
+
+Future MCP additions:
+
 - `read_subthread_result` — pull the latest assistant message from a
-  named sub-thread (for the orchestration use case).
-
-When those land, this file will document the input/output shapes.
+  named sub-thread (for explicit polling, complementing F2's auto-
+  propagation).
 
 ---
 
