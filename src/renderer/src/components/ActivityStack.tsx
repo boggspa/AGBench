@@ -4,6 +4,7 @@ import { deriveToolDiffSummary } from '../lib/ToolParser';
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads';
 import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMode';
 import { inlineStatsForActivity } from '../lib/ActivityInlineStats';
+import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay';
 import { FileTypeIcon } from './FileTypeIcon';
 
 interface ActivityStackProps {
@@ -709,10 +710,13 @@ function ActivityDiffFiles({ diffSummary, workspacePath }: { diffSummary?: ToolD
 
   return (
     <div className="activity-file-change-cards">
-      {files.slice(0, 8).map((file, index) => (
+      {files.slice(0, 8).map((file, index) => {
+        const fullPath = file.path || '';
+        const displayPath = displayPathRelativeToWorkspace(fullPath, workspacePath) || fullPath;
+        return (
         <div key={`${file.path || 'unknown'}-${index}`} className="activity-file-change-card">
-          <FileTypeIcon path={file.path || ''} size={14} className="activity-file-type-icon" workspacePath={workspacePath} />
-          <span className="activity-file-change-path" title={file.path || 'Unknown file'}>{file.path || 'Unknown file'}</span>
+          <FileTypeIcon path={fullPath} size={14} className="activity-file-type-icon" workspacePath={workspacePath} />
+          <span className="activity-file-change-path" title={fullPath || 'Unknown file'}>{displayPath || 'Unknown file'}</span>
           <span className={`activity-file-change-status status-${file.status || 'unknown'}`}>{file.status || 'changed'}</span>
           {(file.additions !== undefined || file.deletions !== undefined) && (
             <span className="activity-file-change-stats">
@@ -721,7 +725,8 @@ function ActivityDiffFiles({ diffSummary, workspacePath }: { diffSummary?: ToolD
             </span>
           )}
         </div>
-      ))}
+        );
+      })}
       {files.length > 8 && <div className="activity-file-change-overflow">+{files.length - 8} more files</div>}
     </div>
   );
@@ -894,7 +899,11 @@ function ActivityRow({
   const activityFilePath = getFilePathFromActivity(activity);
 
   const chipText: string[] = [];
-  if (isWriteAction && activityFilePath) chipText.push(activityFilePath);
+  if (isWriteAction && activityFilePath) {
+    // Workspace-relative form keeps the meta line readable; absolute path
+    // still ships in the title attribute below for hover disambiguation.
+    chipText.push(displayPathRelativeToWorkspace(activityFilePath, workspacePath) || activityFilePath);
+  }
   if (activity.durationMs !== undefined) chipText.push(`${activity.durationMs}ms`);
   const metaText = chipText.join(' · ');
   const parameters = activity.parameters || {};
@@ -978,7 +987,12 @@ function ActivityRow({
           </div>
         </div>
         {metaText && (
-          <div className="activity-meta">{metaText}</div>
+          <div
+            className="activity-meta"
+            title={isWriteAction && activityFilePath ? activityFilePath : undefined}
+          >
+            {metaText}
+          </div>
         )}
 
         {renderAsCard && (
