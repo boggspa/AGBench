@@ -30,6 +30,7 @@ import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLa
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
+import { applyRecoveryRecordsToChatRuns } from './lib/recoverChatRunTerminals'
 import { visibleRunningChatIds } from './lib/runningChatVisibility'
 import {
   shouldEngageAutoFollow,
@@ -6140,7 +6141,18 @@ function App(): React.JSX.Element {
 
     if (recordsByChatId.size === 0) return chatList
 
-    const updatedChats = chatList.map((chat) => {
+    // Sidebar-badge fix: reconcile `runs[]` terminal state from the
+    // recovery record so the chat record's persisted view matches the
+    // run queue's. Without this, a chat whose Kimi (or other-provider)
+    // run was orphaned by an app shutdown keeps a `runs[]` entry with
+    // `endedAt`/`status` undefined, and the Sidebar's
+    // `getLastRunStatus` keeps painting "Running" indefinitely — even
+    // after `recoverRunQueueJobsAfterStartup` flipped the queue job
+    // itself to `failed`. The pure helper lives in
+    // `lib/recoverChatRunTerminals` so it is unit-tested without IPC.
+    const runsReconciledChats = applyRecoveryRecordsToChatRuns(records, chatList)
+
+    const updatedChats = runsReconciledChats.map((chat) => {
       const chatRecords = recordsByChatId.get(chat.appChatId) || []
       if (chatRecords.length === 0) return chat
       const existingMessageIds = new Set(chat.messages.map((message) => message.id))
@@ -8037,9 +8049,27 @@ function App(): React.JSX.Element {
   // resolve the approval, the next `agent-output`/`agent-exit` traffic
   // restores the badge via the existing `setRunningChatIds` path. Other
   // providers retain the legacy semantics.
+  //
+  // Defensive secondary filter (orphan in-memory entries): also drop
+  // chats whose persisted `runs[]` already shows a terminal entry —
+  // covers the case where `handleProviderExit` early-returned because
+  // the active-run context had been evicted, or `cancelAgentRun`
+  // killed the child without an `agent-exit` IPC. Both leave the chat
+  // glued to `runningChatIds` and would otherwise paint "Running"
+  // indefinitely. Pair this with `applyRecoveryRecordsToChatRuns` (in
+  // `applyRecoveryRecordsToChats` above) which backfills `endedAt` on
+  // boot, so even orphans from a previous app session pass through
+  // this filter on startup.
+  const chatsByAppChatIdForRunning = useMemo(() => {
+    const map: Record<string, ChatRecord> = {}
+    for (const chat of chats) {
+      map[chat.appChatId] = chat
+    }
+    return map
+  }, [chats])
   const runningChatIdsArray = useMemo(
-    () => visibleRunningChatIds(runningChatIds, pendingAgentApprovalByChatId),
-    [runningChatIds, pendingAgentApprovalByChatId]
+    () => visibleRunningChatIds(runningChatIds, pendingAgentApprovalByChatId, chatsByAppChatIdForRunning),
+    [runningChatIds, pendingAgentApprovalByChatId, chatsByAppChatIdForRunning]
   )
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
   const isCurrentComposerLocked = isCurrentChatRunning

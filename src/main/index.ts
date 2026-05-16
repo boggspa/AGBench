@@ -4456,6 +4456,19 @@ async function runKimiWireProvider(
       settled = true
       clearTimeout(timeout)
       if (cliProviderProcesses.get('kimi') === child) cliProviderProcesses.delete('kimi')
+      // Bug fix (sidebar "Running" badge): if `handleCliProviderJsonEvent`
+      // already flipped `state.completed = true` via a result/TurnEnd
+      // notification, the renderer recorded the chat in `runningChatIds`
+      // and is waiting for `agent-exit` to call `clearActiveRunContext`.
+      // The pre-fix error handler silently returned `false` and let the
+      // print-mode fallback do the eventual IPC, but `runKimiWireProvider`
+      // is only retried into print-mode when the prompt wasn't sent;
+      // otherwise the chat would sit in `runningChatIds` until a manual
+      // refresh. Backfill `agent-exit` here through the idempotent guard
+      // so a Wire-mode error after completion still clears the badge.
+      if (state.completed && promptSent) {
+        emitKimiExit(1)
+      }
       runManager.finish(route.appRunId, 'failed')
       resolveWire(false)
     })
