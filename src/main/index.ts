@@ -17,6 +17,11 @@ import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
 import { isUserAtDesktop as pureIsUserAtDesktop } from './ApnsIdleGate'
+import {
+  ApprovalTimeoutScheduler,
+  DEFAULT_APPROVAL_TIMEOUT_POLICY,
+  type ApprovalTimeoutReason
+} from './ApprovalTimeoutScheduler'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -103,6 +108,65 @@ let geminiMcpBridgeInstalledForCurrentToken = false
 // notify helper is a no-op until they're set.
 let bridgeApnsTokenStoreRef: BridgeApnsTokenStore | null = null
 let bridgeApnsPusherRef: BridgeApnsPusher | null = null
+
+// Late-bound approval timeout scheduler. Same module-scope pattern as
+// the APNs refs — constructed in whenReady (because the timeout
+// callback closes over `processAgentApprovalResponse`, which is also
+// inside whenReady), but reachable from the top-level approval
+// helpers via this ref so each `pending*Approvals.set(...)` site can
+// arm a timer. Stays null until whenReady; schedule helper is a
+// no-op until set.
+let approvalTimeoutSchedulerRef: ApprovalTimeoutScheduler | null = null
+
+/**
+ * Convenience wrapper around `approvalTimeoutSchedulerRef?.schedule(...)`
+ * so the .set() call sites stay terse. Logs the resolved timeout to
+ * the durable run-event log so the audit trail records "this approval
+ * has a Ns deadline" the moment it's armed.
+ */
+function scheduleApprovalTimeout(args: {
+  approvalId: string
+  provider: ProviderId
+  route?: AgentRunRoute | null
+  isMainAuthority?: boolean
+  kind?: string
+}): void {
+  const scheduler = approvalTimeoutSchedulerRef
+  if (!scheduler) return
+  if (process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === '1' ||
+      process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === 'true') {
+    return
+  }
+  const { appliedMs, source } = scheduler.schedule({
+    approvalId: args.approvalId,
+    provider: args.provider,
+    isMainAuthority: args.isMainAuthority,
+    kind: args.kind
+  })
+  // Best-effort durable trace so the ledger UX can show "armed for 30s".
+  // The route may be missing for very early approvals — skip then.
+  if (args.route?.appRunId) {
+    try {
+      appendDurableRunEventForRoute(
+        args.provider,
+        args.route,
+        'approval_timer_armed',
+        'control',
+        `Approval timer armed: ${appliedMs}ms`,
+        {
+          approvalId: args.approvalId,
+          appliedMs,
+          source,
+          isMainAuthority: args.isMainAuthority === true,
+          kind: args.kind
+        }
+      )
+    } catch {
+      // appendDurableRunEventForRoute uses the runManager — if the run
+      // isn't yet registered (rare), drop the trace silently.
+    }
+  }
+}
 
 /**
  * Live wrapper around `isUserAtDesktop` (pure logic in
@@ -1597,6 +1661,12 @@ async function requestAgenticServiceApproval(
       resolve: resolveApproval
     })
     runManager.registerApproval(request.runId, approvalId)
+    scheduleApprovalTimeout({
+      approvalId,
+      provider,
+      route: { appRunId: request.runId, appChatId: runManager.get(request.runId)?.appChatId },
+      kind: request.method
+    })
     const session = runManager.get(request.runId)
     const approvalPayload = {
       provider,
@@ -1663,6 +1733,13 @@ async function requestMainApproval(
       resolve: resolveApproval
     })
     runManager.registerApproval(routed.appRunId, approvalId)
+    scheduleApprovalTimeout({
+      approvalId,
+      provider,
+      route: routed,
+      isMainAuthority: true,
+      kind: request.method
+    })
     const actions: AgentApprovalAction[] = ['accept', 'decline', 'cancel']
     const approvalPayload = {
       provider,
@@ -4108,6 +4185,12 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
               pendingKimiApprovals.set(approvalId, { child, rpcId: message.id, params: message.params, runId: route.appRunId })
               runManager.registerApproval(route.appRunId, approvalId)
+              scheduleApprovalTimeout({
+                approvalId,
+                provider: 'kimi',
+                route,
+                kind: 'request/ApprovalRequest'
+              })
               const approvalPayload = {
                 provider: 'kimi',
                 appRunId: route.appRunId,
@@ -5129,6 +5212,12 @@ function handleCodexServerRequest(message: any) {
 
   pendingCodexApprovals.set(approvalId, { rpcId: message.id, method, params, service, workspacePath: isGlobalScope ? undefined : state.workspacePath, runId: state.appRunId })
   runManager.registerApproval(state.appRunId, approvalId)
+  scheduleApprovalTimeout({
+    approvalId,
+    provider: 'codex',
+    route: { appRunId: state.appRunId, appChatId: state.appChatId },
+    kind: method
+  })
   const approvalPayload = {
     provider: 'codex',
     appRunId: state.appRunId,
@@ -5223,6 +5312,12 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
     output
   })
   runManager.registerApproval(state.appRunId, approvalId)
+  scheduleApprovalTimeout({
+    approvalId,
+    provider: 'codex',
+    route: { appRunId: state.appRunId, appChatId: state.appChatId },
+    kind: 'hostCommand/rerun'
+  })
   const approvalPayload = {
     provider: 'codex',
     appRunId: state.appRunId,
@@ -9187,6 +9282,11 @@ app.whenReady().then(() => {
       userInput?: string
     }
   ): Promise<boolean> => {
+    // Cancel the auto-deny timer the moment any decision lands —
+    // regardless of which registry holds this approvalId. Safe to
+    // call for unknown ids (no-op).
+    approvalTimeoutSchedulerRef?.cancel(requestId)
+
     const pendingMain = pendingMainApprovals.get(requestId)
     if (pendingMain) {
       const session = runManager.resolveApproval(requestId) || runManager.get(pendingMain.runId)
@@ -9379,6 +9479,56 @@ app.whenReady().then(() => {
     codexClient.respond(pending.rpcId, { decision: action })
     return true
   }
+
+  // Phase E1: production-grade approval timeout. Each `pending*Approvals.set`
+  // arms a timer via `scheduleApprovalTimeout`; a decision (or this
+  // function being called by the auto-deny path) cancels it. When a
+  // timer fires, we walk back into `processAgentApprovalResponse` with
+  // `'decline'` so the same dispatch / ledger / IPC paths handle the
+  // auto-deny.
+  //
+  // The scheduler is constructed AFTER `processAgentApprovalResponse`
+  // is in scope so the onTimeout callback can reference it directly.
+  // Module-scope ref `approvalTimeoutSchedulerRef` is then populated
+  // so the top-level approval-registry call sites can also reach it.
+  const approvalTimeoutScheduler = new ApprovalTimeoutScheduler(
+    DEFAULT_APPROVAL_TIMEOUT_POLICY,
+    async (reason: ApprovalTimeoutReason) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[ApprovalTimeout] approvalId=${reason.approvalId} auto-deny after ${reason.appliedMs}ms (source=${reason.source})`
+      )
+      // Surface a prominent toast in the desktop UI so a user returning
+      // to the desk understands why their run paused. The renderer
+      // listens for `agent-approval-timeout` and pops a destructive
+      // notification.
+      try {
+        mainWindow?.webContents.send('agent-approval-timeout', {
+          approvalId: reason.approvalId,
+          appliedMs: reason.appliedMs,
+          source: reason.source
+        })
+      } catch {
+        // Window may be destroyed; auto-deny still proceeds.
+      }
+      try {
+        await processAgentApprovalResponse(reason.approvalId, 'decline')
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[ApprovalTimeout] decline path threw for approvalId=${reason.approvalId}:`,
+          err instanceof Error ? err.message : String(err)
+        )
+      }
+    },
+    {
+      log: (line) => {
+        // eslint-disable-next-line no-console
+        console.log(line)
+      }
+    }
+  )
+  approvalTimeoutSchedulerRef = approvalTimeoutScheduler
 
   ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
     return processAgentApprovalResponse(requestId, action)

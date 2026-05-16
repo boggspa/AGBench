@@ -190,6 +190,11 @@ const api = {
   onAgentApprovalRequest: (callback: (payload: any) => void) => {
     ipcRenderer.on('agent-approval-request', (_event, payload) => callback(payload))
   },
+  onAgentApprovalTimeout: (
+    callback: (payload: { approvalId: string; appliedMs: number; source: string }) => void
+  ) => {
+    ipcRenderer.on('agent-approval-timeout', (_event, payload) => callback(payload))
+  },
   onScheduledTaskDue: (callback: (payload: any) => void) => {
     ipcRenderer.on('scheduled-task-due', (_event, payload) => callback(payload))
   },
@@ -206,6 +211,7 @@ const api = {
     ipcRenderer.removeAllListeners('run-queue-changed')
     ipcRenderer.removeAllListeners('run-events-changed')
     ipcRenderer.removeAllListeners('agent-approval-request')
+    ipcRenderer.removeAllListeners('agent-approval-timeout')
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
   }

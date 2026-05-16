@@ -5622,6 +5622,43 @@ function App(): React.JSX.Element {
       })
     }
 
+    if (typeof window.api.onAgentApprovalTimeout === 'function') {
+      window.api.onAgentApprovalTimeout((timeout) => {
+        // Find which chat held this approval, clear it, and surface a
+        // visible "auto-denied" note. The main process has already
+        // dispatched action='decline' through the same processAgentApprovalResponse
+        // path the renderer would use — this is just the UI tidy-up.
+        setPendingAgentApprovalByChatId((prev) => {
+          let matched = false
+          const next: Record<string, AgentApprovalRequest | null> = {}
+          for (const [chatId, request] of Object.entries(prev)) {
+            if (request && (request.approvalId === timeout.approvalId || request.id === timeout.approvalId)) {
+              matched = true
+              next[chatId] = null
+              appendThreadRawLog(chatId, {
+                type: 'error',
+                content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout). Run will need manual intervention if it stalled.`
+              })
+            } else {
+              next[chatId] = request
+            }
+          }
+          // No matching chat — log into the active chat as a fallback
+          // so the user at least sees something happened.
+          if (!matched) {
+            const fallbackChatId = currentChatIdRef.current
+            if (fallbackChatId) {
+              appendThreadRawLog(fallbackChatId, {
+                type: 'error',
+                content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout).`
+              })
+            }
+          }
+          return next
+        })
+      })
+    }
+
     if (typeof window.api.onScheduledTaskDue === 'function') {
       window.api.onScheduledTaskDue((task) => {
         setDueScheduledTasks(prev => prev.some((item) => item.id === task.id) ? prev : [...prev, task])

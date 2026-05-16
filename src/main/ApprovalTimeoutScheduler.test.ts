@@ -1,0 +1,237 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  ApprovalTimeoutScheduler,
+  DEFAULT_APPROVAL_TIMEOUT_POLICY,
+  type ApprovalTimeoutPolicy,
+  type ApprovalTimeoutReason
+} from './ApprovalTimeoutScheduler'
+
+interface ScheduledCallback {
+  cb: () => void
+  ms: number
+  id: number
+}
+
+/**
+ * Tiny fake-clock helper. Exposes `advance(ms)` to fire any scheduled
+ * callback whose delay has elapsed. Lets us drive `ApprovalTimeoutScheduler`
+ * deterministically without `vi.useFakeTimers()` global state.
+ */
+function makeFakeClock() {
+  let now = 0
+  let nextId = 1
+  const queue: ScheduledCallback[] = []
+
+  const setTimeoutFn = (cb: () => void, ms: number): NodeJS.Timeout => {
+    const id = nextId++
+    queue.push({ cb, ms: now + ms, id })
+    return id as unknown as NodeJS.Timeout
+  }
+  const clearTimeoutFn = (handle: NodeJS.Timeout): void => {
+    const id = handle as unknown as number
+    const idx = queue.findIndex((q) => q.id === id)
+    if (idx >= 0) queue.splice(idx, 1)
+  }
+  const advance = async (ms: number): Promise<void> => {
+    now += ms
+    // Fire callbacks whose due-time has now passed, in insertion order.
+    while (true) {
+      const next = queue.find((q) => q.ms <= now)
+      if (!next) break
+      const idx = queue.indexOf(next)
+      queue.splice(idx, 1)
+      await next.cb()
+    }
+  }
+  return { setTimeoutFn, clearTimeoutFn, advance, get pending() { return queue.length } }
+}
+
+describe('ApprovalTimeoutScheduler', () => {
+  it('schedules a timer using the provider default', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      onTimeout,
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    const result = scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    expect(result.appliedMs).toBe(30_000)
+    expect(result.source).toBe('providerDefault')
+    expect(scheduler.pendingCount).toBe(1)
+  })
+
+  it('fires onTimeout after the elapsed delay', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      onTimeout,
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    await clock.advance(29_999)
+    expect(onTimeout).not.toHaveBeenCalled()
+    await clock.advance(1)
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+    expect(onTimeout.mock.calls[0][0]).toMatchObject({
+      approvalId: 'a1',
+      appliedMs: 30_000,
+      source: 'providerDefault'
+    })
+    expect(scheduler.pendingCount).toBe(0)
+  })
+
+  it('cancel() prevents the callback from firing', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      onTimeout,
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    const cancelled = scheduler.cancel('a1')
+    expect(cancelled).toBe(true)
+    await clock.advance(60_000)
+    expect(onTimeout).not.toHaveBeenCalled()
+    expect(scheduler.pendingCount).toBe(0)
+  })
+
+  it('cancel() on an unknown id is a silent no-op', () => {
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      vi.fn()
+    )
+    expect(scheduler.cancel('does-not-exist')).toBe(false)
+  })
+
+  it('re-scheduling the same id replaces the previous timer', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      onTimeout,
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    scheduler.schedule({ approvalId: 'a1', provider: 'gemini' }) // 120s
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })  // 30s
+    expect(scheduler.pendingCount).toBe(1)
+    await clock.advance(30_000)
+    // Codex timer fired — gemini timer should have been replaced.
+    expect(onTimeout).toHaveBeenCalledTimes(1)
+    expect(onTimeout.mock.calls[0][0].appliedMs).toBe(30_000)
+  })
+
+  it('main authority approvals use mainTimeoutMs over the provider default', () => {
+    const policy: ApprovalTimeoutPolicy = {
+      ...DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      mainTimeoutMs: 999_000
+    }
+    const scheduler = new ApprovalTimeoutScheduler(policy, vi.fn())
+    const { ms, source } = scheduler.resolveTimeout({
+      approvalId: 'a',
+      provider: 'codex',
+      isMainAuthority: true
+    })
+    expect(ms).toBe(999_000)
+    expect(source).toBe('mainAuthority')
+  })
+
+  it('per-kind override beats main-authority and provider default', () => {
+    const policy: ApprovalTimeoutPolicy = {
+      defaultTimeoutsMs: { codex: 30_000, claude: 120_000, gemini: 120_000, kimi: 60_000 },
+      mainTimeoutMs: 60_000,
+      perKindOverridesMs: { 'hostCommand/rerun': 90_000 }
+    }
+    const scheduler = new ApprovalTimeoutScheduler(policy, vi.fn())
+    const { ms, source } = scheduler.resolveTimeout({
+      approvalId: 'a',
+      provider: 'codex',
+      isMainAuthority: true,
+      kind: 'hostCommand/rerun'
+    })
+    expect(ms).toBe(90_000)
+    expect(source).toBe('perKind')
+  })
+
+  it('cancelAll() clears every scheduled timer', async () => {
+    const clock = makeFakeClock()
+    const onTimeout = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      onTimeout,
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    scheduler.schedule({ approvalId: 'a', provider: 'codex' })
+    scheduler.schedule({ approvalId: 'b', provider: 'gemini' })
+    scheduler.schedule({ approvalId: 'c', provider: 'kimi' })
+    expect(scheduler.pendingCount).toBe(3)
+    scheduler.cancelAll()
+    expect(scheduler.pendingCount).toBe(0)
+    await clock.advance(10 * 60_000)
+    expect(onTimeout).not.toHaveBeenCalled()
+  })
+
+  it('onTimeout exceptions do not break the scheduler', async () => {
+    const clock = makeFakeClock()
+    const log = vi.fn()
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      () => {
+        throw new Error('boom')
+      },
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn, log }
+    )
+    scheduler.schedule({ approvalId: 'a1', provider: 'codex' })
+    await clock.advance(30_000)
+    expect(scheduler.pendingCount).toBe(0)
+    const logged = log.mock.calls.map((c) => c[0] as string).join('\n')
+    expect(logged).toContain('onTimeout threw')
+    expect(logged).toContain('a1')
+    // Subsequent schedules still work.
+    scheduler.schedule({ approvalId: 'a2', provider: 'kimi' })
+    expect(scheduler.pendingCount).toBe(1)
+  })
+
+  it('has() reflects whether an id is currently scheduled', () => {
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      vi.fn()
+    )
+    expect(scheduler.has('a')).toBe(false)
+    scheduler.schedule({ approvalId: 'a', provider: 'codex' })
+    expect(scheduler.has('a')).toBe(true)
+    scheduler.cancel('a')
+    expect(scheduler.has('a')).toBe(false)
+  })
+
+  it('default policy matches plan-file numbers', () => {
+    expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.codex).toBe(30_000)
+    expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.claude).toBe(120_000)
+    expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.gemini).toBe(120_000)
+    expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.defaultTimeoutsMs.kimi).toBe(60_000)
+    expect(DEFAULT_APPROVAL_TIMEOUT_POLICY.mainTimeoutMs).toBe(60_000)
+  })
+
+  it('reason includes the source for caller logging', async () => {
+    const clock = makeFakeClock()
+    let captured: ApprovalTimeoutReason | undefined
+    const scheduler = new ApprovalTimeoutScheduler(
+      DEFAULT_APPROVAL_TIMEOUT_POLICY,
+      (reason) => { captured = reason },
+      { setTimeoutFn: clock.setTimeoutFn, clearTimeoutFn: clock.clearTimeoutFn }
+    )
+    scheduler.schedule({
+      approvalId: 'a1',
+      provider: 'codex',
+      kind: 'hostCommand/rerun'
+    })
+    await clock.advance(90_000)
+    expect(captured).toEqual({
+      approvalId: 'a1',
+      appliedMs: 90_000,
+      source: 'perKind'
+    })
+  })
+})

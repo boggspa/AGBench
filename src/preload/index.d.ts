@@ -228,6 +228,13 @@ declare global {
       onRunQueueChanged: (callback: (jobs: RunQueueJob[]) => void) => void
       onRunEventsChanged: (callback: (payload: { runId: string, chatId?: string, workspaceId?: string, sequence: number }) => void) => void
       onAgentApprovalRequest: (callback: (payload: AgentApprovalRequest) => void) => void
+      onAgentApprovalTimeout: (
+        callback: (payload: {
+          approvalId: string
+          appliedMs: number
+          source: 'perKind' | 'mainAuthority' | 'providerDefault'
+        }) => void
+      ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       removeListeners: () => void
