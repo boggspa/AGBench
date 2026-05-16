@@ -6182,7 +6182,10 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   const env = createCliEnv({
     FORCE_COLOR: '0',
     NO_COLOR: '1',
-    GEMINI_SANDBOX: 'true',
+    // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
+    // connecting back to the broker. When write-capable AGBench MCP tools are
+    // enabled, keep both the CLI --sandbox flag and GEMINI_SANDBOX env disabled.
+    ...(requiresGeminiWriteTools ? {} : { GEMINI_SANDBOX: 'true' }),
     AGENTBENCH_RUN_ID: route.appRunId || '',
     AGENTBENCH_CHAT_ID: route.appChatId || '',
     AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
@@ -10440,7 +10443,8 @@ app.whenReady().then(() => {
     if (resumePolicy.skippedReason) {
       event.sender.send('gemini-session-data', `${resumePolicy.skippedReason}\r\n`)
     }
-    const argsError = appendGeminiCliSessionArgs(args, model, effectiveApprovalMode, effectiveSessionTrust, resumePolicy.resumeSessionId, settings.geminiCheckpointingEnabled, worktree, geminiWriteModeRequiresBridge('workspace', effectiveApprovalMode))
+    const requiresGeminiWriteTools = geminiWriteModeRequiresBridge('workspace', effectiveApprovalMode)
+    const argsError = appendGeminiCliSessionArgs(args, model, effectiveApprovalMode, effectiveSessionTrust, resumePolicy.resumeSessionId, settings.geminiCheckpointingEnabled, worktree, requiresGeminiWriteTools)
     if (argsError) {
       event.sender.send('gemini-session-data', `${argsError}\r\n`)
       event.sender.send('gemini-session-exit', -1)
@@ -10457,7 +10461,7 @@ app.whenReady().then(() => {
     let routedSession: AgentRunRoute
     try {
       routedSession = await prepareGeminiMcpBridgeForRun(event.sender, registeredWorkspace, sessionRoute, 'workspace', effectiveSessionTrust, {
-        requireWriteTools: geminiWriteModeRequiresBridge('workspace', effectiveApprovalMode)
+        requireWriteTools: requiresGeminiWriteTools
       })
     } catch (error) {
       event.sender.send('gemini-session-data', `${error instanceof Error ? error.message : String(error)}\r\n`)
@@ -10467,7 +10471,10 @@ app.whenReady().then(() => {
 
     const env: Record<string, string> = createCliEnv({
       FORCE_COLOR: '1',
-      GEMINI_SANDBOX: 'true',
+      // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
+      // connecting back to the broker. Keep it disabled whenever this session
+      // exposes write-capable AGBench MCP tools.
+      ...(requiresGeminiWriteTools ? {} : { GEMINI_SANDBOX: 'true' }),
       AGENTBENCH_RUN_ID: routedSession.appRunId || '',
       AGENTBENCH_CHAT_ID: routedSession.appChatId || '',
       // Phase I2: tag the Gemini interactive session so the bridge

@@ -13993,3 +13993,97 @@ input:disabled, select:disabled, textarea:disabled {
 .user-message-toggle:focus-visible {
   text-decoration: underline;
 }
+
+/* Transcript rectangle geometry aligned with composer/prompt bubbles. */
+.app-main {
+  --transcript-rect-radius: var(--composer-bubble-radius, var(--prompt-bubble-radius, 18px));
+  --transcript-rect-padding-block: var(--composer-bubble-padding-block, var(--space-md));
+  --transcript-rect-padding-inline: var(--composer-bubble-padding-inline, var(--space-lg));
+}
+
+:where(.app-transcript, .chat-main, .chat-panel, .chat-view, .conversation-view, .messages, .message-list, .transcript, .transcript-panel, .transcript-content) :where(
+  .activity-card,
+  .activity-item,
+  .assistant-activity,
+  .tool-card,
+  .tool-call,
+  .tool-call-card,
+  .tool-result,
+  .tool-result-card,
+  .tool-output,
+  .code-card,
+  .code-block,
+  .command-output,
+  .terminal-output,
+  .run-summary,
+  .run-summary-card,
+  .file-change-card,
+  .file-changes-card,
+  .task-complete-card,
+  .completion-card,
+  .diff-card,
+  .artifact-card,
+  pre
+) {
+  border-radius: var(--transcript-rect-radius);
+}
+
+:where(.app-transcript, .chat-main, .chat-panel, .chat-view, .conversation-view, .messages, .message-list, .transcript, .transcript-panel, .transcript-content) :where(
+  .activity-card,
+  .assistant-activity,
+  .tool-card,
+  .tool-call-card,
+  .tool-result-card,
+  .tool-output,
+  .code-card,
+  .command-output,
+  .terminal-output,
+  .run-summary,
+  .run-summary-card,
+  .file-change-card,
+  .file-changes-card,
+  .task-complete-card,
+  .completion-card,
+  .diff-card,
+  .artifact-card
+) {
+  padding: var(--transcript-rect-padding-block) var(--transcript-rect-padding-inline);
+}
+
+:where(.app-transcript, .chat-main, .chat-panel, .chat-view, .conversation-view, .messages, .message-list, .transcript, .transcript-panel, .transcript-content) :where(
+  .tool-call,
+  .tool-result,
+  .code-block,
+  pre
+) {
+  padding-inline: var(--transcript-rect-padding-inline);
+}
+
+/* Sidebar section headers should not paint full-width bars behind labels. */
+.app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
+.app-sidebar .sidebar-workspace-scroll .sidebar-section-header.sidebar-chats-header,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+  background: transparent !important;
+  border-bottom: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
+.app-sidebar .sidebar-chats-header .sidebar-section-title {
+  display: inline-flex;
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 7px;
+  border-radius: var(--composer-bubble-radius, 18px);
+  background: color-mix(in srgb, var(--sidebar-text) 7%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 32%, transparent);
+  line-height: 1.15;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-chats-header .sidebar-section-title {
+  background: color-mix(in srgb, #ffffff 7%, transparent) !important;
+  border-color: color-mix(in srgb, #ffffff 11%, transparent) !important;
+}
