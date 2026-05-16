@@ -52,6 +52,7 @@ import { buildDiagnosticsSnapshot, buildProductOperationsStatus, serializeDiagno
 import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMessage } from './CrossProviderDelegationDetector'
+import { buildClaudeCliArgs } from './ClaudeCliArgs'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -3731,6 +3732,26 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
   if (typeof query !== 'function') return false
   const model = normalizeCliProviderModel('claude', payload.model)
   const claudeApiKey = getStoredClaudeApiKey()
+  // In a packaged Electron build the SDK's bundled CLI lives inside app.asar,
+  // which appears as a regular file to subprocess spawn — the SDK then fails
+  // with ENOTDIR. Point it at the system-installed Claude binary instead so it
+  // can spawn a real executable. We resolve this lazily so dev (unpackaged)
+  // continues to use whatever the SDK ships with.
+  let pathToClaudeCodeExecutable: string | undefined
+  if (app.isPackaged) {
+    try {
+      const resolvedClaude = await resolveCliProviderBinary('claude', payload.runtimeProfile)
+      if (resolvedClaude.binaryPath) {
+        pathToClaudeCodeExecutable = resolvedClaude.binaryPath
+      } else {
+        // No system binary either; skip the SDK path so we fail over cleanly
+        // to the CLI fallback (which surfaces a useful setup-required error).
+        return false
+      }
+    } catch {
+      return false
+    }
+  }
   const controller = new AbortController()
   cliProviderAbortControllers.set('claude', controller)
   const state: CliProviderStreamState = {
@@ -3776,6 +3797,7 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
       resume: payload.providerSessionId || undefined,
       abortController: controller,
       canUseTool: (toolNameOrRequest: unknown, input?: unknown) => canUseClaudeSdkTool(event.sender, route, payload, toolNameOrRequest, input),
+      ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       ...(payload.imagePaths?.length ? { images: payload.imagePaths } : {}),
       ...(thinkingBudgetSdk ? { maxThinkingTokens: thinkingBudgetSdk } : {}),
       ...(claudeApiKey ? { env: { ANTHROPIC_API_KEY: claudeApiKey } } : {})
@@ -3831,16 +3853,14 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   const model = normalizeCliProviderModel('claude', payload.model)
-  const args = ['-p', payload.prompt, '--output-format', 'stream-json', '--verbose', '--include-partial-messages', '--permission-mode', claudePermissionModeForApproval(payload.approvalMode)]
-  if (model !== 'default') args.push('--model', model)
-  if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
-  const thinkingBudgetCli = payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
-    ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
-    : null
-  if (thinkingBudgetCli) args.push('--budget-tokens', String(thinkingBudgetCli))
-  for (const imagePath of payload.imagePaths || []) {
-    args.push('--image', imagePath)
-  }
+  const args = buildClaudeCliArgs({
+    prompt: payload.prompt,
+    permissionMode: claudePermissionModeForApproval(payload.approvalMode),
+    model,
+    providerSessionId: payload.providerSessionId || null,
+    claudeReasoningEffort: payload.claudeReasoningEffort || null,
+    imagePaths: payload.imagePaths || null
+  })
   const claudeKey = getStoredClaudeApiKey()
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
     fallback: true,
