@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
@@ -2444,6 +2444,7 @@ const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
   kind: null,
   source: null
 }
+const EMPTY_CHAT_MESSAGES: ChatMessage[] = []
 
 function CockpitPanel({
   lanes,
@@ -2834,6 +2835,226 @@ const createAppRunId = (): string => `${Date.now()}-${Math.random().toString(36)
 
 const isTerminalRunQueueStatus = (status?: RunQueueJobStatus): boolean =>
   status === 'completed' || status === 'failed' || status === 'cancelled'
+
+type TranscriptPanelProps = {
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  endRef: React.RefObject<HTMLDivElement | null>
+  messages: ChatMessage[]
+  isWelcomeChat: boolean
+  isThinking: boolean
+  showFallbackUX: boolean
+  pendingPlanChoice: PlanChoiceState | null
+  runCompleteNotice: RunCompleteNotice | null
+  runCompleteDurationText: string | null
+  currentChat: ChatRecord | null
+  currentWorkspacePath?: string
+  currentProviderLabel: string
+  displayFileChangeSummaries: DiffFileSummary[]
+  fileChangeSummaryText: string
+  fileChangeShouldShowStats: boolean
+  fileChangeDisplayAdds: number
+  fileChangeDisplayDels: number
+  onPlanChoiceSubmit: (messageId: string, option: string) => void
+  onRunFallback: (model: string) => void
+  onOpenSubThread: (chatId: string) => void
+}
+
+const TranscriptPanel = memo(function TranscriptPanel({
+  scrollRef,
+  endRef,
+  messages,
+  isWelcomeChat,
+  isThinking,
+  showFallbackUX,
+  pendingPlanChoice,
+  runCompleteNotice,
+  runCompleteDurationText,
+  currentChat,
+  currentWorkspacePath,
+  currentProviderLabel,
+  displayFileChangeSummaries,
+  fileChangeSummaryText,
+  fileChangeShouldShowStats,
+  fileChangeDisplayAdds,
+  fileChangeDisplayDels,
+  onPlanChoiceSubmit,
+  onRunFallback,
+  onOpenSubThread
+}: TranscriptPanelProps) {
+  const visibleMessages = isWelcomeChat ? [] : messages
+  const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
+
+  return (
+    <div className="transcript-scroll" ref={scrollRef}>
+      <div className="transcript-inner">
+        {visibleMessages.map((msg) => (
+          msg.role === 'tool' ? (
+            <ActivityStack
+              key={msg.id}
+              activities={msg.toolActivities || []}
+              workspacePath={currentWorkspacePath}
+              provider={getChatProvider(currentChat)}
+              chatId={currentChat?.appChatId}
+              runId={msg.runId}
+              chat={currentChat || undefined}
+            />
+          ) : (
+            <div key={msg.id} className={`message-group ${isSubThreadReturnMessage(msg) ? 'subthread-return-message' : ''}`}>
+              {isSubThreadReturnMessage(msg) ? (
+                <SubThreadReturnCard
+                  message={msg}
+                  chat={currentChat || undefined}
+                  onOpenSubThread={onOpenSubThread}
+                />
+              ) : (
+                <>
+                  <div className="message-meta">
+                    {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
+                  </div>
+                  <div className={`message-bubble ${msg.role}`}>
+                    {msg.role === 'assistant'
+                      ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
+                      : msg.content}
+                  </div>
+                </>
+              )}
+              {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
+                <div className="plan-choice-card">
+                  <div className="plan-choice-question">{pendingPlanChoice.question}</div>
+                  <div className="plan-choice-actions">
+                    {pendingPlanChoice.options.map((option) => (
+                      <button
+                        key={option}
+                        type="button"
+                        className="plan-choice-action-btn"
+                        onClick={() => onPlanChoiceSubmit(msg.id, option)}
+                        title={`Continue with "${option}"`}
+                      >
+                        {option}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        ))}
+        {isThinking && (
+          <div key="thinking-indicator" className="message-group">
+            <div className="message-meta">{currentProviderLabel}</div>
+            <ThinkingIndicator />
+          </div>
+        )}
+        {showFallbackUX && (
+          <div className="fallback-card">
+            <p>Gemini model capacity exhausted. The CLI was retrying. Try an alternative or wait.</p>
+            <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+              <button className="btn btn-sm" onClick={() => onRunFallback('flash-lite')}>Retry with Flash Lite</button>
+              <button className="btn btn-sm" onClick={() => onRunFallback('flash')}>Retry with Flash</button>
+            </div>
+          </div>
+        )}
+        {shouldShowRunCompleteNotice && runCompleteNotice && (
+          <div className="run-complete-card">
+            <div className="run-complete-main">
+              <div className="run-complete-metadata">
+                <strong>{runCompleteNotice.exitCode === 0 ? 'Task complete' : `Task ended (code ${runCompleteNotice.exitCode})`}</strong>
+                <span className="run-complete-time-row">
+                  <span>{new Date(runCompleteNotice.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  {runCompleteDurationText && <span>{runCompleteDurationText}</span>}
+                </span>
+                {runCompleteNotice.exitCode === 0 && <span>Awaiting your next prompt.</span>}
+              </div>
+              <button
+                className="btn btn-sm btn-ghost run-copy-btn"
+                onClick={() => {
+                  const latestAssistantMessage = [...messages]
+                    .slice()
+                    .reverse()
+                    .find((m) => m.role === 'assistant')
+                  if (latestAssistantMessage?.content) {
+                    navigator.clipboard.writeText(latestAssistantMessage.content)
+                  }
+                }}
+                disabled={!messages.some((m) => m.role === 'assistant')}
+                title="Copy latest assistant response"
+              >
+                <CopyResponseIcon />
+              </button>
+            </div>
+            <div className="file-change-summary-card">
+              <div className="file-change-summary-header">
+                <strong>File changes</strong>
+                <div className="file-change-summary-meta">
+                  <span>{fileChangeSummaryText}</span>
+                  {fileChangeShouldShowStats && (
+                    <span className="file-change-summary-stats">
+                      <span className="file-change-stat file-change-stat-add">+{fileChangeDisplayAdds}</span>
+                      <span className="file-change-stat-divider">|</span>
+                      <span className="file-change-stat file-change-stat-delete">-{fileChangeDisplayDels}</span>
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="file-change-summary-list">
+                {displayFileChangeSummaries.length > 0 ? (
+                  <>
+                    {displayFileChangeSummaries.slice(0, 12).map((item) => (
+                      <div key={`${item.path}-${item.status}`} className="file-change-summary-item">
+                        <span className={`file-change-summary-status status-${item.status}`}>
+                          {item.status === 'modified' ? 'edited' : item.status}
+                        </span>
+                        <FileTypeIcon path={item.path} size={14} className="file-change-summary-type-icon" workspacePath={currentWorkspacePath} />
+                        <span className="file-change-summary-path" title={item.path}>
+                          {item.path}
+                        </span>
+                        {(item.additions !== undefined || item.deletions !== undefined) && (
+                          <span className="file-change-summary-item-stats">
+                            <span className="file-change-stat file-change-stat-add">+{item.additions || 0}</span>
+                            <span className="file-change-stat-divider">|</span>
+                            <span className="file-change-stat file-change-stat-delete">-{item.deletions || 0}</span>
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                    {displayFileChangeSummaries.length > 12 && (
+                      <div className="file-change-summary-item file-change-summary-overflow">
+                        +{displayFileChangeSummaries.length - 12} more files changed
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="file-change-summary-item file-change-summary-empty">
+                    No file changes detected for this run.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+        <div ref={endRef} />
+      </div>
+    </div>
+  )
+}, (previous, next) =>
+  previous.scrollRef === next.scrollRef &&
+  previous.endRef === next.endRef &&
+  previous.messages === next.messages &&
+  previous.isWelcomeChat === next.isWelcomeChat &&
+  previous.isThinking === next.isThinking &&
+  previous.showFallbackUX === next.showFallbackUX &&
+  previous.pendingPlanChoice === next.pendingPlanChoice &&
+  previous.runCompleteNotice === next.runCompleteNotice &&
+  previous.runCompleteDurationText === next.runCompleteDurationText &&
+  previous.currentChat === next.currentChat &&
+  previous.currentWorkspacePath === next.currentWorkspacePath &&
+  previous.currentProviderLabel === next.currentProviderLabel &&
+  previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
+  previous.fileChangeSummaryText === next.fileChangeSummaryText &&
+  previous.fileChangeShouldShowStats === next.fileChangeShouldShowStats &&
+  previous.fileChangeDisplayAdds === next.fileChangeDisplayAdds &&
+  previous.fileChangeDisplayDels === next.fileChangeDisplayDels
+)
 
 type SettingsPanelUpdate = {
   mode?: AppSettings['appearanceMode']
@@ -4741,10 +4962,6 @@ function App(): React.JSX.Element {
   }
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [currentChat?.messages, runCompleteNotice, showFallbackUX])
-
-  useEffect(() => {
     const transcript = appTranscriptRef.current
     const composerArea = composerAreaRef.current
     if (!transcript || !composerArea) {
@@ -4846,7 +5063,7 @@ function App(): React.JSX.Element {
     // Single scrollTop write per messages-update; the browser clamps to
     // [0, scrollHeight - clientHeight] so we don't need to compute target.
     scroller.scrollTop = scroller.scrollHeight
-  }, [currentChat?.messages])
+  }, [currentChat?.messages, runCompleteNotice, showFallbackUX])
 
   useEffect(() => {
     // When the active chat changes, snap to the bottom and re-arm auto-follow
@@ -7411,7 +7628,7 @@ function App(): React.JSX.Element {
   const contextWindowSize = resolveContextWindow(currentProvider, contextModelId, latestRunLimits.totalTokenLimit)
   const contextUsedPercent = contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
   const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
-  const latestRunDiffStats = (() => {
+  const latestRunDiffStats = useMemo(() => {
     // Prefer a live aggregate from tool activities on the current run so the
     // above-composer bar updates mid-task rather than only after runDiff lands.
     const runId = currentRun?.runId
@@ -7450,7 +7667,7 @@ function App(): React.JSX.Element {
       deletions,
       filesChanged: files.length
     }
-  })()
+  }, [currentChat?.messages, currentRun?.runId, runDiff])
   const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
@@ -7556,11 +7773,20 @@ function App(): React.JSX.Element {
       ? 'Tool permission requested'
       : 'Attachment access requested'
   const currentRunDiff = currentRun?.runDiff
-  const exactFileChangeSummaries = getRunFileDiffSummaries(runDiff || currentRunDiff || null)
-  const liveToolFileChangeSummaries = getLiveToolFileDiffSummaries(currentChat?.messages || [], currentWorkspace?.path)
+  const exactFileChangeSummaries = useMemo(
+    () => getRunFileDiffSummaries(runDiff || currentRunDiff || null),
+    [currentRunDiff, runDiff]
+  )
+  const liveToolFileChangeSummaries = useMemo(
+    () => getLiveToolFileDiffSummaries(currentChat?.messages || EMPTY_CHAT_MESSAGES, currentWorkspace?.path),
+    [currentChat?.messages, currentWorkspace?.path]
+  )
   const fileChangeSummaries = exactFileChangeSummaries.length > 0 ? exactFileChangeSummaries : liveToolFileChangeSummaries
   const fileChangeSummaryEstimated = exactFileChangeSummaries.length === 0 && liveToolFileChangeSummaries.length > 0
-  const displayFileChangeSummaries = fileChangeSummaries.filter((item) => !item.isNoise)
+  const displayFileChangeSummaries = useMemo(
+    () => fileChangeSummaries.filter((item) => !item.isNoise),
+    [fileChangeSummaries]
+  )
   const createdChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'created').length
   const modifiedChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'modified').length
   const deletedChangeCount = displayFileChangeSummaries.filter((item) => item.status === 'deleted').length
@@ -7573,12 +7799,15 @@ function App(): React.JSX.Element {
   const fileChangeDisplayAdds = fileChangeHasLineStats ? fileChangeAdds : createdChangeCount + modifiedChangeCount
   const fileChangeDisplayDels = fileChangeHasLineStats ? fileChangeDels : deletedChangeCount
   const fileChangeShouldShowStats = fileChangeHasLineStats || displayFileChangeSummaries.length > 0
-  const transcriptMessages = currentChat?.messages || []
-  const hasConversationContent = transcriptMessages.some((message) =>
-    message.role === 'user' ||
-    message.role === 'assistant' ||
-    message.role === 'tool' ||
-    message.role === 'error'
+  const transcriptMessages = currentChat?.messages || EMPTY_CHAT_MESSAGES
+  const hasConversationContent = useMemo(
+    () => transcriptMessages.some((message) =>
+      message.role === 'user' ||
+      message.role === 'assistant' ||
+      message.role === 'tool' ||
+      message.role === 'error'
+    ),
+    [transcriptMessages]
   )
   const isWelcomeChat = Boolean(
     currentChat &&
@@ -7591,9 +7820,7 @@ function App(): React.JSX.Element {
     [usageRecords, chats, welcomeUsageRange]
   )
   const shouldShowWelcomeUsageDashboard = isWelcomeChat && welcomeUsageDashboardData.hasActivity
-  const visibleTranscriptMessages = isWelcomeChat ? [] : transcriptMessages
-  const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
-  const runCompleteDurationText = shouldShowRunCompleteNotice && runCompleteNotice
+  const runCompleteDurationText = runCompleteNotice && !isWelcomeChat
     ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
     : null
   const isChatExpanded = !showWorkspaceSidebar || (!appearance.showInspector && !showFileEditor)
@@ -7618,7 +7845,10 @@ function App(): React.JSX.Element {
     lastRunStatus: currentRun?.status,
   })
   const visibleScheduledTasks = relevantScheduledTasks.slice(0, 4)
-  const runLanes = buildRunLanes(runQueueJobs, chats, scheduledTasks, runtimeProfiles)
+  const runLanes = useMemo(
+    () => buildRunLanes(runQueueJobs, chats, scheduledTasks, runtimeProfiles),
+    [chats, runQueueJobs, runtimeProfiles, scheduledTasks]
+  )
   const runtimeProfileControl = currentProviderRuntimeProfiles.length > 0 ? (
     <label className="composer-runtime-profile" title="Runtime profile for this thread">
       <span>Runtime</span>
@@ -7949,156 +8179,28 @@ function App(): React.JSX.Element {
             </div>
           )}
 
-          <div className="transcript-scroll" ref={transcriptScrollRef}>
-            <div className="transcript-inner">
-              {visibleTranscriptMessages.map((msg) => (
-                msg.role === 'tool' ? (
-                  <ActivityStack
-                    key={msg.id}
-                    activities={msg.toolActivities || []}
-                    workspacePath={currentWorkspace?.path}
-                    provider={getChatProvider(currentChat)}
-                    chatId={currentChat?.appChatId}
-                    runId={msg.runId}
-                    chat={currentChat || undefined}
-                  />
-                ) : (
-                <div key={msg.id} className={`message-group ${isSubThreadReturnMessage(msg) ? 'subthread-return-message' : ''}`}>
-                    {isSubThreadReturnMessage(msg) ? (
-                      <SubThreadReturnCard
-                        message={msg}
-                        chat={currentChat || undefined}
-                        onOpenSubThread={handleOpenCockpitThread}
-                      />
-                    ) : (
-                      <>
-                        <div className="message-meta">
-                          {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
-                        </div>
-                        <div className={`message-bubble ${msg.role}`}>
-                          {msg.role === 'assistant'
-                            ? <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
-                            : msg.content}
-                        </div>
-                      </>
-                    )}
-                    {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
-                      <div className="plan-choice-card">
-                        <div className="plan-choice-question">{pendingPlanChoice.question}</div>
-                        <div className="plan-choice-actions">
-                          {pendingPlanChoice.options.map((option) => (
-                            <button
-                              key={option}
-                              type="button"
-                              className="plan-choice-action-btn"
-                              onClick={() => handlePlanChoiceSubmit(msg.id, option)}
-                              title={`Continue with "${option}"`}
-                            >
-                              {option}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )
-              ))}
-              {isThinking && (
-                <div key="thinking-indicator" className="message-group">
-                  <div className="message-meta">{currentProviderLabel}</div>
-                  <ThinkingIndicator />
-                </div>
-              )}
-              {showFallbackUX && (
-                <div className="fallback-card">
-                  <p>Gemini model capacity exhausted. The CLI was retrying. Try an alternative or wait.</p>
-                  <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                    <button className="btn btn-sm" onClick={() => handleRunFallback('flash-lite')}>Retry with Flash Lite</button>
-                    <button className="btn btn-sm" onClick={() => handleRunFallback('flash')}>Retry with Flash</button>
-                  </div>
-                </div>
-              )}
-              {shouldShowRunCompleteNotice && runCompleteNotice && (
-                <div className="run-complete-card">
-                  <div className="run-complete-main">
-                    <div className="run-complete-metadata">
-                      <strong>{runCompleteNotice.exitCode === 0 ? 'Task complete' : `Task ended (code ${runCompleteNotice.exitCode})`}</strong>
-                      <span className="run-complete-time-row">
-                        <span>{new Date(runCompleteNotice.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-                        {runCompleteDurationText && <span>{runCompleteDurationText}</span>}
-                      </span>
-                      {runCompleteNotice.exitCode === 0 && <span>Awaiting your next prompt.</span>}
-                    </div>
-                    <button
-                      className="btn btn-sm btn-ghost run-copy-btn"
-                      onClick={() => {
-                        const latestAssistantMessage = [...(currentChat?.messages || [])]
-                          .slice()
-                          .reverse()
-                          .find((m) => m.role === 'assistant')
-                        if (latestAssistantMessage?.content) {
-                          navigator.clipboard.writeText(latestAssistantMessage.content)
-                        }
-                      }}
-                      disabled={!currentChat?.messages.some((m) => m.role === 'assistant')}
-                      title="Copy latest assistant response"
-                    >
-                      <CopyResponseIcon />
-                    </button>
-                  </div>
-                  <div className="file-change-summary-card">
-                    <div className="file-change-summary-header">
-                      <strong>File changes</strong>
-                      <div className="file-change-summary-meta">
-                        <span>{fileChangeSummaryText}</span>
-                        {fileChangeShouldShowStats && (
-                          <span className="file-change-summary-stats">
-                            <span className="file-change-stat file-change-stat-add">+{fileChangeDisplayAdds}</span>
-                            <span className="file-change-stat-divider">|</span>
-                            <span className="file-change-stat file-change-stat-delete">-{fileChangeDisplayDels}</span>
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="file-change-summary-list">
-                      {displayFileChangeSummaries.length > 0 ? (
-                        <>
-                          {displayFileChangeSummaries.slice(0, 12).map((item) => (
-                            <div key={`${item.path}-${item.status}`} className="file-change-summary-item">
-                              <span className={`file-change-summary-status status-${item.status}`}>
-                                {item.status === 'modified' ? 'edited' : item.status}
-                              </span>
-                              <FileTypeIcon path={item.path} size={14} className="file-change-summary-type-icon" workspacePath={currentWorkspace?.path} />
-                              <span className="file-change-summary-path" title={item.path}>
-                                {item.path}
-                              </span>
-                              {(item.additions !== undefined || item.deletions !== undefined) && (
-                                <span className="file-change-summary-item-stats">
-                                  <span className="file-change-stat file-change-stat-add">+{item.additions || 0}</span>
-                                  <span className="file-change-stat-divider">|</span>
-                                  <span className="file-change-stat file-change-stat-delete">-{item.deletions || 0}</span>
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                          {displayFileChangeSummaries.length > 12 && (
-                            <div className="file-change-summary-item file-change-summary-overflow">
-                              +{displayFileChangeSummaries.length - 12} more files changed
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="file-change-summary-item file-change-summary-empty">
-                          No file changes detected for this run.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-              <div ref={logsEndRef} />
-            </div>
-          </div>
+          <TranscriptPanel
+            scrollRef={transcriptScrollRef}
+            endRef={logsEndRef}
+            messages={transcriptMessages}
+            isWelcomeChat={isWelcomeChat}
+            isThinking={isThinking}
+            showFallbackUX={showFallbackUX}
+            pendingPlanChoice={pendingPlanChoice}
+            runCompleteNotice={runCompleteNotice}
+            runCompleteDurationText={runCompleteDurationText}
+            currentChat={currentChat}
+            currentWorkspacePath={currentWorkspace?.path}
+            currentProviderLabel={currentProviderLabel}
+            displayFileChangeSummaries={displayFileChangeSummaries}
+            fileChangeSummaryText={fileChangeSummaryText}
+            fileChangeShouldShowStats={fileChangeShouldShowStats}
+            fileChangeDisplayAdds={fileChangeDisplayAdds}
+            fileChangeDisplayDels={fileChangeDisplayDels}
+            onPlanChoiceSubmit={handlePlanChoiceSubmit}
+            onRunFallback={handleRunFallback}
+            onOpenSubThread={handleOpenCockpitThread}
+          />
 
           {showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext && (
             <>
