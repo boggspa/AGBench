@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { SettingsService, type SettingsServiceDeps, type SettingsUpdateContext } from './SettingsService'
+import {
+  SettingsService,
+  type SettingsServiceDeps,
+  type SettingsUpdateContext
+} from './SettingsService'
 import type { AppSettings } from '../store/types'
 
 function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
@@ -55,7 +59,10 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
   } as AppSettings
 }
 
-function makeDeps(overrides: Partial<SettingsServiceDeps> = {}) {
+function makeDeps(overrides: Partial<SettingsServiceDeps> = {}): {
+  deps: SettingsServiceDeps
+  readonly settings: AppSettings
+} {
   let settings = makeSettings()
   const deps: SettingsServiceDeps = {
     getSettings: vi.fn(() => settings),
@@ -65,7 +72,12 @@ function makeDeps(overrides: Partial<SettingsServiceDeps> = {}) {
     sanitizeSettingsPatch: vi.fn((partial: unknown) => partial as Partial<AppSettings>),
     ...overrides
   }
-  return { deps, get settings() { return settings } }
+  return {
+    deps,
+    get settings() {
+      return settings
+    }
+  }
 }
 
 describe('SettingsService', () => {
@@ -107,10 +119,7 @@ describe('SettingsService', () => {
   it('supports multiple side effects in insertion order', () => {
     const calls: string[] = []
     const { deps } = makeDeps({
-      sideEffects: [
-        () => calls.push('first'),
-        () => calls.push('second')
-      ]
+      sideEffects: [() => calls.push('first'), () => calls.push('second')]
     })
     const service = new SettingsService(deps)
     service.updateSettings({ compactDensity: true })
