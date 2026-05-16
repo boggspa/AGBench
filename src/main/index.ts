@@ -7313,6 +7313,7 @@ function handleMcpJsonRpcMessage(socketPath: string, brokerToken: string, messag
     // spawns the bridge once with AGENTBENCH_PARENT_PROVIDER=codex (set
     // via -c mcp_servers.agentbench.env), so the same bridge binary
     // serves all four providers' MCP needs without code duplication.
+    bridgeLog(`tools/call name=${name} id=${id} args=${JSON.stringify(args).slice(0, 200)}`)
     brokerRequest(socketPath, {
       id: id ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       token: brokerToken,
@@ -7322,20 +7323,112 @@ function handleMcpJsonRpcMessage(socketPath: string, brokerToken: string, messag
       appChatId: process.env.AGENTBENCH_CHAT_ID,
       parentProvider: process.env.AGENTBENCH_PARENT_PROVIDER || 'gemini'
     }).then((result) => {
+      bridgeLog(`tools/call name=${name} id=${id} result.ok=${result?.ok} text.len=${(result?.text || result?.error || '').length}`)
       const text = result?.text || result?.error || ''
-      writeMcpResponse(id, {
-        content: [{ type: 'text', text }],
-        isError: result?.ok === false
-      }, transport)
+      try {
+        writeMcpResponse(id, {
+          content: [{ type: 'text', text }],
+          isError: result?.ok === false
+        }, transport)
+      } catch (writeError) {
+        bridgeLog(`tools/call write FAILED id=${id} err=${writeError instanceof Error ? writeError.message : String(writeError)}`)
+      }
+    }).catch((rejection) => {
+      // Defensive: brokerRequest currently always resolves, but a
+      // stray throw inside the .then handler (e.g. JSON.stringify on a
+      // pathological result) would otherwise propagate as an
+      // unhandled rejection and kill the bridge subprocess. Surface
+      // the error to the MCP client AND the log file instead so the
+      // next tools/call doesn't fail with "Not connected".
+      const reasonText = rejection instanceof Error ? rejection.message : String(rejection)
+      bridgeLog(`tools/call REJECTION id=${id} reason=${reasonText}`)
+      try {
+        writeMcpResponse(id, {
+          content: [{ type: 'text', text: `AGBench bridge internal error: ${reasonText}` }],
+          isError: true
+        }, transport)
+      } catch {
+        // If even the error response can't be written, the transport
+        // is already dead — nothing useful left to do.
+      }
     })
     return
   }
   writeMcpError(id, -32601, `Unsupported MCP method: ${method}`, transport)
 }
 
+// Phase I2 follow-up: file-based diagnostic logger for the bridge
+// subprocess. Gemini-CLI captures the bridge's stderr but doesn't
+// surface it to the user, and a crashing bridge produces a generic
+// "Not connected" error from Gemini-CLI's MCP client — useless for
+// triage. Logging to a known path lets the user (or us, during dev)
+// inspect what the bridge actually did between initialize and the
+// failing tools/call. Truncated to ~1 MB so it doesn't grow forever.
+//
+// Path: ~/Library/Logs/AGBench/bridge-subprocess.log (macOS standard
+// log location; Logs/ is auto-created if missing). On other platforms
+// falls back to userData/bridge-subprocess.log via app.getPath, which
+// in the bridge subprocess works the same way it does in main.
+//
+// We resolve the log path lazily on first write so any errors during
+// resolution can't crash the bridge before it has a chance to log
+// them.
+let bridgeLogPath: string | null = null
+let bridgeLogResolved = false
+const BRIDGE_LOG_MAX_BYTES = 1_048_576
+
+function resolveBridgeLogPath(): string | null {
+  if (bridgeLogResolved) return bridgeLogPath
+  bridgeLogResolved = true
+  try {
+    const logsDir = join(os.homedir(), 'Library', 'Logs', 'AGBench')
+    fsSync.mkdirSync(logsDir, { recursive: true })
+    bridgeLogPath = join(logsDir, 'bridge-subprocess.log')
+    // Truncate if oversized — keeps the log focused on the most
+    // recent session without accumulating cruft.
+    try {
+      const stat = fsSync.statSync(bridgeLogPath)
+      if (stat.size > BRIDGE_LOG_MAX_BYTES) {
+        fsSync.writeFileSync(bridgeLogPath, '')
+      }
+    } catch {
+      // File doesn't exist yet — fine, will be created on first append.
+    }
+  } catch {
+    bridgeLogPath = null
+  }
+  return bridgeLogPath
+}
+
+function bridgeLog(message: string): void {
+  const path = resolveBridgeLogPath()
+  if (!path) return
+  try {
+    const line = `[${new Date().toISOString()}] pid=${process.pid} ${message}\n`
+    fsSync.appendFileSync(path, line)
+  } catch {
+    // Logging failures must never crash the bridge.
+  }
+}
+
 function startGeminiMcpBridgeProcess(): void {
   const socketPath = parseBridgeSocketArg()
   const brokerToken = parseBridgeTokenArg()
+  bridgeLog(`spawn argv=${JSON.stringify(process.argv.slice(1))} cwd=${process.cwd()} env.AGENTBENCH_RUN_ID=${process.env.AGENTBENCH_RUN_ID || ''} env.AGENTBENCH_PARENT_PROVIDER=${process.env.AGENTBENCH_PARENT_PROVIDER || ''}`)
+
+  // Defensive: an unhandled exception or rejection in the bridge
+  // subprocess will kill the process — and Gemini-CLI then surfaces
+  // every subsequent tool call as "Not connected" because its MCP
+  // transport sees the child stdin pipe as gone. Catching both here
+  // logs the cause to the diagnostic file and KEEPS the process
+  // alive so subsequent tool calls can still succeed.
+  process.on('uncaughtException', (error) => {
+    bridgeLog(`uncaughtException: ${error instanceof Error ? `${error.message}\n${error.stack}` : String(error)}`)
+  })
+  process.on('unhandledRejection', (reason) => {
+    bridgeLog(`unhandledRejection: ${reason instanceof Error ? `${reason.message}\n${reason.stack}` : String(reason)}`)
+  })
+
   let buffer = Buffer.alloc(0)
 
   const parseMessages = () => {
@@ -7358,6 +7451,7 @@ function startGeminiMcpBridgeProcess(): void {
         try {
           handleMcpJsonRpcMessage(socketPath, brokerToken, JSON.parse(body), 'framed')
         } catch (error) {
+          bridgeLog(`parse FAILED (framed) err=${error instanceof Error ? error.message : String(error)}`)
           writeMcpError(null, -32700, error instanceof Error ? error.message : String(error), 'framed')
         }
         continue
@@ -7372,6 +7466,7 @@ function startGeminiMcpBridgeProcess(): void {
       try {
         handleMcpJsonRpcMessage(socketPath, brokerToken, JSON.parse(line), 'line')
       } catch (error) {
+        bridgeLog(`parse FAILED (line) err=${error instanceof Error ? error.message : String(error)}`)
         writeMcpError(null, -32700, error instanceof Error ? error.message : String(error), 'line')
       }
     }
@@ -7381,8 +7476,24 @@ function startGeminiMcpBridgeProcess(): void {
     buffer = Buffer.concat([buffer, chunk])
     parseMessages()
   })
-  process.stdin.on('end', () => process.exit(0))
-  process.stdin.on('close', () => process.exit(0))
+  process.stdin.on('end', () => {
+    bridgeLog('stdin end — exiting')
+    process.exit(0)
+  })
+  process.stdin.on('close', () => {
+    bridgeLog('stdin close — exiting')
+    process.exit(0)
+  })
+  // Surface generic stream errors too — these otherwise vanish.
+  process.stdin.on('error', (error) => {
+    bridgeLog(`stdin error: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  process.stdout.on('error', (error) => {
+    bridgeLog(`stdout error: ${error instanceof Error ? error.message : String(error)}`)
+  })
+  process.on('exit', (code) => {
+    bridgeLog(`process exit code=${code ?? 'unknown'}`)
+  })
   process.stdin.resume()
 }
 
