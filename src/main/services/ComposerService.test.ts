@@ -316,9 +316,39 @@ describe('ComposerService', () => {
       { provider: 'claude', linkedProviderSessionId: 'claude-thread-1' },
       { selectedModelType: 'claude-sonnet-4-6', claudeReasoningEffort: 'medium' }
     )
-    expect(payload.prompt).toBe('Do the thing')
+    // Phase I3 (Claude initiator): workspace Claude runs outside plan
+    // mode now get a delegation preamble pointing at the agentbench
+    // MCP server. The user request is preserved verbatim after it.
+    expect(payload.prompt).toContain('Do the thing')
+    expect(payload.prompt).toContain('mcp__agentbench__delegate_to_subthread')
     expect(payload.providerSessionId).toBe('claude-thread-1')
     expect(payload.claudeReasoningEffort).toBe('medium')
+  })
+
+  it('teaches Claude about cross-provider delegate_to_subthread (Phase I3)', () => {
+    // The runtime note must point Claude at mcp__agentbench__delegate_to_subthread
+    // so it doesn't reach for its built-in Task tool when asked to
+    // delegate to Gemini / Codex / Kimi.
+    const payload = compose({ provider: 'claude' }, {})
+    expect(payload.prompt).toContain('agentbench MCP server')
+    expect(payload.prompt).toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
+    expect(payload.prompt).toContain("provider: 'gemini'")
+    expect(payload.prompt).toContain("NEVER use Claude's built-in Task tool")
+  })
+
+  it('omits the Claude delegation preamble in plan mode (read-only sessions)', () => {
+    const payload = compose({ provider: 'claude' }, { approvalMode: 'plan' })
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
+  })
+
+  it('omits the Claude delegation preamble for global-scope runs (no workspace)', () => {
+    const payload = compose({ provider: 'claude', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
   })
 
   it('uses Claude provider metadata defaults when model input is omitted', () => {

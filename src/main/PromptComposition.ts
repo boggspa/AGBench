@@ -286,6 +286,22 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     contextualPrompt = `${geminiWriteToolPreamble}\n\n${contextualPrompt}`
   }
 
+  // (4) Phase I3 (Claude initiator): Claude workspace runs (non-global)
+  // outside plan mode get a parallel preamble pointing the agent at the
+  // agentbench MCP server registered by the SDK / CLI layer. Without it
+  // Claude tends to reach for its own Task tool for sub-agent work,
+  // which stays inside Claude's process and cannot reach other AGBench
+  // providers.
+  if (provider === 'claude' && !isGlobalRun && approvalMode !== 'plan') {
+    const claudeDelegationPreamble = [
+      'AGBench runtime note: this Claude workspace run has access to the agentbench MCP server (delegate_to_subthread + filesystem helpers).',
+      'For CROSS-PROVIDER delegation (e.g. asking Gemini, Kimi, or Codex to handle a sub-task), call mcp__agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Claude\'s built-in Task tool for cross-provider work, that runs inside Claude\'s process and cannot reach other AGBench providers.',
+      "Example: mcp__agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Analyze this codebase...', returnResult: true }).",
+      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+    ].join('\n')
+    contextualPrompt = `${claudeDelegationPreamble}\n\n${contextualPrompt}`
+  }
+
   return {
     contextualPrompt,
     contextTurnsApplied,

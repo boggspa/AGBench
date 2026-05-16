@@ -53,6 +53,12 @@ import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMessage } from './CrossProviderDelegationDetector'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
+import {
+  buildClaudeAgentbenchMcpConfigJson,
+  buildClaudeAgentbenchMcpServers,
+  extendClaudeCliArgsWithAgentbenchMcp,
+  type ClaudeAgentbenchMcpInput
+} from './ClaudeAgentbenchMcp'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -3494,7 +3500,7 @@ function runCliProviderProcess(
   command: string,
   args: string[],
   payload: AgentRunPayload,
-  options: { fallback: boolean; warning?: string; extraEnv?: Record<string, string> } = { fallback: true }
+  options: { fallback: boolean; warning?: string; extraEnv?: Record<string, string>; onComplete?: () => Promise<void> | void } = { fallback: true }
 ) {
   const route = routeWithRunId(provider, payload)
   const cwd = payload.workspace!
@@ -3565,11 +3571,27 @@ function runCliProviderProcess(
     sendAgentCompatError(event.sender, provider, chunk.toString(), state)
   })
 
+  let onCompleteFired = false
+  const runOnComplete = (): void => {
+    if (onCompleteFired) return
+    onCompleteFired = true
+    if (!options.onComplete) return
+    try {
+      const result = options.onComplete()
+      if (result && typeof (result as Promise<void>).then === 'function') {
+        ;(result as Promise<void>).catch(() => {})
+      }
+    } catch {
+      // onComplete is best-effort cleanup; never let it crash the run.
+    }
+  }
+
   child.on('error', (error) => {
     sendAgentCompatError(event.sender, provider, `Failed to start ${providerDisplayName(provider)}: ${error.message}`, state)
     sendAgentCompatExit(event.sender, provider, 1, state)
     if (cliProviderProcesses.get(provider) === child) cliProviderProcesses.delete(provider)
     runManager.finish(route.appRunId, 'failed')
+    runOnComplete()
   })
 
   child.on('close', (code) => {
@@ -3597,6 +3619,7 @@ function runCliProviderProcess(
     sendAgentCompatExit(event.sender, provider, code, state)
     if (cliProviderProcesses.get(provider) === child) cliProviderProcesses.delete(provider)
     runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
+    runOnComplete()
   })
 }
 
@@ -3606,6 +3629,28 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
     return await importer('@anthropic-ai/claude-agent-sdk')
   } catch {
     return null
+  }
+}
+
+/**
+ * Phase I3 (Claude initiator): assemble the input the agentbench MCP
+ * helpers need — current `geminiMcpBridgeEnabled` toggle + the same
+ * bridge argv Gemini/Codex use. Centralised so SDK and CLI paths build
+ * identical config (the bridge binary path, socket path, and broker
+ * token are all module-scoped already).
+ */
+function claudeAgentbenchMcpInput(): ClaudeAgentbenchMcpInput {
+  const enabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
+  return {
+    enabled,
+    bridgeBinaryPath: process.execPath,
+    bridgeArgs: [
+      GEMINI_MCP_BRIDGE_ARG,
+      GEMINI_MCP_SOCKET_ARG,
+      geminiMcpSocketPath(),
+      GEMINI_MCP_TOKEN_ARG,
+      geminiMcpBrokerToken
+    ]
   }
 }
 
@@ -3788,6 +3833,23 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
   const thinkingBudgetSdk = payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
     ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
     : null
+  // Phase I3 (Claude initiator): register the agentbench MCP server so
+  // the Claude agent sees delegate_to_subthread etc. in its tool list.
+  // Gated on the same `geminiMcpBridgeEnabled` toggle Gemini/Codex use
+  // so the user can disable cross-provider MCP from one place.
+  const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput())
+  // Belt-and-braces env stamp on the SDK process: in addition to the
+  // per-server env block in the MCP config, set AGENTBENCH_PARENT_PROVIDER
+  // on the Claude CLI process itself. Some platforms / SDK code paths
+  // strip the MCP env block when re-spawning the bridge, so the value
+  // should also be inheritable from the parent. When the SDK env option
+  // is set, it REPLACES process.env entirely — so we splat process.env
+  // first to preserve the user's PATH etc.
+  const claudeSdkEnv: Record<string, string | undefined> = {
+    ...(process.env as Record<string, string | undefined>),
+    AGENTBENCH_PARENT_PROVIDER: 'claude',
+    ...(claudeApiKey ? { ANTHROPIC_API_KEY: claudeApiKey } : {})
+  }
   const stream = query({
     prompt: payload.prompt,
     options: {
@@ -3800,7 +3862,8 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
       ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       ...(payload.imagePaths?.length ? { images: payload.imagePaths } : {}),
       ...(thinkingBudgetSdk ? { maxThinkingTokens: thinkingBudgetSdk } : {}),
-      ...(claudeApiKey ? { env: { ANTHROPIC_API_KEY: claudeApiKey } } : {})
+      ...(claudeSdkMcpServers ? { mcpServers: claudeSdkMcpServers } : {}),
+      env: claudeSdkEnv
     }
   })
 
@@ -3853,7 +3916,7 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   const model = normalizeCliProviderModel('claude', payload.model)
-  const args = buildClaudeCliArgs({
+  const baseArgs = buildClaudeCliArgs({
     prompt: payload.prompt,
     permissionMode: claudePermissionModeForApproval(payload.approvalMode),
     model,
@@ -3861,14 +3924,83 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     claudeReasoningEffort: payload.claudeReasoningEffort || null,
     imagePaths: payload.imagePaths || null
   })
+  // Phase I3 (Claude initiator): the Claude CLI does not accept the
+  // SDK's `mcpServers` object directly — it expects `--mcp-config
+  // <path>` pointing at a JSON file. Write a per-run config under the
+  // OS temp dir, extend the argv with `--mcp-config` + `--allowedTools`,
+  // and clean up the temp file when the run exits.
+  const mcpInput = claudeAgentbenchMcpInput()
+  let mcpConfigPath: string | null = null
+  let args = baseArgs
+  if (mcpInput.enabled) {
+    const configJson = buildClaudeAgentbenchMcpConfigJson(mcpInput)
+    if (configJson) {
+      mcpConfigPath = claudeAgentbenchMcpConfigPathForRun(route.appRunId || 'unknown')
+      try {
+        await fs.writeFile(mcpConfigPath, JSON.stringify(configJson), { encoding: 'utf8', mode: 0o600 })
+        args = extendClaudeCliArgsWithAgentbenchMcp(baseArgs, {
+          ...mcpInput,
+          configFilePath: mcpConfigPath
+        })
+      } catch (error) {
+        // Failing to write the temp file is not fatal: log + carry on
+        // without the MCP server registered (the Claude agent will then
+        // simply not see delegate_to_subthread). We surface a warning
+        // so the user can see why cross-provider delegation isn't
+        // wired up.
+        sendAgentCompatError(
+          event.sender,
+          'claude',
+          `Failed to write Claude MCP config (${mcpConfigPath}); cross-provider delegation tools will not be available for this run. Reason: ${error instanceof Error ? error.message : String(error)}`,
+          route
+        )
+        mcpConfigPath = null
+        args = baseArgs
+      }
+    }
+  }
   const claudeKey = getStoredClaudeApiKey()
+  // Belt-and-braces env stamp: some platforms strip env on subprocess
+  // spawn, so set AGENTBENCH_PARENT_PROVIDER on the Claude CLI process
+  // env in addition to the per-server env block in the MCP config.
+  // The bridge subprocess, started by the CLI's MCP host, then inherits
+  // it regardless of how the host propagates env.
+  const claudeProcessExtraEnv: Record<string, string> = {
+    AGENTBENCH_PARENT_PROVIDER: 'claude',
+    ...(claudeKey ? { ANTHROPIC_API_KEY: claudeKey } : {})
+  }
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
     fallback: true,
     warning: sdk
       ? `Using Claude Code CLI fallback for this run. ${claudeProgrammaticUsageWarning('cli-print', Boolean(claudeKey))}`
       : `Claude Agent SDK is not bundled in this app build; using Claude Code CLI stream-json fallback for this run. ${claudeProgrammaticUsageWarning('cli-print', Boolean(claudeKey))}`,
-    extraEnv: claudeKey ? { ANTHROPIC_API_KEY: claudeKey } : undefined
+    extraEnv: claudeProcessExtraEnv,
+    onComplete: mcpConfigPath ? async () => {
+      try {
+        await fs.unlink(mcpConfigPath!)
+      } catch {
+        // Best-effort cleanup; ignore missing or permission errors.
+      }
+    } : undefined
   })
+}
+
+/**
+ * Phase I3 (Claude initiator): stable per-run path for the temp JSON
+ * file consumed by `claude --mcp-config <path>`. Uses `os.tmpdir()`
+ * (resolved via `app.getPath('temp')` when Electron is available so
+ * macOS sandboxed builds get the right per-app temp dir).
+ */
+function claudeAgentbenchMcpConfigPathForRun(runId: string): string {
+  const tempDir = (() => {
+    try {
+      return app.getPath('temp')
+    } catch {
+      return os.tmpdir()
+    }
+  })()
+  const safeRunId = String(runId).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 80)
+  return join(tempDir, `agbench-claude-mcp-${safeRunId}.json`)
 }
 
 function respondToKimiWireRequest(child: ChildProcess, requestId: string | number, result: any) {

@@ -246,5 +246,51 @@ describe('PermissionService', () => {
         service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
       ).toBe('ask')
     })
+
+    // Phase I3 (Claude initiator): with Claude now able to spawn cross-
+    // provider sub-threads via the agentbench MCP server, the gate must
+    // route through 'provider: claude' on every broker request. Pin the
+    // ask + grant + provider-scope semantics for the Claude path so the
+    // approval modal and workspace-grant logic stay symmetric with
+    // Gemini/Codex.
+    it("Claude-initiated delegation triggers the gate with provider: 'claude'", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      // Default 'ask' policy: every Claude-initiated delegate_to_subthread
+      // hits the approval modal until a grant exists.
+      expect(
+        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, settings).decision
+      ).toBe('ask')
+    })
+
+    it("Claude workspace grant auto-allows subsequent Claude delegations (and only Claude's)", () => {
+      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const withClaudeGrant: AppSettings = {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          subThreadDelegation: 'workspace'
+        },
+        agenticWorkspaceGrants: [{
+          id: 'grant-claude-delegation',
+          provider: 'claude',
+          service: 'subThreadDelegation',
+          workspacePath: '/repo',
+          createdAt: '2026-05-16T00:00:00.000Z',
+          updatedAt: '2026-05-16T00:00:00.000Z'
+        }]
+      }
+      // Claude parent → allow.
+      expect(
+        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+      ).toBe('allow')
+      // Gemini parent → still ask (provider-scoped grant).
+      expect(
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+      ).toBe('ask')
+      // Codex parent → still ask.
+      expect(
+        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+      ).toBe('ask')
+    })
   })
 })
