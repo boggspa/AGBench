@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+@preconcurrency import Network
 import BridgeCore
 import BridgeCryptoPairing
 import BridgeLANTransport
@@ -33,26 +34,47 @@ import BridgeLANTransport
 ///     (`BridgeActionPayload.registerApnsToken`) so a UI can compose and
 ///     `sendAction` it; the token-store integration is desktop-side.
 public actor GuiGeminiBridgeClient {
+    public enum ActiveRoute: String, Sendable, Equatable {
+        case tailnet = "Tailnet"
+        case lan = "LAN"
+    }
+
     public struct Pair: Sendable {
         public let pairID: PairID
         public let controllerDeviceID: DeviceID
         public let macDeviceID: DeviceID
         public let macToControllerKey: SymmetricKey
         public let controllerToMacKey: SymmetricKey
+        public let tailscaleEndpointHint: String?
 
         public init(
             pairID: PairID,
             controllerDeviceID: DeviceID,
             macDeviceID: DeviceID,
-            derivedKeys: PairingDerivedKeys
+            derivedKeys: PairingDerivedKeys,
+            tailscaleEndpointHint: String? = nil
         ) {
             self.pairID = pairID
             self.controllerDeviceID = controllerDeviceID
             self.macDeviceID = macDeviceID
             self.macToControllerKey = derivedKeys.macToControllerKey
             self.controllerToMacKey = derivedKeys.controllerToMacKey
+            self.tailscaleEndpointHint = tailscaleEndpointHint
         }
     }
+
+    struct RouteSelection: Sendable, Equatable {
+        let activeRoute: ActiveRoute
+        let tailscaleEndpoint: BridgeDirectEndpoint?
+        let transportPreference: BridgeDirectTransportPreference
+    }
+
+    typealias EndpointProbe = @Sendable (
+        BridgeDirectEndpoint,
+        TimeInterval,
+        DirectNetworkProtocol,
+        DirectQUICSecurity?
+    ) async -> Bool
 
     /// GUIGemini Bonjour service types — keep in sync with
     /// `BridgeProductConfiguration.guiGemini` on the desktop daemon.
@@ -71,14 +93,27 @@ public actor GuiGeminiBridgeClient {
     /// Most UI doesn't need these; exposed for diagnostics + future
     /// thread-watch / subscription state tracking.
     public nonisolated let otherInbound: AsyncStream<BridgeInboundEnvelope>
+    public nonisolated let activeRoute: AsyncStream<ActiveRoute>
 
-    private let controller: LANBridgeController
+    private let pair: Pair
+    private let networkProtocol: DirectNetworkProtocol
+    private let quicSecurity: DirectQUICSecurity?
+    private let requestedTransportPreference: BridgeDirectTransportPreference
+    private let explicitTailscaleEndpoint: BridgeDirectEndpoint?
+    private let endpointProbe: EndpointProbe
+    private let tailnetProbeTimeout: TimeInterval
+    private var controller: LANBridgeController?
     private let runEventsContinuation: AsyncStream<BridgeRunEvent>.Continuation
+    private let statusContinuation: AsyncStream<BridgeTransportStatus>.Continuation
     private let otherInboundContinuation: AsyncStream<BridgeInboundEnvelope>.Continuation
+    private let activeRouteContinuation: AsyncStream<ActiveRoute>.Continuation
 
     private var inboundForwarderTask: Task<Void, Never>?
     private var statusForwarderTask: Task<Void, Never>?
+    private var selectedRoute: RouteSelection?
     private var didStart = false
+
+    static let defaultTailscalePort: UInt16 = 38_747
 
     public init(
         pair: Pair,
@@ -87,38 +122,49 @@ public actor GuiGeminiBridgeClient {
         tailscaleEndpoint: BridgeDirectEndpoint? = nil,
         transportPreference: BridgeDirectTransportPreference = .automatic
     ) {
-        let serviceType: String
-        switch networkProtocol {
-        case .quic: serviceType = ServiceType.quic
-        case .tcp: serviceType = ServiceType.tcp
-        @unknown default: serviceType = ServiceType.quic
-        }
-        self.controller = LANBridgeController(
-            configuration: LANBridgeController.Configuration(
-                serviceType: serviceType,
-                pairID: pair.pairID,
-                controllerDeviceID: pair.controllerDeviceID,
-                macDeviceID: pair.macDeviceID,
-                macToControllerKey: pair.macToControllerKey,
-                controllerToMacKey: pair.controllerToMacKey,
-                tailscaleEndpoint: tailscaleEndpoint,
-                transportPreference: transportPreference,
-                networkProtocol: networkProtocol,
-                quicSecurity: quicSecurity
-            )
+        self.init(
+            pair: pair,
+            networkProtocol: networkProtocol,
+            quicSecurity: quicSecurity,
+            tailscaleEndpoint: tailscaleEndpoint,
+            transportPreference: transportPreference,
+            tailnetProbeTimeout: 5,
+            endpointProbe: Self.probeTailscaleEndpoint
         )
+    }
+
+    init(
+        pair: Pair,
+        networkProtocol: DirectNetworkProtocol = .quic,
+        quicSecurity: DirectQUICSecurity? = nil,
+        tailscaleEndpoint: BridgeDirectEndpoint? = nil,
+        transportPreference: BridgeDirectTransportPreference = .automatic,
+        tailnetProbeTimeout: TimeInterval,
+        endpointProbe: @escaping EndpointProbe
+    ) {
+        self.pair = pair
+        self.networkProtocol = networkProtocol
+        self.quicSecurity = quicSecurity
+        self.requestedTransportPreference = transportPreference
+        self.explicitTailscaleEndpoint = tailscaleEndpoint
+        self.endpointProbe = endpointProbe
+        self.tailnetProbeTimeout = tailnetProbeTimeout
 
         var runEventsCont: AsyncStream<BridgeRunEvent>.Continuation!
         self.runEvents = AsyncStream(bufferingPolicy: .bufferingNewest(1_024)) { runEventsCont = $0 }
         self.runEventsContinuation = runEventsCont
 
+        var statusCont: AsyncStream<BridgeTransportStatus>.Continuation!
+        self.status = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { statusCont = $0 }
+        self.statusContinuation = statusCont
+
         var otherInboundCont: AsyncStream<BridgeInboundEnvelope>.Continuation!
         self.otherInbound = AsyncStream(bufferingPolicy: .bufferingNewest(256)) { otherInboundCont = $0 }
         self.otherInboundContinuation = otherInboundCont
 
-        // The underlying controller's status stream is buffer-1; we
-        // pass-through directly so consumers see the most recent state.
-        self.status = controller.status
+        var activeRouteCont: AsyncStream<ActiveRoute>.Continuation!
+        self.activeRoute = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { activeRouteCont = $0 }
+        self.activeRouteContinuation = activeRouteCont
     }
 
     /// Begin browsing for the paired Mac, connect, and start forwarding
@@ -126,11 +172,28 @@ public actor GuiGeminiBridgeClient {
     public func start() async {
         guard !didStart else { return }
         didStart = true
+        let route = await Self.selectRoute(
+            tailscaleEndpoint: explicitTailscaleEndpoint ?? Self.tailscaleEndpoint(from: pair.tailscaleEndpointHint),
+            requestedPreference: requestedTransportPreference,
+            networkProtocol: networkProtocol,
+            quicSecurity: quicSecurity,
+            probeTimeout: tailnetProbeTimeout,
+            probe: endpointProbe
+        )
+        selectedRoute = route
+        activeRouteContinuation.yield(route.activeRoute)
+
+        let controller = makeController(route: route)
+        self.controller = controller
+
         // Kick off the inbound forwarder before starting the controller
         // so the buffer doesn't drop the hello envelope.
         let runEventsCont = self.runEventsContinuation
+        let statusCont = self.statusContinuation
         let otherInboundCont = self.otherInboundContinuation
+        let activeRouteCont = self.activeRouteContinuation
         let controllerInbound = controller.inbound
+        let controllerStatus = controller.status
         inboundForwarderTask = Task { [weak self] in
             for await envelope in controllerInbound {
                 await self?.handle(envelope: envelope,
@@ -138,24 +201,39 @@ public actor GuiGeminiBridgeClient {
                                    otherInboundContinuation: otherInboundCont)
             }
         }
+        statusForwarderTask = Task {
+            for await status in controllerStatus {
+                statusCont.yield(status)
+                guard status.reachable,
+                      let route = Self.activeRoute(for: status.kind)
+                else { continue }
+                activeRouteCont.yield(route)
+            }
+        }
         await controller.start()
     }
 
     /// Tear down all transport state and forwarder tasks. Idempotent.
     public func stop() async {
-        await controller.stop()
+        await controller?.stop()
+        controller = nil
         inboundForwarderTask?.cancel()
         inboundForwarderTask = nil
         statusForwarderTask?.cancel()
         statusForwarderTask = nil
         runEventsContinuation.finish()
+        statusContinuation.finish()
         otherInboundContinuation.finish()
+        activeRouteContinuation.finish()
+        selectedRoute = nil
+        didStart = false
     }
 
     /// Encode a typed `BridgeActionPayload` and ship it via the
     /// controller's `sendActionRecord`. Returns the desktop's typed ack
     /// or nil if no response arrived within the controller's timeout.
     public func sendAction(_ action: BridgeActionPayload) async throws -> BridgeActionAck? {
+        guard let controller else { return nil }
         let bytes = try action.encode()
         return await controller.sendActionRecord(payloadData: bytes)
     }
@@ -165,16 +243,134 @@ public actor GuiGeminiBridgeClient {
     /// the workspace/provider/approvalMode combination before sending the
     /// actual `composerPrompt` action.
     public func sendPrepareStartTurn(_ request: BridgePrepareStartTurnRequest) async -> BridgePrepareStartTurnAck? {
-        await controller.sendPrepareStartTurn(request)
+        guard let controller else { return nil }
+        return await controller.sendPrepareStartTurn(request)
     }
 
     /// Tell the desktop which threads this device is currently watching
     /// so the desktop can scope event-broadcast filtering.
     public func sendWatchedThreads(threadIDs: [String]) async -> Bool {
-        await controller.sendWatchedThreads(threadIDs: threadIDs)
+        guard let controller else { return false }
+        return await controller.sendWatchedThreads(threadIDs: threadIDs)
     }
 
     // MARK: - Private
+
+    private func makeController(route: RouteSelection) -> LANBridgeController {
+        let serviceType: String
+        switch networkProtocol {
+        case .quic: serviceType = ServiceType.quic
+        case .tcp: serviceType = ServiceType.tcp
+        @unknown default: serviceType = ServiceType.quic
+        }
+        return LANBridgeController(
+            configuration: LANBridgeController.Configuration(
+                serviceType: serviceType,
+                pairID: pair.pairID,
+                controllerDeviceID: pair.controllerDeviceID,
+                macDeviceID: pair.macDeviceID,
+                macToControllerKey: pair.macToControllerKey,
+                controllerToMacKey: pair.controllerToMacKey,
+                tailscaleEndpoint: route.tailscaleEndpoint,
+                transportPreference: route.transportPreference,
+                networkProtocol: networkProtocol,
+                quicSecurity: quicSecurity
+            )
+        )
+    }
+
+    static func tailscaleEndpoint(from hint: String?) -> BridgeDirectEndpoint? {
+        guard let hint else { return nil }
+        return BridgeDirectEndpoint(rawValue: hint, defaultPort: defaultTailscalePort)
+    }
+
+    static func selectRoute(
+        tailscaleEndpoint: BridgeDirectEndpoint?,
+        requestedPreference: BridgeDirectTransportPreference,
+        networkProtocol: DirectNetworkProtocol,
+        quicSecurity: DirectQUICSecurity?,
+        probeTimeout: TimeInterval,
+        probe: EndpointProbe
+    ) async -> RouteSelection {
+        guard requestedPreference.allowsTailscale,
+              let tailscaleEndpoint
+        else {
+            return RouteSelection(
+                activeRoute: .lan,
+                tailscaleEndpoint: nil,
+                transportPreference: .bonjour
+            )
+        }
+
+        let isReachable = await probe(
+            tailscaleEndpoint,
+            probeTimeout,
+            networkProtocol,
+            quicSecurity
+        )
+        if isReachable {
+            return RouteSelection(
+                activeRoute: .tailnet,
+                tailscaleEndpoint: tailscaleEndpoint,
+                transportPreference: .tailscale
+            )
+        }
+
+        return RouteSelection(
+            activeRoute: .lan,
+            tailscaleEndpoint: nil,
+            transportPreference: .bonjour
+        )
+    }
+
+    static func probeTailscaleEndpoint(
+        _ endpoint: BridgeDirectEndpoint,
+        timeout: TimeInterval,
+        networkProtocol: DirectNetworkProtocol,
+        quicSecurity: DirectQUICSecurity?
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let flag = OneShotFlag()
+            let connection = NWConnection(
+                to: endpoint.nwEndpoint,
+                using: networkProtocol.parameters(quicSecurity: quicSecurity)
+            )
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    if flag.tryResolve() {
+                        continuation.resume(returning: true)
+                        connection.cancel()
+                    }
+                case .failed, .cancelled:
+                    if flag.tryResolve() {
+                        continuation.resume(returning: false)
+                        connection.cancel()
+                    }
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .global())
+            Task {
+                try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                guard flag.tryResolve() else { return }
+                continuation.resume(returning: false)
+                connection.cancel()
+            }
+        }
+    }
+
+    static func activeRoute(for kind: BridgeTransportKind) -> ActiveRoute? {
+        switch kind {
+        case .quicTailscale, .tailscale:
+            return .tailnet
+        case .quicBonjour, .lanBonjour:
+            return .lan
+        case .cloudKit:
+            return nil
+        }
+    }
 
     /// Decide whether an inbound envelope is one of our typed run events
     /// (route to `runEvents`) or a different transport payload (route to
@@ -195,5 +391,18 @@ public actor GuiGeminiBridgeClient {
             }
         }
         otherInboundContinuation.yield(envelope)
+    }
+}
+
+private final class OneShotFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resolved = false
+
+    func tryResolve() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if resolved { return false }
+        resolved = true
+        return true
     }
 }

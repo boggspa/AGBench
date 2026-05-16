@@ -27,6 +27,7 @@ final class KeychainPairStorageTests: XCTestCase {
             controllerDeviceID: DeviceID("iphone-1"),
             macDeviceID: DeviceID("mac-1"),
             macDisplayName: "Chris's Mac",
+            tailscaleEndpointHint: nil,
             createdAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
     }
@@ -70,12 +71,20 @@ final class KeychainPairStorageTests: XCTestCase {
 
     func testSaveAndLoadPairRoundTrip() async throws {
         let storage = makeStorage()
-        let record = sampleRecord()
+        let record = KeychainPairStorage.PairRecord(
+            pairID: PairID("pair-1"),
+            controllerDeviceID: DeviceID("iphone-1"),
+            macDeviceID: DeviceID("mac-1"),
+            macDisplayName: "Chris's Mac",
+            tailscaleEndpointHint: "100.64.10.20:38747",
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
         let derived = sampleDerivedKeys()
         try await storage.savePair(record, derivedKeys: derived)
         let loaded = try await storage.loadPair(pairID: record.pairID)
         XCTAssertNotNil(loaded)
         XCTAssertEqual(loaded?.record, record)
+        XCTAssertEqual(loaded?.record.tailscaleEndpointHint, "100.64.10.20:38747")
         XCTAssertEqual(
             loaded?.derivedKeys.pairRootKey.withUnsafeBytes { Data($0) },
             derived.pairRootKey.withUnsafeBytes { Data($0) }
@@ -139,12 +148,14 @@ final class KeychainPairStorageTests: XCTestCase {
             controllerDeviceID: DeviceID("iphone-1"),
             macDeviceID: DeviceID("mac-2"),  // <-- changed
             macDisplayName: "Other Mac",
+            tailscaleEndpointHint: "100.64.10.21:38747",
             createdAt: Date()
         )
         try await storage.savePair(recordA, derivedKeys: sampleDerivedKeys())
         try await storage.savePair(recordB, derivedKeys: sampleDerivedKeys())
         let loaded = try await storage.loadPair(pairID: PairID("pair-1"))
         XCTAssertEqual(loaded?.record.macDeviceID.rawValue, "mac-2")
+        XCTAssertEqual(loaded?.record.tailscaleEndpointHint, "100.64.10.21:38747")
         // Index should still contain only one entry.
         let all = try await storage.loadAllPairs()
         XCTAssertEqual(all.count, 1)

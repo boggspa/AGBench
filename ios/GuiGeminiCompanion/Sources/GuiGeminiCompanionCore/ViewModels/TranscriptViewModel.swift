@@ -22,11 +22,14 @@ public final class TranscriptViewModel {
     /// Latest connection status seen on the client's `status` stream.
     /// nil until first observed.
     public private(set) var lastStatus: String?
+    /// Human-readable direct route currently carrying the bridge.
+    public private(set) var activeRouteLabel: String?
 
     public let maxRetained: Int
 
     private var runEventsTask: Task<Void, Never>?
     private var statusTask: Task<Void, Never>?
+    private var routeTask: Task<Void, Never>?
 
     public init(maxRetained: Int = 500) {
         self.maxRetained = maxRetained
@@ -41,12 +44,18 @@ public final class TranscriptViewModel {
         let status = client.status
         runEventsTask = Task { [weak self] in
             for await event in runEvents {
-                await self?.append(event)
+                self?.append(event)
             }
         }
         statusTask = Task { [weak self] in
             for await status in status {
-                await self?.update(status: status)
+                self?.update(status: status)
+            }
+        }
+        let activeRoute = client.activeRoute
+        routeTask = Task { [weak self] in
+            for await route in activeRoute {
+                self?.update(route: route)
             }
         }
     }
@@ -56,6 +65,8 @@ public final class TranscriptViewModel {
         runEventsTask = nil
         statusTask?.cancel()
         statusTask = nil
+        routeTask?.cancel()
+        routeTask = nil
     }
 
     /// Wipe the buffer — usually wired to a "clear transcript" button.
@@ -75,6 +86,13 @@ public final class TranscriptViewModel {
     private func update(status: BridgeTransportStatus) {
         // BridgeTransportStatus is a struct with a diagnostic shape; we
         // surface a short single-line summary for the view's status pill.
+        if status.reachable {
+            activeRouteLabel = GuiGeminiBridgeClient.activeRoute(for: status.kind)?.rawValue
+        }
         lastStatus = "\(status)"
+    }
+
+    private func update(route: GuiGeminiBridgeClient.ActiveRoute) {
+        activeRouteLabel = route.rawValue
     }
 }

@@ -8,7 +8,10 @@ import BridgeCryptoPairing
 final class PairingFlowTests: XCTestCase {
     /// Build a fresh PairingBootstrapPayload (as the Mac would emit) so
     /// we can feed it into the controller-side flow.
-    private func makeBootstrap(expiresIn: TimeInterval = 300) -> (
+    private func makeBootstrap(
+        expiresIn: TimeInterval = 300,
+        tailscaleEndpointHint: String? = nil
+    ) -> (
         bootstrap: PairingBootstrapPayload,
         macPrivateKey: P256.KeyAgreement.PrivateKey
     ) {
@@ -23,7 +26,7 @@ final class PairingFlowTests: XCTestCase {
             macNonce: macNonce,
             expiresAt: Date().addingTimeInterval(expiresIn),
             bonjourServiceName: "_test._tcp",
-            tailscaleEndpointHint: nil,
+            tailscaleEndpointHint: tailscaleEndpointHint,
             quicTransportCertificateSHA256: nil
         )
         return (bootstrap, macPrivate)
@@ -41,9 +44,18 @@ final class PairingFlowTests: XCTestCase {
         let json = try encodeBootstrap(bootstrap)
         let started = try PairingFlow.scan(bootstrapJSON: json)
         XCTAssertEqual(started.bootstrap.pairingSessionID, bootstrap.pairingSessionID)
+        XCTAssertNil(started.bootstrap.tailscaleEndpointHint)
         XCTAssertEqual(started.controllerNonce.count, 32)
         // Public key is derivable from the staged private key.
         XCTAssertFalse(started.controllerPrivateKey.publicKey.rawRepresentation.isEmpty)
+    }
+
+    func testScanParsesBootstrapWithTailscaleEndpointHint() throws {
+        let (bootstrap, _) = makeBootstrap(tailscaleEndpointHint: "100.64.10.20:38747")
+        let json = try encodeBootstrap(bootstrap)
+        let started = try PairingFlow.scan(bootstrapJSON: json)
+        XCTAssertEqual(started.bootstrap.pairingSessionID, bootstrap.pairingSessionID)
+        XCTAssertEqual(started.bootstrap.tailscaleEndpointHint, "100.64.10.20:38747")
     }
 
     func testScanRejectsExpiredBootstrap() throws {

@@ -110,7 +110,8 @@ public final class PairingViewModel {
             pairID: pairID,
             controllerDeviceID: response.controllerDeviceID,
             macDeviceID: stagedFlow!.bootstrap.macDeviceID,
-            derivedKeys: derivedKeys
+            derivedKeys: derivedKeys,
+            tailscaleEndpointHint: stagedFlow!.bootstrap.tailscaleEndpointHint
         )
         state = .confirmed
     }

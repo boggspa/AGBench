@@ -60,7 +60,9 @@ public struct TranscriptView: View {
                     .foregroundStyle(Theme.Text.secondary)
             }
             Spacer()
-            if let status = viewModel.lastStatus {
+            if let route = viewModel.activeRouteLabel {
+                statusPill(route)
+            } else if let status = viewModel.lastStatus {
                 statusPill(status)
             }
             Button(action: viewModel.clear) {

@@ -51,6 +51,9 @@ public actor KeychainPairStorage {
         /// Optional display name reported by the Mac in the bootstrap
         /// (helps the UI label which Mac this is).
         public let macDisplayName: String?
+        /// Optional tailnet endpoint advertised during pairing. Safe to
+        /// ignore if stale or missing; LAN discovery remains the fallback.
+        public let tailscaleEndpointHint: String?
         public let createdAt: Date
 
         public init(
@@ -58,12 +61,14 @@ public actor KeychainPairStorage {
             controllerDeviceID: DeviceID,
             macDeviceID: DeviceID,
             macDisplayName: String? = nil,
+            tailscaleEndpointHint: String? = nil,
             createdAt: Date = Date()
         ) {
             self.pairID = pairID
             self.controllerDeviceID = controllerDeviceID
             self.macDeviceID = macDeviceID
             self.macDisplayName = macDisplayName
+            self.tailscaleEndpointHint = tailscaleEndpointHint
             self.createdAt = createdAt
         }
     }

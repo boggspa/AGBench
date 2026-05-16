@@ -7,11 +7,12 @@ import GuiGeminiCompanionCore
 /// once available.
 struct RootView: View {
     @Bindable var appState: AppState
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         Group {
             if appState.isPaired {
-                MainTabs(appState: appState)
+                pairedContent
                     .transition(.asymmetric(
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .scale(scale: 0.98).combined(with: .opacity)
@@ -37,6 +38,26 @@ struct RootView: View {
                 Task { await appState.connect(with: pair) }
             }
         }
+    }
+
+    @ViewBuilder
+    private var pairedContent: some View {
+        if horizontalSizeClass == .regular {
+            iPadShell(appState: appState)
+        } else {
+            MainTabs(appState: appState)
+        }
+    }
+}
+
+@available(iOS 17.0, *)
+private extension iPadShell {
+    init(appState: AppState) {
+        self.init(
+            transcriptViewModel: appState.transcriptViewModel,
+            approvalViewModel: appState.approvalViewModel,
+            composerViewModel: appState.composerViewModel
+        )
     }
 }
 

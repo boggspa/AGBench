@@ -7,7 +7,10 @@ import BridgeCryptoPairing
 
 @MainActor
 final class PairingViewModelTests: XCTestCase {
-    private func makeBootstrapJSON(expiresIn: TimeInterval = 300) -> Data {
+    private func makeBootstrapJSON(
+        expiresIn: TimeInterval = 300,
+        tailscaleEndpointHint: String? = nil
+    ) -> Data {
         let macPrivate = P256.KeyAgreement.PrivateKey()
         let macIdentity = DeviceIdentitySigningKey()
         let macNonce = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
@@ -19,7 +22,7 @@ final class PairingViewModelTests: XCTestCase {
             macNonce: macNonce,
             expiresAt: Date().addingTimeInterval(expiresIn),
             bonjourServiceName: "_test._tcp",
-            tailscaleEndpointHint: nil,
+            tailscaleEndpointHint: tailscaleEndpointHint,
             quicTransportCertificateSHA256: nil
         )
         let encoder = JSONEncoder()
@@ -73,6 +76,14 @@ final class PairingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.state, .confirmed)
         XCTAssertNotNil(vm.confirmedPair)
         XCTAssertEqual(vm.confirmedPair?.controllerDeviceID.rawValue.isEmpty, false)
+    }
+
+    func testConfirmAfterScanCarriesTailscaleEndpointHint() {
+        let vm = PairingViewModel(controllerDisplayName: "iPhone Test")
+        vm.scan(bootstrapJSON: makeBootstrapJSON(tailscaleEndpointHint: "100.64.10.20:38747"))
+        vm.confirm()
+        XCTAssertEqual(vm.state, .confirmed)
+        XCTAssertEqual(vm.confirmedPair?.tailscaleEndpointHint, "100.64.10.20:38747")
     }
 
     func testConfirmFromIdleFails() {
