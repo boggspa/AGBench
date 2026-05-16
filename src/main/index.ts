@@ -24,6 +24,7 @@ import {
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
+import { ApprovalService, handleApprovalTimeout } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
@@ -107,33 +108,26 @@ const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 let geminiMcpBridgeInstalledForCurrentToken = false
 
 // Late-bound APNs handles. Constructed inside `app.whenReady()` (because
-// the token store needs `app.getPath('userData')`), but exposed at module
-// scope so the top-level approval-routing helpers — `requestMainApproval`,
-// `requestGeminiToolApproval`, the Codex/Kimi/host-command approval paths
-// — can fan out a wake-push to paired iOS devices without crossing into
-// the whenReady closure. Both stay `null` until whenReady fires; the
-// notify helper is a no-op until they're set.
+// the token store needs `app.getPath('userData')`). Kept at module scope
+// so the ApprovalService can read them via the `getApnsPusher` /
+// `getApnsTokenStore` deps it's constructed with.
 let bridgeApnsTokenStoreRef: BridgeApnsTokenStore | null = null
 let bridgeApnsPusherRef: BridgeApnsPusher | null = null
 
-// Late-bound approval timeout scheduler. Same module-scope pattern as
-// the APNs refs — constructed in whenReady (because the timeout
-// callback closes over `processAgentApprovalResponse`, which is also
-// inside whenReady), but reachable from the top-level approval
-// helpers via this ref so each `pending*Approvals.set(...)` site can
-// arm a timer. Stays null until whenReady; schedule helper is a
-// no-op until set.
-let approvalTimeoutSchedulerRef: ApprovalTimeoutScheduler | null = null
+// Phase B3: late-bound ApprovalService. Owns the five pending-approval
+// registries + the scheduled-timeout integration + the APNs wake-push
+// fan-out. Stays null until whenReady constructs it; the module-level
+// `scheduleApprovalTimeout` / `notifyPairedDevicesOfApproval` /
+// `workspaceIdForApprovalPush` helpers are thin proxies that no-op
+// until the service is ready.
+let approvalService: ApprovalService | null = null
 
 /**
- * Convenience wrapper around `approvalTimeoutSchedulerRef?.schedule(...)`
- * so the .set() call sites stay terse. Logs the resolved timeout to
- * the durable run-event log so the audit trail records "this approval
- * has a Ns deadline" the moment it's armed.
- *
- * Reads the user's `approvalTimeouts` settings on every call so a UI
- * change takes effect on the next approval without restart. A
- * disabled gate (settings or env var) is a silent no-op.
+ * Phase B3 — thin proxy. Delegates to `approvalService.scheduleTimeout`
+ * once the service is initialized. Kept at module scope so the
+ * existing `pending*Approvals.set` call sites (which currently live
+ * scattered through `runXxxProvider` functions) can call into the
+ * service without changing every site to pass the service explicitly.
  */
 function scheduleApprovalTimeout(args: {
   approvalId: string
@@ -142,56 +136,7 @@ function scheduleApprovalTimeout(args: {
   isMainAuthority?: boolean
   kind?: string
 }): void {
-  const scheduler = approvalTimeoutSchedulerRef
-  if (!scheduler) return
-  if (process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === '1' ||
-      process.env.AGBENCH_APPROVAL_TIMEOUT_OFF === 'true') {
-    return
-  }
-  // Read user-tunable timeouts from settings (Phase E1.1). If the
-  // settings haven't been persisted yet, the store fills in the
-  // plan-file defaults via `defaultSettings`.
-  const userSettings = AppStore.getSettings()
-  if (!userSettings.approvalTimeouts.enabled) return
-  const userPerProvider = userSettings.approvalTimeouts.perProviderMs
-  scheduler.updatePolicy({
-    defaultTimeoutsMs: {
-      gemini: userPerProvider.gemini,
-      codex: userPerProvider.codex,
-      claude: userPerProvider.claude,
-      kimi: userPerProvider.kimi
-    },
-    mainTimeoutMs: userSettings.approvalTimeouts.mainAuthorityMs
-  })
-  const { appliedMs, source } = scheduler.schedule({
-    approvalId: args.approvalId,
-    provider: args.provider,
-    isMainAuthority: args.isMainAuthority,
-    kind: args.kind
-  })
-  // Best-effort durable trace so the ledger UX can show "armed for 30s".
-  // The route may be missing for very early approvals — skip then.
-  if (args.route?.appRunId) {
-    try {
-      appendDurableRunEventForRoute(
-        args.provider,
-        args.route,
-        'approval_timer_armed',
-        'control',
-        `Approval timer armed: ${appliedMs}ms`,
-        {
-          approvalId: args.approvalId,
-          appliedMs,
-          source,
-          isMainAuthority: args.isMainAuthority === true,
-          kind: args.kind
-        }
-      )
-    } catch {
-      // appendDurableRunEventForRoute uses the runManager — if the run
-      // isn't yet registered (rare), drop the trace silently.
-    }
-  }
+  approvalService?.scheduleTimeout(args)
 }
 
 /**
@@ -232,77 +177,15 @@ function userIsAtDesktop(): boolean {
  * happens — host commands, Codex permissions/elicitation/userInput,
  * Gemini tool prompts, Kimi prompts, main approval flow.
  */
+/** Phase B3 — thin proxy. Delegates to `approvalService.notifyPairedDevices`
+ * once the service is initialized; no-op until then. */
 function notifyPairedDevicesOfApproval(args: {
   approvalId: string
   workspaceId: string
   threadId: string
   summary: string
 }): void {
-  const tokenStore = bridgeApnsTokenStoreRef
-  const pusher = bridgeApnsPusherRef
-  if (!tokenStore || !pusher) return
-  const tokens = tokenStore.list()
-  if (tokens.length === 0) return
-  // Idle-detection gate: don't waste a push when the user is already at
-  // the desktop — they'll see the in-app modal. Override via env
-  // `AGBENCH_APNS_IDLE_GATE=off`.
-  if (userIsAtDesktop()) {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[APNs] skipping approval push for ${args.approvalId} — user is at desktop`
-    )
-    return
-  }
-  // The Http2ApnsPusher exposes pushApprovalToToken; NoopApnsPusher
-  // doesn't. Duck-type the check rather than narrow by import.
-  const maybePushable = pusher as unknown as {
-    pushApprovalToToken?: (
-      deviceTokenHex: string,
-      env: 'production' | 'sandbox',
-      payload: import('./BridgeApnsPusher').BridgeApprovalPushPayload
-    ) => Promise<import('./BridgeApnsPusher').BridgeApnsPushResult>
-  }
-  if (typeof maybePushable.pushApprovalToToken !== 'function') return
-  for (const entry of tokens) {
-    void (async () => {
-      try {
-        const result = await maybePushable.pushApprovalToToken!(
-          entry.deviceToken,
-          entry.env,
-          {
-            pairID: entry.pairID,
-            workspaceId: args.workspaceId,
-            threadId: args.threadId,
-            toolCallId: args.approvalId,
-            summary: args.summary
-          }
-        )
-        if (!result.delivered) {
-          const reason = result.reason ?? ''
-          // Apple's `Unregistered` (HTTP 410) or `BadDeviceToken` means
-          // this token is permanently dead. Prune.
-          if (/^Unregistered$|^BadDeviceToken$/i.test(reason)) {
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[APNs] pruning dead token for pairID=${entry.pairID}: ${reason}`
-            )
-            tokenStore.remove(entry.pairID)
-          } else if (reason && reason !== 'noop') {
-            // eslint-disable-next-line no-console
-            console.warn(
-              `[APNs] approval push not delivered to pairID=${entry.pairID}: ${reason}`
-            )
-          }
-        }
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[APNs] approval push threw for pairID=${entry.pairID}:`,
-          err instanceof Error ? err.message : String(err)
-        )
-      }
-    })()
-  }
+  approvalService?.notifyPairedDevices(args)
 }
 
 /**
@@ -472,13 +355,10 @@ interface GeminiToolContext {
   providerSessionId?: string | null
 }
 
-interface AgenticApprovalWaiter {
-  provider: ProviderId
-  service: AgenticServiceId
-  workspacePath?: string
-  runId?: string
-  resolve: (allowed: boolean) => void
-}
+// Phase B3: AgenticApprovalWaiter moved into
+// `src/main/services/ApprovalService.ts` as `PendingGeminiToolApproval`.
+// HostCommandApproval is still referenced by `HostCommandResult` callers
+// in `continueCodexAfterHostRerun`, so the interface stays here.
 
 interface HostCommandApproval {
   sender: Electron.WebContents
@@ -550,11 +430,12 @@ const KIMI_CLI_MODEL_ALIASES = new Map<string, string>([
   ['kimi-k2-0711', 'kimi-k2.6'],
   ['kimi-k2-turbo', 'kimi-k2.6']
 ])
-const pendingCodexApprovals = new Map<string, { rpcId: number | string; method: string; params: any; service?: AgenticServiceId; workspacePath?: string; runId?: string }>()
-const pendingKimiApprovals = new Map<string, { child: ChildProcess; rpcId: number | string; params: any; runId?: string }>()
-const pendingGeminiToolApprovals = new Map<string, AgenticApprovalWaiter>()
-const pendingHostCommandApprovals = new Map<string, HostCommandApproval>()
-const pendingMainApprovals = new Map<string, { provider: ProviderId; workspacePath?: string; runId?: string; resolve: (allowed: boolean) => void }>()
+// Phase B3: the five pending-approval registries (pendingCodexApprovals,
+// pendingKimiApprovals, pendingGeminiToolApprovals, pendingHostCommandApprovals,
+// pendingMainApprovals) now live inside the ApprovalService instance
+// constructed in whenReady. All previous `pending*Approvals.set(...)` call
+// sites now call `approvalService.registerXxx(...)`; the unified
+// `processAgentApprovalResponse` is now `approvalService.resolve(...)`.
 const agenticSessionGrants = new Set<string>()
 let activeCodexRunState: CodexRunState | null = null
 const cliProviderProcesses = new Map<ProviderId, ChildProcess>()
@@ -1659,7 +1540,7 @@ async function requestAgenticServiceApproval(
   const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
   const actions = approvalActionsForPolicy(policy, workspacePath)
   return new Promise((resolveApproval) => {
-    pendingGeminiToolApprovals.set(approvalId, {
+    approvalService?.registerGeminiTool(approvalId, {
       provider,
       service,
       workspacePath,
@@ -1732,7 +1613,7 @@ async function requestMainApproval(
   const routed = routeWithRunId(provider, route)
   const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
   return new Promise((resolveApproval) => {
-    pendingMainApprovals.set(approvalId, {
+    approvalService?.registerMain(approvalId, {
       provider,
       workspacePath: request.workspacePath,
       runId: routed.appRunId,
@@ -4189,7 +4070,7 @@ async function runKimiWireProvider(event: Electron.IpcMainInvokeEvent, payload: 
             const requestType = message.params?.type
             if (requestType === 'ApprovalRequest') {
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
-              pendingKimiApprovals.set(approvalId, { child, rpcId: message.id, params: message.params, runId: route.appRunId })
+              approvalService?.registerKimi(approvalId, { child, rpcId: message.id, params: message.params, runId: route.appRunId })
               runManager.registerApproval(route.appRunId, approvalId)
               scheduleApprovalTimeout({
                 approvalId,
@@ -5219,7 +5100,7 @@ function handleCodexServerRequest(message: any) {
   actions.push('acceptForSession', 'decline', 'cancel')
   formatted.preview = { ...(formatted.preview || {}), actions }
 
-  pendingCodexApprovals.set(approvalId, { rpcId: message.id, method, params, service, workspacePath: isGlobalScope ? undefined : state.workspacePath, runId: state.appRunId })
+  approvalService?.registerCodex(approvalId, { rpcId: message.id, method, params, service, workspacePath: isGlobalScope ? undefined : state.workspacePath, runId: state.appRunId })
   runManager.registerApproval(state.appRunId, approvalId)
   scheduleApprovalTimeout({
     approvalId,
@@ -5306,7 +5187,7 @@ function maybeRequestCodexHostRerun(state: CodexRunState, item: any, itemId: str
   const reason = swiftPmNestedSandbox
     ? 'SwiftPM attempted to apply its own sandbox from inside the Codex command sandbox.'
     : 'Codex command failed in the command sandbox with a Swift/Xcode-style sandbox/tooling collision.'
-  pendingHostCommandApprovals.set(approvalId, {
+  approvalService?.registerHostCommand(approvalId, {
     sender: state.sender,
     provider: 'codex',
     command,
@@ -5431,9 +5312,9 @@ async function continueCodexAfterHostRerun(approval: HostCommandApproval, result
 }
 
 async function runApprovedHostCommand(requestId: string): Promise<boolean> {
-  const approval = pendingHostCommandApprovals.get(requestId)
+  const approval = approvalService?.getHostCommand(requestId)
   if (!approval) return false
-  pendingHostCommandApprovals.delete(requestId)
+  approvalService?.deleteHostCommand(requestId)
   runManager.clearApproval(requestId)
   const toolId = `${requestId}-result`
   sendAgentCompatLine(approval.sender, 'codex', {
@@ -8360,7 +8241,8 @@ app.whenReady().then(() => {
       respondApprovalFn: async (requestId, action) => {
         // iOS-side decision values are a strict subset of AgentApprovalAction
         // ('accept' | 'acceptForSession' | 'decline'). Pass-through is safe.
-        return processAgentApprovalResponse(requestId, action)
+        // Phase B3: now routed through approvalService.resolve().
+        return approvalService?.resolve(requestId, action) ?? false
       },
       registerApnsTokenFn: async (action) => {
         // Light validation beyond what the decoder did — same shape the
@@ -9352,354 +9234,55 @@ app.whenReady().then(() => {
     return providerAdapters.require(normalizedProvider).cancel(optionalString(runId))
   })
 
-  // Process an approval response from any caller (renderer via IPC, iOS
-  // device via BridgeActionExecutor). Walks all five pending-approval
-  // registries; first match wins. Returns `true` if a pending approval
-  // was found and resolved, `false` if no registry held it (already
-  // resolved, expired, or never existed). Side effects on success:
-  //   - Durable run-event written for audit
-  //   - Approval ledger entry updated
-  //   - Map entry deleted
-  //   - runManager state cleared
-  //   - Provider-specific completion (resolve promise / send wire response /
-  //     kill child for cancel)
-  //
-  // Extracted Phase C-late from the `respond-agent-approval` IPC handler
-  // body so iOS-initiated approvals can use the exact same dispatch as
-  // the desktop renderer. Behavior is byte-identical to the previous
-  // handler.
-  const processAgentApprovalResponse = async (
-    requestId: string,
-    action: AgentApprovalAction,
-    options?: {
-      /** Typed user input. When the pending Codex method is
-       * `tool/requestUserInput`, this becomes the `answers` field; for
-       * `mcp/elicitation/request` it becomes the `content`. Ignored for
-       * other methods / providers. Empty/undefined preserves today's
-       * behavior (renderer-driven approvals don't pass typed answers). */
-      userInput?: string
-      /** Phase E1.2: who decided. Defaults to `'user'` (renderer click
-       * or iOS reply). Pass `'system'` from the timer auto-deny path so
-       * the ledger records `decisionSource: system` and `decision:
-       * autoDeny` instead of treating the auto-deny as a manual one. */
-      decisionSource?: 'user' | 'system'
-      /** Optional metadata merged into the ledger record. Used by the
-       * timeout path to record `{ autoDeniedByTimeout: true,
-       * timeoutMs, timeoutSource }`. */
-      extraMetadata?: Record<string, unknown>
+  // Phase B3: ApprovalService construction. Owns the five pending
+  // approval registries + the unified resolve dispatch + the
+  // wake-push fan-out + the scheduled-timeout integration. See
+  // src/main/services/ApprovalService.ts for the full surface and
+  // docs/phase-b-handoff.md for the extraction plan.
+  const approvalServiceInstance = new ApprovalService({
+    runManager,
+    permissionService,
+    appendDurableRunEventForRoute,
+    resolveApprovalLedger: resolveApprovalLedgerResponse,
+    getCodexClient: () => codexClient,
+    sendAgentCompatLine,
+    respondToKimiWireRequest,
+    runApprovedHostCommand,
+    cliProviderProcesses,
+    getApnsPusher: () => bridgeApnsPusherRef,
+    getApnsTokenStore: () => bridgeApnsTokenStoreRef,
+    isUserAtDesktop: userIsAtDesktop,
+    workspaceIdForPath: workspaceIdForApprovalPush,
+    getApprovalTimeoutSettings: () => AppStore.getSettings().approvalTimeouts,
+    log: (line) => {
+      // eslint-disable-next-line no-console
+      console.log(line)
     }
-  ): Promise<boolean> => {
-    const decisionSource = options?.decisionSource ?? 'user'
-    const extraMetadata = options?.extraMetadata ?? {}
-    // Cancel the auto-deny timer the moment any decision lands —
-    // regardless of which registry holds this approvalId. Safe to
-    // call for unknown ids (no-op).
-    approvalTimeoutSchedulerRef?.cancel(requestId)
+  })
+  approvalService = approvalServiceInstance
 
-    const pendingMain = pendingMainApprovals.get(requestId)
-    if (pendingMain) {
-      const session = runManager.resolveApproval(requestId) || runManager.get(pendingMain.runId)
-      appendDurableRunEventForRoute(
-        pendingMain.provider,
-        { appRunId: session?.runId || pendingMain.runId, appChatId: session?.appChatId },
-        'approval_response',
-        'control',
-        `Main approval response: ${action}`,
-        {
-          requestId,
-          action,
-          workspacePath: pendingMain.workspacePath
-        }
-      )
-      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
-      pendingMainApprovals.delete(requestId)
-      runManager.clearApproval(requestId)
-      pendingMain.resolve(permissionService.isApprovedAction(action))
-      return true
-    }
-
-    const pendingGeminiTool = pendingGeminiToolApprovals.get(requestId)
-    if (pendingGeminiTool) {
-      const session = runManager.resolveApproval(requestId) || runManager.get(pendingGeminiTool.runId)
-      appendDurableRunEventForRoute(
-        pendingGeminiTool.provider,
-        { appRunId: session?.runId || pendingGeminiTool.runId, appChatId: session?.appChatId },
-        'approval_response',
-        'control',
-        `Approval response: ${action}`,
-        {
-          requestId,
-          action,
-          service: pendingGeminiTool.service,
-          workspacePath: pendingGeminiTool.workspacePath
-        }
-      )
-      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
-      pendingGeminiToolApprovals.delete(requestId)
-      runManager.clearApproval(requestId)
-      const allowed = permissionService.applyApprovalDecision({
-        provider: pendingGeminiTool.provider,
-        workspacePath: pendingGeminiTool.workspacePath,
-        service: pendingGeminiTool.service,
-        runId: pendingGeminiTool.runId,
-        action
-      })
-      pendingGeminiTool.resolve(allowed)
-      return true
-    }
-
-    const pendingHostCommand = pendingHostCommandApprovals.get(requestId)
-    if (pendingHostCommand) {
-      appendDurableRunEventForRoute(
-        pendingHostCommand.provider,
-        { appRunId: pendingHostCommand.appRunId, appChatId: pendingHostCommand.appChatId },
-        'approval_response',
-        'control',
-        `Host command rerun response: ${action}`,
-        {
-          requestId,
-          action,
-          command: pendingHostCommand.commandText,
-          cwd: pendingHostCommand.cwd
-        }
-      )
-      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
-      runManager.clearApproval(requestId)
-      if (action === 'accept') {
-        return runApprovedHostCommand(requestId)
-      }
-      pendingHostCommandApprovals.delete(requestId)
-      sendAgentCompatLine(pendingHostCommand.sender, 'codex', {
-        type: 'tool_result',
-        tool_id: `${requestId}-denied`,
-        tool_name: 'run_shell_command',
-        status: 'warning',
-        output: `User ${action}ed host rerun of ${pendingHostCommand.commandText}.`,
-        provider: 'codex'
-      }, pendingHostCommand)
-      return true
-    }
-
-    const pendingKimi = pendingKimiApprovals.get(requestId)
-    if (pendingKimi) {
-      const session = runManager.resolveApproval(requestId) || runManager.get(pendingKimi.runId)
-      appendDurableRunEventForRoute(
-        'kimi',
-        { appRunId: session?.runId || pendingKimi.runId, appChatId: session?.appChatId },
-        'approval_response',
-        'control',
-        `Kimi approval response: ${action}`,
-        {
-          requestId,
-          action,
-          rpcId: pendingKimi.rpcId,
-          params: pendingKimi.params
-        }
-      )
-      resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
-      pendingKimiApprovals.delete(requestId)
-      runManager.clearApproval(requestId)
-      const payload = pendingKimi.params?.payload || {}
-      const response = action === 'acceptForSession' || action === 'acceptForWorkspace' ? 'approve_for_session' : action === 'accept' ? 'approve' : 'reject'
-      respondToKimiWireRequest(pendingKimi.child, pendingKimi.rpcId, {
-        request_id: payload.id || requestId,
-        response,
-        ...(response === 'reject' ? { feedback: `User ${action}ed Kimi approval request.` } : {})
-      })
-      if (action === 'cancel') {
-        pendingKimi.child.kill()
-        cliProviderProcesses.delete('kimi')
-      }
-      return true
-    }
-
-    const pending = pendingCodexApprovals.get(requestId)
-    if (!pending || !codexClient) {
-      return false
-    }
-    const session = runManager.resolveApproval(requestId) || runManager.get(pending.runId)
-    appendDurableRunEventForRoute(
-      'codex',
-      { appRunId: session?.runId || pending.runId, appChatId: session?.appChatId },
-      'approval_response',
-      'control',
-      `Codex approval response: ${action}`,
-      {
-        requestId,
-        action,
-        rpcId: pending.rpcId,
-        method: pending.method,
-        service: pending.service,
-        workspacePath: pending.workspacePath
-      }
-    )
-    resolveApprovalLedgerResponse(requestId, action, decisionSource, extraMetadata)
-    pendingCodexApprovals.delete(requestId)
-    runManager.clearApproval(requestId)
-
-    if (pending.method === 'item/permissions/requestApproval') {
-      const allowed = permissionService.applyApprovalDecision({
-        provider: 'codex',
-        workspacePath: pending.workspacePath,
-        service: pending.service,
-        runId: pending.runId,
-        action
-      })
-      if (allowed) {
-        codexClient.respond(pending.rpcId, {
-          permissions: pending.params?.permissions || {},
-          scope: action === 'accept' ? 'turn' : 'session'
-        })
-      } else {
-        codexClient.reject(pending.rpcId, `User ${action}ed Codex permission request.`)
-      }
-      return true
-    }
-
-    if (pending.method === 'mcp/elicitation/request') {
-      codexClient.respond(pending.rpcId, {
-        action: action === 'acceptForSession' ? 'accept' : action,
-        // Phase C-late: typed user input lands as the `content` field when
-        // present. Undefined preserves the renderer-driven `null` behavior.
-        content: options?.userInput ?? null,
-        _meta: null
-      })
-      return true
-    }
-
-    if (pending.method === 'tool/requestUserInput') {
-      if (action === 'accept' || action === 'acceptForSession') {
-        // Phase C-late: when iOS provided a typed answer, surface it as
-        // `{answers: {default: <text>}}`. This is a best-guess single-
-        // question shape — Codex's protocol allows arbitrary keyed answers
-        // but renderer-side flows never produced typed answers (always
-        // empty `{}`), so we have no precedent to mirror. The shape is
-        // versioned by behavior: existing callers still pass nothing and
-        // get the legacy empty payload. The iOS app's actual question UI
-        // will pin the multi-key contract once it ships.
-        const answers = options?.userInput !== undefined ? { default: options.userInput } : {}
-        codexClient.respond(pending.rpcId, { answers })
-      } else {
-        codexClient.reject(pending.rpcId, `User ${action}ed Codex input request.`)
-      }
-      return true
-    }
-
-    codexClient.respond(pending.rpcId, { decision: action })
-    return true
-  }
-
-  // Phase E1: production-grade approval timeout. Each `pending*Approvals.set`
-  // arms a timer via `scheduleApprovalTimeout`; a decision (or this
-  // function being called by the auto-deny path) cancels it. When a
-  // timer fires, we walk back into `processAgentApprovalResponse` with
-  // `'decline'` so the same dispatch / ledger / IPC paths handle the
-  // auto-deny.
-  //
-  // The scheduler is constructed AFTER `processAgentApprovalResponse`
-  // is in scope so the onTimeout callback can reference it directly.
-  // Module-scope ref `approvalTimeoutSchedulerRef` is then populated
-  // so the top-level approval-registry call sites can also reach it.
-  /**
-   * Find which provider's registry holds an approval id and what its
-   * route is (appRunId + appChatId). Used by the timeout callback to
-   * emit a dedicated `approval_timer_timeout` durable event before
-   * the auto-deny dispatch happens. Returns null when no registry
-   * holds the id (already resolved, expired, never existed).
-   */
-  function lookupApprovalRoute(approvalId: string): {
-    provider: ProviderId
-    appRunId?: string
-    appChatId?: string
-  } | null {
-    const main = pendingMainApprovals.get(approvalId)
-    if (main) {
-      const session = runManager.get(main.runId)
-      return { provider: main.provider, appRunId: main.runId, appChatId: session?.appChatId }
-    }
-    const gemini = pendingGeminiToolApprovals.get(approvalId)
-    if (gemini) {
-      const session = runManager.get(gemini.runId)
-      return { provider: gemini.provider, appRunId: gemini.runId, appChatId: session?.appChatId }
-    }
-    const host = pendingHostCommandApprovals.get(approvalId)
-    if (host) {
-      return { provider: host.provider, appRunId: host.appRunId, appChatId: host.appChatId }
-    }
-    const kimi = pendingKimiApprovals.get(approvalId)
-    if (kimi) {
-      const session = runManager.get(kimi.runId)
-      return { provider: 'kimi', appRunId: kimi.runId, appChatId: session?.appChatId }
-    }
-    const codex = pendingCodexApprovals.get(approvalId)
-    if (codex) {
-      const session = runManager.get(codex.runId)
-      return { provider: 'codex', appRunId: codex.runId, appChatId: session?.appChatId }
-    }
-    return null
-  }
-
+  // Construct the auto-deny timer scheduler. The onTimeout callback
+  // delegates to the shared `handleApprovalTimeout` helper (also in
+  // ApprovalService.ts) which writes the durable timeout event,
+  // notifies the renderer, and re-enters `approvalService.resolve()`
+  // with decisionSource: 'system' + the timeout metadata (Phase E1.2).
   const approvalTimeoutScheduler = new ApprovalTimeoutScheduler(
     DEFAULT_APPROVAL_TIMEOUT_POLICY,
     async (reason: ApprovalTimeoutReason) => {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[ApprovalTimeout] approvalId=${reason.approvalId} auto-deny after ${reason.appliedMs}ms (source=${reason.source})`
-      )
-
-      // Phase E1.2: emit a dedicated `approval_timer_timeout` durable
-      // event so the ledger UX can distinguish "user clicked Decline"
-      // (writes `approval_response`) from "agent waited too long"
-      // (writes both this and `approval_response`).
-      const route = lookupApprovalRoute(reason.approvalId)
-      if (route?.appRunId) {
-        try {
-          appendDurableRunEventForRoute(
-            route.provider,
-            { appRunId: route.appRunId, appChatId: route.appChatId },
-            'approval_timer_timeout',
-            'control',
-            `Approval timer fired after ${reason.appliedMs}ms`,
-            {
-              approvalId: reason.approvalId,
-              appliedMs: reason.appliedMs,
-              source: reason.source
-            }
-          )
-        } catch {
-          // Run may have been cleared; auto-deny still proceeds.
-        }
-      }
-
-      // Surface a prominent toast in the desktop UI so a user returning
-      // to the desk understands why their run paused. The renderer
-      // listens for `agent-approval-timeout` and pops a destructive
-      // notification.
-      try {
-        mainWindow?.webContents.send('agent-approval-timeout', {
-          approvalId: reason.approvalId,
-          appliedMs: reason.appliedMs,
-          source: reason.source
-        })
-      } catch {
-        // Window may be destroyed; auto-deny still proceeds.
-      }
-      try {
-        await processAgentApprovalResponse(reason.approvalId, 'decline', {
-          decisionSource: 'system',
-          extraMetadata: {
-            autoDeniedByTimeout: true,
-            timeoutMs: reason.appliedMs,
-            timeoutSource: reason.source
+      await handleApprovalTimeout(approvalServiceInstance, reason, {
+        appendDurableRunEventForRoute,
+        log: (line) => {
+          // eslint-disable-next-line no-console
+          console.log(line)
+        },
+        sendTimeoutToRenderer: (snapshot) => {
+          try {
+            mainWindow?.webContents.send('agent-approval-timeout', snapshot)
+          } catch {
+            // Window destroyed — caller's already wrapped this in try/catch.
           }
-        })
-      } catch (err) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[ApprovalTimeout] decline path threw for approvalId=${reason.approvalId}:`,
-          err instanceof Error ? err.message : String(err)
-        )
-      }
+        }
+      })
     },
     {
       log: (line) => {
@@ -9708,10 +9291,10 @@ app.whenReady().then(() => {
       }
     }
   )
-  approvalTimeoutSchedulerRef = approvalTimeoutScheduler
+  approvalServiceInstance.setScheduler(approvalTimeoutScheduler)
 
   ipcMain.handle('respond-agent-approval', async (_, requestId: string, action: AgentApprovalAction) => {
-    return processAgentApprovalResponse(requestId, action)
+    return approvalServiceInstance.resolve(requestId, action)
   })
 
   ipcMain.handle('run-gemini', async (
