@@ -115,6 +115,16 @@ const api = {
   bridgeAllowlistRemove: (workspaceId: string) => ipcRenderer.invoke('bridge-allowlist-remove', workspaceId),
   bridgeAllowlistClear: () => ipcRenderer.invoke('bridge-allowlist-clear'),
   bridgeNetworkingStatus: () => ipcRenderer.invoke('bridge-networking-status'),
+
+  // Phase G2: auto-update controls.
+  updateSnapshot: () => ipcRenderer.invoke('update-snapshot'),
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdateOnQuit: () => ipcRenderer.invoke('install-update-on-quit'),
+  installUpdateNow: () => ipcRenderer.invoke('install-update-now'),
+  onUpdateStatusChanged: (callback: (snapshot: unknown) => void) => {
+    ipcRenderer.on('update-status-changed', (_event, snapshot) => callback(snapshot))
+  },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
   onBridgePairingResponseReceived: (callback: (params: unknown) => void) => {
@@ -222,6 +232,7 @@ const api = {
     ipcRenderer.removeAllListeners('run-events-changed')
     ipcRenderer.removeAllListeners('agent-approval-request')
     ipcRenderer.removeAllListeners('agent-approval-timeout')
+    ipcRenderer.removeAllListeners('update-status-changed')
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
   }

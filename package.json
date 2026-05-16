@@ -22,7 +22,7 @@
     "smoke:package": "node scripts/smoke-packaged-electron.cjs",
     "smoke:apns": "node scripts/smoke-apns-push.cjs",
     "prebuild:bridge-daemon": "node scripts/build-bridge-daemon.cjs",
-    "validate:release": "npm run ci && npm run build:unpack",
+    "validate:release": "node scripts/validate-release.cjs",
     "build:unpack": "npm run prebuild:bridge-daemon && npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist",
     "build:debug:mac": "npm run prebuild:bridge-daemon && npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} electron-builder --dir --config electron-builder.debug.yml && node scripts/smoke-packaged-electron.cjs dist-debug",
     "build:debug:mac:notarized": "npm run prebuild:bridge-daemon && npm run build && CSC_NAME=${CSC_NAME:-<your-signing-identity-sha>} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --dir --config electron-builder.debug.yml -c.mac.notarize=true && node scripts/smoke-packaged-electron.cjs dist-debug",
@@ -52,6 +52,7 @@
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
+    "electron-updater": "^6.8.3",
     "node-pty": "^1.1.0",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1"

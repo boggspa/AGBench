@@ -34,6 +34,7 @@ import {
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel';
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel';
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel';
+import { UpdateStatusPane } from './UpdateStatusPane';
 
 interface SettingsPanelProps {
   mode: AppearanceMode;
@@ -1022,6 +1023,12 @@ export function SettingsPanel({
             Repair install
           </button>
         </div>
+        {/* Phase G2: auto-update status pane. Self-contained so the
+            SettingsPanel doesn't need to plumb the snapshot through —
+            it reads it via the api binding on mount + listens for live
+            updates. */}
+        <UpdateStatusPane />
+
         <p className="settings-hint">
           {productOperationsStatus
             ? `Health is ${productOperationsStatus.overallStatus}; ${productOperationsStatus.counts.queuedRuns} queued, ${productOperationsStatus.counts.activeRuns} active, ${productOperationsStatus.recentCrashes.length} recent crash ${productOperationsStatus.recentCrashes.length === 1 ? 'record' : 'records'}.`

@@ -1,5 +1,6 @@
 import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
+import type { UpdateStateSnapshot } from '../main/UpdateService'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -176,6 +177,12 @@ declare global {
       }) => Promise<RemoteWorkspaceEntry>
       bridgeAllowlistRemove: (workspaceId: string) => Promise<boolean>
       bridgeAllowlistClear: () => Promise<boolean>
+      updateSnapshot: () => Promise<UpdateStateSnapshot>
+      checkForUpdates: () => Promise<UpdateStateSnapshot>
+      downloadUpdate: () => Promise<UpdateStateSnapshot>
+      installUpdateOnQuit: () => Promise<UpdateStateSnapshot>
+      installUpdateNow: () => Promise<UpdateStateSnapshot>
+      onUpdateStatusChanged: (callback: (snapshot: UpdateStateSnapshot) => void) => void
       bridgeNetworkingStatus: () => Promise<{
         lan: {
           enabled: boolean

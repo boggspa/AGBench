@@ -23,6 +23,7 @@ import {
   type ApprovalTimeoutReason
 } from './ApprovalTimeoutScheduler'
 import { detectTailscale } from './TailscaleDetector'
+import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
@@ -8617,6 +8618,61 @@ app.whenReady().then(() => {
       tailscale: cachedTailscaleStatus
     }
   })
+
+  // Phase G2: auto-update wiring. Default-off (env override available).
+  // Only enabled in packaged builds AND when updateChannel != 'debug'.
+  // The `AGBENCH_AUTO_UPDATE` env var forces enable/disable for
+  // staging tests:
+  //   AGBENCH_AUTO_UPDATE=off  → forced disabled (even in production)
+  //   AGBENCH_AUTO_UPDATE=on   → forced enabled (even in dev — useful
+  //                              for testing the checker against a
+  //                              local update feed)
+  //   unset                    → enabled when app.isPackaged + channel != 'debug'
+  const updateService = new UpdateService({
+    log: (line) => {
+      // eslint-disable-next-line no-console
+      console.log(line)
+    }
+  })
+  const autoUpdateForce = process.env.AGBENCH_AUTO_UPDATE
+  const autoUpdateEnabledByDefault = app.isPackaged
+  const autoUpdateEnabled = autoUpdateForce === 'on'
+    ? true
+    : autoUpdateForce === 'off'
+      ? false
+      : autoUpdateEnabledByDefault
+  const initialSettings = AppStore.getSettings()
+  updateService.configure({
+    channel: initialSettings.updateChannel,
+    enabled: autoUpdateEnabled
+  })
+  // Broadcast snapshot changes to the renderer so the Settings panel
+  // can show live status.
+  updateService.subscribe((snapshot: UpdateStateSnapshot) => {
+    try {
+      mainWindow?.webContents.send('update-status-changed', snapshot)
+    } catch {
+      // Window may be destroyed during a long-running download — ignore.
+    }
+  })
+  ipcMain.handle('update-snapshot', () => updateService.snapshot())
+  ipcMain.handle('check-for-updates', async () => {
+    await updateService.checkForUpdates()
+    return updateService.snapshot()
+  })
+  ipcMain.handle('download-update', async () => {
+    await updateService.downloadUpdate()
+    return updateService.snapshot()
+  })
+  ipcMain.handle('install-update-on-quit', () => {
+    updateService.installOnQuit()
+    return updateService.snapshot()
+  })
+  ipcMain.handle('install-update-now', () => {
+    updateService.quitAndInstall()
+    return updateService.snapshot()
+  })
+
   ipcMain.handle('bridge-finalize-pairing', async (_, sessionID: string, userConfirmed: boolean) => {
     const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')
     if (!bridgeDaemon) {
@@ -8630,7 +8686,19 @@ app.whenReady().then(() => {
 
   // Settings
   ipcMain.handle('get-settings', () => AppStore.getSettings())
-  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => AppStore.updateSettings(sanitizeSettingsPatch(partial)))
+  ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => {
+    const sanitized = sanitizeSettingsPatch(partial)
+    AppStore.updateSettings(sanitized)
+    // Phase G2: re-configure the auto-updater when the user flips the
+    // updateChannel. Settings → System gets the live effect without a
+    // restart.
+    if (sanitized.updateChannel !== undefined) {
+      updateService.configure({
+        channel: sanitized.updateChannel,
+        enabled: autoUpdateEnabled
+      })
+    }
+  })
 
   // Runtime profiles
   ipcMain.handle('get-runtime-profiles', (_, provider?: ProviderId) => {
