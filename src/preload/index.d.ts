@@ -271,6 +271,7 @@ declare global {
       ) => void
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
+      onChatUpdated: (callback: (chat: ChatRecord) => void) => void
       removeListeners: () => void
     }
   }

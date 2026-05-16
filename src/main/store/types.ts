@@ -578,6 +578,23 @@ export interface ChatMessage {
   timestamp: string;
   runId?: string;
   toolActivities?: ToolActivity[];
+  /** Phase F2: structured metadata for synthetic messages. The most
+   * common case is a sub-thread result-return entry: the parent
+   * transcript shows "↩ Result from <Provider>" with the sub-thread's
+   * final assistant message inlined; metadata lets the renderer
+   * detect and treat it differently from a regular system message
+   * (link back to the sub-thread, distinct visual treatment, etc.). */
+  metadata?: {
+    kind?: 'subThreadReturn' | string;
+    /** Sub-thread id for `kind: 'subThreadReturn'`. */
+    subThreadId?: string;
+    /** Sub-thread's provider for badge/icon rendering. */
+    subThreadProvider?: ProviderId;
+    /** Sub-thread title at time of return for the "↩ Result from X"
+     * header (may differ from current title if user renamed). */
+    subThreadTitle?: string;
+    [key: string]: unknown;
+  };
 }
 
 export interface ChatRun {

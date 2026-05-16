@@ -221,6 +221,9 @@ const api = {
   onScheduledTasksChanged: (callback: (payload: any) => void) => {
     ipcRenderer.on('scheduled-tasks-changed', (_event, payload) => callback(payload))
   },
+  onChatUpdated: (callback: (chat: unknown) => void) => {
+    ipcRenderer.on('chat-updated', (_event, chat) => callback(chat))
+  },
   removeListeners: () => {
     ipcRenderer.removeAllListeners('gemini-output')
     ipcRenderer.removeAllListeners('gemini-error')
@@ -235,6 +238,7 @@ const api = {
     ipcRenderer.removeAllListeners('update-status-changed')
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
+    ipcRenderer.removeAllListeners('chat-updated')
   }
 }
 

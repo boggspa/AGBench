@@ -28,7 +28,7 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -1359,7 +1359,105 @@ runManager.onChange((event) => {
   persistRunSessionQueueState(event.session)
   expireRunScopedApprovalLedger(event.session)
   getRunRepository().appendLifecycleEvent(event.type, event.session)
+  // Phase F2: when a sub-thread's run completes, optionally propagate
+  // its final assistant message to the parent transcript. Best-effort
+  // (errors don't break the run-event subscriber chain).
+  if (event.type === 'updated' && event.session.status === 'completed') {
+    void maybePropagateSubThreadResult(event.session.appChatId).catch((err) => {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[SubThreadReturn] propagation failed for chatId=${event.session.appChatId}:`,
+        err instanceof Error ? err.message : String(err)
+      )
+    })
+  }
 })
+
+/**
+ * Phase F2 — sub-thread result back-propagation.
+ *
+ * When a sub-thread run completes and `delegationContext.returnResultToParent`
+ * is true (set at spawn time), append a synthetic system message to
+ * the parent transcript containing the sub-thread's final assistant
+ * message. Stamp `delegationContext.resultReturnedAt` so we only do
+ * this once.
+ *
+ * Idempotent: re-running on an already-propagated sub-thread is a
+ * no-op. Safe to call from any code path; checks short-circuit if
+ * preconditions aren't met.
+ */
+async function maybePropagateSubThreadResult(chatId: string | undefined): Promise<void> {
+  if (!chatId) return
+  const subThread = AppStore.getChat(chatId)
+  if (!subThread) return
+  if (!subThread.parentChatId) return
+  if (!subThread.delegationContext?.returnResultToParent) return
+  if (subThread.delegationContext.resultReturnedAt) return
+  // Find the sub-thread's final assistant message — that's the
+  // "answer" the parent wants surfaced.
+  const lastAssistant = [...subThread.messages].reverse().find((m) => m.role === 'assistant')
+  if (!lastAssistant || !lastAssistant.content.trim()) return
+  const parent = AppStore.getChat(subThread.parentChatId)
+  if (!parent) return
+  const label = subThread.provider ? providerLabel(subThread.provider) : 'Sub-thread'
+  const syntheticMessage: ChatMessage = {
+    id: `subthread-return-${subThread.appChatId}-${Date.now()}`,
+    // 'system' role so the parent agent treats it as context, not as
+    // a user prompt. The renderer can detect metadata.kind ===
+    // 'subThreadReturn' for a custom badge / link-back affordance.
+    role: 'system',
+    content: `↩ Result from ${label} sub-thread (${subThread.title}):\n\n${lastAssistant.content}`,
+    timestamp: new Date().toISOString(),
+    metadata: {
+      kind: 'subThreadReturn',
+      subThreadId: subThread.appChatId,
+      subThreadProvider: subThread.provider,
+      subThreadTitle: subThread.title
+    }
+  }
+  const updatedParent: ChatRecord = {
+    ...parent,
+    messages: [...parent.messages, syntheticMessage],
+    updatedAt: Date.now()
+  }
+  AppStore.saveChat(updatedParent)
+  const updatedSubThread: ChatRecord = {
+    ...subThread,
+    delegationContext: {
+      ...subThread.delegationContext,
+      resultReturnedAt: Date.now()
+    },
+    updatedAt: Date.now()
+  }
+  AppStore.saveChat(updatedSubThread)
+  // Audit: durable run-event on the PARENT chat so the audit log
+  // shows the propagation happened.
+  try {
+    appendDurableRunEventForRoute(
+      parent.provider ?? subThread.provider ?? 'gemini',
+      { appChatId: parent.appChatId },
+      'subthread_returned',
+      'control',
+      `Sub-thread result returned from ${label}`,
+      {
+        subThreadId: subThread.appChatId,
+        subThreadProvider: subThread.provider,
+        finalMessagePreview: lastAssistant.content.slice(0, 200)
+      }
+    )
+  } catch {
+    // Best-effort — the propagation itself already succeeded.
+  }
+  // Notify the renderer so both the parent and sub-thread re-render
+  // with the new state (parent has the synthetic message; sub-thread
+  // shows the "returned" timestamp).
+  try {
+    mainWindow?.webContents.send('chat-updated', updatedParent)
+    mainWindow?.webContents.send('chat-updated', updatedSubThread)
+  } catch {
+    // Window may be destroyed — ignore.
+  }
+}
 
 function emitRunEventsChanged(record: { runId: string; chatId?: string; workspaceId?: string; sequence: number }) {
   mainWindow?.webContents.send('run-events-changed', {

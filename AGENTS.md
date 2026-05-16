@@ -78,21 +78,42 @@ own isolated provider session. The delegation prompt is the only thing
 that bridges across; everything beyond that is what the user (or the
 sub-thread's agent) types in.
 
-### Phase F1 invariants
+### Phase F1 invariants (still in force)
 
 - **Max depth = 1.** A sub-thread cannot itself spawn a sub-thread.
   The UI affordance is hidden and the store rejects attempts. Future
-  revs (F2+) will lift this with ladder semantics.
-- **No auto-propagation yet.** The `returnResultToParent` flag is
-  recorded but v1 just stores the intent. The user navigates manually
-  between parent and child. F2 will wire the back-propagation: when a
-  sub-thread completes and `returnResultToParent` is true, the
-  sub-thread's final assistant message is auto-appended to the parent
-  transcript as a synthetic "↩ Result from <Provider>" entry.
+  revs will lift this with ladder semantics.
 - **Workspace inheritance.** Sub-threads default to the parent's
   workspace. Users can override per-spawn (future UI), but the data
   model already supports it via the optional `workspaceId` /
   `workspacePath` overrides on `AppStore.createSubThread`.
+
+### Phase F2 — auto-propagation of sub-thread results
+
+When `returnResultToParent: true` was selected at spawn time AND the
+sub-thread's run completes successfully, the sub-thread's final
+assistant message is automatically appended to the parent transcript
+as a synthetic `role: 'system'` ChatMessage with:
+
+```
+↩ Result from <Provider> sub-thread (<title>):
+
+<final assistant message content>
+```
+
+The synthetic message carries `metadata.kind = 'subThreadReturn'`
+and a back-pointer (`subThreadId`, `subThreadProvider`,
+`subThreadTitle`) so a future renderer can show a "view sub-thread"
+affordance. Propagation is idempotent — `delegationContext.resultReturnedAt`
+is set on the sub-thread record and the helper short-circuits on
+re-invocation.
+
+The trigger is the run-completion event from `RunManager.onChange`.
+Failed or cancelled sub-thread runs don't propagate (the parent
+agent should infer "no answer came back" and respond accordingly).
+
+A `subthread_returned` durable run-event is written under the
+**parent** chat for audit.
 
 ### How a parent-thread agent should think about delegation
 

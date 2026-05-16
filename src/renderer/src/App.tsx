@@ -5715,6 +5715,26 @@ function App(): React.JSX.Element {
       })
     }
 
+    if (typeof window.api.onChatUpdated === 'function') {
+      // Phase F2: when the main process updates a chat (sub-thread
+      // result back-propagation in particular), splice the fresh
+      // record into our local state so the user sees the synthetic
+      // "↩ Result from X" message without a manual reload.
+      window.api.onChatUpdated((chat) => {
+        setChats((prev) => {
+          const idx = prev.findIndex((c) => c.appChatId === chat.appChatId)
+          if (idx < 0) return prev
+          const next = prev.slice()
+          next[idx] = chat
+          return next
+        })
+        chatByIdRef.current.set(chat.appChatId, chat)
+        if (currentChatIdRef.current === chat.appChatId) {
+          setCurrentChat(chat)
+        }
+      })
+    }
+
     if (typeof window.api.onRunQueueChanged === 'function') {
       window.api.onRunQueueChanged((jobs) => {
         setRunQueueJobs(jobs)
