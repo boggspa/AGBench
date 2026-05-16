@@ -21,8 +21,7 @@ import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import {
   DEFAULT_CONTEXT_TURNS,
-  clampContextTurns,
-  composeRunPrompt
+  clampContextTurns
 } from '../../main/PromptComposition'
 import { findNextRunnableQueueIndex } from '../../main/RunQueue'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
@@ -1407,25 +1406,6 @@ const getImageName = (value: string): string => {
 
 const isImageAttachmentPath = (path: string): boolean => IMAGE_EXT.test(path)
 
-const attachmentPromptAppendix = (attachments: ImageAttachment[]): string => {
-  if (attachments.length === 0) {
-    return ''
-  }
-  const lines = attachments.map((image, index) => `${index + 1}. "${image.path.replace(/"/g, '\\"')}"`)
-  return `\n\nAttachment references for this request:\n${lines.join('\n')}`
-}
-
-const externalPathGrantPromptAppendix = (grants: ExternalPathGrant[] = []): string => {
-  if (grants.length === 0) {
-    return ''
-  }
-  const lines = grants.map((grant, index) => {
-    const access = grant.access === 'write' ? 'view and edit' : 'view'
-    return `${index + 1}. ${access} ${grant.kind}: "${grant.path.replace(/"/g, '\\"')}"`
-  })
-  return `\n\nUser-approved external path grants for this Codex request:\n${lines.join('\n')}\nUse only these paths outside the workspace.`
-}
-
 const dedupePaths = (values: string[]): string[] => {
   const seen = new Set<string>()
   const next: string[] = []
@@ -2457,7 +2437,6 @@ const isCodexModelId = (modelId: string): boolean => modelId.startsWith('gpt-') 
 const isClaudeModelId = (modelId: string): boolean => CLAUDE_MODEL_IDS.has(modelId) || modelId.includes('claude')
 const isKimiModelId = (modelId: string): boolean => KIMI_MODEL_IDS.has(modelId)
 const normalizeProviderModelKey = (model?: string | null): string => String(model || '').trim().toLowerCase()
-const isCompletedCodexRunStatus = (status?: string): boolean => status === 'success' || status === 'success_with_warnings'
 
 const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
   paths: [],
@@ -2580,12 +2559,6 @@ function CockpitPanel({
   )
 }
 
-const getLastCompletedCodexRunModel = (chat: ChatRecord): string | null => {
-  const runs = [...(chat.runs || [])].reverse()
-  const run = runs.find((candidate) => (candidate.provider || getChatProvider(chat)) === 'codex' && isCompletedCodexRunStatus(candidate.status))
-  return run?.actualModel || run?.requestedModel || null
-}
-
 const getGeminiWorktreeResumeKey = (worktree?: GeminiWorktreeConfig | null): string => {
   if (!worktree?.enabled) {
     return 'disabled'
@@ -2645,11 +2618,6 @@ const resolveGeminiResumeForRun = (
   }
 
   return { sessionId }
-}
-
-const getCodexModelContextAppliedKeys = (chat: ChatRecord): string[] => {
-  const rawKeys = chat.providerMetadata?.codexModelContextAppliedKeys
-  return Array.isArray(rawKeys) ? rawKeys.filter((value): value is string => typeof value === 'string') : []
 }
 
 const getCodexFiveHourLimit = (model: string): { max?: number; label: string } => {
@@ -5794,14 +5762,10 @@ function App(): React.JSX.Element {
   const executeRun = async (runRequest?: QueuedRunRequest) => {
     const baseRequest = runRequest ?? buildRunRequest()
     const request = baseRequest.appRunId ? baseRequest : { ...baseRequest, appRunId: createAppRunId() }
-    const finalPrompt = `${request.prompt}${attachmentPromptAppendix(request.imageAttachments)}${request.provider === 'codex' ? externalPathGrantPromptAppendix(request.externalPathGrants || []) : ''}`
-    const displayFinalPrompt = request.displayPrompt
-      ? request.displayPrompt
-      : finalPrompt
     const runChat = request.chatRecord || currentChat
     const isGlobalRun = request.scope === 'global' || isGlobalChat(runChat)
     const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
-    if (!runChat || (!isGlobalRun && !runWorkspace) || !finalPrompt.trim()) return
+    if (!runChat || (!isGlobalRun && !runWorkspace) || !request.prompt.trim()) return
     const runProvider = request.provider || currentProvider
     if (isProviderBusy(runProvider)) {
       queueRunRequest(request, `${getProviderLabel(runProvider)} is already running; AGBench will start this thread when that provider is free.`)
@@ -5819,25 +5783,58 @@ function App(): React.JSX.Element {
     clearImagePermissions()
     latestRunRequestRef.current = request
 
-    const modelToPass = request.overrideModel || (request.selectedModelType === 'custom' ? request.customModel.trim() : request.selectedModelType)
-    const modeToPass = isGlobalRun && request.approvalMode !== 'plan' ? 'default' : request.approvalMode
     const runWorktree = !isGlobalRun && runProvider === 'gemini' ? request.geminiWorktree : undefined
     const runDiffUnavailable = !isGlobalRun && isGeminiWorktreeDiffUnavailable(runWorktree)
     const runDiffWorkspacePath = !isGlobalRun && runWorkspace && !runDiffUnavailable ? getDiffWorkspacePath(runWorkspace, runWorktree) : undefined
+    const currentRunId = request.appRunId || Date.now().toString()
+    let composedPayload: Awaited<ReturnType<typeof window.api.composeRun>>
+    try {
+      composedPayload = await window.api.composeRun({
+        chatId: runChat.appChatId,
+        appRunId: currentRunId,
+        provider: runProvider,
+        scope: isGlobalRun ? 'global' : 'workspace',
+        ...(isGlobalRun ? {} : { workspace: runWorkspace!.path }),
+        userInput: request.prompt,
+        selectedModelType: request.selectedModelType,
+        customModel: request.customModel,
+        overrideModel: request.overrideModel,
+        approvalMode: request.approvalMode,
+        sessionTrust: request.sessionTrust,
+        imageAttachments: request.imageAttachments,
+        externalPathGrants: request.externalPathGrants,
+        geminiWorktree: runWorktree,
+        codexReasoningEffort: request.codexReasoningEffort,
+        codexServiceTier: request.codexServiceTier,
+        claudeReasoningEffort: request.claudeReasoningEffort,
+        kimiThinkingEnabled: request.kimiThinkingEnabled,
+        runtimeProfileId: request.runtimeProfileId,
+        handoffSourceRunId: request.handoffSourceRunId,
+        chatSnapshot: runChat
+      })
+    } catch (error) {
+      const message = `Failed to compose ${getProviderLabel(runProvider)} run: ${redactLog(String(error))}`
+      updateRunQueueJobStatus(currentRunId, 'failed', 'Run payload composition failed.', message)
+      appendThreadRawLog(runChat.appChatId, { type: 'stderr', content: message })
+      return
+    }
+    const composerMetadata = composedPayload.composer
+    const finalPrompt = composerMetadata.finalPrompt
+    const displayFinalPrompt = request.displayPrompt
+      ? request.displayPrompt
+      : finalPrompt
+    const modelToPass = composedPayload.model || request.overrideModel || (request.selectedModelType === 'custom' ? request.customModel.trim() : request.selectedModelType)
+    const modeToPass = composerMetadata.approvalMode
+    const resumeSessionId = composedPayload.providerSessionId || undefined
+    const geminiResumeSkippedReason = composerMetadata.geminiResumeSkippedReason
+    const contextTurnsForRun = composerMetadata.contextTurnsApplied
+    const contextualPrompt = composedPayload.prompt
+    const contextApplicationLog = composerMetadata.applicationLog
     
     activeScheduledTaskIdRef.current = request.scheduledTaskId || null
     let chatToUpdate = { ...runChat, provider: runProvider }
-    let geminiResumeSkippedReason: string | undefined
-    let resumeSessionId: string | undefined
-    if (runProvider !== 'gemini') {
-      resumeSessionId = normalizeGeminiResumeTarget(chatToUpdate.linkedProviderSessionId)
-    } else {
-      const resumeDecision = resolveGeminiResumeForRun(chatToUpdate, modelToPass, modeToPass, runWorktree)
-      resumeSessionId = resumeDecision.sessionId
-      geminiResumeSkippedReason = resumeDecision.skippedReason
-      if (geminiResumeSkippedReason) {
-        chatToUpdate.linkedGeminiSessionId = undefined
-      }
+    if (composerMetadata.clearLinkedGeminiSession) {
+      chatToUpdate.linkedGeminiSessionId = undefined
     }
     const selectedChatIdAtRunStart = currentChatIdRef.current || currentChat?.appChatId || null
     const isRunVisibleAtStart = selectedChatIdAtRunStart === chatToUpdate.appChatId
@@ -5863,7 +5860,6 @@ function App(): React.JSX.Element {
       runStartedAt = lastUserMessage?.timestamp || runStartedAt
       promptMessageId = lastUserMessage?.id
     }
-    const currentRunId = request.appRunId || Date.now().toString()
     activeRunByProviderRef.current.set(runProvider, currentRunId)
     setRunningProviders(new Set(activeRunByProviderRef.current.keys()))
     activeRunChatIdRef.current = chatToUpdate.appChatId
@@ -5887,41 +5883,16 @@ function App(): React.JSX.Element {
       ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {})
     }
     chatToUpdate.runs = [...(chatToUpdate.runs || []), newRun]
-    // Compose the outgoing prompt via the shared, pure-function path. Per-provider
-    // context-injection rules (Kimi always injects, Gemini skips when resuming,
-    // Codex injects once on model handoff, Gemini gets the write-tool preamble)
-    // all live in `src/main/PromptComposition.ts:composeRunPrompt` now. The
-    // function returns codex-handoff bookkeeping and an optional UI notice as
-    // data; we apply those side effects locally below.
-    const lastCompletedCodexModel = runProvider === 'codex' ? getLastCompletedCodexRunModel(runChat) : null
-    const codexHandoffsApplied = runProvider === 'codex' ? getCodexModelContextAppliedKeys(runChat) : []
-    const composed = composeRunPrompt({
-      provider: runProvider,
-      finalPrompt,
-      messages: chatToUpdate.messages,
-      chatContextTurns,
-      resumeSessionId,
-      lastCompletedCodexModel,
-      nextModel: modelToPass,
-      codexHandoffsApplied,
-      isGlobalRun,
-      approvalMode: modeToPass,
-      providerLabel: getProviderLabel(runProvider)
-    })
-    let contextTurnsForRun = composed.contextTurnsApplied
-    let contextualPrompt = composed.contextualPrompt
-    let contextApplicationLog = composed.applicationLog
-    if (composed.codexHandoffApplied) {
+    if (composerMetadata.providerMetadataPatch) {
       chatToUpdate.providerMetadata = {
         ...(chatToUpdate.providerMetadata || {}),
-        codexModelContextAppliedKeys: [...codexHandoffsApplied, composed.codexHandoffApplied.handoffKey],
-        lastCodexModelContextHandoffAt: composed.codexHandoffApplied.appliedAt
+        ...composerMetadata.providerMetadataPatch
       }
     }
-    if (composed.uiNoticeMessage) {
+    if (composerMetadata.uiNoticeMessage) {
       setChatContextNotice({
-        id: `${Date.now()}-${composed.codexHandoffApplied?.handoffKey || 'context'}`,
-        message: composed.uiNoticeMessage
+        id: `${Date.now()}-${composerMetadata.codexHandoffApplied?.handoffKey || 'context'}`,
+        message: composerMetadata.uiNoticeMessage
       })
     }
     
@@ -6319,27 +6290,7 @@ function App(): React.JSX.Element {
           appChatId: runChatId
         })
       } else {
-        await window.api.runAgent({
-          provider: runProvider,
-          scope: isGlobalRun ? 'global' : 'workspace',
-          ...(isGlobalRun ? {} : { workspace: runWorkspace!.path }),
-          prompt: contextualPrompt,
-          appRunId: currentRunId,
-          appChatId: runChatId,
-          model: modelToPass,
-          reasoningEffort: runProvider === 'codex' ? ((request.codexReasoningEffort ?? codexReasoningEffort) || null) : null,
-          serviceTier: runProvider === 'codex' ? ((request.codexServiceTier ?? codexServiceTier) || null) : null,
-          claudeReasoningEffort: runProvider === 'claude' ? ((request.claudeReasoningEffort ?? claudeReasoningEffort) || null) : null,
-          kimiThinking: runProvider === 'kimi' ? request.kimiThinkingEnabled ?? true : null,
-          approvalMode: modeToPass,
-          imagePaths: request.imageAttachments.map(item => item.path),
-          providerSessionId: resumeSessionId,
-          externalPathGrants: !isGlobalRun && runProvider === 'codex' ? request.externalPathGrants || [] : [],
-          sessionTrust: runProvider === 'gemini' ? request.sessionTrust : false,
-          geminiWorktree: !isGlobalRun && runProvider === 'gemini' ? request.geminiWorktree : null,
-          runtimeProfileId: request.runtimeProfileId,
-          handoffSourceRunId: request.handoffSourceRunId
-        })
+        await window.api.runAgent(composedPayload)
       }
     } catch (error) {
       clearActiveRunContext(runContext)

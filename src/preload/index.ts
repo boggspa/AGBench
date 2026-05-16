@@ -10,6 +10,7 @@ const api = {
   runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust: boolean = false, imagePaths: string[] = [], resumeSessionId: string | null = null, worktree: GeminiWorktreeLaunchOption = null, route: any = null) =>
     ipcRenderer.invoke('run-gemini', workspace, prompt, model, approvalMode, sessionTrust, imagePaths, resumeSessionId, worktree, route),
   cancelGemini: (runId?: string) => ipcRenderer.invoke('cancel-gemini', runId),
+  composeRun: (input: any) => ipcRenderer.invoke('compose-run', input),
   runAgent: (payload: any) => ipcRenderer.invoke('run-agent', payload),
   cancelAgentRun: (provider: ProviderId = 'gemini', runId?: string) => ipcRenderer.invoke('cancel-agent-run', provider, runId),
   getAgentStatus: (provider: ProviderId) => ipcRenderer.invoke('get-agent-status', provider),

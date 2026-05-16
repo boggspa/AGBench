@@ -27,6 +27,7 @@ import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { AuditService } from './services/AuditService'
 import { ApprovalService, handleApprovalTimeout } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
+import { ComposerService, type ComposerInput } from './services/ComposerService'
 import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
@@ -8605,6 +8606,10 @@ app.whenReady().then(() => {
       }
     ]
   })
+  const composerService = new ComposerService({
+    appStore: AppStore,
+    getSettings: () => AppStore.getSettings()
+  })
   const chatService = new ChatService({
     appStore: AppStore,
     findRegisteredWorkspace,
@@ -8644,6 +8649,7 @@ app.whenReady().then(() => {
   // Settings
   ipcMain.handle('get-settings', () => settingsService.getSettings())
   ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => settingsService.updateSettings(partial))
+  ipcMain.handle('compose-run', (_, input: ComposerInput) => composerService.composeRun(input))
 
   // Runtime profiles
   ipcMain.handle('get-runtime-profiles', (_, provider?: ProviderId) => {

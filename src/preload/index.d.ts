@@ -1,4 +1,4 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 
@@ -70,6 +70,64 @@ interface AgentRunPayload {
   handoffSourceRunId?: string
 }
 
+interface ComposerImageAttachment {
+  id?: string
+  path?: string
+  name?: string
+}
+
+interface ComposerRunInput {
+  chatId: string
+  appRunId?: string
+  provider?: ProviderId
+  scope?: ChatScope
+  workspace?: string
+  userInput?: string
+  prompt?: string
+  selectedModelType?: string
+  customModel?: string
+  overrideModel?: string
+  approvalMode?: string
+  sessionTrust?: boolean
+  attachments?: ComposerImageAttachment[]
+  imageAttachments?: ComposerImageAttachment[]
+  externalPathGrants?: ExternalPathGrant[]
+  geminiWorktree?: GeminiWorktreeLaunchOption
+  codexReasoningEffort?: string | null
+  codexServiceTier?: string | null
+  claudeReasoningEffort?: string | null
+  kimiThinkingEnabled?: boolean
+  runtimeProfileId?: string
+  handoffSourceRunId?: string
+  chatSnapshot?: ChatRecord
+}
+
+interface ComposerRunMetadata {
+  finalPrompt: string
+  contextTurnsApplied: number
+  applicationLog: string
+  providerLabel: string
+  requestedModel?: string
+  approvalMode: string
+  providerSessionId?: string | null
+  geminiResumeSkippedReason?: string
+  clearLinkedGeminiSession?: boolean
+  providerMetadataPatch?: Record<string, unknown>
+  codexHandoffApplied?: {
+    handoffKey: string
+    previousModel: string
+    nextModel: string
+    appliedAt: string
+  }
+  uiNoticeMessage?: string
+  imagePaths: string[]
+  planModeParsed?: boolean
+}
+
+type ComposerRunPayload = AgentRunPayload & {
+  composer: ComposerRunMetadata
+}
+
 interface AgentRunRoute {
   appRunId?: string
   appChatId?: string
@@ -106,6 +164,7 @@ declare global {
       selectExternalPathGrant: (access?: 'read' | 'write') => Promise<ExternalPathGrant | null>
       runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust?: boolean, imagePaths?: string[], resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption, route?: AgentRunRoute | null) => Promise<void>
       cancelGemini: (runId?: string) => Promise<void>
+      composeRun: (input: ComposerRunInput) => Promise<ComposerRunPayload>
       runAgent: (payload: AgentRunPayload) => Promise<void>
       cancelAgentRun: (provider?: ProviderId, runId?: string) => Promise<void>
       getAgentStatus: (provider: ProviderId) => Promise<any>
