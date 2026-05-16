@@ -6957,6 +6957,48 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         delegationPrompt: promptArg,
         returnResultToParent: returnResult
       })
+      // Phase I3.2 — drop a synthetic "delegation card" message into the
+      // parent transcript so the user sees an inline visual marker the
+      // moment the sub-thread spawns (instead of finding out only when
+      // the result back-propagates). We use a metadata-tagged system
+      // message so the renderer can swap in a custom card component.
+      try {
+        const parentChat = AppStore.getChat(parentChatId)
+        if (parentChat) {
+          const promptCardPreview = promptArg.length > 240
+            ? `${promptArg.slice(0, 240)}…`
+            : promptArg
+          const cardMessage: ChatMessage = {
+            id: `subthread-delegation-${subThread.appChatId}-${Date.now()}`,
+            role: 'system',
+            content: `↪ Delegated to ${providerLabel(providerArg)} sub-thread (${subThread.title}).`,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              kind: 'subThreadDelegation',
+              subThreadId: subThread.appChatId,
+              subThreadProvider: providerArg,
+              subThreadTitle: subThread.title,
+              parentProvider,
+              delegationPrompt: promptArg,
+              delegationPromptPreview: promptCardPreview,
+              returnResultToParent: returnResult
+            }
+          }
+          const updatedParent: ChatRecord = {
+            ...parentChat,
+            messages: [...parentChat.messages, cardMessage],
+            updatedAt: Date.now()
+          }
+          AppStore.saveChat(updatedParent)
+          try {
+            mainWindow?.webContents.send('chat-updated', updatedParent)
+          } catch {
+            // Best-effort — renderer not yet attached.
+          }
+        }
+      } catch {
+        // Best-effort; missing card is non-fatal vs missing run.
+      }
       try {
         // Phase I2: the audit event records the actual parent provider
         // (could be Gemini, Codex, Claude or Kimi), so cross-provider

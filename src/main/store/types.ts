@@ -590,14 +590,25 @@ export interface ChatMessage {
    * detect and treat it differently from a regular system message
    * (link back to the sub-thread, distinct visual treatment, etc.). */
   metadata?: {
-    kind?: 'subThreadReturn' | string;
-    /** Sub-thread id for `kind: 'subThreadReturn'`. */
+    kind?: 'subThreadReturn' | 'subThreadDelegation' | string;
+    /** Sub-thread id for `kind: 'subThreadReturn' | 'subThreadDelegation'`. */
     subThreadId?: string;
     /** Sub-thread's provider for badge/icon rendering. */
     subThreadProvider?: ProviderId;
-    /** Sub-thread title at time of return for the "↩ Result from X"
-     * header (may differ from current title if user renamed). */
+    /** Sub-thread title at time of delegation/return for the inline
+     * card header (may differ from current title if user renamed). */
     subThreadTitle?: string;
+    /** Phase I3.2 — parent provider at delegation time, used by the
+     * inline delegation card to render the cross-provider arc. */
+    parentProvider?: ProviderId;
+    /** Phase I3.2 — full delegation prompt (kept for click-through). */
+    delegationPrompt?: string;
+    /** Phase I3.2 — truncated delegation prompt (140-240 chars) for the
+     * card preview area. */
+    delegationPromptPreview?: string;
+    /** Phase I3.2 — whether the sub-thread is configured to return its
+     * result to the parent transcript. */
+    returnResultToParent?: boolean;
     [key: string]: unknown;
   };
 }

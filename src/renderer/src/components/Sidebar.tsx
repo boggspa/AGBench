@@ -656,6 +656,17 @@ export function Sidebar({
                           const isChatRunning = runningChatIdSet.has(chat.appChatId);
                           const lastRunStatus = getLastRunStatus(chat);
                           const subThreads = subThreadsByParentId.get(chat.appChatId) ?? [];
+                          // Phase I3.2 — "branched · N" badge. The badge
+                          // is bright while any sub-thread is running and
+                          // dims (still visible) once they've all
+                          // terminated, so the user can spot orchestrating
+                          // chats at a glance without losing the history.
+                          const subThreadCount = subThreads.length;
+                          const liveSubThreadCount = subThreads.reduce(
+                            (count, sub) => count + (runningChatIdSet.has(sub.appChatId) ? 1 : 0),
+                            0
+                          );
+                          const branchedBadgeTone = liveSubThreadCount > 0 ? 'active' : 'dim';
                           return (
                             <div key={chat.appChatId} className="sidebar-chat-family">
                               <button
@@ -670,7 +681,7 @@ export function Sidebar({
                                       <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
                                     </span>
                                   </span>
-                                  {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted')) && (
+                                  {(isChatRunning || (lastRunStatus && lastRunStatus.tone !== 'success' && lastRunStatus.tone !== 'muted') || subThreadCount > 0) && (
                                     <span className="sidebar-chat-subline">
                                       {isChatRunning ? (
                                         <span className="sidebar-run-status tone-warning">Running</span>
@@ -679,6 +690,15 @@ export function Sidebar({
                                           {lastRunStatus.label}
                                         </span>
                                       ) : null}
+                                      {subThreadCount > 0 && (
+                                        <span
+                                          className={`sidebar-branched-badge sidebar-branched-${branchedBadgeTone}`}
+                                          title={`${liveSubThreadCount} of ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'} running`}
+                                          aria-label={`branched ${subThreadCount} sub-thread${subThreadCount === 1 ? '' : 's'}`}
+                                        >
+                                          branched · {subThreadCount}
+                                        </span>
+                                      )}
                                     </span>
                                   )}
                                 </span>
@@ -713,6 +733,7 @@ export function Sidebar({
                                   {subThreads.map((subChat) => {
                                     const subRunning = runningChatIdSet.has(subChat.appChatId);
                                     const subLastStatus = getLastRunStatus(subChat);
+                                    const subProviderColor = `var(--provider-${subChat.provider || 'gemini'}-color)`;
                                     return (
                                       <button
                                         type="button"
@@ -721,6 +742,11 @@ export function Sidebar({
                                         onClick={() => onSelectChat(subChat)}
                                       >
                                         <span className="sidebar-sub-thread-prefix" aria-hidden>↳</span>
+                                        <span
+                                          className="sidebar-sub-thread-dot"
+                                          aria-hidden="true"
+                                          style={{ background: subProviderColor }}
+                                        />
                                         <span className="sidebar-chat-copy" title={subChat.title}>
                                           <span className="sidebar-chat-title-line">
                                             <SidebarProviderLabel provider={subChat.provider} />

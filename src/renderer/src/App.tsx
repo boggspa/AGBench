@@ -17,6 +17,8 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
+import { SubThreadDelegationCard, isSubThreadDelegationMessage } from './components/SubThreadDelegationCard'
+import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import {
@@ -28,6 +30,7 @@ import { buildRunLanes, compactPromptPreview, extractRunTouchedFiles, type RunLa
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
+import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import {
   HEATMAP_DAY_COUNT,
   HEATMAP_HOUR_COUNT,
@@ -2888,6 +2891,12 @@ type TranscriptPanelProps = {
   fileChangeShouldShowStats: boolean
   fileChangeDisplayAdds: number
   fileChangeDisplayDels: number
+  /** Phase I3.2 — all chats, so the inline delegation card can look up
+   * the live sub-thread record by id and reflect its status. */
+  chats: ChatRecord[]
+  /** Phase I3.2 — chat ids currently running on the run-queue so the
+   * delegation card and the chat-header ticker can show live state. */
+  runningChatIds: string[]
   onPlanChoiceSubmit: (messageId: string, option: string) => void
   onRunFallback: (model: string) => void
   onOpenSubThread: (chatId: string) => void
@@ -2911,6 +2920,8 @@ const TranscriptPanel = memo(function TranscriptPanel({
   fileChangeShouldShowStats,
   fileChangeDisplayAdds,
   fileChangeDisplayDels,
+  chats,
+  runningChatIds,
   onPlanChoiceSubmit,
   onRunFallback,
   onOpenSubThread
@@ -2921,8 +2932,10 @@ const TranscriptPanel = memo(function TranscriptPanel({
   return (
     <div className="transcript-scroll" ref={scrollRef}>
       <div className="transcript-inner">
-        {visibleMessages.map((msg) => (
-          msg.role === 'tool' ? (
+        {visibleMessages.map((msg) => {
+          const isDelegationCard = isSubThreadDelegationMessage(msg)
+          const isReturnCard = isSubThreadReturnMessage(msg)
+          return msg.role === 'tool' ? (
             <ActivityStack
               key={msg.id}
               activities={msg.toolActivities || []}
@@ -2933,8 +2946,20 @@ const TranscriptPanel = memo(function TranscriptPanel({
               chat={currentChat || undefined}
             />
           ) : (
-            <div key={msg.id} className={`message-group ${isSubThreadReturnMessage(msg) ? 'subthread-return-message' : ''}`}>
-              {isSubThreadReturnMessage(msg) ? (
+            <div
+              key={msg.id}
+              className={`message-group ${
+                isReturnCard ? 'subthread-return-message' : ''
+              } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
+            >
+              {isDelegationCard ? (
+                <SubThreadDelegationCard
+                  message={msg}
+                  chats={chats}
+                  runningChatIds={runningChatIds}
+                  onOpenSubThread={onOpenSubThread}
+                />
+              ) : isReturnCard ? (
                 <SubThreadReturnCard
                   message={msg}
                   chat={currentChat || undefined}
@@ -2972,7 +2997,7 @@ const TranscriptPanel = memo(function TranscriptPanel({
               )}
             </div>
           )
-        ))}
+        })}
         {isThinking && (
           <div key="thinking-indicator" className="message-group">
             <div className="message-meta">{currentProviderLabel}</div>
@@ -3087,7 +3112,9 @@ const TranscriptPanel = memo(function TranscriptPanel({
   previous.fileChangeSummaryText === next.fileChangeSummaryText &&
   previous.fileChangeShouldShowStats === next.fileChangeShouldShowStats &&
   previous.fileChangeDisplayAdds === next.fileChangeDisplayAdds &&
-  previous.fileChangeDisplayDels === next.fileChangeDisplayDels
+  previous.fileChangeDisplayDels === next.fileChangeDisplayDels &&
+  previous.chats === next.chats &&
+  previous.runningChatIds === next.runningChatIds
 )
 
 type SettingsPanelUpdate = {
@@ -3230,6 +3257,15 @@ function App(): React.JSX.Element {
   })
   const usageSummarySignatureRef = useRef('')
   const usageRecordsSignatureRef = useRef('')
+  // Autonomous-refresh plumbing — see the matching `useEffect` below for the
+  // heartbeat that polls usage IPC on a 90s cadence without touching focused
+  // UI state. The ref-to-latest pattern keeps the timer stable across renders
+  // so we don't tear down & reinstall it whenever `codexStatus` changes.
+  const refreshUsageSummaryRef = useRef<(_workspaceId?: string, _providerHint?: ProviderId, codexStatusHint?: any) => Promise<void>>(
+    async () => {}
+  )
+  const usageRefreshInFlightRef = useRef(false)
+  const usageRefreshLastFiredAtRef = useRef<number | null>(null)
   const [imageAttachmentsByChatId, setImageAttachmentsByChatId] = useState<Record<string, ImageAttachment[]>>({})
   const [permissionRequestByChatId, setPermissionRequestByChatId] = useState<Record<string, ComposerPermissionState>>({})
   const [
@@ -4659,6 +4695,11 @@ function App(): React.JSX.Element {
     }
   }
 
+  // Keep a ref to the *latest* `refreshUsageSummary` closure so the
+  // autonomous polling effect (below) doesn't need to depend on `codexStatus`
+  // and tear the timer down on every status mutation.
+  refreshUsageSummaryRef.current = refreshUsageSummary
+
   const handleSelectWorkspace = async () => {
     const ws = await window.api.selectWorkspace()
     if (ws) {
@@ -5144,6 +5185,81 @@ function App(): React.JSX.Element {
   useEffect(() => {
     currentWorkspaceIdRef.current = currentWorkspace?.id ?? null
   }, [currentWorkspace?.id])
+
+  // Autonomous background refresh for the sidebar "MODEL USAGE" meters.
+  //
+  // Previously the meters only refreshed when the user switched chats or
+  // workspaces, so a long-lived window would show stale provider quotas
+  // until the user clicked around. This effect polls the same usage IPC
+  // path on a 90s cadence, fully off the UI thread.
+  //
+  // Guarantees:
+  //  - Mounts once and lives for the lifetime of the app — no thrash on
+  //    chat/workspace switches. The latest `refreshUsageSummary` closure is
+  //    pulled from `refreshUsageSummaryRef` so we don't need it in deps.
+  //  - `usageRefreshInFlightRef` ensures only one refresh is outstanding at
+  //    a time; overlapping ticks are skipped, not queued.
+  //  - Polling pauses when the window is hidden/blurred (`visibilitychange`
+  //    + `online`/`offline`). On regaining focus we kick a refresh and
+  //    resume the heartbeat.
+  //  - `refreshUsageSummary` already does signature-based diff suppression,
+  //    so identical payloads don't call `setState` — selection, scroll
+  //    position, and in-flight composer text are not perturbed.
+  useEffect(() => {
+    const INTERVAL_MS = 90_000
+
+    const fireRefresh = (force = false) => {
+      const decision = force
+        ? !usageRefreshInFlightRef.current && (typeof navigator === 'undefined' || navigator.onLine !== false)
+        : shouldRunUsageRefresh({
+            msSinceLastRefresh:
+              usageRefreshLastFiredAtRef.current === null
+                ? null
+                : Date.now() - usageRefreshLastFiredAtRef.current,
+            intervalMs: INTERVAL_MS,
+            inFlight: usageRefreshInFlightRef.current,
+            windowFocused: typeof document === 'undefined' ? true : document.visibilityState !== 'hidden',
+            online: typeof navigator === 'undefined' ? true : navigator.onLine !== false
+          })
+      if (!decision) return
+      usageRefreshInFlightRef.current = true
+      usageRefreshLastFiredAtRef.current = Date.now()
+      const workspaceId = currentWorkspaceIdRef.current || undefined
+      void refreshUsageSummaryRef
+        .current(workspaceId)
+        .catch(() => {
+          // Swallow — `refreshUsageSummary` already swallows its own IPC
+          // failures via `.catch(() => null)`. Anything that reaches here is
+          // unexpected, but we still want the in-flight flag cleared so
+          // future heartbeats fire.
+        })
+        .finally(() => {
+          usageRefreshInFlightRef.current = false
+        })
+    }
+
+    const intervalId = window.setInterval(() => fireRefresh(false), INTERVAL_MS)
+
+    const handleVisibilityChange = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fireRefresh(true)
+      }
+    }
+    const handleOnline = () => fireRefresh(true)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleVisibilityChange)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleVisibilityChange)
+      window.removeEventListener('online', handleOnline)
+    }
+    // Mount-once: deps intentionally empty. All values consumed inside
+    // (workspace id, the refresh function) come from refs and are read at
+    // call time, so we never need to tear the timer down.
+  }, [])
 
   useEffect(() => {
     currentChatIdRef.current = currentChat?.appChatId ?? null
@@ -7717,6 +7833,10 @@ function App(): React.JSX.Element {
   ])
 
   const isOldVersion = geminiVersion !== 'unknown' && geminiVersion < '0.39.1'
+  // Phase I3.2 — stable array view of the running-chat set so the
+  // transcript/sidebar/header status surfaces can rely on referential
+  // equality across renders (React.memo + Set semantics don't play well).
+  const runningChatIdsArray = useMemo(() => [...runningChatIds], [runningChatIds])
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
   const isCurrentComposerLocked = isCurrentChatRunning
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
@@ -8126,7 +8246,7 @@ function App(): React.JSX.Element {
               currentChat={currentChat}
               currentRun={currentRun}
               usageSummary={usageSummary}
-              runningChatIds={[...runningChatIds]}
+              runningChatIds={runningChatIdsArray}
               onSelectWorkspace={handleSelectExistingWorkspace}
               onRemoveWorkspace={handleRemoveWorkspace}
               onSelectWorkspaceDialog={handleSelectWorkspace}
@@ -8280,6 +8400,13 @@ function App(): React.JSX.Element {
             </div>
           )}
 
+          <SubThreadStatusTicker
+            currentChat={currentChat}
+            chats={chats}
+            runningChatIds={runningChatIdsArray}
+            onOpenSubThread={handleOpenCockpitThread}
+          />
+
           <TranscriptPanel
             scrollRef={transcriptScrollRef}
             endRef={logsEndRef}
@@ -8298,6 +8425,8 @@ function App(): React.JSX.Element {
             fileChangeShouldShowStats={fileChangeShouldShowStats}
             fileChangeDisplayAdds={fileChangeDisplayAdds}
             fileChangeDisplayDels={fileChangeDisplayDels}
+            chats={chats}
+            runningChatIds={runningChatIdsArray}
             onPlanChoiceSubmit={handlePlanChoiceSubmit}
             onRunFallback={handleRunFallback}
             onOpenSubThread={handleOpenCockpitThread}

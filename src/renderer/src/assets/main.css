@@ -2967,6 +2967,273 @@ button.sidebar-item {
   color: var(--text-primary);
 }
 
+/* Phase I3.2 — inline delegation card rendered in the parent transcript
+ * when a sub-thread is spawned via agentbench__delegate_to_subthread. */
+.subthread-delegation-card {
+  width: min(100%, 860px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  border: 1px solid rgb(255 255 255 / 0.10);
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.04), transparent 60%),
+    rgb(255 255 255 / 0.025);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.02);
+  color: var(--text-primary);
+  padding: 0.7rem 0.85rem;
+  position: relative;
+  transition: border-color 120ms ease, transform 80ms ease, box-shadow 120ms ease;
+}
+
+.subthread-delegation-card.clickable {
+  cursor: pointer;
+}
+
+.subthread-delegation-card.clickable:hover {
+  border-color: rgb(255 255 255 / 0.22);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.22);
+}
+
+.subthread-delegation-card.clickable:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.subthread-delegation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.subthread-delegation-arc {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.subthread-delegation-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 7px;
+  color: #ffffff;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.26rem 0.5rem;
+  letter-spacing: 0.01em;
+}
+
+.subthread-delegation-arc-arrow {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  font-weight: 700;
+}
+
+.subthread-delegation-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 7px;
+  padding: 0.22rem 0.5rem;
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.subthread-delegation-status.status-running {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+}
+
+.subthread-delegation-status.status-running .subthread-delegation-status-glyph {
+  animation: subthreadDelegationPulse 1.4s ease-in-out infinite;
+}
+
+.subthread-delegation-status.status-completed {
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.subthread-delegation-status.status-failed {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.subthread-delegation-status.status-declined {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.05);
+}
+
+.subthread-delegation-status.status-unknown {
+  color: var(--text-tertiary);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.subthread-delegation-status-glyph {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+@keyframes subthreadDelegationPulse {
+  0%, 100% { opacity: 1; transform: translateX(0); }
+  50% { opacity: 0.5; transform: translateX(2px); }
+}
+
+.subthread-delegation-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.subthread-delegation-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subthread-delegation-prompt {
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.subthread-delegation-footer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  border-top: 1px dashed rgb(255 255 255 / 0.08);
+  padding-top: 0.45rem;
+}
+
+/* Phase I3.2 — chat header status ticker. Subtle horizontal strip rendered
+ * above the transcript while at least one sub-thread is running. */
+.subthread-status-ticker {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  padding: 0.42rem 0.95rem;
+  border-bottom: 1px solid rgb(255 255 255 / 0.06);
+  background: rgb(255 255 255 / 0.02);
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+
+.subthread-status-ticker-parent {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.subthread-status-ticker-divider {
+  color: var(--text-tertiary);
+}
+
+.subthread-status-ticker-subs {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.subthread-status-ticker-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: transparent;
+  border: 0;
+  padding: 0.18rem 0.35rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+}
+
+.subthread-status-ticker-item:hover {
+  background: rgb(255 255 255 / 0.04);
+}
+
+.subthread-status-ticker-item:disabled {
+  cursor: default;
+}
+
+.subthread-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  border-radius: 5px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0.18rem 0.42rem;
+  letter-spacing: 0.01em;
+  line-height: 1;
+}
+
+.subthread-status-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+  animation: subthreadStatusPulse 1.3s ease-in-out infinite;
+}
+
+@keyframes subthreadStatusPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.78); }
+}
+
+.subthread-status-text {
+  color: var(--text-secondary);
+}
+
+/* Phase I3.2 — sidebar branched badge + per-provider dot on sub-thread row. */
+.sidebar-branched-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.06rem 0.45rem;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  background: rgb(255 255 255 / 0.07);
+  color: var(--text-secondary);
+  margin-left: 0.4rem;
+  white-space: nowrap;
+}
+
+.sidebar-branched-badge.sidebar-branched-active {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+  color: var(--warning);
+}
+
+.sidebar-branched-badge.sidebar-branched-dim {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--text-tertiary);
+}
+
+.sidebar-sub-thread-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  display: inline-block;
+  margin-right: 0.2rem;
+  flex: 0 0 auto;
+}
+
 .subthread-return-body .message-markdown-pro {
   max-width: 100%;
 }
