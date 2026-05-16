@@ -804,6 +804,26 @@ export function SettingsPanel({
           </label>
 
           <label className="settings-service-row">
+            <span>
+              Sub-thread delegation
+              <small>
+                Whether agents on this workspace can delegate to sub-threads on other providers.
+                Default 'ask' prompts you before each delegation; 'Always allow' lets agents spawn
+                without prompting (use only for trusted workflows).
+              </small>
+            </span>
+            <select
+              className="settings-select"
+              value={agenticServices.subThreadDelegation}
+              onChange={(e) => updateAgenticService('subThreadDelegation', e.target.value as AgenticServicePolicy)}
+            >
+              {AGENTIC_SERVICE_POLICY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+
+          <label className="settings-service-row">
             <span>Network access</span>
             <select
               className="settings-select"

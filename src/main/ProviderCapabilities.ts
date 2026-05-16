@@ -63,7 +63,7 @@ function serviceRequiresApproval(policy?: AgenticServicePolicy): boolean {
 }
 
 function serviceCapability(
-  id: AgenticServiceId,
+  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
   policy: AgenticServicePolicy | undefined,
   source: ProviderToolingCapability['source'],
   tools: string[],
@@ -84,7 +84,7 @@ function serviceCapability(
 }
 
 function unavailableCapability(
-  id: AgenticServiceId,
+  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
   source: ProviderToolingCapability['source'],
   details: string
 ): ProviderToolingCapability {
@@ -102,7 +102,7 @@ function unavailableCapability(
 }
 
 function delegatedCapability(
-  id: AgenticServiceId,
+  id: Exclude<AgenticServiceId, 'subThreadDelegation'>,
   policy: AgenticServicePolicy | undefined,
   tools: string[],
   details: string

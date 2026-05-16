@@ -44,6 +44,7 @@ const baseSettings: AppSettings = {
     shellCommands: 'workspace',
     fileChanges: 'ask',
     mcpTools: 'ask',
+    subThreadDelegation: 'ask',
     networkAccess: 'allow'
   },
   agenticWorkspaceGrants: [],

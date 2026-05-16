@@ -39,6 +39,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       shellCommands: 'ask',
       fileChanges: 'ask',
       mcpTools: 'ask',
+      subThreadDelegation: 'ask',
       networkAccess: 'ask'
     },
     agenticWorkspaceGrants: [],

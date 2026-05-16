@@ -457,6 +457,7 @@ const DEFAULT_AGENTIC_SERVICES_FOR_PROFILE: AppSettings['agenticServices'] = {
   shellCommands: 'workspace',
   fileChanges: 'ask',
   mcpTools: 'ask',
+  subThreadDelegation: 'ask',
   networkAccess: 'allow'
 }
 const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
@@ -903,6 +904,10 @@ function sanitizeRuntimeProfileForSave(profile: unknown): Partial<RuntimeProfile
       shellCommands: sanitizeAgenticServicePolicy(input.agenticServices.shellCommands, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.shellCommands),
       fileChanges: sanitizeAgenticServicePolicy(input.agenticServices.fileChanges, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.fileChanges),
       mcpTools: sanitizeAgenticServicePolicy(input.agenticServices.mcpTools, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.mcpTools),
+      subThreadDelegation: sanitizeAgenticServicePolicy(
+        input.agenticServices.subThreadDelegation,
+        DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.subThreadDelegation
+      ),
       networkAccess: sanitizeAgenticNetworkPolicy(input.agenticServices.networkAccess, DEFAULT_AGENTIC_SERVICES_FOR_PROFILE.networkAccess)
     } : undefined,
     networkPolicy,
@@ -1017,6 +1022,10 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
       shellCommands: sanitizeAgenticServicePolicy(services.shellCommands, current.shellCommands),
       fileChanges: sanitizeAgenticServicePolicy(services.fileChanges, current.fileChanges),
       mcpTools: sanitizeAgenticServicePolicy(services.mcpTools, current.mcpTools),
+      subThreadDelegation: sanitizeAgenticServicePolicy(
+        services.subThreadDelegation,
+        current.subThreadDelegation
+      ),
       networkAccess: sanitizeAgenticNetworkPolicy(services.networkAccess, current.networkAccess)
     }
   }
@@ -1405,7 +1414,8 @@ function expireRunScopedApprovalLedger(session: { runId: string; provider: Provi
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
-  mcpTools: 'MCP and tool calls'
+  mcpTools: 'MCP and tool calls',
+  subThreadDelegation: 'Sub-thread delegation'
 }
 
 function getAgenticServicePolicy(service: AgenticServiceId, settings: AppSettings = AppStore.getSettings()) {

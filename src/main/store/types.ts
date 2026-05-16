@@ -28,7 +28,11 @@ export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic';
 export type ComposerStyle = 'default' | 'codex' | 'claude' | 'gemini' | 'kimi';
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi';
 export type ChatScope = 'workspace' | 'global';
-export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools';
+export type AgenticServiceId =
+  | 'shellCommands'
+  | 'fileChanges'
+  | 'mcpTools'
+  | 'subThreadDelegation';
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny';
 export type AgenticNetworkPolicy = 'allow' | 'deny';
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off';
@@ -57,6 +61,7 @@ export interface AgenticServicesSettings {
   shellCommands: AgenticServicePolicy;
   fileChanges: AgenticServicePolicy;
   mcpTools: AgenticServicePolicy;
+  subThreadDelegation: AgenticServicePolicy;
   networkAccess: AgenticNetworkPolicy;
 }
 
@@ -86,7 +91,7 @@ export interface GeminiMcpBridgeStatus {
 
 export type ProviderCapabilityState = 'available' | 'gated' | 'blocked' | 'delegated' | 'unavailable';
 export type ProviderCapabilityWarningSeverity = 'info' | 'warning' | 'error';
-export type ProviderToolingCapabilityId = AgenticServiceId | 'networkAccess';
+export type ProviderToolingCapabilityId = Exclude<AgenticServiceId, 'subThreadDelegation'> | 'networkAccess';
 
 export interface ProviderCapabilityWarning {
   id: string;

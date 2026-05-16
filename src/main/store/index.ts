@@ -67,6 +67,7 @@ const defaultSettings: AppSettings = {
     shellCommands: 'workspace',
     fileChanges: 'ask',
     mcpTools: 'ask',
+    subThreadDelegation: 'ask',
     networkAccess: 'allow'
   },
   agenticWorkspaceGrants: [],
