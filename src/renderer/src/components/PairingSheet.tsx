@@ -52,6 +52,7 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [bootstrap, setBootstrap] = useState<BootstrapState | null>(null)
   const [copied, setCopied] = useState(false)
+  const [maximised, setMaximised] = useState(false)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
 
   const refresh = useCallback(async (name: string) => {
@@ -64,11 +65,27 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
         setError(result.error || 'Failed to begin pairing — no bootstrap returned.')
         return
       }
-      const json = JSON.stringify(result.bootstrap, null, 2)
+      // The Swift daemon returns `BeginPairingResult` =
+      //   { pairingSessionID, bootstrapPayload }
+      // but the iOS PairingFlow.scan(bootstrapJSON:) expects a bare
+      // `PairingBootstrapPayload`. Unwrap before encoding into the QR
+      // / paste-JSON so the iPad scanner gets exactly the shape it
+      // decodes. Fallback to the wrapper if the field is missing
+      // (forward-compat: a future daemon shape might inline).
+      const wrapper = result.bootstrap as { bootstrapPayload?: unknown }
+      const innerPayload =
+        wrapper && typeof wrapper === 'object' && 'bootstrapPayload' in wrapper
+          ? wrapper.bootstrapPayload
+          : result.bootstrap
+      const json = JSON.stringify(innerPayload, null, 2)
       const qrSvg = await QRCode.toString(json, {
         type: 'svg',
-        errorCorrectionLevel: 'M',
-        margin: 1,
+        // Q-level error correction (~25% recoverable) is the sweet
+        // spot for camera scanning at iPad viewing distance — more
+        // tolerant of glare / screen reflection than M (~15%) without
+        // ballooning module count.
+        errorCorrectionLevel: 'Q',
+        margin: 2,
         color: { dark: '#1f2328', light: '#ffffff00' }
       })
       setBootstrap({ json, qrSvg })
@@ -88,13 +105,21 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
   }, [])
 
   // Esc to close — works because we focus the close button on mount.
+  // When maximised, Esc exits the maximise overlay first; second Esc closes
+  // the sheet.
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (maximised) {
+          setMaximised(false)
+          return
+        }
+        onClose()
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, maximised])
 
   useEffect(() => {
     closeButtonRef.current?.focus()
@@ -191,8 +216,11 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
                   {loading ? 'Generating QR…' : 'No QR available'}
                 </div>
               ) : (
-                <div
-                  className="pairing-sheet__qr"
+                <button
+                  type="button"
+                  className="pairing-sheet__qr pairing-sheet__qr--clickable"
+                  onClick={() => setMaximised(true)}
+                  title="Click to maximise for easier camera scanning"
                   // dangerouslySetInnerHTML is intentional — `qrcode`
                   // returns a self-contained SVG string we want to
                   // render inline so it scales crisply with the panel.
@@ -200,8 +228,9 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
                 />
               )}
               <div className="pairing-sheet__hint">
-                Point the iOS camera here. Pair expires in a few minutes —
-                tap Refresh if scanning fails.
+                Point the iOS camera here. <strong>Click the QR to maximise</strong>
+                {' '}if the camera can't read it at this size. Pair expires in a
+                few minutes — tap Refresh if scanning fails.
               </div>
             </div>
 
@@ -240,6 +269,33 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
           </span>
         </footer>
       </div>
+
+      {/* Maximised QR overlay — covers the screen so the iPad camera
+          can comfortably scan from any reasonable distance. Click /
+          Esc dismisses. */}
+      {maximised && bootstrap && (
+        <div
+          className="pairing-sheet__maximise"
+          role="button"
+          tabIndex={0}
+          aria-label="Minimise QR code"
+          onClick={() => setMaximised(false)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              setMaximised(false)
+            }
+          }}
+        >
+          <div
+            className="pairing-sheet__maximise-qr"
+            dangerouslySetInnerHTML={{ __html: bootstrap.qrSvg }}
+          />
+          <div className="pairing-sheet__maximise-hint">
+            Click anywhere to close · Point iPad camera at the QR
+          </div>
+        </div>
+      )}
     </div>
   )
 }
