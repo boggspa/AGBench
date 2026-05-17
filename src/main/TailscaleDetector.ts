@@ -129,9 +129,27 @@ export async function detectTailscale(
   let raw: TailscaleStatusRaw
   try {
     const { stdout } = await exec(cliPath, ['status', '--json'])
+    // The CLI returns a human-readable message (e.g. "The Tailscale
+    // daemon is not running. Run 'sudo tailscale up'…") instead of
+    // JSON when the daemon isn't ready. Detect that shape and surface
+    // the message verbatim rather than vomiting "Unexpected token 'T'"
+    // at the user. Only fall through to JSON.parse when the stdout
+    // actually looks like a JSON object.
+    const trimmedStdout = stdout.trim()
+    if (!trimmedStdout.startsWith('{')) {
+      const firstLine = trimmedStdout.split('\n')[0].slice(0, 240)
+      return {
+        available: false,
+        cliPath,
+        reason: firstLine || 'Tailscale CLI returned no status output.'
+      }
+    }
     try {
       raw = JSON.parse(stdout) as TailscaleStatusRaw
     } catch (parseErr) {
+      // Reached only when stdout starts with `{` but isn't valid JSON
+      // — genuinely malformed CLI output, worth flagging as a parse
+      // problem rather than a daemon-state problem.
       return {
         available: false,
         cliPath,

@@ -73,10 +73,48 @@ describe('detectTailscale', () => {
     expect(result.reason).toMatch(/stopped|connect/i)
   })
 
-  it('returns available=false with a parse-error reason on malformed JSON', async () => {
+  it('surfaces the CLI human-readable message when stdout is not JSON-shaped', async () => {
+    // Real-world: when the Tailscale daemon isn't running, the CLI
+    // prints "The Tailscale daemon is not running. Run 'sudo tailscale
+    // up'…" — surfacing this verbatim is more useful than
+    // "Unexpected token 'T' at position 0".
     const result = await detectTailscale({
       cliPath: '/fake/tailscale',
-      execFn: async () => ({ stdout: 'not json at all', stderr: '' })
+      execFn: async () => ({
+        stdout: "The Tailscale daemon is not running. Run 'sudo tailscale up' or open Tailscale.\n",
+        stderr: ''
+      })
+    })
+    expect(result.available).toBe(false)
+    expect(result.reason).toBe("The Tailscale daemon is not running. Run 'sudo tailscale up' or open Tailscale.")
+    expect(result.reason).not.toContain('JSON parse failed')
+  })
+
+  it('truncates very long human-readable messages to 240 chars', async () => {
+    const result = await detectTailscale({
+      cliPath: '/fake/tailscale',
+      execFn: async () => ({ stdout: 'X'.repeat(500), stderr: '' })
+    })
+    expect(result.available).toBe(false)
+    expect(result.reason?.length).toBeLessThanOrEqual(240)
+  })
+
+  it('falls back to "no status output" when stdout is empty', async () => {
+    const result = await detectTailscale({
+      cliPath: '/fake/tailscale',
+      execFn: async () => ({ stdout: '   \n   ', stderr: '' })
+    })
+    expect(result.available).toBe(false)
+    expect(result.reason).toContain('no status output')
+  })
+
+  it('still reports JSON parse failure when stdout LOOKS like JSON but is malformed', async () => {
+    // The new short-circuit only catches stdout that doesn't even
+    // start with `{`. If the CLI emits a JSON-shaped-but-broken
+    // payload, the parse-failure branch is the correct surface.
+    const result = await detectTailscale({
+      cliPath: '/fake/tailscale',
+      execFn: async () => ({ stdout: '{"Version": "1.56", "Self": {', stderr: '' })
     })
     expect(result.available).toBe(false)
     expect(result.reason).toContain('JSON parse failed')
