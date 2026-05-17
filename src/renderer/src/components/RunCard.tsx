@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import type { ChatRun, ProviderId, RunEventReplay } from '../../../main/store/types'
 import { classifyRunEvent } from '../lib/RunEventClassifier'
+import { DigitOdometer } from './DigitOdometer'
 
 interface RunCardProps {
   run: ChatRun
@@ -76,8 +77,14 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
         </div>
         <div className="run-card-meta">
           <span>{duration}</span>
-          {fileCount !== null && <span>{fileCount} file{fileCount === 1 ? '' : 's'}</span>}
-          <span>{aggregate.approvalCount} approval{aggregate.approvalCount === 1 ? '' : 's'}</span>
+          {fileCount !== null && (
+            <span className="run-card-meta-count">
+              <DigitOdometer value={fileCount} /> file{fileCount === 1 ? '' : 's'}
+            </span>
+          )}
+          <span className="run-card-meta-count">
+            <DigitOdometer value={aggregate.approvalCount} /> approval{aggregate.approvalCount === 1 ? '' : 's'}
+          </span>
         </div>
       </div>
       <button type="button" className="run-card-inspect" onClick={inspect} title="Inspect run">

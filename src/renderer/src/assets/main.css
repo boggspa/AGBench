@@ -11021,28 +11021,13 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Live tool diff telemetry — per-row inline odometer ("+46 -23" next to
- * file names). The standalone "EDITS +0 / -4 N file" aggregate pill was
- * removed; we rely on the per-row stats rendered by `ActivityRow`. */
-
-/* Overflow-clipped window that creates the mechanical counter roll */
-.diff-stat-slot {
-  display: inline-flex;
-  overflow: hidden;
-  align-items: flex-end;
-  line-height: 1;
-}
+ * file names). Mechanical roll lives in `.digit-odometer` (lower down);
+ * `.activity-line-stat*` selectors below are still used by static
+ * file-change card spans that don't need per-digit rolling. */
 
 .activity-line-stat {
   display: inline-block;
   font-variant-numeric: tabular-nums;
-}
-
-.roll-up {
-  animation: stat-roll-up 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.roll-down {
-  animation: stat-roll-down 300ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
 .activity-line-stat-estimated {
@@ -11105,30 +11090,6 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-muted);
   font-size: var(--font-size-xs);
   padding: 2px 8px;
-}
-
-@keyframes stat-roll-up {
-  0% {
-    transform: translateY(105%);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-@keyframes stat-roll-down {
-  0% {
-    transform: translateY(-105%);
-  }
-  100% {
-    transform: translateY(0);
-  }
-}
-
-:root[data-reduce-motion="true"] .roll-up,
-:root[data-reduce-motion="true"] .roll-down,
-:root[data-reduce-motion="true"] .activity-line-stat {
-  animation: none !important;
 }
 
 /* ── DigitOdometer ──────────────────────────────────────────────────
