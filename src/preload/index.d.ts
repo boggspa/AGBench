@@ -161,7 +161,7 @@ declare global {
       getRuntimeVersions: () => NodeJS.ProcessVersions
       selectWorkspace: () => Promise<WorkspaceRecord | null>
       selectImageFiles: () => Promise<string[]>
-      selectExternalPathGrant: (access?: 'read' | 'write') => Promise<ExternalPathGrant | null>
+      selectExternalPathGrant: (access?: 'read' | 'write', provider?: string) => Promise<ExternalPathGrant | null>
       runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust?: boolean, imagePaths?: string[], resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption, route?: AgentRunRoute | null) => Promise<void>
       cancelGemini: (runId?: string) => Promise<void>
       composeRun: (input: ComposerRunInput) => Promise<ComposerRunPayload>

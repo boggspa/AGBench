@@ -6,7 +6,12 @@ const api = {
   getRuntimeVersions: () => ({ ...process.versions }),
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   selectImageFiles: () => ipcRenderer.invoke('select-image-files'),
-  selectExternalPathGrant: (access: 'read' | 'write' = 'read') => ipcRenderer.invoke('select-external-path-grant', access),
+  // Phase J1 (composer unification): the picker is now cross-provider —
+  // optional `provider` argument so the main process can stamp the
+  // grant with the requesting provider (defaults to 'codex' for
+  // back-compat with prior renderers that only sent `access`).
+  selectExternalPathGrant: (access: 'read' | 'write' = 'read', provider?: string) =>
+    ipcRenderer.invoke('select-external-path-grant', access, provider),
   runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust: boolean = false, imagePaths: string[] = [], resumeSessionId: string | null = null, worktree: GeminiWorktreeLaunchOption = null, route: any = null) =>
     ipcRenderer.invoke('run-gemini', workspace, prompt, model, approvalMode, sessionTrust, imagePaths, resumeSessionId, worktree, route),
   cancelGemini: (runId?: string) => ipcRenderer.invoke('cancel-gemini', runId),

@@ -11791,6 +11791,21 @@ input:disabled, select:disabled, textarea:disabled {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }
+/* Phase J1 composer-unification: the above-bar SHAPE is now identical
+ * across every provider. The previous `style-codex` / `style-claude` /
+ * `style-default` variants set their own radius / background / shadow.
+ * Those are kept (as visual flavour for users who pick a composerStyle
+ * other than their active provider's default) but the new
+ * `style-unified` variant lets the bar inherit from the base. Theme
+ * colour comes from the surrounding `[data-composer-style="..."]`
+ * scope instead of per-element overrides. */
+.composer-above-bar.style-unified {
+  border-radius: calc(var(--radius-lg) * 1.6);
+  padding: 8px 16px;
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
+}
 .composer-above-bar.style-codex {
   border-radius: 20px;
   background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
@@ -11816,10 +11831,122 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .composer-above-bar-summary,
 .composer-above-bar-branch,
-.composer-above-bar-stats {
+.composer-above-bar-stats,
+.composer-above-bar-files {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.composer-above-bar-files {
+  /* New (Phase J1): file-count chip pulled out of the codex-only
+   * summary span so the unified above-bar can show file/add/del/branch
+   * independently of any provider style. */
+  color: color-mix(in srgb, #ffffff 72%, transparent);
+}
+
+/* ============================================================
+ * Composer-unification (Phase J1): WorkspaceAccessControls pills
+ *
+ * Cross-provider External Path + Worktree pills, with two render
+ * variants:
+ *   .composer-workspace-access-satellite — floats just above the
+ *     composer surface in the welcome state (no chat activity yet).
+ *   .composer-workspace-access-inline    — sits inside the
+ *     .composer-above-bar alongside branch / diff stats / Create PR.
+ *
+ * Provider identity is expressed through the theme tokens that the
+ * surrounding `.interface-${provider}` / `[data-composer-style]`
+ * scope already supplies — colour/border/glow vary; SHAPE does not.
+ * ============================================================ */
+.composer-workspace-access {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+.composer-workspace-access-satellite {
+  /* In the welcome state we don't have the above-bar to live in, so
+   * the pills sit as a small floating cluster above the composer. */
+  align-self: flex-end;
+  margin: 0 12px 6px auto;
+  z-index: 2;
+}
+.composer-workspace-access-inline {
+  /* Inside the above-bar: just a horizontal cluster between the
+   * branch/diff stats group and the Create-PR action. The
+   * .composer-above-bar's flex layout handles spacing. */
+  margin-left: auto;
+}
+.composer-above-bar .composer-workspace-access-inline {
+  /* When inside the above-bar, push the Create-PR action to the far
+   * right by keeping our cluster on the left of `margin-left: auto`
+   * on the action button. */
+  margin-left: 8px;
+  margin-right: 0;
+}
+.composer-workspace-access-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  font-family: inherit;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+}
+.composer-workspace-access-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: #ffffff;
+  border-color: color-mix(in srgb, #ffffff 22%, transparent);
+}
+.composer-workspace-access-pill.is-active {
+  color: #6ddfa8;
+  border-color: color-mix(in srgb, #6ddfa8 36%, transparent);
+}
+.composer-workspace-access-pill.is-warning {
+  color: #f5c168;
+  border-color: color-mix(in srgb, #f5c168 36%, transparent);
+}
+.composer-workspace-access-pill.is-status {
+  cursor: default;
+  opacity: 0.78;
+}
+.composer-workspace-access-pill.is-status:hover {
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 14%, transparent);
+}
+.composer-workspace-access-pill svg {
+  opacity: 0.78;
+  flex-shrink: 0;
+}
+.composer-workspace-access-pill .composer-workspace-access-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  margin: 0;
+}
+.composer-workspace-access-pill .composer-workspace-access-select:disabled {
+  cursor: not-allowed;
+}
+.composer-workspace-access-pill .composer-workspace-access-select option {
+  /* macOS renders <option> children with the system colour palette,
+   * which can read white-on-white on dark themes. Force a readable
+   * combo for the dropdown menu. */
+  color: #1a1a1a;
+  background: #ffffff;
 }
 .composer-above-bar-branch svg {
   opacity: 0.78;

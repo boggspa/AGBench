@@ -18,6 +18,7 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
+import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { SubThreadDelegationCard, isSubThreadDelegationMessage } from './components/SubThreadDelegationCard'
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
@@ -680,18 +681,10 @@ function PlusSymbolIcon() {
   )
 }
 
-function ChartBarSymbolIcon() {
-  return (
-    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M2.8 13.2h10.4" />
-        <path d="M4.1 10.6V7.4" />
-        <path d="M8 10.6V4.2" />
-        <path d="M11.9 10.6V6" />
-      </svg>
-    </span>
-  )
-}
+// Composer-unification (Phase J1): ChartBarSymbolIcon was only used by
+// the Gemini-only `/stats` button which moved into the command palette.
+// The dead icon component is removed; if a future surface needs a
+// chart-bar glyph we can re-add it then.
 
 function CommandSymbolIcon() {
   return (
@@ -796,31 +789,15 @@ function LinkCircleSymbolIcon() {
   )
 }
 
-function CheckpointSymbolIcon() {
-  return (
-    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12.7 7.2a4.7 4.7 0 1 0-1.3 4.1" />
-        <path d="M12.7 4.9v2.3h-2.3" />
-        <path d="M8 5.4V8l1.7 1" />
-      </svg>
-    </span>
-  )
-}
+// Composer-unification (Phase J1): CheckpointSymbolIcon was only used
+// by the Gemini-only Checkpoints toggle button which moved into the
+// command palette (and the palette uses text labels, not glyphs, for
+// the toggle items). Dead icon removed.
 
-function WorktreeSymbolIcon() {
-  return (
-    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
-      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4.2 3.2v6.1a2.5 2.5 0 0 0 2.5 2.5h5.1" />
-        <path d="M4.2 5.6h3.6a2.5 2.5 0 0 0 2.5-2.5" />
-        <circle cx="4.2" cy="3.2" r="1.2" />
-        <circle cx="11.8" cy="11.8" r="1.2" />
-        <circle cx="10.3" cy="3.1" r="1.2" />
-      </svg>
-    </span>
-  )
-}
+// Composer-unification (Phase J1): the previous WorktreeSymbolIcon was
+// consumed only by the Gemini-only worktree button in the top-toggles
+// row. That control now lives inside WorkspaceAccessControls, which
+// renders its own scoped worktree glyph. Dead icon removed.
 
 function XSymbolIcon() {
   return (
@@ -927,6 +904,17 @@ type PersistentSessionStatus = 'idle' | 'starting' | 'active' | 'stopping' | 'ex
 type CommandPaletteSource = 'core' | 'workspace' | 'global'
 type CommandPaletteGroup = 'Core' | 'Discovery' | 'Memory' | 'Inspectors' | 'Custom'
 
+// Composer-unification (Phase J1): palette items can carry an optional
+// `action` identifier for items that should trigger a renderer-side
+// state change instead of sending a slash command through the bridge.
+// Used by the Gemini-only quick toggles that moved into the palette
+// (persistent session, checkpoints, GEMINI.md inspector, /restore).
+type CommandPaletteAction =
+  | 'restore-checkpoint'
+  | 'toggle-memory-inspector'
+  | 'toggle-persistent-session'
+  | 'toggle-checkpoints'
+
 type CommandPaletteItem = {
   id: string
   command: string
@@ -935,6 +923,7 @@ type CommandPaletteItem = {
   group: CommandPaletteGroup
   source: CommandPaletteSource
   sourcePath?: string
+  action?: CommandPaletteAction
 }
 
 type GeminiMemoryFile = {
@@ -5414,10 +5403,16 @@ function App(): React.JSX.Element {
   }
 
   const handlePickExternalPathGrant = async (access: 'read' | 'write') => {
-    if (currentProvider !== 'codex' || !currentChat || !currentWorkspace || typeof window.api.selectExternalPathGrant !== 'function') {
+    // Composer-unification (Phase J1): the External Path picker is now
+    // cross-provider. Codex still routes the grant through its existing
+    // sandbox-policy translator; Gemini / Claude / Kimi route the same
+    // grant into a `--add-dir <path>` CLI flag (see
+    // `externalPathGrantsToCliAddDirArgs` in main). The picker no
+    // longer hard-restricts to `currentProvider === 'codex'`.
+    if (!currentChat || !currentWorkspace || typeof window.api.selectExternalPathGrant !== 'function') {
       return
     }
-    const grant = await window.api.selectExternalPathGrant(access)
+    const grant = await window.api.selectExternalPathGrant(access, currentProvider)
     if (!grant) return
     const nextGrant: ExternalPathGrant = {
       ...grant,
@@ -5425,7 +5420,7 @@ function App(): React.JSX.Element {
       chatId: currentChat.appChatId
     }
     updateCodexExternalPathGrants([...codexExternalPathGrants, nextGrant])
-    setRawLogs(prev => [...prev, { type: 'info', content: `Granted Codex ${access} access to external ${nextGrant.kind}: ${nextGrant.path}` }])
+    setRawLogs(prev => [...prev, { type: 'info', content: `Granted ${currentProviderLabel} ${access} access to external ${nextGrant.kind}: ${nextGrant.path}` }])
   }
 
   const handleRemoveExternalPathGrant = (id: string) => {
@@ -8077,6 +8072,28 @@ function App(): React.JSX.Element {
   const handlePaletteCommand = (item: CommandPaletteItem) => {
     setIsCommandPaletteOpen(false)
     setCommandPaletteQuery('')
+    // Composer-unification (Phase J1): renderer-side action items
+    // dispatch to local handlers instead of running through the
+    // provider command bridge. These are the Gemini quick-toggle
+    // items moved from the inline-pickers tail.
+    if (item.action) {
+      switch (item.action) {
+        case 'restore-checkpoint':
+          void handleRestoreCheckpoint()
+          return
+        case 'toggle-memory-inspector':
+          setIsMemoryInspectorOpen((current) => !current)
+          return
+        case 'toggle-persistent-session':
+          void handlePersistentSessionToggle()
+          return
+        case 'toggle-checkpoints':
+          handleSettingsChange({ geminiCheckpointingEnabled: !geminiCheckpointingEnabled })
+          return
+        default:
+          return
+      }
+    }
     if (currentProvider === 'codex') {
       if (item.command === '/status' || item.command === '/permissions') {
         setRightTab('safety')
@@ -9039,11 +9056,60 @@ function App(): React.JSX.Element {
     window.setTimeout(() => setCreatePrState({ status: 'idle' }), 6000)
   }
 
+  // Composer-unification (Phase J1): Gemini's standalone /stats, /help,
+  // GEMINI.md, /restore, persistent-session and checkpoints buttons are
+  // gone from the inline-pickers tail and live HERE in the palette. The
+  // `action` field marks items that flip renderer state rather than
+  // sending a slash command through the bridge.
+  const geminiQuickToggleItems: CommandPaletteItem[] = currentProvider === 'gemini'
+    ? [
+        {
+          id: 'gemini-quick-persistent-session',
+          command: isPersistentSessionEnabled ? 'Disable persistent session' : 'Enable persistent session',
+          label: persistentSessionLabel,
+          description: persistentSessionNeedsRestart
+            ? sessionRestartReason
+            : 'Keep an interactive Gemini CLI session open across runs for slash commands.',
+          group: 'Core',
+          source: 'core',
+          action: 'toggle-persistent-session'
+        },
+        {
+          id: 'gemini-quick-checkpoints',
+          command: geminiCheckpointingEnabled ? 'Disable checkpointing' : 'Enable checkpointing',
+          label: geminiCheckpointingEnabled ? 'Checkpoints on' : 'Checkpoints off',
+          description: geminiCheckpointingEnabled
+            ? 'Disable Gemini CLI checkpointing for new runs.'
+            : 'Enable Gemini CLI checkpointing for new runs.',
+          group: 'Core',
+          source: 'core',
+          action: 'toggle-checkpoints'
+        },
+        {
+          id: 'gemini-quick-memory-inspector',
+          command: 'GEMINI.md',
+          label: isMemoryInspectorOpen ? 'Close GEMINI.md inspector' : 'Open GEMINI.md inspector',
+          description: 'Inspect the GEMINI.md memory files loaded by the Gemini CLI.',
+          group: 'Memory',
+          source: 'core',
+          action: 'toggle-memory-inspector'
+        },
+        {
+          id: 'gemini-quick-restore',
+          command: '/restore',
+          label: 'Restore checkpoint',
+          description: 'Open Gemini CLI /restore after confirmation. Checkpoint discovery is handled by Gemini.',
+          group: 'Inspectors',
+          source: 'core',
+          action: 'restore-checkpoint'
+        }
+      ]
+    : []
   const commandPaletteItems = currentProvider === 'codex'
     ? CODEX_COMMAND_PALETTE_CORE
     : currentProvider === 'claude' || currentProvider === 'kimi'
       ? CLI_PROVIDER_COMMAND_PALETTE_CORE
-    : mergeCommandPaletteItems(discoveredCommands)
+      : [...geminiQuickToggleItems, ...mergeCommandPaletteItems(discoveredCommands)]
   const commandPaletteSearch = commandPaletteQuery.trim().toLowerCase()
   const visibleCommandPaletteItems = commandPaletteSearch
     ? commandPaletteItems.filter((item) =>
@@ -9397,28 +9463,29 @@ function App(): React.JSX.Element {
                   ))}
                 </div>
               )}
-              {currentProvider === 'codex' && !isCurrentGlobalChat && (
-                <div className="composer-header-row" aria-label="Codex thread header controls">
-                  <label className="composer-picker-label composer-header-external-path" title="Grant Codex access to a file or folder outside this workspace">
-                    <PermissionSymbolIcon />
-                    <select
-                      className="composer-inline-picker"
-                      aria-label="Grant external path access"
-                      value=""
-                      disabled={isCurrentComposerLocked || !currentWorkspace || !currentChat}
-                      onChange={(event) => {
-                        const access = event.target.value as 'read' | 'write'
-                        if (access === 'read' || access === 'write') {
-                          void handlePickExternalPathGrant(access)
-                        }
-                      }}
-                    >
-                      <option value="">External path</option>
-                      <option value="read">Grant read...</option>
-                      <option value="write">Grant edit...</option>
-                    </select>
-                  </label>
-                </div>
+              {/*
+                Composer-unification (Phase J1): welcome-state satellite
+                slot for the cross-provider External Path + Worktree
+                controls. Replaces the Codex-only header row that
+                previously floated the External Path picker above the
+                composer. The same component re-mounts inside the
+                above-bar once the chat has activity (see below).
+              */}
+              {isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
+                <WorkspaceAccessControls
+                  variant="satellite"
+                  provider={currentProvider}
+                  currentWorkspace={currentWorkspace}
+                  isCurrentGlobalChat={isCurrentGlobalChat}
+                  isCurrentComposerLocked={isCurrentComposerLocked}
+                  hasWorkspaceContext={hasWorkspaceContext}
+                  externalPathGrants={codexExternalPathGrants}
+                  onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
+                  currentGeminiWorktree={currentGeminiWorktree}
+                  onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
+                  worktreeToggleLabel={worktreeToggleLabel}
+                  worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
+                />
               )}
               {isWelcomeChat && (
                 <div className="welcome-hero">
@@ -9430,25 +9497,18 @@ function App(): React.JSX.Element {
                   <p>{welcomeCopy.subheading}</p>
               </div>
               )}
-              {appearance.composerStyle === 'codex' && (latestRunDiffStats.filesChanged > 0 || latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                <div className="composer-above-bar style-codex">
-                  <span className="composer-above-bar-summary">
-                    <strong>{latestRunDiffStats.filesChanged}</strong> {latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'} changed
-                    <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
-                    <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
-                  </span>
-                  <button
-                    type="button"
-                    className="composer-above-bar-action"
-                    onClick={() => setRightTab('diff')}
-                    title="Review changes"
-                  >
-                    Review changes
-                  </button>
-                </div>
-              )}
-              {(appearance.composerStyle === 'claude' || appearance.composerStyle === 'default') && (currentWorkspace?.branch || latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                <div className={`composer-above-bar style-${appearance.composerStyle}`}>
+              {/*
+                Composer-unification (Phase J1): one above-bar shape for
+                every composerStyle. Previously codex-style had a file-count
+                summary + Review-changes button; claude/default had branch +
+                add/del + Create PR. Both branches collapsed into one row
+                that shows whatever data is available. The bottom-row
+                review icon is the canonical "review changes" entry point
+                across all providers, so we drop the codex-style duplicate
+                button and keep Create PR as the above-bar action.
+              */}
+              {!isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
+                <div className="composer-above-bar style-unified">
                   <span className="composer-above-bar-branch">
                     <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                       <circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="7" r="1.6"/>
@@ -9456,12 +9516,38 @@ function App(): React.JSX.Element {
                     </svg>
                     <span>{currentWorkspace?.branch || 'detached'}</span>
                   </span>
+                  {latestRunDiffStats.filesChanged > 0 && (
+                    <span className="composer-above-bar-files">
+                      <strong>{latestRunDiffStats.filesChanged}</strong> {latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}
+                    </span>
+                  )}
                   {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
                     <span className="composer-above-bar-stats">
                       <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
                       <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
                     </span>
                   )}
+                  {/*
+                    Composer-unification (Phase J1): once the chat has
+                    activity, External Path + Worktree migrate from the
+                    welcome-state satellite slot into the above-bar so
+                    they sit alongside the workspace summary band the
+                    user is already looking at.
+                  */}
+                  <WorkspaceAccessControls
+                    variant="inline"
+                    provider={currentProvider}
+                    currentWorkspace={currentWorkspace}
+                    isCurrentGlobalChat={isCurrentGlobalChat}
+                    isCurrentComposerLocked={isCurrentComposerLocked}
+                    hasWorkspaceContext={hasWorkspaceContext}
+                    externalPathGrants={codexExternalPathGrants}
+                    onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
+                    currentGeminiWorktree={currentGeminiWorktree}
+                    onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
+                    worktreeToggleLabel={worktreeToggleLabel}
+                    worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
+                  />
                   <button
                     type="button"
                     className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
@@ -9507,66 +9593,29 @@ function App(): React.JSX.Element {
                   </span>
                 )}
               </div>
-              {currentProvider === 'gemini' ? (
-                <div className="composer-top-toggles">
-                  {isCurrentGlobalChat ? (
-                    <>
-                      <span className="composer-picker-command persistent-session-toggle active">
-                        <PermissionSymbolIcon />
-                        <span className="composer-control-label-text">System scope, prompts</span>
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        className={`composer-picker-command persistent-session-toggle ${isPersistentSessionEnabled ? 'active' : ''} ${persistentSessionStatus === 'error' || persistentSessionStatus === 'unavailable' || persistentSessionNeedsRestart ? 'warning' : ''}`}
-                        type="button"
-                        onClick={() => void handlePersistentSessionToggle()}
-                        disabled={!hasWorkspaceContext || persistentSessionStatus === 'starting' || persistentSessionStatus === 'stopping'}
-                        title={persistentSessionNeedsRestart ? sessionRestartReason : 'Keep an interactive Gemini CLI session open for slash commands'}
-                      >
-                        <LinkCircleSymbolIcon />
-                        <span className="composer-control-label-text">{persistentSessionNeedsRestart ? 'Restart session' : persistentSessionLabel}</span>
-                      </button>
-                      <button
-                        className={`composer-picker-command persistent-session-toggle checkpoint-toggle ${geminiCheckpointingEnabled ? 'active' : ''}`}
-                        type="button"
-                        onClick={() => handleSettingsChange({ geminiCheckpointingEnabled: !geminiCheckpointingEnabled })}
-                        disabled={!hasWorkspaceContext || isCurrentComposerLocked}
-                        title={geminiCheckpointingEnabled ? 'Disable Gemini CLI checkpointing for new runs' : 'Enable Gemini CLI checkpointing for new runs'}
-                      >
-                        <CheckpointSymbolIcon />
-                        <span className="composer-control-label-text">{geminiCheckpointingEnabled ? 'Checkpoints on' : 'Checkpoints off'}</span>
-                      </button>
-                      <button
-                        className={`composer-picker-command persistent-session-toggle worktree-toggle ${currentGeminiWorktree?.enabled ? 'active' : ''} ${currentWorktreeDiffUnavailable ? 'warning' : ''}`}
-                        type="button"
-                        onClick={() => void handleGeminiWorktreeToggle()}
-                        disabled={!hasWorkspaceContext || isCurrentComposerLocked}
-                        title={currentGeminiWorktree?.enabled ? 'Disable Gemini CLI worktree mode for this workspace' : 'Run Gemini in an auto-created CLI worktree for this workspace'}
-                      >
-                        <WorktreeSymbolIcon />
-                        <span className="composer-control-label-text">{worktreeToggleLabel}</span>
-                      </button>
-                    </>
-                  )}
-                  {scheduleControls}
-                  {runtimeProfileControl}
-                </div>
-              ) : (
-                <div className="composer-top-toggles">
-                  <span className="composer-picker-command persistent-session-toggle active">
-                    <LinkCircleSymbolIcon />
-                    <span className="composer-control-label-text">{providerSessionLabel}</span>
-                  </span>
-                  <span className="composer-picker-command persistent-session-toggle">
-                    <PermissionSymbolIcon />
-                    <span className="composer-control-label-text">{permissionModeLabel}</span>
-                  </span>
-                  {scheduleControls}
-                  {runtimeProfileControl}
-                </div>
-              )}
+              {/*
+                Composer-unification (Phase J1): one uniform top-toggles row
+                for every provider. Gemini's persistent-session + checkpoints
+                toggles moved into the command palette popover (see
+                `geminiQuickToggleItems` below) so the visible top row is
+                identical across providers: session indicator + permission
+                indicator + schedule + runtime profile. Worktree, External
+                Path, and Trust are surfaced as cross-provider satellite
+                / above-bar pills via WorkspaceAccessControls. Provider
+                identity is expressed through theme tokens only.
+              */}
+              <div className="composer-top-toggles">
+                <span className="composer-picker-command persistent-session-toggle active">
+                  <LinkCircleSymbolIcon />
+                  <span className="composer-control-label-text">{providerSessionLabel}</span>
+                </span>
+                <span className="composer-picker-command persistent-session-toggle">
+                  <PermissionSymbolIcon />
+                  <span className="composer-control-label-text">{permissionModeLabel}</span>
+                </span>
+                {scheduleControls}
+                {runtimeProfileControl}
+              </div>
 
               <textarea
                 className="composer-textarea"
@@ -9592,13 +9641,19 @@ function App(): React.JSX.Element {
                   }
                 }}
                 placeholder={
-                  appearance.composerStyle === 'codex'
+                  /*
+                    Composer-unification (Phase J1): placeholder follows the
+                    active PROVIDER, not the composer THEME. A user on the
+                    "claude" theme who switches to Kimi gets the Kimi
+                    placeholder, etc.
+                  */
+                  currentProvider === 'codex'
                     ? 'Ask Codex anything. @ to use plugins or mention files'
-                    : appearance.composerStyle === 'claude'
+                    : currentProvider === 'claude'
                       ? 'Describe a task or ask a question'
-                      : appearance.composerStyle === 'gemini'
+                      : currentProvider === 'gemini'
                         ? 'Ask Gemini'
-                        : appearance.composerStyle === 'kimi'
+                        : currentProvider === 'kimi'
                           ? 'Type "/" to quickly access skills'
                           : `Enter prompt for ${currentProviderLabel}…`
                 }
@@ -10165,54 +10220,20 @@ function App(): React.JSX.Element {
                       </select>
                     </label>
                     )}
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                    <button
-                      className="composer-picker-command composer-icon-command"
-                      type="button"
-                      onClick={() => void handleBridgeCommand('/stats')}
-                      disabled={!currentWorkspace || !currentChat}
-                      title="Show Gemini CLI stats (/stats)"
-                      aria-label="Show Gemini CLI stats"
-                    >
-                      <ChartBarSymbolIcon />
-                    </button>
-                    )}
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                    <button
-                      className="composer-picker-command composer-icon-command"
-                      type="button"
-                      onClick={() => void handleBridgeCommand('/help')}
-                      disabled={!currentWorkspace || !currentChat}
-                      title="Show Gemini CLI help (/help)"
-                      aria-label="Show Gemini CLI help"
-                    >
-                      <QuestionmarkCircleSymbolIcon />
-                    </button>
-                    )}
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                    <button
-                      className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
-                      type="button"
-                      onClick={() => setIsCommandPaletteOpen((current) => !current)}
-                      disabled={!currentWorkspace || !currentChat}
-                      title="Open Gemini slash command palette"
-                      aria-label="Open Gemini slash command palette"
-                    >
-                      <CommandSymbolIcon />
-                    </button>
-                    )}
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                    <button
-                      className={`composer-picker-command composer-secondary-command ${isMemoryInspectorOpen ? 'active' : ''}`}
-                      type="button"
-                      onClick={() => setIsMemoryInspectorOpen((current) => !current)}
-                      disabled={!currentWorkspace}
-                      title="Inspect GEMINI.md memory files"
-                    >
-                      <span className="composer-picker-command-slash">GEMINI.md</span>
-                    </button>
-                    )}
-                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
+                    {/*
+                      Composer-unification (Phase J1): the inline-pickers
+                      tail is now identical across providers:
+                        [safety] [diff] [models] [command-palette] [review]
+                      Previously Gemini had its own bonanza of standalone
+                      buttons (`/stats`, `/help`, `GEMINI.md`, `/restore`,
+                      palette) and other providers had the safety/diff/
+                      models/palette icons. Now everyone shares the same
+                      five icons; Gemini's bespoke commands live INSIDE the
+                      palette popover (see `geminiQuickToggleItems` in the
+                      palette items derivation) so they're still one click
+                      away but the row position stays predictable.
+                    */}
+                    {!isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -10224,7 +10245,7 @@ function App(): React.JSX.Element {
                       <TrustSymbolIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
+                    {!isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -10236,7 +10257,7 @@ function App(): React.JSX.Element {
                       <FileMenuSelectionIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
+                    {!isCurrentGlobalChat && (
                     <button
                       className="composer-picker-command composer-icon-command"
                       type="button"
@@ -10248,14 +10269,18 @@ function App(): React.JSX.Element {
                       <ModelSymbolIcon />
                     </button>
                     )}
-                    {currentProvider !== 'gemini' && !isCurrentGlobalChat && (
+                    {!isCurrentGlobalChat && (
                     <button
                       className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
                       type="button"
                       onClick={() => setIsCommandPaletteOpen((current) => !current)}
                       disabled={!currentWorkspace || !currentChat}
-                      title={`Open ${currentProviderLabel} command palette`}
-                      aria-label={`Open ${currentProviderLabel} command palette`}
+                      title={currentProvider === 'gemini'
+                        ? 'Open Gemini slash command palette'
+                        : `Open ${currentProviderLabel} command palette`}
+                      aria-label={currentProvider === 'gemini'
+                        ? 'Open Gemini slash command palette'
+                        : `Open ${currentProviderLabel} command palette`}
                     >
                       <CommandSymbolIcon />
                     </button>
@@ -10270,17 +10295,6 @@ function App(): React.JSX.Element {
                       aria-label={isPreparingDiffReview ? 'Preparing review' : 'Review current diff'}
                     >
                       <ReviewSymbolIcon />
-                    </button>
-                    )}
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                    <button
-                      className="composer-picker-command composer-secondary-command"
-                      type="button"
-                      onClick={() => void handleRestoreCheckpoint()}
-                      disabled={!currentWorkspace || !currentChat}
-                      title="Open Gemini CLI /restore after confirmation. Checkpoint file discovery is left to Gemini because project hash derivation is not verified."
-                    >
-                      <span className="composer-picker-command-slash">/restore</span>
                     </button>
                     )}
                   </div>
@@ -10341,44 +10355,13 @@ function App(): React.JSX.Element {
                   <div className="composer-inline-warning" style={{ fontSize: 'var(--font-size-xs)', color: 'var(--warning)' }}>Workspace trust is not established. Enable session trust or use Trust Assistant.</div>
                 )}
               </div>
-              {appearance.composerStyle === 'codex' && (
-                <div className="composer-codex-footer" aria-hidden>
-                  {currentWorkspace && (
-                    <span className="composer-codex-chip">
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><path d="M2 5.5c0-.83.67-1.5 1.5-1.5h2.69c.4 0 .78.16 1.06.44L8.5 5.69h4c.83 0 1.5.67 1.5 1.5v4.31c0 .83-.67 1.5-1.5 1.5h-9c-.83 0-1.5-.67-1.5-1.5V5.5z"/></svg>
-                      <span>{currentWorkspace.displayName}</span>
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
-                    </span>
-                  )}
-                  <label className="composer-codex-chip is-provider" title="Provider">
-                    <LinkCircleSymbolIcon />
-                    <select
-                      aria-label="Provider"
-                      value={currentProvider}
-                      onChange={(event) => void handleProviderChange(event.target.value as ProviderId)}
-                      disabled={isCurrentComposerLocked || isCurrentChatProviderLocked}
-                    >
-                      <option value="gemini">Gemini</option>
-                      <option value="codex">Codex</option>
-                      <option value="claude">Claude</option>
-                      <option value="kimi">Kimi</option>
-                    </select>
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
-                  </label>
-                  <span className="composer-codex-chip">
-                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="3" width="12" height="8.5" rx="1.5"/><line x1="6" y1="13.5" x2="10" y2="13.5"/><line x1="8" y1="11.5" x2="8" y2="13.5"/></svg>
-                    <span>Work locally</span>
-                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
-                  </span>
-                  {currentWorkspace?.branch && (
-                    <span className="composer-codex-chip">
-                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"><circle cx="4" cy="3.5" r="1.6"/><circle cx="4" cy="12.5" r="1.6"/><circle cx="12" cy="7" r="1.6"/><path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5"/></svg>
-                      <span>{currentWorkspace.branch}</span>
-                      <svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="3,4.5 6,7.5 9,4.5"/></svg>
-                    </span>
-                  )}
-                </div>
-              )}
+              {/*
+                Composer-unification (Phase J1): removed the codex-style
+                decorative footer chip strip. It mirrored info already in
+                the top-toggles row (workspace), the above-bar (branch),
+                and the provider picker (provider). Codex's visual brand
+                persists via the surface's colour, border, and glow tokens.
+              */}
               {/* Claude composer: previously rendered a satellite "footer" row below
                 * the textarea with workspace + provider + branch chips. Removed —
                 * native Claude doesn't have one, and the chips now live inline in

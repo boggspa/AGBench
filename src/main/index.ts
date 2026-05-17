@@ -4264,14 +4264,20 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   const model = normalizeCliProviderModel('claude', payload.model)
-  const baseArgs = buildClaudeCliArgs({
-    prompt: payload.prompt,
-    permissionMode: claudePermissionModeForApproval(payload.approvalMode),
-    model,
-    providerSessionId: payload.providerSessionId || null,
-    claudeReasoningEffort: payload.claudeReasoningEffort || null,
-    imagePaths: payload.imagePaths || null
-  })
+  const baseArgs = [
+    ...buildClaudeCliArgs({
+      prompt: payload.prompt,
+      permissionMode: claudePermissionModeForApproval(payload.approvalMode),
+      model,
+      providerSessionId: payload.providerSessionId || null,
+      claudeReasoningEffort: payload.claudeReasoningEffort || null,
+      imagePaths: payload.imagePaths || null
+    }),
+    // Phase J1 composer-unification: External Path grants picked from
+    // the cross-provider composer pill flow through here as
+    // `--add-dir <path>` flags for Claude CLI.
+    ...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants)
+  ]
   // Phase I3 (Claude initiator): the Claude CLI does not accept the
   // SDK's `mcpServers` object directly — it expects `--mcp-config
   // <path>` pointing at a JSON file. Write a per-run config under the
@@ -4520,6 +4526,10 @@ async function runKimiWireProvider(
   const args = ['--wire', '--work-dir', payload.workspace!]
   appendKimiModelArgs(args, model)
   appendKimiThinkingArgs(args, payload.kimiThinking)
+  // Phase J1 composer-unification: cross-provider External Path grants
+  // flow through Kimi's CLI as `--add-dir <path>` flags. Same picker
+  // pill, same persisted state slot, different provider runtime.
+  args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
   // Phase I4 (Kimi initiator): register the agentbench MCP server with
@@ -4888,6 +4898,9 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   const args = ['--print', '--plan', '--output-format', 'stream-json', '--work-dir', payload.workspace!, '--prompt', payload.prompt]
   appendKimiModelArgs(args, model)
   appendKimiThinkingArgs(args, payload.kimiThinking)
+  // Phase J1 composer-unification: same External Path grants → --add-dir
+  // translation as the wire-mode spawn path above.
+  args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
   // Phase I4 (Kimi initiator): the print-mode fallback also gets the
   // agentbench MCP registration so a plan-mode read-only Kimi run can
@@ -5168,13 +5181,20 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
   if (!Array.isArray(grants)) return []
   const seen = new Set<string>()
   const normalized: ExternalPathGrant[] = []
+  // Phase J1 composer-unification: accept grants for ANY known
+  // provider (was previously codex-only). The signature check via
+  // `isMainIssuedExternalPathGrant` still guards integrity; the
+  // provider field is part of the signed payload so a grant for one
+  // provider cannot be smuggled in as another.
+  const allowedProviders = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
   for (const grant of grants) {
-    if (!grant || grant.provider !== 'codex' || typeof grant.path !== 'string') continue
+    if (!grant || typeof grant.path !== 'string') continue
+    if (!allowedProviders.has(grant.provider)) continue
     if (!isMainIssuedExternalPathGrant(grant)) continue
     const grantPath = grant.path.trim()
     if (!grantPath || !isAbsolute(grantPath)) continue
     const resolvedPath = resolve(grantPath)
-    const key = `${grant.access}:${resolvedPath}`
+    const key = `${grant.provider}:${grant.access}:${resolvedPath}`
     if (seen.has(key)) continue
     seen.add(key)
     normalized.push({
@@ -5186,6 +5206,30 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
     })
   }
   return normalized
+}
+
+/**
+ * Phase J1 composer-unification: translate the run payload's external
+ * path grants into `--add-dir <path>` CLI flag pairs for the
+ * non-Codex providers. Codex still routes grants through its
+ * sandbox-policy translator (see `codexSandboxPolicyForMode`); this
+ * helper is consumed by `appendGeminiCliSessionArgs`, the Claude CLI
+ * fallback spawn, and the Kimi spawn so granting access via the
+ * shared composer pill flows through to every provider's runtime.
+ *
+ * Pure function — exported via the existing test harness so we can
+ * pin the exact translation in a unit test (`grants → ["--add-dir",
+ * <path>, "--add-dir", <path>, ...]`).
+ */
+function externalPathGrantsToCliAddDirArgs(grants?: ExternalPathGrant[]): string[] {
+  const args: string[] = []
+  const seen = new Set<string>()
+  for (const grant of normalizeExternalPathGrants(grants)) {
+    if (seen.has(grant.path)) continue
+    seen.add(grant.path)
+    args.push('--add-dir', grant.path)
+  }
+  return args
 }
 
 function codexSandboxPolicyForMode(approvalMode: string | undefined, workspace: string, externalPathGrants?: ExternalPathGrant[], settings: AppSettings = AppStore.getSettings(), scope: ChatScope = 'workspace') {
@@ -6359,7 +6403,8 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     resumePolicy.resumeSessionId,
     settings.geminiCheckpointingEnabled,
     payload.geminiWorktree || null,
-    requiresGeminiWriteTools
+    requiresGeminiWriteTools,
+    payload.externalPathGrants
   )
   if (argsError) {
     sendAgentCompatError(event.sender, 'gemini', argsError, route)
@@ -8978,9 +9023,16 @@ function appendGeminiCliSessionArgs(
   resumeSessionId?: string | null,
   checkpointingEnabled: boolean = false,
   worktree: GeminiWorktreeLaunchOption = null,
-  allowAgentbenchMcp: boolean = false
+  allowAgentbenchMcp: boolean = false,
+  externalPathGrants?: ExternalPathGrant[]
 ): string | null {
   args.push('--approval-mode', approvalMode)
+  // Phase J1 composer-unification: cross-provider External Path picker
+  // grants get translated into Gemini CLI's `--add-dir <path>` flag.
+  // Codex still translates the same grants through its sandbox policy
+  // — both paths are fed from the same `payload.externalPathGrants`
+  // array so the composer pill just works regardless of provider.
+  args.push(...externalPathGrantsToCliAddDirArgs(externalPathGrants))
 
   // Sandbox vs. AGBench MCP bridge: Gemini CLI's `--sandbox` flag wraps
   // the agent in macOS `sandbox-exec` with a seatbelt profile that
@@ -10076,12 +10128,20 @@ app.whenReady().then(() => {
     return result.filePaths || []
   })
 
-  ipcMain.handle('select-external-path-grant', async (_, access: 'read' | 'write' = 'read') => {
+  ipcMain.handle('select-external-path-grant', async (_, access: 'read' | 'write' = 'read', provider?: unknown) => {
     if (!mainWindow) return null
+    // Phase J1 composer-unification: optional `provider` lets the
+    // renderer's cross-provider picker stamp the grant with the
+    // requesting provider. Defaults to 'codex' so the legacy renderer
+    // call sites (which only sent `access`) still get a usable grant.
+    const grantProvider: ProviderId = (provider === 'gemini' || provider === 'codex' || provider === 'claude' || provider === 'kimi')
+      ? provider
+      : 'codex'
+    const providerLabelText = providerLabel(grantProvider)
     const result = await dialog.showOpenDialog(mainWindow, {
       title: access === 'write'
-        ? 'Select file or folder Codex can edit'
-        : 'Select file or folder Codex can view',
+        ? `Select file or folder ${providerLabelText} can edit`
+        : `Select file or folder ${providerLabelText} can view`,
       properties: ['openFile', 'openDirectory', 'createDirectory'],
       securityScopedBookmarks: process.platform === 'darwin'
     } as Electron.OpenDialogOptions)
@@ -10101,7 +10161,7 @@ app.whenReady().then(() => {
 
     return issueExternalPathGrant({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      provider: 'codex',
+      provider: grantProvider,
       path: selectedPath,
       kind,
       access: access === 'write' ? 'write' : 'read',
