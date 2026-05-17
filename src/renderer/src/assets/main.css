@@ -11782,18 +11782,27 @@ input:disabled, select:disabled, textarea:disabled {
   box-sizing: border-box;
   padding: 6px 12px 6px 14px;
   margin: 0 0 6px;
-  border-radius: 10px;
-  background: color-mix(in srgb, #1a1a1a 88%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  border-radius: calc(var(--radius-lg) * 1.6);
+  background: var(--composer-bg);
+  border: 1px solid var(--composer-border);
+  box-shadow: var(--composer-shadow);
   font-size: calc(var(--font-size-xs) + 1px);
   color: color-mix(in srgb, #ffffff 80%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
 }
 .composer-above-bar.style-codex {
-  border-radius: 12px;
+  border-radius: 20px;
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 .composer-above-bar.style-claude {
-  border-radius: 8px;
-  padding: 4px 10px 4px 12px;
+  border-radius: 14px;
+  padding: 6px 12px;
+  background: color-mix(in srgb, #161616 94%, transparent);
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
 }
 /* Default composer style — match the surrounding bubble's deeper radius
  * so the above-bar visually reads as a paired header sitting cleanly
@@ -11801,8 +11810,9 @@ input:disabled, select:disabled, textarea:disabled {
 .composer-above-bar.style-default {
   border-radius: calc(var(--radius-lg) * 1.6);
   padding: 8px 16px;
-  background: var(--composer-bg, color-mix(in srgb, #1a1a1a 88%, transparent));
-  border: 1px solid var(--composer-border, color-mix(in srgb, #ffffff 8%, transparent));
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
 }
 .composer-above-bar-summary,
 .composer-above-bar-branch,
@@ -11830,13 +11840,13 @@ input:disabled, select:disabled, textarea:disabled {
   margin-left: auto;
   appearance: none;
   -webkit-appearance: none;
-  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
-  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 13%, transparent);
+  background: color-mix(in srgb, var(--composer-bg-solid) 38%, transparent);
   color: color-mix(in srgb, #ffffff 78%, transparent);
   font: inherit;
   font-size: calc(var(--font-size-xs) + 1px);
   padding: 4px 10px;
-  border-radius: 6px;
+  border-radius: 999px;
   cursor: pointer;
   transition: background 0.16s, color 0.16s, border-color 0.16s;
 }
@@ -12713,21 +12723,27 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-interface-style="codex"] .composer-above-bar,
 [data-interface-style="claude"] .composer-above-bar {
-  background: color-mix(in srgb, #121212 94%, transparent);
-  border-color: color-mix(in srgb, #ffffff 10%, transparent);
-  box-shadow: none;
+  background: var(--composer-bg);
+  border-color: var(--composer-border);
+  box-shadow: var(--composer-shadow);
 }
 
 [data-interface-style="codex"] .composer-above-bar {
   min-height: 34px;
   padding: 6px 12px;
-  border-radius: 10px;
+  border-radius: 20px;
+  background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%);
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+  box-shadow: 0 18px 56px rgba(0, 0, 0, 0.32);
 }
 
 [data-interface-style="claude"] .composer-above-bar {
   min-height: 30px;
-  padding: 4px 10px;
-  border-radius: 7px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background: #111111;
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
 }
 
 [data-interface-style="codex"] .composer-surface {
