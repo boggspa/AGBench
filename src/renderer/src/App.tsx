@@ -19,6 +19,7 @@ import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { RunCard } from './components/RunCard'
 import { RunInspector } from './components/RunInspector'
+import { PairingSheet } from './components/PairingSheet'
 import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { SubThreadDelegationCard, isSubThreadDelegationMessage } from './components/SubThreadDelegationCard'
@@ -3609,6 +3610,7 @@ function App(): React.JSX.Element {
   // Appearance & Settings
   const appearance = useAppearance()
   const [showSettings, setShowSettings] = useState(false)
+  const [showPairingSheet, setShowPairingSheet] = useState(false)
   // Phase F1: sub-thread creator modal state. Null when closed; holds
   // the parent chat when open so the modal knows what to delegate from.
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
@@ -9269,6 +9271,7 @@ function App(): React.JSX.Element {
                 }
                 setInspectingRunId(runId)
               }}
+              onShowPairingSheet={() => setShowPairingSheet(true)}
             />
             <div
               className="workspace-sidebar-resize-handle"
@@ -10722,6 +10725,9 @@ function App(): React.JSX.Element {
         </div>
       )}
       <IncomingPairingPrompt />
+      {showPairingSheet && (
+        <PairingSheet onClose={() => setShowPairingSheet(false)} />
+      )}
       {subThreadCreatorParent && (
         <SubThreadCreator
           parentChat={subThreadCreatorParent}

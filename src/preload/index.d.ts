@@ -296,6 +296,15 @@ declare global {
       }>
       bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) => Promise<unknown>
       onBridgePairingResponseReceived: (callback: (params: unknown) => void) => () => void
+      // Begins a daemon-side pairing session. Returns the bootstrap
+      // payload (PairingBootstrapPayload from the Swift daemon) so the
+      // renderer can encode it as a QR for the iOS app, or surface it
+      // as raw JSON for the "Paste JSON instead" fallback on iOS.
+      bridgeBeginPairing: (displayName?: string) => Promise<{
+        ok: boolean
+        bootstrap?: unknown  // PairingBootstrapPayload shape; consumer passes through to QR/JSON
+        error?: string
+      }>
 
       // Phase E1: APNs config surface for the Settings panel. The
       // `getApnsConfig` response NEVER includes decrypted key material

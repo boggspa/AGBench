@@ -134,6 +134,8 @@ const api = {
   },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
+  bridgeBeginPairing: (displayName?: string) =>
+    ipcRenderer.invoke('bridge-begin-pairing', displayName),
 
   // Phase E1: APNs production wiring. The renderer Settings panel uses
   // these to configure the iOS bridge push gateway. The decrypted .p8

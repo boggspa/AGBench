@@ -10210,6 +10210,26 @@ app.whenReady().then(() => {
     })
   })
 
+  // Initiates a pairing session on the daemon side and returns the
+  // bootstrap payload the renderer should render as a QR (and copy as
+  // JSON for the iOS "Paste JSON instead" fallback). The daemon
+  // generates an ephemeral keypair + nonce and stores them keyed by
+  // `pairingSessionID`. Subsequent `bridge.confirmPairing` and
+  // `bridge.finalizePairing` calls tie back via that id.
+  ipcMain.handle('bridge-begin-pairing', async (_, displayName?: string) => {
+    if (!bridgeDaemon?.status().running) {
+      return { ok: false, error: 'Bridge daemon is not running. Enable it in Settings → Bridge Networking.' }
+    }
+    try {
+      const result = await bridgeDaemon.request('bridge.beginPairing', {
+        controllerDisplayName: typeof displayName === 'string' && displayName.trim() ? displayName.trim() : 'iOS device'
+      })
+      return { ok: true, bootstrap: result }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   // Settings
   ipcMain.handle('get-settings', () => settingsService.getSettings())
   ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => settingsService.updateSettings(partial))

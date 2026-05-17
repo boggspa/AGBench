@@ -14841,3 +14841,217 @@ input:disabled, select:disabled, textarea:disabled {
   opacity: 0.5;
   margin: 0 2px;
 }
+
+/* ── PairingSheet ─────────────────────────────────────────────────────
+   Modal overlay opened from the sidebar's remote-connection icon.
+   Renders the bridge pairing QR + copyable JSON for the iOS app to
+   scan / paste. Layered above the standard app surface but BELOW the
+   IncomingPairingPrompt modal that takes over once the iOS device
+   responds. */
+
+.pairing-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 145; /* below IncomingPairingPrompt (150) so the 6-digit code overlays cleanly */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.pairing-sheet {
+  width: min(720px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-lg);
+  background: var(--panel-bg-solid);
+  box-shadow: var(--shadow-lg);
+  color: var(--text-primary);
+}
+
+.pairing-sheet__header {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+}
+
+.pairing-sheet__header-titles {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pairing-sheet__title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.pairing-sheet__subtitle {
+  margin: 6px 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.pairing-sheet__close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 1.7rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.pairing-sheet__close:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.pairing-sheet__name-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 40%, transparent);
+}
+
+.pairing-sheet__name-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.pairing-sheet__name-input {
+  font: inherit;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: 7px 10px;
+}
+
+.pairing-sheet__error {
+  margin: 14px 24px;
+}
+
+.pairing-sheet__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+
+.pairing-sheet__qr-pane,
+.pairing-sheet__fallback-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pairing-sheet__qr-placeholder {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--panel-border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.pairing-sheet__qr {
+  background: #ffffff;
+  padding: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--panel-border);
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pairing-sheet__qr svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pairing-sheet__hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.pairing-sheet__hint--inline {
+  flex: 1 1 auto;
+}
+
+.pairing-sheet__fallback-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.pairing-sheet__json {
+  flex: 1 1 auto;
+  min-height: 200px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  color: var(--text-primary);
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
+.pairing-sheet__fallback-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pairing-sheet__footer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+}
+
+.pairing-sheet__footer-hint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Tighter layout on narrow viewports — stack the two panes. */
+@media (max-width: 720px) {
+  .pairing-sheet__body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

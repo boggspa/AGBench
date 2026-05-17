@@ -69,6 +69,10 @@ interface SidebarProps {
    * "Active runs" sidebar section navigates to the chat AND opens
    * the Run Inspector for that runId. */
   onInspectRun?: (runId: string, chatId: string | undefined) => void;
+  /** Opens the iPhone/iPad pairing sheet (QR + JSON). When undefined
+   * the remote-connection icon falls back to opening Settings →
+   * Bridge Networking as a discoverability hint. */
+  onShowPairingSheet?: () => void;
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
@@ -388,6 +392,7 @@ export function Sidebar({
   onTogglePinChat,
   onTogglePinWorkspace,
   onInspectRun,
+  onShowPairingSheet,
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -1204,8 +1209,9 @@ export function Sidebar({
         <button
           type="button"
           className="sidebar-footer-remote"
-          title="Remote connection"
-          aria-label="Open remote connection settings"
+          onClick={onShowPairingSheet ?? onOpenSettings}
+          title={onShowPairingSheet ? 'Pair iPhone / iPad' : 'Remote connection (Settings)'}
+          aria-label={onShowPairingSheet ? 'Pair iPhone or iPad' : 'Open remote connection settings'}
         >
           <RemoteConnectionSymbolIcon />
         </button>

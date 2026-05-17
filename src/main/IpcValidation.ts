@@ -125,6 +125,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'pty-resize': ['number', 'number', 'optionalString'],
   'bridge-networking-status': [],
   'bridge-finalize-pairing': ['nonEmptyString', 'boolean'],
+  'bridge-begin-pairing': ['optionalString'],
   // Phase E1: APNs production wiring — Settings panel uses these to configure
   // the iOS bridge push gateway. All handlers live in main; safeStorage handles
   // .p8 encryption at-rest; renderer never sees the decrypted PEM.
