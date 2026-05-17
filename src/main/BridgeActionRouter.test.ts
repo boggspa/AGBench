@@ -23,7 +23,16 @@ function makeStubExecutor(
     executeQuestionReject: make('executeQuestionReject', { executed: true, message: 'questionReject done' }),
     executeComposerPrompt: make('executeComposerPrompt', { executed: true, message: 'composerPrompt done' }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
-    executeRegisterApnsToken: make('executeRegisterApnsToken', { executed: true, message: 'registerApnsToken done' })
+    executeRegisterApnsToken: make('executeRegisterApnsToken', { executed: true, message: 'registerApnsToken done' }),
+    executeSubscribeRunEvents: make('executeSubscribeRunEvents', {
+      executed: true,
+      message: 'subscribe-run-events done',
+      data: {
+        runEventFrames: [
+          { kind: 'run-events-subscribed', runId: 'run-1', catchupEvents: [], catchupComplete: true, nextLiveSeq: 0 }
+        ]
+      }
+    })
   }
   return { executor, calls }
 }
@@ -583,6 +592,29 @@ describe('BridgeActionRouter', () => {
         payloadBase64: wire
       })) as { accepted: boolean }
       expect(result.accepted).toBe(true)
+    })
+
+    it('subscribe-run-events bypasses workspace allowlist and returns replay frame data', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'subscribe-run-events',
+          runId: 'run-1',
+          resumeFrom: 7
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-1',
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string; data?: { runEventFrames?: unknown[] } }
+
+      expect(result.accepted).toBe(true)
+      expect(result.message).toBe('subscribe-run-events done')
+      expect(result.data?.runEventFrames).toHaveLength(1)
+      expect(calls).toHaveLength(1)
+      expect(calls[0].method).toBe('executeSubscribeRunEvents')
     })
   })
 

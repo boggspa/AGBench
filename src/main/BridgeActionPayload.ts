@@ -97,6 +97,12 @@ export interface BridgeRegisterApnsTokenAction {
   env: 'production' | 'sandbox'
 }
 
+export interface BridgeSubscribeRunEventsAction {
+  kind: 'subscribe-run-events'
+  runId: string
+  resumeFrom?: number | null
+}
+
 export interface BridgeCancelRunAction {
   kind: 'cancelRun'
   workspaceId: string
@@ -129,6 +135,7 @@ export type BridgeActionPayload =
   | BridgeComposerPromptAction
   | BridgeCancelRunAction
   | BridgeRegisterApnsTokenAction
+  | BridgeSubscribeRunEventsAction
   | BridgeUnknownAction
 
 export interface DecodedActionPayload {
@@ -217,6 +224,7 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'cancelRun':
       return payload.workspaceId
     case 'registerApnsToken':
+    case 'subscribe-run-events':
     case 'unknown':
       return null
   }
@@ -235,6 +243,7 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'cancelRun':
       return true
     case 'registerApnsToken':
+    case 'subscribe-run-events':
       return false
     case 'unknown':
       // Unknown variants are rejected upstream; the gating question
@@ -280,6 +289,7 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'approvalReply':
     case 'questionReject':
     case 'registerApnsToken':
+    case 'subscribe-run-events':
       return false
     case 'unknown':
       return true
@@ -317,6 +327,10 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isRegisterApnsToken(parsed)
         ? (parsed as unknown as BridgeRegisterApnsTokenAction)
         : { kind: 'unknown', rawKind: 'registerApnsToken', raw: parsed }
+    case 'subscribe-run-events':
+      return isSubscribeRunEvents(parsed)
+        ? (parsed as unknown as BridgeSubscribeRunEventsAction)
+        : { kind: 'unknown', rawKind: 'subscribe-run-events', raw: parsed }
     default:
       return { kind: 'unknown', rawKind: parsed.kind, raw: parsed }
   }
@@ -385,5 +399,15 @@ function isRegisterApnsToken(v: Record<string, unknown>): boolean {
     typeof v.deviceToken === 'string' &&
     v.deviceToken.length > 0 &&
     (v.env === 'production' || v.env === 'sandbox')
+  )
+}
+
+function isSubscribeRunEvents(v: Record<string, unknown>): boolean {
+  return (
+    typeof v.runId === 'string' &&
+    v.runId.length > 0 &&
+    (v.resumeFrom === undefined ||
+      v.resumeFrom === null ||
+      (typeof v.resumeFrom === 'number' && Number.isFinite(v.resumeFrom)))
   )
 }

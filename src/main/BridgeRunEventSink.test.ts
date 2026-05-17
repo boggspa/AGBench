@@ -20,10 +20,12 @@ describe('makeBridgeRunEventSink', () => {
     expect(notify).toHaveBeenCalledTimes(1)
     // No appChatId in the payload → no threadId on the wire.
     expect(notify).toHaveBeenCalledWith('bridge.runEvent', {
+      kind: 'run-event',
       channel: 'agent-output',
       provider: 'gemini',
       payload: { hello: 'world', appRunId: 'run-1' },
-      publishedAt: '2026-05-15T12:00:00Z'
+      publishedAt: '2026-05-15T12:00:00Z',
+      runId: 'run-1'
     })
   })
 

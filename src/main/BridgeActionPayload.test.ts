@@ -164,6 +164,33 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.kind).toBe('registerApnsToken')
     })
 
+    it('decodes subscribe-run-events with a resume cursor', () => {
+      const wire = encode({
+        kind: 'subscribe-run-events',
+        runId: 'run-1',
+        resumeFrom: 42
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('subscribe-run-events')
+      if (payload.kind === 'subscribe-run-events') {
+        expect(payload.runId).toBe('run-1')
+        expect(payload.resumeFrom).toBe(42)
+      }
+    })
+
+    it('decodes subscribe-run-events with a null resume cursor', () => {
+      const wire = encode({
+        kind: 'subscribe-run-events',
+        runId: 'run-1',
+        resumeFrom: null
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('subscribe-run-events')
+      if (payload.kind === 'subscribe-run-events') {
+        expect(payload.resumeFrom).toBeNull()
+      }
+    })
+
     it('treats registerApnsToken missing pairID as unknown', () => {
       const wire = encode({
         kind: 'registerApnsToken',

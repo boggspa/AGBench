@@ -55,6 +55,7 @@ public actor KeychainPairStorage {
         /// ignore if stale or missing; LAN discovery remains the fallback.
         public let tailscaleEndpointHint: String?
         public let createdAt: Date
+        public let cursors: [String: Int]
 
         public init(
             pairID: PairID,
@@ -62,7 +63,8 @@ public actor KeychainPairStorage {
             macDeviceID: DeviceID,
             macDisplayName: String? = nil,
             tailscaleEndpointHint: String? = nil,
-            createdAt: Date = Date()
+            createdAt: Date = Date(),
+            cursors: [String: Int] = [:]
         ) {
             self.pairID = pairID
             self.controllerDeviceID = controllerDeviceID
@@ -70,6 +72,53 @@ public actor KeychainPairStorage {
             self.macDisplayName = macDisplayName
             self.tailscaleEndpointHint = tailscaleEndpointHint
             self.createdAt = createdAt
+            self.cursors = cursors
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case pairID
+            case controllerDeviceID
+            case macDeviceID
+            case macDisplayName
+            case tailscaleEndpointHint
+            case createdAt
+            case cursors
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.pairID = try container.decode(PairID.self, forKey: .pairID)
+            self.controllerDeviceID = try container.decode(DeviceID.self, forKey: .controllerDeviceID)
+            self.macDeviceID = try container.decode(DeviceID.self, forKey: .macDeviceID)
+            self.macDisplayName = try container.decodeIfPresent(String.self, forKey: .macDisplayName)
+            self.tailscaleEndpointHint = try container.decodeIfPresent(String.self, forKey: .tailscaleEndpointHint)
+            self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+            self.cursors = try container.decodeIfPresent([String: Int].self, forKey: .cursors) ?? [:]
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.container(keyedBy: CodingKeys.self)
+            try container.encode(pairID, forKey: .pairID)
+            try container.encode(controllerDeviceID, forKey: .controllerDeviceID)
+            try container.encode(macDeviceID, forKey: .macDeviceID)
+            try container.encodeIfPresent(macDisplayName, forKey: .macDisplayName)
+            try container.encodeIfPresent(tailscaleEndpointHint, forKey: .tailscaleEndpointHint)
+            try container.encode(createdAt, forKey: .createdAt)
+            try container.encode(cursors, forKey: .cursors)
+        }
+
+        public func updatingCursor(runId: String, sequence: Int) -> PairRecord {
+            var nextCursors = cursors
+            nextCursors[runId] = max(sequence, nextCursors[runId] ?? 0)
+            return PairRecord(
+                pairID: pairID,
+                controllerDeviceID: controllerDeviceID,
+                macDeviceID: macDeviceID,
+                macDisplayName: macDisplayName,
+                tailscaleEndpointHint: tailscaleEndpointHint,
+                createdAt: createdAt,
+                cursors: nextCursors
+            )
         }
     }
 
@@ -183,6 +232,13 @@ public actor KeychainPairStorage {
             }
         }
         return records
+    }
+
+    public func saveRunEventCursor(pairID: PairID, runId: String, sequence: Int) async throws {
+        guard let existing = try await loadPair(pairID: pairID) else {
+            throw KeychainPairStorageError.unknownPair(pairID: pairID.rawValue)
+        }
+        try await savePair(existing.record.updatingCursor(runId: runId, sequence: sequence), derivedKeys: existing.derivedKeys)
     }
 
     public func deletePair(pairID: PairID) async throws {

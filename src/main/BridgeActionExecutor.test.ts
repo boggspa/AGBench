@@ -6,7 +6,8 @@ import type {
   BridgeComposerPromptAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
-  BridgeRegisterApnsTokenAction
+  BridgeRegisterApnsTokenAction,
+  BridgeSubscribeRunEventsAction
 } from './BridgeActionPayload'
 
 const sample = {
@@ -49,7 +50,12 @@ const sample = {
     pairID: 'pair-1',
     deviceToken: 'abc123def456',
     env: 'production'
-  } satisfies BridgeRegisterApnsTokenAction
+  } satisfies BridgeRegisterApnsTokenAction,
+  subscribeRunEvents: {
+    kind: 'subscribe-run-events',
+    runId: 'run-42',
+    resumeFrom: 7
+  } satisfies BridgeSubscribeRunEventsAction
 }
 
 describe('NoopActionExecutor', () => {
@@ -61,7 +67,8 @@ describe('NoopActionExecutor', () => {
       executor.executeQuestionReject(sample.questionReject),
       executor.executeComposerPrompt(sample.composerPrompt),
       executor.executeCancelRun(sample.cancelRun),
-      executor.executeRegisterApnsToken(sample.registerApnsToken)
+      executor.executeRegisterApnsToken(sample.registerApnsToken),
+      executor.executeSubscribeRunEvents(sample.subscribeRunEvents)
     ])
     for (const r of results) {
       expect(r.executed).toBe(false)
@@ -74,6 +81,7 @@ describe('NoopActionExecutor', () => {
     expect(results[3].message).toContain('t-1')
     expect(results[4].message).toContain('run-42')
     expect(results[5].message).toContain('pair-1')
+    expect(results[6].message).toContain('run-42')
   })
 })
 
@@ -384,5 +392,37 @@ describe('MainProcessActionExecutor.executeQuestionReject', () => {
     expect(result.executed).toBe(false)
     expect(result.message).toMatch(/question reject dispatch failed/i)
     expect(log).toHaveBeenCalled()
+  })
+})
+
+describe('MainProcessActionExecutor.executeSubscribeRunEvents', () => {
+  const cancelRunFn = vi.fn().mockResolvedValue(true)
+
+  it('returns executed=false when no subscribeRunEventsFn is configured', async () => {
+    const executor = new MainProcessActionExecutor({ cancelRunFn })
+    const result = await executor.executeSubscribeRunEvents(sample.subscribeRunEvents)
+    expect(result.executed).toBe(false)
+    expect(result.message).toMatch(/not yet wired/i)
+  })
+
+  it('returns replay frames from subscribeRunEventsFn', async () => {
+    const frames = [
+      { kind: 'run-events-subscribed', runId: 'run-42', catchupEvents: [], catchupComplete: true, nextLiveSeq: 8 }
+    ]
+    const subscribeRunEventsFn = vi.fn().mockResolvedValue({ subscribed: true, frames })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, subscribeRunEventsFn })
+    const result = await executor.executeSubscribeRunEvents(sample.subscribeRunEvents)
+
+    expect(subscribeRunEventsFn).toHaveBeenCalledWith(sample.subscribeRunEvents)
+    expect(result.executed).toBe(true)
+    expect(result.data).toMatchObject({ runId: 'run-42', runEventFrames: frames })
+  })
+
+  it('reports executed=false when subscribeRunEventsFn declines', async () => {
+    const subscribeRunEventsFn = vi.fn().mockResolvedValue({ subscribed: false, reason: 'bad cursor' })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, subscribeRunEventsFn })
+    const result = await executor.executeSubscribeRunEvents(sample.subscribeRunEvents)
+    expect(result.executed).toBe(false)
+    expect(result.message).toMatch(/bad cursor/)
   })
 })

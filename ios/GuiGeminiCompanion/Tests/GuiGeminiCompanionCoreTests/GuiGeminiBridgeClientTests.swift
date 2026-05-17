@@ -107,6 +107,21 @@ final class GuiGeminiBridgeClientTests: XCTestCase {
         )
     }
 
+    func testPairFromStoredRecordRestoresRunEventCursors() {
+        let record = KeychainPairStorage.PairRecord(
+            pairID: PairID("pair-1"),
+            controllerDeviceID: DeviceID("iphone-1"),
+            macDeviceID: DeviceID("mac-1"),
+            tailscaleEndpointHint: "100.64.10.20:38747",
+            cursors: ["run-1": 42]
+        )
+        let pair = GuiGeminiBridgeClient.Pair(record: record, derivedKeys: sampleDerivedKeys())
+
+        XCTAssertEqual(pair.tailscaleEndpointHint, "100.64.10.20:38747")
+        XCTAssertEqual(pair.runEventCursors["run-1"], 42)
+    }
+
+
     func testRouteSelectionPrefersReachableTailnetEndpoint() async {
         let endpoint = BridgeDirectEndpoint(host: "100.64.10.20", port: 38_747)
         let selection = await GuiGeminiBridgeClient.selectRoute(
@@ -215,6 +230,7 @@ final class GuiGeminiBridgeClientTests: XCTestCase {
         _ = client.status
         _ = client.otherInbound
         _ = client.activeRoute
+        _ = client.cursorUpdates
     }
 
     private func sampleDerivedKeys() -> PairingDerivedKeys {

@@ -46,13 +46,15 @@ public actor GuiGeminiBridgeClient {
         public let macToControllerKey: SymmetricKey
         public let controllerToMacKey: SymmetricKey
         public let tailscaleEndpointHint: String?
+        public let runEventCursors: [String: Int]
 
         public init(
             pairID: PairID,
             controllerDeviceID: DeviceID,
             macDeviceID: DeviceID,
             derivedKeys: PairingDerivedKeys,
-            tailscaleEndpointHint: String? = nil
+            tailscaleEndpointHint: String? = nil,
+            runEventCursors: [String: Int] = [:]
         ) {
             self.pairID = pairID
             self.controllerDeviceID = controllerDeviceID
@@ -60,7 +62,25 @@ public actor GuiGeminiBridgeClient {
             self.macToControllerKey = derivedKeys.macToControllerKey
             self.controllerToMacKey = derivedKeys.controllerToMacKey
             self.tailscaleEndpointHint = tailscaleEndpointHint
+            self.runEventCursors = runEventCursors
         }
+
+        public init(record: KeychainPairStorage.PairRecord, derivedKeys: PairingDerivedKeys) {
+            self.init(
+                pairID: record.pairID,
+                controllerDeviceID: record.controllerDeviceID,
+                macDeviceID: record.macDeviceID,
+                derivedKeys: derivedKeys,
+                tailscaleEndpointHint: record.tailscaleEndpointHint,
+                runEventCursors: record.cursors
+            )
+        }
+    }
+
+    public struct RunEventCursorUpdate: Sendable, Equatable {
+        public let pairID: PairID
+        public let runId: String
+        public let sequence: Int
     }
 
     struct RouteSelection: Sendable, Equatable {
@@ -94,6 +114,7 @@ public actor GuiGeminiBridgeClient {
     /// thread-watch / subscription state tracking.
     public nonisolated let otherInbound: AsyncStream<BridgeInboundEnvelope>
     public nonisolated let activeRoute: AsyncStream<ActiveRoute>
+    public nonisolated let cursorUpdates: AsyncStream<RunEventCursorUpdate>
 
     private let pair: Pair
     private let networkProtocol: DirectNetworkProtocol
@@ -107,11 +128,14 @@ public actor GuiGeminiBridgeClient {
     private let statusContinuation: AsyncStream<BridgeTransportStatus>.Continuation
     private let otherInboundContinuation: AsyncStream<BridgeInboundEnvelope>.Continuation
     private let activeRouteContinuation: AsyncStream<ActiveRoute>.Continuation
+    private let cursorUpdatesContinuation: AsyncStream<RunEventCursorUpdate>.Continuation
 
     private var inboundForwarderTask: Task<Void, Never>?
     private var statusForwarderTask: Task<Void, Never>?
     private var selectedRoute: RouteSelection?
     private var didStart = false
+    private var cursorsByRunId: [String: Int]
+    private var lastSubscribedCursorByRunId: [String: Int] = [:]
 
     static let defaultTailscalePort: UInt16 = 38_747
 
@@ -149,6 +173,7 @@ public actor GuiGeminiBridgeClient {
         self.explicitTailscaleEndpoint = tailscaleEndpoint
         self.endpointProbe = endpointProbe
         self.tailnetProbeTimeout = tailnetProbeTimeout
+        self.cursorsByRunId = pair.runEventCursors
 
         var runEventsCont: AsyncStream<BridgeRunEvent>.Continuation!
         self.runEvents = AsyncStream(bufferingPolicy: .bufferingNewest(1_024)) { runEventsCont = $0 }
@@ -165,6 +190,10 @@ public actor GuiGeminiBridgeClient {
         var activeRouteCont: AsyncStream<ActiveRoute>.Continuation!
         self.activeRoute = AsyncStream(bufferingPolicy: .bufferingNewest(1)) { activeRouteCont = $0 }
         self.activeRouteContinuation = activeRouteCont
+
+        var cursorUpdatesCont: AsyncStream<RunEventCursorUpdate>.Continuation!
+        self.cursorUpdates = AsyncStream(bufferingPolicy: .bufferingNewest(256)) { cursorUpdatesCont = $0 }
+        self.cursorUpdatesContinuation = cursorUpdatesCont
     }
 
     /// Begin browsing for the paired Mac, connect, and start forwarding
@@ -201,13 +230,14 @@ public actor GuiGeminiBridgeClient {
                                    otherInboundContinuation: otherInboundCont)
             }
         }
-        statusForwarderTask = Task {
+        statusForwarderTask = Task { [weak self] in
             for await status in controllerStatus {
                 statusCont.yield(status)
                 guard status.reachable,
                       let route = Self.activeRoute(for: status.kind)
                 else { continue }
                 activeRouteCont.yield(route)
+                await self?.resubscribeKnownRunEvents()
             }
         }
         await controller.start()
@@ -225,6 +255,7 @@ public actor GuiGeminiBridgeClient {
         statusContinuation.finish()
         otherInboundContinuation.finish()
         activeRouteContinuation.finish()
+        cursorUpdatesContinuation.finish()
         selectedRoute = nil
         didStart = false
     }
@@ -252,6 +283,15 @@ public actor GuiGeminiBridgeClient {
     public func sendWatchedThreads(threadIDs: [String]) async -> Bool {
         guard let controller else { return false }
         return await controller.sendWatchedThreads(threadIDs: threadIDs)
+    }
+
+    public func subscribeRunEvents(runId: String, resumeFrom: Int? = nil) async throws -> BridgeActionAck? {
+        let effectiveCursor = resumeFrom ?? cursorsByRunId[runId]
+        let ack = try await sendAction(.subscribeRunEvents(runId: runId, resumeFrom: effectiveCursor))
+        if ack?.accepted == true {
+            lastSubscribedCursorByRunId[runId] = effectiveCursor ?? 0
+        }
+        return ack
     }
 
     // MARK: - Private
@@ -385,12 +425,42 @@ public actor GuiGeminiBridgeClient {
             // Try the GUIGemini-flavored decode. If it's not a run event
             // (could be a CodexBridge-flavored event record from a
             // misconfigured peer), fall through to otherInbound.
-            if let event = try? BridgeRunEvent.decode(eventRecordBytes: payloadData) {
-                runEventsContinuation.yield(event)
+            do {
+                let events = try BridgeRunEvent.decodeMany(eventRecordBytes: payloadData)
+                for event in events {
+                    observeCursor(event)
+                    runEventsContinuation.yield(event)
+                }
                 return
+            } catch {
+                // Not a GUIGemini run-event frame.
             }
         }
         otherInboundContinuation.yield(envelope)
+    }
+
+    private func observeCursor(_ event: BridgeRunEvent) {
+        guard let runId = event.runId,
+              let sequence = event.sequence
+        else { return }
+        let current = cursorsByRunId[runId] ?? 0
+        guard sequence > current else { return }
+        cursorsByRunId[runId] = sequence
+        cursorUpdatesContinuation.yield(
+            RunEventCursorUpdate(pairID: pair.pairID, runId: runId, sequence: sequence)
+        )
+    }
+
+    private func resubscribeKnownRunEvents() async {
+        for (runId, cursor) in cursorsByRunId {
+            guard lastSubscribedCursorByRunId[runId] != cursor else { continue }
+            do {
+                _ = try await subscribeRunEvents(runId: runId, resumeFrom: cursor)
+            } catch {
+                // Best-effort replay recovery. The live stream still resumes
+                // even if the replay request is rejected or the ack times out.
+            }
+        }
     }
 }
 

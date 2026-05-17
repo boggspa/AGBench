@@ -70,6 +70,10 @@ public enum BridgeActionPayload: Sendable, Equatable {
         deviceToken: String,
         env: ApnsEnv
     )
+    case subscribeRunEvents(
+        runId: String,
+        resumeFrom: Int? = nil
+    )
 
     /// Encode the action as UTF-8 JSON bytes matching the Electron-side
     /// decoder shape. Sorted keys for stable wire bytes (helps logging /
@@ -140,6 +144,17 @@ public enum BridgeActionPayload: Sendable, Equatable {
                 "deviceToken": deviceToken,
                 "env": env.rawValue
             ]
+        case .subscribeRunEvents(let runId, let resumeFrom):
+            var dict: [String: Any] = [
+                "kind": "subscribe-run-events",
+                "runId": runId
+            ]
+            if let resumeFrom {
+                dict["resumeFrom"] = resumeFrom
+            } else {
+                dict["resumeFrom"] = NSNull()
+            }
+            return dict
         }
     }
 }

@@ -20,6 +20,7 @@ final class BridgeRunEventTests: XCTestCase {
         let payload = event.payloadDictionary()
         XCTAssertEqual(payload?["text"] as? String, "hello world")
         XCTAssertEqual(payload?["appRunId"] as? String, "run-1")
+        XCTAssertEqual(event.runId, "run-1")
     }
 
     func testDecodesAllSixChannels() throws {
@@ -133,5 +134,56 @@ final class BridgeRunEventTests: XCTestCase {
         ])
         let event = try BridgeRunEvent.decode(eventRecordBytes: bytes)
         XCTAssertNil(event.payloadDictionary())
+    }
+
+    func testDecodesCatchupBatchIntoRunEvents() throws {
+        let bytes = encode([
+            "kind": "run-events-subscribed",
+            "runId": "run-1",
+            "catchupComplete": true,
+            "nextLiveSeq": 4,
+            "catchupEvents": [
+                [
+                    "schemaVersion": 1,
+                    "id": "event-2",
+                    "sequence": 2,
+                    "runId": "run-1",
+                    "provider": "codex",
+                    "kind": "tool",
+                    "phase": "normalized",
+                    "source": "main",
+                    "timestamp": "2026-05-15T12:00:02Z"
+                ],
+                [
+                    "schemaVersion": 1,
+                    "id": "event-3",
+                    "sequence": 3,
+                    "runId": "run-1",
+                    "provider": "codex",
+                    "kind": "final_message",
+                    "phase": "normalized",
+                    "source": "main",
+                    "timestamp": "2026-05-15T12:00:03Z"
+                ]
+            ]
+        ])
+        let events = try BridgeRunEvent.decodeMany(eventRecordBytes: bytes)
+        XCTAssertEqual(events.map(\.sequence), [2, 3])
+        XCTAssertEqual(events.map(\.runId), ["run-1", "run-1"])
+        XCTAssertEqual(events.first?.provider, "codex")
+    }
+
+    func testDecodesLiveRunEventFrameWithTopLevelSeq() throws {
+        let bytes = encode([
+            "kind": "run-event",
+            "runId": "run-2",
+            "seq": 9,
+            "provider": "claude",
+            "payload": ["text": "chunk"]
+        ])
+        let event = try BridgeRunEvent.decode(eventRecordBytes: bytes)
+        XCTAssertEqual(event.runId, "run-2")
+        XCTAssertEqual(event.sequence, 9)
+        XCTAssertEqual(event.provider, "claude")
     }
 }
