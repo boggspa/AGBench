@@ -206,7 +206,7 @@ public struct iPadSidebar: View {
                 SidebarEmptyState(
                     systemImage: "folder.badge.questionmark",
                     title: "No workspaces yet",
-                    message: "Your paired Mac hasn't broadcast workspaces yet — they'll appear here when the bridge starts emitting workspace events."
+                    message: "Waiting for your Mac to broadcast workspaces."
                 ) {
                     SidebarExampleWorkspaceRow(workspace: SidebarEmptyStateExample.workspaceRow)
                 }
@@ -228,7 +228,7 @@ public struct iPadSidebar: View {
                 SidebarEmptyState(
                     systemImage: "text.bubble",
                     title: "No threads yet",
-                    message: "Live runs and recent turns will appear here as soon as the desktop sends a transcript event."
+                    message: "Live runs and recent turns appear here as the desktop streams events."
                 ) {
                     SidebarExampleThreadRow(thread: SidebarEmptyStateExample.threadRow)
                 }

@@ -34,7 +34,7 @@ struct SidebarEmptyState<ExampleRow: View>: View {
                         Text(message)
                             .font(Theme.Typography.caption)
                             .foregroundStyle(Theme.secondaryText)
-                            .lineLimit(3)
+                            .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }

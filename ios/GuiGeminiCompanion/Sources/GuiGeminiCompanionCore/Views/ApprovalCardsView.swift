@@ -52,7 +52,7 @@ public struct ApprovalCardsView: View {
         HStack(alignment: .center, spacing: Theme.Spacing.control) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Approval Queue")
-                    .font(Theme.Typography.screenTitle)
+                    .font(Theme.Typography.headline)
                     .foregroundStyle(Theme.Text.primary)
                 Text("Review desktop tool requests before they run.")
                     .font(Theme.Typography.caption)
