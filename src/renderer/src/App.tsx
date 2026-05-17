@@ -18,6 +18,7 @@ import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { RunCard } from './components/RunCard'
+import { RunInspector } from './components/RunInspector'
 import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { SubThreadDelegationCard, isSubThreadDelegationMessage } from './components/SubThreadDelegationCard'
@@ -3189,6 +3190,9 @@ type TranscriptPanelProps = {
   onPlanChoiceSubmit: (messageId: string, option: string) => void
   onRunFallback: (model: string) => void
   onOpenSubThread: (chatId: string) => void
+  /** Phase K1B: when set, RunCard's "Inspect →" affordance enters Run
+   * mode for the clicked run. Plumbed from App.tsx down. */
+  onInspectRun?: (runId: string) => void
 }
 
 const TranscriptPanel = memo(function TranscriptPanel({
@@ -3214,7 +3218,8 @@ const TranscriptPanel = memo(function TranscriptPanel({
   runningChatIds,
   onPlanChoiceSubmit,
   onRunFallback,
-  onOpenSubThread
+  onOpenSubThread,
+  onInspectRun
 }: TranscriptPanelProps) {
   const visibleMessages = isWelcomeChat ? [] : messages
   const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
@@ -3265,7 +3270,11 @@ const TranscriptPanel = memo(function TranscriptPanel({
           return (
             <div key={`message-block-${msg.id}`} className="transcript-message-block">
               {boundaryRun && (
-                <RunCard run={boundaryRun} fallbackProvider={getChatProvider(currentChat)} />
+                <RunCard
+                  run={boundaryRun}
+                  fallbackProvider={getChatProvider(currentChat)}
+                  onInspect={onInspectRun}
+                />
               )}
               {msg.role === 'tool' ? (
                 <ActivityStack
@@ -3669,6 +3678,20 @@ function App(): React.JSX.Element {
   const [isThinking, setIsThinking] = useState(false)
   const errorCountRef = useRef(0)
   const toolCallsCountRef = useRef(0)
+
+  // Phase K1B: when set, the chat panel renders `<RunInspector />` in
+  // place of the transcript scroll. Entered via RunCard's "Inspect →"
+  // affordance; cleared via the inspector's close button or by switching
+  // chats. The composer stays mounted below either way.
+  const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
+
+  // Reset inspector when the user navigates to a different chat — the
+  // current run id would otherwise look stale against a new chat's
+  // transcript. (TranscriptPanel itself remounts via the `key` prop on
+  // chat switch; we mirror that here.)
+  useEffect(() => {
+    setInspectingRunId(null)
+  }, [currentChat?.appChatId])
   
   const logsEndRef = useRef<HTMLDivElement>(null)
   const rawLogsEndRef = useRef<HTMLDivElement>(null)
@@ -9391,32 +9414,47 @@ function App(): React.JSX.Element {
            * synchronously so the welcome surface paints over a clean
            * transcript region every time.
            */}
-          <TranscriptPanel
-            key={currentChat?.appChatId || 'no-chat'}
-            scrollRef={transcriptScrollRef}
-            contentRef={transcriptContentRef}
-            endRef={logsEndRef}
-            messages={transcriptMessages}
-            isWelcomeChat={isWelcomeChat}
-            isThinking={isThinking}
-            showFallbackUX={showFallbackUX}
-            pendingPlanChoice={pendingPlanChoice}
-            runCompleteNotice={runCompleteNotice}
-            runCompleteDurationText={runCompleteDurationText}
-            currentChat={currentChat}
-            currentWorkspacePath={currentWorkspace?.path}
-            currentProviderLabel={currentProviderLabel}
-            displayFileChangeSummaries={displayFileChangeSummaries}
-            fileChangeSummaryText={fileChangeSummaryText}
-            fileChangeShouldShowStats={fileChangeShouldShowStats}
-            fileChangeDisplayAdds={fileChangeDisplayAdds}
-            fileChangeDisplayDels={fileChangeDisplayDels}
-            chats={chats}
-            runningChatIds={runningChatIdsArray}
-            onPlanChoiceSubmit={handlePlanChoiceSubmit}
-            onRunFallback={handleRunFallback}
-            onOpenSubThread={handleOpenCockpitThread}
-          />
+          {inspectingRunId ? (
+            <RunInspector
+              key={`inspector-${inspectingRunId}`}
+              runId={inspectingRunId}
+              onClose={() => setInspectingRunId(null)}
+              onJumpToSubThread={(subThreadId) => {
+                // Switch chats to the sub-thread; the chat-switch effect
+                // resets `inspectingRunId` automatically.
+                const subThread = chats.find((c) => c.appChatId === subThreadId)
+                if (subThread) handleOpenCockpitThread(subThread.appChatId)
+              }}
+            />
+          ) : (
+            <TranscriptPanel
+              key={currentChat?.appChatId || 'no-chat'}
+              scrollRef={transcriptScrollRef}
+              contentRef={transcriptContentRef}
+              endRef={logsEndRef}
+              messages={transcriptMessages}
+              isWelcomeChat={isWelcomeChat}
+              isThinking={isThinking}
+              showFallbackUX={showFallbackUX}
+              pendingPlanChoice={pendingPlanChoice}
+              runCompleteNotice={runCompleteNotice}
+              runCompleteDurationText={runCompleteDurationText}
+              currentChat={currentChat}
+              currentWorkspacePath={currentWorkspace?.path}
+              currentProviderLabel={currentProviderLabel}
+              displayFileChangeSummaries={displayFileChangeSummaries}
+              fileChangeSummaryText={fileChangeSummaryText}
+              fileChangeShouldShowStats={fileChangeShouldShowStats}
+              fileChangeDisplayAdds={fileChangeDisplayAdds}
+              fileChangeDisplayDels={fileChangeDisplayDels}
+              chats={chats}
+              runningChatIds={runningChatIdsArray}
+              onPlanChoiceSubmit={handlePlanChoiceSubmit}
+              onRunFallback={handleRunFallback}
+              onOpenSubThread={handleOpenCockpitThread}
+              onInspectRun={(runId) => setInspectingRunId(runId)}
+            />
+          )}
 
           {showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext && (
             <>

@@ -5,6 +5,10 @@ import { classifyRunEvent } from '../lib/RunEventClassifier'
 interface RunCardProps {
   run: ChatRun
   fallbackProvider?: ProviderId
+  /** Phase K1B: when provided, the Inspect button enters Run mode for
+   * this run. Without it, the button just logs a stub for debugging
+   * (the K1A default). */
+  onInspect?: (runId: string) => void
 }
 
 interface RunAggregate {
@@ -12,7 +16,7 @@ interface RunAggregate {
   eventFileCount: number | null
 }
 
-export function RunCard({ run, fallbackProvider }: RunCardProps): JSX.Element {
+export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX.Element {
   const provider = run.provider || fallbackProvider || 'gemini'
   const [aggregate, setAggregate] = useState<RunAggregate>({ approvalCount: 0, eventFileCount: null })
   const [, setNowTick] = useState(0)
@@ -54,7 +58,11 @@ export function RunCard({ run, fallbackProvider }: RunCardProps): JSX.Element {
   const status = getRunStatus(run)
   const duration = formatDuration(run.startedAt, run.endedAt)
   const inspect = (): void => {
-    // Slice 1B wires the real inspector route.
+    if (onInspect && run.runId) {
+      onInspect(run.runId)
+      return
+    }
+    // Fallback (no Run mode wired): keep the K1A stub for debugging.
     console.debug('run-inspect-stub', run.runId)
   }
 
