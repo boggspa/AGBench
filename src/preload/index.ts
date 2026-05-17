@@ -121,6 +121,7 @@ const api = {
   bridgeAllowlistRemove: (workspaceId: string) => ipcRenderer.invoke('bridge-allowlist-remove', workspaceId),
   bridgeAllowlistClear: () => ipcRenderer.invoke('bridge-allowlist-clear'),
   bridgeNetworkingStatus: () => ipcRenderer.invoke('bridge-networking-status'),
+  setBridgeDaemonEnabled: (enabled: boolean) => ipcRenderer.invoke('set-bridge-daemon-enabled', enabled),
 
   // Phase G2: auto-update controls.
   updateSnapshot: () => ipcRenderer.invoke('update-snapshot'),

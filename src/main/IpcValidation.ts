@@ -72,6 +72,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-gemini-mcp-bridge-status': [],
   'install-gemini-mcp-bridge': [],
   'set-gemini-mcp-bridge-enabled': ['boolean'],
+  'set-bridge-daemon-enabled': ['boolean'],
   'run-approved-host-command': ['nonEmptyString'],
   'list-gemini-sessions': [],
   'select-workspace': [],
@@ -87,9 +88,13 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'import-codex-usage-credential': ['optionalString'],
   'clear-codex-usage-credential': [],
   'get-codex-usage-snapshot': [],
+  'get-claude-auth-status': [],
+  'get-kimi-auth-status': [],
   'get-agent-mcp-status': ['provider'],
   'get-provider-capabilities': ['provider', 'optionalString', 'optionalString'],
   'get-provider-adapters': [],
+  'get-runtime-profiles': ['optionalProvider'],
+  'get-handoff-cards': ['optionalObject'],
   'list-agent-threads': ['provider', 'optionalObject'],
   'fork-agent-thread': ['provider', 'string', 'optionalObject'],
   'rollback-agent-thread': ['provider', 'string', 'optionalNumber'],
@@ -118,6 +123,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'stop-pty': ['optionalString'],
   'pty-write': ['string', 'optionalString'],
   'pty-resize': ['number', 'number', 'optionalString'],
+  'bridge-networking-status': [],
   'bridge-finalize-pairing': ['nonEmptyString', 'boolean'],
   // Phase E1: APNs production wiring — Settings panel uses these to configure
   // the iOS bridge push gateway. All handlers live in main; safeStorage handles
@@ -175,6 +181,9 @@ function validateSettingsPatch(channel: string, value: unknown): void {
   if (value.activeProvider !== undefined) validateArg(channel, 'provider', value.activeProvider, 0)
   if (value.funFxEnabled !== undefined) {
     if (typeof value.funFxEnabled !== 'boolean') throw new Error(`${channel} funFxEnabled must be a boolean.`)
+  }
+  if (value.bridgeDaemonEnabled !== undefined) {
+    if (typeof value.bridgeDaemonEnabled !== 'boolean') throw new Error(`${channel} bridgeDaemonEnabled must be a boolean.`)
   }
   if (value.funFxMode !== undefined) {
     const mode = String(value.funFxMode)

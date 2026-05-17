@@ -354,6 +354,7 @@ export interface AppSettings {
   agenticWorkspaceGrants: AgenticWorkspaceGrant[];
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus;
+  bridgeDaemonEnabled?: boolean;
   codexSandboxFallback: CodexSandboxFallbackMode;
   updateChannel: ProductUpdateChannel;
   /** Per-provider + main-authority approval timeout policy (Phase E1.1).

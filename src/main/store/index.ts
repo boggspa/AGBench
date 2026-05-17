@@ -73,6 +73,7 @@ const defaultSettings: AppSettings = {
   agenticWorkspaceGrants: [],
   geminiMcpBridgeEnabled: false,
   geminiMcpBridgeLastStatus: undefined,
+  bridgeDaemonEnabled: true,
   codexSandboxFallback: 'ask_rerun',
   updateChannel: 'debug',
   approvalTimeouts: {

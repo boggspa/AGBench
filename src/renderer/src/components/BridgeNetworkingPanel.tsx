@@ -22,6 +22,14 @@ import React, { useCallback, useEffect, useState } from 'react'
 interface BridgeNetworkingStatus {
   lan: {
     enabled: boolean
+    running: boolean
+    settingEnabled: boolean
+    effectiveEnabled: boolean
+    envOverride: 'force-on' | 'force-off' | null
+    status: 'running' | 'stopped'
+    pid?: number | null
+    startedAt?: string | null
+    lastError?: string | null
     bonjourServiceType: string
     hostname: string
   }
@@ -41,6 +49,7 @@ interface BridgeNetworkingStatus {
 export function BridgeNetworkingPanel(): React.JSX.Element {
   const [status, setStatus] = useState<BridgeNetworkingStatus | null>(null)
   const [loading, setLoading] = useState(true)
+  const [savingDaemon, setSavingDaemon] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
@@ -60,6 +69,32 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
     void Promise.resolve().then(() => refresh())
   }, [refresh])
 
+  const lan = status?.lan
+  const daemonSwitchDisabled = loading || savingDaemon || Boolean(lan?.envOverride)
+  const daemonSwitchChecked = lan?.envOverride
+    ? lan.effectiveEnabled
+    : lan?.settingEnabled ?? true
+  const daemonHelper = lan?.envOverride === 'force-on'
+    ? 'Enabled by AGBENCH_BRIDGE_DAEMON.'
+    : lan?.envOverride === 'force-off'
+      ? 'Disabled by environment override.'
+      : 'Runs on launch and accepts iOS pairing/control requests.'
+  const daemonPillLabel = lan?.running ? 'Running' : lan?.effectiveEnabled && !lan?.lastError ? 'Starting' : 'Stopped'
+  const daemonPillKind = lan?.running ? 'ok' : lan?.effectiveEnabled && !lan?.lastError ? 'warn' : 'idle'
+
+  const setDaemonEnabled = async (enabled: boolean): Promise<void> => {
+    try {
+      setSavingDaemon(true)
+      setError(null)
+      const result = (await window.api.setBridgeDaemonEnabled(enabled)) as BridgeNetworkingStatus
+      setStatus(result)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setSavingDaemon(false)
+    }
+  }
+
   return (
     <div className="bridge-networking-panel">
       <div className="bridge-networking-header">
@@ -74,22 +109,49 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
 
       <section className="bridge-networking-section">
         <header className="bridge-networking-section-header">
-          <span className="bridge-networking-section-title">LAN</span>
+          <span className="bridge-networking-section-title">Bridge daemon</span>
           <StatusPill
-            kind={status?.lan.enabled ? 'ok' : 'idle'}
-            label={status?.lan.enabled ? 'Daemon enabled' : 'Daemon disabled'}
+            kind={daemonPillKind}
+            label={daemonPillLabel}
           />
         </header>
-        {status?.lan && (
+        <label className="settings-service-row settings-fx-toggle">
+          <span>
+            Enable bridge daemon
+            <small>{daemonHelper}</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={daemonSwitchChecked}
+            disabled={daemonSwitchDisabled}
+            onChange={(event) => void setDaemonEnabled(event.target.checked)}
+          />
+        </label>
+        {lan?.lastError && (
+          <div className="settings-hint bridge-networking-reason">
+            {lan.lastError}
+          </div>
+        )}
+      </section>
+
+      <section className="bridge-networking-section">
+        <header className="bridge-networking-section-header">
+          <span className="bridge-networking-section-title">LAN</span>
+          <StatusPill
+            kind={lan?.running ? 'ok' : 'idle'}
+            label={lan?.running ? 'Bonjour visible' : 'Not advertising'}
+          />
+        </header>
+        {lan && (
           <dl className="bridge-networking-fields">
-            <Field label="Bonjour service" value={status.lan.bonjourServiceType} />
-            <Field label="Hostname" value={status.lan.hostname} />
+            <Field label="Bonjour service" value={lan.bonjourServiceType} />
+            <Field label="Hostname" value={lan.hostname} />
+            {lan.pid && <Field label="Daemon PID" value={String(lan.pid)} />}
           </dl>
         )}
-        {!status?.lan.enabled && (
+        {!lan?.running && (
           <div className="settings-hint">
-            Set <code>AGBENCH_BRIDGE_DAEMON=1</code> to enable the bridge daemon. Without it, no
-            iPhone can pair regardless of network.
+            The iOS companion can pair only while the daemon is running.
           </div>
         )}
       </section>

@@ -245,6 +245,40 @@ declare global {
       bridgeNetworkingStatus: () => Promise<{
         lan: {
           enabled: boolean
+          running: boolean
+          settingEnabled: boolean
+          effectiveEnabled: boolean
+          envOverride: 'force-on' | 'force-off' | null
+          status: 'running' | 'stopped'
+          pid?: number | null
+          startedAt?: string | null
+          lastError?: string | null
+          bonjourServiceType: string
+          hostname: string
+        }
+        tailscale: {
+          available: boolean
+          cliPath?: string
+          version?: string
+          tailnetIPv4?: string
+          tailnetIPv6?: string
+          hostname?: string
+          tailnetName?: string
+          magicDNSEnabled?: boolean
+          reason?: string
+        }
+      }>
+      setBridgeDaemonEnabled: (enabled: boolean) => Promise<{
+        lan: {
+          enabled: boolean
+          running: boolean
+          settingEnabled: boolean
+          effectiveEnabled: boolean
+          envOverride: 'force-on' | 'force-off' | null
+          status: 'running' | 'stopped'
+          pid?: number | null
+          startedAt?: string | null
+          lastError?: string | null
           bonjourServiceType: string
           hostname: string
         }

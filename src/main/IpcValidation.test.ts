@@ -85,6 +85,20 @@ describe('IpcValidation', () => {
     expect(() => validateIpcArgs('stop-pty', ['terminal-1'])).not.toThrow()
   })
 
+  it('accepts bridge daemon status and toggle APIs', () => {
+    expect(() => validateIpcArgs('bridge-networking-status', [])).not.toThrow()
+    expect(() => validateIpcArgs('set-bridge-daemon-enabled', [true])).not.toThrow()
+    expect(() => validateIpcArgs('set-bridge-daemon-enabled', ['true'])).toThrow(/boolean/)
+  })
+
+  it('accepts read-only startup/status APIs used by the shell', () => {
+    expect(() => validateIpcArgs('get-claude-auth-status', [])).not.toThrow()
+    expect(() => validateIpcArgs('get-kimi-auth-status', [])).not.toThrow()
+    expect(() => validateIpcArgs('get-runtime-profiles', ['codex'])).not.toThrow()
+    expect(() => validateIpcArgs('get-runtime-profiles', ['bad-provider'])).toThrow(/known provider/)
+    expect(() => validateIpcArgs('get-handoff-cards', [{ provider: 'claude' }])).not.toThrow()
+  })
+
   it('validates main-owned run queue transition APIs', () => {
     expect(() => validateIpcArgs('request-run-queue-job', [{
       runId: 'run-1',

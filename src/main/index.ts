@@ -12,6 +12,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
+import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
@@ -72,6 +73,7 @@ let codexClient: CodexAppServerClient | null = null
 let codexExecProcess: ChildProcess | null = null
 let scheduledTaskTimer: ReturnType<typeof setTimeout> | null = null
 let geminiMcpBroker: NetServer | null = null
+let geminiMcpBrokerStartPromise: Promise<void> | null = null
 let geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
 const NATIVE_GLASS_VIBRANCY: BrowserWindowConstructorOptions['vibrancy'] = 'sidebar'
@@ -122,6 +124,23 @@ const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
 const externalGrantSigningSecret = loadOrCreateExternalGrantSigningSecret()
 const geminiMcpBrokerToken = randomBytes(32).toString('hex')
 let geminiMcpBridgeInstalledForCurrentToken = false
+
+function agentbenchMcpBridgeArgs(socketPath: string = geminiMcpSocketPath()): string[] {
+  return [
+    ...(is.dev ? [app.getAppPath()] : []),
+    GEMINI_MCP_BRIDGE_ARG,
+    GEMINI_MCP_SOCKET_ARG,
+    socketPath,
+    GEMINI_MCP_TOKEN_ARG,
+    geminiMcpBrokerToken
+  ]
+}
+
+function bridgeArgsMatchCurrentLaunch(args: string[], socketPath: string): boolean {
+  const expected = agentbenchMcpBridgeArgs(socketPath)
+  return expected.length === args.length && expected.every((arg, index) => args[index] === arg)
+}
+
 // Phase I4 (Kimi initiator): the Kimi CLI registers the agentbench MCP
 // server via `kimi mcp add` (config at `~/.kimi/mcp.json`). Each AGBench
 // launch generates a fresh `geminiMcpBrokerToken`, so we track whether
@@ -537,6 +556,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'agenticServices',
   'geminiMcpBridgeEnabled',
   'geminiMcpBridgeLastStatus',
+  'bridgeDaemonEnabled',
   'codexSandboxFallback',
   'updateChannel'
 ])
@@ -1107,6 +1127,10 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
   if ('funFxEnabled' in sanitized) {
     const value = sanitized.funFxEnabled
     sanitized.funFxEnabled = typeof value === 'boolean' ? value : Boolean(value)
+  }
+  if ('bridgeDaemonEnabled' in sanitized) {
+    const value = sanitized.bridgeDaemonEnabled
+    sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
   }
   if ('funFxMode' in sanitized) {
     const value = sanitized.funFxMode
@@ -4084,13 +4108,7 @@ function claudeAgentbenchMcpInput(): ClaudeAgentbenchMcpInput {
   return {
     enabled,
     bridgeBinaryPath: process.execPath,
-    bridgeArgs: [
-      GEMINI_MCP_BRIDGE_ARG,
-      GEMINI_MCP_SOCKET_ARG,
-      geminiMcpSocketPath(),
-      GEMINI_MCP_TOKEN_ARG,
-      geminiMcpBrokerToken
-    ]
+    bridgeArgs: agentbenchMcpBridgeArgs()
   }
 }
 
@@ -5030,13 +5048,7 @@ function getCodexClient(): CodexAppServerClient {
     codexClient.setMcpConfig({
       enabled: true,
       bridgeBinaryPath: process.execPath,
-      bridgeArgs: [
-        GEMINI_MCP_BRIDGE_ARG,
-        GEMINI_MCP_SOCKET_ARG,
-        geminiMcpSocketPath(),
-        GEMINI_MCP_TOKEN_ARG,
-        geminiMcpBrokerToken
-      ],
+      bridgeArgs: agentbenchMcpBridgeArgs(),
       parentProvider: 'codex'
     })
   } else {
@@ -7404,6 +7416,52 @@ function geminiMcpSocketPath(): string {
   return join(app.getPath('userData'), 'agentbench-gemini-mcp.sock')
 }
 
+function geminiUserSettingsPath(): string {
+  return join(app.getPath('home'), '.gemini', 'settings.json')
+}
+
+function geminiMcpBridgeServerNeedsRepair(server: any, socketPath: string): boolean {
+  if (!server) {
+    return false
+  }
+  const args = Array.isArray(server.args) ? server.args.map(String) : []
+  const includeTools = Array.isArray(server.includeTools) ? server.includeTools.map(String) : []
+  return (
+    server.command !== process.execPath ||
+    server.trust !== true ||
+    !bridgeArgsMatchCurrentLaunch(args, socketPath) ||
+    !AGENTBENCH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
+  )
+}
+
+function userGeminiMcpBridgeNeedsRepair(socketPath: string): boolean {
+  try {
+    const raw = fsSync.readFileSync(geminiUserSettingsPath(), 'utf-8')
+    const settings = JSON.parse(raw)
+    return geminiMcpBridgeServerNeedsRepair(settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME], socketPath)
+  } catch {
+    return false
+  }
+}
+
+async function repairKnownStaleGeminiMcpBridgeConfigs(cwd?: string): Promise<void> {
+  if (!AppStore.getSettings().geminiMcpBridgeEnabled) {
+    return
+  }
+  const resolved = await resolveCliProviderBinary('gemini')
+  if (!resolved.binaryPath) {
+    return
+  }
+  const socketPath = geminiMcpSocketPath()
+  if (userGeminiMcpBridgeNeedsRepair(socketPath)) {
+    await addGeminiMcpBridgeRegistration(resolved.binaryPath, 'user', socketPath)
+    geminiMcpBridgeInstalledForCurrentToken = true
+  }
+  if (cwd) {
+    await repairProjectGeminiMcpBridgeIfNeeded(resolved.binaryPath, cwd, socketPath)
+  }
+}
+
 function hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): boolean {
   if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
     return false
@@ -7412,6 +7470,9 @@ function hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): b
     return true
   }
   if (/Application Support\/agentbench\//i.test(raw) && !socketPath.includes('/Application Support/agentbench/')) {
+    return true
+  }
+  if (is.dev && raw.includes(GEMINI_MCP_BRIDGE_ARG) && !raw.includes(app.getAppPath())) {
     return true
   }
   return app.isPackaged && !raw.includes(process.execPath)
@@ -7961,52 +8022,66 @@ async function handleGeminiMcpBrokerRequest(request: any): Promise<any> {
 
 async function startGeminiMcpBroker(): Promise<void> {
   if (geminiMcpBroker) return
-  const socketPath = geminiMcpSocketPath()
-  await fs.mkdir(dirname(socketPath), { recursive: true }).catch(() => {})
-  await fs.unlink(socketPath).catch(() => {})
+  if (geminiMcpBrokerStartPromise) return geminiMcpBrokerStartPromise
 
-  geminiMcpBroker = createServer((socket: Socket) => {
-    let buffer = ''
-    socket.setEncoding('utf8')
-    socket.on('data', (chunk: string) => {
-      buffer += chunk
-      const lines = buffer.split(/\r?\n/)
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed) continue
-        let parsed: any
-        try {
-          parsed = JSON.parse(trimmed)
-        } catch (error) {
-          socket.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })}\n`)
-          continue
+  geminiMcpBrokerStartPromise = (async () => {
+    const socketPath = geminiMcpSocketPath()
+    await fs.mkdir(dirname(socketPath), { recursive: true }).catch(() => {})
+    await fs.unlink(socketPath).catch(() => {})
+
+    const server = createServer((socket: Socket) => {
+      let buffer = ''
+      socket.setEncoding('utf8')
+      socket.on('data', (chunk: string) => {
+        buffer += chunk
+        const lines = buffer.split(/\r?\n/)
+        buffer = lines.pop() || ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed) continue
+          let parsed: any
+          try {
+            parsed = JSON.parse(trimmed)
+          } catch (error) {
+            socket.write(`${JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) })}\n`)
+            continue
+          }
+          handleGeminiMcpBrokerRequest(parsed)
+            .then((result) => socket.write(`${JSON.stringify({ id: parsed.id, ...result })}\n`))
+            .catch((error) => socket.write(`${JSON.stringify({ id: parsed.id, ok: false, error: error instanceof Error ? error.message : String(error) })}\n`))
         }
-        handleGeminiMcpBrokerRequest(parsed)
-          .then((result) => socket.write(`${JSON.stringify({ id: parsed.id, ...result })}\n`))
-          .catch((error) => socket.write(`${JSON.stringify({ id: parsed.id, ok: false, error: error instanceof Error ? error.message : String(error) })}\n`))
-      }
+      })
     })
+
+    geminiMcpBroker = server
+    try {
+      await new Promise<void>((resolveListen, rejectListen) => {
+        const handleError = (error: Error) => {
+          server.off('listening', handleListening)
+          rejectListen(error)
+        }
+        const handleListening = () => {
+          server.off('error', handleError)
+          resolveListen()
+        }
+        server.once('error', handleError)
+        server.once('listening', handleListening)
+        server.listen(socketPath)
+      })
+    } catch (error) {
+      if (geminiMcpBroker === server) {
+        geminiMcpBroker = null
+      }
+      try {
+        server.close()
+      } catch {}
+      throw error
+    }
+  })().finally(() => {
+    geminiMcpBrokerStartPromise = null
   })
 
-  await new Promise<void>((resolveListen, rejectListen) => {
-    const server = geminiMcpBroker
-    if (!server) {
-      rejectListen(new Error('Gemini MCP broker failed to initialize.'))
-      return
-    }
-    const handleError = (error: Error) => {
-      server.off('listening', handleListening)
-      rejectListen(error)
-    }
-    const handleListening = () => {
-      server.off('error', handleError)
-      resolveListen()
-    }
-    server.once('error', handleError)
-    server.once('listening', handleListening)
-    server.listen(socketPath)
-  })
+  return geminiMcpBrokerStartPromise
 }
 
 function brokerRequest(socketPath: string, request: any): Promise<any> {
@@ -8475,13 +8550,7 @@ async function selfTestGeminiMcpBridgeProcess(socketPath: string): Promise<{ ok:
     }, 5_000)
 
     try {
-      proc = spawn(process.execPath, [
-        GEMINI_MCP_BRIDGE_ARG,
-        GEMINI_MCP_SOCKET_ARG,
-        socketPath,
-        GEMINI_MCP_TOKEN_ARG,
-        geminiMcpBrokerToken
-      ], {
+      proc = spawn(process.execPath, agentbenchMcpBridgeArgs(socketPath), {
         shell: false,
         env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, process.execPath)
       })
@@ -8573,6 +8642,7 @@ async function getGeminiMcpBridgeStatus(options: { autoRepairIfEnabled?: boolean
   const socketPath = geminiMcpSocketPath()
   if (settings.geminiMcpBridgeEnabled) {
     await startGeminiMcpBroker().catch(() => {})
+    await repairKnownStaleGeminiMcpBridgeConfigs(options.cwd)
   }
   let section = await readGeminiCapabilitySection('mcp', options.cwd)
   if (!section.items.length && ![section.stdout, section.stderr].filter(Boolean).join('\n').toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
@@ -8668,11 +8738,7 @@ function buildGeminiMcpBridgeAddArgs(scope: GeminiMcpRegistrationScope, socketPa
     'add',
     GEMINI_MCP_SERVER_NAME,
     process.execPath,
-    GEMINI_MCP_BRIDGE_ARG,
-    GEMINI_MCP_SOCKET_ARG,
-    socketPath,
-    GEMINI_MCP_TOKEN_ARG,
-    geminiMcpBrokerToken,
+    ...agentbenchMcpBridgeArgs(socketPath),
     '--scope',
     scope,
     '--trust',
@@ -8704,20 +8770,7 @@ function projectGeminiMcpBridgeNeedsRepair(cwd: string, socketPath: string): boo
   try {
     const raw = fsSync.readFileSync(settingsPath, 'utf-8')
     const settings = JSON.parse(raw)
-    const server = settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME]
-    if (!server) {
-      return false
-    }
-    const args = Array.isArray(server.args) ? server.args.map(String) : []
-    const includeTools = Array.isArray(server.includeTools) ? server.includeTools.map(String) : []
-    return (
-      server.command !== process.execPath ||
-      server.trust !== true ||
-      !args.includes(GEMINI_MCP_BRIDGE_ARG) ||
-      !args.includes(socketPath) ||
-      !args.includes(geminiMcpBrokerToken) ||
-      !AGENTBENCH_MCP_TOOLS.every((tool) => includeTools.includes(tool))
-    )
+    return geminiMcpBridgeServerNeedsRepair(settings?.mcpServers?.[GEMINI_MCP_SERVER_NAME], socketPath)
   } catch {
     return false
   }
@@ -8856,13 +8909,7 @@ async function prepareGeminiMcpBridgeForRun(
 async function addKimiMcpBridgeRegistration(kimiBinaryPath: string, socketPath: string): Promise<void> {
   const addArgs = buildKimiMcpBridgeAddArgs({
     bridgeBinaryPath: process.execPath,
-    bridgeArgs: [
-      GEMINI_MCP_BRIDGE_ARG,
-      GEMINI_MCP_SOCKET_ARG,
-      socketPath,
-      GEMINI_MCP_TOKEN_ARG,
-      geminiMcpBrokerToken
-    ]
+    bridgeArgs: agentbenchMcpBridgeArgs(socketPath)
   })
   const addResult = await captureProcessOutput(kimiBinaryPath, addArgs, undefined, 15_000)
   if (addResult.code !== 0) {
@@ -9735,15 +9782,15 @@ app.whenReady().then(() => {
   bridgeApnsTokenStoreRef = bridgeApnsTokenStore
   bridgeApnsPusherRef = bridgeApnsPusher
 
-  // Phase C0: optional GuiGeminiBridge daemon spawn — only when the
-  // AGBENCH_BRIDGE_DAEMON env var is set (default-off so this doesn't affect
-  // production startup until Phase C-late). On macOS the daemon imports
-  // BridgeCore and proves the GUIGemini product configuration loads cleanly.
-  // Phase C1+ will replace this proof-of-life with real stdio JSON-RPC.
+  // Phase E2: GuiGeminiBridge daemon supervisor. Default-on by setting,
+  // with AGBENCH_BRIDGE_DAEMON preserving explicit force-on/force-off
+  // override semantics for staging and emergency disable.
   let bridgeDaemon: BridgeDaemonClient | null = null
+  let bridgeDaemonStartPromise: Promise<unknown> | null = null
+  let unsubscribeBridgeRunSink: (() => void) | null = null
+  let bridgeDaemonLastError: string | null = null
 
-  if (process.platform === 'darwin' &&
-      (process.env.AGBENCH_BRIDGE_DAEMON === '1' || process.env.AGBENCH_BRIDGE_DAEMON === 'true')) {
+  const createBridgeActionExecutor = (): MainProcessActionExecutor => {
     // Phase C-late: action executor wires policy-cleared actions to real
     // main-process services. Wired today: `cancelRun`, `approvalReply`,
     // `composerPrompt`. The remaining two variants (`questionReply` /
@@ -9758,7 +9805,7 @@ app.whenReady().then(() => {
     // run as if a desktop user had started it — the iOS-initiated run
     // appears live in the desktop transcript. iOS gets only the initial
     // appRunId today; streaming events back to iOS is a future slice.
-    const bridgeActionExecutor = new MainProcessActionExecutor({
+    return new MainProcessActionExecutor({
       cancelRunFn: async (provider, runId) => {
         return providerAdapters.require(assertProviderId(provider)).cancel(runId)
       },
@@ -9842,6 +9889,38 @@ app.whenReady().then(() => {
         console.log(line)
       }
     })
+  }
+
+  const subscribeBridgeRunEvents = (daemon: BridgeDaemonClient): void => {
+    if (unsubscribeBridgeRunSink) return
+    // Phase C-late: forward every RunEventBus event to the daemon. The
+    // sink uses the bus's fan-out infrastructure (designed for exactly
+    // this in Phase B) so adapter call sites don't change. The daemon
+    // re-publishes inbound `bridge.runEvent` notifications to any
+    // connected iOS devices via QUIC (Swift slice, separate).
+    unsubscribeBridgeRunSink = runEventBus.subscribe(
+      makeBridgeRunEventSink({
+        notifier: { notify: (method, params) => daemon.notify(method, params) },
+        log: process.env.AGBENCH_DEBUG_BUS === '1'
+          ? // eslint-disable-next-line no-console
+            (line) => console.log(line)
+          : undefined
+      })
+    )
+  }
+
+  const unsubscribeBridgeRunEvents = (): void => {
+    unsubscribeBridgeRunSink?.()
+    unsubscribeBridgeRunSink = null
+  }
+
+  const startBridgeDaemon = (): void => {
+    if (process.platform !== 'darwin') {
+      bridgeDaemonLastError = 'Bridge daemon is only available on macOS.'
+      return
+    }
+    if (bridgeDaemonStartPromise || bridgeDaemon?.status().running) return
+    bridgeDaemonLastError = null
     // Phase C3.6: daemon → Electron request router. Default policy denies
     // every action ack request; set AGBENCH_BRIDGE_PERMISSIVE=1 for local
     // end-to-end testing. Phase C4: also consults the workspace allowlist
@@ -9853,9 +9932,9 @@ app.whenReady().then(() => {
         console.log(line)
       },
       bridgeAllowlist,
-      bridgeActionExecutor
+      createBridgeActionExecutor()
     )
-    bridgeDaemon = new BridgeDaemonClient({
+    const daemon = new BridgeDaemonClient({
       onHello: (hello) => {
         // eslint-disable-next-line no-console
         console.log('[BridgeDaemon] hello:', JSON.stringify(hello))
@@ -9867,6 +9946,12 @@ app.whenReady().then(() => {
       onExit: (code) => {
         // eslint-disable-next-line no-console
         console.log(`[BridgeDaemon] exited with code ${code ?? 'unknown'}`)
+        unsubscribeBridgeRunEvents()
+        const wasActiveDaemon = bridgeDaemon === daemon
+        if (wasActiveDaemon) bridgeDaemon = null
+        if (wasActiveDaemon && !bridgeDaemonStartPromise) {
+          bridgeDaemonLastError = `Bridge daemon exited with code ${code ?? 'unknown'}`
+        }
       },
       // Phase C3-late: surface daemon-pushed notifications. Today these are
       // `bridge.didReceive*` from the QUIC transport (ActionWake, ActionRecord,
@@ -9891,41 +9976,77 @@ app.whenReady().then(() => {
       // built from it. Until C4 lands, every decision is deny-by-default.
       onRequest: (method, params) => bridgeActionRouter.route(method, params)
     })
-    bridgeDaemon.start().catch((err: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error('[BridgeDaemon] failed to start:', err instanceof Error ? err.message : String(err))
-    })
-
-    // Phase C-late: forward every RunEventBus event to the daemon. The
-    // sink uses the bus's fan-out infrastructure (designed for exactly
-    // this in Phase B) so adapter call sites don't change. The daemon
-    // re-publishes inbound `bridge.runEvent` notifications to any
-    // connected iOS devices via QUIC (Swift slice, separate).
-    //
-    // Subscribed only while the daemon is enabled — when daemon is off
-    // the bus runs with just the Electron IPC sink (legacy behavior).
-    // Pin a non-null reference for the closure; the daemon is guaranteed
-    // initialized at this point (we're inside the AGBENCH_BRIDGE_DAEMON
-    // guard + the `new BridgeDaemonClient(...)` block above), but TS
-    // narrows `let bridgeDaemon: BridgeDaemonClient | null` back to the
-    // union as soon as it crosses a closure boundary.
-    const bridgeDaemonForSink = bridgeDaemon
-    const unsubscribeBridgeRunSink = runEventBus.subscribe(
-      makeBridgeRunEventSink({
-        notifier: { notify: (method, params) => bridgeDaemonForSink.notify(method, params) },
-        log: process.env.AGBENCH_DEBUG_BUS === '1'
-          ? // eslint-disable-next-line no-console
-            (line) => console.log(line)
-          : undefined
+    bridgeDaemon = daemon
+    const startPromise = daemon.start()
+      .then(() => {
+        if (bridgeDaemon === daemon && daemon.status().running) {
+          subscribeBridgeRunEvents(daemon)
+        }
       })
-    )
-
-    // Ensure the daemon is torn down when the app quits.
-    app.on('will-quit', () => {
-      unsubscribeBridgeRunSink()
-      bridgeDaemon?.dispose()
-    })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err)
+        if (bridgeDaemon === daemon || bridgeDaemonStartPromise === startPromise) {
+          bridgeDaemonLastError = message
+        }
+        // eslint-disable-next-line no-console
+        console.error('[BridgeDaemon] failed to start:', message)
+        unsubscribeBridgeRunEvents()
+        if (bridgeDaemon === daemon) bridgeDaemon = null
+      })
+      .finally(() => {
+        if (bridgeDaemonStartPromise === startPromise) bridgeDaemonStartPromise = null
+      })
+    bridgeDaemonStartPromise = startPromise
   }
+
+  const stopBridgeDaemon = (): void => {
+    bridgeDaemonLastError = null
+    unsubscribeBridgeRunEvents()
+    const daemon = bridgeDaemon
+    bridgeDaemon = null
+    bridgeDaemonStartPromise = null
+    daemon?.dispose()
+  }
+
+  const reconcileBridgeDaemonFromSettings = (): void => {
+    const resolution = resolveDaemonShouldRun(
+      AppStore.getSettings().bridgeDaemonEnabled,
+      process.env.AGBENCH_BRIDGE_DAEMON
+    )
+    if (resolution.shouldRun) {
+      startBridgeDaemon()
+    } else {
+      stopBridgeDaemon()
+    }
+  }
+
+  const bridgeDaemonStatus = () => {
+    const resolution = resolveDaemonShouldRun(
+      AppStore.getSettings().bridgeDaemonEnabled,
+      process.env.AGBENCH_BRIDGE_DAEMON
+    )
+    const status = bridgeDaemon?.status() || { running: false, startedAt: null, pid: null }
+    return {
+      enabled: resolution.shouldRun,
+      running: status.running,
+      settingEnabled: resolution.settingEnabled,
+      effectiveEnabled: resolution.shouldRun,
+      envOverride: resolution.envOverride,
+      status: status.running ? 'running' as const : 'stopped' as const,
+      pid: status.pid,
+      startedAt: status.startedAt,
+      lastError: bridgeDaemonLastError,
+      bonjourServiceType: '_guigemini-bridge._tcp',
+      // Hostname the daemon broadcasts under. Currently the OS
+      // hostname; future revs may make this configurable.
+      hostname: os.hostname()
+    }
+  }
+
+  reconcileBridgeDaemonFromSettings()
+  app.on('will-quit', () => {
+    stopBridgeDaemon()
+  })
 
   const startupRecoveryRecords = AppStore.recoverRunQueueAfterStartup()
   recordStartupRecoveryEvents(startupRecoveryRecords)
@@ -9987,15 +10108,7 @@ app.whenReady().then(() => {
       cachedTailscaleAt = now
     }
     return {
-      lan: {
-        enabled: process.platform === 'darwin' &&
-          (process.env.AGBENCH_BRIDGE_DAEMON === '1' ||
-            process.env.AGBENCH_BRIDGE_DAEMON === 'true'),
-        bonjourServiceType: '_guigemini-bridge._tcp',
-        // Hostname the daemon broadcasts under. Currently the OS
-        // hostname; future revs may make this configurable.
-        hostname: os.hostname()
-      },
+      lan: bridgeDaemonStatus(),
       tailscale: cachedTailscaleStatus
     }
   })
@@ -10051,6 +10164,9 @@ app.whenReady().then(() => {
             enabled: autoUpdateEnabled
           })
         }
+        if (sanitizedPatch.bridgeDaemonEnabled !== undefined) {
+          reconcileBridgeDaemonFromSettings()
+        }
       }
     ]
   })
@@ -10085,7 +10201,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('bridge-finalize-pairing', async (_, sessionID: string, userConfirmed: boolean) => {
     const pairingSessionID = requireNonEmptyString(sessionID, 'Pairing session id')
-    if (!bridgeDaemon) {
+    if (!bridgeDaemon?.status().running) {
       throw new Error('Bridge daemon is not running')
     }
     return bridgeDaemon.request('bridge.finalizePairing', {
@@ -10097,6 +10213,18 @@ app.whenReady().then(() => {
   // Settings
   ipcMain.handle('get-settings', () => settingsService.getSettings())
   ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => settingsService.updateSettings(partial))
+  ipcMain.handle('set-bridge-daemon-enabled', async (_, enabled: boolean) => {
+    settingsService.updateSettings({ bridgeDaemonEnabled: Boolean(enabled) })
+    const now = Date.now()
+    if (!cachedTailscaleStatus || now - cachedTailscaleAt > TAILSCALE_CACHE_TTL_MS) {
+      cachedTailscaleStatus = await detectTailscale()
+      cachedTailscaleAt = now
+    }
+    return {
+      lan: bridgeDaemonStatus(),
+      tailscale: cachedTailscaleStatus
+    }
+  })
   ipcMain.handle('upsert-agentic-workspace-grant', (_, provider: ProviderId, workspacePath: string, service: AgenticServiceId) => {
     permissionService.upsertWorkspaceGrant(assertProviderId(provider), requireNonEmptyString(workspacePath, 'Workspace path'), assertAgenticServiceId(service))
     return settingsService.getSettings()
@@ -10290,6 +10418,7 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-gemini-capabilities', async (_, workspace?: string): Promise<GeminiCapabilitiesState> => {
     const capabilityWorkspace = await resolveCapabilityWorkspace(workspace)
+    await repairKnownStaleGeminiMcpBridgeConfigs(capabilityWorkspace).catch(() => {})
     const capabilitySections = await Promise.all(
       GEMINI_CAPABILITY_KINDS.map((kind) => readGeminiCapabilitySection(kind, capabilityWorkspace))
     )
