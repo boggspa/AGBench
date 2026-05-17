@@ -49,10 +49,10 @@ import {
 } from './lib/UserMessageCollapse'
 import {
   HEATMAP_DAY_COUNT,
-  HEATMAP_HOUR_COUNT,
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
   mixProviderColors,
+  type WelcomeUsageDayCell,
   type WelcomeUsageDashboardData,
   type WelcomeUsageHourCell,
   type WelcomeUsageTab
@@ -1540,7 +1540,7 @@ const providerModelColorClass = (provider: ProviderId): string => `provider-${pr
  */
 const PROVIDER_GRID_COLORS: Record<ProviderId, string> = {
   gemini: '#2563EB',
-  codex: '#6366F1',
+  codex: '#756AF4',
   claude: '#D97706',
   kimi: '#84A33B'
 }
@@ -1554,38 +1554,65 @@ const HEATMAP_LEVEL_OPACITY: Record<number, number> = {
 }
 
 /**
- * Renders the dense 30 days × 24 hours activity grid that replaces the legacy
- * daily heatmap. Each chip's background is a provider-weighted mix of the
- * palette in {@link PROVIDER_GRID_COLORS}, with opacity tied to the hourly
- * intensity level. Empty hours render with no chip fill, falling through to the
- * empty-cell background defined in CSS.
+ * Renders a contribution-style activity grid: weekdays run vertically and weeks
+ * advance horizontally. Daily intensity comes from the daily heatmap while the
+ * fill color still uses provider totals folded up from the hourly buckets.
  */
-function ActivityHourGrid({ cells }: { cells: WelcomeUsageHourCell[] }) {
+function ActivityContributionGrid({
+  days,
+  hourlyCells
+}: {
+  days: WelcomeUsageDayCell[]
+  hourlyCells: WelcomeUsageHourCell[]
+}) {
+  const firstDay = days[0]
+  const firstDate = firstDay ? new Date(`${firstDay.dayKey}T00:00:00`) : null
+  const firstWeekday = firstDate && Number.isFinite(firstDate.getTime()) ? firstDate.getDay() : 0
+  const weekCount = Math.max(1, Math.ceil((firstWeekday + days.length) / 7))
+  const dailyProviderTotals = useMemo(() => {
+    const totals = new Map<string, Record<ProviderId, number>>()
+    for (const cell of hourlyCells) {
+      if (cell.totalTokens <= 0) continue
+      const existing = totals.get(cell.dayKey) || { gemini: 0, codex: 0, claude: 0, kimi: 0 }
+      existing.gemini += cell.providerTotals.gemini || 0
+      existing.codex += cell.providerTotals.codex || 0
+      existing.claude += cell.providerTotals.claude || 0
+      existing.kimi += cell.providerTotals.kimi || 0
+      totals.set(cell.dayKey, existing)
+    }
+    return totals
+  }, [hourlyCells])
+
   return (
     <div
       className="welcome-usage-activity-grid"
       role="img"
-      aria-label={`Hourly activity grid for the last ${HEATMAP_DAY_COUNT} days`}
+      aria-label={`Daily activity contribution grid for the last ${days.length || HEATMAP_DAY_COUNT} days`}
       style={{
-        gridTemplateColumns: `repeat(${HEATMAP_DAY_COUNT}, minmax(0, 1fr))`,
-        gridTemplateRows: `repeat(${HEATMAP_HOUR_COUNT}, minmax(0, 1fr))`
+        gridTemplateColumns: `repeat(${weekCount}, var(--activity-cell-size))`,
+        gridTemplateRows: 'repeat(7, var(--activity-cell-size))'
       }}
     >
-      {cells.map((cell) => {
-        const color = cell.level > 0 ? mixProviderColors(cell.providerTotals, PROVIDER_GRID_COLORS) : ''
-        const opacity = HEATMAP_LEVEL_OPACITY[cell.level] ?? 0
+      {days.map((day, index) => {
+        const slot = firstWeekday + index
+        const providerTotals = dailyProviderTotals.get(day.dayKey)
+        const mixedColor = providerTotals ? mixProviderColors(providerTotals, PROVIDER_GRID_COLORS) : ''
+        const color = day.level > 0
+          ? (mixedColor || 'var(--activity-heatmap-color, var(--accent))')
+          : ''
+        const opacity = HEATMAP_LEVEL_OPACITY[day.level] ?? 0
         const style: CSSProperties = color
-          ? { backgroundColor: color, opacity }
-          : {}
-        const tokenSummary = cell.totalTokens > 0
-          ? `${formatCompactUsageNumber(cell.totalTokens)} tokens`
+          ? { backgroundColor: color, opacity, gridColumn: Math.floor(slot / 7) + 1, gridRow: (slot % 7) + 1 }
+          : { gridColumn: Math.floor(slot / 7) + 1, gridRow: (slot % 7) + 1 }
+        const tokenSummary = day.value > 0
+          ? `${formatCompactUsageNumber(day.value)} tokens`
           : 'no activity'
         return (
           <span
-            key={`${cell.dayKey}-${cell.hour}`}
-            className={`welcome-usage-hour-cell level-${cell.level} ${cell.isCurrentHour ? 'current' : ''}`}
+            key={day.dayKey}
+            className={`welcome-usage-day-cell level-${day.level} ${day.isToday ? 'today' : ''}`}
             style={style}
-            title={`${cell.label} - ${tokenSummary}`}
+            title={`${day.label} - ${tokenSummary}`}
           />
         )
       })}
@@ -1641,7 +1668,7 @@ function WelcomeUsageDashboard({
               </div>
             ))}
           </div>
-          <ActivityHourGrid cells={data.hourlyHeatmap} />
+          <ActivityContributionGrid days={data.heatmap} hourlyCells={data.hourlyHeatmap} />
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
       ) : (

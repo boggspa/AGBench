@@ -36,7 +36,7 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -154,6 +154,29 @@ let approvalService: ApprovalService | null = null
 // the newly-created sub-thread without going through the renderer.
 // Stays null until whenReady; the consumer null-checks.
 let runCoordinatorRef: RunCoordinator | null = null
+
+interface BackgroundSubThreadTranscriptState {
+  runId: string
+  chatId: string
+  parentChatId: string
+  provider: ProviderId
+  parentProvider: ProviderId
+  prompt: string
+  returnResultToParent: boolean
+  promptMessageId: string
+  assistantMessageId: string
+  startedAt: string
+  content: string
+  actualModel?: string
+  stats?: unknown
+  status: 'running' | 'success' | 'failed'
+  errorMessage?: string
+  flushTimer?: ReturnType<typeof setTimeout>
+  flushedOnce?: boolean
+  finalized?: boolean
+}
+
+const backgroundSubThreadTranscripts = new Map<string, BackgroundSubThreadTranscriptState>()
 
 /**
  * Phase B3 — thin proxy. Delegates to `approvalService.scheduleTimeout`
@@ -1366,6 +1389,214 @@ function surfaceSubThreadDispatchFailure(args: {
     )
   } catch {
     // Best-effort.
+  }
+}
+
+function saveAndBroadcastChat(chat: ChatRecord): void {
+  AppStore.saveChat(chat)
+  try {
+    mainWindow?.webContents.send('chat-updated', chat)
+  } catch {
+    // Renderer not attached; persistence is the source of truth.
+  }
+}
+
+function seedAgentDrivenSubThreadTranscript(args: {
+  subThread: ChatRecord
+  parentProvider: ProviderId
+  provider: ProviderId
+  prompt: string
+  returnResultToParent: boolean
+}): string {
+  const { subThread, parentProvider, provider, prompt, returnResultToParent } = args
+  const runId = createFallbackRunId(provider)
+  const startedAt = new Date().toISOString()
+  const promptMessageId = `subthread-prompt-${subThread.appChatId}-${Date.now()}`
+  const assistantMessageId = `subthread-assistant-${subThread.appChatId}-${Date.now()}`
+  const promptMessage: ChatMessage = {
+    id: promptMessageId,
+    role: 'user',
+    content: prompt,
+    timestamp: startedAt,
+    runId,
+    metadata: {
+      kind: 'subThreadDelegation',
+      subThreadId: subThread.appChatId,
+      subThreadProvider: provider,
+      subThreadTitle: subThread.title,
+      parentProvider,
+      delegationPrompt: prompt,
+      delegationPromptPreview: prompt.length > 240 ? `${prompt.slice(0, 240)}…` : prompt,
+      returnResultToParent
+    }
+  }
+  const run: ChatRun = {
+    runId,
+    provider,
+    startedAt,
+    promptMessageId,
+    requestedModel: 'cli-default',
+    approvalMode: 'default',
+    status: 'running'
+  }
+  const current = AppStore.getChat(subThread.appChatId) || subThread
+  const seeded: ChatRecord = {
+    ...current,
+    messages: current.messages.some((message) => message.id === promptMessageId)
+      ? current.messages
+      : [...current.messages, promptMessage],
+    runs: current.runs.some((existingRun) => existingRun.runId === runId)
+      ? current.runs
+      : [...current.runs, run],
+    updatedAt: Date.now()
+  }
+  saveAndBroadcastChat(seeded)
+  backgroundSubThreadTranscripts.set(runId, {
+    runId,
+    chatId: subThread.appChatId,
+    parentChatId: subThread.parentChatId || '',
+    provider,
+    parentProvider,
+    prompt,
+    returnResultToParent,
+    promptMessageId,
+    assistantMessageId,
+    startedAt,
+    content: '',
+    status: 'running'
+  })
+  return runId
+}
+
+function flushBackgroundSubThreadTranscript(runId: string, final = false): void {
+  const state = backgroundSubThreadTranscripts.get(runId)
+  if (!state) return
+  if (state.flushTimer) {
+    clearTimeout(state.flushTimer)
+    state.flushTimer = undefined
+  }
+  const current = AppStore.getChat(state.chatId)
+  if (!current) return
+  const timestamp = new Date().toISOString()
+  let messages = [...current.messages]
+  const assistantIndex = messages.findIndex((message) => message.id === state.assistantMessageId)
+  if (state.content.length > 0) {
+    const assistantMessage: ChatMessage = assistantIndex >= 0
+      ? {
+          ...messages[assistantIndex],
+          content: state.content,
+          timestamp
+        }
+      : {
+          id: state.assistantMessageId,
+          role: 'assistant',
+          content: state.content,
+          timestamp,
+          runId: state.runId
+        }
+    if (assistantIndex >= 0) {
+      messages[assistantIndex] = assistantMessage
+    } else {
+      messages = [...messages, assistantMessage]
+    }
+  } else if (final && state.status === 'failed' && state.errorMessage) {
+    messages = [
+      ...messages,
+      {
+        id: `subthread-error-${state.chatId}-${Date.now()}`,
+        role: 'system',
+        content: `Sub-thread run failed before producing assistant output: ${state.errorMessage}`,
+        timestamp,
+        runId: state.runId
+      }
+    ]
+  }
+
+  const runs = [...current.runs]
+  const runIndex = runs.findIndex((run) => run.runId === state.runId)
+  const existingRun = runIndex >= 0 ? runs[runIndex] : undefined
+  const updatedRun: ChatRun = {
+    ...(existingRun || {
+      runId: state.runId,
+      provider: state.provider,
+      startedAt: state.startedAt,
+      promptMessageId: state.promptMessageId,
+      requestedModel: 'cli-default',
+      approvalMode: 'default'
+    }),
+    actualModel: state.actualModel || existingRun?.actualModel,
+    stats: state.stats || existingRun?.stats,
+    status: final ? state.status : 'running',
+    endedAt: final ? timestamp : existingRun?.endedAt,
+    exitCode: final && state.status === 'failed' ? 1 : existingRun?.exitCode
+  }
+  if (runIndex >= 0) {
+    runs[runIndex] = updatedRun
+  } else {
+    runs.push(updatedRun)
+  }
+
+  const updated: ChatRecord = {
+    ...current,
+    messages,
+    runs,
+    updatedAt: Date.now()
+  }
+  saveAndBroadcastChat(updated)
+  state.flushedOnce = true
+
+  if (final) {
+    backgroundSubThreadTranscripts.delete(runId)
+    if (state.status === 'success' && state.returnResultToParent) {
+      void maybePropagateSubThreadResult(state.chatId).catch((err) => {
+        console.warn(`[SubThreadReturn] propagation failed for chatId=${state.chatId}:`, err)
+      })
+    }
+  }
+}
+
+function scheduleBackgroundSubThreadFlush(runId: string): void {
+  const state = backgroundSubThreadTranscripts.get(runId)
+  if (!state || state.flushTimer) return
+  state.flushTimer = setTimeout(() => {
+    flushBackgroundSubThreadTranscript(runId)
+  }, 350)
+}
+
+function finalizeBackgroundSubThreadTranscript(runId: string, status: 'success' | 'failed', errorMessage?: string): void {
+  const state = backgroundSubThreadTranscripts.get(runId)
+  if (!state || state.finalized) return
+  state.finalized = true
+  state.status = status
+  state.errorMessage = errorMessage
+  flushBackgroundSubThreadTranscript(runId, true)
+}
+
+function materializeBackgroundSubThreadProviderOutput(provider: ProviderId, routed: AgentRunRoute, payload: any): void {
+  const runId = routed.appRunId
+  if (!runId) return
+  const state = backgroundSubThreadTranscripts.get(runId)
+  if (!state || state.provider !== provider) return
+  if (routed.appChatId && routed.appChatId !== state.chatId) return
+
+  if (payload?.type === 'init' && typeof payload.model === 'string' && payload.model.trim()) {
+    state.actualModel = payload.model
+    if (!state.flushedOnce) flushBackgroundSubThreadTranscript(runId)
+    return
+  }
+  if (payload?.type === 'content' && typeof payload.text === 'string') {
+    state.content += payload.text
+    if (!state.flushedOnce) {
+      flushBackgroundSubThreadTranscript(runId)
+    } else {
+      scheduleBackgroundSubThreadFlush(runId)
+    }
+    return
+  }
+  if (payload?.type === 'result') {
+    state.stats = payload.stats
+    const status = payload.status === 'failed' || payload.subtype === 'error' ? 'failed' : 'success'
+    finalizeBackgroundSubThreadTranscript(runId, status)
   }
 }
 
@@ -4886,6 +5117,7 @@ function sendAgentCompatLine(sender: Electron.WebContents, provider: ProviderId,
     payload,
     'provider'
   )
+  materializeBackgroundSubThreadProviderOutput(provider, routed, payload)
   const line = `${JSON.stringify(routed)}\n`
   const outputPayload = { provider, data: line, appRunId: routed.appRunId, appChatId: routed.appChatId }
   publishRunEvent('agent-output', provider, outputPayload, sender)
@@ -7351,11 +7583,19 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       } catch {
         // Best-effort.
       }
+      const subThreadRunId = seedAgentDrivenSubThreadTranscript({
+        subThread,
+        parentProvider,
+        provider: providerArg,
+        prompt: promptArg,
+        returnResultToParent: returnResult
+      })
       const runPayload: AgentRunPayload = {
         provider: providerArg,
         scope: context.scope ?? 'workspace',
         workspace: subThread.workspacePath,
         prompt: promptArg,
+        appRunId: subThreadRunId,
         appChatId: subThread.appChatId,
         approvalMode: 'default',
         model: 'cli-default'
@@ -7369,6 +7609,11 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       const dispatchEvent: { sender: Electron.WebContents } = { sender: context.sender }
       void (async () => {
         if (!runCoordinatorRef) {
+          finalizeBackgroundSubThreadTranscript(
+            subThreadRunId,
+            'failed',
+            'RunCoordinator is not initialised yet — the app may still be starting up.'
+          )
           surfaceSubThreadDispatchFailure({
             subThread,
             parentChatId,
@@ -7382,6 +7627,11 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         try {
           const result = await runCoordinatorRef.dispatch(runPayload, dispatchEvent)
           if (!result.dispatched) {
+            finalizeBackgroundSubThreadTranscript(
+              subThreadRunId,
+              'failed',
+              'RunCoordinator completed preflight without dispatching the provider run.'
+            )
             surfaceSubThreadDispatchFailure({
               subThread,
               parentChatId,
@@ -7392,6 +7642,11 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
             })
           }
         } catch (err) {
+          finalizeBackgroundSubThreadTranscript(
+            subThreadRunId,
+            'failed',
+            err instanceof Error ? err.message : String(err)
+          )
           surfaceSubThreadDispatchFailure({
             subThread,
             parentChatId,

@@ -89,6 +89,20 @@ function GearSymbolIcon() {
   );
 }
 
+function RemoteConnectionSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon sidebar-remote-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="5.3" y="5.1" width="5.4" height="8.4" rx="1.2" />
+        <path d="M7.1 11.7h1.8" />
+        <path d="M4.2 4.2a5.3 5.3 0 0 1 7.6 0" />
+        <path d="M5.6 5.7a3.4 3.4 0 0 1 4.8 0" />
+        <path d="M6.8 7.1a1.7 1.7 0 0 1 2.4 0" />
+      </svg>
+    </span>
+  );
+}
+
 function ChevronSymbolIcon({ isExpanded }: { isExpanded: boolean }) {
   return (
     <span className={`sf-symbol-icon sidebar-tree-chevron ${isExpanded ? 'is-expanded' : ''}`} aria-hidden>
@@ -1172,6 +1186,14 @@ export function Sidebar({
         <button className="sidebar-footer-settings" onClick={onOpenSettings} title="Settings" aria-label="Open settings">
           <GearSymbolIcon />
           <span>Settings</span>
+        </button>
+        <button
+          type="button"
+          className="sidebar-footer-remote"
+          title="Remote connection"
+          aria-label="Open remote connection settings"
+        >
+          <RemoteConnectionSymbolIcon />
         </button>
       </div>
     </div>

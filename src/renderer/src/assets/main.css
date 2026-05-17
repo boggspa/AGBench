@@ -3506,14 +3506,14 @@ button.sidebar-item {
 }
 
 .welcome-mode .composer-area {
-  /* Welcome-mode composer/greeting offset. Lifted from 56% to 52% to close
+  /* Welcome-mode composer/greeting offset. Lifted from 56% to 51% to close
    * the remaining visual gap between the activity dashboard's bottom edge
    * and the greeting/composer block. The translateY keeps the block anchored
    * to its own internal flow so the gap shrinks evenly while preserving a
    * ~24-32px safe area below the heatmap (which grew slightly with the
    * taller hour-cell height below). Kept conservative to avoid overlap on
    * 900px viewports where the 24-hour grid takes substantial vertical room. */
-  top: 52%;
+  top: 51%;
   bottom: auto;
   transform: translateY(-18%);
   padding-bottom: 0;
@@ -3858,18 +3858,25 @@ button.sidebar-item {
  * lifted composer overlaps the panel on a 900px viewport.
  */
 .welcome-usage-activity-grid {
+  --activity-cell-size: clamp(13px, 1.24vw, 17px);
   display: grid;
-  gap: 2px;
-  margin-top: 8px;
+  grid-auto-flow: column;
+  justify-content: center;
+  gap: 3px;
+  width: max-content;
+  max-width: 100%;
+  margin: 10px auto 0;
   border-radius: 6px;
-  padding: 2px;
+  padding: 3px;
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 4%, transparent), transparent);
 }
 
+.welcome-usage-day-cell,
 .welcome-usage-hour-cell {
   min-width: 0;
-  height: 15px;
+  width: var(--activity-cell-size);
+  height: var(--activity-cell-size);
   border-radius: 3px;
   background:
     linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 6%, transparent), color-mix(in srgb, var(--panel-border) 18%, transparent));
@@ -3877,10 +3884,15 @@ button.sidebar-item {
   transition: filter 120ms ease;
 }
 
+.welcome-usage-day-cell.level-0,
 .welcome-usage-hour-cell.level-0 {
   /* Empty hours render with the default empty-cell background only. */
 }
 
+.welcome-usage-day-cell.level-1,
+.welcome-usage-day-cell.level-2,
+.welcome-usage-day-cell.level-3,
+.welcome-usage-day-cell.level-4,
 .welcome-usage-hour-cell.level-1,
 .welcome-usage-hour-cell.level-2,
 .welcome-usage-hour-cell.level-3,
@@ -3892,9 +3904,15 @@ button.sidebar-item {
     inset 0 1px 0 color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
+.welcome-usage-day-cell.today,
 .welcome-usage-hour-cell.current {
   outline: 1px solid color-mix(in srgb, var(--text-primary) 64%, transparent);
   outline-offset: 1px;
+}
+
+[data-interface-style="codex"] .welcome-usage-activity-grid,
+[data-composer-style="codex"] .welcome-usage-activity-grid {
+  --activity-heatmap-color: #8c80ff;
 }
 
 .welcome-usage-footnote {
@@ -4188,12 +4206,12 @@ button.sidebar-item {
 }
 
 .app-transcript.provider-codex .composer-surface:focus-within {
-  border-color: rgba(111, 99, 232, 0.5);
+  border-color: rgba(132, 119, 246, 0.52);
   box-shadow:
     var(--composer-shadow),
-    0 0 0 1px rgba(92, 78, 210, 0.2),
-    0 0 24px rgba(49, 39, 145, 0.24),
-    0 0 46px rgba(18, 15, 64, 0.2);
+    0 0 0 1px rgba(116, 101, 230, 0.22),
+    0 0 24px rgba(74, 58, 176, 0.24),
+    0 0 46px rgba(28, 20, 86, 0.2);
 }
 
 .app-transcript.provider-claude .composer-surface:focus-within {
@@ -4234,10 +4252,10 @@ button.sidebar-item {
 }
 
 .app-transcript.provider-codex .composer-surface::before {
-  background: linear-gradient(90deg, rgba(8, 8, 16, 0.32), rgba(34, 29, 104, 0.2) 18%, transparent 36%, transparent 64%, rgba(28, 24, 92, 0.2) 82%, rgba(5, 5, 12, 0.34));
+  background: linear-gradient(90deg, rgba(9, 8, 18, 0.32), rgba(48, 40, 130, 0.2) 18%, transparent 36%, transparent 64%, rgba(42, 34, 118, 0.2) 82%, rgba(6, 5, 14, 0.34));
   box-shadow:
-    inset 42px 0 52px -30px rgba(12, 11, 28, 0.36),
-    inset -42px 0 52px -30px rgba(28, 23, 96, 0.32);
+    inset 42px 0 52px -30px rgba(17, 14, 38, 0.36),
+    inset -42px 0 52px -30px rgba(45, 36, 128, 0.32);
 }
 
 .app-transcript.provider-claude .composer-surface::before {
@@ -9988,6 +10006,7 @@ input:disabled, select:disabled, textarea:disabled {
 
 .app-sidebar .sidebar-footer {
   padding: 10px var(--space-md) var(--space-md);
+  align-items: center;
 }
 
 .sidebar-footer-settings {
@@ -10007,7 +10026,9 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 10px;
   cursor: pointer;
   transition: color 0.14s, background 0.14s;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  width: auto;
   -webkit-app-region: no-drag;
 }
 
@@ -10026,6 +10047,42 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .sidebar-footer-settings:hover .sf-symbol-icon {
+  opacity: 1;
+}
+
+.sidebar-footer-remote {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 46%, transparent);
+  border-radius: 10px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 6%, transparent), transparent);
+  color: color-mix(in srgb, var(--sidebar-text-secondary) 88%, transparent);
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+  transition: color 0.14s, background 0.14s, border-color 0.14s;
+}
+
+.sidebar-footer-remote:hover,
+.sidebar-footer-remote:focus-visible {
+  color: var(--sidebar-text);
+  border-color: color-mix(in srgb, var(--accent) 34%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+
+.sidebar-footer-remote .sf-symbol-icon {
+  opacity: 0.78;
+}
+
+.sidebar-footer-remote:hover .sf-symbol-icon,
+.sidebar-footer-remote:focus-visible .sf-symbol-icon {
   opacity: 1;
 }
 
@@ -11358,12 +11415,12 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"] .composer-surface {
   border-radius: 22px;
   padding: 14px 14px 10px;
-  background: color-mix(in srgb, #1a1a1a 92%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 10%, transparent);
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  border: 1px solid color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
 }
 [data-composer-style="codex"] .composer-surface:focus-within {
-  border-color: color-mix(in srgb, #ffffff 22%, transparent);
+  border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.46);
 }
 [data-composer-style="codex"] .composer-textarea {
@@ -12674,8 +12731,8 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-interface-style="codex"] .composer-surface {
-  background: #1d1d1d !important;
-  border-color: color-mix(in srgb, #ffffff 12%, transparent) !important;
+  background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%) !important;
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
   border-radius: 22px !important;
   padding: 14px 14px 10px !important;
   box-shadow: 0 18px 56px rgba(0, 0, 0, 0.36) !important;
@@ -14062,6 +14119,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Sidebar section headers should not paint full-width bars behind labels. */
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-header.sidebar-chats-header,
+.app-sidebar .sidebar-recents-section .sidebar-section-header,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
   background: transparent !important;
   border-bottom: 0 !important;
@@ -14071,7 +14129,8 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
-.app-sidebar .sidebar-chats-header .sidebar-section-title {
+.app-sidebar .sidebar-chats-header .sidebar-section-title,
+.app-sidebar .sidebar-recents-section .sidebar-section-title {
   display: inline-flex;
   width: max-content;
   max-width: 100%;
@@ -14083,7 +14142,8 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
-[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-chats-header .sidebar-section-title {
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-chats-header .sidebar-section-title,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-recents-section .sidebar-section-title {
   background: color-mix(in srgb, #ffffff 7%, transparent) !important;
   border-color: color-mix(in srgb, #ffffff 11%, transparent) !important;
 }
