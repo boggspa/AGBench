@@ -6,6 +6,7 @@ import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMo
 import { inlineStatsForActivity } from '../lib/ActivityInlineStats';
 import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay';
 import { FileTypeIcon } from './FileTypeIcon';
+import { DigitOdometer } from './DigitOdometer';
 
 interface ActivityStackProps {
   activities: ToolActivity[];
@@ -974,12 +975,16 @@ function ActivityRow({
               {isInlineActivity ? getInlineActivityTitle(activity, activityFilePath) : <ActivityTitle activity={activity} filePath={activityFilePath} />}
               {inlineStats.visible && (
                 <span className="activity-line-stats">
-                  <span className="diff-stat-slot">
-                    <span key={`add-${inlineStats.additions}`} className="activity-line-stat activity-line-stat-add roll-up">+{inlineStats.additions}</span>
-                  </span>
-                  <span className="diff-stat-slot">
-                    <span key={`del-${inlineStats.deletions}`} className="activity-line-stat activity-line-stat-delete roll-down">-{inlineStats.deletions}</span>
-                  </span>
+                  <DigitOdometer
+                    value={inlineStats.additions}
+                    sign="+"
+                    className="activity-line-stat activity-line-stat-add"
+                  />
+                  <DigitOdometer
+                    value={inlineStats.deletions}
+                    sign="-"
+                    className="activity-line-stat activity-line-stat-delete"
+                  />
                   {inlineStats.confidence && inlineStats.confidence !== 'exact' && <span className="activity-line-stat-estimated">~</span>}
                 </span>
               )}
