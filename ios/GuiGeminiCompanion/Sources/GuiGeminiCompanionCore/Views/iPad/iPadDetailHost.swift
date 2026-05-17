@@ -82,27 +82,16 @@ public struct iPadDetailHost: View {
     }
 
     private var settingsPane: some View {
-        VStack(alignment: .leading, spacing: Theme.Spacing.section) {
-            contextBar(
-                title: "Connection",
-                subtitle: "Pairing and bridge controls remain in the iPhone flow for this slice.",
-                systemImage: "gearshape"
-            )
-            VStack(alignment: .leading, spacing: Theme.Spacing.control) {
-                Label("Settings placeholder", systemImage: "gearshape.2")
-                    .font(Theme.Typography.headline)
-                    .foregroundStyle(Theme.primaryText)
-                Text("The iPad shell reserves this pane for network status, pairing details, and desktop bridge diagnostics.")
-                    .font(Theme.Typography.callout)
-                    .foregroundStyle(Theme.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(Theme.Spacing.screen)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .cardGlassBackground(cornerRadius: Theme.Radius.panel)
-            Spacer(minLength: 0)
-        }
-        .padding(Theme.Spacing.screen)
+        // Swap from the original "Settings placeholder" stub to the
+        // dedicated `iPadSettingsPane` shipped by Agent C (Pairing /
+        // Bridge connection / Push notifications / About cards). Mocks
+        // gate behind the host's `mocked` flag so production callers
+        // get real (empty) state. `pairingViewModel` is left nil for
+        // now — plumbing it through from the shell is a follow-up.
+        iPadSettingsPane(
+            transcriptViewModel: transcriptViewModel,
+            mocked: mocked
+        )
     }
 
     private var emptyPane: some View {
