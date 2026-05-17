@@ -85,6 +85,17 @@ public final class TranscriptViewModel {
     // MARK: - Private
 
     private func append(_ event: BridgeRunEvent) {
+        // Workspace + thread summary broadcasts are sidebar-store data,
+        // not transcript log lines — skip them so the transcript stays
+        // focused on agent output / error / exit. The dedicated subscriber
+        // in AppState routes them via BridgeWorkspaceSummariesDecoder.
+        switch event.channel {
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+            return
+        case .agentOutput, .agentError, .agentExit,
+             .geminiOutput, .geminiError, .geminiExit:
+            break
+        }
         events.append(event)
         if events.count > maxRetained {
             events.removeFirst(events.count - maxRetained)

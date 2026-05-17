@@ -35,6 +35,14 @@ public struct BridgeRunEvent: Sendable, Equatable {
         case geminiOutput = "gemini-output"
         case geminiError = "gemini-error"
         case geminiExit = "gemini-exit"
+        // Workspace + thread summary broadcasts emitted by the desktop's
+        // BridgeBroadcaster when the AppStore mutates. iOS decodes these
+        // via BridgeWorkspaceSummariesDecoder and routes them into
+        // iPadSidebarStore.applyWorkspaceList(_:) etc.
+        case workspaceList = "workspace-list"
+        case workspaceUpdated = "workspace-updated"
+        case threadList = "thread-list"
+        case threadUpdated = "thread-updated"
     }
 
     public let channel: Channel

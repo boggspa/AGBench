@@ -22,6 +22,16 @@ final class AppState {
     private(set) var approvalViewModel: ApprovalViewModel?
     private(set) var composerViewModel: ComposerViewModel?
     private(set) var pushRegistrar: PushNotificationRegistrar?
+    /// Sidebar data store consumed by the iPad shell. Populated by the
+    /// workspace/thread summary broadcasts the desktop emits over the
+    /// bridge — see `sidebarSummariesTask`. Always present so views can
+    /// bind to it before pairing completes (it just starts empty).
+    @ObservationIgnored
+    let sidebarStore: iPadSidebarStore = iPadSidebarStore()
+    /// Task that drains the bridge client's `runEvents` stream and routes
+    /// summary-kind events to `sidebarStore`. Cancelled in `disconnect()`.
+    @ObservationIgnored
+    private var sidebarSummariesTask: Task<Void, Never>?
     /// Last APNs registration message surfaced from the desktop's ack,
     /// or from an OS-side registration failure. nil when push hasn't
     /// completed a registration cycle yet.
@@ -59,6 +69,31 @@ final class AppState {
         #endif
         let registrar = PushNotificationRegistrar(client: client, pairID: pair.pairID, env: apnsEnv)
         self.pushRegistrar = registrar
+        // Workspace + thread summary subscriber. Drains the same
+        // `runEvents` stream the transcript consumes; the decoder returns
+        // nil for non-summary channels so we cheaply skip them without
+        // a second stream. The store is `@MainActor` so all apply calls
+        // hop back to the main actor.
+        let store = self.sidebarStore
+        let summaries = client.runEvents
+        sidebarSummariesTask?.cancel()
+        sidebarSummariesTask = Task { @MainActor in
+            for await event in summaries {
+                guard let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) else {
+                    continue
+                }
+                switch decoded {
+                case .workspaceList(let payload):
+                    store.applyWorkspaceList(payload.workspaces)
+                case .workspaceUpdated(let payload):
+                    store.applyWorkspaceUpdate(payload.workspace)
+                case .threadList(let payload):
+                    store.applyThreadList(payload.threads)
+                case .threadUpdated(let payload):
+                    store.applyThreadUpdate(payload.thread)
+                }
+            }
+        }
         await client.start()
         // If an APNs token already arrived before pairing (typical:
         // AppDelegate registers eagerly), drain it now.
@@ -70,6 +105,8 @@ final class AppState {
     func disconnect() async {
         await bridgeClient?.stop()
         transcriptViewModel?.detach()
+        sidebarSummariesTask?.cancel()
+        sidebarSummariesTask = nil
         bridgeClient = nil
         transcriptViewModel = nil
         approvalViewModel = nil

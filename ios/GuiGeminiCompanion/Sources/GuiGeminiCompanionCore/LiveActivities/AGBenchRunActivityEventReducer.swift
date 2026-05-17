@@ -116,6 +116,12 @@ public struct AGBenchRunActivityEventReducer: Sendable {
             return .failed
         case .agentOutput, .geminiOutput:
             break
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+            // Sidebar-summary channels never reach the reducer in practice
+            // (TranscriptViewModel filters them upstream). Kept here for
+            // switch exhaustivity so future channel additions surface
+            // explicit compile errors instead of silent fall-throughs.
+            return nil
         }
 
         let marker = [
@@ -224,6 +230,11 @@ public struct AGBenchRunActivityEventReducer: Sendable {
             return "Provider error"
         case .agentExit, .geminiExit:
             return "Provider exited"
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+            // Unreachable — TranscriptViewModel filters summary events
+            // before the reducer ever sees them. See terminalStatus(...)
+            // above for the matching defensive default.
+            return ""
         }
     }
 

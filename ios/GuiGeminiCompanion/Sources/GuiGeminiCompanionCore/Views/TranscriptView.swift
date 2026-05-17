@@ -165,6 +165,12 @@ public struct TranscriptView: View {
         case .agentOutput, .geminiOutput: return "text.bubble"
         case .agentError, .geminiError: return "exclamationmark.triangle"
         case .agentExit, .geminiExit: return "checkmark.circle"
+        // Workspace / thread summary broadcasts are data-flow events that
+        // populate the sidebar store, not transcript log lines. They get
+        // filtered out upstream in TranscriptViewModel, so this branch is
+        // unreachable in practice — kept here for switch exhaustivity.
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+            return "rectangle.stack"
         }
     }
 
@@ -173,6 +179,9 @@ public struct TranscriptView: View {
         case .agentOutput, .geminiOutput: return Theme.accent
         case .agentError, .geminiError: return Theme.destructive
         case .agentExit, .geminiExit: return Theme.success
+        // Unreachable for the same reason as glyph(for:) above.
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+            return Theme.tertiaryText
         }
     }
 }

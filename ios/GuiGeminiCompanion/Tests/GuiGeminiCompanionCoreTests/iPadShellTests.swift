@@ -112,6 +112,169 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual([Any](arrayLiteral: inspector).count, 1)
     }
 
+    // MARK: - Bridge summary application
+
+    func testApplyWorkspaceListReplacesEntireWorkspaceArray() {
+        let store = iPadSidebarStore(
+            workspaces: [
+                iPadWorkspaceSummary(id: "stale", displayName: "Stale workspace")
+            ]
+        )
+        store.applyWorkspaceList([
+            WorkspaceSummaryPayload(
+                workspaceId: "ws-1",
+                displayName: "GUIGemini",
+                path: "/Users/me/dev/GUIGemini",
+                chatCount: 2,
+                runningChatCount: 1
+            ),
+            WorkspaceSummaryPayload(
+                workspaceId: "ws-2",
+                displayName: "CodexBridge",
+                path: "/Users/me/dev/CodexBridge",
+                chatCount: 0,
+                runningChatCount: 0
+            )
+        ])
+        XCTAssertEqual(store.workspaces.count, 2)
+        XCTAssertNil(store.workspace(id: "stale"), "applyWorkspaceList replaces the full list")
+        // ws-1 has a running chat → isActive → sorts ahead of inactive ws-2.
+        XCTAssertEqual(store.workspaces.first?.id, "ws-1")
+        XCTAssertTrue(store.workspaces.first?.isActive ?? false)
+        XCTAssertEqual(store.workspaces.first?.pathDisplayHint, "/Users/me/dev/GUIGemini")
+    }
+
+    func testApplyWorkspaceUpdateUpsertsSingleWorkspace() {
+        let store = iPadSidebarStore()
+        store.applyWorkspaceUpdate(
+            WorkspaceSummaryPayload(
+                workspaceId: "ws-1",
+                displayName: "Original",
+                path: "/path/one",
+                chatCount: 1,
+                runningChatCount: 0
+            )
+        )
+        XCTAssertEqual(store.workspaces.count, 1)
+
+        // Same id → replace in place rather than appending.
+        store.applyWorkspaceUpdate(
+            WorkspaceSummaryPayload(
+                workspaceId: "ws-1",
+                displayName: "Renamed",
+                path: "/path/one",
+                chatCount: 1,
+                runningChatCount: 1
+            )
+        )
+        XCTAssertEqual(store.workspaces.count, 1)
+        XCTAssertEqual(store.workspace(id: "ws-1")?.displayName, "Renamed")
+        XCTAssertTrue(store.workspace(id: "ws-1")?.isActive ?? false)
+
+        // New id → insert.
+        store.applyWorkspaceUpdate(
+            WorkspaceSummaryPayload(
+                workspaceId: "ws-2",
+                displayName: "Sibling",
+                path: "/path/two",
+                chatCount: 0,
+                runningChatCount: 0
+            )
+        )
+        XCTAssertEqual(store.workspaces.count, 2)
+        XCTAssertNotNil(store.workspace(id: "ws-2"))
+    }
+
+    func testApplyThreadListReplacesEntireThreadArray() {
+        let store = iPadSidebarStore(
+            threads: [
+                iPadThreadSummary(id: "stale", title: "Old thread")
+            ]
+        )
+        store.applyThreadList([
+            ThreadSummaryPayload(
+                chatId: "chat-1",
+                title: "Active run",
+                workspaceId: "ws-1",
+                provider: "gemini",
+                status: "running",
+                lastMessageAt: Date(timeIntervalSinceNow: -10)
+            ),
+            ThreadSummaryPayload(
+                chatId: "chat-2",
+                title: "Idle chat",
+                workspaceId: "ws-1",
+                provider: "codex",
+                status: "idle",
+                lastMessageAt: Date(timeIntervalSinceNow: -1000)
+            )
+        ])
+        XCTAssertEqual(store.threads.count, 2)
+        XCTAssertNil(store.thread(id: "stale"))
+        // The running thread should sort first (isActive bubbles up).
+        XCTAssertEqual(store.threads.first?.id, "chat-1")
+        XCTAssertTrue(store.threads.first?.isActive ?? false)
+        XCTAssertEqual(store.threads.first?.provider, "gemini")
+        XCTAssertEqual(store.threads(in: "ws-1").count, 2)
+    }
+
+    func testApplyThreadUpdateUpsertsSingleThread() {
+        let store = iPadSidebarStore()
+        store.applyThreadUpdate(
+            ThreadSummaryPayload(
+                chatId: "chat-1",
+                title: "First pass",
+                workspaceId: "ws-1",
+                provider: "claude",
+                status: "running"
+            )
+        )
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertEqual(store.thread(id: "chat-1")?.title, "First pass")
+        XCTAssertTrue(store.thread(id: "chat-1")?.isActive ?? false)
+
+        // Same id → replace; status transitions to success → no longer active.
+        store.applyThreadUpdate(
+            ThreadSummaryPayload(
+                chatId: "chat-1",
+                title: "First pass",
+                workspaceId: "ws-1",
+                provider: "claude",
+                status: "success"
+            )
+        )
+        XCTAssertEqual(store.threads.count, 1)
+        XCTAssertFalse(store.thread(id: "chat-1")?.isActive ?? true)
+
+        // Global thread (no workspaceId).
+        store.applyThreadUpdate(
+            ThreadSummaryPayload(
+                chatId: "chat-2",
+                title: "Global",
+                workspaceId: nil,
+                provider: "kimi",
+                status: "idle"
+            )
+        )
+        XCTAssertEqual(store.threads.count, 2)
+        XCTAssertNil(store.thread(id: "chat-2")?.workspaceID)
+    }
+
+    func testApplyWorkspaceListIsIdempotentForUnchangedInput() {
+        let store = iPadSidebarStore()
+        let payload = WorkspaceSummaryPayload(
+            workspaceId: "ws-1",
+            displayName: "GUIGemini",
+            path: "/p",
+            chatCount: 0,
+            runningChatCount: 0
+        )
+        store.applyWorkspaceList([payload])
+        let snapshot = store.workspaces
+        store.applyWorkspaceList([payload])
+        XCTAssertEqual(store.workspaces, snapshot)
+    }
+
     func testBriefThreeThemeTokensArePubliclyReachable() {
         let colors: [Color] = [
             Theme.windowBase,

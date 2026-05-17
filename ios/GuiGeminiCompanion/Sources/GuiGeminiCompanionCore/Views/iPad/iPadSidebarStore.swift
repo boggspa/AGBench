@@ -28,6 +28,99 @@ public final class iPadSidebarStore {
         threads.filter { $0.workspaceID == workspaceID }
     }
 
+    // MARK: - Bridge summary application
+    //
+    // The four `apply*` methods consume the typed payloads decoded by
+    // `BridgeWorkspaceSummariesDecoder` and merge them into the store's
+    // observable arrays. Semantics:
+    //
+    //   * applyWorkspaceList — replace the full list (authoritative
+    //     snapshot from the desktop). Sort order is recomputed.
+    //   * applyWorkspaceUpdate — upsert a single workspace (replace if id
+    //     exists, append if new). Other workspaces are untouched.
+    //   * applyThreadList / applyThreadUpdate — same semantics, threads.
+    //
+    // The mapping between the bridge payloads and the iPad view-model
+    // types is intentionally lossy: bridge payloads carry the durable
+    // workspace/chat shape, while the iPad summaries carry view-model
+    // hints (subtitle text, isActive marker, etc.) derived from the
+    // payload values. Future fields stay backwards compatible because
+    // both sides are additive.
+
+    public func applyWorkspaceList(_ payloads: [WorkspaceSummaryPayload]) {
+        let mapped = payloads.map { Self.workspaceSummary(from: $0) }
+        let next = Self.sortedWorkspaces(Self.deduplicate(mapped))
+        if next != workspaces {
+            workspaces = next
+        }
+    }
+
+    public func applyWorkspaceUpdate(_ payload: WorkspaceSummaryPayload) {
+        let summary = Self.workspaceSummary(from: payload)
+        var byID = Dictionary(uniqueKeysWithValues: workspaces.map { ($0.id, $0) })
+        byID[summary.id] = summary
+        let next = Self.sortedWorkspaces(Array(byID.values))
+        if next != workspaces {
+            workspaces = next
+        }
+    }
+
+    public func applyThreadList(_ payloads: [ThreadSummaryPayload]) {
+        let mapped = payloads.map { Self.threadSummary(from: $0) }
+        let next = Self.sortedThreads(Self.deduplicate(mapped))
+        if next != threads {
+            threads = next
+        }
+    }
+
+    public func applyThreadUpdate(_ payload: ThreadSummaryPayload) {
+        let summary = Self.threadSummary(from: payload)
+        var byID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
+        byID[summary.id] = summary
+        let next = Self.sortedThreads(Array(byID.values))
+        if next != threads {
+            threads = next
+        }
+    }
+
+    private static func workspaceSummary(
+        from payload: WorkspaceSummaryPayload
+    ) -> iPadWorkspaceSummary {
+        let trimmedID = payload.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedDisplayName = payload.displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pathHint = payload.path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return iPadWorkspaceSummary(
+            id: trimmedID,
+            displayName: resolvedDisplayName,
+            pathDisplayHint: pathHint.isEmpty ? nil : pathHint,
+            isActive: payload.runningChatCount > 0
+        )
+    }
+
+    private static func threadSummary(
+        from payload: ThreadSummaryPayload
+    ) -> iPadThreadSummary {
+        let trimmedID = payload.chatId.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedTitle = payload.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let workspaceID = payload.workspaceId.flatMap { value -> String? in
+            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? nil : trimmed
+        }
+        let statusLowered = payload.status.lowercased()
+        let isActive = statusLowered == "running"
+        let provider = payload.provider.trimmingCharacters(in: .whitespacesAndNewlines)
+        return iPadThreadSummary(
+            id: trimmedID,
+            workspaceID: workspaceID,
+            title: trimmedTitle.isEmpty ? trimmedID : trimmedTitle,
+            subtitle: payload.status,
+            provider: provider.isEmpty ? nil : provider,
+            runID: nil,
+            lastActivityAt: payload.lastMessageAt ?? Date(),
+            isActive: isActive
+        )
+    }
+
     public func refresh(
         seedWorkspaces: [iPadWorkspaceSummary] = [],
         seedThreads: [iPadThreadSummary] = [],
