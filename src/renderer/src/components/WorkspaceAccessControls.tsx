@@ -29,7 +29,43 @@
  *    runtimes; Kimi support is pending and would need its own toggle).
  */
 
-import type { ProviderId, WorkspaceRecord, ExternalPathGrant, GeminiWorktreeConfig } from '../../../main/store/types'
+import { useMemo, useState } from 'react'
+import type {
+  AgenticServiceId,
+  AgenticServicesSettings,
+  AgenticWorkspaceGrant,
+  ProviderId,
+  WorkspaceRecord,
+  ExternalPathGrant,
+  GeminiWorktreeConfig
+} from '../../../main/store/types'
+
+const WORKSPACE_POLICY_SERVICES: Array<{
+  id: AgenticServiceId
+  label: string
+  help: string
+}> = [
+  {
+    id: 'shellCommands',
+    label: 'Shell',
+    help: 'Run shell commands without asking again when global policy is Workspace grant.'
+  },
+  {
+    id: 'fileChanges',
+    label: 'Edit files',
+    help: 'Write or replace files without asking again when global policy is Workspace grant.'
+  },
+  {
+    id: 'mcpTools',
+    label: 'Read/search tools',
+    help: 'Use MCP tools such as read/list/search without asking again when global policy is Workspace grant.'
+  },
+  {
+    id: 'subThreadDelegation',
+    label: 'Delegate',
+    help: 'Spawn cross-provider sub-threads without asking again when global policy is Workspace grant.'
+  }
+]
 
 interface WorkspaceAccessControlsProps {
   variant: 'satellite' | 'inline'
@@ -40,6 +76,9 @@ interface WorkspaceAccessControlsProps {
   hasWorkspaceContext: boolean
   externalPathGrants: ExternalPathGrant[]
   onPickExternalPathGrant: (access: 'read' | 'write') => void
+  agenticServices: AgenticServicesSettings
+  agenticWorkspaceGrants: AgenticWorkspaceGrant[]
+  onSetWorkspaceGrant: (service: AgenticServiceId, enabled: boolean) => void
   currentGeminiWorktree?: GeminiWorktreeConfig | undefined
   onGeminiWorktreeToggle: () => void
   worktreeToggleLabel: string
@@ -93,6 +132,10 @@ function WorktreeStatusTooltip(provider: ProviderId): string {
   }
 }
 
+function normalizedWorkspacePath(path: string | undefined): string {
+  return (path || '').replace(/\/+$/, '')
+}
+
 export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): React.JSX.Element | null {
   const {
     variant,
@@ -103,11 +146,27 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
     hasWorkspaceContext,
     externalPathGrants,
     onPickExternalPathGrant,
+    agenticServices,
+    agenticWorkspaceGrants,
+    onSetWorkspaceGrant,
     currentGeminiWorktree,
     onGeminiWorktreeToggle,
     worktreeToggleLabel,
     worktreeDiffUnavailable
   } = props
+
+  const [policyOpen, setPolicyOpen] = useState(false)
+  const workspacePath = normalizedWorkspacePath(currentWorkspace?.path)
+  const workspaceGrantServices = useMemo(() => new Set(
+    agenticWorkspaceGrants
+      .filter((grant) => {
+        if (!grant || grant.provider !== provider || !grant.workspacePath) return false
+        return normalizedWorkspacePath(grant.workspacePath) === workspacePath
+      })
+      .map((grant) => grant.service)
+  ), [agenticWorkspaceGrants, provider, workspacePath])
+  const grantsCount = externalPathGrants.length
+  const enabledGrantCount = WORKSPACE_POLICY_SERVICES.filter((service) => workspaceGrantServices.has(service.id)).length
 
   // Hide entirely for global-scope chats: External Path and Worktree
   // are workspace-scoped concepts, no sense surfacing them when the
@@ -116,7 +175,6 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
     return null
   }
 
-  const grantsCount = externalPathGrants.length
   const externalPathTitle = grantsCount > 0
     ? `External path access (${grantsCount} granted). Add another below.`
     : 'Grant access to a file or folder outside this workspace.'
@@ -150,6 +208,49 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
           <option value="write">Grant edit…</option>
         </select>
       </label>
+      <div className="composer-workspace-policy">
+        <button
+          type="button"
+          className={`composer-workspace-access-pill composer-workspace-policy-trigger ${enabledGrantCount > 0 ? 'is-active' : ''}`}
+          onClick={() => setPolicyOpen((open) => !open)}
+          disabled={isCurrentComposerLocked || !currentWorkspace}
+          aria-expanded={policyOpen}
+          title="Workspace tool permission grants"
+        >
+          <PermissionGlyph />
+          <span>{enabledGrantCount > 0 ? `Tool grants (${enabledGrantCount})` : 'Tool grants'}</span>
+        </button>
+        {policyOpen && (
+          <div className="composer-workspace-policy-popover" role="dialog" aria-label="Workspace tool permission grants">
+            <div className="composer-workspace-policy-header">
+              <strong>Workspace grants</strong>
+              <span>{provider}</span>
+            </div>
+            <p>
+              These toggles pre-authorize this provider in this workspace. Global <strong>Deny</strong> still wins.
+            </p>
+            <div className="composer-workspace-policy-list">
+              {WORKSPACE_POLICY_SERVICES.map((service) => {
+                const checked = workspaceGrantServices.has(service.id)
+                const policy = agenticServices[service.id]
+                return (
+                  <label key={service.id} className="composer-workspace-policy-row" title={service.help}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(event) => onSetWorkspaceGrant(service.id, event.target.checked)}
+                    />
+                    <span>
+                      <strong>{service.label}</strong>
+                      <small>{policy === 'deny' ? 'Blocked globally' : checked ? 'Allowed for this workspace' : `Global policy: ${policy}`}</small>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </div>
       {worktreeInteractive ? (
         <button
           type="button"

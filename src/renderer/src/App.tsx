@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'rea
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -3566,6 +3566,7 @@ function App(): React.JSX.Element {
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [claudeLoginState, setClaudeLoginState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [agenticServices, setAgenticServices] = useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
+  const [agenticWorkspaceGrants, setAgenticWorkspaceGrants] = useState<AgenticWorkspaceGrant[]>([])
   const [agenticWorkspaceGrantCount, setAgenticWorkspaceGrantCount] = useState(0)
   const [geminiMcpBridgeEnabled, setGeminiMcpBridgeEnabledState] = useState(false)
   const [geminiMcpBridgeStatus, setGeminiMcpBridgeStatus] = useState<GeminiMcpBridgeStatus | null>(null)
@@ -4500,6 +4501,7 @@ function App(): React.JSX.Element {
     setClaudeBinaryPath(s.claudeBinaryPath || '')
     setKimiBinaryPath(s.kimiBinaryPath || '')
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(s.agenticServices || {}) })
+    setAgenticWorkspaceGrants(Array.isArray(s.agenticWorkspaceGrants) ? s.agenticWorkspaceGrants : [])
     setAgenticWorkspaceGrantCount(Array.isArray(s.agenticWorkspaceGrants) ? s.agenticWorkspaceGrants.length : 0)
     setGeminiMcpBridgeEnabledState(Boolean(s.geminiMcpBridgeEnabled))
     setGeminiMcpBridgeStatus(s.geminiMcpBridgeLastStatus || null)
@@ -4723,6 +4725,22 @@ function App(): React.JSX.Element {
         .catch(() => {})
       setSettings(prev => prev ? { ...prev, ...settingsPatch } : prev)
     }
+  }
+
+  const applyAgenticWorkspaceGrantSettings = (nextSettings: AppSettings) => {
+    setSettings(nextSettings)
+    setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(nextSettings.agenticServices || {}) })
+    setAgenticWorkspaceGrants(Array.isArray(nextSettings.agenticWorkspaceGrants) ? nextSettings.agenticWorkspaceGrants : [])
+    setAgenticWorkspaceGrantCount(Array.isArray(nextSettings.agenticWorkspaceGrants) ? nextSettings.agenticWorkspaceGrants.length : 0)
+    void refreshProviderMetadata(currentProvider)
+  }
+
+  const handleSetAgenticWorkspaceGrant = async (service: AgenticServiceId, enabled: boolean) => {
+    if (!currentWorkspace?.path || isCurrentGlobalChat) return
+    const nextSettings = enabled
+      ? await window.api.upsertAgenticWorkspaceGrant(currentProvider, currentWorkspace.path, service)
+      : await window.api.removeAgenticWorkspaceGrant(currentProvider, currentWorkspace.path, service)
+    applyAgenticWorkspaceGrantSettings(nextSettings)
   }
 
   const handleTriggerClaudeLogin = async () => {
@@ -9583,6 +9601,9 @@ function App(): React.JSX.Element {
                   hasWorkspaceContext={hasWorkspaceContext}
                   externalPathGrants={codexExternalPathGrants}
                   onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
+                  agenticServices={agenticServices}
+                  agenticWorkspaceGrants={agenticWorkspaceGrants}
+                  onSetWorkspaceGrant={(service, enabled) => void handleSetAgenticWorkspaceGrant(service, enabled)}
                   currentGeminiWorktree={currentGeminiWorktree}
                   onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
                   worktreeToggleLabel={worktreeToggleLabel}
@@ -9645,6 +9666,9 @@ function App(): React.JSX.Element {
                     hasWorkspaceContext={hasWorkspaceContext}
                     externalPathGrants={codexExternalPathGrants}
                     onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
+                    agenticServices={agenticServices}
+                    agenticWorkspaceGrants={agenticWorkspaceGrants}
+                    onSetWorkspaceGrant={(service, enabled) => void handleSetAgenticWorkspaceGrant(service, enabled)}
                     currentGeminiWorktree={currentGeminiWorktree}
                     onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
                     worktreeToggleLabel={worktreeToggleLabel}

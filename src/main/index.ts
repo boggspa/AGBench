@@ -1824,6 +1824,20 @@ const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   subThreadDelegation: 'Sub-thread delegation'
 }
 
+const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
+  'shellCommands',
+  'fileChanges',
+  'mcpTools',
+  'subThreadDelegation'
+])
+
+function assertAgenticServiceId(value: unknown): AgenticServiceId {
+  if (typeof value === 'string' && AGENTIC_SERVICE_IDS.has(value as AgenticServiceId)) {
+    return value as AgenticServiceId
+  }
+  throw new Error('Unknown agentic service id.')
+}
+
 function getAgenticServicePolicy(service: AgenticServiceId, settings: AppSettings = AppStore.getSettings()) {
   return permissionService.getServicePolicy(service, settings)
 }
@@ -10083,6 +10097,14 @@ app.whenReady().then(() => {
   // Settings
   ipcMain.handle('get-settings', () => settingsService.getSettings())
   ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) => settingsService.updateSettings(partial))
+  ipcMain.handle('upsert-agentic-workspace-grant', (_, provider: ProviderId, workspacePath: string, service: AgenticServiceId) => {
+    permissionService.upsertWorkspaceGrant(assertProviderId(provider), requireNonEmptyString(workspacePath, 'Workspace path'), assertAgenticServiceId(service))
+    return settingsService.getSettings()
+  })
+  ipcMain.handle('remove-agentic-workspace-grant', (_, provider: ProviderId, workspacePath: string, service: AgenticServiceId) => {
+    permissionService.removeWorkspaceGrant(assertProviderId(provider), requireNonEmptyString(workspacePath, 'Workspace path'), assertAgenticServiceId(service))
+    return settingsService.getSettings()
+  })
   ipcMain.handle('compose-run', (_, input: ComposerInput) => composerService.composeRun(input))
 
   // Runtime profiles
