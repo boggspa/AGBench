@@ -8,6 +8,10 @@ interface ActiveRunsSectionProps {
   currentChat: ChatRecord | null
   runningChatIds?: string[]
   onSelectChat: (chat: ChatRecord) => void
+  /** Phase K1 follow-up: when provided, clicking a row navigates to
+   * the chat AND opens the Run Inspector for that runId — skips the
+   * "navigate then scroll to find RunCard" two-step. */
+  onInspectRun?: (runId: string, chatId: string | undefined) => void
 }
 
 export function ActiveRunsSection({
@@ -15,6 +19,7 @@ export function ActiveRunsSection({
   currentChat,
   runningChatIds = [],
   onSelectChat,
+  onInspectRun,
 }: ActiveRunsSectionProps): JSX.Element | null {
   const [jobs, setJobs] = useState<RunQueueJob[]>([])
   const [, setNowTick] = useState(0)
@@ -73,6 +78,7 @@ export function ActiveRunsSection({
               className={`sidebar-active-run-row provider-${job.provider || 'gemini'} ${isCurrent ? 'active' : ''}`}
               onClick={() => {
                 if (chat) onSelectChat(chat)
+                if (onInspectRun && job.runId) onInspectRun(job.runId, job.chatId)
               }}
               disabled={!chat}
               title={chat ? chat.title : job.promptPreview || job.runId}

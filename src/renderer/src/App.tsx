@@ -3685,13 +3685,22 @@ function App(): React.JSX.Element {
   // chats. The composer stays mounted below either way.
   const [inspectingRunId, setInspectingRunId] = useState<string | null>(null)
 
-  // Reset inspector when the user navigates to a different chat — the
-  // current run id would otherwise look stale against a new chat's
-  // transcript. (TranscriptPanel itself remounts via the `key` prop on
-  // chat switch; we mirror that here.)
+  // Reset inspector when the user navigates to a chat that doesn't own
+  // the currently-inspected run. Conditional (not unconditional) because
+  // the sidebar's inspect-from-Active-Runs flow navigates to a chat AND
+  // sets inspectingRunId in the same handler: if we cleared blindly on
+  // chat change, that flow would race and the inspector would close
+  // immediately. Gating on ownership lets both flows work: switching to
+  // an unrelated chat still clears (stale runId), but switching to a
+  // chat that contains the run keeps the inspector open.
   useEffect(() => {
-    setInspectingRunId(null)
-  }, [currentChat?.appChatId])
+    if (!inspectingRunId) return
+    const runs = currentChat?.runs || []
+    const runBelongsToCurrentChat = runs.some((r) => r.runId === inspectingRunId)
+    if (!runBelongsToCurrentChat) {
+      setInspectingRunId(null)
+    }
+  }, [currentChat?.appChatId, currentChat?.runs, inspectingRunId])
   
   const logsEndRef = useRef<HTMLDivElement>(null)
   const rawLogsEndRef = useRef<HTMLDivElement>(null)
@@ -9230,6 +9239,18 @@ function App(): React.JSX.Element {
               onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
               onTogglePinChat={handleTogglePinChat}
               onTogglePinWorkspace={handleTogglePinWorkspace}
+              onInspectRun={(runId, chatId) => {
+                // Navigate to the chat first (handleSelectChat fires via
+                // ActiveRunsSection.onSelectChat above), then open the
+                // Inspector. The chat-switch reset effect won't clobber
+                // this because it's gated on "does the new chat own this
+                // runId?" — see effect below.
+                if (chatId) {
+                  const chat = chats.find((c) => c.appChatId === chatId)
+                  if (chat) handleSelectChat(chat)
+                }
+                setInspectingRunId(runId)
+              }}
             />
             <div
               className="workspace-sidebar-resize-handle"

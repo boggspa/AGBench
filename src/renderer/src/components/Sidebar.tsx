@@ -65,6 +65,10 @@ interface SidebarProps {
   /** Toggle the `pinned` flag on a workspace. Optional for the same
    * reason as `onTogglePinChat`. */
   onTogglePinWorkspace?: (workspaceId: string) => void;
+  /** Phase K1 follow-up: when provided, clicking a row in the pinned
+   * "Active runs" sidebar section navigates to the chat AND opens
+   * the Run Inspector for that runId. */
+  onInspectRun?: (runId: string, chatId: string | undefined) => void;
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
@@ -383,6 +387,7 @@ export function Sidebar({
   onCreateSubThread,
   onTogglePinChat,
   onTogglePinWorkspace,
+  onInspectRun,
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null);
   const [sidebarSearch, setSidebarSearch] = useState('');
@@ -788,6 +793,7 @@ export function Sidebar({
             currentChat={currentChat}
             runningChatIds={runningChatIds}
             onSelectChat={onSelectChat}
+            onInspectRun={onInspectRun}
           />
 
           <div className="sidebar-workspace-scroll">
