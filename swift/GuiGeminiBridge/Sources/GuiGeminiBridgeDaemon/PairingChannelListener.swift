@@ -126,6 +126,11 @@ public actor PairingChannelListener {
             }
         }
         self.listener = nwListener
+        if let port = nwListener.port?.rawValue {
+            logPairingPipeline("pairing listener ready port=\(port) service=\(bonjourServiceType)")
+        } else {
+            logPairingPipeline("pairing listener ready service=\(bonjourServiceType)")
+        }
     }
 
     public func stop() async {
@@ -148,15 +153,24 @@ public actor PairingChannelListener {
     /// connection. Called after `PairingCoordinator.confirmPairing(...)`
     /// returns the code.
     public func sendConfirmationCode(sessionID: String, code: String) async {
-        guard let connection = connectionsBySession[sessionID] else { return }
+        guard let connection = connectionsBySession[sessionID] else {
+            logPairingPipeline("confirmation code send skipped session=\(sessionID) reason=missing-connection")
+            return
+        }
         let payload: [String: Any] = [
             "macConfirmationCode": code,
             "sessionID": sessionID
         ]
         guard let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) else {
+            logPairingPipeline("confirmation code send failed session=\(sessionID) reason=encode-failed")
             return
         }
-        await writeFrame(data, on: connection)
+        logPairingPipeline("sending confirmation code to iOS session=\(sessionID) code=\(code)")
+        if let error = await writeFrame(data, on: connection) {
+            logPairingPipeline("confirmation code send failed session=\(sessionID) error=\(error.localizedDescription)")
+        } else {
+            logPairingPipeline("confirmation code sent to iOS session=\(sessionID)")
+        }
     }
 
     /// Send the final accept/reject + tear down the connection. Called
@@ -169,7 +183,7 @@ public actor PairingChannelListener {
             payload["message"] = message
         }
         if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
-            await writeFrame(data, on: connection)
+            _ = await writeFrame(data, on: connection)
         }
         connection.cancel()
         connectionsBySession.removeValue(forKey: sessionID)
@@ -178,25 +192,31 @@ public actor PairingChannelListener {
     // MARK: - Connection handling
 
     private func accept(connection: NWConnection) async {
+        logPairingPipeline("TCP pairing connection accepted")
         connection.start(queue: .global())
         do {
             let lengthBytes = try await receiveExact(4, on: connection)
-            let length = lengthBytes.withUnsafeBytes { $0.load(as: UInt32.self) }.bigEndian
+            let length = try decodeFrameLength(lengthBytes)
+            logPairingPipeline("iPad response frame length=\(length)")
             guard length > 0, length < 1_048_576 else {
+                logPairingPipeline("iPad response rejected reason=frame-length-out-of-bounds length=\(length)")
                 connection.cancel()
                 return
             }
             let payloadBytes = try await receiveExact(Int(length), on: connection)
+            logPairingPipeline("iPad response payload received bytes=\(payloadBytes.count)")
             let decoder = JSONDecoder()
             decoder.dataDecodingStrategy = .base64
             decoder.dateDecodingStrategy = .iso8601
             let response = try decoder.decode(PairingResponsePayload.self, from: payloadBytes)
+            logPairingPipeline("iPad response decoded session=\(response.pairingSessionID) controller=\(response.controllerDeviceID.rawValue) displayName=\(response.controllerDisplayName)")
             connectionsBySession[response.pairingSessionID] = connection
             incomingContinuation.yield(IncomingPairingResponse(
                 response: response,
                 sessionID: response.pairingSessionID,
                 receivedAt: Date()
             ))
+            logPairingPipeline("iPad response yielded to coordinator session=\(response.pairingSessionID)")
             // Hand off — the consumer reads from incomingResponses, calls
             // sendConfirmationCode + later sendFinalDecision. The connection
             // stays open in connectionsBySession until then.
@@ -208,6 +228,7 @@ public actor PairingChannelListener {
                 await self?.readFinalDecision(from: connection, sessionID: response.pairingSessionID)
             }
         } catch {
+            logPairingPipeline("iPad response handling failed error=\(error.localizedDescription)")
             connection.cancel()
         }
     }
@@ -219,7 +240,7 @@ public actor PairingChannelListener {
     private func readFinalDecision(from connection: NWConnection, sessionID: String) async {
         do {
             let lengthBytes = try await receiveExact(4, on: connection)
-            let length = lengthBytes.withUnsafeBytes { $0.load(as: UInt32.self) }.bigEndian
+            let length = try decodeFrameLength(lengthBytes)
             guard length > 0, length < 65_536 else { return }
             _ = try await receiveExact(Int(length), on: connection)
             // The Mac doesn't act on the iPhone's decision frame —
@@ -234,13 +255,13 @@ public actor PairingChannelListener {
         }
     }
 
-    private func writeFrame(_ payload: Data, on connection: NWConnection) async {
+    private func writeFrame(_ payload: Data, on connection: NWConnection) async -> Error? {
         var length = UInt32(payload.count).bigEndian
         var frame = Data(bytes: &length, count: 4)
         frame.append(payload)
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            connection.send(content: frame, completion: .contentProcessed { _ in
-                continuation.resume()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<Error?, Never>) in
+            connection.send(content: frame, completion: .contentProcessed { error in
+                continuation.resume(returning: error)
             })
         }
     }
@@ -261,6 +282,23 @@ public actor PairingChannelListener {
                 }
             }
         }
+    }
+}
+
+func logPairingPipeline(_ message: String) {
+    FileHandle.standardError.write(Data("[Pairing pipeline] \(message)\n".utf8))
+}
+
+func decodeFrameLength(_ data: Data) throws -> UInt32 {
+    guard data.count == 4 else {
+        throw NSError(
+            domain: "PairingChannelListener",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "Expected 4 frame length bytes, got \(data.count)"]
+        )
+    }
+    return data.reduce(UInt32(0)) { partial, byte in
+        (partial << 8) | UInt32(byte)
     }
 }
 

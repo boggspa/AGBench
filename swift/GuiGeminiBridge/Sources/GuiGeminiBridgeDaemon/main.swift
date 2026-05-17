@@ -767,19 +767,16 @@ Task.detached { @Sendable [pairingChannelListener] in
 // the desktop UI surfaces the code for user verification. On any error,
 // reject the pairing back to iOS with a structured message.
 Task.detached { @Sendable [pairingChannelListener, pairingCoordinator, bridgeNotifier] in
+    logPairingPipeline("incomingResponses consumer started")
     for await incoming in pairingChannelListener.incomingResponses {
         do {
+            logPairingPipeline("iPad response received by consumer session=\(incoming.sessionID)")
             let result = try await pairingCoordinator.confirmPairing(response: incoming.response)
-            await pairingChannelListener.sendConfirmationCode(
-                sessionID: incoming.sessionID,
-                code: result.confirmationCode
-            )
-            bridgeNotifier.publish(method: "bridge.didReceivePairingResponse", params: [
-                "pairingSessionID": result.pairingSessionID,
-                "controllerDeviceID": result.controllerDeviceID,
-                "controllerDisplayName": result.controllerDisplayName,
-                "confirmationCode": result.confirmationCode
-            ])
+            logPairingPipeline("confirmPairing succeeded session=\(result.pairingSessionID) code=\(result.confirmationCode)")
+            let notification = PairingCoordinator.PairingResponseNotification(result: result)
+            logPairingPipeline("emitting \(PairingCoordinator.PairingResponseNotification.method) upstream session=\(result.pairingSessionID)")
+            bridgeNotifier.publish(method: PairingCoordinator.PairingResponseNotification.method, params: notification.params)
+            await pairingChannelListener.sendConfirmationCode(sessionID: incoming.sessionID, code: result.confirmationCode)
         } catch let pairingError as PairingCoordinator.PairingError {
             // Tell the iPhone why and close the connection.
             let reason: String
@@ -795,18 +792,14 @@ Task.detached { @Sendable [pairingChannelListener, pairingCoordinator, bridgeNot
                 accepted: false,
                 message: reason
             )
-            FileHandle.standardError.write(Data(
-                "[PairingChannelListener] rejected session \(incoming.sessionID): \(reason)\n".utf8
-            ))
+            logPairingPipeline("rejected session=\(incoming.sessionID) reason=\(reason)")
         } catch {
             await pairingChannelListener.sendFinalDecision(
                 sessionID: incoming.sessionID,
                 accepted: false,
                 message: "Mac-side coordinator error: \(error.localizedDescription)"
             )
-            FileHandle.standardError.write(Data(
-                "[PairingChannelListener] rejected session \(incoming.sessionID): \(error.localizedDescription)\n".utf8
-            ))
+            logPairingPipeline("rejected session=\(incoming.sessionID) error=\(error.localizedDescription)")
         }
     }
 }

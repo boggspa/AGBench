@@ -53,6 +53,30 @@ public actor PairingCoordinator {
         public let confirmationCode: String
     }
 
+    public struct PairingResponseNotification: Sendable, Equatable {
+        public static let method = "bridge.didReceivePairingResponse"
+        public let pairingSessionID: String
+        public let controllerDeviceID: String
+        public let controllerDisplayName: String
+        public let confirmationCode: String
+
+        public init(result: ConfirmPairingResult) {
+            self.pairingSessionID = result.pairingSessionID
+            self.controllerDeviceID = result.controllerDeviceID
+            self.controllerDisplayName = result.controllerDisplayName
+            self.confirmationCode = result.confirmationCode
+        }
+
+        public var params: [String: String] {
+            [
+                "pairingSessionID": pairingSessionID,
+                "controllerDeviceID": controllerDeviceID,
+                "controllerDisplayName": controllerDisplayName,
+                "confirmationCode": confirmationCode
+            ]
+        }
+    }
+
     public struct FinalizePairingResult: Sendable, Encodable {
         public let pairingSessionID: String
         public let trustedDevice: TrustedDeviceRecord?
