@@ -199,14 +199,34 @@ agent access to these tools when running in Gemini-CLI bridge mode:
 - `replace` — multi-edit semantics, approval gate.
 - `read_file` — workspace-scoped read.
 - `list_directory` — workspace-scoped tree listing.
-- `delegate_to_subthread` — Phase F3, agent-driven sub-thread spawn.
+- `delegate_to_subthread` — Phase F3, agent-driven sub-thread spawn,
+  with **Phase J2 recall mode**.
   Inputs: `{ provider: 'gemini'|'codex'|'claude'|'kimi', prompt:
-  string, returnResult?: boolean }`. Spawns a sub-thread under the
-  current parent thread, fires a run on the chosen provider with the
-  delegation prompt, returns immediately with the sub-thread id and a
-  short status message. When `returnResult` is true (default), the
-  sub-thread's final assistant message auto-appends to the parent
-  transcript on completion (Phase F2 back-propagation).
+  string, returnResult?: boolean, subThreadId?: string }`. By default
+  (when `subThreadId` is omitted) the call spawns a fresh
+  context-isolated sub-thread under the current parent. The
+  tool_result includes the sub-thread id; pass that id as
+  `subThreadId` on subsequent calls to **continue the same
+  sub-thread** instead of spawning a new one — useful when you want
+  back-and-forth conversation with a single delegated agent across
+  multiple turns.
+
+  Recall validates strictly: the id must belong to a sub-thread of
+  THIS parent AND match the requested `provider` AND not be archived.
+  Mismatches return a structured error tool_result and dispatch
+  nothing. When recall succeeds, AGBench injects the sub-thread's
+  linked provider session id into the dispatched run so the target
+  provider's native session resumes (Codex `thread/resume`, Claude
+  SDK `resume:` / CLI `--resume`, Kimi `--resume`, Gemini `--resume`).
+  If the recalled sub-thread hasn't completed its first turn yet, the
+  transcript still continues at the AGBench chat level but the
+  provider runtime starts a fresh session — the tool_result includes
+  a `Note:` line so you know.
+
+  When `returnResult` is true (default), the sub-thread's final
+  assistant message auto-appends to the parent transcript on
+  completion (Phase F2 back-propagation) — works for both spawn and
+  recall paths.
 
   **Approval gate (Phase I1):** every call routes through AGBench's
   `subThreadDelegation` agentic-service policy before any sub-thread
@@ -230,7 +250,7 @@ agent access to these tools when running in Gemini-CLI bridge mode:
   delegating. The decline text explains how the user can adjust
   policy if they want.
 
-  Typical agent use:
+  Typical agent use — first call (spawn):
 
       Agent thinks: "This step needs sandbox-restricted CLI work that
       Codex handles best. Let me delegate."
@@ -242,9 +262,12 @@ agent access to these tools when running in Gemini-CLI bridge mode:
         returnResult: true
       })
 
-      → if approved: "Spawned codex sub-thread (id=...). Running in the
-      background; its final result will append to this parent
-      transcript on completion."
+      → if approved: "Spawned codex sub-thread (id=abc-123). Running
+      in the background; its final result will append to this parent
+      transcript on completion.
+      Reuse this id by passing subThreadId="abc-123" on the next
+      delegate_to_subthread call if you want to continue the
+      conversation with this same sub-agent."
 
       → if declined: "Sub-thread delegation to Codex was declined by
       AGBench policy. Gemini continues without delegating; the user
@@ -254,6 +277,30 @@ agent access to these tools when running in Gemini-CLI bridge mode:
       Agent then continues the parent turn with non-CLI work; the
       result auto-arrives later as a synthetic system message (only
       if the delegation was approved).
+
+  Recall — second call (continue the SAME sub-thread):
+
+      Agent thinks: "The Codex sub-thread reported 2 failing tests.
+      I want to ask it for the full stack of the second failure
+      without losing its context."
+
+      tools.delegate_to_subthread({
+        provider: 'codex',
+        subThreadId: 'abc-123',
+        prompt: 'Show me the full stack trace and the failing
+                 assertion line for failure #2.',
+        returnResult: true
+      })
+
+      → "Continued codex sub-thread (id=abc-123). Sent your prompt as
+      a follow-up turn; the next assistant message will append to this
+      parent transcript on completion."
+
+  Use spawn when you want a fresh context-isolated sub-agent (e.g.
+  parallel tasks where each sub-thread should focus on one thing).
+  Use recall when you're conversing back-and-forth with one delegated
+  sub-agent across multiple turns (e.g. asking a clarifying question
+  about a previous result).
 
   v1 constraints:
     - Max depth 1 (sub-threads can't themselves delegate).

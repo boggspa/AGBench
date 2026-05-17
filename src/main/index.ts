@@ -53,6 +53,7 @@ import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
 import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMessage } from './CrossProviderDelegationDetector'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
+import { resolveSubThreadRecall } from './SubThreadRecall'
 import {
   buildClaudeAgentbenchMcpConfigJson,
   buildClaudeAgentbenchMcpServers,
@@ -7494,6 +7495,39 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       if (!promptArg) {
         throw new Error('delegate_to_subthread: prompt is required.')
       }
+      // Phase J2: optional `subThreadId` recall mode. When set, resolve
+      // to an existing sub-thread and continue its conversation
+      // instead of spawning a fresh one. Validation lives in a pure
+      // helper so it's unit-testable (`SubThreadRecall.test.ts`).
+      // Recall errors fail fast BEFORE the approval gate — no point
+      // bothering the user with a modal for a request that's already
+      // structurally broken.
+      const requestedSubThreadId = typeof args.subThreadId === 'string' ? args.subThreadId.trim() : ''
+      const recallResolution = resolveSubThreadRecall(
+        {
+          subThreadId: requestedSubThreadId || undefined,
+          parentChatId,
+          targetProvider: providerArg
+        },
+        // AppStore.getChat returns `ChatRecord | null`; the resolver
+        // expects `| undefined`. Normalise null to undefined here.
+        (chatId) => AppStore.getChat(chatId) ?? undefined
+      )
+      if (recallResolution.mode === 'error') {
+        sendAgentCompatLine(context.sender, parentProvider, {
+          type: 'tool_result',
+          tool_id: toolId,
+          tool_name: toolName,
+          status: 'error',
+          output: recallResolution.message,
+          provider: parentProvider,
+          server: GEMINI_MCP_SERVER_NAME
+        })
+        return { text: recallResolution.message, isError: true }
+      }
+      const isRecall = recallResolution.mode === 'recall'
+      const recalledChat = recallResolution.mode === 'recall' ? recallResolution.chat : null
+      const recallWarning = recallResolution.mode === 'recall' ? recallResolution.warning : undefined
       // Phase I1.b + I2: approval gate. Every delegation prompts the
       // user (or auto-allows/declines per workspace/session policy)
       // before any sub-thread is created. The 'ask' default means an
@@ -7508,11 +7542,28 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       // "Codex wants to delegate to Claude" and the workspace grant
       // applies to Codex specifically — Gemini's grant doesn't auto-
       // allow Codex delegation in the same workspace.
+      //
+      // Phase J2: the same approval gate covers BOTH spawn and recall —
+      // policy is "may parentProvider delegate to targetProvider?",
+      // not "may a new sub-thread be created?". The modal body text
+      // varies so the user sees an honest description of what they're
+      // authorising (new sub-thread vs continued conversation).
       const targetProviderLabel = providerLabel(providerArg)
       const parentProviderLabel = providerLabel(parentProvider)
       const promptPreview = promptArg.length > 500
         ? `${promptArg.slice(0, 500)}\n…(${promptArg.length - 500} more chars)`
         : promptArg
+      const approvalTitle = isRecall
+        ? `${parentProviderLabel} wants to continue its ${targetProviderLabel} sub-thread`
+        : `${parentProviderLabel} wants to delegate to ${targetProviderLabel} sub-thread`
+      const approvalBody = isRecall
+        ? `Continue prompt:\n${promptPreview}\n\n` +
+          `Sending this as a follow-up turn to the existing "${recalledChat?.title || 'sub-thread'}" ` +
+          `runs another ${targetProviderLabel} turn (resuming the same provider session when available). ` +
+          `This consumes ${targetProviderLabel} usage allowances.`
+        : `Delegation prompt:\n${promptPreview}\n\n` +
+          `Spawning this sub-thread starts a new run on ${targetProviderLabel} using its current model. ` +
+          `This consumes ${targetProviderLabel} usage allowances.`
       const delegationApproved = await requestAgenticServiceApproval(
         context.sender,
         parentProvider,
@@ -7520,18 +7571,20 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         context.scope === 'global' ? undefined : context.workspacePath,
         {
           method: `${parentProvider}-mcp/delegate_to_subthread`,
-          title: `${parentProviderLabel} wants to delegate to ${targetProviderLabel} sub-thread`,
-          body:
-            `Delegation prompt:\n${promptPreview}\n\n` +
-            `Spawning this sub-thread starts a new run on ${targetProviderLabel} using its current model. ` +
-            `This consumes ${targetProviderLabel} usage allowances.`,
+          title: approvalTitle,
+          body: approvalBody,
           preview: {
             kind: 'subthread-delegation',
             parentProvider,
             targetProvider: providerArg,
             delegationPrompt: promptArg,
             returnResultToParent: returnResult,
-            workspacePath: context.scope === 'global' ? undefined : context.workspacePath
+            workspacePath: context.scope === 'global' ? undefined : context.workspacePath,
+            recall: isRecall ? {
+              subThreadId: recalledChat?.appChatId,
+              title: recalledChat?.title,
+              hasLinkedSession: Boolean(recalledChat?.linkedProviderSessionId)
+            } : undefined
           },
           runId: context.appRunId,
           forcePrompt: false
@@ -7556,7 +7609,10 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         })
         return { text: declineText, isError: true }
       }
-      const subThread = AppStore.createSubThread({
+      // Phase J2: in recall mode we DON'T create a new chat record —
+      // we reuse the resolved existing sub-thread. In spawn mode the
+      // existing AppStore.createSubThread path runs as before.
+      const subThread = recalledChat ?? AppStore.createSubThread({
         parentChatId,
         provider: providerArg,
         delegationPrompt: promptArg,
@@ -7567,6 +7623,10 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       // moment the sub-thread spawns (instead of finding out only when
       // the result back-propagates). We use a metadata-tagged system
       // message so the renderer can swap in a custom card component.
+      //
+      // Phase J2: the card content differs for recall vs spawn so the
+      // user transcript reads "↪ Continued <provider> sub-thread" on
+      // recall instead of "↪ Delegated to <provider> sub-thread".
       try {
         const parentChat = AppStore.getChat(parentChatId)
         if (parentChat) {
@@ -7576,7 +7636,9 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
           const cardMessage: ChatMessage = {
             id: `subthread-delegation-${subThread.appChatId}-${Date.now()}`,
             role: 'system',
-            content: `↪ Delegated to ${providerLabel(providerArg)} sub-thread (${subThread.title}).`,
+            content: isRecall
+              ? `↪ Continued ${providerLabel(providerArg)} sub-thread (${subThread.title}).`
+              : `↪ Delegated to ${providerLabel(providerArg)} sub-thread (${subThread.title}).`,
             timestamp: new Date().toISOString(),
             metadata: {
               kind: 'subThreadDelegation',
@@ -7586,7 +7648,8 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
               parentProvider,
               delegationPrompt: promptArg,
               delegationPromptPreview: promptCardPreview,
-              returnResultToParent: returnResult
+              returnResultToParent: returnResult,
+              recall: isRecall
             }
           }
           const updatedParent: ChatRecord = {
@@ -7610,19 +7673,28 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         // delegation chains are traceable. Source stays
         // 'mcp:delegate_to_subthread' since the tool lives on the
         // shared agentbench MCP server across all CLIs.
+        //
+        // Phase J2: same event kind for spawn AND recall to avoid
+        // adding a new RunEventKind (which would ripple through the
+        // schema / typecheck). The metadata's `recall: true` flag
+        // distinguishes them in the audit timeline.
         appendDurableRunEventForRoute(
           parentProvider,
           { appRunId: context.appRunId, appChatId: parentChatId },
           'subthread_spawned',
           'control',
-          `${parentProviderLabel} agent delegated to ${providerArg} sub-thread`,
+          isRecall
+            ? `${parentProviderLabel} agent continued ${providerArg} sub-thread`
+            : `${parentProviderLabel} agent delegated to ${providerArg} sub-thread`,
           {
             subThreadId: subThread.appChatId,
             parentProvider,
             provider: providerArg,
             delegationPrompt: promptArg,
             returnResultToParent: returnResult,
-            source: 'mcp:delegate_to_subthread'
+            source: 'mcp:delegate_to_subthread',
+            recall: isRecall,
+            recallHadLinkedSession: isRecall ? Boolean(recalledChat?.linkedProviderSessionId) : undefined
           }
         )
       } catch {
@@ -7643,7 +7715,19 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         appRunId: subThreadRunId,
         appChatId: subThread.appChatId,
         approvalMode: 'default',
-        model: 'cli-default'
+        model: 'cli-default',
+        // Phase J2: on recall, inject the existing sub-thread's
+        // linked provider session id so the target provider's native
+        // session resumes (Codex `thread/resume`, Claude SDK
+        // `resume:`, Claude CLI `--resume`, Kimi `--resume`, Gemini
+        // `--resume`). If the recalled chat hasn't completed its
+        // first turn yet, linkedProviderSessionId may be unset — in
+        // which case we don't set providerSessionId and the runtime
+        // starts a fresh provider-side session (transcript continuity
+        // is still preserved at the AGBench chat level).
+        ...(isRecall && recalledChat?.linkedProviderSessionId
+          ? { providerSessionId: recalledChat.linkedProviderSessionId }
+          : {})
       }
       // RunCoordinator.dispatch now accepts the structural
       // `RunDispatchEvent` shape (just `{ sender }`); no cast required.
@@ -7708,12 +7792,24 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         // Window not yet ready — F2's back-propagation will fire
         // chat-updated again on completion.
       }
-      text =
-        `Spawned ${providerArg} sub-thread "${subThread.title}" (id=${subThread.appChatId}). ` +
-        `Running in the background` +
-        (returnResult
-          ? "; its final result will append to this parent transcript on completion."
-          : '. Navigate to the sub-thread in the sidebar to follow progress.')
+      // Phase J2: tool_result text honestly describes spawn vs recall
+      // and surfaces the warning when a recall couldn't restore the
+      // provider session id (so the agent knows the conversation
+      // restarted server-side even though the AGBench chat continued).
+      const recallNote = recallWarning ? `\nNote: ${recallWarning}` : ''
+      text = isRecall
+        ? `Continued ${providerArg} sub-thread "${subThread.title}" (id=${subThread.appChatId}). ` +
+          `Sent your prompt as a follow-up turn` +
+          (returnResult
+            ? "; the next assistant message will append to this parent transcript on completion."
+            : '. Navigate to the sub-thread in the sidebar to follow progress.') +
+          recallNote
+        : `Spawned ${providerArg} sub-thread "${subThread.title}" (id=${subThread.appChatId}). ` +
+          `Running in the background` +
+          (returnResult
+            ? "; its final result will append to this parent transcript on completion."
+            : '. Navigate to the sub-thread in the sidebar to follow progress.') +
+          `\nReuse this id by passing subThreadId="${subThread.appChatId}" on the next delegate_to_subthread call if you want to continue the conversation with this same sub-agent.`
     }
 
     sendAgentCompatLine(context.sender, parentProvider, {
@@ -7966,7 +8062,11 @@ function mcpToolDefinitions() {
       // sidebar or wait for the synthetic ↩ Result message.
       name: 'delegate_to_subthread',
       description:
-        'Spawn a context-isolated sub-thread under the active parent thread, optionally on a different AGBench provider (gemini/codex/claude/kimi), and start a run with the delegation prompt. Returns immediately with the sub-thread id; when returnResult is true, the sub-thread\'s final assistant message auto-propagates back to the parent transcript on completion.',
+        'Send a prompt to a sub-thread on a chosen AGBench provider (gemini/codex/claude/kimi). ' +
+        'By DEFAULT this spawns a NEW context-isolated sub-thread under the active parent — the returned tool_result includes the sub-thread id. ' +
+        'To CONTINUE an existing sub-thread (back-and-forth conversation with the same delegated agent), pass that id as `subThreadId` on subsequent calls. ' +
+        'Recall is opt-in: omitting `subThreadId` always spawns fresh. ' +
+        'When returnResult is true, the sub-thread\'s final assistant message auto-propagates back to the parent transcript on completion.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -7984,12 +8084,17 @@ function mcpToolDefinitions() {
           prompt: {
             type: 'string',
             description:
-              "User-facing delegation prompt that primes the sub-thread's first turn. Persisted for audit + pre-fills the sub-thread composer."
+              "Delegation prompt. For a fresh sub-thread it primes the first turn; for a recall (when subThreadId is set) it's appended as the next user turn in the existing sub-thread."
           },
           returnResult: {
             type: 'boolean',
             description:
               "When true, the sub-thread's final assistant message auto-appends to the parent transcript on completion (Phase F2 back-propagation)."
+          },
+          subThreadId: {
+            type: 'string',
+            description:
+              'Optional. If set, RECALL the existing sub-thread with this id instead of spawning a new one. The id MUST come from an earlier delegate_to_subthread tool_result issued from THIS parent chat AND target the same provider — otherwise the call errors. Use this for back-and-forth with a single delegated sub-agent across multiple turns.'
           }
         },
         required: ['provider', 'prompt']

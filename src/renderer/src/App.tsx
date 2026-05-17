@@ -6545,10 +6545,23 @@ function App(): React.JSX.Element {
       // result back-propagation in particular), splice the fresh
       // record into our local state so the user sees the synthetic
       // "↩ Result from X" message without a manual reload.
+      //
+      // Phase J2: previously this handler returned `prev` unchanged
+      // when the broadcast chat wasn't already in state — meaning a
+      // brand-new sub-thread chat (broadcast right after the
+      // delegation approval) was silently dropped, and the sidebar
+      // only caught up on the next full `getChats()` poll. INSERT
+      // when not found so newly-spawned sub-threads appear in the
+      // sidebar within a single render frame. (Sidebar group
+      // auto-expand for parents-of-arriving-sub-threads is a
+      // separate follow-up since expandedWorkspaceIds lives inside
+      // Sidebar.tsx and would need prop drilling to reach from here.)
       window.api.onChatUpdated((chat) => {
         setChats((prev) => {
           const idx = prev.findIndex((c) => c.appChatId === chat.appChatId)
-          if (idx < 0) return prev
+          if (idx < 0) {
+            return [...prev, chat]
+          }
           const next = prev.slice()
           next[idx] = chat
           return next
