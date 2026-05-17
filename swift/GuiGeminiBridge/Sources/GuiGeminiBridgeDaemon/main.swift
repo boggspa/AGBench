@@ -218,6 +218,7 @@ let transportListener = TransportListener(
         tailscaleEndpointResolver.current()
     }
 )
+let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener)
 
 // Phase D1-pair: TCP pairing listener for the iOS pairing handshake.
 // Advertised via Bonjour at the GUIGemini TCP service type so the
@@ -292,6 +293,29 @@ func rpcError(from pairingError: PairingCoordinator.PairingError) -> JSONRPCErro
 // MARK: - JSON-RPC dispatcher
 
 let dispatcher = JSONRPCDispatcher()
+
+func registerSummaryBroadcast(_ method: String, kind: SummaryBroadcastKind) {
+    dispatcher.register(method) { rawParams in
+        do {
+            let eventJSON = try SummaryBroadcaster.makeEventJSON(
+                kind: kind,
+                params: rawParams,
+                publishedAt: Date()
+            )
+            Task.detached { @Sendable [summaryBroadcaster, eventJSON] in
+                await summaryBroadcaster.broadcast(eventJSON)
+            }
+            FileHandle.standardError.write(Data(
+                "[\(method)] broadcast channel=\(kind.channel) bytes=\(eventJSON.count)\n".utf8
+            ))
+        } catch {
+            FileHandle.standardError.write(Data(
+                "[\(method)] WARN: \(String(describing: error))\n".utf8
+            ))
+        }
+        return [String: Any]()
+    }
+}
 
 /// `bridge.ping` — keep-alive heartbeat. Returns `{ "pong": true }`. Useful
 /// for end-to-end round-trip tests and for the Electron client to verify the
@@ -663,6 +687,14 @@ dispatcher.register("bridge.testFireRequest") { rawParams in
 }
 
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
+
+// Summary broadcasts (workspace/thread sidebar data) ride the same
+// BridgeRunEvent stream as live run events. Electron sends these as
+// fire-and-forget JSON-RPC notifications whenever desktop state changes.
+registerSummaryBroadcast("bridge.broadcastWorkspaceList", kind: .workspaceList)
+registerSummaryBroadcast("bridge.broadcastThreadList", kind: .threadList)
+registerSummaryBroadcast("bridge.broadcastWorkspaceUpdated", kind: .workspaceUpdated)
+registerSummaryBroadcast("bridge.broadcastThreadUpdated", kind: .threadUpdated)
 
 /// `bridge.runEvent` — inbound notification (no id). Electron forwards every
 /// run-bus event here via `BridgeRunEventSink`. For each event the daemon

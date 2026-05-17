@@ -273,6 +273,9 @@ public actor TransportListener {
                     "pairID": pairID.rawValue,
                     "threadIDs": threadIDs
                 ])
+                notifier.publish(method: "bridge.iosClientSubscribed", params: [
+                    "pairID": pairID.rawValue
+                ])
             },
             onReplay: nil,
             onStreamReplay: nil
