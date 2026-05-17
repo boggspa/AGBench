@@ -12,6 +12,7 @@ import os from 'os'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
+import { BridgeBroadcaster } from './BridgeBroadcaster'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
@@ -9786,9 +9787,52 @@ app.whenReady().then(() => {
   // with AGBENCH_BRIDGE_DAEMON preserving explicit force-on/force-off
   // override semantics for staging and emergency disable.
   let bridgeDaemon: BridgeDaemonClient | null = null
+  let bridgeBroadcaster: BridgeBroadcaster | null = null
   let bridgeDaemonStartPromise: Promise<unknown> | null = null
   let unsubscribeBridgeRunSink: (() => void) | null = null
   let bridgeDaemonLastError: string | null = null
+
+  // Phase E-late: small helpers so the IPC handlers below can fire
+  // workspace/thread summary broadcasts to the daemon without paying
+  // attention to whether the daemon (and therefore the broadcaster) is
+  // currently up. When iOS isn't paired or the daemon hasn't started
+  // yet, these are no-ops.
+  const broadcastWorkspaceUpdate = (workspaceId: string | undefined): void => {
+    if (!workspaceId || !bridgeBroadcaster) return
+    try {
+      bridgeBroadcaster.broadcastWorkspaceUpdated(workspaceId)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[BridgeBroadcaster] workspace update failed:', err)
+    }
+  }
+  const broadcastThreadUpdate = (chatId: string | undefined): void => {
+    if (!chatId || !bridgeBroadcaster) return
+    try {
+      bridgeBroadcaster.broadcastThreadUpdated(chatId)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[BridgeBroadcaster] thread update failed:', err)
+    }
+  }
+  const broadcastWorkspaceList = (): void => {
+    if (!bridgeBroadcaster) return
+    try {
+      bridgeBroadcaster.broadcastWorkspaceList()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[BridgeBroadcaster] workspace list failed:', err)
+    }
+  }
+  const broadcastThreadList = (): void => {
+    if (!bridgeBroadcaster) return
+    try {
+      bridgeBroadcaster.broadcastThreadList()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[BridgeBroadcaster] thread list failed:', err)
+    }
+  }
 
   const createBridgeActionExecutor = (): MainProcessActionExecutor => {
     // Phase C-late: action executor wires policy-cleared actions to real
@@ -9948,7 +9992,10 @@ app.whenReady().then(() => {
         console.log(`[BridgeDaemon] exited with code ${code ?? 'unknown'}`)
         unsubscribeBridgeRunEvents()
         const wasActiveDaemon = bridgeDaemon === daemon
-        if (wasActiveDaemon) bridgeDaemon = null
+        if (wasActiveDaemon) {
+          bridgeDaemon = null
+          bridgeBroadcaster = null
+        }
         if (wasActiveDaemon && !bridgeDaemonStartPromise) {
           bridgeDaemonLastError = `Bridge daemon exited with code ${code ?? 'unknown'}`
         }
@@ -9967,6 +10014,21 @@ app.whenReady().then(() => {
             !mainWindow.webContents.isDestroyed()) {
           mainWindow.webContents.send('bridge-pairing-response-received', params)
         }
+        // Phase E-late: when the Swift daemon reports a freshly
+        // subscribed iOS client, push a full workspace + thread
+        // snapshot so the companion has something to render
+        // immediately (rather than staying empty until the next
+        // user-initiated mutation). The daemon-side emission of this
+        // notification lands in a parallel commit — until then this
+        // branch never fires.
+        if (method === 'bridge.iosClientSubscribed' && bridgeBroadcaster) {
+          try {
+            bridgeBroadcaster.broadcastSnapshot()
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error('[BridgeBroadcaster] snapshot on subscribe failed:', err)
+          }
+        }
       },
       // Phase C3.6: daemon-issued requests (e.g. `bridge.requestActionAck`,
       // `bridge.requestPrepareStartTurnAck`) flow into the router. The router
@@ -9977,6 +10039,20 @@ app.whenReady().then(() => {
       onRequest: (method, params) => bridgeActionRouter.route(method, params)
     })
     bridgeDaemon = daemon
+    // Phase E-late: instantiate the workspace/thread summary
+    // broadcaster alongside the daemon. The broadcaster only emits
+    // when the daemon is up; on `stopBridgeDaemon` we clear the ref so
+    // the helpers near the IPC handlers become no-ops. iOS clients
+    // start receiving snapshots once Codex's daemon-side handlers for
+    // `bridge.broadcastWorkspaceList` / etc. land in a parallel commit.
+    bridgeBroadcaster = new BridgeBroadcaster({
+      daemon: { notify: (m, p) => daemon.notify(m, p) },
+      appStore: AppStore,
+      log: (line) => {
+        // eslint-disable-next-line no-console
+        console.log(line)
+      }
+    })
     const startPromise = daemon.start()
       .then(() => {
         if (bridgeDaemon === daemon && daemon.status().running) {
@@ -9991,7 +10067,10 @@ app.whenReady().then(() => {
         // eslint-disable-next-line no-console
         console.error('[BridgeDaemon] failed to start:', message)
         unsubscribeBridgeRunEvents()
-        if (bridgeDaemon === daemon) bridgeDaemon = null
+        if (bridgeDaemon === daemon) {
+          bridgeDaemon = null
+          bridgeBroadcaster = null
+        }
       })
       .finally(() => {
         if (bridgeDaemonStartPromise === startPromise) bridgeDaemonStartPromise = null
@@ -10004,6 +10083,7 @@ app.whenReady().then(() => {
     unsubscribeBridgeRunEvents()
     const daemon = bridgeDaemon
     bridgeDaemon = null
+    bridgeBroadcaster = null
     bridgeDaemonStartPromise = null
     daemon?.dispose()
   }
@@ -10277,18 +10357,32 @@ app.whenReady().then(() => {
   // Workspaces
   ipcMain.handle('get-workspaces', () => workspaceService.getWorkspaces())
   ipcMain.handle('add-or-update-workspace', (_, path: string, partial: Partial<WorkspaceRecord>) => {
-    return workspaceService.addOrUpdateWorkspace(path, partial)
+    const ws = workspaceService.addOrUpdateWorkspace(path, partial)
+    broadcastWorkspaceUpdate(ws?.id)
+    return ws
   })
-  ipcMain.handle('remove-workspace', (_, id: string) => workspaceService.removeWorkspace(id))
-  ipcMain.handle('clear-workspaces', () => workspaceService.clearWorkspaces())
+  ipcMain.handle('remove-workspace', (_, id: string) => {
+    workspaceService.removeWorkspace(id)
+    broadcastWorkspaceList()
+  })
+  ipcMain.handle('clear-workspaces', () => {
+    workspaceService.clearWorkspaces()
+    broadcastWorkspaceList()
+  })
 
   // Chats
   ipcMain.handle('get-chats', (_, workspaceId?: string) => chatService.getChats(workspaceId))
   ipcMain.handle('get-chat', (_, chatId: string) => chatService.getChat(chatId))
-  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) =>
-    chatService.createChat(workspaceId, workspacePath)
-  )
-  ipcMain.handle('create-global-chat', () => chatService.createGlobalChat())
+  ipcMain.handle('create-chat', (_, workspaceId: string, workspacePath: string) => {
+    const chat = chatService.createChat(workspaceId, workspacePath)
+    broadcastThreadUpdate(chat?.appChatId)
+    return chat
+  })
+  ipcMain.handle('create-global-chat', () => {
+    const chat = chatService.createGlobalChat()
+    broadcastThreadUpdate(chat?.appChatId)
+    return chat
+  })
   // Phase F1: sub-thread creation. The renderer passes the parent chat
   // id plus user choices (provider, delegation prompt, return-result
   // flag). AppStore enforces max-depth-1; we surface any error so the
@@ -10300,11 +10394,24 @@ app.whenReady().then(() => {
     returnResultToParent: boolean
     workspaceId?: string
     workspacePath?: string
-  }) => chatService.createSubThread(args))
+  }) => {
+    const chat = chatService.createSubThread(args)
+    broadcastThreadUpdate(chat?.appChatId)
+    return chat
+  })
   ipcMain.handle('get-sub-threads', (_, parentChatId: string) => chatService.getSubThreads(parentChatId))
-  ipcMain.handle('save-chat', (_, chat: ChatRecord) => chatService.saveChat(chat))
-  ipcMain.handle('delete-chat', (_, chatId: string) => chatService.deleteChat(chatId))
-  ipcMain.handle('clear-chats', (_, workspaceId?: string) => chatService.clearChats(workspaceId))
+  ipcMain.handle('save-chat', (_, chat: ChatRecord) => {
+    chatService.saveChat(chat)
+    broadcastThreadUpdate(chat?.appChatId)
+  })
+  ipcMain.handle('delete-chat', (_, chatId: string) => {
+    chatService.deleteChat(chatId)
+    broadcastThreadList()
+  })
+  ipcMain.handle('clear-chats', (_, workspaceId?: string) => {
+    chatService.clearChats(workspaceId)
+    broadcastThreadList()
+  })
   
   // Usage
   ipcMain.handle('record-usage', (_, usage: any) => AppStore.recordUsage(usage))

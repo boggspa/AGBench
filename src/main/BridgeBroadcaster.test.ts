@@ -1,0 +1,406 @@
+import { describe, expect, it, vi } from 'vitest'
+import {
+  BRIDGE_BROADCAST_METHODS,
+  BridgeBroadcaster,
+  chatRecordToSummary,
+  workspaceRecordToSummary,
+  type BridgeBroadcasterAppStore
+} from './BridgeBroadcaster'
+import type { ChatRecord, WorkspaceRecord } from './store/types'
+
+/** Build a stub AppStore that returns the supplied fixtures. The
+ * broadcaster only calls `getWorkspaces`, `getChats`, `getChat` — no
+ * mutators — so a frozen-in-time snapshot is sufficient. */
+function makeFakeStore(
+  workspaces: WorkspaceRecord[],
+  chats: ChatRecord[]
+): BridgeBroadcasterAppStore {
+  return {
+    getWorkspaces: () => workspaces,
+    getChats: (workspaceId?: string) =>
+      workspaceId ? chats.filter((c) => c.workspaceId === workspaceId) : chats,
+    getChat: (chatId: string) => chats.find((c) => c.appChatId === chatId) ?? null
+  }
+}
+
+function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
+  const now = Date.UTC(2026, 4, 15, 12, 0, 0)
+  return {
+    id: 'workspace-1',
+    path: '/tmp/projects/alpha',
+    displayName: 'alpha',
+    createdAt: now,
+    lastOpenedAt: now,
+    pinned: false,
+    ...overrides
+  }
+}
+
+function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
+  const now = Date.UTC(2026, 4, 15, 12, 0, 0)
+  return {
+    appChatId: 'chat-1',
+    scope: 'workspace',
+    provider: 'gemini',
+    title: 'Plan refactor',
+    workspaceId: 'workspace-1',
+    workspacePath: '/tmp/projects/alpha',
+    createdAt: now,
+    updatedAt: now,
+    archived: false,
+    messages: [],
+    runs: [],
+    ...overrides
+  }
+}
+
+describe('workspaceRecordToSummary', () => {
+  it('produces a summary with chat + running chat counts', () => {
+    const ws = makeWorkspace()
+    const chats: ChatRecord[] = [
+      makeChat({ appChatId: 'chat-a' }),
+      makeChat({
+        appChatId: 'chat-b',
+        runs: [
+          {
+            runId: 'run-b1',
+            startedAt: '2026-05-15T12:00:00.000Z',
+            status: 'running'
+          }
+        ]
+      }),
+      // Chat in a DIFFERENT workspace must not be counted.
+      makeChat({ appChatId: 'chat-other', workspaceId: 'workspace-zzz' })
+    ]
+    const summary = workspaceRecordToSummary(ws, chats)
+    expect(summary).toEqual({
+      workspaceId: 'workspace-1',
+      displayName: 'alpha',
+      path: '/tmp/projects/alpha',
+      chatCount: 2,
+      runningChatCount: 1,
+      lastActivityAt: new Date(ws.lastOpenedAt).toISOString()
+    })
+  })
+
+  it('falls back to path when displayName is empty', () => {
+    const ws = makeWorkspace({ displayName: '' })
+    const summary = workspaceRecordToSummary(ws, [])
+    expect(summary.displayName).toBe(ws.path)
+  })
+
+  it('omits lastActivityAt when lastOpenedAt is non-positive', () => {
+    const ws = makeWorkspace({ lastOpenedAt: 0 })
+    const summary = workspaceRecordToSummary(ws, [])
+    expect(summary.lastActivityAt).toBeUndefined()
+  })
+
+  it('produces zero counts when no chats belong to the workspace', () => {
+    const summary = workspaceRecordToSummary(makeWorkspace(), [])
+    expect(summary.chatCount).toBe(0)
+    expect(summary.runningChatCount).toBe(0)
+  })
+})
+
+describe('chatRecordToSummary', () => {
+  it('produces a summary for an idle chat', () => {
+    const chat = makeChat({ provider: 'claude' })
+    const summary = chatRecordToSummary(chat)
+    expect(summary).toEqual({
+      chatId: 'chat-1',
+      title: 'Plan refactor',
+      workspaceId: 'workspace-1',
+      provider: 'claude',
+      status: 'idle',
+      lastMessageAt: new Date(chat.updatedAt).toISOString()
+    })
+  })
+
+  it('reports running status when any run is still running', () => {
+    const chat = makeChat({
+      runs: [
+        { runId: 'r1', startedAt: '2026-05-15T11:00:00Z', status: 'success' },
+        { runId: 'r2', startedAt: '2026-05-15T12:00:00Z', status: 'running' }
+      ]
+    })
+    expect(chatRecordToSummary(chat).status).toBe('running')
+  })
+
+  it('collapses success_with_warnings to success', () => {
+    const chat = makeChat({
+      runs: [{ runId: 'r1', startedAt: '2026-05-15T12:00:00Z', status: 'success_with_warnings' }]
+    })
+    expect(chatRecordToSummary(chat).status).toBe('success')
+  })
+
+  it('collapses cancelled to failed', () => {
+    const chat = makeChat({
+      runs: [{ runId: 'r1', startedAt: '2026-05-15T12:00:00Z', status: 'cancelled' }]
+    })
+    expect(chatRecordToSummary(chat).status).toBe('failed')
+  })
+
+  it('picks the most recently started run when there are multiple completed runs', () => {
+    const chat = makeChat({
+      runs: [
+        { runId: 'r1', startedAt: '2026-05-15T11:00:00Z', status: 'failed' },
+        { runId: 'r2', startedAt: '2026-05-15T12:00:00Z', status: 'success' }
+      ]
+    })
+    expect(chatRecordToSummary(chat).status).toBe('success')
+  })
+
+  it('returns workspaceId=null for global chats', () => {
+    const chat = makeChat({ scope: 'global', workspaceId: undefined, workspacePath: undefined })
+    const summary = chatRecordToSummary(chat)
+    expect(summary.workspaceId).toBeNull()
+  })
+
+  it('returns workspaceId=null when workspaceId is an empty string', () => {
+    const chat = makeChat({ workspaceId: '' })
+    const summary = chatRecordToSummary(chat)
+    expect(summary.workspaceId).toBeNull()
+  })
+
+  it('falls back to gemini when provider is missing on legacy records', () => {
+    const chat = makeChat({ provider: undefined })
+    const summary = chatRecordToSummary(chat)
+    expect(summary.provider).toBe('gemini')
+  })
+
+  it('substitutes a placeholder title when the chat has none', () => {
+    const chat = makeChat({ title: '' })
+    expect(chatRecordToSummary(chat).title).toBe('Untitled chat')
+  })
+
+  it('preserves each provider id verbatim', () => {
+    for (const provider of ['gemini', 'codex', 'claude', 'kimi'] as const) {
+      const summary = chatRecordToSummary(makeChat({ provider }))
+      expect(summary.provider).toBe(provider)
+    }
+  })
+})
+
+describe('BridgeBroadcaster', () => {
+  it('broadcastWorkspaceList calls daemon.notify exactly once with the right shape', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [
+        makeWorkspace({ id: 'ws-1' }),
+        makeWorkspace({ id: 'ws-2', path: '/tmp/b', displayName: 'b' })
+      ],
+      [makeChat({ workspaceId: 'ws-1' })]
+    )
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [method, params] = notify.mock.calls[0]
+    expect(method).toBe(BRIDGE_BROADCAST_METHODS.workspaceList)
+    expect((params as { workspaces: unknown[] }).workspaces).toHaveLength(2)
+    expect(
+      (params as { workspaces: Array<{ workspaceId: string; chatCount: number }> }).workspaces[0]
+    ).toMatchObject({
+      workspaceId: 'ws-1',
+      chatCount: 1
+    })
+  })
+
+  it('broadcastThreadList emits the bridge.broadcastThreadList method with all chats', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [makeWorkspace()],
+      [
+        makeChat({ appChatId: 'chat-a' }),
+        makeChat({ appChatId: 'chat-b', scope: 'global', workspaceId: undefined })
+      ]
+    )
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastThreadList()
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [method, params] = notify.mock.calls[0]
+    expect(method).toBe(BRIDGE_BROADCAST_METHODS.threadList)
+    const threads = (params as { threads: Array<{ chatId: string; workspaceId: string | null }> })
+      .threads
+    expect(threads).toHaveLength(2)
+    expect(threads[1].workspaceId).toBeNull()
+  })
+
+  it('broadcastWorkspaceUpdated emits a single workspace summary', () => {
+    const notify = vi.fn()
+    const ws = makeWorkspace({ id: 'ws-update' })
+    const store = makeFakeStore([ws], [makeChat({ workspaceId: 'ws-update' })])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastWorkspaceUpdated('ws-update')
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [method, params] = notify.mock.calls[0]
+    expect(method).toBe(BRIDGE_BROADCAST_METHODS.workspaceUpdated)
+    expect((params as { workspace: { workspaceId: string } }).workspace.workspaceId).toBe(
+      'ws-update'
+    )
+  })
+
+  it('broadcastWorkspaceUpdated silently no-ops when the workspace is missing', () => {
+    const notify = vi.fn()
+    const log = vi.fn()
+    const store = makeFakeStore([], [])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000,
+      log
+    })
+    broadcaster.broadcastWorkspaceUpdated('does-not-exist')
+    expect(notify).not.toHaveBeenCalled()
+    expect(log.mock.calls.map((c) => c[0] as string).join('\n')).toContain('not found')
+  })
+
+  it('broadcastThreadUpdated silently no-ops when the chat is missing', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([], [])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastThreadUpdated('chat-not-here')
+    expect(notify).not.toHaveBeenCalled()
+  })
+
+  it('broadcastThreadUpdated emits a single thread summary', () => {
+    const notify = vi.fn()
+    const chat = makeChat({ appChatId: 'chat-x' })
+    const store = makeFakeStore([makeWorkspace()], [chat])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastThreadUpdated('chat-x')
+    expect(notify).toHaveBeenCalledTimes(1)
+    const [method, params] = notify.mock.calls[0]
+    expect(method).toBe(BRIDGE_BROADCAST_METHODS.threadUpdated)
+    expect((params as { thread: { chatId: string } }).thread.chatId).toBe('chat-x')
+  })
+
+  it('throttles two rapid same-method calls into one emit', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [])
+    let nowMs = 1000
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => nowMs,
+      throttleMs: 1000
+    })
+    broadcaster.broadcastWorkspaceList()
+    nowMs += 100 // Within throttle window.
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(1)
+    nowMs += 901 // Now strictly outside the window.
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(2)
+  })
+
+  it('throttles per-id for update broadcasts (different chats slip through, same chat does not)', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [makeWorkspace()],
+      [makeChat({ appChatId: 'chat-1' }), makeChat({ appChatId: 'chat-2' })]
+    )
+    const nowMs = 1000
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => nowMs,
+      throttleMs: 1000
+    })
+    broadcaster.broadcastThreadUpdated('chat-1')
+    broadcaster.broadcastThreadUpdated('chat-1') // Throttled — same id.
+    broadcaster.broadcastThreadUpdated('chat-2') // Allowed — different id.
+    expect(notify).toHaveBeenCalledTimes(2)
+  })
+
+  it('emits empty arrays when AppStore has no workspaces or chats', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([], [])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastWorkspaceList()
+    broadcaster.broadcastThreadList()
+    expect(notify).toHaveBeenNthCalledWith(1, BRIDGE_BROADCAST_METHODS.workspaceList, {
+      workspaces: []
+    })
+    expect(notify).toHaveBeenNthCalledWith(2, BRIDGE_BROADCAST_METHODS.threadList, { threads: [] })
+  })
+
+  it('broadcastSnapshot fires both list broadcasts', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [makeChat()])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    broadcaster.broadcastSnapshot()
+    const methods = notify.mock.calls.map((call) => call[0])
+    expect(methods).toEqual([
+      BRIDGE_BROADCAST_METHODS.workspaceList,
+      BRIDGE_BROADCAST_METHODS.threadList
+    ])
+  })
+
+  it('swallows notify errors and clears the throttle so the next attempt can retry', () => {
+    const notify = vi.fn(() => {
+      throw new Error('daemon stdin closed')
+    })
+    const log = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [])
+    let nowMs = 1000
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      log,
+      now: () => nowMs,
+      throttleMs: 1000
+    })
+    expect(() => broadcaster.broadcastWorkspaceList()).not.toThrow()
+    expect(log.mock.calls.map((c) => c[0] as string).join('\n')).toContain('notify failed')
+    // Throttle was rolled back, so an immediate retry should attempt again.
+    nowMs += 1
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(2)
+  })
+
+  it('resetThrottle allows immediate re-emit', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [])
+    const nowMs = 1000
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => nowMs,
+      throttleMs: 5000
+    })
+    broadcaster.broadcastWorkspaceList()
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(1)
+    broadcaster.resetThrottle()
+    broadcaster.broadcastWorkspaceList()
+    expect(notify).toHaveBeenCalledTimes(2)
+  })
+})
