@@ -160,32 +160,4 @@ final class KeychainPairStorageTests: XCTestCase {
         let all = try await storage.loadAllPairs()
         XCTAssertEqual(all.count, 1)
     }
-
-    func testSaveRunEventCursorPersistsHighestSequence() async throws {
-        let storage = makeStorage()
-        let record = sampleRecord(pairID: "pair-1")
-        let derived = sampleDerivedKeys()
-        try await storage.savePair(record, derivedKeys: derived)
-
-        try await storage.saveRunEventCursor(pairID: record.pairID, runId: "run-1", sequence: 4)
-        try await storage.saveRunEventCursor(pairID: record.pairID, runId: "run-1", sequence: 3)
-
-        let loaded = try await storage.loadPair(pairID: record.pairID)
-        XCTAssertEqual(loaded?.record.cursors["run-1"], 4)
-    }
-
-    func testPairRecordDecodesOldShapeWithoutCursors() throws {
-        let legacyJSON = """
-        {
-          "pairID": "pair-1",
-          "controllerDeviceID": "iphone-1",
-          "macDeviceID": "mac-1",
-          "createdAt": 700000000
-        }
-        """.data(using: .utf8)!
-
-        let record = try JSONDecoder().decode(KeychainPairStorage.PairRecord.self, from: legacyJSON)
-        XCTAssertEqual(record.pairID.rawValue, "pair-1")
-        XCTAssertEqual(record.cursors, [:])
-    }
 }

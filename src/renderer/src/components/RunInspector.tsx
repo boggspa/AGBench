@@ -182,22 +182,6 @@ export function RunInspector({
           />
         ))}
       </div>
-
-      {rows.length > 0 && (
-        <footer className="run-inspector__keyboard-hints" aria-label="Keyboard shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd>
-          <span>navigate</span>
-          <span className="run-inspector__keyboard-hints-sep">·</span>
-          <kbd>Home</kbd><kbd>End</kbd>
-          <span>jump</span>
-          <span className="run-inspector__keyboard-hints-sep">·</span>
-          <kbd>↵</kbd>
-          <span>open</span>
-          <span className="run-inspector__keyboard-hints-sep">·</span>
-          <kbd>Esc</kbd>
-          <span>close</span>
-        </footer>
-      )}
     </div>
   )
 }
@@ -384,39 +368,12 @@ function RowChips({
 
 function describeRow(row: InspectorRow): { glyph: string; label: string; summary: string } {
   switch (row.kind) {
-    case 'approval_request': {
-      // approval_request is overloaded — it covers permission prompts,
-      // tool-call gates, diff approvals, and edit/write gates. Specialise
-      // the glyph + label by `approvalKind` so the timeline reads
-      // accurately even though the upstream event-kind doesn't change.
-      const sub = row.approvalKind?.toLowerCase()
-      let glyph = '⏸'
-      let label = 'Approval'
-      let summary = row.title
-      if (sub === 'tool') {
-        glyph = '🔧'
-        label = 'Tool'
-        // Tool name takes the primary slot when known; the surrounding
-        // "Approve <Provider> tool call" prefix is redundant in this lane.
-        summary = row.toolName ? row.toolName : row.title
-      } else if (sub === 'edit' || sub === 'write') {
-        glyph = '📝'
-        label = sub === 'write' ? 'Write' : 'Edit'
-        summary = row.title
-      } else if (sub === 'diff') {
-        glyph = '🪄'
-        label = 'Diff'
-        summary = row.title
-      } else if (sub === 'permission') {
-        glyph = '🔐'
-        label = 'Permission'
-        summary = row.title
-      } else if (row.toolName) {
-        // Unknown sub-kind but we have a tool name — surface it.
-        summary = `${row.title} (${row.toolName})`
+    case 'approval_request':
+      return {
+        glyph: '⏸',
+        label: 'Approval',
+        summary: row.title + (row.toolName ? ` (${row.toolName})` : '')
       }
-      return { glyph, label, summary }
-    }
     case 'approval_response':
       return {
         glyph:

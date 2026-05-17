@@ -14805,39 +14805,3 @@ input:disabled, select:disabled, textarea:disabled {
 .run-inspector__row--reply .run-inspector__row-glyph {
   color: #2da44e;
 }
-
-/* Bottom-pinned shortcut hints — appears only when there are rows to
-   navigate. Density matches the rest of the inspector. */
-.run-inspector__keyboard-hints {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 14px;
-  border-top: 1px solid color-mix(in srgb, var(--sidebar-border, #d0d0d0) 38%, transparent);
-  font-size: 11px;
-  opacity: 0.7;
-  flex-wrap: wrap;
-}
-
-.run-inspector__keyboard-hints kbd {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 18px;
-  padding: 0 4px;
-  border: 1px solid color-mix(in srgb, var(--sidebar-text, #1a1a1a) 18%, transparent);
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--sidebar-text, #1a1a1a) 5%, transparent);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 10px;
-  line-height: 1.4;
-}
-
-.run-inspector__keyboard-hints span:not(.run-inspector__keyboard-hints-sep) {
-  margin-right: 4px;
-}
-
-.run-inspector__keyboard-hints-sep {
-  opacity: 0.5;
-  margin: 0 2px;
-}

@@ -45,7 +45,6 @@ import { isPathInsideWorkspace } from './AgenticPolicy'
 import { RunManager } from './RunManager'
 import { decideKimiWireClose } from './KimiWireExitDecision'
 import { RunRepository } from './RunRepository'
-import { resolveRunEventCatchup } from './ReplayCursor'
 import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
@@ -1637,48 +1636,6 @@ function emitRunEventsChanged(record: { runId: string; chatId?: string; workspac
 
 function appendDurableRunEvent(input: RunEventInput): void {
   getRunRepository().appendRunEvent(input)
-}
-
-function buildRunEventCatchupFrames(
-  runId: string,
-  resolution: ReturnType<typeof resolveRunEventCatchup>
-): Array<Record<string, unknown>> {
-  if (!resolution.oversized) {
-    return [
-      {
-        kind: 'run-events-subscribed',
-        runId,
-        catchupEvents: resolution.catchupEvents,
-        catchupComplete: true,
-        nextLiveSeq: resolution.nextLiveSeq
-      }
-    ]
-  }
-
-  return [
-    {
-      kind: 'run-events-subscribed',
-      runId,
-      catchupEvents: [],
-      catchupComplete: false,
-      nextLiveSeq: resolution.nextLiveSeq
-    },
-    ...resolution.catchupBatches.map((batch, index) => ({
-      kind: 'run-event-catchup',
-      runId,
-      catchupEvents: batch,
-      events: batch,
-      batchIndex: index,
-      batchCount: resolution.catchupBatches.length,
-      nextLiveSeq: resolution.nextLiveSeq
-    })),
-    {
-      kind: 'run-event-catchup-complete',
-      runId,
-      catchupComplete: true,
-      nextLiveSeq: resolution.nextLiveSeq
-    }
-  ]
 }
 
 const runEventChatMetadataCache = new Map<string, { workspaceId?: string; workspacePath?: string }>()
@@ -9870,25 +9827,6 @@ app.whenReady().then(() => {
             registered: false,
             reason: err instanceof Error ? err.message : String(err)
           }
-        }
-      },
-      subscribeRunEventsFn: async (action) => {
-        const replay = getRunRepository().getRunEventReplay(action.runId)
-        if (replay.count === 0) {
-          // eslint-disable-next-line no-console
-          console.error(`[BridgeRunReplay] subscribe-run-events requested unknown or empty runId="${action.runId}"`)
-        }
-        const resolution = resolveRunEventCatchup({
-          storedEvents: replay.events,
-          resumeFrom: action.resumeFrom ?? null
-        })
-        if (resolution.warning) {
-          // eslint-disable-next-line no-console
-          console.warn(`[BridgeRunReplay] ${resolution.warning}`)
-        }
-        return {
-          subscribed: true,
-          frames: buildRunEventCatchupFrames(action.runId, resolution)
         }
       },
       composerPromptFn: async (action) => {

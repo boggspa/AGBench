@@ -138,21 +138,6 @@ final class BridgeActionPayloadTests: XCTestCase {
         XCTAssertEqual(dict["env"] as? String, "sandbox")
     }
 
-    func testSubscribeRunEventsEncodingIncludesCursor() throws {
-        let action = BridgeActionPayload.subscribeRunEvents(runId: "run-1", resumeFrom: 42)
-        let dict = parse(try action.encode())
-        XCTAssertEqual(dict["kind"] as? String, "subscribe-run-events")
-        XCTAssertEqual(dict["runId"] as? String, "run-1")
-        XCTAssertEqual(dict["resumeFrom"] as? Int, 42)
-    }
-
-    func testSubscribeRunEventsEncodingUsesNullForFreshSubscribe() throws {
-        let action = BridgeActionPayload.subscribeRunEvents(runId: "run-1")
-        let dict = parse(try action.encode())
-        XCTAssertEqual(dict["kind"] as? String, "subscribe-run-events")
-        XCTAssertTrue(dict["resumeFrom"] is NSNull)
-    }
-
     func testEncodingProducesSortedKeys() throws {
         // Sorted keys keep wire bytes deterministic for hashing / logging.
         let action = BridgeActionPayload.approvalReply(

@@ -162,11 +162,6 @@ public actor TransportListener {
                        let accepted = obj["accepted"] as? Bool {
                         let message = (obj["message"] as? String)
                             ?? (accepted ? "Accepted" : "Rejected")
-                        if let frames = Self.runEventFrames(from: obj) {
-                            for frame in frames {
-                                await self.broadcastRunEvent(frame, toPairIDs: Set([pairID]))
-                            }
-                        }
                         return BridgeActionAck(accepted: accepted, message: message)
                     }
                     // Result shape wrong — fall through to denial.
@@ -392,14 +387,9 @@ public actor TransportListener {
     /// Best-effort: when the server isn't running OR no peers are
     /// connected, the call is a no-op. Sessions that fail a write are
     /// pruned automatically by `LANBridgeServer.broadcast`.
-    public func broadcastRunEvent(_ payloadJSON: Data, threadID: String? = nil, toPairIDs: Set<PairID>? = nil) async {
+    public func broadcastRunEvent(_ payloadJSON: Data, threadID: String? = nil) async {
         guard let server else { return }
         let envelope = BridgeInboundEnvelope(payload: .eventRecord(payloadJSON))
-        if let toPairIDs {
-            await server.broadcast(envelope, toPairIDs: toPairIDs)
-            await tailnetServer?.broadcast(envelope, toPairIDs: toPairIDs)
-            return
-        }
         // Per-pair filtering: consult the subscription store. nil result
         // means "no subscriber has spoken" → broadcast to all (preserves
         // existing behavior). Non-nil set (including empty) means at
@@ -411,16 +401,6 @@ public actor TransportListener {
         } else {
             await server.broadcast(envelope)
             await tailnetServer?.broadcast(envelope)
-        }
-    }
-
-    private static func runEventFrames(from ackObject: [String: Any]) -> [Data]? {
-        let dataObject = ackObject["data"] as? [String: Any]
-        let rawFrames = (dataObject?["runEventFrames"] as? [[String: Any]])
-            ?? (ackObject["runEventFrames"] as? [[String: Any]])
-        guard let rawFrames, !rawFrames.isEmpty else { return nil }
-        return rawFrames.compactMap { frame in
-            try? JSONSerialization.data(withJSONObject: frame, options: [.sortedKeys])
         }
     }
 

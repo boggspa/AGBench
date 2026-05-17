@@ -4,8 +4,7 @@ import type {
   BridgeComposerPromptAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
-  BridgeRegisterApnsTokenAction,
-  BridgeSubscribeRunEventsAction
+  BridgeRegisterApnsTokenAction
 } from './BridgeActionPayload'
 
 /**
@@ -52,7 +51,6 @@ export interface BridgeActionExecutor {
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
   executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult>
-  executeSubscribeRunEvents(action: BridgeSubscribeRunEventsAction): Promise<BridgeActionExecutionResult>
 }
 
 /**
@@ -80,9 +78,6 @@ export class NoopActionExecutor implements BridgeActionExecutor {
   }
   async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
     return notWired('registerApnsToken', action.pairID)
-  }
-  async executeSubscribeRunEvents(action: BridgeSubscribeRunEventsAction): Promise<BridgeActionExecutionResult> {
-    return notWired('subscribe-run-events', action.runId)
   }
 }
 
@@ -149,13 +144,6 @@ export interface MainProcessActionExecutorDependencies {
   registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
     registered: boolean
     reason?: string
-  }>
-  /** Callback the executor uses to produce run-event replay frames for
-   * a paired iOS client that is resubscribing after a disconnect. */
-  subscribeRunEventsFn?: (action: BridgeSubscribeRunEventsAction) => Promise<{
-    subscribed: boolean
-    reason?: string
-    frames?: unknown[]
   }>
   log?: (line: string) => void
 }
@@ -336,38 +324,6 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       return {
         executed: false,
         message: `APNs token registration failed: ${errMessage}`
-      }
-    }
-  }
-
-  async executeSubscribeRunEvents(action: BridgeSubscribeRunEventsAction): Promise<BridgeActionExecutionResult> {
-    if (!this.deps.subscribeRunEventsFn) {
-      this.log(`[BridgeActionExecutor] subscribe-run-events has no subscribeRunEventsFn — runId=${action.runId}`)
-      return notWired('subscribe-run-events', action.runId)
-    }
-    this.log(`[BridgeActionExecutor] subscribe-run-events runId=${action.runId} resumeFrom=${action.resumeFrom ?? 'null'}`)
-    try {
-      const result = await this.deps.subscribeRunEventsFn(action)
-      if (result.subscribed) {
-        return {
-          executed: true,
-          message: `Subscribed to run events for runId="${action.runId}"`,
-          data: {
-            runId: action.runId,
-            runEventFrames: Array.isArray(result.frames) ? result.frames : []
-          }
-        }
-      }
-      return {
-        executed: false,
-        message: `Run-event subscription declined${result.reason ? `: ${result.reason}` : ''}`
-      }
-    } catch (err) {
-      const errMessage = err instanceof Error ? err.message : String(err)
-      this.log(`[BridgeActionExecutor] subscribe-run-events failed: ${errMessage}`)
-      return {
-        executed: false,
-        message: `Run-event subscription failed: ${errMessage}`
       }
     }
   }

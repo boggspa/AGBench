@@ -65,7 +65,6 @@ export interface BridgeActionAckResult {
    * the daemon-side `BridgeActionAck` ignores it. */
   scope?: 'once' | 'session'
   message?: string
-  data?: Record<string, unknown>
 }
 
 export interface BridgePrepareStartTurnAckResult {
@@ -265,8 +264,7 @@ export class BridgeActionRouter {
     return {
       accepted: true,
       scope: 'once',
-      message: dispatch.message,
-      data: dispatch.data
+      message: dispatch.message
     }
   }
 
@@ -286,8 +284,6 @@ export class BridgeActionRouter {
         return this.executor.executeCancelRun(payload)
       case 'registerApnsToken':
         return this.executor.executeRegisterApnsToken(payload)
-      case 'subscribe-run-events':
-        return this.executor.executeSubscribeRunEvents(payload)
       case 'unknown':
         // Should never reach here — `handleActionAck` denies `unknown`
         // before dispatch. Defensive fallthrough.

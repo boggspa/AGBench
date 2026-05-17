@@ -80,10 +80,7 @@ export function makeBridgeRunEventSink(options: BridgeRunEventSinkOptions): RunE
       // broadcast to subscribing iOS pairs only. Absent threadId
       // → daemon falls back to broadcast-all.
       const threadId = extractThreadId(event.payload)
-      const runId = extractRunId(event.payload)
-      const sequence = extractSequence(event.payload)
       const wireEvent: Record<string, unknown> = {
-        kind: 'run-event',
         channel: event.channel,
         provider: event.provider,
         payload: event.payload,
@@ -91,12 +88,6 @@ export function makeBridgeRunEventSink(options: BridgeRunEventSinkOptions): RunE
       }
       if (threadId !== null) {
         wireEvent.threadId = threadId
-      }
-      if (runId !== null) {
-        wireEvent.runId = runId
-      }
-      if (sequence !== null) {
-        wireEvent.seq = sequence
       }
       try {
         notifier.notify(NOTIFICATION_METHOD, wireEvent)
@@ -144,40 +135,6 @@ function extractThreadId(payload: unknown): string | null {
     }
     if (typeof inner.threadId === 'string' && inner.threadId.length > 0) {
       return inner.threadId
-    }
-  }
-  return null
-}
-
-function extractRunId(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null
-  const record = payload as Record<string, unknown>
-  for (const key of ['appRunId', 'runId']) {
-    const value = record[key]
-    if (typeof value === 'string' && value.length > 0) return value
-  }
-  if (typeof record.data === 'object' && record.data !== null) {
-    const inner = record.data as Record<string, unknown>
-    for (const key of ['appRunId', 'runId']) {
-      const value = inner[key]
-      if (typeof value === 'string' && value.length > 0) return value
-    }
-  }
-  return null
-}
-
-function extractSequence(payload: unknown): number | null {
-  if (!payload || typeof payload !== 'object') return null
-  const record = payload as Record<string, unknown>
-  for (const key of ['seq', 'sequence']) {
-    const value = record[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
-  }
-  if (typeof record.data === 'object' && record.data !== null) {
-    const inner = record.data as Record<string, unknown>
-    for (const key of ['seq', 'sequence']) {
-      const value = inner[key]
-      if (typeof value === 'number' && Number.isFinite(value)) return Math.floor(value)
     }
   }
   return null
