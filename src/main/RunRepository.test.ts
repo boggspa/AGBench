@@ -77,6 +77,36 @@ describe('RunRepository', () => {
     }
   })
 
+  it('reads run events after the last seen sequence', () => {
+    const repository = new RunRepository({
+      providerLabel: (provider) => provider,
+      emitRunQueueChanged: vi.fn(),
+      emitRunEventsChanged: vi.fn()
+    })
+    const getEvents = vi.spyOn(AppStore, 'getRunEvents').mockReturnValue([
+      {
+        schemaVersion: 1,
+        id: 'event-3',
+        sequence: 3,
+        runId: 'run-1',
+        provider: 'codex',
+        kind: 'lifecycle',
+        phase: 'control',
+        source: 'main',
+        timestamp: '2026-05-08T00:00:00.000Z'
+      }
+    ])
+
+    try {
+      const events = repository.eventsForRunSinceSequence('run-1', 2)
+
+      expect(getEvents).toHaveBeenCalledWith({ runId: 'run-1', fromSequence: 3 })
+      expect(events.map((event) => event.sequence)).toEqual([3])
+    } finally {
+      getEvents.mockRestore()
+    }
+  })
+
   it('leases queued jobs by moving them to starting', () => {
     const emitRunQueueChanged = vi.fn()
     const repository = new RunRepository({

@@ -108,6 +108,11 @@ export class RunRepository {
     return AppStore.getRunEvents(filter)
   }
 
+  eventsForRunSinceSequence(runId: string, sequence: number): RunEventRecord[] {
+    const fromSequence = Number.isFinite(sequence) ? Math.max(1, Math.floor(sequence) + 1) : 1
+    return this.getRunEvents({ runId, fromSequence })
+  }
+
   getRunEventReplay(runId: string): RunEventReplay {
     return AppStore.getRunEventReplay(runId)
   }
