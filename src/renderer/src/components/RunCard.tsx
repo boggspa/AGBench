@@ -59,12 +59,10 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
   const status = getRunStatus(run)
   const duration = formatDuration(run.startedAt, run.endedAt)
   const inspect = (): void => {
-    if (onInspect && run.runId) {
-      onInspect(run.runId)
-      return
-    }
-    // Fallback (no Run mode wired): keep the K1A stub for debugging.
-    console.debug('run-inspect-stub', run.runId)
+    // K1B+ always provides `onInspect`. Silent no-op fallback protects
+    // against any future caller that mounts RunCard without wiring it
+    // — a no-op button is a fixable bug, not a silent data issue.
+    if (onInspect && run.runId) onInspect(run.runId)
   }
 
   return (
