@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
 import { selectRecentChats } from '../lib/recentChatsList';
+import { ActiveRunsSection } from './ActiveRunsSection';
 
 const ageTickListeners = new Set<() => void>();
 if (typeof window !== 'undefined') {
@@ -781,6 +782,13 @@ export function Sidebar({
               </div>
             </div>
           )}
+
+          <ActiveRunsSection
+            chats={chats}
+            currentChat={currentChat}
+            runningChatIds={runningChatIds}
+            onSelectChat={onSelectChat}
+          />
 
           <div className="sidebar-workspace-scroll">
             <div className="sidebar-section-header">

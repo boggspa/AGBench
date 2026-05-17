@@ -17,6 +17,7 @@ import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
+import { RunCard } from './components/RunCard'
 import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { SubThreadDelegationCard, isSubThreadDelegationMessage } from './components/SubThreadDelegationCard'
@@ -3217,6 +3218,27 @@ const TranscriptPanel = memo(function TranscriptPanel({
 }: TranscriptPanelProps) {
   const visibleMessages = isWelcomeChat ? [] : messages
   const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
+  const runBoundaryByMessageId = useMemo(() => {
+    const runs = currentChat?.runs || []
+    const runById = new Map<string, ChatRun>()
+    const promptRunByMessageId = new Map<string, ChatRun>()
+    for (const run of runs) {
+      if (run.runId) runById.set(run.runId, run)
+      if (run.promptMessageId) promptRunByMessageId.set(run.promptMessageId, run)
+    }
+
+    const boundaries = new Map<string, ChatRun>()
+    let previousRunId: string | null = null
+    for (const message of visibleMessages) {
+      const run = (message.runId ? runById.get(message.runId) : undefined) || promptRunByMessageId.get(message.id)
+      if (!run?.runId) continue
+      if (run.runId !== previousRunId) {
+        boundaries.set(message.id, run)
+      }
+      previousRunId = run.runId
+    }
+    return boundaries
+  }, [currentChat?.runs, visibleMessages])
   // Per-message expansion state for long user-message bubbles. Keyed by
   // message.id so toggling one brief does not collapse others. Default for
   // every long message is collapsed — see UserMessageCollapse for thresholds.
@@ -3239,23 +3261,29 @@ const TranscriptPanel = memo(function TranscriptPanel({
         {visibleMessages.map((msg) => {
           const isDelegationCard = isSubThreadDelegationMessage(msg)
           const isReturnCard = isSubThreadReturnMessage(msg)
-          return msg.role === 'tool' ? (
-            <ActivityStack
-              key={msg.id}
-              activities={msg.toolActivities || []}
-              workspacePath={currentWorkspacePath}
-              provider={getChatProvider(currentChat)}
-              chatId={currentChat?.appChatId}
-              runId={msg.runId}
-              chat={currentChat || undefined}
-            />
-          ) : (
-            <div
-              key={msg.id}
-              className={`message-group ${
-                isReturnCard ? 'subthread-return-message' : ''
-              } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
-            >
+          const boundaryRun = runBoundaryByMessageId.get(msg.id)
+          return (
+            <div key={`message-block-${msg.id}`} className="transcript-message-block">
+              {boundaryRun && (
+                <RunCard run={boundaryRun} fallbackProvider={getChatProvider(currentChat)} />
+              )}
+              {msg.role === 'tool' ? (
+                <ActivityStack
+                  key={msg.id}
+                  activities={msg.toolActivities || []}
+                  workspacePath={currentWorkspacePath}
+                  provider={getChatProvider(currentChat)}
+                  chatId={currentChat?.appChatId}
+                  runId={msg.runId || boundaryRun?.runId}
+                  chat={currentChat || undefined}
+                />
+              ) : (
+                <div
+                  key={msg.id}
+                  className={`message-group ${
+                    isReturnCard ? 'subthread-return-message' : ''
+                  } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
+                >
               {isDelegationCard ? (
                 <SubThreadDelegationCard
                   message={msg}
@@ -3332,6 +3360,8 @@ const TranscriptPanel = memo(function TranscriptPanel({
                       </button>
                     ))}
                   </div>
+                </div>
+              )}
                 </div>
               )}
             </div>
