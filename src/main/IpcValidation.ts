@@ -32,6 +32,8 @@ const RUN_QUEUE_STATUSES = new Set(['queued', 'starting', 'active', 'paused', 'c
 const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-settings': [],
   'update-settings': ['settingsPatch'],
+  'upsert-agentic-workspace-grant': ['provider', 'workspacePath', 'string'],
+  'remove-agentic-workspace-grant': ['provider', 'workspacePath', 'string'],
   'get-workspaces': [],
   'add-or-update-workspace': ['workspacePath', 'optionalObject'],
   'remove-workspace': ['string'],
@@ -116,7 +118,15 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'stop-pty': ['optionalString'],
   'pty-write': ['string', 'optionalString'],
   'pty-resize': ['number', 'number', 'optionalString'],
-  'bridge-finalize-pairing': ['nonEmptyString', 'boolean']
+  'bridge-finalize-pairing': ['nonEmptyString', 'boolean'],
+  // Phase E1: APNs production wiring — Settings panel uses these to configure
+  // the iOS bridge push gateway. All handlers live in main; safeStorage handles
+  // .p8 encryption at-rest; renderer never sees the decrypted PEM.
+  'get-apns-config': [],
+  'select-apns-key-file': [],
+  'set-apns-config': ['object'],
+  'clear-apns-config': [],
+  'test-apns-push': []
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

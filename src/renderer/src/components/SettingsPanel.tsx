@@ -34,6 +34,7 @@ import {
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel';
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel';
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel';
+import { ApnsConfigPanel } from './ApnsConfigPanel';
 import { UpdateStatusPane } from './UpdateStatusPane';
 
 interface SettingsPanelProps {
@@ -1070,7 +1071,14 @@ export function SettingsPanel({
       {activeTab === 'approval-ledger' && <ApprovalLedgerPanel />}
 
       {/* ── Bridge Networking (Phase E3) ─────────────────────────────── */}
-      {activeTab === 'bridge-networking' && <BridgeNetworkingPanel />}
+      {activeTab === 'bridge-networking' && (
+        <>
+          <BridgeNetworkingPanel />
+          {/* Phase E1: APNs production wiring — sits alongside bridge networking
+              because APNs is the off-LAN wake path for paired iPhones. */}
+          <ApnsConfigPanel />
+        </>
+      )}
 
       </div>{/* end settings-panel-content */}
     </div>

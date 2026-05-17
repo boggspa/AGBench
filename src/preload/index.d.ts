@@ -1,4 +1,4 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 
@@ -263,8 +263,48 @@ declare global {
       bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) => Promise<unknown>
       onBridgePairingResponseReceived: (callback: (params: unknown) => void) => () => void
 
+      // Phase E1: APNs config surface for the Settings panel. The
+      // `getApnsConfig` response NEVER includes decrypted key material
+      // — main holds the cleartext via safeStorage and only sends
+      // redacted status (configured flag, keyId, teamId, bundleId,
+      // configuredAt, last test result, encryption availability,
+      // paired-device count) to the renderer.
+      getApnsConfig: () => Promise<{
+        configured: boolean
+        keyId?: string
+        teamId?: string
+        bundleId?: string
+        defaultBundleId: string
+        configuredAt?: string
+        lastTestResult?: {
+          at: string
+          delivered: number
+          failed: number
+          error?: string
+        }
+        encryptionAvailable: boolean
+        registeredDeviceCount: number
+      }>
+      selectApnsKeyFile: () => Promise<string | null>
+      setApnsConfig: (input: {
+        authKeyPath?: string
+        keyId?: string
+        teamId?: string
+        bundleId?: string
+      }) => Promise<{ ok: boolean; error?: string }>
+      clearApnsConfig: () => Promise<{ ok: boolean }>
+      testApnsPush: () => Promise<{
+        ok: boolean
+        at?: string
+        delivered?: number
+        failed?: number
+        error?: string
+      }>
+
       getSettings: () => Promise<AppSettings>
       updateSettings: (partial: Partial<AppSettings>) => Promise<void>
+      upsertAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: AgenticServiceId) => Promise<AppSettings>
+      removeAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: AgenticServiceId) => Promise<AppSettings>
       getRuntimeProfiles: (provider?: ProviderId) => Promise<RuntimeProfile[]>
       saveRuntimeProfile: (profile: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>) => Promise<RuntimeProfile>
       deleteRuntimeProfile: (id: string) => Promise<void>

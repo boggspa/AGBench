@@ -371,6 +371,42 @@ export interface AppSettings {
     };
     mainAuthorityMs: number;
   };
+  /** Phase E1 (iOS bridge gap #1) — APNs production credentials for
+   * wake-on-approval push delivery to paired iOS devices. The .p8
+   * auth-key content is encrypted via Electron `safeStorage` before
+   * persistence; everything else is plain strings. When all four
+   * credential fields are populated AND the encrypted key decrypts,
+   * `createBridgeApnsPusher` returns a real `Http2ApnsPusher` instead
+   * of the default no-op. */
+  apnsConfig?: {
+    /** base64 ciphertext of the .p8 PEM bytes, encrypted via
+     * `safeStorage.encryptString`. Set to undefined when cleared. */
+    encryptedAuthKey?: string;
+    /** Apple Developer "Key ID" (10 chars, from Keys > APNs). */
+    keyId?: string;
+    /** Apple Developer "Team ID" (10 chars, from Membership). */
+    teamId?: string;
+    /** iOS companion app bundle id. Defaults to
+     * `com.example.AGBench.ios` (the value the iOS companion
+     * project ships with). Surfaced as a field so future companion
+     * builds with a different bundle id don't require code changes. */
+    bundleId?: string;
+    /** ISO timestamp of the most recent successful save. */
+    configuredAt?: string;
+    /** Snapshot of the most recent test-push round-trip so the
+     * Settings UI can show "delivered 1/1" or "failed: reason" without
+     * keeping the result in renderer state. */
+    lastTestResult?: {
+      at: string;
+      delivered: number;
+      failed: number;
+      error?: string;
+    };
+    /** Caches `safeStorage.isEncryptionAvailable()` at save-time so the
+     * UI can warn if the user previously saved a key on a Mac with
+     * encryption but is now reading on one without (e.g. fresh login). */
+    encryptionAvailable?: boolean;
+  };
 }
 
 export type ProductCrashSource =

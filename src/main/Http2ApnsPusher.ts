@@ -52,8 +52,19 @@ import type {
 export interface Http2ApnsPusherConfig {
   /** Filesystem path to the .p8 key downloaded from Apple Developer.
    * Read at construction; the contents are cached in memory + the
-   * file is not read again. */
-  authKeyPath: string
+   * file is not read again.
+   *
+   * Phase E1 (gap #1): now optional. The Settings-UI path persists the
+   * .p8 PEM content via `safeStorage`, decrypts it on boot, and passes
+   * the PEM string directly via `authKeyPem` to avoid round-tripping
+   * the secret through the filesystem on each app launch. Exactly ONE
+   * of `authKeyPath` / `authKeyPem` must be provided. */
+  authKeyPath?: string
+  /** PEM-encoded PKCS8 .p8 key content. Alternative to `authKeyPath`
+   * for callers that already have the key in memory (e.g. decrypted
+   * from Electron `safeStorage`). Must start with `-----BEGIN PRIVATE
+   * KEY-----`. */
+  authKeyPem?: string
   /** 10-char Key ID from Apple Developer Keys page. */
   keyId: string
   /** 10-char Team ID from Apple Developer Membership page. */
@@ -106,9 +117,25 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
   private sessions: Partial<Record<BridgeApnsEnv, CachedSession>> = {}
 
   constructor(config: Http2ApnsPusherConfig) {
-    this.authKey = readFileSync(config.authKeyPath, 'utf-8')
+    // Phase E1: accept either an in-memory PEM (`authKeyPem`) or a
+    // filesystem path (`authKeyPath`). Settings-UI path uses the
+    // former (decrypted from safeStorage); env-var path uses the
+    // latter. Exactly one must be provided; we trust the caller's
+    // intent if both happen to be set (PEM wins, since it's already
+    // been validated through the secure-storage round-trip).
+    if (config.authKeyPem && config.authKeyPem.trim()) {
+      this.authKey = config.authKeyPem
+    } else if (config.authKeyPath) {
+      this.authKey = readFileSync(config.authKeyPath, 'utf-8')
+    } else {
+      throw new Error('Http2ApnsPusher: must provide either authKeyPem or authKeyPath')
+    }
     if (!this.authKey.includes('BEGIN PRIVATE KEY')) {
-      throw new Error(`Http2ApnsPusher: ${config.authKeyPath} does not look like a PEM-encoded PKCS8 private key (.p8)`)
+      throw new Error(
+        config.authKeyPath
+          ? `Http2ApnsPusher: ${config.authKeyPath} does not look like a PEM-encoded PKCS8 private key (.p8)`
+          : 'Http2ApnsPusher: provided authKeyPem does not look like a PEM-encoded PKCS8 private key (.p8)'
+      )
     }
     this.keyId = config.keyId
     this.teamId = config.teamId

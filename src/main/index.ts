@@ -2797,6 +2797,83 @@ function getStoredKimiApiKey(): string | null {
   return decryptApiKey(AppStore.getSettings().kimiApiKey)
 }
 
+/* ============================================================
+ * Phase E1 (iOS bridge gap #1) — APNs Settings-UI persistence
+ *
+ * Encrypted .p8 auth-key storage via Electron `safeStorage`. The
+ * Settings panel lets the user pick a .p8 file from Apple Developer;
+ * we read its contents, encrypt with the OS keychain, and store as
+ * base64 in `AppSettings.apnsConfig.encryptedAuthKey`. On boot (and
+ * on every settings update) `buildBridgeApnsPusherFromSettings`
+ * decrypts and constructs the real Http2ApnsPusher.
+ * ============================================================ */
+
+const DEFAULT_APNS_BUNDLE_ID = 'com.example.AGBench.ios'
+
+function decryptApnsAuthKey(): string | null {
+  const config = AppStore.getSettings().apnsConfig
+  if (!config?.encryptedAuthKey) return null
+  if (!safeStorage.isEncryptionAvailable()) return null
+  try {
+    const pem = safeStorage.decryptString(Buffer.from(config.encryptedAuthKey, 'base64'))
+    return pem && pem.includes('BEGIN PRIVATE KEY') ? pem : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Build the right BridgeApnsPusher from current settings. Resolution
+ * priority (high → low):
+ *   1. AppSettings.apnsConfig (Settings UI) — highest priority because
+ *      the user explicitly configured it via the in-app picker. The
+ *      .p8 PEM is decrypted from safeStorage and passed in-memory.
+ *   2. AGBENCH_APNS_* env vars — fallback for headless / scripted
+ *      setups (CI, dev shells).
+ *   3. No credentials → NoopApnsPusher logs intent + returns
+ *      `delivered: false`.
+ */
+function buildBridgeApnsPusherFromSettings(): BridgeApnsPusher {
+  const config = AppStore.getSettings().apnsConfig
+  const log = (line: string) => {
+    // eslint-disable-next-line no-console
+    console.log(line)
+  }
+  if (config?.encryptedAuthKey && config.keyId && config.teamId) {
+    const pem = decryptApnsAuthKey()
+    if (pem) {
+      return createBridgeApnsPusher({
+        log,
+        credentials: {
+          authKeyPem: pem,
+          keyId: config.keyId,
+          teamId: config.teamId,
+          bundleId: config.bundleId || DEFAULT_APNS_BUNDLE_ID
+        }
+      })
+    }
+    log('[BridgeApnsPusher] apnsConfig is set but the encrypted auth-key failed to decrypt; falling back to env-var resolution.')
+  }
+  return createBridgeApnsPusher({ log })
+}
+
+/**
+ * Re-instantiate the module-scope BridgeApnsPusher after settings
+ * changed. Closes the prior pusher's HTTP/2 sessions cleanly so
+ * subsequent pushes use the fresh credentials. ApprovalService picks
+ * up the new pusher transparently because it accesses the ref via the
+ * `getApnsPusher: () => bridgeApnsPusherRef` getter wired at startup.
+ */
+function rebuildBridgeApnsPusherFromSettings(): void {
+  const prior = bridgeApnsPusherRef as (BridgeApnsPusher & { close?: () => void }) | null
+  try {
+    prior?.close?.()
+  } catch {
+    // Idempotent close; ignore.
+  }
+  bridgeApnsPusherRef = buildBridgeApnsPusherFromSettings()
+}
+
 function storeCodexUsageCredential(credential: CodexUsageCredential) {
   inMemoryCodexUsageCredential = credential
   const encryptionAvailable = safeStorage.isEncryptionAvailable()
@@ -9636,12 +9713,7 @@ app.whenReady().then(() => {
       console.log(line)
     }
   })
-  const bridgeApnsPusher = createBridgeApnsPusher({
-    log: (line) => {
-      // eslint-disable-next-line no-console
-      console.log(line)
-    }
-  })
+  const bridgeApnsPusher = buildBridgeApnsPusherFromSettings()
 
   // Publish to module-scope refs so top-level approval helpers can fan
   // out a wake-push via `notifyPairedDevicesOfApproval`. See the helper
@@ -10494,6 +10566,146 @@ app.whenReady().then(() => {
       child.on('close', (code) => resolve({ ok: code === 0, code }))
       child.on('error', (err) => resolve({ ok: false, error: err.message }))
     })
+  })
+
+  // Phase E1 (iOS bridge gap #1) — APNs config IPC surface for the
+  // Settings panel. `get` returns redacted status (no key material);
+  // `select-key-file` opens a file picker for the .p8; `set` persists
+  // the encrypted PEM + key/team/bundle ids and triggers re-creation
+  // of the BridgeApnsPusher so subsequent approvals fan out via APNs;
+  // `clear` wipes both the encrypted key and the metadata; `test`
+  // fires a silent push to every registered paired device and reports
+  // delivered / failed counts so the user can verify the round-trip
+  // before they trust the configuration to wake their phone for
+  // approvals.
+  ipcMain.handle('get-apns-config', async () => {
+    const config = AppStore.getSettings().apnsConfig
+    const encryptionAvailable = safeStorage.isEncryptionAvailable()
+    return {
+      configured: Boolean(config?.encryptedAuthKey && config?.keyId && config?.teamId),
+      keyId: config?.keyId,
+      teamId: config?.teamId,
+      bundleId: config?.bundleId || DEFAULT_APNS_BUNDLE_ID,
+      defaultBundleId: DEFAULT_APNS_BUNDLE_ID,
+      configuredAt: config?.configuredAt,
+      lastTestResult: config?.lastTestResult,
+      encryptionAvailable,
+      registeredDeviceCount: bridgeApnsTokenStoreRef?.size() ?? 0
+    }
+  })
+
+  ipcMain.handle('select-apns-key-file', async () => {
+    if (!mainWindow) return null
+    const result = await dialog.showOpenDialog(mainWindow, {
+      title: 'Select Apple APNs auth key (.p8)',
+      properties: ['openFile'],
+      filters: [{ name: 'APNs Auth Key', extensions: ['p8', 'pem', 'key'] }]
+    })
+    if (result.canceled || result.filePaths.length === 0) return null
+    return result.filePaths[0]
+  })
+
+  ipcMain.handle('set-apns-config', async (_, input: { authKeyPath?: string; keyId?: string; teamId?: string; bundleId?: string }) => {
+    const keyId = (input?.keyId || '').trim()
+    const teamId = (input?.teamId || '').trim()
+    const bundleId = (input?.bundleId || DEFAULT_APNS_BUNDLE_ID).trim()
+    if (!keyId || !teamId) {
+      return { ok: false, error: 'keyId and teamId are required.' }
+    }
+    if (!safeStorage.isEncryptionAvailable()) {
+      return { ok: false, error: 'macOS Keychain encryption is unavailable; cannot safely store the APNs auth key.' }
+    }
+    const existingEncrypted = AppStore.getSettings().apnsConfig?.encryptedAuthKey
+    let encryptedAuthKey = existingEncrypted
+    if (input?.authKeyPath) {
+      try {
+        const pem = await fs.readFile(input.authKeyPath, 'utf-8')
+        if (!pem.includes('BEGIN PRIVATE KEY')) {
+          return { ok: false, error: 'Selected file does not look like a PEM-encoded PKCS8 private key (.p8).' }
+        }
+        encryptedAuthKey = safeStorage.encryptString(pem).toString('base64')
+      } catch (err) {
+        return { ok: false, error: `Failed to read .p8 key: ${err instanceof Error ? err.message : String(err)}` }
+      }
+    }
+    if (!encryptedAuthKey) {
+      return { ok: false, error: 'No APNs auth key on file. Please select a .p8 to encrypt.' }
+    }
+    AppStore.updateSettings({
+      apnsConfig: {
+        encryptedAuthKey,
+        keyId,
+        teamId,
+        bundleId,
+        configuredAt: new Date().toISOString(),
+        encryptionAvailable: true
+      }
+    })
+    rebuildBridgeApnsPusherFromSettings()
+    return { ok: true }
+  })
+
+  ipcMain.handle('clear-apns-config', async () => {
+    AppStore.updateSettings({ apnsConfig: undefined as any })
+    rebuildBridgeApnsPusherFromSettings()
+    return { ok: true }
+  })
+
+  ipcMain.handle('test-apns-push', async () => {
+    const pusher = bridgeApnsPusherRef
+    const store = bridgeApnsTokenStoreRef
+    if (!pusher || !store) {
+      return { ok: false, error: 'APNs pusher or token store not initialised yet.' }
+    }
+    const entries = store.list()
+    if (entries.length === 0) {
+      const result = { at: new Date().toISOString(), delivered: 0, failed: 0, error: 'No paired iOS devices have registered an APNs device token yet.' }
+      const current = AppStore.getSettings().apnsConfig
+      if (current) {
+        AppStore.updateSettings({ apnsConfig: { ...current, lastTestResult: result } })
+      }
+      return { ok: false, ...result }
+    }
+    const pusherTokenAware = pusher as unknown as {
+      pushSilentToToken?: (deviceTokenHex: string, env: 'production' | 'sandbox') => Promise<{ delivered: boolean; apnsId: string; reason?: string }>
+    }
+    let delivered = 0
+    let failed = 0
+    const errors: string[] = []
+    if (typeof pusherTokenAware.pushSilentToToken !== 'function') {
+      // Noop pusher path — surface as a clear message rather than 0/0
+      const result = { at: new Date().toISOString(), delivered: 0, failed: 0, error: 'APNs not configured (NoopApnsPusher). Save a .p8 + keyId + teamId first.' }
+      const current = AppStore.getSettings().apnsConfig
+      if (current) {
+        AppStore.updateSettings({ apnsConfig: { ...current, lastTestResult: result } })
+      }
+      return { ok: false, ...result }
+    }
+    for (const entry of entries) {
+      try {
+        const result = await pusherTokenAware.pushSilentToToken(entry.deviceToken, entry.env)
+        if (result.delivered) {
+          delivered++
+        } else {
+          failed++
+          if (result.reason) errors.push(`${entry.pairID}: ${result.reason}`)
+        }
+      } catch (err) {
+        failed++
+        errors.push(`${entry.pairID}: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    }
+    const summary = {
+      at: new Date().toISOString(),
+      delivered,
+      failed,
+      error: errors.length ? errors.join('; ') : undefined
+    }
+    const current = AppStore.getSettings().apnsConfig
+    if (current) {
+      AppStore.updateSettings({ apnsConfig: { ...current, lastTestResult: summary } })
+    }
+    return { ok: failed === 0 || delivered > 0, ...summary }
   })
 
   ipcMain.handle('get-kimi-auth-status', async () => {

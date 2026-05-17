@@ -218,4 +218,97 @@ describe('createBridgeApnsPusher factory', () => {
     const silentResult = await pusher.pushSilent('p')
     expect(silentResult.delivered).toBe(false)
   })
+
+  // Phase E1: Settings-UI path injects an already-decrypted PEM string
+  // (from safeStorage) instead of a file path. The factory should accept
+  // the in-memory credential without touching disk.
+  it('returns Http2ApnsPusher when authKeyPem is provided in-memory', async () => {
+    const { generateKeyPairSync } = await import('crypto')
+    const { privateKey } = generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' }
+    })
+    const log = vi.fn()
+    const pusher = createBridgeApnsPusher({
+      log,
+      credentials: {
+        authKeyPem: privateKey,
+        keyId: 'KEYID00000',
+        teamId: 'TEAM00ABCD',
+        bundleId: 'com.example.app'
+      }
+    })
+    expect(pusher).not.toBeInstanceOf(NoopApnsPusher)
+    const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
+    expect(allLogs).toContain('source=pem')
+  })
+
+  it('rejects credentials when neither authKeyPath nor authKeyPem is set', () => {
+    const log = vi.fn()
+    const pusher = createBridgeApnsPusher({
+      log,
+      credentials: {
+        // Intentionally missing authKeyPath / authKeyPem.
+        keyId: 'KEYID00000',
+        teamId: 'TEAM00ABCD',
+        bundleId: 'com.example.app'
+      } as never
+    })
+    // Without a usable key, fall back to NoopApnsPusher with the
+    // standard "credentials missing" log so the user sees why the
+    // pusher is inert.
+    expect(pusher).toBeInstanceOf(NoopApnsPusher)
+    const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
+    expect(allLogs).toContain('credentials missing')
+  })
+
+  it('prefers explicit pem credentials over env-var path', async () => {
+    // If a user has both env vars (legacy) and Settings-UI credentials
+    // (new flow), the explicit `options.credentials` wins.
+    const { generateKeyPairSync } = await import('crypto')
+    const { mkdtempSync, writeFileSync, rmSync } = await import('fs')
+    const { join } = await import('path')
+    const { tmpdir } = await import('os')
+    const { privateKey: envKey } = generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' }
+    })
+    const { privateKey: optionKey } = generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' }
+    })
+    const dir = mkdtempSync(join(tmpdir(), 'apns-precedence-test-'))
+    const envPath = join(dir, 'AuthKey_Env.p8')
+    writeFileSync(envPath, envKey, 'utf-8')
+    process.env.AGBENCH_APNS_KEY_PATH = envPath
+    process.env.AGBENCH_APNS_KEY_ID = 'ENVKEY0000'
+    process.env.AGBENCH_APNS_TEAM_ID = 'ENVTEAM000'
+    process.env.AGBENCH_APNS_BUNDLE_ID = 'com.env.test'
+    try {
+      const log = vi.fn()
+      const pusher = createBridgeApnsPusher({
+        log,
+        credentials: {
+          authKeyPem: optionKey,
+          keyId: 'OPTKEY0000',
+          teamId: 'OPTTEAM000',
+          bundleId: 'com.opt.test'
+        }
+      })
+      expect(pusher).not.toBeInstanceOf(NoopApnsPusher)
+      const allLogs = log.mock.calls.map((c) => c[0] as string).join('\n')
+      // The pusher should log the option-provided keyId, not the env one.
+      expect(allLogs).toContain('keyId=OPTKEY0000')
+      expect(allLogs).not.toContain('keyId=ENVKEY0000')
+    } finally {
+      delete process.env.AGBENCH_APNS_KEY_PATH
+      delete process.env.AGBENCH_APNS_KEY_ID
+      delete process.env.AGBENCH_APNS_TEAM_ID
+      delete process.env.AGBENCH_APNS_BUNDLE_ID
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
 })

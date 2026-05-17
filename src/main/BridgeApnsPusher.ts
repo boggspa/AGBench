@@ -116,13 +116,21 @@ export interface BridgeApnsPusherOptions {
   /** Set true (or env: `AGBENCH_BRIDGE_APNS_DRY_RUN=1`) to log only. */
   dryRun?: boolean
   log?: (line: string) => void
-  /** APNs credentials. When all four fields are present, the factory
-   * returns a `Http2ApnsPusher` connecting to Apple. When any field
-   * is missing, the factory falls back to `NoopApnsPusher` and logs.
+  /** APNs credentials. When the required fields are present, the
+   * factory returns a `Http2ApnsPusher` connecting to Apple. When
+   * any required field is missing, the factory falls back to
+   * `NoopApnsPusher` and logs.
+   *
+   * Phase E1 (gap #1): callers can now pass `authKeyPem` (the .p8
+   * content decrypted from Settings safeStorage) as an alternative
+   * to `authKeyPath` (the file-on-disk env-var fallback). Exactly
+   * one of the two must be set.
+   *
    * Env-var fallback paths: AGBENCH_APNS_KEY_PATH, AGBENCH_APNS_KEY_ID,
    * AGBENCH_APNS_TEAM_ID, AGBENCH_APNS_BUNDLE_ID. */
   credentials?: {
-    authKeyPath: string
+    authKeyPath?: string
+    authKeyPem?: string
     keyId: string
     teamId: string
     bundleId: string
@@ -175,6 +183,7 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
     // built-in — load cost is negligible — so static import is fine.
     const pusher = new Http2ApnsPusher({
       authKeyPath: creds.authKeyPath,
+      authKeyPem: creds.authKeyPem,
       keyId: creds.keyId,
       teamId: creds.teamId,
       bundleId: creds.bundleId,
@@ -182,7 +191,7 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
       log
     })
     log(
-      `[BridgeApnsPusher] using Http2ApnsPusher (keyId=${creds.keyId}, teamId=${creds.teamId}, bundleId=${creds.bundleId})`
+      `[BridgeApnsPusher] using Http2ApnsPusher (keyId=${creds.keyId}, teamId=${creds.teamId}, bundleId=${creds.bundleId}, source=${creds.authKeyPem ? 'pem' : 'path'})`
     )
     return pusher
   } catch (err) {
@@ -194,7 +203,17 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
 }
 
 function resolveCredentials(options: BridgeApnsPusherOptions): BridgeApnsPusherOptions['credentials'] | null {
-  if (options.credentials) return options.credentials
+  if (options.credentials) {
+    const c = options.credentials
+    if ((c.authKeyPath || c.authKeyPem) && c.keyId && c.teamId && c.bundleId) {
+      return c
+    }
+    return null
+  }
+  // Env-var fallback (file-on-disk path only). The settings-UI flow
+  // injects credentials directly via `options.credentials` with a
+  // decrypted PEM string; we never read sensitive material from env
+  // when settings has populated values.
   const authKeyPath = process.env.AGBENCH_APNS_KEY_PATH
   const keyId = process.env.AGBENCH_APNS_KEY_ID
   const teamId = process.env.AGBENCH_APNS_TEAM_ID

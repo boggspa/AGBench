@@ -133,6 +133,21 @@ const api = {
   },
   bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) =>
     ipcRenderer.invoke('bridge-finalize-pairing', sessionID, userConfirmed),
+
+  // Phase E1: APNs production wiring. The renderer Settings panel uses
+  // these to configure the iOS bridge push gateway. The decrypted .p8
+  // PEM never crosses this boundary; only the encrypted blob lives in
+  // settings, and the IPC handlers in main decrypt via safeStorage.
+  getApnsConfig: () => ipcRenderer.invoke('get-apns-config'),
+  selectApnsKeyFile: () => ipcRenderer.invoke('select-apns-key-file'),
+  setApnsConfig: (input: {
+    authKeyPath?: string
+    keyId?: string
+    teamId?: string
+    bundleId?: string
+  }) => ipcRenderer.invoke('set-apns-config', input),
+  clearApnsConfig: () => ipcRenderer.invoke('clear-apns-config'),
+  testApnsPush: () => ipcRenderer.invoke('test-apns-push'),
   onBridgePairingResponseReceived: (callback: (params: unknown) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, params: unknown) => callback(params)
     ipcRenderer.on('bridge-pairing-response-received', listener)
@@ -142,6 +157,10 @@ const api = {
   // Store APIs
   getSettings: () => ipcRenderer.invoke('get-settings'),
   updateSettings: (partial: any) => ipcRenderer.invoke('update-settings', partial),
+  upsertAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: string) =>
+    ipcRenderer.invoke('upsert-agentic-workspace-grant', provider, workspacePath, service),
+  removeAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: string) =>
+    ipcRenderer.invoke('remove-agentic-workspace-grant', provider, workspacePath, service),
   getRuntimeProfiles: (provider?: ProviderId) => ipcRenderer.invoke('get-runtime-profiles', provider),
   saveRuntimeProfile: (profile: any) => ipcRenderer.invoke('save-runtime-profile', profile),
   deleteRuntimeProfile: (id: string) => ipcRenderer.invoke('delete-runtime-profile', id),

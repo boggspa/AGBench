@@ -37,6 +37,44 @@ describe('Http2ApnsPusher — JWT generation', () => {
     }
   })
 
+  // Phase E1: Settings-UI path injects decrypted PEM in-memory rather
+  // than a file path. Pin the constructor accepts it and validates the
+  // PEM header same as the path branch.
+  it('accepts authKeyPem in-memory and never touches disk', () => {
+    const { privateKey } = generateKeyPairSync('ec', {
+      namedCurve: 'P-256',
+      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+      publicKeyEncoding: { type: 'spki', format: 'pem' }
+    })
+    const pusher = new Http2ApnsPusher({
+      authKeyPem: privateKey,
+      keyId: 'TESTKEYID0',
+      teamId: 'TESTTEAM00',
+      bundleId: 'com.example.app'
+    })
+    expect(pusher).toBeInstanceOf(Http2ApnsPusher)
+  })
+
+  it('rejects authKeyPem that does not look like a PKCS8 PEM', () => {
+    expect(() => new Http2ApnsPusher({
+      authKeyPem: '-----BEGIN GARBAGE-----\nblob\n-----END GARBAGE-----\n',
+      keyId: 'TESTKEYID0',
+      teamId: 'TESTTEAM00',
+      bundleId: 'com.example.app'
+    })).toThrow(/PEM-encoded PKCS8/)
+  })
+
+  it('throws when neither authKeyPem nor authKeyPath is provided', () => {
+    expect(
+      () =>
+        new Http2ApnsPusher({
+          keyId: 'TESTKEYID0',
+          teamId: 'TESTTEAM00',
+          bundleId: 'com.example.app'
+        } as never)
+    ).toThrow(/authKeyPem or authKeyPath/)
+  })
+
   it('signs a verifiable JWT with the expected header + claims', () => {
     const { dir, path, publicKeyPem } = writeTestAuthKey()
     try {
