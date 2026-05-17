@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { classifyForInspector, classifyEventsForInspector, type InspectorRow } from './RunInspectorRows'
+import { classifyForInspector, classifyEventsForInspector, type InspectorRow } from './RunEventClassifier'
 import type { RunEventRecord, RunEventKind } from '../../../main/store/types'
 
 /** Minimal RunEventRecord factory — the classifier only reads `kind`,

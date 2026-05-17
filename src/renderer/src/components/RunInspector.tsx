@@ -3,7 +3,7 @@ import type { RunEventReplay } from '../../../main/store/types'
 import {
   classifyEventsForInspector,
   type InspectorRow
-} from '../lib/RunInspectorRows'
+} from '../lib/RunEventClassifier'
 
 /**
  * RunInspector — Phase K1 Slice 1B.
