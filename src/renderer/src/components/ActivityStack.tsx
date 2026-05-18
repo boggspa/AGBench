@@ -886,10 +886,24 @@ function ActivityRow({
   const defaultCollapsed = activity.category === 'task' || activity.category === 'shell' || activity.category === 'read' || activity.category === 'search';
   const [expanded, setExpanded] = useState(!defaultCollapsed);
 
+  // Phase J3: removed the success/warning/error auto-collapse branch.
+  // Previously every tool's status transition from running → terminal
+  // fired its own setExpanded(false), shrinking the row's height by
+  // tearing the `<div className="activity-detail">` subtree out of the
+  // DOM (see `shouldRenderAsCard(...)` — returns false when collapsed).
+  //
+  // During a long-running provider turn, tools complete at different
+  // wall-clock moments (each tool_result event lands in its own React
+  // tick). So 5 tool calls produced 5 successive height-shrinks at the
+  // transcript bottom over the run's lifetime — visible as the
+  // "bouncing/jumping scrolling up" the user reported. The autoFollow
+  // rAF re-pin caught each shrink but couldn't hide the visible jiggle.
+  //
+  // The running/pending auto-EXPAND branch is preserved: when a tool
+  // starts, its row expands so the user can watch the output stream.
+  // Manual collapse via the chevron still works.
   useEffect(() => {
-    if (activity.status === 'success' || activity.status === 'warning' || activity.status === 'error') {
-      setExpanded(false)
-    } else if (activity.status === 'running' || activity.status === 'pending') {
+    if (activity.status === 'running' || activity.status === 'pending') {
       setExpanded(true)
     }
   }, [activity.status])
