@@ -14,7 +14,19 @@ import GuiGeminiCompanionCore
 @main
 struct GuiGeminiCompanionApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    @State private var appState = AppState()
+    @State private var appState: AppState
+
+    init() {
+        // CRITICAL: install the GUIGemini-flavoured BridgeProductConfiguration
+        // BEFORE any transport spins up. Without this the default
+        // CodexBridge config wins, so the iPad's QUIC ALPN is
+        // "codexbridge-live-v1" while the Mac daemon expects
+        // "guigemini-live-v1" — TLS handshake fails silently,
+        // NWConnection never reaches `.ready`, and broadcasts get
+        // delivered to zero subscribers.
+        GuiGeminiBridgeProductConfiguration.install()
+        _appState = State(initialValue: AppState())
+    }
 
     var body: some Scene {
         WindowGroup {
