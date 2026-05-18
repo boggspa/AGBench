@@ -275,6 +275,40 @@ describe('ComposerService', () => {
     expect(payload.prompt).not.toContain('```plan')
   })
 
+  it('teaches Codex about cross-provider delegate_to_subthread (Phase I2 prompt-level fix)', () => {
+    // Empirical bug: Codex CLI registered the agentbench MCP server
+    // correctly (~/Library/Logs/AGBench/bridge-subprocess.log shows
+    // 100+ codex-parented bridge spawns) but the Codex agent itself
+    // never invoked a single tool — zero tools/call entries from any
+    // codex-parented bridge. Gemini/Claude/Kimi each got a delegation
+    // runtime-note preamble in Phase I3/I4 and immediately started
+    // calling delegate_to_subthread; Codex was the only provider
+    // missing the preamble.
+    const payload = compose({ provider: 'codex' }, {})
+    expect(payload.prompt).toContain('agentbench MCP server')
+    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
+    expect(payload.prompt).toContain("provider: 'gemini'")
+    expect(payload.prompt).toContain("NEVER use Codex's built-in invoke")
+  })
+
+  it('omits the Codex delegation preamble in plan mode (read-only sessions)', () => {
+    const payload = compose({ provider: 'codex' }, { approvalMode: 'plan' })
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
+  })
+
+  it('omits the Codex delegation preamble for global-scope runs (no workspace)', () => {
+    const payload = compose(
+      { provider: 'codex', scope: 'global', workspacePath: undefined, workspaceId: undefined },
+      {}
+    )
+    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('Do the thing')
+  })
+
   it('builds Codex payloads with image paths and external grant prompt references without packing app-server input', () => {
     const payload = compose(
       { provider: 'codex' },

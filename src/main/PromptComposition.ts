@@ -317,6 +317,37 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     contextualPrompt = `${kimiDelegationPreamble}\n\n${contextualPrompt}`
   }
 
+  // (6) Phase I2 (Codex initiator): Codex workspace runs (non-global)
+  // outside plan mode get a parallel preamble pointing the agent at the
+  // agentbench MCP server that the Codex CLI registers at spawn via
+  // `-c mcp_servers.agentbench.*` (see `CodexAppServerClient.ts`).
+  //
+  // Without this note Codex agents silently never invoke the MCP tools:
+  // empirically, the bridge subprocess gets spawned by Codex CLI on
+  // every turn for capability discovery but ZERO tools/call entries
+  // appear from Codex-parented bridges in
+  // `~/Library/Logs/AGBench/bridge-subprocess.log`. Codex sees the
+  // tools in tools/list but its reasoning never selects them for
+  // cross-provider delegation tasks the way Gemini/Claude/Kimi do
+  // (those three got runtime notes in Phase I3/I4 and immediately
+  // started invoking delegate_to_subthread successfully).
+  //
+  // The fix is prompt-level only — the MCP wiring itself (Phase I2's
+  // `buildCodexAgentbenchMcpArgs` + broker socket + parentProvider
+  // stamp) was already correct, agents just needed to be told the
+  // tools exist and that built-in invoke paths can't reach other
+  // providers.
+  if (provider === 'codex' && !isGlobalRun && approvalMode !== 'plan') {
+    const codexDelegationPreamble = [
+      'AGBench runtime note: this Codex workspace run has access to the agentbench MCP server (delegate_to_subthread + filesystem helpers).',
+      'For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Kimi to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Codex\'s built-in invoke / generalist-agent path for cross-provider work, those run inside Codex\'s process and cannot reach other AGBench providers.',
+      'The tool may also surface as the plain `delegate_to_subthread` name depending on Codex CLI version; either form invokes the same AGBench MCP entrypoint.',
+      "Example: agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Audit this codebase for unused exports...', returnResult: true }).",
+      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+    ].join('\n')
+    contextualPrompt = `${codexDelegationPreamble}\n\n${contextualPrompt}`
+  }
+
   return {
     contextualPrompt,
     contextTurnsApplied,
