@@ -352,6 +352,17 @@ export interface AppSettings {
   sidebarWidth: number;
   agenticServices: AgenticServicesSettings;
   agenticWorkspaceGrants: AgenticWorkspaceGrant[];
+  /** When true (default), an agent's parent chat is automatically
+   * "nudged" with a synthetic continuation prompt after a sub-thread
+   * the agent delegated to (with `returnResultToParent: true`) finishes
+   * and its final assistant message has been back-propagated to the
+   * parent transcript. Without this, the back-propagated result just
+   * sits in the parent transcript until the user manually types
+   * something — the agent has no event to wake up on. See
+   * `src/main/AutoResumeParent.ts` for the gating logic and
+   * `maybePropagateSubThreadResult` in `src/main/index.ts` for the
+   * dispatch site. */
+  autoResumeParentOnSubThreadCompletion: boolean;
   geminiMcpBridgeEnabled: boolean;
   geminiMcpBridgeLastStatus?: GeminiMcpBridgeStatus;
   bridgeDaemonEnabled?: boolean;
@@ -773,6 +784,7 @@ export type RunEventKind =
   | 'subthread_spawned'
   | 'subthread_returned'
   | 'subthread_dispatch_failed'
+  | 'subthread_autoresume_dispatched'
   | 'diff'
   | 'final_message'
   | 'lifecycle';

@@ -154,6 +154,14 @@ export type InspectorRow =
     }
   | { kind: 'subthread_return'; subThreadId?: string; summaryText?: string; raw: RunEventRecord }
   | { kind: 'subthread_dispatch_failed'; reason?: string; raw: RunEventRecord }
+  | {
+      kind: 'subthread_autoresume'
+      /** Sub-thread whose completion triggered the auto-resume. */
+      subThreadId?: string
+      /** Continuation run id dispatched on the parent chat. */
+      continuationRunId?: string
+      raw: RunEventRecord
+    }
   | { kind: 'delegation'; raw: RunEventRecord }
   | { kind: 'reply'; length?: number; raw: RunEventRecord }
   | { kind: 'lifecycle'; raw: RunEventRecord }
@@ -291,6 +299,15 @@ export function classifyForInspector(event: RunEventRecord): InspectorRow {
       return {
         kind: 'subthread_dispatch_failed',
         reason: asString(p.reason) ?? asString(p.error) ?? event.summary,
+        raw: event
+      }
+    }
+    case 'subthread_autoresume_dispatched': {
+      const p = isRecord(event.payload) ? event.payload : {}
+      return {
+        kind: 'subthread_autoresume',
+        subThreadId: asString(p.subThreadId),
+        continuationRunId: asString(p.continuationRunId),
         raw: event
       }
     }

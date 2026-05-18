@@ -474,6 +474,12 @@ function describeRow(row: InspectorRow): { glyph: string; label: string; summary
         label: 'Delegation failed',
         summary: row.reason ?? 'dispatch error'
       }
+    case 'subthread_autoresume':
+      return {
+        glyph: '↻',
+        label: 'Auto-resume',
+        summary: row.raw.summary ?? 'parent agent continued after sub-thread completion'
+      }
     case 'delegation':
       return { glyph: '↦', label: 'Delegation', summary: row.raw.summary ?? '' }
     case 'reply':

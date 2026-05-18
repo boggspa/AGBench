@@ -187,6 +187,23 @@ describe('classifyForInspector', () => {
         expect(row.reason).toBe('archived sub-thread')
       }
     })
+
+    it('classifies subthread_autoresume_dispatched with sub-thread + continuation ids', () => {
+      const row = classifyForInspector(
+        makeEvent({
+          kind: 'subthread_autoresume_dispatched',
+          payload: {
+            subThreadId: 'sub-1',
+            continuationRunId: 'run-7'
+          }
+        })
+      )
+      expect(row.kind).toBe('subthread_autoresume')
+      if (row.kind === 'subthread_autoresume') {
+        expect(row.subThreadId).toBe('sub-1')
+        expect(row.continuationRunId).toBe('run-7')
+      }
+    })
   })
 
   it('classifies delegation as a marker row', () => {

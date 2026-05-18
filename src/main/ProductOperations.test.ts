@@ -48,6 +48,7 @@ const baseSettings: AppSettings = {
     networkAccess: 'allow'
   },
   agenticWorkspaceGrants: [],
+  autoResumeParentOnSubThreadCompletion: true,
   geminiMcpBridgeEnabled: true,
   codexSandboxFallback: 'ask_rerun',
   updateChannel: 'debug',

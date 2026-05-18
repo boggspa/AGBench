@@ -43,6 +43,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
       networkAccess: 'allow'
     },
     agenticWorkspaceGrants: [],
+    autoResumeParentOnSubThreadCompletion: true,
     geminiMcpBridgeEnabled: false,
     codexSandboxFallback: 'ask_rerun',
     updateChannel: 'stable',

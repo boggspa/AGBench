@@ -57,6 +57,11 @@ import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMess
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { resolveSubThreadRecall } from './SubThreadRecall'
 import {
+  AUTO_RESUME_CONTINUATION_KIND,
+  buildAutoResumeContinuationPrompt,
+  shouldAutoResumeParent
+} from './AutoResumeParent'
+import {
   buildClaudeAgentbenchAllowedToolNames,
   buildClaudeAgentbenchMcpConfigJson,
   buildClaudeAgentbenchMcpServers,
@@ -1347,6 +1352,187 @@ async function maybePropagateSubThreadResult(chatId: string | undefined): Promis
   } catch {
     // Window may be destroyed — ignore.
   }
+  // Auto-resume the parent agent if the user has opted in. Without
+  // this the back-propagated result above just sits in the parent
+  // transcript forever — the parent's run already finished (usually
+  // right after it called `delegate_to_subthread`) so there's no
+  // event for the agent to wake up on. The user previously had to
+  // type "ok, continue" manually; the auto-resume dispatch closes
+  // that loop.
+  //
+  // Gating lives in the pure `shouldAutoResumeParent` helper so the
+  // five preconditions are testable in isolation. If any condition
+  // fails we silently skip — the back-propagation itself already
+  // succeeded, and "skipped auto-resume" is the prior behaviour
+  // (manual nudge still works).
+  try {
+    await maybeAutoResumeParentAgent({
+      subThread: updatedSubThread,
+      parent: updatedParent
+    })
+  } catch (err) {
+    // Best-effort: a failed auto-resume must NOT undo the
+    // back-propagation. Log and move on; the user can always nudge
+    // manually.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[AutoResumeParent] dispatch attempt failed for parentChatId=${updatedParent.appChatId}:`,
+      err instanceof Error ? err.message : String(err)
+    )
+  }
+}
+
+/**
+ * Auto-resume implementation — separated from `maybePropagateSubThreadResult`
+ * so the propagation path stays linear / readable, and so the
+ * dispatch logic has a single home for the side effects (transcript
+ * append, audit event, RunCoordinator dispatch).
+ *
+ * Returns early if the gating helper says no. Otherwise:
+ *   1. Append a synthetic continuation message (user-role, since the
+ *      run-payload semantics expect a user prompt; tagged with
+ *      `metadata.kind = AUTO_RESUME_CONTINUATION_KIND` so the renderer
+ *      can later render it differently if desired).
+ *   2. Dispatch a fresh run on the parent chat via the same
+ *      RunCoordinator path that sub-thread delegation uses.
+ *   3. Emit a durable `subthread_autoresume_dispatched` run event so
+ *      the audit timeline shows the auto-resume happened.
+ *
+ * No infinite-loop risk: the continuation run is on the PARENT chat,
+ * not the sub-thread, so it doesn't re-trigger `maybePropagateSubThreadResult`
+ * (that only fires for sub-threads with `parentChatId` set + the
+ * back-prop flag). The only way to recurse is if the continuation
+ * run *itself* delegates to a new sub-thread with
+ * `returnResultToParent: true` — which is fine: each delegation is
+ * one level, and the user wanted that delegation.
+ */
+async function maybeAutoResumeParentAgent(args: {
+  subThread: ChatRecord
+  parent: ChatRecord
+}): Promise<void> {
+  const { subThread, parent } = args
+  const settings = AppStore.getSettings()
+
+  // Determine the run state of the parent chat: if there's any active
+  // RunManager session whose appChatId matches the parent, treat the
+  // parent as "currently running" and skip auto-resume. This avoids
+  // clashing with the existing run-queue / steer behaviour (the user
+  // is already doing something on the parent; let that finish first).
+  //
+  // The RunManager indexes sessions by provider, so we sweep across
+  // every provider's active sessions — a cross-provider auto-resume
+  // would still be skipped if any provider has the parent live.
+  const providers: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  const parentChatIsRunning = providers.some((p) =>
+    runManager
+      .getActiveByProvider(p)
+      .some((session) => session.appChatId === parent.appChatId)
+  )
+
+  const decision = shouldAutoResumeParent({
+    setting: settings.autoResumeParentOnSubThreadCompletion,
+    returnResultToParent: Boolean(subThread.delegationContext?.returnResultToParent),
+    parentChatExists: true, // we already loaded the parent above
+    parentChatIsRunning,
+    parentChatHasProvider: Boolean(parent.provider)
+  })
+  if (!decision) return
+
+  // Defensive: the gate has already cleared parent.provider, but
+  // TypeScript needs the explicit narrowing for the payload below.
+  if (!parent.provider) return
+
+  const sender = mainWindow?.webContents
+  if (!sender || sender.isDestroyed()) {
+    // No renderer to stream events to. RunCoordinator dispatch
+    // requires a sender; skip rather than dispatch into the void.
+    return
+  }
+  if (!runCoordinatorRef) {
+    // App still starting — propagation can fire from a recovered
+    // sub-thread before whenReady completes. Skip; the user will see
+    // the back-propagated result and can nudge manually.
+    return
+  }
+
+  const continuationPrompt = buildAutoResumeContinuationPrompt(subThread.title)
+  const continuationRunId = createFallbackRunId(parent.provider)
+  const timestamp = new Date().toISOString()
+
+  // Append a synthetic user message to the parent transcript so the
+  // run has a corresponding prompt entry (matches the shape the rest
+  // of the codebase expects: every run gets a promptMessageId on a
+  // user-role message). The `metadata.kind` tag lets the renderer
+  // distinguish this from a human-typed prompt if it cares to.
+  //
+  // We use 'user' role rather than 'system' because the run payload
+  // path treats the prompt as a user turn — using 'system' would
+  // leave the run without a user prompt and confuse the transcript
+  // diff for provider replay. The metadata tag is the structural
+  // hook; visual styling can follow later.
+  const continuationPromptMessage: ChatMessage = {
+    id: `autoresume-prompt-${parent.appChatId}-${Date.now()}`,
+    role: 'user',
+    content: continuationPrompt,
+    timestamp,
+    runId: continuationRunId,
+    metadata: {
+      kind: AUTO_RESUME_CONTINUATION_KIND,
+      subThreadId: subThread.appChatId,
+      subThreadProvider: subThread.provider,
+      subThreadTitle: subThread.title
+    }
+  }
+  const reloadedParent = AppStore.getChat(parent.appChatId) ?? parent
+  const parentWithPrompt: ChatRecord = {
+    ...reloadedParent,
+    messages: [...reloadedParent.messages, continuationPromptMessage],
+    updatedAt: Date.now()
+  }
+  AppStore.saveChat(parentWithPrompt)
+  try {
+    mainWindow?.webContents.send('chat-updated', parentWithPrompt)
+  } catch {
+    // Renderer may be detached — non-fatal.
+  }
+
+  // Audit before dispatch so the timeline shows the intent even if
+  // dispatch fails on a transient preflight error.
+  try {
+    appendDurableRunEventForRoute(
+      parent.provider,
+      { appRunId: continuationRunId, appChatId: parent.appChatId },
+      'subthread_autoresume_dispatched',
+      'control',
+      `Auto-resumed parent agent after ${subThread.provider ? providerLabel(subThread.provider) : 'sub-thread'} sub-thread completed`,
+      {
+        subThreadId: subThread.appChatId,
+        parentChatId: parent.appChatId,
+        continuationRunId,
+        subThreadTitle: subThread.title,
+        subThreadProvider: subThread.provider
+      }
+    )
+  } catch {
+    // Best-effort — audit is observability, not correctness.
+  }
+
+  // Dispatch via the same RunCoordinator that the renderer and
+  // sub-thread delegation paths use. Fire-and-forget: we don't await
+  // the run's completion (which could take minutes), we just kick it
+  // off. Errors bubble to the caller's try/catch.
+  const payload: AgentRunPayload = {
+    provider: parent.provider,
+    scope: parent.workspacePath ? 'workspace' : 'global',
+    workspace: parent.workspacePath,
+    prompt: continuationPrompt,
+    appRunId: continuationRunId,
+    appChatId: parent.appChatId,
+    approvalMode: 'default',
+    model: parent.requestedModel || 'cli-default'
+  }
+  const dispatchEvent: { sender: Electron.WebContents } = { sender }
+  await runCoordinatorRef.dispatch(payload, dispatchEvent)
 }
 
 /**
