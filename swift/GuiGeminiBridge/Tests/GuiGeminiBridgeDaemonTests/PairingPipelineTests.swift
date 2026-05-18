@@ -12,18 +12,33 @@ final class PairingPipelineTests: XCTestCase {
     }
 
     func testListenerYieldsResponseAndBuildsDesktopNotificationShape() async throws {
-        let listener = PairingChannelListener(bonjourServiceType: "_agbpipeline._tcp", port: 0)
-        try await listener.start()
-        defer {
-            Task { await listener.stop() }
-        }
-
         let coordinator = PairingCoordinator(
             deviceStore: InMemoryTrustedDeviceStore(),
             secretStore: InMemorySecretStore(),
             macDeviceID: DeviceID("mac-test-device"),
             macIdentitySigningKey: DeviceIdentitySigningKey()
         )
+        let listener = PairingChannelListener(
+            bonjourServiceType: "_agbpipeline._tcp",
+            port: 0,
+            iosFinalDecisionHandler: { sessionID, accepted, message in
+                let result = try await coordinator.recordIOSFinalDecision(
+                    pairingSessionID: sessionID,
+                    accepted: accepted,
+                    message: message
+                )
+                guard let decision = result.finalDecision else { return nil }
+                return PairingChannelListener.PairingFinalDecisionFrame(
+                    accepted: decision.accepted,
+                    message: decision.message,
+                    pairID: decision.pairID
+                )
+            }
+        )
+        try await listener.start()
+        defer {
+            Task { await listener.stop() }
+        }
         let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
         let response = try makeResponse(
             bootstrap: begin.bootstrapPayload,
@@ -58,12 +73,26 @@ final class PairingPipelineTests: XCTestCase {
         XCTAssertEqual(notification.params["controllerDisplayName"], "iPad")
         XCTAssertEqual(notification.params["confirmationCode"], result.confirmationCode)
 
-        let finalize = try await coordinator.finalizePairing(
+        await listener.sendConfirmationCode(sessionID: incoming.sessionID, code: result.confirmationCode)
+        let confirmationBytes = try await withTimeout(seconds: 3) {
+            try await Self.receiveFrame(on: connection)
+        }
+        let confirmation = try JSONSerialization.jsonObject(with: confirmationBytes) as? [String: Any]
+        XCTAssertEqual(confirmation?["macConfirmationCode"] as? String, result.confirmationCode)
+        XCTAssertEqual(confirmation?["sessionID"] as? String, incoming.sessionID)
+
+        let macDecision = try await coordinator.finalizePairing(
             pairingSessionID: incoming.sessionID,
             userConfirmed: true
         )
-        let pairID = try XCTUnwrap(finalize.trustedDevice?.pairID.rawValue)
-        await listener.sendFinalDecision(sessionID: incoming.sessionID, accepted: true, pairID: pairID)
+        XCTAssertNil(macDecision.trustedDevice)
+        XCTAssertNil(macDecision.finalDecision)
+        XCTAssertEqual(macDecision.waitingFor, "iOS")
+
+        try await sendFrame(
+            try JSONEncoder().encode(PairingChannelListener.IncomingFinalDecisionFrame(accepted: true)),
+            on: connection
+        )
         let finalFrameBytes = try await withTimeout(seconds: 3) {
             try await Self.receiveFrame(on: connection)
         }
@@ -73,7 +102,127 @@ final class PairingPipelineTests: XCTestCase {
         )
         XCTAssertEqual(finalFrame.accepted, true)
         XCTAssertNil(finalFrame.message)
-        XCTAssertEqual(finalFrame.pairID, pairID)
+        XCTAssertNotNil(finalFrame.pairID)
+    }
+
+    func testFinalizationIOSFirstWaitsThenMacAcceptCompletes() async throws {
+        let coordinator = PairingCoordinator(
+            deviceStore: InMemoryTrustedDeviceStore(),
+            secretStore: InMemorySecretStore(),
+            macDeviceID: DeviceID("mac-test-device"),
+            macIdentitySigningKey: DeviceIdentitySigningKey()
+        )
+        let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
+        let response = try makeResponse(
+            bootstrap: begin.bootstrapPayload,
+            controllerDeviceID: DeviceID("ipad-test-device"),
+            controllerDisplayName: "iPad"
+        )
+        _ = try await coordinator.confirmPairing(response: response)
+
+        let iosDecision = try await coordinator.recordIOSFinalDecision(
+            pairingSessionID: begin.pairingSessionID,
+            accepted: true,
+            message: nil
+        )
+        XCTAssertNil(iosDecision.trustedDevice)
+        XCTAssertNil(iosDecision.finalDecision)
+        XCTAssertEqual(iosDecision.waitingFor, "Mac")
+
+        let macDecision = try await coordinator.finalizePairing(
+            pairingSessionID: begin.pairingSessionID,
+            userConfirmed: true
+        )
+        let trusted = try XCTUnwrap(macDecision.trustedDevice)
+        let finalDecision = try XCTUnwrap(macDecision.finalDecision)
+        XCTAssertEqual(finalDecision.accepted, true)
+        XCTAssertNil(finalDecision.message)
+        XCTAssertEqual(finalDecision.pairID, trusted.pairID.rawValue)
+        XCTAssertNil(macDecision.waitingFor)
+    }
+
+    func testFinalizationRejectsImmediatelyWhenMacRejects() async throws {
+        let coordinator = PairingCoordinator(
+            deviceStore: InMemoryTrustedDeviceStore(),
+            secretStore: InMemorySecretStore(),
+            macDeviceID: DeviceID("mac-test-device"),
+            macIdentitySigningKey: DeviceIdentitySigningKey()
+        )
+        let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
+        let response = try makeResponse(
+            bootstrap: begin.bootstrapPayload,
+            controllerDeviceID: DeviceID("ipad-test-device"),
+            controllerDisplayName: "iPad"
+        )
+        _ = try await coordinator.confirmPairing(response: response)
+
+        let result = try await coordinator.finalizePairing(
+            pairingSessionID: begin.pairingSessionID,
+            userConfirmed: false
+        )
+        XCTAssertNil(result.trustedDevice)
+        let finalDecision = try XCTUnwrap(result.finalDecision)
+        XCTAssertEqual(finalDecision.accepted, false)
+        XCTAssertEqual(finalDecision.message, "User did not confirm matching codes")
+        XCTAssertNil(finalDecision.pairID)
+    }
+
+    func testFinalizationRejectsImmediatelyWhenIOSRejects() async throws {
+        let coordinator = PairingCoordinator(
+            deviceStore: InMemoryTrustedDeviceStore(),
+            secretStore: InMemorySecretStore(),
+            macDeviceID: DeviceID("mac-test-device"),
+            macIdentitySigningKey: DeviceIdentitySigningKey()
+        )
+        let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
+        let response = try makeResponse(
+            bootstrap: begin.bootstrapPayload,
+            controllerDeviceID: DeviceID("ipad-test-device"),
+            controllerDisplayName: "iPad"
+        )
+        _ = try await coordinator.confirmPairing(response: response)
+
+        let result = try await coordinator.recordIOSFinalDecision(
+            pairingSessionID: begin.pairingSessionID,
+            accepted: false,
+            message: "Codes do not match on iPad"
+        )
+        XCTAssertNil(result.trustedDevice)
+        let finalDecision = try XCTUnwrap(result.finalDecision)
+        XCTAssertEqual(finalDecision.accepted, false)
+        XCTAssertEqual(finalDecision.message, "Codes do not match on iPad")
+        XCTAssertNil(finalDecision.pairID)
+    }
+
+    func testFinalizationSecondRejectAfterFirstRejectFindsNoPendingSession() async throws {
+        let coordinator = PairingCoordinator(
+            deviceStore: InMemoryTrustedDeviceStore(),
+            secretStore: InMemorySecretStore(),
+            macDeviceID: DeviceID("mac-test-device"),
+            macIdentitySigningKey: DeviceIdentitySigningKey()
+        )
+        let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
+        let response = try makeResponse(
+            bootstrap: begin.bootstrapPayload,
+            controllerDeviceID: DeviceID("ipad-test-device"),
+            controllerDisplayName: "iPad"
+        )
+        _ = try await coordinator.confirmPairing(response: response)
+        _ = try await coordinator.recordIOSFinalDecision(
+            pairingSessionID: begin.pairingSessionID,
+            accepted: false,
+            message: "Codes do not match on iPad"
+        )
+
+        do {
+            _ = try await coordinator.finalizePairing(
+                pairingSessionID: begin.pairingSessionID,
+                userConfirmed: false
+            )
+            XCTFail("expected sessionNotFound after iOS rejection removed the pending session")
+        } catch let error as PairingCoordinator.PairingError {
+            XCTAssertEqual(error, .sessionNotFound(begin.pairingSessionID))
+        }
     }
 
     private func makeResponse(

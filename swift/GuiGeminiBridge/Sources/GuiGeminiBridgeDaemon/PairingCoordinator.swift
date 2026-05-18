@@ -20,15 +20,19 @@ import BridgeCryptoPairing
 ///     deriveKeys(macPriv, controllerPub) + sixDigitConfirmationCode
 ///        │  caller surfaces code to BOTH ends; user confirms match
 ///        ▼
-///     finalizePairing(sid, userConfirmed: true)
-///        │  upsert TrustedDeviceRecord, drop pending entry
+///     finalizePairing(sid, userConfirmed: true)  (desktop side)
+///        │  record Mac accepted; wait for iOS if needed
+///        ▼
+///     recordIOSFinalDecision(sid, accepted: true)
+///        │  when both sides accepted: upsert TrustedDeviceRecord,
+///        │  drop pending entry, return final frame with pairID
 ///        ▼
 ///     ┌────────────────────┐
 ///     │ deviceStore upsert │
 ///     └────────────────────┘
 ///
-/// On `finalizePairing(sid, userConfirmed: false)` the pending entry is
-/// discarded and no record is written. Codes-don't-match attacks fail closed.
+/// On either side rejecting, the pending entry is discarded and no record is
+/// written. Codes-don't-match attacks fail closed.
 ///
 /// Things deliberately NOT here (Phase C-late):
 ///   - Mac identity signing key persistence (currently generated per coordinator).
@@ -80,6 +84,20 @@ public actor PairingCoordinator {
     public struct FinalizePairingResult: Sendable, Encodable {
         public let pairingSessionID: String
         public let trustedDevice: TrustedDeviceRecord?
+        public let finalDecision: FinalDecision?
+        public let waitingFor: String?
+    }
+
+    public struct FinalDecision: Sendable, Codable, Equatable {
+        public let accepted: Bool
+        public let message: String?
+        public let pairID: String?
+
+        public init(accepted: Bool, message: String? = nil, pairID: String? = nil) {
+            self.accepted = accepted
+            self.message = message
+            self.pairID = pairID
+        }
     }
 
     public enum PairingError: Error, Equatable {
@@ -99,6 +117,27 @@ public actor PairingCoordinator {
         var derivedKeys: PairingDerivedKeys?
         var confirmationCode: String?
         var transcript: PairingTranscript?
+        var macAccepted: Bool?
+        var iosAccepted: Bool?
+    }
+
+    private enum ConfirmationSide: String {
+        case mac
+        case ios
+
+        var waitingPeer: String {
+            switch self {
+            case .mac: return "iOS"
+            case .ios: return "Mac"
+            }
+        }
+
+        var logLabel: String {
+            switch self {
+            case .mac: return "mac"
+            case .ios: return "iOS"
+            }
+        }
     }
 
     private let deviceStore: TrustedDeviceStore
@@ -163,7 +202,9 @@ public actor PairingCoordinator {
             response: nil,
             derivedKeys: nil,
             confirmationCode: nil,
-            transcript: nil
+            transcript: nil,
+            macAccepted: nil,
+            iosAccepted: nil
         )
 
         return BeginPairingResult(pairingSessionID: sessionID, bootstrapPayload: bootstrap)
@@ -217,17 +258,100 @@ public actor PairingCoordinator {
         pairingSessionID: String,
         userConfirmed: Bool
     ) async throws -> FinalizePairingResult {
-        guard let pending = pendingByID[pairingSessionID] else {
+        try await recordFinalDecision(
+            pairingSessionID: pairingSessionID,
+            side: .mac,
+            accepted: userConfirmed,
+            rejectionMessage: "User did not confirm matching codes"
+        )
+    }
+
+    public func recordIOSFinalDecision(
+        pairingSessionID: String,
+        accepted: Bool,
+        message: String?
+    ) async throws -> FinalizePairingResult {
+        try await recordFinalDecision(
+            pairingSessionID: pairingSessionID,
+            side: .ios,
+            accepted: accepted,
+            rejectionMessage: message ?? "iOS user did not confirm matching codes"
+        )
+    }
+
+    /// Diagnostic snapshot of the currently-pending sessions. Used by
+    /// `bridge.status` extensions in later phases.
+    public func pendingSessionCount() -> Int {
+        pruneExpiredSessions()
+        return pendingByID.count
+    }
+
+    /// Drop any session whose `bootstrap.expiresAt` is in the past.
+    private func pruneExpiredSessions() {
+        let cutoff = now()
+        let stale = pendingByID.filter { $0.value.bootstrap.expiresAt < cutoff }.map(\.key)
+        for sessionID in stale {
+            pendingByID.removeValue(forKey: sessionID)
+        }
+    }
+
+    private func recordFinalDecision(
+        pairingSessionID: String,
+        side: ConfirmationSide,
+        accepted: Bool,
+        rejectionMessage: String
+    ) async throws -> FinalizePairingResult {
+        guard var pending = pendingByID[pairingSessionID] else {
             throw PairingError.sessionNotFound(pairingSessionID)
         }
         guard pending.response != nil else {
             throw PairingError.missingResponseForFinalize(pairingSessionID)
         }
-        pendingByID.removeValue(forKey: pairingSessionID)
-        guard userConfirmed else {
-            return FinalizePairingResult(pairingSessionID: pairingSessionID, trustedDevice: nil)
+
+        switch side {
+        case .mac:
+            pending.macAccepted = accepted
+        case .ios:
+            pending.iosAccepted = accepted
         }
 
+        guard accepted else {
+            pendingByID.removeValue(forKey: pairingSessionID)
+            logPairingPipeline("rejected by \(side.logLabel) session=\(pairingSessionID) sending rejection")
+            return FinalizePairingResult(
+                pairingSessionID: pairingSessionID,
+                trustedDevice: nil,
+                finalDecision: FinalDecision(accepted: false, message: rejectionMessage, pairID: nil),
+                waitingFor: nil
+            )
+        }
+
+        if pending.macAccepted == true, pending.iosAccepted == true {
+            let record = try await persistTrustedDevice(from: pending, pairingSessionID: pairingSessionID)
+            pendingByID.removeValue(forKey: pairingSessionID)
+            logPairingPipeline("both sides accepted session=\(pairingSessionID) sending final frame pairID=\(record.pairID.rawValue)")
+            return FinalizePairingResult(
+                pairingSessionID: pairingSessionID,
+                trustedDevice: record,
+                finalDecision: FinalDecision(accepted: true, message: nil, pairID: record.pairID.rawValue),
+                waitingFor: nil
+            )
+        }
+
+        pendingByID[pairingSessionID] = pending
+        logPairingPipeline("\(side.logLabel) side accepted session=\(pairingSessionID) (waiting for \(side.waitingPeer))")
+        return FinalizePairingResult(
+            pairingSessionID: pairingSessionID,
+            trustedDevice: nil,
+            finalDecision: nil,
+            waitingFor: side.waitingPeer
+        )
+    }
+
+    private func persistTrustedDevice(
+        from pending: PendingPairing,
+        pairingSessionID: String
+    ) async throws -> TrustedDeviceRecord {
         guard let response = pending.response else {
             throw PairingError.missingResponseForFinalize(pairingSessionID)
         }
@@ -271,22 +395,6 @@ public actor PairingCoordinator {
             }
         }
 
-        return FinalizePairingResult(pairingSessionID: pairingSessionID, trustedDevice: record)
-    }
-
-    /// Diagnostic snapshot of the currently-pending sessions. Used by
-    /// `bridge.status` extensions in later phases.
-    public func pendingSessionCount() -> Int {
-        pruneExpiredSessions()
-        return pendingByID.count
-    }
-
-    /// Drop any session whose `bootstrap.expiresAt` is in the past.
-    private func pruneExpiredSessions() {
-        let cutoff = now()
-        let stale = pendingByID.filter { $0.value.bootstrap.expiresAt < cutoff }.map(\.key)
-        for sessionID in stale {
-            pendingByID.removeValue(forKey: sessionID)
-        }
+        return record
     }
 }

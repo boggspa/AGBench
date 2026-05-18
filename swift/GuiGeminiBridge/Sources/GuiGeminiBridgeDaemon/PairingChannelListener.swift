@@ -12,7 +12,8 @@ import BridgeCryptoPairing
 ///   1. Client (iPhone) → Server (Mac): `PairingResponsePayload` JSON
 ///   2. Server → Client: `{macConfirmationCode, sessionID}` JSON
 ///   3. Client → Server: `{accepted, message?}` JSON
-///   4. Connection closes
+///   4. Server → Client: `{accepted, message?, pairID?}` JSON
+///   5. Connection closes
 ///
 /// The listener is unauthenticated by design — derived keys don't exist
 /// until pairing completes. Security relies on:
@@ -31,10 +32,10 @@ import BridgeCryptoPairing
 /// (so the desktop UI can show the code), then calls
 /// `sendConfirmationCode(...)` to forward the code to iOS.
 ///
-/// When the user confirms/rejects on the desktop, Electron's
-/// `bridge.finalizePairing` RPC fires; the daemon's handler calls
-/// `sendFinalDecision(...)` to ship the result back over the still-open
-/// TCP connection, which then closes.
+/// When both the desktop user and iOS user confirm, the daemon sends
+/// `sendFinalDecision(...)` back over the still-open TCP connection,
+/// which then closes. A rejection from either side sends a rejection
+/// frame immediately.
 public actor PairingChannelListener {
     public struct PairingFinalDecisionFrame: Sendable, Codable, Equatable {
         public let accepted: Bool
@@ -53,6 +54,22 @@ public actor PairingChannelListener {
         public let sessionID: String
         public let receivedAt: Date
     }
+
+    public struct IncomingFinalDecisionFrame: Sendable, Codable, Equatable {
+        public let accepted: Bool
+        public let message: String?
+
+        public init(accepted: Bool, message: String? = nil) {
+            self.accepted = accepted
+            self.message = message
+        }
+    }
+
+    public typealias IOSFinalDecisionHandler = @Sendable (
+        _ sessionID: String,
+        _ accepted: Bool,
+        _ message: String?
+    ) async throws -> PairingFinalDecisionFrame?
 
     public enum ListenerError: Error, CustomStringConvertible, Sendable {
         case alreadyRunning
@@ -75,6 +92,7 @@ public actor PairingChannelListener {
 
     private let bonjourServiceType: String
     private let port: UInt16
+    private let iosFinalDecisionHandler: IOSFinalDecisionHandler?
 
     private var listener: NWListener?
     /// Per-session connection state: the still-open TCP connection
@@ -82,9 +100,14 @@ public actor PairingChannelListener {
     /// final frame and closes it.
     private var connectionsBySession: [String: NWConnection] = [:]
 
-    public init(bonjourServiceType: String, port: UInt16 = 0) {
+    public init(
+        bonjourServiceType: String,
+        port: UInt16 = 0,
+        iosFinalDecisionHandler: IOSFinalDecisionHandler? = nil
+    ) {
         self.bonjourServiceType = bonjourServiceType
         self.port = port
+        self.iosFinalDecisionHandler = iosFinalDecisionHandler
         var continuation: AsyncStream<IncomingPairingResponse>.Continuation!
         self.incomingResponses = AsyncStream(bufferingPolicy: .bufferingNewest(16)) {
             continuation = $0
@@ -240,13 +263,9 @@ public actor PairingChannelListener {
                 receivedAt: Date()
             ))
             logPairingPipeline("iPad response yielded to coordinator session=\(response.pairingSessionID)")
-            // Hand off — the consumer reads from incomingResponses, calls
-            // sendConfirmationCode + later sendFinalDecision. The connection
-            // stays open in connectionsBySession until then.
-            //
-            // Spawn a reader to detect when the iPhone sends its
-            // accept/reject frame back. That feeds into the main loop's
-            // finalize wait.
+            // Hand off — the consumer reads from incomingResponses and
+            // calls sendConfirmationCode. The connection stays open until
+            // both sides have confirmed or either side rejects.
             Task { [weak self] in
                 await self?.readFinalDecision(from: connection, sessionID: response.pairingSessionID)
             }
@@ -256,25 +275,40 @@ public actor PairingChannelListener {
         }
     }
 
-    /// Read the iPhone's final-decision frame (accept/reject). The Mac
-    /// already received the user's decision via Electron's UI, but the
-    /// iOS-side may have its own user verification step — we read this
-    /// for diagnostic completeness and to detect early closure.
+    /// Read the iPhone's final-decision frame (accept/reject) and route
+    /// it into the coordinator. The coordinator returns nil while waiting
+    /// for the desktop decision, or a concrete final frame once pairing
+    /// should complete/reject.
     private func readFinalDecision(from connection: NWConnection, sessionID: String) async {
         do {
             let lengthBytes = try await receiveExact(4, on: connection)
             let length = try decodeFrameLength(lengthBytes)
             guard length > 0, length < 65_536 else { return }
-            _ = try await receiveExact(Int(length), on: connection)
-            // The Mac doesn't act on the iPhone's decision frame —
-            // user authority for finalize lives on the desktop. We
-            // just consume + log the frame for now.
+            let payload = try await receiveExact(Int(length), on: connection)
+            let decision = try JSONDecoder().decode(IncomingFinalDecisionFrame.self, from: payload)
             FileHandle.standardError.write(Data(
-                "[PairingChannelListener] received iOS final-decision frame for session \(sessionID)\n".utf8
+                "[PairingChannelListener] received iOS final-decision frame for session \(sessionID) accepted=\(decision.accepted)\n".utf8
             ))
+            guard let iosFinalDecisionHandler else { return }
+            if let finalFrame = try await iosFinalDecisionHandler(sessionID, decision.accepted, decision.message) {
+                await sendFinalDecision(
+                    sessionID: sessionID,
+                    accepted: finalFrame.accepted,
+                    message: finalFrame.message,
+                    pairID: finalFrame.pairID
+                )
+            }
         } catch {
-            // Connection closed before frame arrived — that's fine,
-            // the user may have closed the iPhone app.
+            guard connectionsBySession[sessionID] != nil else {
+                return
+            }
+            logPairingPipeline("iOS final-decision handling failed session=\(sessionID) error=\(error.localizedDescription)")
+            await sendFinalDecision(
+                sessionID: sessionID,
+                accepted: false,
+                message: "Mac-side finalisation error: \(error.localizedDescription)",
+                pairID: nil
+            )
         }
     }
 

@@ -228,7 +228,20 @@ let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener
 // unguessable + the 6-digit transcript code matching on both ends.
 let pairingChannelListener = PairingChannelListener(
     bonjourServiceType: BridgeProductConfiguration.current.bonjourServiceType,
-    port: 0 // ephemeral; Bonjour publishes the resolved port
+    port: 0, // ephemeral; Bonjour publishes the resolved port
+    iosFinalDecisionHandler: { @Sendable sessionID, accepted, message in
+        let result = try await pairingCoordinator.recordIOSFinalDecision(
+            pairingSessionID: sessionID,
+            accepted: accepted,
+            message: message
+        )
+        guard let decision = result.finalDecision else { return nil }
+        return PairingChannelListener.PairingFinalDecisionFrame(
+            accepted: decision.accepted,
+            message: decision.message,
+            pairID: decision.pairID
+        )
+    }
 )
 
 /// Re-encode a `Codable` Swift value as a Foundation tree (Dictionary / Array
@@ -424,20 +437,22 @@ dispatcher.register("bridge.finalizePairing") { params in
     } catch let pairingError as PairingCoordinator.PairingError {
         throw rpcError(from: pairingError)
     }
-    // Phase D1-pair: relay the user's accept/reject back to the iPhone
-    // via the still-open TCP pairing connection. Fire-and-forget — no
-    // listener-connection is a no-op (e.g. iPhone disconnected).
+    // Phase D1-pair: record the desktop-side decision. If this completes
+    // finalisation (either because both sides accepted, or because the Mac
+    // rejected), relay the final frame to iOS. Otherwise keep the TCP
+    // connection open until iOS sends its own final-decision frame.
     let sessionID = parsed.pairingSessionID
-    let accepted = parsed.userConfirmed
-    let pairID = result.trustedDevice?.pairID.rawValue
-    logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(accepted) pairID=\(pairID ?? "nil")")
-    Task.detached { @Sendable [pairingChannelListener, pairID] in
-        await pairingChannelListener.sendFinalDecision(
-            sessionID: sessionID,
-            accepted: accepted,
-            message: accepted ? nil : "User did not confirm matching codes",
-            pairID: pairID
-        )
+    let pairID = result.finalDecision?.pairID
+    logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(parsed.userConfirmed) pairID=\(pairID ?? "nil") waitingFor=\(result.waitingFor ?? "none")")
+    if let decision = result.finalDecision {
+        Task.detached { @Sendable [pairingChannelListener, sessionID, decision] in
+            await pairingChannelListener.sendFinalDecision(
+                sessionID: sessionID,
+                accepted: decision.accepted,
+                message: decision.message,
+                pairID: decision.pairID
+            )
+        }
     }
     return try encodeAsJSONObject(result)
 }
