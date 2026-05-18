@@ -4020,6 +4020,22 @@ function App(): React.JSX.Element {
 
   const isProviderBusy = (provider: ProviderId): boolean => activeRunByProviderRef.current.has(provider)
 
+  // Per-chat busy check (replaces the per-provider check at every queue
+  // decision site). Previously starting a new chat on a provider whose
+  // OTHER chat had an in-flight run caused the new prompt to silently
+  // queue onto the new chat's transcript with a buried "Queued behind
+  // the active task" system note — even though there was nothing yet
+  // running in the new chat. Codex's app-server, Claude's SDK, Gemini
+  // / Kimi CLI all handle concurrent dispatches per chat just fine;
+  // the UI-level lock was the only thing forcing serialisation.
+  const isChatBusy = (chatId: string | null | undefined): boolean => {
+    if (!chatId) return false
+    for (const ctx of activeRunsRef.current.values()) {
+      if (ctx.chatId === chatId) return true
+    }
+    return false
+  }
+
   const getActiveRunContextForProvider = (provider: ProviderId): ActiveRunContext | null => {
     const runId = activeRunByProviderRef.current.get(provider)
     return runId ? activeRunsRef.current.get(runId) || null : null
@@ -7081,15 +7097,37 @@ function App(): React.JSX.Element {
       content: `${getProviderLabel(targetProvider)} run queued (${queuePosition} waiting). ${reason}`
     })
     if (targetChatId) {
+      // Phase J3: surface the actual queued prompt + a clear delivery
+      // state. Previously the system note was a generic "Queued behind
+      // the active task" line that buried what the user typed — they
+      // couldn't tell which queued message was theirs vs. an internal
+      // permission-retry queue card. Now the card shows the prompt
+      // preview, the queue position, and a `queuedRunRequest` metadata
+      // ref so the UI can later render this as a dedicated queued-
+      // message component (follow-up). The metadata.appRunId lets a
+      // dispatched run replace this card in place.
+      const promptPreview = (queuedRequest.displayPrompt || queuedRequest.prompt || '').trim()
+      const promptOneLiner = promptPreview.length > 240
+        ? `${promptPreview.slice(0, 240)}…`
+        : promptPreview
       updateChatById(targetChatId, (source) => ({
         ...source,
         messages: [
           ...source.messages,
           {
-            id: `queued-${Date.now()}`,
+            id: `queued-${queuedRequest.appRunId || Date.now()}`,
             role: 'system',
-            content: `Queued behind the active task. This ${getProviderLabel(targetProvider)} run will start automatically when the scheduler is free.`,
-            timestamp: queuedAt
+            content: promptPreview
+              ? `Queued (#${queuePosition}): ${promptOneLiner}\n— Will dispatch when this chat's current ${getProviderLabel(targetProvider)} turn finishes.`
+              : `Queued (#${queuePosition}). Will dispatch when this chat's current ${getProviderLabel(targetProvider)} turn finishes.`,
+            timestamp: queuedAt,
+            metadata: {
+              kind: 'queuedRunRequest',
+              appRunId: queuedRequest.appRunId,
+              queuePosition,
+              provider: targetProvider,
+              promptPreview: promptOneLiner
+            }
           }
         ],
         updatedAt: Date.now()
@@ -7115,8 +7153,8 @@ function App(): React.JSX.Element {
 
     clearImagePermissions()
 
-    if (isProviderBusy(request.provider)) {
-      queueRunRequest(request, `Permission retry is waiting for the active ${getProviderLabel(request.provider)} task to exit.`)
+    if (isChatBusy(request.chatRecord?.appChatId || currentChat?.appChatId)) {
+      queueRunRequest(request, `Permission retry is waiting for this chat's active ${getProviderLabel(request.provider)} task to exit.`)
       return
     }
 
@@ -7138,8 +7176,13 @@ function App(): React.JSX.Element {
     const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
     if (!runChat || (!isGlobalRun && !runWorkspace) || !request.prompt.trim()) return
     const runProvider = request.provider || currentProvider
-    if (isProviderBusy(runProvider)) {
-      queueRunRequest(request, `${getProviderLabel(runProvider)} is already running; AGBench will start this thread when that provider is free.`)
+    // Per-chat busy check: only queue when THIS chat has an active
+    // run. Multiple chats can dispatch in parallel to the same
+    // provider — the underlying runner (Codex app-server thread,
+    // fresh CLI process for Gemini/Kimi, independent SDK call for
+    // Claude) handles concurrency per-chat.
+    if (isChatBusy(runChat.appChatId)) {
+      queueRunRequest(request, `This ${getProviderLabel(runProvider)} chat already has an in-flight run; AGBench will dispatch this turn when the chat's previous turn finishes.`)
       return
     }
 
@@ -7748,8 +7791,8 @@ function App(): React.JSX.Element {
         chatRecord: currentChat
       }
 
-      if (isProviderBusy(reviewRequest.provider)) {
-        queueRunRequest(reviewRequest, `Diff review is waiting for the active ${getProviderLabel(reviewRequest.provider)} task to exit.`)
+      if (isChatBusy(reviewRequest.chatRecord?.appChatId)) {
+        queueRunRequest(reviewRequest, `Diff review is waiting for this chat's active ${getProviderLabel(reviewRequest.provider)} task to exit.`)
         setDiffRefreshStatus('Diff review queued.')
         return
       }
@@ -7769,7 +7812,7 @@ function App(): React.JSX.Element {
       return
     }
 
-    if (isProviderBusy(request.provider)) {
+    if (isChatBusy(request.chatRecord?.appChatId || currentChat?.appChatId)) {
       queueRunRequest(request)
       clearComposerAttachmentsForSubmittedRequest(request)
       if (!request.existingPrompt) {
@@ -7896,8 +7939,8 @@ function App(): React.JSX.Element {
       workspaceRecord: getChatScope(chat) === 'global' ? undefined : workspace,
       chatRecord: chat
     }
-    if (isProviderBusy(provider)) {
-      queueRunRequest(request, `Retry is waiting for the active ${getProviderLabel(provider)} task to exit.`)
+    if (isChatBusy(chat.appChatId)) {
+      queueRunRequest(request, `Retry is waiting for this chat's active ${getProviderLabel(provider)} task to exit.`)
       return
     }
     void executeRun(request)
@@ -8551,7 +8594,16 @@ function App(): React.JSX.Element {
     // renderer pump still orchestrates the lease + execute side effects, but
     // the "which job runs next" choice is now shared with future remote
     // pumpers via `findNextRunnableQueueIndex`.
-    const nextIndex = findNextRunnableQueueIndex(queuedRuns, isProviderBusy)
+    //
+    // Phase J3: per-chat busy predicate. A queued job dispatches as soon
+    // as its TARGET chat is idle, even if the same provider is busy in a
+    // different chat. Parallel-per-chat dispatch matches both Codex's
+    // app-server thread model and the user's mental model ("I queued
+    // this in chat B; chat A finishing shouldn't be the trigger").
+    const nextIndex = findNextRunnableQueueIndex(
+      queuedRuns,
+      (job) => !isChatBusy(job.chatRecord?.appChatId)
+    )
     if (nextIndex < 0) return
 
     const nextRun = queuedRuns[nextIndex]
