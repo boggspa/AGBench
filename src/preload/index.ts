@@ -78,6 +78,15 @@ const api = {
     ipcRenderer.on('agentic-yolo-state', wrapped)
     return () => ipcRenderer.removeListener('agentic-yolo-state', wrapped)
   },
+
+  // Phase K1: open external URLs / file paths from transcript markdown
+  // clicks. Replaces the bare `<a href>` flow that would otherwise let
+  // Electron navigate the BrowserWindow itself, unloading the bundled
+  // renderer and blanking the app. Main validates the scheme and
+  // routes to shell.openExternal (http/https/mailto) or shell.openPath
+  // (filesystem paths); unknown / unsafe schemes are no-ops.
+  openExternalOrPath: (href: string) =>
+    ipcRenderer.invoke('shell:open-link', href) as Promise<{ ok: boolean; error?: string }>,
   startPty: (workspacePath: string, sessionId: string = 'default') => ipcRenderer.invoke('start-pty', workspacePath, sessionId),
   stopPty: (sessionId: string = 'default') => ipcRenderer.invoke('stop-pty', sessionId),
   ptyWrite: (data: string, sessionId: string = 'default') => ipcRenderer.invoke('pty-write', data, sessionId),

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, type MouseEvent } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HighlightedCodeBlock } from './HighlightedCodeBlock';
 import { AgentIdentityContext, AgentMention } from './AgentMention';
+import { classifyMarkdownLink } from '../lib/classifyMarkdownLink';
 import type { ChatRecord } from '../../../main/store/types';
 
 interface MarkdownMessageProps {
@@ -58,9 +59,34 @@ export function MarkdownMessage({ content, chat }: MarkdownMessageProps) {
               const agentId = href.slice('agent://'.length).trim();
               return <AgentMention agentId={agentId}>{children}</AgentMention>;
             }
-            const external = typeof href === 'string' && /^https?:\/\//i.test(href);
+            // Phase K1: every other link routes through the preload
+            // bridge instead of letting the BrowserWindow navigate.
+            // A bare `<a href="file:///...">` left-click would unload
+            // the bundled `index.html` (no `will-navigate` guard was
+            // wired before this phase — that's now defense-in-depth
+            // in main). Classify the href, preventDefault on click,
+            // hand off to the OS via `openExternalOrPath`.
+            const classification = classifyMarkdownLink(href);
+            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (classification.kind === 'unknown') return;
+              const api = (window as unknown as { api?: { openExternalOrPath?: (h: string) => Promise<unknown> } }).api;
+              try {
+                void api?.openExternalOrPath?.(classification.resolved);
+              } catch {
+                // Best-effort: missing bridge in tests / SSR — no-op.
+              }
+            };
+            const isExternal = classification.kind === 'external';
             return (
-              <a href={href} target={external ? '_blank' : undefined} rel={external ? 'noreferrer' : undefined}>
+              <a
+                href={typeof href === 'string' ? href : '#'}
+                target={isExternal ? '_blank' : undefined}
+                rel={isExternal ? 'noreferrer' : undefined}
+                onClick={handleClick}
+                data-link-kind={classification.kind}
+              >
                 {children}
               </a>
             );

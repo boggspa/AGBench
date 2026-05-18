@@ -212,6 +212,7 @@ declare global {
       agenticYoloGet: () => Promise<{ enabled: boolean; enabledAt: string | null }>
       agenticYoloSet: (enabled: boolean) => Promise<{ enabled: boolean; enabledAt: string | null }>
       onAgenticYoloState: (handler: (state: { enabled: boolean; enabledAt: string | null }) => void) => () => void
+      openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>

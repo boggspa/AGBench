@@ -9866,6 +9866,46 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
+  // Phase K1: defense-in-depth against accidental navigation. The
+  // renderer's MarkdownMessage component used to fall back to a bare
+  // `<a href>` for non-http links (e.g. `file:///Users/.../foo.ts`).
+  // Plain left-click would navigate this BrowserWindow itself away
+  // from the bundled `index.html`, unloading React + the preload
+  // bridge, leaving the user with a blank gray window that required
+  // restarting the app. This guard intercepts any cross-document
+  // navigation: hash / query-string changes still pass through; full
+  // navigations are cancelled and routed to the OS via `shell.*`.
+  // Belt-and-braces with the renderer's per-link `onClick` handler.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    try {
+      const target = new URL(url)
+      const currentURL = mainWindow?.webContents.getURL()
+      const current = currentURL ? new URL(currentURL) : null
+      // Allow same-document navigations (hash change, search params).
+      // pathname + origin + protocol must all match to count as same-doc.
+      if (
+        current &&
+        target.origin === current.origin &&
+        target.pathname === current.pathname &&
+        target.protocol === current.protocol
+      ) {
+        return
+      }
+      event.preventDefault()
+      if (target.protocol === 'http:' || target.protocol === 'https:' || target.protocol === 'mailto:') {
+        shell.openExternal(url).catch(() => {})
+      } else if (target.protocol === 'file:') {
+        shell.openPath(decodeURIComponent(target.pathname)).catch(() => {})
+      }
+      // Any other protocol (javascript:, data:, ssh:, custom): the
+      // preventDefault above is enough — we explicitly do NOT route
+      // it anywhere.
+    } catch {
+      // Malformed URL — refuse to navigate.
+      event.preventDefault()
+    }
+  })
+
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -11666,6 +11706,57 @@ app.whenReady().then(() => {
   ipcMain.handle('agentic-yolo-set', (_, enabled: boolean) => {
     setSessionYoloMode(Boolean(enabled))
     return getSessionYoloMode()
+  })
+
+  // Phase K1: safe open-link bridge for transcript markdown clicks.
+  // The renderer classifies the href before calling us; main still
+  // re-validates the scheme as a security gate because the renderer
+  // could be compromised by a future markdown XSS. Whitelist:
+  //   - http / https / mailto -> shell.openExternal
+  //   - file:// or scheme-less absolute/relative path -> shell.openPath
+  //   - everything else (javascript:, data:, ssh:, custom) -> no-op
+  ipcMain.handle('shell:open-link', async (_event, hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
+    const href = typeof hrefRaw === 'string' ? hrefRaw.trim() : ''
+    if (!href) return { ok: false, error: 'Empty href' }
+    // Detect file:// URIs and convert them up-front to a plain path
+    // for shell.openPath (which doesn't accept file:// directly).
+    if (/^file:/i.test(href)) {
+      try {
+        const url = new URL(href)
+        const localPath = decodeURIComponent(url.pathname)
+        const result = await shell.openPath(localPath)
+        return result === '' ? { ok: true } : { ok: false, error: result }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    // External web/email schemes.
+    if (/^(https?|mailto):/i.test(href)) {
+      try {
+        await shell.openExternal(href)
+        return { ok: true }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    }
+    // Scheme-less: treat as a filesystem path (absolute or relative).
+    // Refuse anything containing a known unsafe scheme prefix.
+    if (/^(javascript|data|vbscript):/i.test(href)) {
+      return { ok: false, error: 'Refused unsafe scheme' }
+    }
+    // Refuse anything with an unrecognised `something:` scheme so we
+    // don't hand a `ssh://` or custom-protocol URL to shell.openPath.
+    // Allow single-letter "schemes" (Windows drive letters: `C:\...`).
+    const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(href)
+    if (schemeMatch && schemeMatch[1].length > 1) {
+      return { ok: false, error: `Refused unsupported scheme: ${schemeMatch[1]}` }
+    }
+    try {
+      const result = await shell.openPath(href)
+      return result === '' ? { ok: true } : { ok: false, error: result }
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    }
   })
 
   // PTY for Trust Assistant
