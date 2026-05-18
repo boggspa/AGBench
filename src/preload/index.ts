@@ -67,6 +67,17 @@ const api = {
   
   // Trust and PTY
   checkTrust: (workspacePath: string) => ipcRenderer.invoke('check-trust', workspacePath),
+
+  // Phase J3: session-scoped YOLO mode (auto-allow every approval).
+  // Never persisted — every process start defaults to disabled.
+  agenticYoloGet: () => ipcRenderer.invoke('agentic-yolo-get') as Promise<{ enabled: boolean; enabledAt: string | null }>,
+  agenticYoloSet: (enabled: boolean) =>
+    ipcRenderer.invoke('agentic-yolo-set', enabled) as Promise<{ enabled: boolean; enabledAt: string | null }>,
+  onAgenticYoloState: (handler: (state: { enabled: boolean; enabledAt: string | null }) => void) => {
+    const wrapped = (_event: unknown, state: { enabled: boolean; enabledAt: string | null }) => handler(state)
+    ipcRenderer.on('agentic-yolo-state', wrapped)
+    return () => ipcRenderer.removeListener('agentic-yolo-state', wrapped)
+  },
   startPty: (workspacePath: string, sessionId: string = 'default') => ipcRenderer.invoke('start-pty', workspacePath, sessionId),
   stopPty: (sessionId: string = 'default') => ipcRenderer.invoke('stop-pty', sessionId),
   ptyWrite: (data: string, sessionId: string = 'default') => ipcRenderer.invoke('pty-write', data, sessionId),

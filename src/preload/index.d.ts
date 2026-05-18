@@ -208,6 +208,10 @@ declare global {
       setAppearanceMode: (payload: { mode?: string; reduceTransparency?: boolean } | string) => Promise<boolean>
 
       checkTrust: (workspacePath: string) => Promise<TrustStatusResult>
+
+      agenticYoloGet: () => Promise<{ enabled: boolean; enabledAt: string | null }>
+      agenticYoloSet: (enabled: boolean) => Promise<{ enabled: boolean; enabledAt: string | null }>
+      onAgenticYoloState: (handler: (state: { enabled: boolean; enabledAt: string | null }) => void) => () => void
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>

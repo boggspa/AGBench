@@ -3533,6 +3533,13 @@ function App(): React.JSX.Element {
   
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [currentChat, setCurrentChat] = useState<ChatRecord | null>(null)
+  // Phase J3: session-scoped YOLO mode visibility. Driven by main's
+  // `agentic-yolo-state` broadcasts so an indicator badge can show the
+  // user that approvals are being auto-allowed for the rest of the run.
+  const [sessionYoloMode, setSessionYoloModeState] = useState<{ enabled: boolean; enabledAt: string | null }>({
+    enabled: false,
+    enabledAt: null
+  })
 
   const [composerDraftsByChatId, setComposerDraftForChat] = usePerChatState('')
   const [isRunning, setIsRunning] = useState(false)
@@ -6719,8 +6726,24 @@ function App(): React.JSX.Element {
       })
     }
 
+    // Phase J3: subscribe to YOLO state broadcasts + fetch the initial
+    // value at mount. Main resets `enabled: false` on every process
+    // start so any previous YOLO session is gone after an app restart;
+    // we still read the current value in case multiple windows are
+    // attached to the same main process.
+    let yoloUnsubscribe: (() => void) | null = null
+    if (typeof window.api.agenticYoloGet === 'function') {
+      window.api.agenticYoloGet()
+        .then((state) => setSessionYoloModeState(state))
+        .catch(() => {})
+    }
+    if (typeof window.api.onAgenticYoloState === 'function') {
+      yoloUnsubscribe = window.api.onAgenticYoloState((state) => setSessionYoloModeState(state))
+    }
+
     return () => {
       window.api.removeListeners()
+      yoloUnsubscribe?.()
     }
   }, [])
 
@@ -9966,6 +9989,35 @@ function App(): React.JSX.Element {
                     </div>
                   </div>
                 )}
+                {/* Phase J3: session-scoped YOLO indicator. Visible when the
+                    user has clicked "Trust this session" — every subsequent
+                    approval auto-allows. Includes a one-click disable. */}
+                {sessionYoloMode.enabled && (
+                  <div className="composer-permission-card provider-yolo" style={{ background: 'rgba(244, 162, 97, 0.12)', borderColor: 'rgba(244, 162, 97, 0.5)' }}>
+                    <div className="composer-permission-title">
+                      <span>Trust mode active — every approval auto-allowed</span>
+                      <span className="composer-permission-source">YOLO</span>
+                    </div>
+                    <div className="composer-permission-message">
+                      Approval modals will be skipped for the rest of this app session. Global Deny policies still apply. Restart the app to revert, or disable here.
+                    </div>
+                    <div className="composer-permission-actions">
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await window.api.agenticYoloSet(false)
+                          } catch (error) {
+                            console.error('Failed to disable YOLO session mode', error)
+                          }
+                        }}
+                      >
+                        Disable trust mode
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {pendingAgentApproval && (
                   <div className={`composer-permission-card provider-${pendingAgentApproval.provider}`}>
                     <div className="composer-permission-title">
@@ -9992,6 +10044,25 @@ function App(): React.JSX.Element {
                           Allow for session
                         </button>
                       )}
+                      {/* Phase J3: "Trust this run" — accept the current modal AND enable
+                          session-wide YOLO so every subsequent approval auto-allows for
+                          the rest of the process lifetime. Never persisted to disk.
+                          Global `deny` policies still win. */}
+                      <button
+                        className="btn btn-sm btn-ghost"
+                        type="button"
+                        title="Auto-allow every approval prompt for the rest of this session. Restart the app to revert. Doesn't override globally-denied services."
+                        onClick={async () => {
+                          try {
+                            await window.api.agenticYoloSet(true)
+                          } catch (error) {
+                            console.error('Failed to enable YOLO session mode', error)
+                          }
+                          await handleAgentApprovalAction(pendingAgentApproval.id, 'acceptForSession')
+                        }}
+                      >
+                        Trust this session
+                      </button>
                       {(pendingAgentApproval.actions || ['decline']).includes('decline') && (
                         <button className="btn btn-sm btn-ghost" type="button" onClick={() => void handleAgentApprovalAction(pendingAgentApproval.id, 'decline')}>
                           Deny

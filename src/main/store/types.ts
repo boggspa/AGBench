@@ -908,7 +908,7 @@ export interface RunEventReplay {
 
 export type ApprovalLedgerStatus = 'pending' | 'approved' | 'denied' | 'cancelled' | 'expired';
 export type ApprovalLedgerScope = 'request' | 'run' | 'session' | 'workspace';
-export type ApprovalLedgerDecisionSource = 'user' | 'policy' | 'workspace_grant' | 'session_grant' | 'system';
+export type ApprovalLedgerDecisionSource = 'user' | 'policy' | 'workspace_grant' | 'session_grant' | 'session_yolo' | 'system';
 export type ApprovalLedgerExpirationMode =
   | 'pending_timeout'
   | 'on_decision'

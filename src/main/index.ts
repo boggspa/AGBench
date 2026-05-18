@@ -77,6 +77,41 @@ let geminiMcpBroker: NetServer | null = null
 let geminiMcpBrokerStartPromise: Promise<void> | null = null
 let geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
+
+// Phase J3: session-scoped YOLO mode. When the user clicks "Trust this
+// session" on any approval modal, every subsequent `requestAgenticServiceApproval`
+// auto-allows AND every Codex MCP elicitation auto-accepts — until the
+// user disables it explicitly OR the app restarts. NEVER persisted: a
+// process exit always returns to the default `ask` policies. Global
+// `deny` policies still win (defense in depth — if the user has
+// explicitly opted out of a service category, YOLO doesn't override
+// that). The audit trail records every YOLO bypass with reason
+// `session_yolo` so the user can review what got auto-allowed.
+const sessionYoloState: {
+  enabled: boolean
+  enabledAt: string | null
+} = {
+  enabled: false,
+  enabledAt: null
+}
+
+function setSessionYoloMode(enabled: boolean): void {
+  if (sessionYoloState.enabled === enabled) return
+  sessionYoloState.enabled = enabled
+  sessionYoloState.enabledAt = enabled ? new Date().toISOString() : null
+  // Broadcast so every renderer window sees the indicator change.
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('agentic-yolo-state', {
+      enabled: sessionYoloState.enabled,
+      enabledAt: sessionYoloState.enabledAt
+    })
+  }
+}
+
+function getSessionYoloMode(): { enabled: boolean; enabledAt: string | null } {
+  return { enabled: sessionYoloState.enabled, enabledAt: sessionYoloState.enabledAt }
+}
+
 const NATIVE_GLASS_VIBRANCY: BrowserWindowConstructorOptions['vibrancy'] = 'sidebar'
 let appliedNativeGlassState: string | null = null
 const FILE_ICON_CACHE = new Map<string, string | null>()
@@ -1918,6 +1953,28 @@ async function requestAgenticServiceApproval(
     )
     sender?.send('agent-error', { provider, error: `${label} blocked by AGBench settings.` })
     return false
+  }
+
+  // Phase J3: session-scoped YOLO override. Auto-allows every approval
+  // for the rest of the process lifetime (or until the user disables
+  // it). Sits AFTER the deny check above so an explicit user opt-out
+  // for a service still wins — YOLO is "trust everything ask-policy
+  // would have prompted for", not "bypass every guardrail". Audit
+  // trail records the bypass with reason `session_yolo` so the user
+  // can review what got auto-allowed.
+  if (sessionYoloState.enabled) {
+    auditService.recordAutomaticApprovalDecision(
+      provider,
+      { appRunId: request.runId },
+      service,
+      workspacePath,
+      request,
+      'autoAllow',
+      'session_yolo',
+      'session',
+      { policy, yoloEnabledAt: sessionYoloState.enabledAt }
+    )
+    return true
   }
   if (decision === 'allow' && !(request.forcePrompt && !sessionGrantAllowed)) {
     auditService.recordAutomaticApprovalDecision(
@@ -5932,6 +5989,42 @@ function handleCodexServerRequest(message: any) {
   const settings = AppStore.getSettings()
   const policy = service ? getAgenticServicePolicy(service, settings) : 'ask'
   const isGlobalScope = state.scope === 'global'
+
+  // Phase J3: session-scoped YOLO short-circuit. When enabled, every
+  // Codex approval auto-accepts using the response shape appropriate
+  // for the request's method. Sits BEFORE the deny check so an
+  // explicitly-denied service still wins (defense in depth).
+  if (sessionYoloState.enabled && service && policy !== 'deny') {
+    auditService.recordAutomaticApprovalDecision(
+      'codex',
+      { appRunId: state.appRunId, appChatId: state.appChatId },
+      service,
+      isGlobalScope ? undefined : state.workspacePath,
+      {
+        method,
+        title: formatted.title,
+        body: formatted.body,
+        preview: formatted.preview
+      },
+      'autoAllow',
+      'session_yolo',
+      'session',
+      { policy, yoloEnabledAt: sessionYoloState.enabledAt }
+    )
+    if (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request') {
+      codexClient.respond(message.id, { action: 'accept', content: null, _meta: null })
+    } else if (method === 'item/permissions/requestApproval') {
+      codexClient.respond(message.id, { permissions: params?.permissions || {}, scope: 'session' })
+    } else if (method === 'tool/requestUserInput') {
+      // YOLO can't synthesize user-typed answers; surface a brief accept
+      // with empty answers so Codex can move on. Tools requiring real
+      // user input should not be wired into YOLO scope anyway.
+      codexClient.respond(message.id, { answers: {} })
+    } else {
+      codexClient.respond(message.id, { decision: 'accept' })
+    }
+    return
+  }
 
   if (service && policy === 'deny') {
     const label = AGENTIC_SERVICE_LABELS[service]
@@ -11550,6 +11643,15 @@ app.whenReady().then(() => {
 
   // Trust Status
   ipcMain.handle('check-trust', (_, workspacePath: string) => workspaceService.checkTrust(workspacePath))
+
+  // Phase J3: session-scoped YOLO mode. Frontend toggles + queries.
+  // Renderer state is broadcast via `agentic-yolo-state` whenever the
+  // flag flips so the indicator badge updates across windows.
+  ipcMain.handle('agentic-yolo-get', () => getSessionYoloMode())
+  ipcMain.handle('agentic-yolo-set', (_, enabled: boolean) => {
+    setSessionYoloMode(Boolean(enabled))
+    return getSessionYoloMode()
+  })
 
   // PTY for Trust Assistant
   const ptyProcesses = new Map<string, pty.IPty>()
