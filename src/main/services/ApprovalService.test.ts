@@ -412,6 +412,40 @@ describe('ApprovalService — resolve dispatch', () => {
     )
   })
 
+  it('Codex elicitation (mcpServer/* variant): respond with action + content', async () => {
+    // Newer Codex CLI builds rename the method to `mcpServer/elicitation/request`
+    // and deserialise the host's response as `McpServerElicitationRequestResponse`.
+    // The response shape is identical to the old `mcp/elicitation/request`, so
+    // the resolve path must accept both names — otherwise the host falls through
+    // to `{ decision: action }` (wrong shape) and Codex rejects the tool call
+    // with `missing field 'action'`, surfaced to the user as
+    // "user rejected MCP tool call".
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    svc.registerCodex('c-1', {
+      rpcId: 9,
+      method: 'mcpServer/elicitation/request',
+      params: {}
+    })
+    await svc.resolve('c-1', 'accept', { userInput: 'sure, proceed' })
+    expect(spies.codexClient.respond).toHaveBeenCalledWith(
+      9,
+      expect.objectContaining({ action: 'accept', content: 'sure, proceed' })
+    )
+    // And the rejection path also lands the right shape (no `decision`
+    // field leaking through to confuse Codex's deserialiser).
+    svc.registerCodex('c-2', {
+      rpcId: 10,
+      method: 'mcpServer/elicitation/request',
+      params: {}
+    })
+    await svc.resolve('c-2', 'decline')
+    expect(spies.codexClient.respond).toHaveBeenCalledWith(
+      10,
+      expect.objectContaining({ action: 'decline' })
+    )
+  })
+
   it('Codex requestUserInput accept: respond with answers.default', async () => {
     const { deps, spies } = makeDeps()
     const svc = new ApprovalService(deps)

@@ -696,7 +696,22 @@ export class ApprovalService {
       return true
     }
 
-    if (pending.method === 'mcp/elicitation/request') {
+    // Codex CLI's elicitation method name varies by version:
+    //   - Older builds:  `mcp/elicitation/request`
+    //   - Newer builds:  `mcpServer/elicitation/request`
+    //     (deserialised on the Codex side as `McpServerElicitationRequest`)
+    // The response shape is the same `{ action, content, _meta }` either way.
+    // Without matching both, the resolve path falls through to the generic
+    // `{ decision: action }` shape below, which Codex's
+    // `McpServerElicitationRequestResponse` deserialiser rejects with
+    // `missing field 'action'` — and the tool call comes back as
+    // `user rejected MCP tool call` even though the user clicked Accept.
+    // Symptom seen in the wild: Codex agents invoking
+    // `delegate_to_subthread` always got auto-rejected after the new
+    // prompt-level fix made them actually try the tool. See
+    // ~/Library/Logs/AGBench/bridge-subprocess.log + the codex run's
+    // raw events stream for `mcpServer/elicitation/request`.
+    if (pending.method === 'mcp/elicitation/request' || pending.method === 'mcpServer/elicitation/request') {
       codexClient.respond(pending.rpcId, {
         action: action === 'acceptForSession' ? 'accept' : action,
         content: options?.userInput ?? null,
