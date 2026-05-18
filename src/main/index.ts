@@ -57,6 +57,7 @@ import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMess
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { resolveSubThreadRecall } from './SubThreadRecall'
 import {
+  buildClaudeAgentbenchAllowedToolNames,
   buildClaudeAgentbenchMcpConfigJson,
   buildClaudeAgentbenchMcpServers,
   extendClaudeCliArgsWithAgentbenchMcp,
@@ -4353,7 +4354,18 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
   // the Claude agent sees delegate_to_subthread etc. in its tool list.
   // Gated on the same `geminiMcpBridgeEnabled` toggle Gemini/Codex use
   // so the user can disable cross-provider MCP from one place.
+  //
+  // Phase J3: ALSO pass `allowedTools` here. Previously only the CLI
+  // fallback got the pre-approved list via `--allowedTools <names>`;
+  // the SDK path passed `mcpServers` but no `allowedTools`, so every
+  // MCP call went through the per-tool `canUseTool` approval gate and
+  // Claude's reasoning often skipped them entirely. Empirically: 7
+  // Claude-parented bridge subprocesses had spawned and zero of them
+  // had ever logged a `tools/call` (vs. Gemini-parented bridges which
+  // accounted for every tool call in the log). Mirroring the CLI's
+  // pre-approval list closes the gap.
   const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput())
+  const claudeSdkAllowedTools = claudeSdkMcpServers ? buildClaudeAgentbenchAllowedToolNames() : null
   // Belt-and-braces env stamp on the SDK process: in addition to the
   // per-server env block in the MCP config, set AGENTBENCH_PARENT_PROVIDER
   // on the Claude CLI process itself. Some platforms / SDK code paths
@@ -4379,6 +4391,9 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
       ...(payload.imagePaths?.length ? { images: payload.imagePaths } : {}),
       ...(thinkingBudgetSdk ? { maxThinkingTokens: thinkingBudgetSdk } : {}),
       ...(claudeSdkMcpServers ? { mcpServers: claudeSdkMcpServers } : {}),
+      ...(claudeSdkAllowedTools && claudeSdkAllowedTools.length > 0
+        ? { allowedTools: claudeSdkAllowedTools }
+        : {}),
       env: claudeSdkEnv
     }
   })
