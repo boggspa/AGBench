@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { ChatRecord, ChildAgentThread, ProviderId, ToolActivity, ToolDiffSummary } from '../../../main/store/types';
-import { deriveToolDiffSummary } from '../lib/ToolParser';
+import { deriveToolDiffSummary, isWriteLikeToolName } from '../lib/ToolParser';
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads';
 import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMode';
 import { inlineStatsForActivity } from '../lib/ActivityInlineStats';
@@ -19,7 +19,6 @@ interface ActivityStackProps {
   chat?: ChatRecord;
 }
 
-const WRITER_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file', 'delete_file'];
 const SEARCH_PARAM_KEYS = ['query', 'search_query', 'pattern', 'regex', 'term'];
 const COMMAND_PARAM_KEYS = ['command', 'cmd', 'script'];
 const CONTENT_PARAM_KEYS = ['content', 'new_string', 'old_string'];
@@ -141,7 +140,7 @@ function buildSanitizedDetail(activity: ToolActivity, activityFilePath?: string,
     return { rows, previews };
   }
 
-  if (activity.category === 'write' || WRITER_TOOLS.includes(toolName)) {
+  if (activity.category === 'write' || isWriteLikeToolName(toolName)) {
     const operation =
       toolName === 'replace'
         ? 'Edited file'
@@ -234,10 +233,10 @@ function getBaseName(path: string): string {
 
 function getFileActionLabel(activity: ToolActivity): string {
   const toolName = (activity.toolName || '').toLowerCase();
-  if (toolName === 'replace' || toolName === 'edit_file') return 'Edited';
-  if (toolName === 'create_file') return 'Created';
-  if (toolName === 'delete_file') return 'Deleted';
-  if (toolName === 'write_file') return 'Wrote';
+  if (toolName === 'replace' || toolName === 'edit_file' || toolName === 'edit' || toolName === 'multiedit' || toolName === 'notebookedit' || toolName === 'apply_patch' || toolName.includes('str_replace') || toolName.endsWith('__replace') || toolName.endsWith('__edit_file') || toolName.endsWith('__apply_patch')) return 'Edited';
+  if (toolName === 'create_file' || toolName.endsWith('__create_file')) return 'Created';
+  if (toolName === 'delete_file' || toolName.endsWith('__delete_file')) return 'Deleted';
+  if (toolName === 'write_file' || toolName === 'write' || toolName.endsWith('__write_file') || toolName.endsWith('__write')) return 'Wrote';
   if (toolName === 'read_file') return 'Read';
   return activity.displayName || activity.toolName || 'Used tool';
 }
@@ -883,34 +882,11 @@ function ActivityRow({
     );
   }
 
-  const defaultCollapsed = activity.category === 'task' || activity.category === 'shell' || activity.category === 'read' || activity.category === 'search';
-  const [expanded, setExpanded] = useState(!defaultCollapsed);
-
-  // Phase J3: removed the success/warning/error auto-collapse branch.
-  // Previously every tool's status transition from running → terminal
-  // fired its own setExpanded(false), shrinking the row's height by
-  // tearing the `<div className="activity-detail">` subtree out of the
-  // DOM (see `shouldRenderAsCard(...)` — returns false when collapsed).
-  //
-  // During a long-running provider turn, tools complete at different
-  // wall-clock moments (each tool_result event lands in its own React
-  // tick). So 5 tool calls produced 5 successive height-shrinks at the
-  // transcript bottom over the run's lifetime — visible as the
-  // "bouncing/jumping scrolling up" the user reported. The autoFollow
-  // rAF re-pin caught each shrink but couldn't hide the visible jiggle.
-  //
-  // The running/pending auto-EXPAND branch is preserved: when a tool
-  // starts, its row expands so the user can watch the output stream.
-  // Manual collapse via the chevron still works.
-  useEffect(() => {
-    if (activity.status === 'running' || activity.status === 'pending') {
-      setExpanded(true)
-    }
-  }, [activity.status])
+  const [expanded, setExpanded] = useState(false);
 
   const isUnknown = activity.toolName === 'unknown' || !activity.toolName;
   const showDebugWarning = Boolean(isUnknown && (activity.rawUseEvent || activity.rawResultEvent));
-  const isWriteAction = WRITER_TOOLS.includes((activity.toolName || '').toLowerCase());
+  const isWriteAction = isWriteLikeToolName(activity.toolName || '');
   const activityFilePath = getFilePathFromActivity(activity);
 
   const chipText: string[] = [];

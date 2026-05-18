@@ -88,11 +88,42 @@ export function extractStatus(resultEvent: any): ToolActivityStatus {
 
 export type ToolCategory = 'task' | 'read' | 'write' | 'search' | 'shell' | 'unknown';
 
+const WRITE_LIKE_TOOL_NAMES = new Set([
+  'replace',
+  'write_file',
+  'create_file',
+  'edit_file',
+  'delete_file',
+  'edit',
+  'write',
+  'multiedit',
+  'notebookedit',
+  'apply_patch',
+  'str_replace',
+  'str_replace_editor',
+  'strreplaceeditor'
+]);
+
+export function isWriteLikeToolName(toolName: string): boolean {
+  const name = (toolName || '').toLowerCase();
+  if (!name) return false;
+  if (WRITE_LIKE_TOOL_NAMES.has(name)) return true;
+  if (name.endsWith('__write_file')) return true;
+  if (name.endsWith('__replace')) return true;
+  if (name.endsWith('__create_file')) return true;
+  if (name.endsWith('__edit_file')) return true;
+  if (name.endsWith('__delete_file')) return true;
+  if (name.endsWith('__edit')) return true;
+  if (name.endsWith('__write')) return true;
+  if (name.endsWith('__apply_patch')) return true;
+  return false;
+}
+
 export function getToolCategory(toolName: string): ToolCategory {
   const name = (toolName || '').toLowerCase();
-  if (['update_topic', 'invoke_agent', 'summary', 'intent', 'progress', 'tool_progress', 'codex_reasoning', 'codex_plan'].includes(name)) return 'task';
+  if (['update_topic', 'invoke_agent', 'summary', 'intent', 'progress', 'tool_progress', 'codex_reasoning', 'codex_plan', 'kimi_thinking'].includes(name)) return 'task';
   if (name === 'read_file' || name === 'list_directory') return 'read';
-  if (['replace', 'write_file', 'create_file', 'edit_file', 'delete_file'].includes(name)) return 'write';
+  if (isWriteLikeToolName(name)) return 'write';
   if (['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(name)) return 'search';
   if (name === 'run_shell_command' || name === 'shell') return 'shell';
   return 'unknown';
@@ -106,6 +137,7 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
   switch (category) {
     case 'task':
       if (toolName.toLowerCase() === 'codex_reasoning') return (params.title as string) || 'Thinking note';
+      if (toolName.toLowerCase() === 'kimi_thinking') return (params.title as string) || 'Kimi thinking';
       if (toolName.toLowerCase() === 'codex_plan') return 'Plan update';
       if (toolName.toLowerCase() === 'invoke_agent') return (params.title as string) || 'Delegated task';
       if (toolName.toLowerCase() === 'summary') return (params.title as string) || 'Summary';
@@ -115,13 +147,14 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
       if (toolName.toLowerCase() === 'list_directory') return filePath ? `Listed ${filePath}` : 'Listed directory';
       return filePath ? `Read ${filePath}` : 'Read file';
     case 'write': {
-      if (toolName.toLowerCase() === 'replace') {
+      const name = toolName.toLowerCase();
+      if (name === 'replace' || name.endsWith('__replace') || name === 'edit' || name === 'edit_file' || name.endsWith('__edit_file') || name === 'multiedit' || name === 'notebookedit' || name === 'apply_patch' || name.endsWith('__apply_patch') || name.includes('str_replace')) {
         return filePath ? `Edited ${filePath}` : 'Edited file';
       }
-      if (toolName.toLowerCase() === 'create_file') {
+      if (name === 'create_file' || name.endsWith('__create_file')) {
         return filePath ? `Created ${filePath}` : 'Created file';
       }
-      if (toolName.toLowerCase() === 'delete_file') {
+      if (name === 'delete_file' || name.endsWith('__delete_file')) {
         return filePath ? `Deleted ${filePath}` : 'Deleted file';
       }
       return filePath ? `Wrote ${filePath}` : 'Wrote file';
@@ -281,7 +314,19 @@ export function deriveToolDiffSummary(toolName: string, parameters?: Record<stri
 
   const patchPreview = getPatchPreview(parameters, resultText);
   const patchSummary = parseUnifiedDiffSummary(patchPreview);
-  if (patchSummary) return patchSummary;
+  if (patchSummary) {
+    const path = parameters ? getPathFromRecord(parameters) : undefined;
+    if (path) {
+      return {
+        ...patchSummary,
+        files: (patchSummary.files || []).map((file) => ({
+          ...file,
+          path: file.path || path
+        }))
+      };
+    }
+    return patchSummary;
+  }
 
   if (changesSummary) return changesSummary;
 

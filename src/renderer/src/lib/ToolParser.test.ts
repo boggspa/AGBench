@@ -7,6 +7,7 @@ import {
   extractStatus,
   getToolCategory,
   getToolDisplayName,
+  isWriteLikeToolName,
   estimateLineChanges,
   deriveToolDiffSummary,
   parseUnifiedDiffSummary,
@@ -122,6 +123,10 @@ describe('ToolParser', () => {
       expect(getToolCategory('invoke_agent')).toBe('task');
       expect(getToolCategory('summary')).toBe('task');
     });
+    it('maps Kimi thinking to task', () => {
+      expect(getToolCategory('kimi_thinking')).toBe('task');
+      expect(getToolDisplayName('kimi_thinking', {})).toBe('Kimi thinking');
+    });
     it('maps read_file to read', () => {
       expect(getToolCategory('read_file')).toBe('read');
     });
@@ -134,6 +139,13 @@ describe('ToolParser', () => {
     it('maps write_file to write', () => {
       expect(getToolCategory('write_file')).toBe('write');
     });
+    it('maps write-like provider variants to write', () => {
+      expect(getToolCategory('apply_patch')).toBe('write');
+      expect(getToolCategory('Edit')).toBe('write');
+      expect(getToolCategory('MultiEdit')).toBe('write');
+      expect(getToolCategory('str_replace')).toBe('write');
+      expect(getToolCategory('agentbench__write_file')).toBe('write');
+    });
     it('maps create_file to write', () => {
       expect(getToolCategory('create_file')).toBe('write');
     });
@@ -145,6 +157,15 @@ describe('ToolParser', () => {
     });
     it('maps unknown to unknown', () => {
       expect(getToolCategory('magic')).toBe('unknown');
+    });
+  });
+
+  describe('isWriteLikeToolName', () => {
+    it('recognizes unqualified and MCP-qualified write tools', () => {
+      expect(isWriteLikeToolName('apply_patch')).toBe(true);
+      expect(isWriteLikeToolName('mcp__agentbench__replace')).toBe(true);
+      expect(isWriteLikeToolName('agentbench__write_file')).toBe(true);
+      expect(isWriteLikeToolName('run_shell_command')).toBe(false);
     });
   });
 
@@ -272,6 +293,23 @@ describe('ToolParser', () => {
       expect(summary?.additions).toBe(2);
       expect(summary?.deletions).toBe(1);
       expect(summary?.files?.[0].path).toBe('a.ts');
+    });
+
+    it('uses the parameter path when patch-like output has hunks but no file header', () => {
+      const summary = deriveToolDiffSummary('edit_file', {
+        path: 'Sources/Game.swift',
+        patchPreview: [
+          '@@ -1,2 +1,3 @@',
+          ' context',
+          '-old',
+          '+new',
+          '+next'
+        ].join('\n')
+      });
+
+      expect(summary?.additions).toBe(2);
+      expect(summary?.deletions).toBe(1);
+      expect(summary?.files?.[0].path).toBe('Sources/Game.swift');
     });
 
     it('falls back to estimated replace/content stats and tolerates old activities', () => {

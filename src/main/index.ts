@@ -53,6 +53,7 @@ import { createProviderAdapterRegistry, defaultProviderDescriptor, providerLabel
 import { buildDiagnosticsSnapshot, buildProductOperationsStatus, serializeDiagnosticsSnapshot } from './ProductOperations'
 import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
+import { composeRunPrompt } from './PromptComposition'
 import { detectCrossProviderDelegationMisuse, crossProviderDelegationWarningMessage } from './CrossProviderDelegationDetector'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { resolveSubThreadRecall } from './SubThreadRecall'
@@ -230,6 +231,7 @@ interface BackgroundSubThreadTranscriptState {
   startedAt: string
   content: string
   actualModel?: string
+  providerSessionId?: string
   stats?: unknown
   status: 'running' | 'success' | 'failed'
   errorMessage?: string
@@ -451,6 +453,10 @@ interface CodexRunState {
   workspacePath?: string
   turnId?: string
   model: string
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
   appRunId?: string
   appChatId?: string
   tokenUsage?: any
@@ -471,6 +477,10 @@ interface GeminiToolContext {
   appRunId?: string
   appChatId?: string
   providerSessionId?: string | null
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
 }
 
 // Phase B3: AgenticApprovalWaiter moved into
@@ -1200,7 +1210,13 @@ interface CliProviderStreamState {
   fallback: boolean
   completed: boolean
   assistantText: string
+  thinkingText?: string
+  thinkingStarted?: boolean
   providerSessionId?: string | null
+  approvalMode?: string
+  sessionTrust?: boolean
+  externalPathGrants?: ExternalPathGrant[]
+  runtimeProfileId?: string
   runId?: string | null
   appRunId?: string
   appChatId?: string
@@ -1649,14 +1665,52 @@ function saveAndBroadcastChat(chat: ChatRecord): void {
   }
 }
 
+function resolveDelegatedApprovalMode(context: GeminiToolContext, parentChatId: string): string {
+  if (context.approvalMode) return context.approvalMode
+  const parentChat = AppStore.getChat(parentChatId)
+  const matchingRun = parentChat?.runs?.find((run) => run.runId === context.appRunId)
+  return matchingRun?.approvalMode || parentChat?.runs?.[parentChat.runs.length - 1]?.approvalMode || 'default'
+}
+
+function composeDelegatedProviderPrompt(args: {
+  provider: ProviderId
+  subThread: ChatRecord
+  prompt: string
+  approvalMode: string
+  resumeSessionId?: string
+}): string {
+  // Kimi's `--resume` restores the session token but not the visible
+  // transcript. Normal composer turns compensate via PromptComposition;
+  // agent-driven sub-thread recalls need the same treatment or the Kimi
+  // child sees only the newest follow-up prompt.
+  if (args.provider !== 'kimi') return args.prompt
+  const settings = AppStore.getSettings()
+  return composeRunPrompt({
+    provider: args.provider,
+    finalPrompt: args.prompt,
+    messages: args.subThread.messages || [],
+    chatContextTurns: settings.chatContextTurns,
+    resumeSessionId: args.resumeSessionId,
+    codexHandoffsApplied: [],
+    isGlobalRun: (args.subThread.scope ?? 'workspace') === 'global',
+    approvalMode: args.approvalMode,
+    providerLabel: providerLabel(args.provider)
+  }).contextualPrompt
+}
+
 function seedAgentDrivenSubThreadTranscript(args: {
   subThread: ChatRecord
   parentProvider: ProviderId
   provider: ProviderId
   prompt: string
   returnResultToParent: boolean
+  requestedModel?: string
+  approvalMode?: string
+  runtimeProfileId?: string
 }): string {
   const { subThread, parentProvider, provider, prompt, returnResultToParent } = args
+  const requestedModel = args.requestedModel || 'cli-default'
+  const approvalMode = args.approvalMode || 'default'
   const runId = createFallbackRunId(provider)
   const startedAt = new Date().toISOString()
   const promptMessageId = `subthread-prompt-${subThread.appChatId}-${Date.now()}`
@@ -1683,9 +1737,10 @@ function seedAgentDrivenSubThreadTranscript(args: {
     provider,
     startedAt,
     promptMessageId,
-    requestedModel: 'cli-default',
-    approvalMode: 'default',
-    status: 'running'
+    requestedModel,
+    approvalMode,
+    status: 'running',
+    ...(args.runtimeProfileId ? { runtimeProfileId: args.runtimeProfileId } : {})
   }
   const current = AppStore.getChat(subThread.appChatId) || subThread
   const seeded: ChatRecord = {
@@ -1773,6 +1828,7 @@ function flushBackgroundSubThreadTranscript(runId: string, final = false): void 
       approvalMode: 'default'
     }),
     actualModel: state.actualModel || existingRun?.actualModel,
+    providerThreadId: state.providerSessionId || existingRun?.providerThreadId,
     stats: state.stats || existingRun?.stats,
     status: final ? state.status : 'running',
     endedAt: final ? timestamp : existingRun?.endedAt,
@@ -1786,6 +1842,8 @@ function flushBackgroundSubThreadTranscript(runId: string, final = false): void 
 
   const updated: ChatRecord = {
     ...current,
+    ...(state.provider !== 'gemini' && state.providerSessionId ? { linkedProviderSessionId: state.providerSessionId } : {}),
+    ...(state.provider === 'gemini' && state.providerSessionId ? { linkedGeminiSessionId: state.providerSessionId } : {}),
     messages,
     runs,
     updatedAt: Date.now()
@@ -1826,6 +1884,11 @@ function materializeBackgroundSubThreadProviderOutput(provider: ProviderId, rout
   const state = backgroundSubThreadTranscripts.get(runId)
   if (!state || state.provider !== provider) return
   if (routed.appChatId && routed.appChatId !== state.chatId) return
+
+  const providerSessionId = extractProviderSessionId(payload)
+  if (providerSessionId) {
+    state.providerSessionId = providerSessionId
+  }
 
   if (payload?.type === 'init' && typeof payload.model === 'string' && payload.model.trim()) {
     state.actualModel = payload.model
@@ -3956,19 +4019,40 @@ function claudePermissionModeForApproval(approvalMode?: string): string {
   return 'acceptEdits'
 }
 
-function contentPartsToText(value: any): string {
+function contentPartsToText(value: any, options: { includeThinking?: boolean } = {}): string {
   if (typeof value === 'string') return value
   if (!value) return ''
   if (Array.isArray(value)) {
-    return value.map(contentPartsToText).filter(Boolean).join('')
+    return value.map((item) => contentPartsToText(item, options)).filter(Boolean).join('')
   }
   if (typeof value !== 'object') return ''
   if (typeof value.text === 'string') return value.text
-  if (typeof value.think === 'string') return value.think
+  if (typeof value.think === 'string') return options.includeThinking ? value.think : ''
+  if (typeof value.thinking === 'string') return options.includeThinking ? value.thinking : ''
+  if (typeof value.reasoning === 'string') return options.includeThinking ? value.reasoning : ''
   if (typeof value.content === 'string') return value.content
-  if (Array.isArray(value.content)) return contentPartsToText(value.content)
-  if (Array.isArray(value.message?.content)) return contentPartsToText(value.message.content)
+  if (Array.isArray(value.content)) return contentPartsToText(value.content, options)
+  if (Array.isArray(value.message?.content)) return contentPartsToText(value.message.content, options)
   return ''
+}
+
+function contentPartsToThinkingText(value: any): string {
+  if (!value) return ''
+  if (Array.isArray(value)) return value.map(contentPartsToThinkingText).filter(Boolean).join('')
+  if (typeof value !== 'object') return ''
+  const direct = typeof value.think === 'string'
+    ? value.think
+    : typeof value.thinking === 'string'
+      ? value.thinking
+      : typeof value.reasoning === 'string'
+        ? value.reasoning
+        : ''
+  const nested = Array.isArray(value.content)
+    ? contentPartsToThinkingText(value.content)
+    : Array.isArray(value.message?.content)
+      ? contentPartsToThinkingText(value.message.content)
+      : ''
+  return `${direct}${nested}`
 }
 
 function extractProviderText(event: any): string {
@@ -3983,6 +4067,18 @@ function extractProviderText(event: any): string {
   if (params.type === 'ContentPart') return contentPartsToText(payload)
   if (typeof event.text === 'string') return event.text
   return ''
+}
+
+function extractProviderThinkingText(event: any): string {
+  if (!event || typeof event === 'string') return ''
+  const params = event.params || {}
+  const payload = params.payload || event.payload || {}
+  if (event.type === 'assistant' || event.type === 'message' || event.type === 'message_delta') {
+    return contentPartsToThinkingText(event.message?.content || event.content || event.delta)
+  }
+  if (event.method === 'event' && params.type === 'ContentPart') return contentPartsToThinkingText(payload)
+  if (params.type === 'ContentPart') return contentPartsToThinkingText(payload)
+  return contentPartsToThinkingText(event)
 }
 
 function providerUsageNumber(source: Record<string, unknown>, key: string): number {
@@ -4050,8 +4146,12 @@ function extractProviderSessionId(event: any): string | null {
     event?.session?.session_id,
     event?.message?.session_id,
     event?.params?.session_id,
+    event?.providerThreadId,
+    event?.provider_thread_id,
+    event?.threadId,
     event?.result?.session_id,
     event?.result?.sessionId,
+    event?.result?.providerThreadId,
     event?.result?.session?.id,
     event?.result?.session?.session_id
   ]
@@ -4158,12 +4258,40 @@ function emitCliProviderToolEvent(state: CliProviderStreamState, event: any) {
   }
 }
 
+function emitCliProviderThinkingEvent(state: CliProviderStreamState, text: string) {
+  const clean = text.trim()
+  if (!clean) return
+  const toolId = `${state.provider}-thinking-${state.appRunId || 'run'}`
+  if (!state.thinkingStarted) {
+    state.thinkingStarted = true
+    sendAgentCompatLine(state.sender, state.provider, {
+      type: 'tool_use',
+      tool_id: toolId,
+      tool_name: `${state.provider}_thinking`,
+      parameters: { title: `${providerLabel(state.provider)} thinking`, kind: 'reasoning' },
+      provider: state.provider
+    }, state)
+  }
+  state.thinkingText = `${state.thinkingText || ''}${text}`
+  sendAgentCompatLine(state.sender, state.provider, {
+    type: 'tool_result',
+    tool_id: toolId,
+    tool_name: `${state.provider}_thinking`,
+    status: 'success',
+    output: state.thinkingText,
+    provider: state.provider
+  }, state)
+}
+
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const sessionId = extractProviderSessionId(event)
   updateCliProviderSession(state, sessionId)
   const usage = extractProviderUsage(state.provider, event)
   if (usage) state.tokenUsage = usage
   emitCliProviderToolEvent(state, event)
+  if (state.provider === 'kimi') {
+    emitCliProviderThinkingEvent(state, extractProviderThinkingText(event))
+  }
 
   const text = extractProviderText(event)
   if (text) {
@@ -4223,6 +4351,10 @@ function runCliProviderProcess(
     completed: false,
     assistantText: '',
     providerSessionId: payload.providerSessionId || null,
+    approvalMode: payload.approvalMode,
+    sessionTrust: Boolean(payload.sessionTrust),
+    externalPathGrants: payload.externalPathGrants,
+    runtimeProfileId: payload.runtimeProfileId,
     ...route
   }
   registerRunSession(provider, event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
@@ -4511,6 +4643,10 @@ async function tryRunClaudeSdk(event: Electron.IpcMainInvokeEvent, payload: Agen
     completed: false,
     assistantText: '',
     providerSessionId: payload.providerSessionId || null,
+    approvalMode: payload.approvalMode,
+    sessionTrust: Boolean(payload.sessionTrust),
+    externalPathGrants: payload.externalPathGrants,
+    runtimeProfileId: payload.runtimeProfileId,
     ...route
   }
   registerRunSession('claude', event.sender, route, payload.scope === 'global' ? undefined : payload.workspace, state, payload.providerSessionId || null)
@@ -4847,6 +4983,10 @@ async function runKimiWireProvider(
     completed: false,
     assistantText: '',
     providerSessionId: payload.providerSessionId || null,
+    approvalMode: payload.approvalMode,
+    sessionTrust: Boolean(payload.sessionTrust),
+    externalPathGrants: payload.externalPathGrants,
+    runtimeProfileId: payload.runtimeProfileId,
     ...route
   }
   registerRunSession(
@@ -4919,6 +5059,8 @@ async function runKimiWireProvider(
           FORCE_COLOR: '0',
           NO_COLOR: '1',
           AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+          AGENTBENCH_RUN_ID: route.appRunId || '',
+          AGENTBENCH_CHAT_ID: route.appChatId || '',
           // Phase I4 (Kimi initiator): belt-and-braces env stamp on the
           // Kimi CLI process itself. The per-server env block in
           // ~/.kimi/mcp.json already stamps AGENTBENCH_PARENT_PROVIDER=
@@ -5279,6 +5421,7 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   // this second call is the belt; harmless when already installed.)
   await prepareKimiMcpBridgeForRun(event.sender)
   const kimiKey = getStoredKimiApiKey()
+  const fallbackRoute = routeWithRunId('kimi', payload)
   runCliProviderProcess(event, 'kimi', resolved.binaryPath, args, payload, {
     fallback: true,
     warning: 'Kimi Wire mode did not complete startup; using print-mode stream-json fallback for this one-shot run.',
@@ -5286,6 +5429,8 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
     // fallback CLI's spawn env. Matches the Wire-mode stamp.
     extraEnv: {
       AGENTBENCH_PARENT_PROVIDER: 'kimi',
+      AGENTBENCH_RUN_ID: fallbackRoute.appRunId || '',
+      AGENTBENCH_CHAT_ID: fallbackRoute.appChatId || '',
       ...(kimiKey ? { MOONSHOT_API_KEY: kimiKey } : {})
     }
   })
@@ -5442,6 +5587,9 @@ function getAgentToolContext(parentProvider: ProviderId, route?: AgentRunRoute |
     return null
   }
   const workspacePath = session.workspacePath ? resolve(session.workspacePath) : undefined
+  const state = session.state && typeof session.state === 'object'
+    ? session.state as Partial<GeminiToolContext>
+    : {}
   return {
     sender,
     scope: workspacePath ? 'workspace' : 'global',
@@ -5449,7 +5597,11 @@ function getAgentToolContext(parentProvider: ProviderId, route?: AgentRunRoute |
     workspacePath,
     appRunId: session.runId,
     appChatId: session.appChatId,
-    providerSessionId: session.providerSessionId
+    providerSessionId: session.providerSessionId,
+    approvalMode: state.approvalMode,
+    sessionTrust: state.sessionTrust,
+    externalPathGrants: state.externalPathGrants,
+    runtimeProfileId: state.runtimeProfileId
   }
 }
 
@@ -5642,7 +5794,7 @@ function normalizeCodexTurnStatus(status?: string): string {
   return status || 'success'
 }
 
-function createCodexRunState(sender: Electron.WebContents, threadId: string, model: string, cwd: string, workspacePath?: string, scope: ChatScope = 'workspace', route?: AgentRunRoute | null): CodexRunState {
+function createCodexRunState(sender: Electron.WebContents, threadId: string, model: string, cwd: string, workspacePath?: string, scope: ChatScope = 'workspace', route?: AgentRunRoute | null, payload?: AgentRunPayload): CodexRunState {
   return {
     sender,
     threadId,
@@ -5650,6 +5802,10 @@ function createCodexRunState(sender: Electron.WebContents, threadId: string, mod
     cwd,
     workspacePath,
     model,
+    approvalMode: payload?.approvalMode,
+    sessionTrust: Boolean(payload?.sessionTrust),
+    externalPathGrants: payload?.externalPathGrants,
+    runtimeProfileId: payload?.runtimeProfileId,
     ...normalizeRunRoute(route),
     assistantTextByItemId: new Map(),
     timelineStartedItemIds: new Set(),
@@ -5688,6 +5844,46 @@ function codexString(value: any): string {
 function codexCommandText(command: any): string {
   if (Array.isArray(command)) return command.map(codexString).join(' ')
   return codexString(command)
+}
+
+function shellQuoteTrim(value: string): string {
+  return value.trim().replace(/^['"`]+|['"`]+$/g, '')
+}
+
+function codexCommandEditPath(command: string): string {
+  const gitAddPatch = command.match(/\bgit\s+add\s+-p\s+(.+?)(?:\s*(?:&&|;|\||$))/)
+  if (gitAddPatch?.[1]) return shellQuoteTrim(gitAddPatch[1])
+  const fileFlag = command.match(/(?:^|\s)(?:--file|-f|--path)\s+(['"]?)([^'"\s]+)\1/)
+  if (fileFlag?.[2]) return shellQuoteTrim(fileFlag[2])
+  return ''
+}
+
+function looksLikePatchText(value: string): boolean {
+  if (!value.trim()) return false
+  return /^diff --git /m.test(value) ||
+    /^@@\s+-\d+/m.test(value) ||
+    /^\*\*\* Begin Patch/m.test(value) ||
+    /^---\s+(?:a\/|old|\/)/m.test(value)
+}
+
+function codexCommandFileEditMetadata(command: string, output = ''): { toolName: string; parameters: Record<string, unknown> } | null {
+  const normalized = command.toLowerCase()
+  const commandSuggestsPatch =
+    normalized.includes('apply_patch') ||
+    normalized.includes('git add -p') ||
+    normalized.includes('git apply') ||
+    normalized.includes('patch -p')
+  const patchPreview = looksLikePatchText(output) ? output : ''
+  if (!commandSuggestsPatch && !patchPreview) return null
+  const path = codexCommandEditPath(command)
+  return {
+    toolName: 'edit_file',
+    parameters: {
+      ...(path ? { path, changes: [{ kind: 'edit', path }] } : {}),
+      command,
+      ...(patchPreview ? { patchPreview } : {})
+    }
+  }
 }
 
 function summarizeCodexFileChanges(changes: any[]): string {
@@ -5755,12 +5951,18 @@ function emitCodexCommandOutputDelta(state: CodexRunState, params: any) {
   const itemId = codexTimelineItemId(params, 'codex-command')
   const delta = codexString(params?.delta ?? params?.output ?? params?.stdout ?? params?.stderr ?? params?.content)
   if (!delta) return
-  ensureCodexTimelineTool(state, itemId, 'run_shell_command', {
-    command: codexCommandText(params?.command || params?.item?.command || ''),
-    cwd: codexString(params?.cwd || params?.item?.cwd || '')
-  })
+  const command = codexCommandText(params?.command || params?.item?.command || '')
   const next = (state.commandOutputByItemId.get(itemId) || '') + delta
   state.commandOutputByItemId.set(itemId, next)
+  const editMetadata = codexCommandFileEditMetadata(command, next)
+  if (editMetadata) {
+    ensureCodexTimelineTool(state, itemId, editMetadata.toolName, editMetadata.parameters)
+  } else {
+    ensureCodexTimelineTool(state, itemId, 'run_shell_command', {
+      command,
+      cwd: codexString(params?.cwd || params?.item?.cwd || '')
+    })
+  }
   sendCodexSyntheticToolResult(state, itemId, next, 'running')
 }
 
@@ -5795,12 +5997,23 @@ function emitCodexPlanItem(state: CodexRunState, item: any) {
 function codexToolUseFromItem(item: any): any | null {
   if (!item || typeof item !== 'object') return null
   if (item.type === 'commandExecution') {
+    const command = codexCommandText(item.command || '')
+    const editMetadata = codexCommandFileEditMetadata(command, codexString(item.aggregatedOutput || item.output || item.stdout || item.stderr || ''))
+    if (editMetadata) {
+      return {
+        type: 'tool_use',
+        tool_id: item.id,
+        tool_name: editMetadata.toolName,
+        parameters: editMetadata.parameters,
+        provider: 'codex'
+      }
+    }
     return {
       type: 'tool_use',
       tool_id: item.id,
       tool_name: 'run_shell_command',
       parameters: {
-        command: item.command || '',
+        command,
         cwd: item.cwd || ''
       },
       provider: 'codex'
@@ -5847,12 +6060,15 @@ function codexToolUseFromItem(item: any): any | null {
 function codexToolResultFromItem(item: any): any | null {
   if (!item || typeof item !== 'object') return null
   if (item.type === 'commandExecution') {
+    const output = item.aggregatedOutput || ''
+    const command = codexCommandText(item.command || '')
+    const editMetadata = codexCommandFileEditMetadata(command, codexString(output || item.output || item.stdout || item.stderr || ''))
     return {
       type: 'tool_result',
       tool_id: item.id,
-      tool_name: 'run_shell_command',
+      tool_name: editMetadata?.toolName || 'run_shell_command',
       status: item.status === 'failed' ? 'error' : item.status === 'declined' ? 'warning' : 'success',
-      output: item.aggregatedOutput || '',
+      output,
       result: {
         exitCode: item.exitCode,
         durationMs: item.durationMs
@@ -6053,10 +6269,16 @@ function handleCodexNotification(message: any) {
       const output = [state.commandOutputByItemId.get(itemId), codexString(item.output || item.stdout), codexString(item.stderr), codexString(item.error || item.errorMessage)]
         .filter(Boolean)
         .join('\\n')
-      ensureCodexTimelineTool(state, itemId, 'run_shell_command', {
-        command: codexCommandText(item.command || ''),
-        cwd: codexString(item.cwd || '')
-      })
+      const command = codexCommandText(item.command || '')
+      const editMetadata = codexCommandFileEditMetadata(command, output)
+      if (editMetadata) {
+        ensureCodexTimelineTool(state, itemId, editMetadata.toolName, editMetadata.parameters)
+      } else {
+        ensureCodexTimelineTool(state, itemId, 'run_shell_command', {
+          command,
+          cwd: codexString(item.cwd || '')
+        })
+      }
       sendCodexSyntheticToolResult(state, itemId, output || 'Command exited with ' + (item.exitCode ?? item.status ?? 'unknown') + '.', item.status === 'failed' || item.exitCode ? 'error' : 'success')
       maybeRequestCodexHostRerun(state, item, itemId, output)
       return
@@ -6644,7 +6866,8 @@ async function runCodexAppServer(event: Electron.IpcMainInvokeEvent, payload: Ag
     payload.workspace!,
     payload.scope === 'global' ? undefined : payload.workspace,
     payload.scope,
-    route
+    route,
+    payload
   )
   registerRunSession('codex', event.sender, codexState, payload.scope === 'global' ? undefined : payload.workspace, codexState, threadId)
   setActiveCodexRunState(codexState)
@@ -6922,7 +7145,8 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 
   try {
     await prepareGeminiMcpBridgeForRun(event.sender, payload.workspace!, route, payload.scope, Boolean(payload.sessionTrust), {
-      requireWriteTools: requiresGeminiWriteTools
+      requireWriteTools: requiresGeminiWriteTools,
+      runPayload: payload
     })
   } catch (error) {
     sendAgentCompatError(event.sender, 'gemini', error instanceof Error ? error.message : String(error), route)
@@ -8233,22 +8457,39 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       } catch {
         // Best-effort.
       }
+      const delegatedApprovalMode = resolveDelegatedApprovalMode(context, parentChatId)
+      const recalledProviderSessionId = isRecall && recalledChat?.linkedProviderSessionId
+        ? recalledChat.linkedProviderSessionId
+        : undefined
+      const providerPrompt = composeDelegatedProviderPrompt({
+        provider: providerArg,
+        subThread,
+        prompt: promptArg,
+        approvalMode: delegatedApprovalMode,
+        resumeSessionId: recalledProviderSessionId
+      })
       const subThreadRunId = seedAgentDrivenSubThreadTranscript({
         subThread,
         parentProvider,
         provider: providerArg,
         prompt: promptArg,
-        returnResultToParent: returnResult
+        returnResultToParent: returnResult,
+        requestedModel: 'cli-default',
+        approvalMode: delegatedApprovalMode,
+        runtimeProfileId: context.runtimeProfileId
       })
       const runPayload: AgentRunPayload = {
         provider: providerArg,
         scope: context.scope ?? 'workspace',
         workspace: subThread.workspacePath,
-        prompt: promptArg,
+        prompt: providerPrompt,
         appRunId: subThreadRunId,
         appChatId: subThread.appChatId,
-        approvalMode: 'default',
+        approvalMode: delegatedApprovalMode,
         model: 'cli-default',
+        sessionTrust: Boolean(context.sessionTrust),
+        externalPathGrants: context.externalPathGrants,
+        runtimeProfileId: context.runtimeProfileId,
         // Phase J2: on recall, inject the existing sub-thread's
         // linked provider session id so the target provider's native
         // session resumes (Codex `thread/resume`, Claude SDK
@@ -8258,8 +8499,8 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
         // which case we don't set providerSessionId and the runtime
         // starts a fresh provider-side session (transcript continuity
         // is still preserved at the AGBench chat level).
-        ...(isRecall && recalledChat?.linkedProviderSessionId
-          ? { providerSessionId: recalledChat.linkedProviderSessionId }
+        ...(recalledProviderSessionId
+          ? { providerSessionId: recalledProviderSessionId }
           : {})
       }
       // RunCoordinator.dispatch now accepts the structural
@@ -9224,7 +9465,7 @@ async function prepareGeminiMcpBridgeForRun(
   route?: AgentRunRoute | null,
   scope: ChatScope = 'workspace',
   sessionTrust: boolean = false,
-  options: { requireWriteTools?: boolean } = {}
+  options: { requireWriteTools?: boolean; runPayload?: AgentRunPayload } = {}
 ): Promise<AgentRunRoute> {
   const routed = routeWithRunId('gemini', route)
   const settings = AppStore.getSettings()
@@ -9266,6 +9507,10 @@ async function prepareGeminiMcpBridgeForRun(
     scope,
     cwd: resolvedCwd,
     ...(scope === 'workspace' ? { workspacePath: resolvedCwd } : {}),
+    approvalMode: options.runPayload?.approvalMode,
+    sessionTrust: Boolean(options.runPayload?.sessionTrust ?? sessionTrust),
+    externalPathGrants: options.runPayload?.externalPathGrants,
+    runtimeProfileId: options.runPayload?.runtimeProfileId,
     ...routed
   }
   registerRunSession('gemini', sender, routed, scope === 'workspace' ? resolvedCwd : undefined, activeGeminiToolContext, activeGeminiToolContext.providerSessionId || null)
