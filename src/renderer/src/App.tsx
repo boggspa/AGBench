@@ -6639,18 +6639,76 @@ function App(): React.JSX.Element {
       // separate follow-up since expandedWorkspaceIds lives inside
       // Sidebar.tsx and would need prop drilling to reach from here.)
       window.api.onChatUpdated((chat) => {
+        // Stream-safe merge: main may broadcast a disk-stale `ChatRecord`
+        // mid-stream (saveChat debounces by 200ms; sub-thread delegation
+        // card injection, F2 back-prop, surfaceSubThreadDispatchFailure
+        // etc. all read-from-disk → splice → broadcast). Unconditionally
+        // replacing `chatByIdRef.current` with that snapshot wipes out
+        // every token streamed since the last persisted write. Net
+        // effect: the rendered assistant transcript shows keep/drop/
+        // drop/keep — the source of the "Codex transcript is garbled"
+        // reports (raw event stream contains all tokens; we were
+        // dropping them at the merge layer).
+        //
+        // Heuristic when a run is active for this chat: prefer the
+        // live ref's content for any assistant message whose live copy
+        // is longer than the incoming copy (streaming-only path —
+        // disk can never be ahead of memory mid-run), and append any
+        // assistant messages the live ref has that the broadcast
+        // doesn't (newly-spawned assistant message, snapshot pre-
+        // dating the first delta). System cards added by main
+        // (delegation cards, sub-thread return cards) flow through
+        // unchanged because they only exist in the broadcast.
+        let merged = chat
+        const liveChat = chatByIdRef.current.get(chat.appChatId)
+        const hasActiveRun = (() => {
+          for (const ctx of activeRunsRef.current.values()) {
+            if (ctx.chatId === chat.appChatId) return true
+          }
+          return false
+        })()
+        if (hasActiveRun && liveChat && liveChat.messages.length > 0) {
+          const liveById = new Map(liveChat.messages.map((m) => [m.id, m]))
+          const mergedMessages = chat.messages.map((m) => {
+            const live = liveById.get(m.id)
+            if (
+              live &&
+              live.role === 'assistant' &&
+              (live.content?.length ?? 0) > (m.content?.length ?? 0)
+            ) {
+              return { ...m, content: live.content }
+            }
+            return m
+          })
+          const incomingIds = new Set(chat.messages.map((m) => m.id))
+          const orphanedLiveAssistants = liveChat.messages.filter(
+            (m) => m.role === 'assistant' && !incomingIds.has(m.id)
+          )
+          if (
+            mergedMessages.length !== chat.messages.length ||
+            orphanedLiveAssistants.length > 0 ||
+            mergedMessages.some((m, i) => m !== chat.messages[i])
+          ) {
+            merged = {
+              ...chat,
+              messages: orphanedLiveAssistants.length > 0
+                ? [...mergedMessages, ...orphanedLiveAssistants]
+                : mergedMessages
+            }
+          }
+        }
         setChats((prev) => {
-          const idx = prev.findIndex((c) => c.appChatId === chat.appChatId)
+          const idx = prev.findIndex((c) => c.appChatId === merged.appChatId)
           if (idx < 0) {
-            return [...prev, chat]
+            return [...prev, merged]
           }
           const next = prev.slice()
-          next[idx] = chat
+          next[idx] = merged
           return next
         })
-        chatByIdRef.current.set(chat.appChatId, chat)
-        if (currentChatIdRef.current === chat.appChatId) {
-          setCurrentChat(chat)
+        chatByIdRef.current.set(merged.appChatId, merged)
+        if (currentChatIdRef.current === merged.appChatId) {
+          setCurrentChat(merged)
         }
       })
     }
