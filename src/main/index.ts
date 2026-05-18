@@ -5883,9 +5883,22 @@ function formatCodexApprovalRequest(method: string, params: any, state?: CodexRu
   }
 
   if (toolName || String(method).toLowerCase().includes('mcp') || String(kind).toLowerCase().includes('tool')) {
+    // Phase J3: route Codex's elicitation/preview for `delegate_to_subthread`
+    // to the `subThreadDelegation` service so a user-granted "Allow for
+    // session" on the AGBench delegation modal silently absorbs the
+    // Codex pre-flight too. Without this mapping the elicitation reads
+    // out under the generic `mcpTools` policy and re-prompts every call
+    // even after the user has clearly authorised cross-provider work.
+    const resolvedService: AgenticServiceId =
+      String(toolName) === 'delegate_to_subthread'
+        ? ('subThreadDelegation' as AgenticServiceId)
+        : ('mcpTools' as AgenticServiceId)
     return {
-      service: 'mcpTools' as AgenticServiceId,
-      title: 'Approve Codex tool call',
+      service: resolvedService,
+      title:
+        resolvedService === 'subThreadDelegation'
+          ? 'Approve Codex sub-thread delegation'
+          : 'Approve Codex tool call',
       body: codexString(toolName || kind),
       preview: {
         kind: 'tool',
@@ -5966,6 +5979,47 @@ function handleCodexServerRequest(message: any) {
       codexClient.respond(message.id, {
         permissions: params?.permissions || {},
         scope: hasSessionGrant || hasWorkspaceGrant ? 'session' : 'turn'
+      })
+      return
+    }
+  }
+
+  // Phase J3: Codex's MCP elicitation pre-flight (mcpServer/elicitation/request
+  // and the older mcp/elicitation/request) also honors session + workspace
+  // grants and the global `allow` policy. Without this branch a user who
+  // clicked "Allow for session" on the AGBench subThreadDelegation modal
+  // would STILL be prompted by Codex's elicitation modal on every later
+  // delegate_to_subthread call — leading to the "I have to manually
+  // approve every single permission" frustration. The response shape is
+  // the McpServerElicitationRequestResponse `{ action, content, _meta }`,
+  // not the `{ permissions, scope }` shape used by item/permissions.
+  if (
+    service &&
+    (method === 'mcpServer/elicitation/request' || method === 'mcp/elicitation/request')
+  ) {
+    const hasSessionGrant = permissionService.hasSessionGrant('codex', isGlobalScope ? undefined : state.workspacePath, service, state.appRunId)
+    const hasWorkspaceGrant = !isGlobalScope && policy === 'workspace' && hasAgenticWorkspaceGrant(settings, 'codex', state.workspacePath, service)
+    if (hasSessionGrant || (!isGlobalScope && policy === 'allow') || hasWorkspaceGrant) {
+      auditService.recordAutomaticApprovalDecision(
+        'codex',
+        { appRunId: state.appRunId, appChatId: state.appChatId },
+        service,
+        isGlobalScope ? undefined : state.workspacePath,
+        {
+          method,
+          title: formatted.title,
+          body: formatted.body,
+          preview: formatted.preview
+        },
+        'autoAllow',
+        hasSessionGrant ? 'session_grant' : hasWorkspaceGrant ? 'workspace_grant' : 'policy',
+        hasSessionGrant ? 'session' : hasWorkspaceGrant ? 'workspace' : 'request',
+        { policy }
+      )
+      codexClient.respond(message.id, {
+        action: 'accept',
+        content: null,
+        _meta: null
       })
       return
     }
@@ -7527,14 +7581,23 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
   const args = normalizeMcpToolArguments(rawArgs)
   const cwd = resolveScopedDirectory(context.scope, baseCwd, workspacePath, String(args.cwd || args.working_directory || args.workdir || ''))
   const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context)
-  const allowed = await requestAgenticServiceApproval(context.sender, parentProvider, approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
-    method: `${parentProvider}-mcp/${toolName}`,
-    title: approvalPreview.title,
-    body: approvalPreview.body,
-    preview: approvalPreview.preview,
-    runId: context.appRunId,
-    forcePrompt: context.scope === 'global'
-  })
+  // Phase J3: delegate_to_subthread runs its OWN approval gate further
+  // down (using the richer `subThreadDelegation` service with delegation
+  // prompt + target provider in the preview). Without this short-circuit
+  // the generic `mcpTools` gate prompts the user first, then the
+  // delegation gate prompts them again — TWO modals for the same logical
+  // action. Skip the generic one; the delegation gate is authoritative.
+  const skipGenericApproval = toolName === 'delegate_to_subthread'
+  const allowed = skipGenericApproval
+    ? true
+    : await requestAgenticServiceApproval(context.sender, parentProvider, approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
+        method: `${parentProvider}-mcp/${toolName}`,
+        title: approvalPreview.title,
+        body: approvalPreview.body,
+        preview: approvalPreview.preview,
+        runId: context.appRunId,
+        forcePrompt: context.scope === 'global'
+      })
   const toolId = `${parentProvider}-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
   sendAgentCompatLine(context.sender, parentProvider, {
