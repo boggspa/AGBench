@@ -1,116 +1,50 @@
-import { useState, type MouseEvent } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { HighlightedCodeBlock } from './HighlightedCodeBlock';
-import { AgentIdentityContext, AgentMention } from './AgentMention';
-import { classifyMarkdownLink } from '../lib/classifyMarkdownLink';
-import type { ChatRecord } from '../../../main/store/types';
+import { AgentIdentityContext } from './AgentMention'
+import { StableMarkdownBlock } from './StableMarkdownBlock'
+import { splitMarkdownIntoBlocks } from '../lib/MarkdownBlockSplit'
+import type { ChatRecord } from '../../../main/store/types'
 
 interface MarkdownMessageProps {
-  content: string;
+  content: string
   /** Chat used to look up subagent identities for `[@Name](agent://id)` chips. */
-  chat?: ChatRecord;
+  chat?: ChatRecord
 }
 
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // Copy is best-effort; avoid adding noisy UI state inside streamed messages.
-  }
-}
-
-function MarkdownCodeBlock({ content, language }: { content: string; language?: string }) {
-  const [wrap, setWrap] = useState(false);
-  const displayLanguage = language?.trim() || 'text';
-
-  return (
-    <div className={`message-code-shell ${wrap ? 'wrap' : ''}`}>
-      <div className="message-code-header">
-        <span className="message-code-language">{displayLanguage}</span>
-        <div className="message-code-actions">
-          <button type="button" className="message-code-action" onClick={() => setWrap((current) => !current)}>
-            {wrap ? 'No wrap' : 'Wrap'}
-          </button>
-          <button type="button" className="message-code-action" onClick={() => void copyText(content)}>
-            Copy
-          </button>
-        </div>
-      </div>
-      <div className="message-code-block">
-        <HighlightedCodeBlock content={content} language={language} />
-      </div>
-    </div>
-  );
-}
-
+/**
+ * MarkdownMessage — orchestrator for streaming-friendly markdown.
+ *
+ * Phase L1a refactor. The renderer is now block-aware:
+ *
+ *   1. We split `content` into stable blocks + an optional tail via
+ *      `splitMarkdownIntoBlocks` (pure string scan, no mdast).
+ *   2. Each stable block goes through `StableMarkdownBlock`, keyed by
+ *      its content-hashed id. That subtree is `React.memo`'d on `raw`,
+ *      so a parent re-render driven by `assistant_message_delta` only
+ *      diffs the tail.
+ *   3. The tail is rendered through the same memoised component, but
+ *      its key (content hash) changes per keystroke — React unmounts
+ *      the old tail and mounts a new one. The stable prefix survives
+ *      unchanged.
+ *
+ * The output HTML is byte-for-byte identical to the pre-L1a renderer
+ * for any complete (non-streaming) message — the existing snapshot
+ * tests verify that. The win is paid for entirely by the streaming
+ * path; for a 5K-token reply we go from N parses per delta (where N
+ * is total token count) to roughly 1 parse per delta (just the tail).
+ *
+ * The `AgentIdentityContext.Provider` wraps the whole markdown subtree
+ * so `<AgentMention>` chips in any block can look up the chat's
+ * identity registry without prop drilling.
+ */
 export function MarkdownMessage({ content, chat }: MarkdownMessageProps) {
+  const { stable, tail } = splitMarkdownIntoBlocks(content)
   return (
     <AgentIdentityContext.Provider value={chat}>
-    <div className="message-markdown message-markdown-pro">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a({ href, children }) {
-            // Subagent @-mention: [@Name](agent://<uuid>) renders as a colored
-            // inline chip via AgentMention, looked up against the current
-            // chat's identity registry through AgentIdentityContext.
-            if (typeof href === 'string' && href.startsWith('agent://')) {
-              const agentId = href.slice('agent://'.length).trim();
-              return <AgentMention agentId={agentId}>{children}</AgentMention>;
-            }
-            // Phase K1: every other link routes through the preload
-            // bridge instead of letting the BrowserWindow navigate.
-            // A bare `<a href="file:///...">` left-click would unload
-            // the bundled `index.html` (no `will-navigate` guard was
-            // wired before this phase — that's now defense-in-depth
-            // in main). Classify the href, preventDefault on click,
-            // hand off to the OS via `openExternalOrPath`.
-            const classification = classifyMarkdownLink(href);
-            const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (classification.kind === 'unknown') return;
-              const api = (window as unknown as { api?: { openExternalOrPath?: (h: string) => Promise<unknown> } }).api;
-              try {
-                void api?.openExternalOrPath?.(classification.resolved);
-              } catch {
-                // Best-effort: missing bridge in tests / SSR — no-op.
-              }
-            };
-            const isExternal = classification.kind === 'external';
-            return (
-              <a
-                href={typeof href === 'string' ? href : '#'}
-                target={isExternal ? '_blank' : undefined}
-                rel={isExternal ? 'noreferrer' : undefined}
-                onClick={handleClick}
-                data-link-kind={classification.kind}
-              >
-                {children}
-              </a>
-            );
-          },
-          pre({ children }) {
-            return <>{children}</>;
-          },
-          code({ className, children }) {
-            const rawContent = String(children ?? '').replace(/\n$/, '');
-            const languageMatch = /language-([\w-]+)/.exec(className || '');
-            const isBlock = Boolean(languageMatch) || rawContent.includes('\n');
-            if (!isBlock) {
-              return <code className={className}>{children}</code>;
-            }
-            return <MarkdownCodeBlock content={rawContent} language={languageMatch?.[1]} />;
-          },
-          input({ checked, disabled, type }) {
-            return <input type={type} checked={checked} disabled={disabled ?? true} readOnly />;
-          }
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    </div>
+      <div className="message-markdown message-markdown-pro">
+        {stable.map((block) => (
+          <StableMarkdownBlock key={block.id} raw={block.raw} />
+        ))}
+        {tail ? <StableMarkdownBlock key={tail.id} raw={tail.raw} /> : null}
+      </div>
     </AgentIdentityContext.Provider>
-  );
+  )
 }
