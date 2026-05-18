@@ -7,21 +7,14 @@ import BridgeCryptoPairing
 ///
 /// UI lifecycle:
 ///   1. View calls `scan(bootstrapJSON:)` after a QR is read (or text
-///      pasted during early testing). On success, `state` flips to
-///      `.confirmingCode` with the 6-digit code to display.
-///   2. View shows the code; user verifies it matches what the Mac
-///      shows. View calls `confirm()` to accept or `cancel()` to abort.
-///   3. On `confirm()`, the view model exposes the typed `Pair` via
-///      `confirmedPair` so a downstream coordinator can hand it to
-///      `GuiGeminiBridgeClient`.
-///
-/// What's missing (intentionally):
-///   - The "send response to Mac" step: pairing handshake transport
-///     is a future slice (needs a bonjour-discovered TCP socket to
-///     speak the pairing protocol over before keys are derived).
-///     Today's view model stops at "code displayed, user confirmed,
-///     pair credentials ready" — the actual session-keys hand-off
-///     waits for the transport piece.
+///      pasted during early testing). On success, the view model opens
+///      the Bonjour-discovered pairing channel and sends the response
+///      payload to the Mac.
+///   2. View shows the local code while waiting for the Mac to echo its
+///      derived code. Only matching codes move to `.confirmingCode`.
+///   3. View calls `confirm()` to accept or `cancel()` to abort. Confirm
+///      sends the iOS decision and waits for the desktop-side final
+///      decision before exposing `confirmedPair`.
 ///
 /// `@Observable` (Swift 5.9+) avoids manual `@Published` for each
 /// property and works seamlessly with SwiftUI's view-binding.
@@ -31,7 +24,9 @@ public final class PairingViewModel {
     public enum State: Sendable, Equatable {
         case idle
         case scanning
+        case awaitingDesktopVerification(confirmationCode: String, controllerDisplayName: String)
         case confirmingCode(confirmationCode: String, controllerDisplayName: String)
+        case finalizing(confirmationCode: String, controllerDisplayName: String)
         case confirmed
         case failed(message: String)
     }
@@ -47,27 +42,34 @@ public final class PairingViewModel {
     private let identityKey: DeviceIdentitySigningKey
     private let controllerDeviceID: DeviceID
     private let controllerDisplayName: String
+    private let makePairingChannelTransport: PairingChannelTransportFactory
 
     /// Set during `scan()`. Held until `confirm()` to seal the pair.
     private var stagedFlow: PairingFlow.Started?
     private var stagedResponse: PairingResponsePayload?
     private var stagedDerivedKeys: PairingDerivedKeys?
+    private var pairingTransport: (any PairingChannelTransport)?
+    private var pairingTask: Task<Void, Never>?
 
     public init(
         controllerDeviceID: DeviceID = DeviceID(UUID().uuidString.lowercased()),
         controllerDisplayName: String = "iPhone",
-        identityKey: DeviceIdentitySigningKey = DeviceIdentitySigningKey()
+        identityKey: DeviceIdentitySigningKey = DeviceIdentitySigningKey(),
+        pairingChannelTransportFactory: @escaping PairingChannelTransportFactory = { configuration in
+            PairingChannelClient(configuration: configuration)
+        }
     ) {
         self.controllerDeviceID = controllerDeviceID
         self.controllerDisplayName = controllerDisplayName
         self.identityKey = identityKey
+        self.makePairingChannelTransport = pairingChannelTransportFactory
     }
 
-    /// Step 1: decode QR bytes (or pasted JSON), derive keys, compute
-    /// the 6-digit confirmation code. View transitions to
-    /// `.confirmingCode` on success or `.failed` on any decode/expiry
-    /// error.
+    /// Step 1: decode QR bytes (or pasted JSON), derive keys, compute the
+    /// 6-digit confirmation code, then send the response to the Mac over
+    /// the Bonjour-discovered pairing channel.
     public func scan(bootstrapJSON: Data) {
+        cancelActiveTransport(message: "Pairing restarted")
         state = .scanning
         do {
             let started = try PairingFlow.scan(bootstrapJSON: bootstrapJSON)
@@ -79,50 +81,90 @@ public final class PairingViewModel {
             self.stagedFlow = started
             self.stagedResponse = result.response
             self.stagedDerivedKeys = result.derivedKeys
-            self.state = .confirmingCode(
+            self.state = .awaitingDesktopVerification(
                 confirmationCode: result.confirmationCode,
                 controllerDisplayName: controllerDisplayName
             )
+            let configuration = PairingChannelClient.Configuration(
+                bonjourServiceName: started.bootstrap.bonjourServiceName ?? GuiGeminiBridgeClient.ServiceType.tcp
+            )
+            let transport = makePairingChannelTransport(configuration)
+            self.pairingTransport = transport
+            self.pairingTask = Task { [weak self, transport, response = result.response, confirmationCode = result.confirmationCode] in
+                await self?.awaitDesktopVerification(
+                    transport: transport,
+                    response: response,
+                    localConfirmationCode: confirmationCode
+                )
+            }
         } catch {
             self.state = .failed(message: describe(error: error))
         }
     }
 
-    /// Step 2 — user confirmed the codes match. Produces the typed
-    /// `Pair` for the client wrapper. The view model can be discarded
-    /// after this; consumers hold the pair credentials.
+    /// Step 2 — user confirmed the codes match. Sends the local decision,
+    /// waits for the Mac desktop to accept, then produces the typed `Pair`
+    /// for the bridge client wrapper.
     public func confirm() {
         guard
-            case .confirmingCode = state,
+            case .confirmingCode(let confirmationCode, let displayName) = state,
             let response = stagedResponse,
             let derivedKeys = stagedDerivedKeys,
-            let _ = stagedFlow
+            let flow = stagedFlow,
+            let transport = pairingTransport
         else {
             state = .failed(message: "Cannot confirm — pairing was not staged")
             return
         }
-        // Pair id mirrors the Mac-side: a fresh UUID minted when the
-        // Mac finalizes. iOS doesn't know the Mac's chosen pairID until
-        // the transport-side hello echoes it. For now we mint
-        // controller-side; reconcile in the transport slice.
+        state = .finalizing(confirmationCode: confirmationCode, controllerDisplayName: displayName)
+        pairingTask?.cancel()
+        pairingTask = Task { [weak self, transport, response, derivedKeys, flow] in
+            do {
+                let decision = try await transport.sendFinalDecisionAndWaitForDesktop(
+                    accepted: true,
+                    message: nil
+                )
+                guard decision.accepted else {
+                    self?.failPairing(decision.message ?? "The Mac rejected this pairing request")
+                    return
+                }
+                self?.completePairing(response: response, derivedKeys: derivedKeys, flow: flow)
+            } catch {
+                self?.failPairing("Pairing finalization failed: \(self?.describe(error: error) ?? error.localizedDescription)")
+            }
+        }
+    }
+
+    private func completePairing(
+        response: PairingResponsePayload,
+        derivedKeys: PairingDerivedKeys,
+        flow: PairingFlow.Started
+    ) {
         let pairID = PairID(UUID().uuidString.lowercased())
         confirmedPair = GuiGeminiBridgeClient.Pair(
             pairID: pairID,
             controllerDeviceID: response.controllerDeviceID,
-            macDeviceID: stagedFlow!.bootstrap.macDeviceID,
+            macDeviceID: flow.bootstrap.macDeviceID,
             derivedKeys: derivedKeys,
-            tailscaleEndpointHint: stagedFlow!.bootstrap.tailscaleEndpointHint
+            tailscaleEndpointHint: flow.bootstrap.tailscaleEndpointHint
         )
+        pairingTransport = nil
+        pairingTask = nil
         state = .confirmed
     }
 
     /// User rejected the codes (mismatch / suspected attack) — discard
     /// staged credentials and return to idle.
     public func cancel() {
+        cancelActiveTransport(message: "User reported that the pairing codes did not match")
+        clearStaged()
+        state = .idle
+    }
+
+    private func clearStaged() {
         stagedFlow = nil
         stagedResponse = nil
         stagedDerivedKeys = nil
-        state = .idle
     }
 
     /// Reset back to idle without confirming. Used after `.failed`.
@@ -137,9 +179,66 @@ public final class PairingViewModel {
         stagedResponse
     }
 
+    private func awaitDesktopVerification(
+        transport: any PairingChannelTransport,
+        response: PairingResponsePayload,
+        localConfirmationCode: String
+    ) async {
+        do {
+            let reply = try await transport.attemptPairing(response: response)
+            guard !Task.isCancelled else { return }
+            guard stagedResponse?.pairingSessionID == response.pairingSessionID else { return }
+            guard reply.sessionID == response.pairingSessionID else {
+                try? await transport.sendFinalDecision(
+                    accepted: false,
+                    message: "Mac replied for a different pairing session"
+                )
+                failPairing("The Mac replied for a different pairing session")
+                return
+            }
+            guard reply.macConfirmationCode == localConfirmationCode else {
+                try? await transport.sendFinalDecision(
+                    accepted: false,
+                    message: "Pairing confirmation codes did not match"
+                )
+                failPairing("The Mac showed a different pairing code. Pairing was cancelled.")
+                return
+            }
+            state = .confirmingCode(
+                confirmationCode: localConfirmationCode,
+                controllerDisplayName: controllerDisplayName
+            )
+        } catch {
+            guard !Task.isCancelled else { return }
+            await transport.cancel()
+            failPairing("Pairing channel failed: \(describe(error: error))")
+        }
+    }
+
+    private func failPairing(_ message: String) {
+        clearStaged()
+        pairingTransport = nil
+        pairingTask = nil
+        state = .failed(message: message)
+    }
+
+    private func cancelActiveTransport(message: String) {
+        pairingTask?.cancel()
+        pairingTask = nil
+        guard let transport = pairingTransport else { return }
+        pairingTransport = nil
+        Task { [transport, message] in
+            try? await transport.sendFinalDecision(accepted: false, message: message)
+            await transport.cancel()
+        }
+    }
+
     private func describe(error: Error) -> String {
         if let flowError = error as? PairingFlowError {
             return flowError.description
+        }
+        if let channelError = error as? PairingChannelClient.PairingChannelError {
+            return channelError.description
         }
         return error.localizedDescription
     }

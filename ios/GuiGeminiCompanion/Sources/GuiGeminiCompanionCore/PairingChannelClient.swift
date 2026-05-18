@@ -27,7 +27,16 @@ import BridgeCryptoPairing
 ///   2. `sendFinalDecision(accepted:)` sends the user's accept/reject
 ///      back over the same connection and tears down.
 /// `cancel()` aborts the connection at any point.
-public actor PairingChannelClient {
+public protocol PairingChannelTransport: Sendable {
+    func attemptPairing(response: PairingResponsePayload) async throws -> PairingChannelClient.PairingReply
+    func sendFinalDecision(accepted: Bool, message: String?) async throws
+    func sendFinalDecisionAndWaitForDesktop(accepted: Bool, message: String?) async throws -> PairingChannelClient.DesktopFinalDecision
+    func cancel() async
+}
+
+public typealias PairingChannelTransportFactory = @Sendable (PairingChannelClient.Configuration) -> any PairingChannelTransport
+
+public actor PairingChannelClient: PairingChannelTransport {
     public enum PairingChannelError: Error, CustomStringConvertible, Sendable {
         case discoveryFailed(String)
         case connectionFailed(String)
@@ -81,6 +90,16 @@ public actor PairingChannelClient {
         public let sessionID: String
     }
 
+    public struct DesktopFinalDecision: Sendable, Codable, Equatable {
+        public let accepted: Bool
+        public let message: String?
+
+        public init(accepted: Bool, message: String? = nil) {
+            self.accepted = accepted
+            self.message = message
+        }
+    }
+
     public struct FinalDecisionMessage: Sendable, Codable, Equatable {
         public let accepted: Bool
         public let message: String?
@@ -129,7 +148,13 @@ public actor PairingChannelClient {
         try await sendFrame(responseBytes, on: connection)
 
         // Await the Mac's reply with the confirmation code.
-        let replyBytes = try await receiveFrame(on: connection)
+        let replyBytes: Data
+        do {
+            replyBytes = try await receiveFrame(on: connection)
+        } catch {
+            await tearDown()
+            throw error
+        }
         guard
             let object = try? JSONSerialization.jsonObject(with: replyBytes) as? [String: Any],
             let code = object["macConfirmationCode"] as? String,
@@ -145,16 +170,31 @@ public actor PairingChannelClient {
     /// Closes the connection after sending.
     public func sendFinalDecision(accepted: Bool, message: String? = nil) async throws {
         guard let connection else { throw PairingChannelError.notConnected }
-        let payload = FinalDecisionMessage(accepted: accepted, message: message)
-        let bytes: Data
+        try await sendFinalDecisionFrame(accepted: accepted, message: message, on: connection)
+        await tearDown()
+    }
+
+    /// Step 2 with desktop acknowledgement: send the iOS user's local
+    /// decision, then wait for the Mac-side desktop confirmation result
+    /// on the same TCP connection.
+    public func sendFinalDecisionAndWaitForDesktop(
+        accepted: Bool,
+        message: String? = nil
+    ) async throws -> DesktopFinalDecision {
+        guard let connection else { throw PairingChannelError.notConnected }
         do {
-            bytes = try JSONEncoder().encode(payload)
+            try await sendFinalDecisionFrame(accepted: accepted, message: message, on: connection)
+            let replyBytes = try await receiveFrame(on: connection)
+            let decision = try JSONDecoder().decode(DesktopFinalDecision.self, from: replyBytes)
+            await tearDown()
+            return decision
         } catch {
             await tearDown()
-            throw PairingChannelError.sendFailed("Failed to encode final decision: \(error.localizedDescription)")
+            if let channelError = error as? PairingChannelError {
+                throw channelError
+            }
+            throw PairingChannelError.malformedReply("Desktop final decision could not be decoded: \(error.localizedDescription)")
         }
-        try await sendFrame(bytes, on: connection)
-        await tearDown()
     }
 
     /// Cancel the in-flight pairing. Idempotent.
@@ -257,15 +297,37 @@ public actor PairingChannelClient {
         }
     }
 
+    private func sendFinalDecisionFrame(
+        accepted: Bool,
+        message: String?,
+        on connection: NWConnection
+    ) async throws {
+        let payload = FinalDecisionMessage(accepted: accepted, message: message)
+        let bytes: Data
+        do {
+            bytes = try JSONEncoder().encode(payload)
+        } catch {
+            throw PairingChannelError.sendFailed("Failed to encode final decision: \(error.localizedDescription)")
+        }
+        try await sendFrame(bytes, on: connection)
+    }
+
     private func receiveFrame(on connection: NWConnection) async throws -> Data {
         let lengthBytes = try await receiveExact(4, on: connection)
-        let length = lengthBytes.withUnsafeBytes { raw -> UInt32 in
-            raw.load(as: UInt32.self)
-        }.bigEndian
+        let length = try decodeFrameLength(lengthBytes)
         guard length > 0, length < 1_048_576 else {
             throw PairingChannelError.malformedReply("Frame length \(length) out of bounds")
         }
         return try await receiveExact(Int(length), on: connection)
+    }
+
+    private func decodeFrameLength(_ bytes: Data) throws -> UInt32 {
+        guard bytes.count == 4 else {
+            throw PairingChannelError.receiveFailed("Expected 4-byte frame length, got \(bytes.count)")
+        }
+        return bytes.reduce(UInt32(0)) { partial, byte in
+            (partial << 8) | UInt32(byte)
+        }
     }
 
     private func receiveExact(_ count: Int, on connection: NWConnection) async throws -> Data {

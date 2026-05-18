@@ -5,9 +5,9 @@ import SwiftUI
 /// iOS flow:
 ///   - Camera preview reads the QR shown on the Mac.
 ///   - On first detection, bytes flow to `viewModel.scan(...)`.
-///   - View transitions to `.confirmingCode` and shows the 6-digit code.
-///   - User verifies the code matches the Mac, taps Confirm / "Codes
-///     don't match".
+///   - View shows the 6-digit code while the response is sent to the Mac.
+///   - After the Mac echoes the same code, user taps Confirm / "Codes
+///     don't match"; final success waits for desktop approval.
 ///   - A "Paste JSON instead" fallback covers developer testing and
 ///     phones without working cameras.
 ///
@@ -37,8 +37,12 @@ public struct PairingView: View {
                     switch viewModel.state {
                     case .idle, .scanning, .failed:
                         scanScreen
+                    case .awaitingDesktopVerification(let code, let displayName):
+                        confirmingScreen(code: code, displayName: displayName, mode: .waitingForMac)
                     case .confirmingCode(let code, let displayName):
-                        confirmingScreen(code: code, displayName: displayName)
+                        confirmingScreen(code: code, displayName: displayName, mode: .ready)
+                    case .finalizing(let code, let displayName):
+                        confirmingScreen(code: code, displayName: displayName, mode: .finalizing)
                     case .confirmed:
                         confirmedScreen
                     }
@@ -269,10 +273,16 @@ public struct PairingView: View {
         .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
     }
 
+    private enum ConfirmationMode {
+        case waitingForMac
+        case ready
+        case finalizing
+    }
+
     @ViewBuilder
-    private func confirmingScreen(code: String, displayName: String) -> some View {
+    private func confirmingScreen(code: String, displayName: String, mode: ConfirmationMode) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.section) {
-            Label("Verify this code on your Mac", systemImage: "lock.shield")
+            Label(confirmationTitle(for: mode), systemImage: confirmationIcon(for: mode))
                 .font(Theme.Typography.sectionTitle)
                 .foregroundStyle(Theme.Text.primary)
             Text(code)
@@ -289,17 +299,29 @@ public struct PairingView: View {
                 .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Text.secondary)
                 .lineLimit(2)
+            if mode != .ready {
+                HStack(spacing: Theme.Spacing.tight) {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(Theme.accent)
+                    Text(confirmationStatus(for: mode))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.Text.secondary)
+                }
+            }
             HStack(spacing: Theme.Spacing.control) {
                 Button(role: .destructive, action: viewModel.cancel) {
                     Label("Codes don't match", systemImage: "xmark")
                 }
                 .buttonStyle(.bordered)
+                .disabled(mode == .finalizing)
                 Spacer()
                 Button(action: viewModel.confirm) {
                     Label("Confirm", systemImage: "checkmark")
                         .font(Theme.Typography.sectionTitle)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(mode != .ready)
             }
         }
         .padding(Theme.Spacing.section)
@@ -309,6 +331,39 @@ public struct PairingView: View {
                 .stroke(Theme.border, lineWidth: 1)
         )
         .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    private func confirmationTitle(for mode: ConfirmationMode) -> String {
+        switch mode {
+        case .waitingForMac:
+            return "Waiting for Mac verification"
+        case .ready:
+            return "Verify this code on your Mac"
+        case .finalizing:
+            return "Finishing pairing"
+        }
+    }
+
+    private func confirmationIcon(for mode: ConfirmationMode) -> String {
+        switch mode {
+        case .waitingForMac:
+            return "antenna.radiowaves.left.and.right"
+        case .ready:
+            return "lock.shield"
+        case .finalizing:
+            return "checkmark.shield"
+        }
+    }
+
+    private func confirmationStatus(for mode: ConfirmationMode) -> String {
+        switch mode {
+        case .waitingForMac:
+            return "Sending response to the desktop bridge"
+        case .ready:
+            return ""
+        case .finalizing:
+            return "Waiting for desktop confirmation"
+        }
     }
 
     @ViewBuilder

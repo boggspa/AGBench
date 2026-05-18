@@ -5,6 +5,84 @@ import BridgeCore
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 
+private actor MockPairingChannelTransport: PairingChannelTransport {
+    private(set) var attemptedResponses: [PairingResponsePayload] = []
+    private(set) var finalDecisions: [PairingChannelClient.FinalDecisionMessage] = []
+    private(set) var cancelWasCalled = false
+
+    var desktopDecision = PairingChannelClient.DesktopFinalDecision(accepted: true)
+
+    private var pendingAttempt: CheckedContinuation<PairingChannelClient.PairingReply, Error>?
+
+    func attemptPairing(response: PairingResponsePayload) async throws -> PairingChannelClient.PairingReply {
+        attemptedResponses.append(response)
+        return try await withCheckedThrowingContinuation { continuation in
+            pendingAttempt = continuation
+        }
+    }
+
+    func sendFinalDecision(accepted: Bool, message: String?) async throws {
+        finalDecisions.append(PairingChannelClient.FinalDecisionMessage(accepted: accepted, message: message))
+    }
+
+    func sendFinalDecisionAndWaitForDesktop(
+        accepted: Bool,
+        message: String?
+    ) async throws -> PairingChannelClient.DesktopFinalDecision {
+        finalDecisions.append(PairingChannelClient.FinalDecisionMessage(accepted: accepted, message: message))
+        return desktopDecision
+    }
+
+    func cancel() async {
+        cancelWasCalled = true
+        pendingAttempt?.resume(throwing: CancellationError())
+        pendingAttempt = nil
+    }
+
+    func hasPendingAttempt() -> Bool {
+        pendingAttempt != nil
+    }
+
+    func attemptedResponseCount() -> Int {
+        attemptedResponses.count
+    }
+
+    func finalDecisionSnapshot() -> [PairingChannelClient.FinalDecisionMessage] {
+        finalDecisions
+    }
+
+    func wasCancelled() -> Bool {
+        cancelWasCalled
+    }
+
+    func resolveAttempt(macConfirmationCode: String, sessionID: String? = nil) {
+        guard let continuation = pendingAttempt else { return }
+        pendingAttempt = nil
+        let responseSessionID = attemptedResponses.last?.pairingSessionID ?? "missing-session"
+        continuation.resume(returning: PairingChannelClient.PairingReply(
+            macConfirmationCode: macConfirmationCode,
+            sessionID: sessionID ?? responseSessionID
+        ))
+    }
+}
+
+private final class PairingTransportFactorySpy: @unchecked Sendable {
+    private let lock = NSLock()
+    private(set) var lastConfiguration: PairingChannelClient.Configuration?
+    let transport: MockPairingChannelTransport
+
+    init(transport: MockPairingChannelTransport) {
+        self.transport = transport
+    }
+
+    func make(configuration: PairingChannelClient.Configuration) -> any PairingChannelTransport {
+        lock.lock()
+        lastConfiguration = configuration
+        lock.unlock()
+        return transport
+    }
+}
+
 @MainActor
 final class PairingViewModelTests: XCTestCase {
     private func makeBootstrapJSON(
@@ -31,17 +109,106 @@ final class PairingViewModelTests: XCTestCase {
         return try! encoder.encode(bootstrap)
     }
 
+    private func makeViewModel(
+        controllerDisplayName: String = "iPhone Test",
+        transport: MockPairingChannelTransport = MockPairingChannelTransport()
+    ) -> (PairingViewModel, PairingTransportFactorySpy) {
+        let factory = PairingTransportFactorySpy(transport: transport)
+        let vm = PairingViewModel(
+            controllerDisplayName: controllerDisplayName,
+            pairingChannelTransportFactory: factory.make(configuration:)
+        )
+        return (vm, factory)
+    }
+
+    private func waitForState(
+        _ vm: PairingViewModel,
+        timeout: TimeInterval = 1,
+        where predicate: (PairingViewModel.State) -> Bool
+    ) async -> PairingViewModel.State? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            let state = vm.state
+            if predicate(state) {
+                return state
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return nil
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        predicate: () async -> Bool
+    ) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if await predicate() {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return false
+    }
+
+    private func stageDesktopVerifiedPairing(
+        _ vm: PairingViewModel,
+        transport: MockPairingChannelTransport
+    ) async -> String {
+        vm.scan(bootstrapJSON: makeBootstrapJSON())
+        let awaitingState = await waitForState(vm) { state in
+            if case .awaitingDesktopVerification = state { return true }
+            return false
+        }
+        guard let awaitingState,
+              case .awaitingDesktopVerification(let code, _) = awaitingState
+        else {
+            XCTFail("expected .awaitingDesktopVerification, got \(String(describing: awaitingState))")
+            return ""
+        }
+        let didAttempt = await waitUntil { await transport.hasPendingAttempt() }
+        XCTAssertTrue(didAttempt)
+        await transport.resolveAttempt(macConfirmationCode: code)
+        let confirmingState = await waitForState(vm) { state in
+            if case .confirmingCode = state { return true }
+            return false
+        }
+        guard let confirmingState,
+              case .confirmingCode(let confirmedCode, _) = confirmingState
+        else {
+            XCTFail("expected .confirmingCode, got \(String(describing: confirmingState))")
+            return ""
+        }
+        return confirmedCode
+    }
+
     func testIdleAtStart() {
         let vm = PairingViewModel(controllerDisplayName: "iPhone Test")
         XCTAssertEqual(vm.state, .idle)
         XCTAssertNil(vm.confirmedPair)
     }
 
-    func testScanProducesConfirmingCodeState() {
-        let vm = PairingViewModel(controllerDisplayName: "iPhone Test")
+    func testScanStartsPairingChannelAttemptWithBonjourService() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, factory) = makeViewModel(transport: transport)
         vm.scan(bootstrapJSON: makeBootstrapJSON())
+        XCTAssertEqual(factory.lastConfiguration?.bonjourServiceName, "_test._tcp")
+        let didAttempt = await waitUntil { await transport.hasPendingAttempt() }
+        XCTAssertTrue(didAttempt)
+        let attemptCount = await transport.attemptedResponseCount()
+        XCTAssertEqual(attemptCount, 1)
+        vm.cancel()
+        let didCancel = await waitUntil { await transport.wasCancelled() }
+        XCTAssertTrue(didCancel)
+    }
+
+    func testScanProducesConfirmingCodeStateAfterDesktopEchoesSameCode() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(transport: transport)
+        let confirmedCode = await stageDesktopVerifiedPairing(vm, transport: transport)
         switch vm.state {
         case .confirmingCode(let code, let name):
+            XCTAssertEqual(code, confirmedCode)
             XCTAssertEqual(code.count, 6)
             XCTAssertTrue(code.allSatisfy { $0.isNumber })
             XCTAssertEqual(name, "iPhone Test")
@@ -69,19 +236,42 @@ final class PairingViewModelTests: XCTestCase {
         }
     }
 
-    func testConfirmAfterScanProducesPair() {
-        let vm = PairingViewModel(controllerDisplayName: "iPhone Test")
-        vm.scan(bootstrapJSON: makeBootstrapJSON())
+    func testConfirmAfterDesktopVerificationProducesPair() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(transport: transport)
+        _ = await stageDesktopVerifiedPairing(vm, transport: transport)
         vm.confirm()
+        _ = await waitForState(vm) { $0 == .confirmed }
         XCTAssertEqual(vm.state, .confirmed)
         XCTAssertNotNil(vm.confirmedPair)
         XCTAssertEqual(vm.confirmedPair?.controllerDeviceID.rawValue.isEmpty, false)
+        let decisions = await transport.finalDecisionSnapshot()
+        XCTAssertEqual(decisions.last?.accepted, true)
     }
 
-    func testConfirmAfterScanCarriesTailscaleEndpointHint() {
-        let vm = PairingViewModel(controllerDisplayName: "iPhone Test")
+    func testConfirmAfterScanCarriesTailscaleEndpointHint() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(transport: transport)
         vm.scan(bootstrapJSON: makeBootstrapJSON(tailscaleEndpointHint: "100.64.10.20:38747"))
+        let awaitingState = await waitForState(vm) { state in
+            if case .awaitingDesktopVerification = state { return true }
+            return false
+        }
+        guard let awaitingState,
+              case .awaitingDesktopVerification(let code, _) = awaitingState
+        else {
+            XCTFail("expected .awaitingDesktopVerification, got \(String(describing: awaitingState))")
+            return
+        }
+        let didAttempt = await waitUntil { await transport.hasPendingAttempt() }
+        XCTAssertTrue(didAttempt)
+        await transport.resolveAttempt(macConfirmationCode: code)
+        _ = await waitForState(vm) { state in
+            if case .confirmingCode = state { return true }
+            return false
+        }
         vm.confirm()
+        _ = await waitForState(vm) { $0 == .confirmed }
         XCTAssertEqual(vm.state, .confirmed)
         XCTAssertEqual(vm.confirmedPair?.tailscaleEndpointHint, "100.64.10.20:38747")
     }
@@ -96,13 +286,38 @@ final class PairingViewModelTests: XCTestCase {
         XCTAssertNil(vm.confirmedPair)
     }
 
-    func testCancelClearsStagedState() {
-        let vm = PairingViewModel()
+    func testCancelClearsStagedState() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(transport: transport)
         vm.scan(bootstrapJSON: makeBootstrapJSON())
         XCTAssertNotNil(vm.pendingResponse)
         vm.cancel()
         XCTAssertEqual(vm.state, .idle)
         XCTAssertNil(vm.pendingResponse)
+        let didCancel = await waitUntil { await transport.wasCancelled() }
+        XCTAssertTrue(didCancel)
+    }
+
+    func testMismatchedDesktopCodeFailsAndRejectsPairing() async {
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(transport: transport)
+        vm.scan(bootstrapJSON: makeBootstrapJSON())
+        let didAttempt = await waitUntil { await transport.hasPendingAttempt() }
+        XCTAssertTrue(didAttempt)
+        await transport.resolveAttempt(macConfirmationCode: "000000")
+        let failedState = await waitForState(vm) { state in
+            if case .failed = state { return true }
+            return false
+        }
+        guard let failedState,
+              case .failed(let message) = failedState
+        else {
+            XCTFail("expected .failed, got \(String(describing: failedState))")
+            return
+        }
+        XCTAssertTrue(message.contains("different pairing code"))
+        let decisions = await transport.finalDecisionSnapshot()
+        XCTAssertEqual(decisions.last?.accepted, false)
     }
 }
 

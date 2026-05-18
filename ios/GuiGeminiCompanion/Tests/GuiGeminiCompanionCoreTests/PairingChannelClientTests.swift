@@ -32,10 +32,10 @@ private final class TestStateHolder<T>: @unchecked Sendable {
 final class PairingChannelClientTests: XCTestCase {
     private var listener: NWListener?
 
-    override func tearDown() {
+    override func tearDown() async throws {
         listener?.cancel()
         listener = nil
-        super.tearDown()
+        try await super.tearDown()
     }
 
     /// Build a `PairingResponsePayload` shape we can ship over the
@@ -65,12 +65,13 @@ final class PairingChannelClientTests: XCTestCase {
         macConfirmationCode: String = "123456",
         sessionID: String = "session-1",
         responseHolder: TestStateHolder<Data> = TestStateHolder(),
-        decisionHolder: TestStateHolder<Data> = TestStateHolder()
+        decisionHolder: TestStateHolder<Data> = TestStateHolder(),
+        desktopFinalDecision: PairingChannelClient.DesktopFinalDecision? = nil
     ) throws -> NWEndpoint.Port {
         let parameters = NWParameters.tcp
         parameters.acceptLocalOnly = true
         let listener = try NWListener(using: parameters)
-        listener.newConnectionHandler = { [responseHolder, decisionHolder] connection in
+        listener.newConnectionHandler = { [responseHolder, decisionHolder, desktopFinalDecision] connection in
             connection.start(queue: .global())
             connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { lengthBytes, _, _, _ in
                 guard let lengthBytes else { return }
@@ -92,7 +93,17 @@ final class PairingChannelClientTests: XCTestCase {
                             connection.receive(minimumIncompleteLength: Int(decisionLength), maximumLength: Int(decisionLength)) { decisionPayload, _, _, _ in
                                 guard let decisionPayload else { return }
                                 decisionHolder.set(decisionPayload)
-                                connection.cancel()
+                                guard let desktopFinalDecision else {
+                                    connection.cancel()
+                                    return
+                                }
+                                let desktopReply = try! JSONEncoder().encode(desktopFinalDecision)
+                                var desktopReplyLength = UInt32(desktopReply.count).bigEndian
+                                var desktopFrame = Data(bytes: &desktopReplyLength, count: 4)
+                                desktopFrame.append(desktopReply)
+                                connection.send(content: desktopFrame, completion: .contentProcessed { _ in
+                                    connection.cancel()
+                                })
                             }
                         }
                     })
@@ -157,6 +168,20 @@ final class PairingChannelClientTests: XCTestCase {
         let decoded = try? JSONDecoder().decode(PairingChannelClient.FinalDecisionMessage.self, from: decisionHolder.value!)
         XCTAssertEqual(decoded?.accepted, true)
         XCTAssertEqual(decoded?.message, "user verified")
+    }
+
+    func testFinalDecisionCanWaitForDesktopAcknowledgement() async throws {
+        let port = try startListener(desktopFinalDecision: PairingChannelClient.DesktopFinalDecision(
+            accepted: true,
+            message: nil
+        ))
+        let client = PairingChannelClient(configuration: PairingChannelClient.Configuration(
+            bonjourServiceName: "_unused._tcp",
+            directEndpoint: .hostPort(host: "localhost", port: port)
+        ))
+        _ = try await client.attemptPairing(response: sampleResponse())
+        let decision = try await client.sendFinalDecisionAndWaitForDesktop(accepted: true, message: nil)
+        XCTAssertEqual(decision, PairingChannelClient.DesktopFinalDecision(accepted: true, message: nil))
     }
 
     func testSendFinalDecisionBeforeAttemptPairingThrows() async throws {
