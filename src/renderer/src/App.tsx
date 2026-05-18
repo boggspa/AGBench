@@ -38,6 +38,19 @@ import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
 import { applyRecoveryRecordsToChatRuns } from './lib/recoverChatRunTerminals'
 import { visibleRunningChatIds } from './lib/runningChatVisibility'
 import {
+  DEFAULT_STEER_CANCEL_TIMEOUT_MS,
+  DEFAULT_STEER_POLL_INTERVAL_MS,
+  IDLE_STEER_STATE,
+  beginSteer,
+  decideSteerWait,
+  getSteerIndicatorMessage,
+  isSteerInFlight,
+  markSteerFailed,
+  resetSteer,
+  transitionToDispatching,
+  type SteerState
+} from './lib/steerState'
+import {
   shouldEngageAutoFollow,
   shouldDisengageAutoFollow,
   shouldRepinAfterFrame,
@@ -656,6 +669,23 @@ function QueueSymbolIcon() {
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
         <rect x="2.6" y="1.6" width="4.8" height="12.8" rx="0.8" />
         <path d="M9.2 4.2h4.3M11.3 2.4v3.6M11.3 9.8v3.6" />
+      </svg>
+    </span>
+  )
+}
+
+// Steer glyph: a forward-pointing arrow piercing a small circle (the
+// active turn), conveying "redirect / pierce-through". Used by the
+// composer's Steer button — sibling of Queue (passive wait) and Stop
+// (interrupt only). Visible while the current chat has an in-flight
+// run.
+function SteerSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="5.4" cy="8" r="2.6" />
+        <path d="M8.4 8h5.2" />
+        <path d="M11.6 5.6 13.6 8l-2 2.4" />
       </svg>
     </span>
   )
@@ -3544,6 +3574,13 @@ function App(): React.JSX.Element {
   const [composerDraftsByChatId, setComposerDraftForChat] = usePerChatState('')
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
+  // Phase J3 (steer): the composer's "Steer" action — interrupt the
+  // active turn in this chat and dispatch a new prompt immediately.
+  // Sibling of Queue (which waits passively). At most one steer flight
+  // is live at a time per chat; the state machine lives in
+  // `lib/steerState.ts` for unit-testability.
+  const [steerState, setSteerState] = useState<SteerState>(IDLE_STEER_STATE)
+  const steerStateRef = useRef<SteerState>(IDLE_STEER_STATE)
   const [runQueueJobs, setRunQueueJobs] = useState<RunQueueJob[]>([])
   const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfile[]>([])
   const [selectedRuntimeProfileByChatId, setSelectedRuntimeProfileByChatId] = useState<Record<string, string>>({})
@@ -3920,6 +3957,15 @@ function App(): React.JSX.Element {
       reduceMotion: appearance.reduceMotion
     }
   }, [appearance.funFxEnabled, appearance.funFxMode, appearance.reduceMotion])
+
+  // Keep `steerStateRef` in lockstep with the `steerState` React state.
+  // The async steer wait-loop pulls from the ref to avoid the stale-
+  // closure problem (the loop captures the state from the render it
+  // was scheduled in; subsequent setSteerState calls wouldn't otherwise
+  // be visible to it).
+  useEffect(() => {
+    steerStateRef.current = steerState
+  }, [steerState])
 
   const clearFxBurst = () => {
     if (fxBurstTimeoutRef.current) {
@@ -7824,6 +7870,224 @@ function App(): React.JSX.Element {
     void executeRun(request)
   }
 
+  /**
+   * Phase J3 (steer): Codex-CLI-style "interrupt + dispatch this prompt".
+   *
+   * Sibling of `handleRun` (which queues when the chat is busy) and the
+   * `handleCancel` stop-button (which only cancels). Steer combines the
+   * two: cancel the active turn for this chat, wait up to ~5s for the
+   * active-run context to clear, then dispatch the new prompt via the
+   * normal `executeRun` path. On timeout we fall back to the queue
+   * (better than dropping the user's prompt) and surface a system note.
+   *
+   * State transitions are pure (see `lib/steerState.ts`); this function
+   * is the side-effecting harness around them.
+   */
+  const handleSteer = async (overrideModel?: string, existingPrompt?: string) => {
+    const request = buildRunRequest(overrideModel, existingPrompt)
+    if (!request.prompt.trim()) {
+      return
+    }
+
+    const targetChatId = request.chatRecord?.appChatId || currentChat?.appChatId
+    if (!targetChatId) {
+      return
+    }
+
+    // Guard: if there's no active run for this chat, just dispatch
+    // normally. The Steer button is only visible while `isChatBusy`
+    // returns true, but the predicate can flip between render and
+    // click (race with `agent-exit`), so handle that gracefully.
+    if (!isChatBusy(targetChatId)) {
+      void executeRun(request)
+      clearComposerAttachmentsForSubmittedRequest(request)
+      if (!request.existingPrompt) {
+        setChatPromptDraft(targetChatId, '')
+      }
+      return
+    }
+
+    // Single-flight guard: a second steer click while one is in flight
+    // is a no-op. The button is also visually disabled while
+    // `isSteerInFlight` reports true; defence-in-depth.
+    const liveState = steerStateRef.current
+    if (isSteerInFlight({ state: liveState, chatId: targetChatId })) {
+      return
+    }
+
+    // Find the active run context (used for the cancel-target runId
+    // and the post-cancel poll predicate).
+    let activeContext: ActiveRunContext | null = null
+    for (const ctx of activeRunsRef.current.values()) {
+      if (ctx.chatId === targetChatId) {
+        activeContext = ctx
+        break
+      }
+    }
+
+    const providerLabel = getProviderLabel(request.provider)
+    const cancelTargetRunId = activeContext?.runId
+
+    // Enter `cancelling` phase + clear composer state up-front so the
+    // user can't double-submit. The transcript gets a dispatch
+    // marker only AFTER the cancel lands (so the run-history reads
+    // correctly even if the cancel times out and we fall back to
+    // queue).
+    const cancellingState = beginSteer({ chatId: targetChatId, cancelTargetRunId })
+    setSteerState(cancellingState)
+    steerStateRef.current = cancellingState
+    clearComposerAttachmentsForSubmittedRequest(request)
+    if (!request.existingPrompt) {
+      setChatPromptDraft(targetChatId, '')
+    }
+
+    // Kick off the cancel via the existing IPC path (same one the
+    // Stop button uses). We DON'T await here — the cancel-then-watch
+    // loop below polls for the side effect (active run cleared) rather
+    // than relying on the cancel call's return value, because the
+    // provider-specific main-side code may resolve before/after the
+    // renderer sees `agent-exit`.
+    void window.api.cancelAgentRun(request.provider, cancelTargetRunId).catch((error) => {
+      console.warn('[steer] cancelAgentRun rejected:', error)
+    })
+
+    appendThreadRawLog(targetChatId, {
+      type: 'info',
+      content: `Steer: interrupting current ${providerLabel} turn to dispatch a new prompt.`
+    })
+
+    // Watch loop. Poll `activeRunsRef` until either the cancel lands
+    // (active run cleared) or the deadline elapses. The pure
+    // `decideSteerWait` helper drives each tick so the branching is
+    // unit-testable.
+    const startedAt = Date.now()
+    let outcome: 'cancel-landed' | 'timeout' = 'timeout'
+    // Tight upper bound to avoid runaway polling: deadline + 5 ticks of slack.
+    const maxIterations = Math.ceil(DEFAULT_STEER_CANCEL_TIMEOUT_MS / DEFAULT_STEER_POLL_INTERVAL_MS) + 5
+    for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+      const decision = decideSteerWait({
+        chatId: targetChatId,
+        startedAt,
+        now: Date.now(),
+        hasRunForChat: (chatId) => {
+          for (const ctx of activeRunsRef.current.values()) {
+            if (ctx.chatId === chatId) return true
+          }
+          return false
+        }
+      })
+      if (decision.kind === 'cancel-landed') {
+        outcome = 'cancel-landed'
+        break
+      }
+      if (decision.kind === 'timeout') {
+        outcome = 'timeout'
+        break
+      }
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, DEFAULT_STEER_POLL_INTERVAL_MS)
+      })
+    }
+
+    // The user may have navigated away from this chat or kicked off
+    // another steer while we slept. Bail (no further state changes)
+    // if either happened.
+    const stillCurrent = steerStateRef.current
+    if (stillCurrent.phase !== 'cancelling' || stillCurrent.chatId !== targetChatId) {
+      return
+    }
+
+    if (outcome === 'cancel-landed') {
+      // The cancel-path already marks the previous run's row + may emit
+      // a "Task ended before completing" system message; we add an
+      // additional, more meaningful `↳ Steered` system note so the
+      // transcript explains what happened (the user actively steered,
+      // it wasn't a generic abort).
+      updateChatById(targetChatId, (source) => {
+        const steeredAt = new Date().toISOString()
+        const promptPreview = (request.displayPrompt || request.prompt || '').trim()
+        const previewOneLiner = promptPreview.length > 240
+          ? `${promptPreview.slice(0, 240)}…`
+          : promptPreview
+        return {
+          ...source,
+          messages: [
+            ...source.messages,
+            {
+              id: `steered-${request.appRunId || Date.now()}`,
+              role: 'system',
+              content: previewOneLiner
+                ? `↳ Steered: interrupted to run a new prompt — ${previewOneLiner}`
+                : '↳ Steered: interrupted to run a new prompt.',
+              timestamp: steeredAt,
+              metadata: {
+                kind: 'steerHandoff',
+                appRunId: request.appRunId,
+                provider: request.provider,
+                promptPreview: previewOneLiner,
+                interruptedRunId: cancelTargetRunId
+              }
+            }
+          ],
+          updatedAt: Date.now()
+        }
+      })
+
+      const dispatchingState = transitionToDispatching({
+        prev: steerStateRef.current,
+        chatId: targetChatId
+      })
+      setSteerState(dispatchingState)
+      steerStateRef.current = dispatchingState
+
+      void executeRun(request)
+      // Reset to idle on the next tick; `executeRun` schedules the
+      // dispatch synchronously enough that the indicator visibly
+      // flips from "interrupting" to "dispatching" and then off.
+      window.setTimeout(() => {
+        const latest = steerStateRef.current
+        if (latest.phase === 'dispatching' && latest.chatId === targetChatId) {
+          setSteerState(resetSteer())
+          steerStateRef.current = resetSteer()
+        }
+      }, 350)
+      return
+    }
+
+    // Timeout path: cancel didn't land cleanly. The user's prompt is
+    // too valuable to drop, so queue it (the existing fallback) and
+    // surface a visible error note. The active run keeps running;
+    // when it finishes the queue scheduler dispatches the steered
+    // prompt automatically.
+    const failedMessage = `Steer timed out after ${(DEFAULT_STEER_CANCEL_TIMEOUT_MS / 1000).toFixed(0)}s; the ${providerLabel} run is still running. Your prompt was queued instead.`
+    const failedState = markSteerFailed({
+      chatId: targetChatId,
+      reason: 'timeout',
+      message: failedMessage
+    })
+    setSteerState(failedState)
+    steerStateRef.current = failedState
+    appendThreadRawLog(targetChatId, { type: 'stderr', content: failedMessage })
+    queueRunRequest(
+      request,
+      `Steer fell back to queue: cancel of the active ${providerLabel} turn did not land in ${(DEFAULT_STEER_CANCEL_TIMEOUT_MS / 1000).toFixed(0)}s.`
+    )
+    // Clear the indicator after a short visible window so the user
+    // sees the failure state for ~3s before the composer returns to
+    // normal.
+    window.setTimeout(() => {
+      const latest = steerStateRef.current
+      if (
+        latest.phase === 'failed' &&
+        latest.chatId === targetChatId &&
+        latest.reason === 'timeout'
+      ) {
+        setSteerState(resetSteer())
+        steerStateRef.current = resetSteer()
+      }
+    }, 3_000)
+  }
+
   const handleScheduleRun = async () => {
     if (!currentWorkspace || !currentChat) return
     const request = buildRunRequest()
@@ -8924,6 +9188,18 @@ function App(): React.JSX.Element {
   )
   const isCurrentChatRunning = Boolean(currentChat?.appChatId && runningChatIds.has(currentChat.appChatId))
   const isCurrentComposerLocked = isCurrentChatRunning
+  // Phase J3 (steer): the composer Steer button is visible while the
+  // current chat has an in-flight run. `isChatBusy` is the per-chat
+  // busy predicate already used by every queue-decision site.
+  const isCurrentChatBusyForSteer = Boolean(currentChat?.appChatId && isChatBusy(currentChat.appChatId))
+  const steerIndicatorMessage = currentChat?.appChatId
+    ? getSteerIndicatorMessage({
+        state: steerState,
+        chatId: currentChat.appChatId,
+        providerLabel: getProviderLabel(currentProvider)
+      })
+    : null
+  const isSteerBusyForCurrentChat = isSteerInFlight({ state: steerState, chatId: currentChat?.appChatId || null })
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
   const cumulativeChatTokens = (currentChat?.runs || []).reduce((sum, run) => {
     const counts = extractUsageCountsFromCandidate(run?.stats)
@@ -10610,6 +10886,16 @@ function App(): React.JSX.Element {
                   </div>
                   <div className="composer-inline-actions">
                     <ContextWheel percent={contextUsedPercent} label={contextLabel} />
+                    {steerIndicatorMessage && (
+                      <span
+                        className="composer-steer-indicator"
+                        role="status"
+                        aria-live="polite"
+                      >
+                        <span className="composer-steer-indicator-dot" aria-hidden />
+                        <span>{steerIndicatorMessage}</span>
+                      </span>
+                    )}
                     {isCurrentProviderRunning ? (
                       <>
                       <button
@@ -10618,13 +10904,32 @@ function App(): React.JSX.Element {
                             triggerSendConfirmation()
                             handleRun()
                           }}
-                          disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim() || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)}
+                          disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim() || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) || isSteerBusyForCurrentChat}
                           title="Queue next run"
                           aria-label="Queue next run"
                           type="button"
                       >
                         <QueueSymbolIcon />
                       </button>
+                        {/* Phase J3 (steer): sit Steer between Queue and Stop
+                          *   - Queue waits passively for the chat's run to finish.
+                          *   - Steer interrupts and dispatches immediately.
+                          *   - Stop only interrupts (no follow-up dispatch).
+                          * Only render when THIS chat is busy (per-chat busy
+                          * predicate), so multi-chat parallel runs don't get a
+                          * misleading Steer button in idle chats. */}
+                        {isCurrentChatBusyForSteer && (
+                        <button
+                          className={`composer-action-btn steer-btn ${isSteerBusyForCurrentChat ? 'is-busy' : ''}`}
+                          onClick={() => void handleSteer()}
+                          disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim() || (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) || isSteerBusyForCurrentChat}
+                          title="Interrupt the active turn and dispatch this prompt immediately."
+                          aria-label="Steer: interrupt and dispatch this prompt"
+                          type="button"
+                        >
+                          <SteerSymbolIcon />
+                        </button>
+                        )}
                         {isCurrentChatRunning && (
                         <button
                           className="composer-action-btn stop-btn"
@@ -10632,6 +10937,7 @@ function App(): React.JSX.Element {
                           title="Stop run"
                           aria-label="Stop run"
                           type="button"
+                          disabled={isSteerBusyForCurrentChat}
                         >
                           <StopSymbolIcon />
                         </button>
