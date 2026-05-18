@@ -166,6 +166,13 @@ describe('ComposerService', () => {
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'kimi'")
     expect(payload.prompt).toContain('NEVER use your built-in invoke_agent')
+    // Recall guidance must be present so follow-up turns continue the
+    // same sub-thread instead of spawning a fresh one with zero memory
+    // (observed bug: Codex/Gemini sending status-check delegations as
+    // brand-new sub-threads, getting "first turn, no prior actions"
+    // responses from sub-agents that legitimately had no history).
+    expect(payload.prompt).toContain('RECALL')
+    expect(payload.prompt).toContain('subThreadId')
   })
 
   it('keeps Gemini plan-mode resumes and skips duplicated context', () => {
@@ -245,6 +252,8 @@ describe('ComposerService', () => {
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'claude'")
     expect(payload.prompt).toContain('NEVER use any built-in generalist-agent path')
+    expect(payload.prompt).toContain('RECALL')
+    expect(payload.prompt).toContain('subThreadId')
   })
 
   it('omits the Kimi delegation preamble in plan mode (read-only sessions)', () => {
@@ -290,6 +299,11 @@ describe('ComposerService', () => {
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Codex's built-in invoke")
+    // Recall guidance — observed bug: Codex spawning a fresh sub-thread
+    // on every status check, getting "first turn, no prior actions"
+    // back from sub-agents with legitimately no history.
+    expect(payload.prompt).toContain('RECALL')
+    expect(payload.prompt).toContain('subThreadId')
   })
 
   it('omits the Codex delegation preamble in plan mode (read-only sessions)', () => {
@@ -395,6 +409,8 @@ describe('ComposerService', () => {
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Claude's built-in Task tool")
+    expect(payload.prompt).toContain('RECALL')
+    expect(payload.prompt).toContain('subThreadId')
   })
 
   it('omits the Claude delegation preamble in plan mode (read-only sessions)', () => {
