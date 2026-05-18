@@ -220,6 +220,31 @@ let transportListener = TransportListener(
 )
 let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener)
 
+// Boot-time activation: if any trusted devices already exist from prior
+// pairings (the common case after Electron restarts), bind the QUIC
+// listener immediately so the iPad's reconnect attempts find a live
+// peer without the user having to re-pair. When no trusted devices
+// exist, this is a no-op — the listener stays cold until the first
+// pair completes and `ensurePostPairTransportReady` activates it via
+// the pairing-finalize path.
+Task.detached { [transportListener] in
+    do {
+        try await transportListener.ensureRunningWithCurrentTrustedControllers()
+        let status = await transportListener.status()
+        FileHandle.standardError.write(Data(
+            "[QUIC pipeline] boot activation OK running=\(status.running) trustedControllers=\(status.trustedControllerCount) service=\(status.bonjourServiceType) port=\(status.port.map(String.init) ?? "nil")\n".utf8
+        ))
+    } catch TransportListener.TransportListenerError.noTrustedDevices {
+        FileHandle.standardError.write(Data(
+            "[QUIC pipeline] boot activation skipped reason=no-trusted-devices (listener will start on first pair)\n".utf8
+        ))
+    } catch {
+        FileHandle.standardError.write(Data(
+            "[QUIC pipeline] WARN: boot activation failed error=\(error.localizedDescription)\n".utf8
+        ))
+    }
+}
+
 func localMacDisplayName() -> String {
     let candidates = [
         Host.current().localizedName,
@@ -494,16 +519,24 @@ dispatcher.register("bridge.finalizePairing") { params in
     let pairID = result.finalDecision?.pairID
     logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(parsed.userConfirmed) pairID=\(pairID ?? "nil") waitingFor=\(result.waitingFor ?? "none")")
     if let decision = result.finalDecision {
-        if decision.accepted {
-            try? runBlocking { @Sendable [transportListener, result] in
+        // Run post-pair transport activation + final-decision delivery off the
+        // IPC's hot path. Two reasons:
+        //   1. The renderer's `BridgeDaemonClient.request` has a 10s timeout.
+        //      QUIC listener startup can exceed that when Tailscale binding
+        //      flakes (NWError 22), and the Mac UI then shows a stuck modal
+        //      while the daemon actually succeeded. Returning immediately lets
+        //      the renderer dismiss the modal.
+        //   2. Final-decision frame still has to wait for the listener so iOS
+        //      finds a bound port to connect to — so the activation + frame
+        //      send live in the same detached task in order.
+        Task.detached { @Sendable [transportListener, result, pairingChannelListener, sessionID, decision] in
+            if decision.accepted {
                 await ensurePostPairTransportReady(
                     result: result,
                     transportListener: transportListener,
                     source: "mac-finalize"
                 )
             }
-        }
-        Task.detached { @Sendable [pairingChannelListener, sessionID, decision] in
             await pairingChannelListener.sendFinalDecision(
                 sessionID: sessionID,
                 accepted: decision.accepted,
