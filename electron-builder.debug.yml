@@ -6,8 +6,16 @@ directories:
 mac:
   category: public.app-category.developer-tools
   notarize: false
+  # extendInfo must be a flat dict — see comment in electron-builder.yml.
+  # The Debug bundle restates the keys because electron-builder
+  # overrides the whole `mac.extendInfo` block from the parent rather
+  # than merging it field-by-field.
   extendInfo:
-    - NSCameraUsageDescription: AGBench Debug requests access to the device's camera.
-    - NSMicrophoneUsageDescription: AGBench Debug requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: AGBench Debug requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: AGBench Debug requests access to the user's Downloads folder.
+    NSCameraUsageDescription: AGBench Debug requests access to the device's camera.
+    NSMicrophoneUsageDescription: AGBench Debug requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: AGBench Debug requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: AGBench Debug requests access to the user's Downloads folder.
+    NSLocalNetworkUsageDescription: AGBench Debug discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
+    NSBonjourServices:
+      - _guigemini._tcp
+      - _guigemini-quic._udp

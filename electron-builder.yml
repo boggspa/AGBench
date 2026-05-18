@@ -25,11 +25,23 @@ nsis:
 mac:
   entitlementsInherit: build/entitlements.mac.plist
   sign: build/sign-with-identity-hash.cjs
+  # extendInfo MUST be a flat dict, not a list-of-dicts. The list form
+  # gets serialized into the Info.plist as numbered wrapper keys
+  # ("0" => { NSCameraUsageDescription: ... }, "1" => { ... }, …),
+  # which means macOS never sees any of the usage-description keys at
+  # the root path where it actually checks them. That's why prior
+  # builds quietly failed to prompt for permissions and why the
+  # _guigemini-quic._udp carrier was being dropped before reaching
+  # the daemon: NSBonjourServices was sitting under "5", not at root.
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSCameraUsageDescription: Application requests access to the device's camera.
+    NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    NSLocalNetworkUsageDescription: AGBench discovers and connects to your paired iPhone or iPad on your local network to stream live run events, approval requests, and tool outputs.
+    NSBonjourServices:
+      - _guigemini._tcp
+      - _guigemini-quic._udp
   notarize: false
   # Bundle the Swift GuiGeminiBridgeDaemon as an extraResource so the
   # main process can spawn it from the packaged .app. The binary is
