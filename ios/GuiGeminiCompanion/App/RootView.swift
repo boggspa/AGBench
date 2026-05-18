@@ -54,9 +54,14 @@ struct RootView: View {
 private extension iPadShell {
     init(appState: AppState) {
         self.init(
+            pairingViewModel: appState.pairingViewModel,
             transcriptViewModel: appState.transcriptViewModel,
             approvalViewModel: appState.approvalViewModel,
-            composerViewModel: appState.composerViewModel
+            composerViewModel: appState.composerViewModel,
+            sidebarStore: appState.sidebarStore,
+            onUnpair: {
+                Task { await appState.unpair() }
+            }
         )
     }
 }

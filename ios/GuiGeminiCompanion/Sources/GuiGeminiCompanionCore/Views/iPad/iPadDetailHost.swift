@@ -4,6 +4,7 @@ import SwiftUI
 public struct iPadDetailHost: View {
     public let selection: iPadSidebarSelection?
     public let store: iPadSidebarStore
+    public let pairingViewModel: PairingViewModel?
     public let transcriptViewModel: TranscriptViewModel?
     public let composerViewModel: ComposerViewModel?
     /// When true the workspace + thread + empty panes backfill missing
@@ -15,6 +16,7 @@ public struct iPadDetailHost: View {
     /// the workspace summary card can render a connection chip. nil =
     /// no paired desktop known yet.
     public let pairedMacName: String?
+    public let onUnpair: (() -> Void)?
     /// Callback invoked when a thread row inside the workspace pane is
     /// tapped. The shell wires this into the sidebar selection state so
     /// the user lands directly on the chosen thread.
@@ -23,18 +25,22 @@ public struct iPadDetailHost: View {
     public init(
         selection: iPadSidebarSelection?,
         store: iPadSidebarStore,
+        pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
         composerViewModel: ComposerViewModel? = nil,
         mocked: Bool = false,
         pairedMacName: String? = nil,
+        onUnpair: (() -> Void)? = nil,
         onSelectThread: @escaping (String) -> Void = { _ in }
     ) {
         self.selection = selection
         self.store = store
+        self.pairingViewModel = pairingViewModel
         self.transcriptViewModel = transcriptViewModel
         self.composerViewModel = composerViewModel
         self.mocked = mocked
         self.pairedMacName = pairedMacName
+        self.onUnpair = onUnpair
         self.onSelectThread = onSelectThread
     }
 
@@ -86,11 +92,12 @@ public struct iPadDetailHost: View {
         // dedicated `iPadSettingsPane` shipped by Agent C (Pairing /
         // Bridge connection / Push notifications / About cards). Mocks
         // gate behind the host's `mocked` flag so production callers
-        // get real (empty) state. `pairingViewModel` is left nil for
-        // now — plumbing it through from the shell is a follow-up.
+        // get real (empty) state.
         iPadSettingsPane(
+            pairingViewModel: pairingViewModel,
             transcriptViewModel: transcriptViewModel,
-            mocked: mocked
+            mocked: mocked,
+            onUnpair: onUnpair
         )
     }
 

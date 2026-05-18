@@ -43,6 +43,7 @@ public actor GuiGeminiBridgeClient {
         public let pairID: PairID
         public let controllerDeviceID: DeviceID
         public let macDeviceID: DeviceID
+        public let macDisplayName: String?
         public let macToControllerKey: SymmetricKey
         public let controllerToMacKey: SymmetricKey
         public let tailscaleEndpointHint: String?
@@ -52,11 +53,13 @@ public actor GuiGeminiBridgeClient {
             controllerDeviceID: DeviceID,
             macDeviceID: DeviceID,
             derivedKeys: PairingDerivedKeys,
+            macDisplayName: String? = nil,
             tailscaleEndpointHint: String? = nil
         ) {
             self.pairID = pairID
             self.controllerDeviceID = controllerDeviceID
             self.macDeviceID = macDeviceID
+            self.macDisplayName = macDisplayName
             self.macToControllerKey = derivedKeys.macToControllerKey
             self.controllerToMacKey = derivedKeys.controllerToMacKey
             self.tailscaleEndpointHint = tailscaleEndpointHint

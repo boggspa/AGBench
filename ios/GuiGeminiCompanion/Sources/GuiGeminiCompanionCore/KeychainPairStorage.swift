@@ -97,6 +97,15 @@ public actor KeychainPairStorage {
         self.now = now
     }
 
+    public static func production() -> KeychainPairStorage {
+        KeychainPairStorage(
+            secretStore: KeychainSecretStore(
+                service: "com.example.AGBench.ios",
+                allowsAuthenticationUI: false
+            )
+        )
+    }
+
     // MARK: - Identity key
 
     public func loadIdentityKey() async throws -> DeviceIdentitySigningKey? {

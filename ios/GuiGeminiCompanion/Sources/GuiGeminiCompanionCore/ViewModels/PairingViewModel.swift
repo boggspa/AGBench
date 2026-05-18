@@ -42,6 +42,7 @@ public final class PairingViewModel {
     private let identityKey: DeviceIdentitySigningKey
     private let controllerDeviceID: DeviceID
     private let controllerDisplayName: String
+    private let pairStorage: KeychainPairStorage?
     private let makePairingChannelTransport: PairingChannelTransportFactory
 
     /// Set during `scan()`. Held until `confirm()` to seal the pair.
@@ -55,6 +56,7 @@ public final class PairingViewModel {
         controllerDeviceID: DeviceID = DeviceID(UUID().uuidString.lowercased()),
         controllerDisplayName: String = "iPhone",
         identityKey: DeviceIdentitySigningKey = DeviceIdentitySigningKey(),
+        pairStorage: KeychainPairStorage? = nil,
         pairingChannelTransportFactory: @escaping PairingChannelTransportFactory = { configuration in
             PairingChannelClient(configuration: configuration)
         }
@@ -62,6 +64,7 @@ public final class PairingViewModel {
         self.controllerDeviceID = controllerDeviceID
         self.controllerDisplayName = controllerDisplayName
         self.identityKey = identityKey
+        self.pairStorage = pairStorage
         self.makePairingChannelTransport = pairingChannelTransportFactory
     }
 
@@ -150,11 +153,37 @@ public final class PairingViewModel {
             controllerDeviceID: response.controllerDeviceID,
             macDeviceID: flow.bootstrap.macDeviceID,
             derivedKeys: derivedKeys,
+            macDisplayName: flow.macDisplayName,
             tailscaleEndpointHint: flow.bootstrap.tailscaleEndpointHint
+        )
+        persistPair(
+            pairID: pairID,
+            response: response,
+            derivedKeys: derivedKeys,
+            flow: flow
         )
         pairingTransport = nil
         pairingTask = nil
         state = .confirmed
+    }
+
+    private func persistPair(
+        pairID: PairID,
+        response: PairingResponsePayload,
+        derivedKeys: PairingDerivedKeys,
+        flow: PairingFlow.Started
+    ) {
+        guard let pairStorage else { return }
+        let record = KeychainPairStorage.PairRecord(
+            pairID: pairID,
+            controllerDeviceID: response.controllerDeviceID,
+            macDeviceID: flow.bootstrap.macDeviceID,
+            macDisplayName: flow.macDisplayName,
+            tailscaleEndpointHint: flow.bootstrap.tailscaleEndpointHint
+        )
+        Task { [pairStorage, record, derivedKeys] in
+            try? await pairStorage.savePair(record, derivedKeys: derivedKeys)
+        }
     }
 
     /// User rejected the codes (mismatch / suspected attack) — discard

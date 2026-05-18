@@ -15,8 +15,10 @@ import GuiGeminiCompanionCore
 @Observable
 @MainActor
 final class AppState {
-    var pairingViewModel = PairingViewModel(controllerDisplayName: friendlyDeviceName())
+    var pairingViewModel: PairingViewModel
 
+    @ObservationIgnored
+    private let pairStorage: KeychainPairStorage
     private(set) var bridgeClient: GuiGeminiBridgeClient?
     private(set) var transcriptViewModel: TranscriptViewModel?
     private(set) var approvalViewModel: ApprovalViewModel?
@@ -44,6 +46,14 @@ final class AppState {
     /// models are ready. The RootView switches to TabView when this is true.
     var isPaired: Bool {
         bridgeClient != nil
+    }
+
+    init(pairStorage: KeychainPairStorage = .production()) {
+        self.pairStorage = pairStorage
+        self.pairingViewModel = PairingViewModel(
+            controllerDisplayName: friendlyDeviceName(),
+            pairStorage: pairStorage
+        )
     }
 
     func connect(with pair: GuiGeminiBridgeClient.Pair) async {
@@ -109,17 +119,31 @@ final class AppState {
         }
     }
 
+    func unpair() async {
+        do {
+            try await pairStorage.clearAllPairs()
+        } catch {
+            logIOSBridgeApp("unpair storage cleanup failed: \(error.localizedDescription)")
+        }
+        await disconnect()
+    }
+
     func disconnect() async {
         await bridgeClient?.stop()
         transcriptViewModel?.detach()
         sidebarSummariesTask?.cancel()
         sidebarSummariesTask = nil
+        sidebarStore.applyWorkspaceList([])
+        sidebarStore.applyThreadList([])
         bridgeClient = nil
         transcriptViewModel = nil
         approvalViewModel = nil
         composerViewModel = nil
         pushRegistrar = nil
-        pairingViewModel = PairingViewModel(controllerDisplayName: friendlyDeviceName())
+        pairingViewModel = PairingViewModel(
+            controllerDisplayName: friendlyDeviceName(),
+            pairStorage: pairStorage
+        )
     }
 
     // MARK: - APNs

@@ -32,11 +32,18 @@ final class PairingFlowTests: XCTestCase {
         return (bootstrap, macPrivate)
     }
 
-    private func encodeBootstrap(_ payload: PairingBootstrapPayload) throws -> Data {
+    private func encodeBootstrap(
+        _ payload: PairingBootstrapPayload,
+        macDisplayName: String? = nil
+    ) throws -> Data {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.dataEncodingStrategy = .base64
-        return try encoder.encode(payload)
+        let data = try encoder.encode(payload)
+        guard let macDisplayName else { return data }
+        var object = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        object["macDisplayName"] = macDisplayName
+        return try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
     func testScanParsesBootstrapAndStagesEphemeralMaterial() throws {
@@ -56,6 +63,13 @@ final class PairingFlowTests: XCTestCase {
         let started = try PairingFlow.scan(bootstrapJSON: json)
         XCTAssertEqual(started.bootstrap.pairingSessionID, bootstrap.pairingSessionID)
         XCTAssertEqual(started.bootstrap.tailscaleEndpointHint, "100.64.10.20:38747")
+    }
+
+    func testScanParsesMacDisplayNameMetadata() throws {
+        let (bootstrap, _) = makeBootstrap()
+        let json = try encodeBootstrap(bootstrap, macDisplayName: "Chris's Mac Studio")
+        let started = try PairingFlow.scan(bootstrapJSON: json)
+        XCTAssertEqual(started.macDisplayName, "Chris's Mac Studio")
     }
 
     func testScanRejectsExpiredBootstrap() throws {

@@ -94,7 +94,8 @@ private final class PairingTransportFactorySpy: @unchecked Sendable {
 final class PairingViewModelTests: XCTestCase {
     private func makeBootstrapJSON(
         expiresIn: TimeInterval = 300,
-        tailscaleEndpointHint: String? = nil
+        tailscaleEndpointHint: String? = nil,
+        macDisplayName: String? = nil
     ) -> Data {
         let macPrivate = P256.KeyAgreement.PrivateKey()
         let macIdentity = DeviceIdentitySigningKey()
@@ -113,16 +114,22 @@ final class PairingViewModelTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         encoder.dataEncodingStrategy = .base64
-        return try! encoder.encode(bootstrap)
+        let data = try! encoder.encode(bootstrap)
+        guard let macDisplayName else { return data }
+        var object = try! JSONSerialization.jsonObject(with: data) as! [String: Any]
+        object["macDisplayName"] = macDisplayName
+        return try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
     }
 
     private func makeViewModel(
         controllerDisplayName: String = "iPhone Test",
+        pairStorage: KeychainPairStorage? = nil,
         transport: MockPairingChannelTransport = MockPairingChannelTransport()
     ) -> (PairingViewModel, PairingTransportFactorySpy) {
         let factory = PairingTransportFactorySpy(transport: transport)
         let vm = PairingViewModel(
             controllerDisplayName: controllerDisplayName,
+            pairStorage: pairStorage,
             pairingChannelTransportFactory: factory.make(configuration:)
         )
         return (vm, factory)
@@ -282,6 +289,39 @@ final class PairingViewModelTests: XCTestCase {
         _ = await waitForState(vm) { $0 == .confirmed }
         XCTAssertEqual(vm.state, .confirmed)
         XCTAssertEqual(vm.confirmedPair?.tailscaleEndpointHint, "100.64.10.20:38747")
+    }
+
+    func testConfirmAfterScanCarriesMacDisplayNameAndPersistsPair() async throws {
+        let storage = KeychainPairStorage(secretStore: InMemorySecretStore())
+        let transport = MockPairingChannelTransport()
+        let (vm, _) = makeViewModel(pairStorage: storage, transport: transport)
+        vm.scan(bootstrapJSON: makeBootstrapJSON(macDisplayName: "Chris's Mac Studio"))
+        let awaitingState = await waitForState(vm) { state in
+            if case .awaitingDesktopVerification = state { return true }
+            return false
+        }
+        guard let awaitingState,
+              case .awaitingDesktopVerification(let code, _) = awaitingState
+        else {
+            XCTFail("expected .awaitingDesktopVerification, got \(String(describing: awaitingState))")
+            return
+        }
+        let didAttempt = await waitUntil { await transport.hasPendingAttempt() }
+        XCTAssertTrue(didAttempt)
+        await transport.resolveAttempt(macConfirmationCode: code)
+        _ = await waitForState(vm) { state in
+            if case .confirmingCode = state { return true }
+            return false
+        }
+        vm.confirm()
+        _ = await waitForState(vm) { $0 == .confirmed }
+        XCTAssertEqual(vm.confirmedPair?.macDisplayName, "Chris's Mac Studio")
+
+        let didPersist = await waitUntil {
+            let pairs = (try? await storage.loadAllPairs()) ?? []
+            return pairs.contains { $0.macDisplayName == "Chris's Mac Studio" }
+        }
+        XCTAssertTrue(didPersist)
     }
 
     func testConfirmFromIdleFails() {

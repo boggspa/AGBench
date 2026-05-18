@@ -31,6 +31,7 @@ public struct iPadSettingsPane: View {
     public let pairingViewModel: PairingViewModel?
     public let transcriptViewModel: TranscriptViewModel?
     public let mocked: Bool
+    public let onUnpair: (() -> Void)?
 
     @State private var showUnpairConfirmation: Bool = false
     @State private var expandedAboutRow: String? = nil
@@ -38,11 +39,13 @@ public struct iPadSettingsPane: View {
     public init(
         pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
-        mocked: Bool = false
+        mocked: Bool = false,
+        onUnpair: (() -> Void)? = nil
     ) {
         self.pairingViewModel = pairingViewModel
         self.transcriptViewModel = transcriptViewModel
         self.mocked = mocked
+        self.onUnpair = onUnpair
     }
 
     public var body: some View {
@@ -65,10 +68,7 @@ public struct iPadSettingsPane: View {
             titleVisibility: .visible
         ) {
             Button("Unpair", role: .destructive) {
-                // TODO: wire this to AppState.disconnect() when the
-                // settings pane is hosted with real state. Today it just
-                // logs so design review can exercise the dialog flow.
-                print("Unpair tapped")
+                onUnpair?()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -301,23 +301,18 @@ public struct iPadSettingsPane: View {
         pairingViewModel?.confirmedPair != nil || mocked
     }
 
-    /// Title text for the pairing card. Reads "Paired with Mac" /
-    /// "Not paired" rather than "Paired with: Not paired" (the prior
-    /// bug — the verbatim `Pair` struct doesn't yet carry a Mac
-    /// display name, so the previous "Paired with: \(macName)" format
-    /// produced gibberish when unpaired and was just blank during
-    /// real-but-no-bootstrap-name pairs).
-    ///
-    /// TODO (future bridge protocol tweak): when the daemon's
-    /// `PairingBootstrapPayload` grows a `macDisplayName` field and
-    /// iOS's `Pair` struct propagates it, surface the actual name
-    /// (e.g. "Paired with Chris's Mac Studio") instead of the generic
-    /// "Paired with Mac".
+    /// Title text for the pairing card. Reads "Paired with <Mac name>"
+    /// when the bootstrap provided a display name, and falls back to a
+    /// generic label for older daemons.
     private var pairingCardTitle: String {
         if mocked {
             return "Paired with Chris's Mac Studio"
         }
-        if pairingViewModel?.confirmedPair != nil {
+        if let pair = pairingViewModel?.confirmedPair {
+            let displayName = pair.macDisplayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let displayName, !displayName.isEmpty {
+                return "Paired with \(displayName)"
+            }
             return "Paired with Mac"
         }
         return "Not paired"

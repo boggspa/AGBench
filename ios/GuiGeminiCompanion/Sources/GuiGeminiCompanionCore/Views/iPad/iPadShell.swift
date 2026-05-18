@@ -154,30 +154,36 @@ public final class iPadSelectionState {
 
 @available(iOS 17.0, macOS 14.0, *)
 public struct iPadShell: View {
+    public let pairingViewModel: PairingViewModel?
     public let transcriptViewModel: TranscriptViewModel?
     public let approvalViewModel: ApprovalViewModel?
     public let composerViewModel: ComposerViewModel?
     public let seededWorkspaces: [iPadWorkspaceSummary]
     public let seededThreads: [iPadThreadSummary]
+    public let onUnpair: (() -> Void)?
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var selectionState: iPadSelectionState
     @State private var sidebarStore: iPadSidebarStore
 
     public init(
+        pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
         approvalViewModel: ApprovalViewModel? = nil,
         composerViewModel: ComposerViewModel? = nil,
         workspaces: [iPadWorkspaceSummary] = [],
         threads: [iPadThreadSummary] = [],
         selectionState: iPadSelectionState? = nil,
-        sidebarStore: iPadSidebarStore? = nil
+        sidebarStore: iPadSidebarStore? = nil,
+        onUnpair: (() -> Void)? = nil
     ) {
+        self.pairingViewModel = pairingViewModel
         self.transcriptViewModel = transcriptViewModel
         self.approvalViewModel = approvalViewModel
         self.composerViewModel = composerViewModel
         self.seededWorkspaces = workspaces
         self.seededThreads = threads
+        self.onUnpair = onUnpair
         _selectionState = State(initialValue: selectionState ?? iPadSelectionState())
         _sidebarStore = State(initialValue: sidebarStore ?? iPadSidebarStore(
             workspaces: workspaces,
@@ -196,8 +202,11 @@ public struct iPadShell: View {
             iPadDetailHost(
                 selection: selectionState.selection,
                 store: sidebarStore,
+                pairingViewModel: pairingViewModel,
                 transcriptViewModel: transcriptViewModel,
-                composerViewModel: composerViewModel
+                composerViewModel: composerViewModel,
+                pairedMacName: pairingViewModel?.confirmedPair?.macDisplayName,
+                onUnpair: onUnpair
             )
             .navigationSplitViewColumnWidth(min: 500, ideal: 720)
         } detail: {

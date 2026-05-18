@@ -70,8 +70,10 @@ final class GuiGeminiBridgeClientTests: XCTestCase {
             pairID: PairID("p"),
             controllerDeviceID: DeviceID("c"),
             macDeviceID: DeviceID("m"),
-            derivedKeys: derived
+            derivedKeys: derived,
+            macDisplayName: "Chris's Mac Studio"
         )
+        XCTAssertEqual(pair.macDisplayName, "Chris's Mac Studio")
         // Both subkeys must be 32 bytes (HKDF-SHA256 output size).
         XCTAssertEqual(
             pair.macToControllerKey.withUnsafeBytes { $0.count },

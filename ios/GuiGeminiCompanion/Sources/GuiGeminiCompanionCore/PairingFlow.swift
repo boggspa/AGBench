@@ -40,6 +40,7 @@ public enum PairingFlow {
         decoder.dateDecodingStrategy = .iso8601
         decoder.dataDecodingStrategy = .base64
         let bootstrap = try decoder.decode(PairingBootstrapPayload.self, from: bootstrapJSON)
+        let metadata = try? decoder.decode(BootstrapMetadata.self, from: bootstrapJSON)
         let now = Date()
         if bootstrap.expiresAt < now {
             throw PairingFlowError.bootstrapExpired(bootstrap.expiresAt)
@@ -48,6 +49,7 @@ public enum PairingFlow {
         let controllerNonce = Data((0..<32).map { _ in UInt8.random(in: 0...255) })
         return Started(
             bootstrap: bootstrap,
+            macDisplayName: Self.normalizedDisplayName(metadata?.macDisplayName),
             controllerPrivateKey: controllerPrivateKey,
             controllerNonce: controllerNonce
         )
@@ -55,6 +57,7 @@ public enum PairingFlow {
 
     public struct Started: Sendable {
         public let bootstrap: PairingBootstrapPayload
+        public let macDisplayName: String?
         public let controllerPrivateKey: P256.KeyAgreement.PrivateKey
         public let controllerNonce: Data
 
@@ -92,6 +95,17 @@ public enum PairingFlow {
             let confirmationCode = try PairingCodeFormatter.sixDigitConfirmationCode(for: transcript)
             return (response, derivedKeys, confirmationCode)
         }
+    }
+
+    private struct BootstrapMetadata: Decodable {
+        let macDisplayName: String?
+    }
+
+    private static func normalizedDisplayName(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else { return nil }
+        return trimmed
     }
 }
 

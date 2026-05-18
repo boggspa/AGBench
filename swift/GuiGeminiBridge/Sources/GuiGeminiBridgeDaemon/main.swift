@@ -220,6 +220,17 @@ let transportListener = TransportListener(
 )
 let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener)
 
+func localMacDisplayName() -> String {
+    let candidates = [
+        Host.current().localizedName,
+        ProcessInfo.processInfo.hostName,
+        guiGeminiConfiguration.displayName
+    ]
+    return candidates
+        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .first { !$0.isEmpty } ?? guiGeminiConfiguration.displayName
+}
+
 func logQUICPipeline(_ message: String) {
     FileHandle.standardError.write(Data("[QUIC pipeline] \(message)\n".utf8))
 }
@@ -410,6 +421,14 @@ dispatcher.register("bridge.beginPairing") { params in
     let displayName = parsed.controllerDisplayName ?? "iOS device"
     let result = try runBlocking { @Sendable [pairingCoordinator] in
         await pairingCoordinator.beginPairing(controllerDisplayName: displayName)
+    }
+    var object = try encodeAsJSONObject(result) as? [String: Any]
+    if var bootstrap = object?["bootstrapPayload"] as? [String: Any] {
+        bootstrap["macDisplayName"] = localMacDisplayName()
+        object?["bootstrapPayload"] = bootstrap
+    }
+    if let object {
+        return object
     }
     return try encodeAsJSONObject(result)
 }
