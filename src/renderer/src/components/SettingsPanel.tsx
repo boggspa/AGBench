@@ -55,6 +55,10 @@ interface SettingsPanelProps {
   claudeBinaryPath: string;
   kimiBinaryPath: string;
   agenticServices: AgenticServicesSettings;
+  /** When true (default), AGBench auto-dispatches a continuation run
+   * on the parent chat once a sub-thread the parent delegated to (with
+   * `returnResultToParent: true`) finishes. See AutoResumeParent.ts. */
+  autoResumeParentOnSubThreadCompletion: boolean;
   agenticWorkspaceGrantCount: number;
   activeProvider: ProviderId;
   providerCapabilities?: ProviderCapabilityContract | null;
@@ -98,6 +102,7 @@ interface SettingsPanelProps {
     claudeBinaryPath?: string;
     kimiBinaryPath?: string;
     agenticServices?: AgenticServicesSettings;
+    autoResumeParentOnSubThreadCompletion?: boolean;
     geminiMcpBridgeEnabled?: boolean;
     codexSandboxFallback?: CodexSandboxFallbackMode;
     funFxEnabled?: boolean;
@@ -218,6 +223,7 @@ export function SettingsPanel({
   claudeBinaryPath,
   kimiBinaryPath,
   agenticServices,
+  autoResumeParentOnSubThreadCompletion,
   agenticWorkspaceGrantCount,
   activeProvider,
   providerCapabilities,
@@ -822,6 +828,21 @@ export function SettingsPanel({
                 <option key={option.value} value={option.value}>{option.label}</option>
               ))}
             </select>
+          </label>
+
+          <label className="settings-service-row">
+            <span>
+              Auto-resume parent when sub-thread completes
+              <small>
+                When a sub-thread you delegated to finishes, automatically continue
+                the parent agent so it can read the result without a manual nudge.
+              </small>
+            </span>
+            <input
+              type="checkbox"
+              checked={autoResumeParentOnSubThreadCompletion}
+              onChange={(e) => onChange({ autoResumeParentOnSubThreadCompletion: e.target.checked })}
+            />
           </label>
 
           <label className="settings-service-row">

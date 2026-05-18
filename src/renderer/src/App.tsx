@@ -3548,6 +3548,7 @@ type SettingsPanelUpdate = {
   claudeBinaryPath?: string
   kimiBinaryPath?: string
   agenticServices?: AgenticServicesSettings
+  autoResumeParentOnSubThreadCompletion?: boolean
   geminiMcpBridgeEnabled?: boolean
   codexSandboxFallback?: CodexSandboxFallbackMode
   updateChannel?: ProductUpdateChannel
@@ -3611,6 +3612,7 @@ function App(): React.JSX.Element {
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [claudeLoginState, setClaudeLoginState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [agenticServices, setAgenticServices] = useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
+  const [autoResumeParentOnSubThreadCompletion, setAutoResumeParentOnSubThreadCompletion] = useState(true)
   const [agenticWorkspaceGrants, setAgenticWorkspaceGrants] = useState<AgenticWorkspaceGrant[]>([])
   const [agenticWorkspaceGrantCount, setAgenticWorkspaceGrantCount] = useState(0)
   const [geminiMcpBridgeEnabled, setGeminiMcpBridgeEnabledState] = useState(false)
@@ -4583,6 +4585,11 @@ function App(): React.JSX.Element {
     setClaudeBinaryPath(s.claudeBinaryPath || '')
     setKimiBinaryPath(s.kimiBinaryPath || '')
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(s.agenticServices || {}) })
+    setAutoResumeParentOnSubThreadCompletion(
+      typeof s.autoResumeParentOnSubThreadCompletion === 'boolean'
+        ? s.autoResumeParentOnSubThreadCompletion
+        : true
+    )
     setAgenticWorkspaceGrants(Array.isArray(s.agenticWorkspaceGrants) ? s.agenticWorkspaceGrants : [])
     setAgenticWorkspaceGrantCount(Array.isArray(s.agenticWorkspaceGrants) ? s.agenticWorkspaceGrants.length : 0)
     setGeminiMcpBridgeEnabledState(Boolean(s.geminiMcpBridgeEnabled))
@@ -4773,6 +4780,10 @@ function App(): React.JSX.Element {
       settingsPatch.agenticServices = normalizedServices
       providersToRefresh.push(currentProvider)
     }
+    if (next.autoResumeParentOnSubThreadCompletion !== undefined) {
+      setAutoResumeParentOnSubThreadCompletion(next.autoResumeParentOnSubThreadCompletion)
+      settingsPatch.autoResumeParentOnSubThreadCompletion = next.autoResumeParentOnSubThreadCompletion
+    }
     if (next.geminiMcpBridgeEnabled !== undefined) {
       const enabled = Boolean(next.geminiMcpBridgeEnabled)
       setGeminiMcpBridgeEnabledState(enabled)
@@ -4812,6 +4823,11 @@ function App(): React.JSX.Element {
   const applyAgenticWorkspaceGrantSettings = (nextSettings: AppSettings) => {
     setSettings(nextSettings)
     setAgenticServices({ ...DEFAULT_AGENTIC_SERVICES, ...(nextSettings.agenticServices || {}) })
+    setAutoResumeParentOnSubThreadCompletion(
+      typeof nextSettings.autoResumeParentOnSubThreadCompletion === 'boolean'
+        ? nextSettings.autoResumeParentOnSubThreadCompletion
+        : true
+    )
     setAgenticWorkspaceGrants(Array.isArray(nextSettings.agenticWorkspaceGrants) ? nextSettings.agenticWorkspaceGrants : [])
     setAgenticWorkspaceGrantCount(Array.isArray(nextSettings.agenticWorkspaceGrants) ? nextSettings.agenticWorkspaceGrants.length : 0)
     void refreshProviderMetadata(currentProvider)
@@ -11250,6 +11266,7 @@ function App(): React.JSX.Element {
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
               agenticServices={agenticServices}
+              autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
               agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
               activeProvider={currentProvider}
               providerCapabilities={currentProviderCapabilities}

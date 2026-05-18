@@ -1,0 +1,107 @@
+/**
+ * AutoResumeParent — pure gating helper for the "auto-resume parent
+ * agent when its delegated sub-thread completes" feature.
+ *
+ * Problem: when an agent delegates to a sub-thread via the
+ * `delegate_to_subthread` MCP tool with `returnResultToParent: true`,
+ * the sub-thread eventually finishes and its final assistant message
+ * is back-propagated into the parent transcript as a synthetic
+ * `↩ Result from X` system message (see `maybePropagateSubThreadResult`
+ * in `src/main/index.ts`). But the parent agent's run finished a while
+ * ago — usually right after it called the delegation tool — so the
+ * back-propagated result just sits there with nobody to read it. The
+ * user has to manually nudge ("ok continue") for the parent to
+ * incorporate the sub-thread's findings.
+ *
+ * Fix: after the back-propagation, automatically dispatch a fresh
+ * continuation run on the parent chat — if and only if the gating
+ * conditions hold (setting enabled, parent not already running, etc.).
+ *
+ * This module is the *gate*. The actual dispatch + transcript-shaping
+ * lives in `maybePropagateSubThreadResult`. Keeping the gate pure
+ * (no IPC, no AppStore, no RunCoordinator) makes it trivially
+ * testable: pass booleans in, get a boolean out.
+ *
+ * The continuation prompt that the dispatch path eventually submits
+ * lives here too as a constant + a small builder, so the wording is
+ * versioned alongside the gate and the tests can pin the user-visible
+ * text.
+ */
+
+/**
+ * Conditions checked by `shouldAutoResumeParent`. Each maps to a
+ * concrete check the caller performs against live main-process state.
+ *
+ * - `setting`: the top-level `autoResumeParentOnSubThreadCompletion`
+ *   app setting (default true). Lets a user opt out if they prefer
+ *   manual nudges.
+ * - `returnResultToParent`: the sub-thread was spawned with this flag
+ *   set. `maybePropagateSubThreadResult` already short-circuits when
+ *   it's false, but we re-check it here so the helper's contract is
+ *   self-contained (and so a future caller that bypasses the propagate
+ *   helper can't accidentally auto-resume on a sub-thread that wasn't
+ *   meant to return).
+ * - `parentChatExists`: the parent ChatRecord is still in the store.
+ *   If the user deleted it between spawn and completion, we shouldn't
+ *   resurrect it.
+ * - `parentChatIsRunning`: there's already an active run on the parent
+ *   chat. Auto-resuming on top of an active run would clash with the
+ *   existing run queue / steer semantics; defer to the user.
+ * - `parentChatHasProvider`: the parent ChatRecord has a `provider`
+ *   field. Without it we can't build an `AgentRunPayload` (the dispatch
+ *   requires a provider id). Global chats with no provider would fall
+ *   through here too — that's fine, manual nudge is the fallback.
+ */
+export interface AutoResumeParentGateArgs {
+  setting: boolean
+  returnResultToParent: boolean
+  parentChatExists: boolean
+  parentChatIsRunning: boolean
+  parentChatHasProvider: boolean
+}
+
+/**
+ * Returns true iff *all* gating conditions hold. The caller invokes
+ * the continuation dispatch only when this returns true; otherwise the
+ * back-propagated result sits in the parent transcript untouched (the
+ * pre-existing "user must nudge" behaviour).
+ */
+export function shouldAutoResumeParent(args: AutoResumeParentGateArgs): boolean {
+  if (!args.setting) return false
+  if (!args.returnResultToParent) return false
+  if (!args.parentChatExists) return false
+  if (args.parentChatIsRunning) return false
+  if (!args.parentChatHasProvider) return false
+  return true
+}
+
+/**
+ * Builds the synthetic continuation prompt that the parent agent sees.
+ * Phrased so the agent treats it as a hand-off note: "your sub-thread
+ * is done, look at its result and continue." Kept short so it doesn't
+ * dominate the parent's token budget.
+ *
+ * The wording deliberately doesn't quote the sub-thread's content — the
+ * `↩ Result from X` synthetic message that was just appended sits
+ * directly above this prompt in the transcript, so the agent has
+ * everything it needs without us duplicating the payload.
+ */
+export function buildAutoResumeContinuationPrompt(subThreadTitle: string): string {
+  const safeTitle = subThreadTitle.trim() || 'untitled'
+  return (
+    `Your sub-thread "${safeTitle}" has just completed. Its result was appended ` +
+    `to your transcript above. Continue with the task — incorporate the ` +
+    `sub-thread's findings as appropriate.`
+  )
+}
+
+/**
+ * Metadata tag the renderer can use to distinguish auto-resume
+ * continuation messages from human-typed prompts. Today the renderer
+ * doesn't need to render them differently to be correct (an unknown
+ * kind falls through to the generic message rendering), but the tag
+ * is here so a future visual treatment ("auto-resume" badge, muted
+ * styling, etc.) can be added without touching the gate or the
+ * dispatch path.
+ */
+export const AUTO_RESUME_CONTINUATION_KIND = 'autoResumeContinuation' as const

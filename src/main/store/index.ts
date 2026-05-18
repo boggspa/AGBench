@@ -71,6 +71,10 @@ const defaultSettings: AppSettings = {
     networkAccess: 'allow'
   },
   agenticWorkspaceGrants: [],
+  // Default on — the user-visible win is that delegated sub-threads
+  // resume their parent agent automatically when they finish. Users
+  // who prefer to nudge manually can flip this off in Settings.
+  autoResumeParentOnSubThreadCompletion: true,
   geminiMcpBridgeEnabled: false,
   geminiMcpBridgeLastStatus: undefined,
   bridgeDaemonEnabled: true,
@@ -250,6 +254,13 @@ export class AppStore {
         ...(stored.agenticServices || {})
       },
       agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants) ? stored.agenticWorkspaceGrants : [],
+      // Normalize: a stored non-boolean (e.g. an older settings file
+      // where the field is missing) falls back to the default (true)
+      // so the auto-resume behaviour is on for upgrading users.
+      autoResumeParentOnSubThreadCompletion:
+        typeof stored.autoResumeParentOnSubThreadCompletion === 'boolean'
+          ? stored.autoResumeParentOnSubThreadCompletion
+          : defaultSettings.autoResumeParentOnSubThreadCompletion,
       approvalTimeouts: {
         ...defaultSettings.approvalTimeouts,
         ...(stored.approvalTimeouts || {}),
