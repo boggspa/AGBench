@@ -7567,10 +7567,44 @@ function App(): React.JSX.Element {
         } else if (event.type === 'assistant_message_delta') {
           if (isVisibleRunChat()) setIsThinking(false)
           const last = updated.messages[updated.messages.length - 1]
+          // Phase K2 (b) — merge-with-separator. When Codex emits a new
+          // `agentMessage` item within the same turn (different `itemId`
+          // than the message we're streaming into), the deltas would
+          // otherwise concatenate seamlessly and the body + summary
+          // would visually merge into one continuous paragraph. We
+          // insert a horizontal-rule separator at the item boundary so
+          // the user can SEE where one item ended and the next began,
+          // without the larger UX shift of splitting into two bubbles
+          // (parked as Phase K3 if it ever becomes worth the change).
+          const incomingItemId = (event as { itemId?: unknown }).itemId
+          const incomingItemIdStr = typeof incomingItemId === 'string' && incomingItemId ? incomingItemId : undefined
           if (last && last.role === 'assistant') {
-            updated.messages = [...updated.messages.slice(0, -1), { ...last, content: last.content + event.content }]
+            const lastItemId = typeof last.metadata?.codexItemId === 'string' ? last.metadata.codexItemId : undefined
+            const itemTransition =
+              incomingItemIdStr !== undefined &&
+              lastItemId !== undefined &&
+              incomingItemIdStr !== lastItemId &&
+              last.content.length > 0
+            const separator = itemTransition ? '\n\n---\n\n' : ''
+            const nextMetadata = incomingItemIdStr
+              ? { ...(last.metadata ?? {}), codexItemId: incomingItemIdStr }
+              : last.metadata
+            updated.messages = [
+              ...updated.messages.slice(0, -1),
+              { ...last, content: last.content + separator + event.content, metadata: nextMetadata }
+            ]
           } else {
-            updated.messages = [...updated.messages, { id: Date.now().toString(), role: 'assistant', content: event.content, timestamp: new Date().toISOString() }]
+            const metadata = incomingItemIdStr ? { codexItemId: incomingItemIdStr } : undefined
+            updated.messages = [
+              ...updated.messages,
+              {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: event.content,
+                timestamp: new Date().toISOString(),
+                ...(metadata ? { metadata } : {})
+              }
+            ]
           }
         } else if (event.type === 'assistant_message_complete') {
           if (isVisibleRunChat()) setIsThinking(false)

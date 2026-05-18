@@ -11435,7 +11435,20 @@ app.whenReady().then(() => {
     publishApprovalRunEvent: (approvalEvent) => {
       publishRunEvent('agent-output', approvalEvent.provider, approvalEvent)
     },
-    getApprovalTimeoutSettings: () => AppStore.getSettings().approvalTimeouts,
+    getApprovalTimeoutSettings: () => {
+      // Phase K1 — when session YOLO is on, every approval is
+      // auto-allowed BEFORE the prompt UI / timer would arm. The
+      // safety-net here covers any code path that somehow reaches
+      // scheduleTimeout while YOLO is enabled (a bug if it happens,
+      // but the user's pain point was approvals timing out after
+      // 60s during unattended overnight runs — disabling timeouts
+      // while YOLO is on means those runs survive). Audit trail
+      // still records every auto-allow via 'session_yolo'.
+      if (sessionYoloState.enabled) {
+        return { ...AppStore.getSettings().approvalTimeouts, enabled: false }
+      }
+      return AppStore.getSettings().approvalTimeouts
+    },
     log: (line) => {
       // eslint-disable-next-line no-console
       console.log(line)
