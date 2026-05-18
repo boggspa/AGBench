@@ -57,6 +57,23 @@ final class PairingPipelineTests: XCTestCase {
         XCTAssertEqual(notification.params["controllerDeviceID"], "ipad-test-device")
         XCTAssertEqual(notification.params["controllerDisplayName"], "iPad")
         XCTAssertEqual(notification.params["confirmationCode"], result.confirmationCode)
+
+        let finalize = try await coordinator.finalizePairing(
+            pairingSessionID: incoming.sessionID,
+            userConfirmed: true
+        )
+        let pairID = try XCTUnwrap(finalize.trustedDevice?.pairID.rawValue)
+        await listener.sendFinalDecision(sessionID: incoming.sessionID, accepted: true, pairID: pairID)
+        let finalFrameBytes = try await withTimeout(seconds: 3) {
+            try await Self.receiveFrame(on: connection)
+        }
+        let finalFrame = try JSONDecoder().decode(
+            PairingChannelListener.PairingFinalDecisionFrame.self,
+            from: finalFrameBytes
+        )
+        XCTAssertEqual(finalFrame.accepted, true)
+        XCTAssertNil(finalFrame.message)
+        XCTAssertEqual(finalFrame.pairID, pairID)
     }
 
     private func makeResponse(
@@ -120,6 +137,30 @@ final class PairingPipelineTests: XCTestCase {
                     continuation.resume()
                 }
             })
+        }
+    }
+
+    private static func receiveFrame(on connection: NWConnection) async throws -> Data {
+        let lengthBytes = try await receiveExact(4, on: connection)
+        let length = try decodeFrameLength(lengthBytes)
+        return try await receiveExact(Int(length), on: connection)
+    }
+
+    private static func receiveExact(_ count: Int, on connection: NWConnection) async throws -> Data {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data, Error>) in
+            connection.receive(minimumIncompleteLength: count, maximumLength: count) { data, _, _, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else if let data, data.count == count {
+                    continuation.resume(returning: data)
+                } else {
+                    continuation.resume(throwing: NSError(
+                        domain: "PairingPipelineTests",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Connection closed before \(count) bytes arrived"]
+                    ))
+                }
+            }
         }
     }
 

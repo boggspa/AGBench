@@ -128,7 +128,11 @@ public final class PairingViewModel {
                     self?.failPairing(decision.message ?? "The Mac rejected this pairing request")
                     return
                 }
-                self?.completePairing(response: response, derivedKeys: derivedKeys, flow: flow)
+                guard let pairID = Self.pairID(from: decision) else {
+                    self?.failPairing("The Mac accepted pairing but did not return a pair id. Pairing is incomplete; rebuild the Mac app and try again.")
+                    return
+                }
+                self?.completePairing(response: response, derivedKeys: derivedKeys, flow: flow, pairID: pairID)
             } catch {
                 self?.failPairing("Pairing finalization failed: \(self?.describe(error: error) ?? error.localizedDescription)")
             }
@@ -138,9 +142,9 @@ public final class PairingViewModel {
     private func completePairing(
         response: PairingResponsePayload,
         derivedKeys: PairingDerivedKeys,
-        flow: PairingFlow.Started
+        flow: PairingFlow.Started,
+        pairID: PairID
     ) {
-        let pairID = PairID(UUID().uuidString.lowercased())
         confirmedPair = GuiGeminiBridgeClient.Pair(
             pairID: pairID,
             controllerDeviceID: response.controllerDeviceID,
@@ -220,6 +224,15 @@ public final class PairingViewModel {
         pairingTransport = nil
         pairingTask = nil
         state = .failed(message: message)
+    }
+
+    private static func pairID(from decision: PairingChannelClient.DesktopFinalDecision) -> PairID? {
+        guard let rawPairID = decision.pairID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !rawPairID.isEmpty
+        else {
+            return nil
+        }
+        return PairID(rawPairID)
     }
 
     private func cancelActiveTransport(message: String) {

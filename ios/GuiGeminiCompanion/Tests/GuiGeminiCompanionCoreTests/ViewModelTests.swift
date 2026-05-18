@@ -10,7 +10,10 @@ private actor MockPairingChannelTransport: PairingChannelTransport {
     private(set) var finalDecisions: [PairingChannelClient.FinalDecisionMessage] = []
     private(set) var cancelWasCalled = false
 
-    var desktopDecision = PairingChannelClient.DesktopFinalDecision(accepted: true)
+    var desktopDecision = PairingChannelClient.DesktopFinalDecision(
+        accepted: true,
+        pairID: "pair-from-mac"
+    )
 
     private var pendingAttempt: CheckedContinuation<PairingChannelClient.PairingReply, Error>?
 
@@ -53,6 +56,10 @@ private actor MockPairingChannelTransport: PairingChannelTransport {
 
     func wasCancelled() -> Bool {
         cancelWasCalled
+    }
+
+    func setDesktopDecision(_ decision: PairingChannelClient.DesktopFinalDecision) {
+        desktopDecision = decision
     }
 
     func resolveAttempt(macConfirmationCode: String, sessionID: String? = nil) {
@@ -245,6 +252,7 @@ final class PairingViewModelTests: XCTestCase {
         XCTAssertEqual(vm.state, .confirmed)
         XCTAssertNotNil(vm.confirmedPair)
         XCTAssertEqual(vm.confirmedPair?.controllerDeviceID.rawValue.isEmpty, false)
+        XCTAssertEqual(vm.confirmedPair?.pairID.rawValue, "pair-from-mac")
         let decisions = await transport.finalDecisionSnapshot()
         XCTAssertEqual(decisions.last?.accepted, true)
     }
@@ -318,6 +326,29 @@ final class PairingViewModelTests: XCTestCase {
         XCTAssertTrue(message.contains("different pairing code"))
         let decisions = await transport.finalDecisionSnapshot()
         XCTAssertEqual(decisions.last?.accepted, false)
+    }
+
+    func testAcceptedDesktopDecisionWithoutPairIDFailsClosed() async {
+        let transport = MockPairingChannelTransport()
+        await transport.setDesktopDecision(PairingChannelClient.DesktopFinalDecision(
+            accepted: true,
+            pairID: nil
+        ))
+        let (vm, _) = makeViewModel(transport: transport)
+        _ = await stageDesktopVerifiedPairing(vm, transport: transport)
+        vm.confirm()
+        let failedState = await waitForState(vm) { state in
+            if case .failed = state { return true }
+            return false
+        }
+        guard let failedState,
+              case .failed(let message) = failedState
+        else {
+            XCTFail("expected .failed, got \(String(describing: failedState))")
+            return
+        }
+        XCTAssertTrue(message.contains("did not return a pair id"))
+        XCTAssertNil(vm.confirmedPair)
     }
 }
 

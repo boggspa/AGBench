@@ -173,7 +173,8 @@ final class PairingChannelClientTests: XCTestCase {
     func testFinalDecisionCanWaitForDesktopAcknowledgement() async throws {
         let port = try startListener(desktopFinalDecision: PairingChannelClient.DesktopFinalDecision(
             accepted: true,
-            message: nil
+            message: nil,
+            pairID: "pair-from-mac"
         ))
         let client = PairingChannelClient(configuration: PairingChannelClient.Configuration(
             bonjourServiceName: "_unused._tcp",
@@ -181,7 +182,11 @@ final class PairingChannelClientTests: XCTestCase {
         ))
         _ = try await client.attemptPairing(response: sampleResponse())
         let decision = try await client.sendFinalDecisionAndWaitForDesktop(accepted: true, message: nil)
-        XCTAssertEqual(decision, PairingChannelClient.DesktopFinalDecision(accepted: true, message: nil))
+        XCTAssertEqual(decision, PairingChannelClient.DesktopFinalDecision(
+            accepted: true,
+            message: nil,
+            pairID: "pair-from-mac"
+        ))
     }
 
     func testSendFinalDecisionBeforeAttemptPairingThrows() async throws {

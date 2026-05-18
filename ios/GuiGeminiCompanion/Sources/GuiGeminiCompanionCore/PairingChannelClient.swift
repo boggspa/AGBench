@@ -14,6 +14,9 @@ import BridgeCryptoPairing
 ///     `{macConfirmationCode, sessionID}`.
 ///   - Client → Server (after user confirms codes match): 4-byte BE
 ///     length, then UTF-8 JSON of `{accepted, message?}`.
+///   - Server → Client: 4-byte BE length, then UTF-8 JSON of
+///     `{accepted, message?, pairID?}`. `pairID` is required when
+///     accepted by current daemons and omitted by older daemons.
 ///   - Connection closes after the final accept/reject.
 ///
 /// The matching Mac-side `PairingChannelListener` is a separate Swift
@@ -93,10 +96,12 @@ public actor PairingChannelClient: PairingChannelTransport {
     public struct DesktopFinalDecision: Sendable, Codable, Equatable {
         public let accepted: Bool
         public let message: String?
+        public let pairID: String?
 
-        public init(accepted: Bool, message: String? = nil) {
+        public init(accepted: Bool, message: String? = nil, pairID: String? = nil) {
             self.accepted = accepted
             self.message = message
+            self.pairID = pairID
         }
     }
 

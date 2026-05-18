@@ -429,11 +429,14 @@ dispatcher.register("bridge.finalizePairing") { params in
     // listener-connection is a no-op (e.g. iPhone disconnected).
     let sessionID = parsed.pairingSessionID
     let accepted = parsed.userConfirmed
-    Task.detached { @Sendable [pairingChannelListener] in
+    let pairID = result.trustedDevice?.pairID.rawValue
+    logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(accepted) pairID=\(pairID ?? "nil")")
+    Task.detached { @Sendable [pairingChannelListener, pairID] in
         await pairingChannelListener.sendFinalDecision(
             sessionID: sessionID,
             accepted: accepted,
-            message: accepted ? nil : "User did not confirm matching codes"
+            message: accepted ? nil : "User did not confirm matching codes",
+            pairID: pairID
         )
     }
     return try encodeAsJSONObject(result)

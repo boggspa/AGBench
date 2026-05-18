@@ -36,6 +36,18 @@ import BridgeCryptoPairing
 /// `sendFinalDecision(...)` to ship the result back over the still-open
 /// TCP connection, which then closes.
 public actor PairingChannelListener {
+    public struct PairingFinalDecisionFrame: Sendable, Codable, Equatable {
+        public let accepted: Bool
+        public let message: String?
+        public let pairID: String?
+
+        public init(accepted: Bool, message: String? = nil, pairID: String? = nil) {
+            self.accepted = accepted
+            self.message = message
+            self.pairID = pairID
+        }
+    }
+
     public struct IncomingPairingResponse: Sendable {
         public let response: PairingResponsePayload
         public let sessionID: String
@@ -176,14 +188,25 @@ public actor PairingChannelListener {
     /// Send the final accept/reject + tear down the connection. Called
     /// after the user confirms/rejects in the desktop UI and
     /// `bridge.finalizePairing` has run on the coordinator.
-    public func sendFinalDecision(sessionID: String, accepted: Bool, message: String? = nil) async {
-        guard let connection = connectionsBySession[sessionID] else { return }
-        var payload: [String: Any] = ["accepted": accepted]
-        if let message {
-            payload["message"] = message
+    public func sendFinalDecision(
+        sessionID: String,
+        accepted: Bool,
+        message: String? = nil,
+        pairID: String? = nil
+    ) async {
+        guard let connection = connectionsBySession[sessionID] else {
+            logPairingPipeline("final-decision frame skipped session=\(sessionID) reason=missing-connection pairID=\(pairID ?? "nil")")
+            return
         }
-        if let data = try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]) {
-            _ = await writeFrame(data, on: connection)
+        let payload = PairingFinalDecisionFrame(accepted: accepted, message: message, pairID: pairID)
+        guard let data = try? JSONEncoder().encode(payload) else {
+            logPairingPipeline("final-decision frame encode failed session=\(sessionID) pairID=\(pairID ?? "nil")")
+            return
+        }
+        if let error = await writeFrame(data, on: connection) {
+            logPairingPipeline("final-decision frame send failed session=\(sessionID) pairID=\(pairID ?? "nil") error=\(error.localizedDescription)")
+        } else {
+            logPairingPipeline("final-decision frame sent to iOS session=\(sessionID) accepted=\(accepted) pairID=\(pairID ?? "nil")")
         }
         connection.cancel()
         connectionsBySession.removeValue(forKey: sessionID)
