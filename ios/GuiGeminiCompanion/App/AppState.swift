@@ -47,6 +47,7 @@ final class AppState {
     }
 
     func connect(with pair: GuiGeminiBridgeClient.Pair) async {
+        logIOSBridgeApp("connect requested pairID=\(pair.pairID.rawValue) macDeviceID=\(pair.macDeviceID.rawValue)")
         let client = GuiGeminiBridgeClient(pair: pair)
         self.bridgeClient = client
         let transcript = TranscriptViewModel(
@@ -79,22 +80,28 @@ final class AppState {
         sidebarSummariesTask?.cancel()
         sidebarSummariesTask = Task { @MainActor in
             for await event in summaries {
+                logIOSBridgeApp("summary stream event channel=\(event.channel.rawValue) provider=\(event.provider)")
                 guard let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) else {
                     continue
                 }
                 switch decoded {
                 case .workspaceList(let payload):
+                    logIOSBridgeApp("apply workspace-list count=\(payload.workspaces.count)")
                     store.applyWorkspaceList(payload.workspaces)
                 case .workspaceUpdated(let payload):
+                    logIOSBridgeApp("apply workspace-updated workspaceID=\(payload.workspace.workspaceId)")
                     store.applyWorkspaceUpdate(payload.workspace)
                 case .threadList(let payload):
+                    logIOSBridgeApp("apply thread-list count=\(payload.threads.count)")
                     store.applyThreadList(payload.threads)
                 case .threadUpdated(let payload):
+                    logIOSBridgeApp("apply thread-updated chatID=\(payload.thread.chatId)")
                     store.applyThreadUpdate(payload.thread)
                 }
             }
         }
         await client.start()
+        logIOSBridgeApp("client.start returned pairID=\(pair.pairID.rawValue)")
         // If an APNs token already arrived before pairing (typical:
         // AppDelegate registers eagerly), drain it now.
         if let pending = pendingDeviceToken {
@@ -158,4 +165,8 @@ private func friendlyDeviceName() -> String {
     #else
     return "Companion"
     #endif
+}
+
+private func logIOSBridgeApp(_ message: String) {
+    print("[iOS Bridge] \(message)")
 }

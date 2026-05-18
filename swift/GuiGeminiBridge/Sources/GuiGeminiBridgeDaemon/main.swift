@@ -220,6 +220,29 @@ let transportListener = TransportListener(
 )
 let summaryBroadcaster = SummaryBroadcaster(transportListener: transportListener)
 
+func logQUICPipeline(_ message: String) {
+    FileHandle.standardError.write(Data("[QUIC pipeline] \(message)\n".utf8))
+}
+
+func ensurePostPairTransportReady(
+    result: PairingCoordinator.FinalizePairingResult,
+    transportListener: TransportListener,
+    source: String
+) async {
+    guard let decision = result.finalDecision, decision.accepted else { return }
+    let pairID = decision.pairID ?? "nil"
+    logQUICPipeline("post-pair activation requested source=\(source) pairID=\(pairID)")
+    do {
+        try await transportListener.ensureRunningWithCurrentTrustedControllers()
+        let status = await transportListener.status()
+        logQUICPipeline(
+            "post-pair transport ready source=\(source) pairID=\(pairID) running=\(status.running) trustedControllers=\(status.trustedControllerCount) service=\(status.bonjourServiceType) port=\(status.port.map(String.init) ?? "nil")"
+        )
+    } catch {
+        logQUICPipeline("WARN: post-pair transport activation failed source=\(source) pairID=\(pairID) error=\(error.localizedDescription)")
+    }
+}
+
 // Phase D1-pair: TCP pairing listener for the iOS pairing handshake.
 // Advertised via Bonjour at the GUIGemini TCP service type so the
 // iPhone's PairingChannelClient can NWBrowser-discover us. The listener
@@ -236,6 +259,13 @@ let pairingChannelListener = PairingChannelListener(
             message: message
         )
         guard let decision = result.finalDecision else { return nil }
+        if decision.accepted {
+            await ensurePostPairTransportReady(
+                result: result,
+                transportListener: transportListener,
+                source: "ios-final-decision"
+            )
+        }
         return PairingChannelListener.PairingFinalDecisionFrame(
             accepted: decision.accepted,
             message: decision.message,
@@ -445,6 +475,15 @@ dispatcher.register("bridge.finalizePairing") { params in
     let pairID = result.finalDecision?.pairID
     logPairingPipeline("finalizePairing session=\(sessionID) accepted=\(parsed.userConfirmed) pairID=\(pairID ?? "nil") waitingFor=\(result.waitingFor ?? "none")")
     if let decision = result.finalDecision {
+        if decision.accepted {
+            try? runBlocking { @Sendable [transportListener, result] in
+                await ensurePostPairTransportReady(
+                    result: result,
+                    transportListener: transportListener,
+                    source: "mac-finalize"
+                )
+            }
+        }
         Task.detached { @Sendable [pairingChannelListener, sessionID, decision] in
             await pairingChannelListener.sendFinalDecision(
                 sessionID: sessionID,

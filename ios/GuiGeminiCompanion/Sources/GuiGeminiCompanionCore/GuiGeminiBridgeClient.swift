@@ -170,8 +170,14 @@ public actor GuiGeminiBridgeClient {
     /// Begin browsing for the paired Mac, connect, and start forwarding
     /// inbound envelopes onto the typed streams. Idempotent.
     public func start() async {
-        guard !didStart else { return }
+        guard !didStart else {
+            Self.logIOSBridge("start ignored reason=already-started pairID=\(pair.pairID.rawValue)")
+            return
+        }
         didStart = true
+        Self.logIOSBridge(
+            "start pairID=\(pair.pairID.rawValue) controllerDeviceID=\(pair.controllerDeviceID.rawValue) macDeviceID=\(pair.macDeviceID.rawValue) network=\(String(describing: networkProtocol)) preference=\(String(describing: requestedTransportPreference))"
+        )
         let route = await Self.selectRoute(
             tailscaleEndpoint: explicitTailscaleEndpoint ?? Self.tailscaleEndpoint(from: pair.tailscaleEndpointHint),
             requestedPreference: requestedTransportPreference,
@@ -182,6 +188,9 @@ public actor GuiGeminiBridgeClient {
         )
         selectedRoute = route
         activeRouteContinuation.yield(route.activeRoute)
+        Self.logIOSBridge(
+            "route selected pairID=\(pair.pairID.rawValue) activeRoute=\(route.activeRoute.rawValue) preference=\(String(describing: route.transportPreference)) tailscaleEndpoint=\(route.tailscaleEndpoint?.rawValue ?? "nil")"
+        )
 
         let controller = makeController(route: route)
         self.controller = controller
@@ -194,6 +203,7 @@ public actor GuiGeminiBridgeClient {
         let activeRouteCont = self.activeRouteContinuation
         let controllerInbound = controller.inbound
         let controllerStatus = controller.status
+        let pairIDString = pair.pairID.rawValue
         inboundForwarderTask = Task { [weak self] in
             for await envelope in controllerInbound {
                 await self?.handle(envelope: envelope,
@@ -203,14 +213,20 @@ public actor GuiGeminiBridgeClient {
         }
         statusForwarderTask = Task {
             for await status in controllerStatus {
+                Self.logIOSBridge(
+                    "status pairID=\(pairIDString) kind=\(status.kind.rawValue) reachable=\(status.reachable) rttMs=\(status.roundTripMilliseconds.map(String.init) ?? "nil") error=\(status.lastError ?? "nil")"
+                )
                 statusCont.yield(status)
                 guard status.reachable,
                       let route = Self.activeRoute(for: status.kind)
                 else { continue }
+                Self.logIOSBridge("authenticated pairID=\(pairIDString) route=\(route.rawValue)")
                 activeRouteCont.yield(route)
             }
         }
+        Self.logIOSBridge("controller start pairID=\(pair.pairID.rawValue)")
         await controller.start()
+        Self.logIOSBridge("controller start returned pairID=\(pair.pairID.rawValue)")
     }
 
     /// Tear down all transport state and forwarder tasks. Idempotent.
@@ -263,6 +279,9 @@ public actor GuiGeminiBridgeClient {
         case .tcp: serviceType = ServiceType.tcp
         @unknown default: serviceType = ServiceType.quic
         }
+        Self.logIOSBridge(
+            "controller configured pairID=\(pair.pairID.rawValue) serviceType=\(serviceType) network=\(String(describing: networkProtocol)) preference=\(String(describing: route.transportPreference))"
+        )
         return LANBridgeController(
             configuration: LANBridgeController.Configuration(
                 serviceType: serviceType,
@@ -386,11 +405,20 @@ public actor GuiGeminiBridgeClient {
             // (could be a CodexBridge-flavored event record from a
             // misconfigured peer), fall through to otherInbound.
             if let event = try? BridgeRunEvent.decode(eventRecordBytes: payloadData) {
+                Self.logIOSBridge(
+                    "run-event received channel=\(event.channel.rawValue) provider=\(event.provider) bytes=\(payloadData.count)"
+                )
                 runEventsContinuation.yield(event)
                 return
             }
+            Self.logIOSBridge("eventRecord decode failed bytes=\(payloadData.count)")
         }
+        Self.logIOSBridge("inbound envelope payload=\(envelope.payload.protocolTag)")
         otherInboundContinuation.yield(envelope)
+    }
+
+    private static func logIOSBridge(_ message: String) {
+        print("[iOS Bridge] \(message)")
     }
 }
 

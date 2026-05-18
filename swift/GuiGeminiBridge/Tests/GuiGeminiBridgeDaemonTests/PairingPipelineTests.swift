@@ -106,9 +106,10 @@ final class PairingPipelineTests: XCTestCase {
     }
 
     func testFinalizationIOSFirstWaitsThenMacAcceptCompletes() async throws {
+        let secretStore = InMemorySecretStore()
         let coordinator = PairingCoordinator(
             deviceStore: InMemoryTrustedDeviceStore(),
-            secretStore: InMemorySecretStore(),
+            secretStore: secretStore,
             macDeviceID: DeviceID("mac-test-device"),
             macIdentitySigningKey: DeviceIdentitySigningKey()
         )
@@ -139,6 +140,57 @@ final class PairingPipelineTests: XCTestCase {
         XCTAssertNil(finalDecision.message)
         XCTAssertEqual(finalDecision.pairID, trusted.pairID.rawValue)
         XCTAssertNil(macDecision.waitingFor)
+        let persistedSecrets = try await PairSecretsStore.load(
+            secretStore: secretStore,
+            pairID: trusted.pairID
+        )
+        XCTAssertNotNil(persistedSecrets)
+    }
+
+    func testAcceptedFinalizationPersistsTrustedRecordAndSecretsForTransport() async throws {
+        let fileURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("trusted-devices-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: fileURL) }
+
+        let deviceStore = FileTrustedDeviceStore(fileURL: fileURL)
+        let secretStore = InMemorySecretStore()
+        let coordinator = PairingCoordinator(
+            deviceStore: deviceStore,
+            secretStore: secretStore,
+            macDeviceID: DeviceID("mac-test-device"),
+            macIdentitySigningKey: DeviceIdentitySigningKey()
+        )
+        let begin = await coordinator.beginPairing(controllerDisplayName: "iPad")
+        let response = try makeResponse(
+            bootstrap: begin.bootstrapPayload,
+            controllerDeviceID: DeviceID("ipad-test-device"),
+            controllerDisplayName: "iPad"
+        )
+        _ = try await coordinator.confirmPairing(response: response)
+        _ = try await coordinator.finalizePairing(
+            pairingSessionID: begin.pairingSessionID,
+            userConfirmed: true
+        )
+        let final = try await coordinator.recordIOSFinalDecision(
+            pairingSessionID: begin.pairingSessionID,
+            accepted: true,
+            message: nil
+        )
+
+        let trusted = try XCTUnwrap(final.trustedDevice)
+        let finalDecision = try XCTUnwrap(final.finalDecision)
+        XCTAssertEqual(finalDecision.pairID, trusted.pairID.rawValue)
+
+        let persistedRecords = await deviceStore.snapshot()
+        XCTAssertEqual(persistedRecords.count, 1)
+        XCTAssertEqual(persistedRecords.first?.pairID, trusted.pairID)
+        XCTAssertEqual(persistedRecords.first?.pairingState, .active)
+
+        let persistedSecrets = try await PairSecretsStore.load(
+            secretStore: secretStore,
+            pairID: trusted.pairID
+        )
+        XCTAssertNotNil(persistedSecrets)
     }
 
     func testFinalizationRejectsImmediatelyWhenMacRejects() async throws {

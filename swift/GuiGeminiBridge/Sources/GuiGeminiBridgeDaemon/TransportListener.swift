@@ -87,9 +87,11 @@ public actor TransportListener {
         }
 
         let controllers = try await loadTrustedControllers()
+        logQUICPipeline("start requested trustedControllers=\(controllers.count)")
         if controllers.isEmpty {
             // Surface this as a structured error so the UI can show "pair first"
             // instead of letting the listener bind to a port no one can connect to.
+            logQUICPipeline("start refused reason=no-trusted-devices")
             throw TransportListenerError.noTrustedDevices
         }
 
@@ -265,6 +267,7 @@ public actor TransportListener {
                 await self.logHandler(
                     "onWatchedThreads count=\(threadIDs.count) pairID=\(pairID.rawValue)"
                 )
+                await self.logQUICPipeline("client subscribed pairID=\(pairID.rawValue) watchedThreads=\(threadIDs.count)")
                 // Update the daemon-side per-pair subscription store so
                 // future `broadcastRunEvent(payloadJSON:threadID:)` calls
                 // can filter delivery via toPairIDs.
@@ -290,9 +293,11 @@ public actor TransportListener {
         )
 
         do {
+            logQUICPipeline("starting Bonjour QUIC listener service=\(cfg.bonjourQUICServiceType) port=\(cfg.directQUICPort)")
             try await server.start()
         } catch {
             lastErrorMessage = error.localizedDescription
+            logQUICPipeline("start failed service=\(cfg.bonjourQUICServiceType) port=\(cfg.directQUICPort) error=\(error.localizedDescription)")
             throw TransportListenerError.underlying(error)
         }
 
@@ -309,13 +314,9 @@ public actor TransportListener {
             do {
                 try await scopedServer.start()
                 tailnetServer = scopedServer
-                FileHandle.standardError.write(Data(
-                    "[TransportListener] tailnet QUIC listener started on \(tailnetIPv4):\(cfg.directQUICPort)\n".utf8
-                ))
+                logQUICPipeline("tailnet QUIC listener started endpoint=\(tailnetIPv4):\(cfg.directQUICPort)")
             } catch {
-                FileHandle.standardError.write(Data(
-                    "[TransportListener] WARN: failed to start tailnet QUIC listener on \(tailnetIPv4):\(cfg.directQUICPort): \(error.localizedDescription)\n".utf8
-                ))
+                logQUICPipeline("WARN: tailnet QUIC listener failed endpoint=\(tailnetIPv4):\(cfg.directQUICPort) error=\(error.localizedDescription)")
             }
         }
 
@@ -324,6 +325,7 @@ public actor TransportListener {
         self.activeTailnetEndpoint = tailscaleEndpoint
         self.trustedControllerCount = controllers.count
         self.lastErrorMessage = nil
+        logQUICPipeline("listener running service=\(cfg.bonjourQUICServiceType) port=\(cfg.directQUICPort) trustedControllers=\(controllers.count) tailnet=\(tailnetServer != nil)")
     }
 
     public func stop() async throws {
@@ -338,6 +340,7 @@ public actor TransportListener {
         self.tailnetServer = nil
         self.activeTailnetEndpoint = nil
         self.trustedControllerCount = 0
+        logQUICPipeline("listener stopped")
     }
 
     public func status() async -> Status {
@@ -363,11 +366,28 @@ public actor TransportListener {
     /// when a new pairing completes while the listener is up. Phase C3-late
     /// hooks this from the PairingCoordinator finalize path.
     public func refreshTrustedControllers() async throws {
-        guard let server else { return } // not running → nothing to refresh
+        guard let server else {
+            logQUICPipeline("refresh skipped reason=listener-not-running")
+            return
+        }
         let controllers = try await loadTrustedControllers()
+        logQUICPipeline("refresh trusted controllers count=\(controllers.count)")
         await server.updateTrustedControllers(controllers)
         await tailnetServer?.updateTrustedControllers(controllers)
         trustedControllerCount = controllers.count
+    }
+
+    /// Ensure the post-pair live transport is ready. If the listener is already
+    /// bound, refresh its trusted-device snapshot so a newly accepted pair can
+    /// authenticate immediately. If it has not been started yet, start it now.
+    public func ensureRunningWithCurrentTrustedControllers() async throws {
+        if server == nil {
+            logQUICPipeline("ensure running: listener not running, starting")
+            try await start()
+        } else {
+            logQUICPipeline("ensure running: listener already running, refreshing trust")
+            try await refreshTrustedControllers()
+        }
     }
 
     /// Phase C-late slice "stream events to iOS": broadcast a run-event JSON
@@ -391,7 +411,10 @@ public actor TransportListener {
     /// connected, the call is a no-op. Sessions that fail a write are
     /// pruned automatically by `LANBridgeServer.broadcast`.
     public func broadcastRunEvent(_ payloadJSON: Data, threadID: String? = nil) async {
-        guard let server else { return }
+        guard let server else {
+            logQUICPipeline("broadcast skipped reason=listener-not-running bytes=\(payloadJSON.count) threadID=\(threadID ?? "nil")")
+            return
+        }
         let envelope = BridgeInboundEnvelope(payload: .eventRecord(payloadJSON))
         // Per-pair filtering: consult the subscription store. nil result
         // means "no subscriber has spoken" → broadcast to all (preserves
@@ -399,9 +422,11 @@ public actor TransportListener {
         // least one pair has subscriptions; deliver only to that set.
         if let threadID,
            let watchingPairs = await watchedThreadsStore.pairsWatching(threadID: threadID) {
+            logQUICPipeline("broadcast event bytes=\(payloadJSON.count) threadID=\(threadID) scopedPairs=\(watchingPairs.count)")
             await server.broadcast(envelope, toPairIDs: watchingPairs)
             await tailnetServer?.broadcast(envelope, toPairIDs: watchingPairs)
         } else {
+            logQUICPipeline("broadcast event bytes=\(payloadJSON.count) threadID=\(threadID ?? "nil") scopedPairs=all")
             await server.broadcast(envelope)
             await tailnetServer?.broadcast(envelope)
         }
@@ -448,5 +473,9 @@ public actor TransportListener {
 
     private func logHandler(_ message: String) async {
         FileHandle.standardError.write(Data("[TransportListener handler] \(message)\n".utf8))
+    }
+
+    private func logQUICPipeline(_ message: String) {
+        FileHandle.standardError.write(Data("[QUIC pipeline] \(message)\n".utf8))
     }
 }
