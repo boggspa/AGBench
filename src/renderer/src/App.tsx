@@ -6703,10 +6703,11 @@ function App(): React.JSX.Element {
       // delegation approval) was silently dropped, and the sidebar
       // only caught up on the next full `getChats()` poll. INSERT
       // when not found so newly-spawned sub-threads appear in the
-      // sidebar within a single render frame. (Sidebar group
-      // auto-expand for parents-of-arriving-sub-threads is a
-      // separate follow-up since expandedWorkspaceIds lives inside
-      // Sidebar.tsx and would need prop drilling to reach from here.)
+      // sidebar within a single render frame. The companion sidebar
+      // auto-expand for the parent workspace lives inside Sidebar.tsx
+      // (it diffs `chats` against a ref of previously-seen
+      // appChatIds), so when a sub-thread is added here the workspace
+      // group containing its parent auto-expands too.
       window.api.onChatUpdated((chat) => {
         // Stream-safe merge: main may broadcast a disk-stale `ChatRecord`
         // mid-stream (saveChat debounces by 200ms; sub-thread delegation

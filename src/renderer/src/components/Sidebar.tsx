@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
+import { useMemo, useRef, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
 import { selectRecentChats } from '../lib/recentChatsList';
 import { ActiveRunsSection } from './ActiveRunsSection';
@@ -539,6 +539,47 @@ export function Sidebar({
       // Ignore persistence errors in constrained environments.
     }
   }, [expandedWorkspaceIds]);
+
+  // Phase J2: auto-expand a workspace when a fresh sub-thread arrives
+  // inside it. Pairs with the App.tsx onChatUpdated insert-when-not-
+  // found fix so a brand-new sub-thread shows up in the sidebar
+  // within one render frame of being approved — even if the user had
+  // the parent's workspace group collapsed. We diff against a ref of
+  // previously-seen appChatIds so we only react to genuine arrivals
+  // (won't re-expand a workspace the user just deliberately collapsed
+  // while existing sub-threads sit underneath).
+  const seenChatIdsRef = useRef<Set<string>>(new Set());
+  const seenChatIdsSeededRef = useRef(false);
+  useEffect(() => {
+    if (!seenChatIdsSeededRef.current) {
+      seenChatIdsSeededRef.current = true;
+      for (const chat of chats) {
+        seenChatIdsRef.current.add(chat.appChatId);
+      }
+      return;
+    }
+    const workspaceIdsToExpand = new Set<string>();
+    for (const chat of chats) {
+      if (seenChatIdsRef.current.has(chat.appChatId)) continue;
+      seenChatIdsRef.current.add(chat.appChatId);
+      if (!chat.parentChatId) continue;
+      if (chat.archived) continue;
+      if (!chat.workspaceId) continue;
+      workspaceIdsToExpand.add(chat.workspaceId);
+    }
+    if (workspaceIdsToExpand.size === 0) return;
+    setExpandedWorkspaceIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      for (const id of workspaceIdsToExpand) {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [chats]);
 
   const toggleWorkspaceExpanded = (event: MouseEvent<HTMLButtonElement>, workspaceId: string) => {
     event.preventDefault();
