@@ -111,13 +111,12 @@ public struct iPadSettingsPane: View {
     // MARK: - Cards
 
     private var pairingCard: some View {
-        let macName = resolvedMacName
-        let connectedCopy = resolvedConnectedSince
+        let paired = isCurrentlyPaired
         return settingsCard(
-            iconSystemName: "link.circle.fill",
-            iconTint: Theme.accent,
-            title: "Paired with: \(macName)",
-            subtitle: connectedCopy,
+            iconSystemName: paired ? "link.circle.fill" : "link.slash",
+            iconTint: paired ? Theme.accent : Theme.tertiaryText,
+            title: pairingCardTitle,
+            subtitle: pairingCardSubtitle,
             accessibilityHint: "Pairing details and unpair control."
         ) {
             HStack {
@@ -125,12 +124,15 @@ public struct iPadSettingsPane: View {
                 Button(role: .destructive) {
                     showUnpairConfirmation = true
                 } label: {
-                    Label("Unpair this device", systemImage: "link.badge.plus")
+                    Label("Unpair this device", systemImage: "link.badge.minus")
                         .font(Theme.Typography.caption)
                 }
                 .buttonStyle(.bordered)
                 .tint(Theme.destructive)
-                .accessibilityHint("Disconnect this iPad from the paired Mac.")
+                .disabled(!paired)
+                .accessibilityHint(paired
+                    ? "Disconnect this iPad from the paired Mac."
+                    : "No active pair to disconnect.")
             }
         }
     }
@@ -292,31 +294,48 @@ public struct iPadSettingsPane: View {
 
     // MARK: - Resolved values (live > mocked > empty)
 
-    private var resolvedMacName: String {
-        if let pairing = pairingViewModel,
-           case .confirmingCode(_, let displayName) = pairing.state,
-           !displayName.isEmpty {
-            return displayName
-        }
+    /// True when the iPad is genuinely paired (or rendering a mocked
+    /// preview). Drives the card's title, subtitle, icon, and the
+    /// Unpair button's enabled state.
+    private var isCurrentlyPaired: Bool {
+        pairingViewModel?.confirmedPair != nil || mocked
+    }
+
+    /// Title text for the pairing card. Reads "Paired with Mac" /
+    /// "Not paired" rather than "Paired with: Not paired" (the prior
+    /// bug — the verbatim `Pair` struct doesn't yet carry a Mac
+    /// display name, so the previous "Paired with: \(macName)" format
+    /// produced gibberish when unpaired and was just blank during
+    /// real-but-no-bootstrap-name pairs).
+    ///
+    /// TODO (future bridge protocol tweak): when the daemon's
+    /// `PairingBootstrapPayload` grows a `macDisplayName` field and
+    /// iOS's `Pair` struct propagates it, surface the actual name
+    /// (e.g. "Paired with Chris's Mac Studio") instead of the generic
+    /// "Paired with Mac".
+    private var pairingCardTitle: String {
         if mocked {
-            // MOCK: TODO — surface the Mac's display name from PairingViewModel
-            // once `confirmedPair` carries one (today only the controller's
-            // own name is exposed).
-            return "Chris's Mac Studio"
+            return "Paired with Chris's Mac Studio"
+        }
+        if pairingViewModel?.confirmedPair != nil {
+            return "Paired with Mac"
         }
         return "Not paired"
     }
 
-    private var resolvedConnectedSince: String {
+    /// Subtitle text — different copy for paired vs not paired. When
+    /// paired, surface a short pair-id fragment so the user knows
+    /// which pair is active (matches what the Mac knows this device
+    /// as). When not paired, point at the action that starts pairing.
+    private var pairingCardSubtitle: String {
         if mocked {
-            // MOCK: TODO — replace with a real session-start timestamp once
-            // the bridge client exposes one.
-            return "Connected since 12 minutes ago"
+            return "Connected since 12 minutes ago · pair 5819bd88"
         }
-        if pairingViewModel?.confirmedPair != nil {
-            return "Connected this session"
+        if let pair = pairingViewModel?.confirmedPair {
+            let pairIDFragment = String(pair.pairID.rawValue.prefix(8))
+            return "Connected this session · pair \(pairIDFragment)"
         }
-        return "No active pair"
+        return "Tap the link icon on your Mac to pair this iPad."
     }
 
     private var resolvedActiveRoute: String {
