@@ -5815,8 +5815,31 @@ function handleCodexNotification(message: any) {
     const item = params.item
     if (item?.type === 'agentMessage') {
       const itemId = codexTimelineItemId(params, 'codex-agent-message')
-      const text = state.assistantTextByItemId.get(itemId) || codexString(item.text || item.content || item.message || '')
-      if (text) {
+      // Phase K1 — token-omission fix. Previously this block only used
+      // `text` as a truthiness gate and emitted a `text: ''` completion
+      // sentinel. When Codex finalises an `agentMessage` whose `item.text`
+      // is LONGER than the concatenated stream (late-tightened reasoning
+      // or an unstreamed summary item), the missing tail never reached
+      // the renderer — raw events contained it but the rendered transcript
+      // dropped it. Fix: if the final text exceeds what we streamed, emit
+      // ONE more delta with the missing tail BEFORE the completion sentinel.
+      const streamed = state.assistantTextByItemId.get(itemId) || ''
+      const finalText = codexString(item.text || item.content || item.message || '')
+      const effectiveFinal = finalText || streamed
+      if (effectiveFinal) {
+        if (finalText && finalText.length > streamed.length) {
+          sendAgentCompatLine(state.sender, 'codex', {
+            type: 'content',
+            text: finalText.slice(streamed.length),
+            provider: 'codex',
+            itemId,
+            complete: false
+          }, state)
+          // Update the cache so repeated `item/completed` for the same
+          // itemId (defensive — shouldn't happen but cheap) doesn't
+          // re-emit the same tail.
+          state.assistantTextByItemId.set(itemId, finalText)
+        }
         sendAgentCompatLine(state.sender, 'codex', {
           type: 'content',
           text: '',

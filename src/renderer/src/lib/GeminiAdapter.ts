@@ -1,8 +1,13 @@
 export type NormalizedEvent =
   | { type: 'run_started'; session_id: string; model: string; timestamp: string; fallback?: boolean }
   | { type: 'user_message'; content: string; timestamp: string }
-  | { type: 'assistant_message_delta'; content: string }
-  | { type: 'assistant_message_complete'; content: string }
+  // Phase K1 — Codex emits `itemId` per logical assistant-message item.
+  // The renderer doesn't scope deltas by item today (see Phase K2 trade-off
+  // re: multi-bubble per turn), but propagating the id here is a pure data
+  // plumbing change so when we want to wire item-scoped append, the
+  // metadata is already present at the adapter boundary.
+  | { type: 'assistant_message_delta'; content: string; itemId?: string }
+  | { type: 'assistant_message_complete'; content: string; itemId?: string }
   | { type: 'tool_event'; name: string; data: any; timestamp: string; isUse: boolean; isResult: boolean }
   | { type: 'error'; message: string; timestamp: string }
   | { type: 'run_finished'; status: string; stats: any; timestamp: string; providerThreadId?: string }
@@ -61,12 +66,27 @@ export class GeminiStreamAdapter {
           fallback: Boolean(parsed.fallback)
         });
         break;
-      case 'content':
+      case 'content': {
+        // Phase K1 — propagate `itemId` (Codex item id) and respect the
+        // `complete: true` sentinel that main emits at the end of each
+        // `agentMessage` item. The sentinel carries empty text; we skip
+        // emitting an event for it so the renderer doesn't see a
+        // zero-content "complete" that would clobber the live message.
+        // Item-scoped append (multiple bubbles per turn) is a separate
+        // Phase K2 trade-off and is intentionally NOT wired here.
+        const itemId = typeof parsed.itemId === 'string' && parsed.itemId ? parsed.itemId : undefined;
+        const text = parsed.text || parsed.content || '';
+        if (parsed.complete === true && !text) {
+          // End-of-item sentinel — no payload to render. Skip.
+          break;
+        }
         this.onEvent({
           type: 'assistant_message_delta',
-          content: parsed.text || parsed.content || ''
+          content: text,
+          ...(itemId ? { itemId } : {})
         });
         break;
+      }
       case 'message':
         if (parsed.role === 'user') {
           this.onEvent({

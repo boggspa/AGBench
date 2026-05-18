@@ -3800,6 +3800,17 @@ function App(): React.JSX.Element {
   const mentionAnchorIndexRef = useRef<number | null>(null)
   const adapterRef = useRef<GeminiStreamAdapter | null>(null)
   const activeRunsRef = useRef<Map<string, ActiveRunContext>>(new Map())
+  // Phase K1 — short-window completion memory. The 07d6811 stream-safe
+  // merge gates on `hasActiveRun`; that flips false the moment
+  // `handleProviderExit` runs `clearActiveRunContext`. Any `chat-updated`
+  // broadcast that races 1+ IPC ticks later (the renderer's 200ms
+  // debounced save-chat, late delegation-card writes, etc.) hits the
+  // unconditional-replace branch and clobbers the tail of the assistant
+  // message — visible to the user as "tokens jumping around at the
+  // summary stage." Treating a chat as "still active" for 2 seconds past
+  // its exit covers stragglers without leaking the guard indefinitely.
+  const recentlyCompletedChatIdsRef = useRef<Map<string, number>>(new Map())
+  const RECENTLY_COMPLETED_WINDOW_MS = 2000
   const fxProfileRef = useRef({
     enabled: false,
     mode: 'off' as AppSettings['funFxMode'],
@@ -6591,6 +6602,15 @@ function App(): React.JSX.Element {
         })
       }
 
+      // Phase K1: stamp this chat as "recently completed" BEFORE we
+      // clear the active-run context so onChatUpdated's stream-safe
+      // merge keeps protecting the live tail for ~2s. Stragglers
+      // (delegation card writes, debounced save-chat round-trips) can
+      // arrive 1+ IPC ticks after exit and would otherwise replace
+      // the live transcript with a disk-stale snapshot.
+      if (completedRunChatId) {
+        recentlyCompletedChatIdsRef.current.set(completedRunChatId, Date.now())
+      }
       clearActiveRunContext(context)
 
       if (completedScheduledTaskId) {
@@ -6737,7 +6757,22 @@ function App(): React.JSX.Element {
           }
           return false
         })()
-        if (hasActiveRun && liveChat && liveChat.messages.length > 0) {
+        // Phase K1 — extend the merge guard for ~2s past run completion
+        // to catch the post-exit-race straggler broadcasts (delegation
+        // card writes, debounced save-chat round-trips). After the
+        // window expires we let the regular replace branch resume; if
+        // there's no active run AND no recent completion, the broadcast
+        // really IS authoritative.
+        let hadRecentRun = false
+        const completedAt = recentlyCompletedChatIdsRef.current.get(chat.appChatId)
+        if (completedAt !== undefined) {
+          if (Date.now() - completedAt < RECENTLY_COMPLETED_WINDOW_MS) {
+            hadRecentRun = true
+          } else {
+            recentlyCompletedChatIdsRef.current.delete(chat.appChatId)
+          }
+        }
+        if ((hasActiveRun || hadRecentRun) && liveChat && liveChat.messages.length > 0) {
           const liveById = new Map(liveChat.messages.map((m) => [m.id, m]))
           const mergedMessages = chat.messages.map((m) => {
             const live = liveById.get(m.id)

@@ -186,4 +186,53 @@ describe('GeminiStreamAdapter', () => {
       })
     }));
   });
+
+  // Phase K1 — Codex `content` events carry an `itemId` per logical
+  // assistant message item and a `complete: true` sentinel at the end of
+  // each item. We propagate the id but skip emitting an event for the
+  // zero-text completion sentinel so the renderer doesn't clobber the
+  // live message with empty content.
+  it('propagates itemId on Codex content deltas', () => {
+    const onEvent = vi.fn();
+    const adapter = new GeminiStreamAdapter(onEvent);
+
+    adapter.appendChunk('{"type":"content","text":"Hel","provider":"codex","itemId":"agent-msg-1"}\n');
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'assistant_message_delta',
+      content: 'Hel',
+      itemId: 'agent-msg-1'
+    });
+  });
+
+  it('skips emitting an event for empty Codex completion sentinels', () => {
+    const onEvent = vi.fn();
+    const adapter = new GeminiStreamAdapter(onEvent);
+
+    adapter.appendChunk('{"type":"content","text":"","provider":"codex","itemId":"agent-msg-1","complete":true}\n');
+
+    // Adapter should still emit the raw event for audit but NOT an
+    // assistant_message_delta with empty content (which would clobber
+    // the live message).
+    const eventTypes = onEvent.mock.calls.map((args) => args[0]?.type);
+    expect(eventTypes).toContain('raw_event');
+    expect(eventTypes).not.toContain('assistant_message_delta');
+    expect(eventTypes).not.toContain('assistant_message_complete');
+  });
+
+  it('still emits a delta when complete=true arrives with non-empty text (defensive)', () => {
+    // Defensive: if main ever bundles the final tail + complete=true on
+    // the same line instead of two events, the renderer should still
+    // see the text as a delta and not silently drop it.
+    const onEvent = vi.fn();
+    const adapter = new GeminiStreamAdapter(onEvent);
+
+    adapter.appendChunk('{"type":"content","text":"tail","provider":"codex","itemId":"agent-msg-2","complete":true}\n');
+
+    expect(onEvent).toHaveBeenCalledWith({
+      type: 'assistant_message_delta',
+      content: 'tail',
+      itemId: 'agent-msg-2'
+    });
+  });
 });
