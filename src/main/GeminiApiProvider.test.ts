@@ -5,9 +5,7 @@ import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './index'
 import type { AppSettings, GeminiAuthProfile } from './store/types'
 
-const userDataPath = vi.hoisted(
-  () => `/tmp/agentbench-gemini-api-provider-test-${process.pid}`
-)
+const userDataPath = vi.hoisted(() => `/tmp/agentbench-gemini-api-provider-test-${process.pid}`)
 
 vi.mock('electron', () => ({
   app: {
@@ -33,17 +31,28 @@ function makeDeps(overrides: {
   defaultProfileId?: string | null
   decrypt?: (stored?: string | null) => string | null
   loadSdk?: () => Promise<any | null>
+  // Phase M1 Step 3 deps (optional in tests so existing Step-2 tests
+  // can omit them and still satisfy the interface — the defaults
+  // disable function calling).
+  mcpTools?: ReadonlyArray<{ name?: string; description?: string; inputSchema?: unknown }>
+  executeMcpTool?: (
+    toolName: string,
+    args: unknown,
+    route: AgentRunRoute | null
+  ) => Promise<{ text: string; isError?: boolean }>
 }): {
   deps: GeminiApiProviderDeps
   lines: SendLineCall[]
   errors: SendErrorCall[]
   exits: SendExitCall[]
   finishes: Array<{ runId: string | undefined; status: string }>
+  toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }>
 } {
   const lines: SendLineCall[] = []
   const errors: SendErrorCall[] = []
   const exits: SendExitCall[] = []
   const finishes: Array<{ runId: string | undefined; status: string }> = []
+  const toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }> = []
   const baseSettings: AppSettings = {
     geminiApiRuntime: 'auto',
     geminiAuthProfiles: overrides.profiles || [],
@@ -101,9 +110,19 @@ function makeDeps(overrides: {
     getGeminiAuthProfiles: () => overrides.profiles || [],
     getDefaultGeminiAuthProfileId: () => overrides.defaultProfileId ?? null,
     decryptApiKey: overrides.decrypt ?? ((stored) => (stored ? `decrypted:${stored}` : null)),
+    getMcpToolDefinitions: () => overrides.mcpTools || [],
+    executeMcpTool: async (toolName, args, route) => {
+      toolCalls.push({ toolName, args, route })
+      if (overrides.executeMcpTool) {
+        return overrides.executeMcpTool(toolName, args, route)
+      }
+      // Default: pretend the tool returned an empty success. Tests
+      // that exercise the tool-calling loop will override this.
+      return { text: '', isError: false }
+    },
     loadSdk: overrides.loadSdk
   }
-  return { deps, lines, errors, exits, finishes }
+  return { deps, lines, errors, exits, finishes, toolCalls }
 }
 
 function makeApiKeyProfile(overrides: Partial<GeminiAuthProfile> = {}): GeminiAuthProfile {
@@ -221,11 +240,7 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
       candidatesTokenCount: 7,
       totalTokenCount: 11
     }
-    const chunks = [
-      { text: 'Hello, ' },
-      { text: 'world!' },
-      { text: '', usageMetadata: usage }
-    ]
+    const chunks = [{ text: 'Hello, ' }, { text: 'world!' }, { text: '', usageMetadata: usage }]
     const { deps, lines, errors, exits, finishes } = makeDeps({
       profiles: [makeApiKeyProfile()],
       defaultProfileId: 'profile-1',
@@ -259,9 +274,7 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
   })
 
   it('extracts text from candidates.parts when chunk.text is empty', async () => {
-    const chunks = [
-      { candidates: [{ content: { parts: [{ text: 'from-parts' }] } }] }
-    ]
+    const chunks = [{ candidates: [{ content: { parts: [{ text: 'from-parts' }] } }] }]
     const { deps, lines } = makeDeps({
       profiles: [makeApiKeyProfile()],
       defaultProfileId: 'profile-1',
@@ -365,5 +378,328 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
       .filter((line) => line.payload.type === 'content')
       .map((line) => line.payload.text)
     expect(contentTexts).not.toContain('should-not-stream')
+  })
+})
+
+/**
+ * Phase M1 Step 3 — function calling against the AGBench MCP tool
+ * surface. These tests mock the SDK + executor; they don't reach the
+ * real `executeGeminiMcpTool` (covered separately by integration tests
+ * in `index.ts`). The point is to pin the LOOP: model emits function
+ * call → dispatch via deps.executeMcpTool → feed response back → repeat.
+ */
+function makeMcpTool(name: string) {
+  return {
+    name,
+    description: `Stub tool ${name}.`,
+    inputSchema: { type: 'object', properties: { value: { type: 'string' } } }
+  }
+}
+
+/** SDK fake that scripts a sequence of chunk-arrays (one inner array
+ *  per `generateContentStream` call). Lets us simulate the
+ *  multi-round dance: round 0 emits a functionCall, round 1 emits text.
+ *  Also captures the `contents` passed on each call so tests can
+ *  assert the functionResponse parts make it into the next turn. */
+function scriptedSdk(rounds: any[][]): {
+  loader: () => Promise<any | null>
+  callsRef: Array<{ model: string; contents: any[]; config: any }>
+} {
+  const callsRef: Array<{ model: string; contents: any[]; config: any }> = []
+  let roundIndex = 0
+  const loader = async () => ({
+    GoogleGenAI: class {
+      models = {
+        generateContentStream: async (params: any) => {
+          // Deep-ish copy contents so the test can assert the snapshot
+          // at call-time without later mutations clobbering it.
+          callsRef.push({
+            model: params.model,
+            contents: JSON.parse(JSON.stringify(params.contents)),
+            config: params.config
+          })
+          const chunks = rounds[roundIndex] || []
+          roundIndex++
+          return (async function* () {
+            for (const chunk of chunks) yield chunk
+          })()
+        }
+      }
+    }
+  })
+  return { loader, callsRef }
+}
+
+describe('GeminiApiProvider (Phase M1 Step 3 — function calling)', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('passes function declarations on every generateContentStream call', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'final answer' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file'), makeMcpTool('write_file')]
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(callsRef).toHaveLength(1)
+    const tools = callsRef[0].config?.tools
+    expect(Array.isArray(tools)).toBe(true)
+    expect(tools[0].functionDeclarations).toHaveLength(2)
+    expect(tools[0].functionDeclarations.map((d: any) => d.name)).toEqual([
+      'read_file',
+      'write_file'
+    ])
+  })
+
+  it('omits config.tools entirely when no MCP tools are configured', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'plain answer' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: []
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    // Function calling disabled → no config block at all.
+    expect(callsRef[0].config).toBeUndefined()
+  })
+
+  it('dispatches a function call, feeds the response back, and emits final text', async () => {
+    const { loader, callsRef } = scriptedSdk([
+      // Round 0: model asks to read a file.
+      [
+        {
+          functionCalls: [{ id: 'call-1', name: 'read_file', args: { path: 'README.md' } }]
+        }
+      ],
+      // Round 1: model emits final text after seeing the result.
+      [{ text: 'Got it.' }]
+    ])
+    const { deps, toolCalls, lines } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      executeMcpTool: async () => ({ text: 'file contents here', isError: false })
+    })
+    const ok = await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(ok).toBe(true)
+    // Executor called exactly once with the expected name + args.
+    expect(toolCalls).toHaveLength(1)
+    expect(toolCalls[0].toolName).toBe('read_file')
+    expect(toolCalls[0].args).toEqual({ path: 'README.md' })
+    // Two stream calls: round 0 and round 1.
+    expect(callsRef).toHaveLength(2)
+    // Round 1's contents should include the model's function-call turn
+    // + the user-side function-response turn.
+    const round1Contents = callsRef[1].contents
+    expect(round1Contents).toHaveLength(3) // initial user + model + user response
+    expect(round1Contents[1].role).toBe('model')
+    expect(round1Contents[1].parts[0].functionCall.name).toBe('read_file')
+    expect(round1Contents[2].role).toBe('user')
+    expect(round1Contents[2].parts[0].functionResponse.name).toBe('read_file')
+    expect(round1Contents[2].parts[0].functionResponse.response).toEqual({
+      output: 'file contents here'
+    })
+    // Final content event contains the model's text.
+    const texts = lines
+      .filter((line) => line.payload.type === 'content')
+      .map((line) => line.payload.text)
+    expect(texts).toEqual(['Got it.'])
+  })
+
+  it('handles multi-round tool use (two distinct tools, each fed back)', async () => {
+    const { loader, callsRef } = scriptedSdk([
+      [
+        {
+          functionCalls: [{ id: 'call-1', name: 'read_file', args: { path: 'a.txt' } }]
+        }
+      ],
+      [
+        {
+          functionCalls: [
+            {
+              id: 'call-2',
+              name: 'run_shell_command',
+              args: { command: 'wc -l a.txt' }
+            }
+          ]
+        }
+      ],
+      [{ text: 'Both done.' }]
+    ])
+    const seenTools: string[] = []
+    const { deps, toolCalls } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file'), makeMcpTool('run_shell_command')],
+      executeMcpTool: async (name) => {
+        seenTools.push(name)
+        return { text: `result-of-${name}`, isError: false }
+      }
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(seenTools).toEqual(['read_file', 'run_shell_command'])
+    expect(toolCalls.map((c) => c.toolName)).toEqual(['read_file', 'run_shell_command'])
+    expect(callsRef).toHaveLength(3)
+  })
+
+  it('exits with an error after MAX_TOOL_ROUNDS without final text', async () => {
+    // Always emit a function call → model never produces final text →
+    // loop should cap out and emit an error event.
+    const rounds: any[][] = []
+    for (let i = 0; i < 25; i++) {
+      rounds.push([
+        {
+          functionCalls: [{ id: `call-${i}`, name: 'read_file', args: { path: 'x' } }]
+        }
+      ])
+    }
+    const { loader } = scriptedSdk(rounds)
+    const { deps, errors, exits, finishes } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      executeMcpTool: async () => ({ text: 'ok', isError: false })
+    })
+    await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
+    expect(errors).toHaveLength(1)
+    expect(errors[0].error).toMatch(/exceeded 20 tool-use rounds/)
+    expect(exits).toEqual([{ provider: 'gemini', code: 1 }])
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'failed' }])
+  })
+
+  it('propagates an error-flagged tool result back as an `error` response part', async () => {
+    const { loader, callsRef } = scriptedSdk([
+      [
+        {
+          functionCalls: [{ id: 'call-1', name: 'write_file', args: { path: 'x' } }]
+        }
+      ],
+      [{ text: 'Recovered.' }]
+    ])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('write_file')],
+      executeMcpTool: async () => ({ text: 'denied by AGBench', isError: true })
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    const round1Contents = callsRef[1].contents
+    expect(round1Contents[2].parts[0].functionResponse.response).toEqual({
+      error: 'denied by AGBench'
+    })
+  })
+
+  it('extracts function calls from candidates.parts when chunk.functionCalls is absent', async () => {
+    const { loader } = scriptedSdk([
+      [
+        {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      id: 'call-1',
+                      name: 'read_file',
+                      args: { path: 'fallback.txt' }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      [{ text: 'Read via fallback.' }]
+    ])
+    const { deps, toolCalls } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      executeMcpTool: async () => ({ text: 'contents', isError: false })
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(toolCalls).toHaveLength(1)
+    expect(toolCalls[0].args).toEqual({ path: 'fallback.txt' })
+  })
+
+  it('exits with 130 when the user aborts during tool execution', async () => {
+    const controllerHolder: { current: AbortController | null } = { current: null }
+    // Deferred promise gates the executor: the test resolves it AFTER
+    // calling abort(), so the await in the tool loop unblocks into an
+    // already-aborted controller and exits cleanly.
+    let releaseExecutor: () => void = () => {}
+    const executorPending = new Promise<void>((resolve) => {
+      releaseExecutor = resolve
+    })
+    const { loader } = scriptedSdk([
+      [
+        {
+          functionCalls: [{ id: 'call-1', name: 'read_file', args: { path: 'x' } }]
+        }
+      ],
+      [{ text: 'should-not-reach' }]
+    ])
+    const { deps, exits, finishes, lines } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      executeMcpTool: async () => {
+        await executorPending
+        return { text: 'late', isError: false }
+      }
+    })
+    deps.runManager.attachAbortController = (_runId, c) => {
+      controllerHolder.current = c as AbortController
+      return undefined
+    }
+    const promise = tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    // Yield until the executor is awaiting on `executorPending`.
+    await new Promise((resolve) => setImmediate(resolve))
+    await new Promise((resolve) => setImmediate(resolve))
+    controllerHolder.current?.abort()
+    releaseExecutor()
+    await expect(promise).resolves.toBe(true)
+    expect(exits).toEqual([{ provider: 'gemini', code: 130 }])
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'cancelled' }])
+    // The second round's text MUST NOT have made it through.
+    const texts = lines
+      .filter((line) => line.payload.type === 'content')
+      .map((line) => line.payload.text)
+    expect(texts).not.toContain('should-not-reach')
+  })
+
+  it("converts a thrown executor into an error response (doesn't crash the loop)", async () => {
+    const { loader, callsRef } = scriptedSdk([
+      [
+        {
+          functionCalls: [{ id: 'call-1', name: 'read_file', args: { path: 'boom' } }]
+        }
+      ],
+      [{ text: 'Caught it.' }]
+    ])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      executeMcpTool: async () => {
+        throw new Error('something blew up')
+      }
+    })
+    await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
+    const round1Contents = callsRef[1].contents
+    expect(round1Contents[2].parts[0].functionResponse.response.error).toMatch(/something blew up/)
   })
 })

@@ -9057,6 +9057,14 @@ async function cancelProviderRun(
 // import from `index.ts`, just types). Built fresh per call so any
 // future test wiring can override individual fields without touching
 // the live closure.
+//
+// Phase M1 Step 3: extended with `getMcpToolDefinitions` and
+// `executeMcpTool` so the API runtime can dispatch through the same
+// host-side executor the CLI's MCP broker uses. Wrapping is minimal —
+// we just close over `executeGeminiMcpTool` and force the parent
+// provider to 'gemini' (since this factory is only used by the Gemini
+// API path). The Step-3 deps still satisfy the Step-2 type, but tests
+// covering tool calling must provide both new fields.
 function geminiApiProviderDeps() {
   return {
     sendAgentCompatLine,
@@ -9066,7 +9074,18 @@ function geminiApiProviderDeps() {
     getSettings: () => AppStore.getSettings(),
     getGeminiAuthProfiles,
     getDefaultGeminiAuthProfileId,
-    decryptApiKey
+    decryptApiKey,
+    getMcpToolDefinitions: mcpToolDefinitions,
+    executeMcpTool: async (toolName: string, args: unknown, route: AgentRunRoute | null) => {
+      if (!isAGBenchMcpToolName(toolName)) {
+        return {
+          text: `Unknown AGBench MCP tool: ${toolName}`,
+          isError: true
+        }
+      }
+      const result = await executeGeminiMcpTool(toolName, args, route, 'gemini')
+      return { text: result.text, isError: result.isError }
+    }
   }
 }
 
