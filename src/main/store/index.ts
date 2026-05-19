@@ -37,6 +37,7 @@ const defaultSettings: AppSettings = {
   kimiBinaryPath: '',
   defaultGeminiAuthProfileId: null,
   geminiAuthProfiles: [],
+  geminiApiRuntime: 'auto',
   storeLocalChatHistory: true,
   storeRawEvents: false,
   storePromptResponseInUsage: false,
@@ -258,6 +259,15 @@ export class AppStore {
             ? null
             : defaultSettings.defaultGeminiAuthProfileId,
       geminiAuthProfiles: Array.isArray(stored.geminiAuthProfiles) ? stored.geminiAuthProfiles : [],
+      // Phase M1 — coerce any non-enum value (missing, typo'd, legacy)
+      // back to the safe default so the eventual API-vs-CLI dispatch
+      // logic never sees an unexpected mode.
+      geminiApiRuntime:
+        stored.geminiApiRuntime === 'auto' ||
+        stored.geminiApiRuntime === 'always' ||
+        stored.geminiApiRuntime === 'never'
+          ? stored.geminiApiRuntime
+          : defaultSettings.geminiApiRuntime,
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})

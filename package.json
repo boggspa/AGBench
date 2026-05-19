@@ -52,6 +52,7 @@
     "@codemirror/view": "^6.41.1",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
+    "@google/genai": "^2.4.0",
     "@lezer/highlight": "^1.2.3",
     "@uiw/react-codemirror": "^4.25.9",
     "@xterm/addon-fit": "^0.11.0",

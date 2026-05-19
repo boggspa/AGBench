@@ -37,6 +37,25 @@ export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny';
 export type AgenticNetworkPolicy = 'allow' | 'deny';
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off';
 export type ProductUpdateChannel = 'debug' | 'stable' | 'nightly';
+/** Phase M1 — picks which runtime path AGBench uses for Gemini runs.
+ *
+ *   - `'auto'` (default): use the API runtime when an API key /
+ *     `GeminiAuthProfile` is configured, otherwise fall back to the CLI
+ *     provider. Lets users opt in to the hedge against the upcoming
+ *     `gemini` CLI deprecation without losing existing CLI workflows
+ *     when no API credentials are set.
+ *   - `'always'`: require the API runtime. Fail the run with a
+ *     setup-required message if no API credentials are available
+ *     instead of silently falling back to the CLI.
+ *   - `'never'`: force the CLI provider regardless of API credentials.
+ *     Useful for users who want to keep using `gemini login` / OAuth
+ *     flows or who need CLI-only features (MCP, ACP) and want to opt
+ *     out of the API path entirely.
+ *
+ * The setting is read by the eventual Step-2 wiring inside
+ * `runGeminiProvider`. Step 1 only persists the field — nothing
+ * consumes it yet. */
+export type GeminiApiRuntimeMode = 'auto' | 'always' | 'never';
 export type ProductOperationStatus = 'ok' | 'warning' | 'error' | 'unknown';
 export type ExternalPathGrantAccess = 'read' | 'write';
 export type ExternalPathGrantDuration = 'thisRun' | 'thisThread' | 'workspace';
@@ -372,6 +391,12 @@ export interface AppSettings {
   kimiApiKey?: string;
   defaultGeminiAuthProfileId?: string | null;
   geminiAuthProfiles?: GeminiAuthProfile[];
+  /** Phase M1 — Gemini API runtime selection. See {@link GeminiApiRuntimeMode}
+   * for the per-mode semantics. Defaults to `'auto'`: use the API path
+   * when an API key is configured, else CLI. `'always'` requires API;
+   * `'never'` forces CLI. Step 1 persists this field but does not yet
+   * consume it — wiring lands in Phase M1 Step 2. */
+  geminiApiRuntime?: GeminiApiRuntimeMode;
   codexUsageCredential?: {
     encryptedAccessToken?: string;
     accountId?: string;
