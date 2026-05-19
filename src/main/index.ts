@@ -141,6 +141,7 @@ import {
   type ClaudeAgentbenchMcpInput
 } from './ClaudeAgentbenchMcp'
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcpBridge'
+import { tryRunGeminiApi } from './GeminiApiProvider'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -9051,11 +9052,34 @@ async function cancelProviderRun(
   return false
 }
 
+// Phase M1 Step 2: bundle the module-local helpers GeminiApiProvider
+// needs into a deps object so it can stay self-contained (no runtime
+// import from `index.ts`, just types). Built fresh per call so any
+// future test wiring can override individual fields without touching
+// the live closure.
+function geminiApiProviderDeps() {
+  return {
+    sendAgentCompatLine,
+    sendAgentCompatError,
+    sendAgentCompatExit,
+    runManager,
+    getSettings: () => AppStore.getSettings(),
+    getGeminiAuthProfiles,
+    getDefaultGeminiAuthProfileId,
+    decryptApiKey
+  }
+}
+
 async function runGeminiProvider(
   event: Electron.IpcMainInvokeEvent,
   payload: AgentRunPayload
 ): Promise<void> {
   const route = routeWithRunId('gemini', payload)
+  // Phase M1 Step 2: try the in-process Gemini API path first. If it
+  // handles the run (success or handled error), return; else fall
+  // through to the legacy CLI path. Gating + auth-profile resolution
+  // live inside the helper so this call site stays a one-liner.
+  if (await tryRunGeminiApi(event, payload, route, geminiApiProviderDeps())) return
   const args: string[] = []
   const settings = runtimeSettings(AppStore.getSettings(), payload.runtimeProfile)
   const approvalMode = payload.approvalMode || 'default'
