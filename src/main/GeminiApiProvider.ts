@@ -11,7 +11,7 @@
  * can be rolled back without losing the other.
  *
  * Step 1 (scaffold) landed `loadOptionalGeminiSdk` + a no-op stub.
- * Step 2 (this file) lights up bare-bones streaming:
+ * Step 2 lit up bare-bones streaming:
  *   - Gating on `AppSettings.geminiApiRuntime` (auto/always/never).
  *   - Auth resolution via the active `GeminiAuthProfile` (api-key only).
  *   - SDK instantiation + `models.generateContentStream` consumption.
@@ -24,9 +24,20 @@
  *   - Final `result` event carries `usageMetadata` for future Step-8
  *     quota persistence.
  *
+ * Step 3 (this file) lights up function calling:
+ *   - Per-turn translation of `mcpToolDefinitions()` into Gemini's
+ *     `FunctionDeclaration[]` shape (see `GeminiApiToolDeclarations.ts`).
+ *   - Outer round loop: stream → collect function calls → dispatch via
+ *     host-side `executeGeminiMcpTool` → feed responses back → repeat.
+ *   - Hard cap at MAX_TOOL_ROUNDS (20) to prevent runaway loops.
+ *   - Abort is checked between rounds AND between dispatches, so a
+ *     mid-tool-loop cancel exits cleanly with code 130.
+ *   - Approval gates, audit events, and tool_use/tool_result emission
+ *     come for free — `executeGeminiMcpTool` already handles all of
+ *     those internally. We don't re-implement.
+ *
  * Still TODO in later steps:
- *   - Step 3: function calling + AGBench MCP translation.
- *   - Step 4: approval gates (free with function calling).
+ *   - Step 4: approval gates (verified working — they're inherited).
  *   - Step 5: history replay from chat record.
  *   - Step 6: settings UI + model picker.
  *   - Step 7: image input.
@@ -45,6 +56,30 @@
 import type { AgentRunPayload, AgentRunRoute } from './index'
 import type { AppSettings, GeminiAuthProfile } from './store/types'
 import type { RunManager, RunSessionStatus } from './RunManager'
+import { buildGeminiFunctionDeclarations } from './GeminiApiToolDeclarations'
+
+/** Hard cap on how many tool-call rounds we permit inside a single
+ *  Gemini turn. Each round adds one model response + at least one tool
+ *  dispatch to the conversation. A pathological loop (model keeps
+ *  asking for the same tool) would otherwise spin forever. 20 is well
+ *  above the natural ceiling for any sane agent task (most settle in
+ *  1-5 rounds) and well below where token budgets become punitive. */
+const MAX_TOOL_ROUNDS = 20
+
+/** Shape the function-calling loop expects out of the MCP tool list
+ *  and the executor. Kept narrow on purpose so `index.ts` can satisfy
+ *  the contract with the existing `mcpToolDefinitions()` /
+ *  `executeGeminiMcpTool` helpers without inventing a new wire format. */
+export interface GeminiApiMcpToolDescriptor {
+  name?: string
+  description?: string
+  inputSchema?: unknown
+}
+
+export interface GeminiApiMcpExecutionResult {
+  text: string
+  isError?: boolean
+}
 
 /**
  * Attempt to dynamically import `@google/genai`. Returns `null` if the
@@ -98,6 +133,22 @@ export interface GeminiApiProviderDeps {
   getGeminiAuthProfiles: () => GeminiAuthProfile[]
   getDefaultGeminiAuthProfileId: () => string | null
   decryptApiKey: (stored?: string | null) => string | null
+  /** Phase M1 Step 3: snapshot of `mcpToolDefinitions()` from
+   *  `src/main/index.ts`. Re-read at the start of each turn so a
+   *  hot-reload / tool-list change picks up without restarting the
+   *  app. Empty array disables function calling entirely (the model
+   *  can only emit text). */
+  getMcpToolDefinitions: () => ReadonlyArray<GeminiApiMcpToolDescriptor>
+  /** Phase M1 Step 3: dispatch a tool call. Wraps the host-side
+   *  `executeGeminiMcpTool` from `src/main/index.ts` which already
+   *  handles approval gates, audit events, tool_use/tool_result
+   *  emission, and durable run events. We MUST NOT re-implement any
+   *  of that here — just route to the executor. */
+  executeMcpTool: (
+    toolName: string,
+    args: unknown,
+    route: AgentRunRoute | null
+  ) => Promise<GeminiApiMcpExecutionResult>
   /** Optional SDK loader override; defaults to `loadOptionalGeminiSdk`.
    *  Tests pass a synthetic SDK to avoid real network calls. */
   loadSdk?: () => Promise<any | null>
@@ -199,6 +250,63 @@ function chunkUsage(chunk: any): Record<string, number> | null {
   return Object.keys(out).length ? out : null
 }
 
+/** Shape of a function-call slot the model emitted during a turn. We
+ *  keep `id` optional because the SDK populates it only when the model
+ *  emits one (newer models do, 2.0 Flash sometimes omits it). */
+interface PendingFunctionCall {
+  id?: string
+  name: string
+  args: Record<string, unknown>
+}
+
+/** Extract any function calls from a single streamed chunk. The SDK
+ *  exposes a `functionCalls` convenience getter on `GenerateContentResponse`
+ *  that flattens the first candidate's `Part[]`; we prefer that for
+ *  forward compatibility. Falls back to a manual walk of
+ *  `candidates[0].content.parts` for older / mocked shapes. Returns an
+ *  empty array when there are no calls in the chunk. */
+function chunkFunctionCalls(chunk: any): PendingFunctionCall[] {
+  if (!chunk) return []
+  const out: PendingFunctionCall[] = []
+  const fromGetter = chunk.functionCalls
+  if (Array.isArray(fromGetter)) {
+    for (const call of fromGetter) {
+      if (call && typeof call.name === 'string') {
+        out.push({
+          id: typeof call.id === 'string' ? call.id : undefined,
+          name: call.name,
+          args:
+            call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+              ? (call.args as Record<string, unknown>)
+              : {}
+        })
+      }
+    }
+    if (out.length) return out
+  }
+  try {
+    const parts = chunk.candidates?.[0]?.content?.parts
+    if (Array.isArray(parts)) {
+      for (const part of parts) {
+        const call = part?.functionCall
+        if (call && typeof call.name === 'string') {
+          out.push({
+            id: typeof call.id === 'string' ? call.id : undefined,
+            name: call.name,
+            args:
+              call.args && typeof call.args === 'object' && !Array.isArray(call.args)
+                ? (call.args as Record<string, unknown>)
+                : {}
+          })
+        }
+      }
+    }
+  } catch {
+    // Defensive: chunk shape weirdness shouldn't crash the loop.
+  }
+  return out
+}
+
 /**
  * Decide whether the API path should attempt to handle this run, given
  * the user's `geminiApiRuntime` setting + the selected auth profile.
@@ -249,11 +357,11 @@ export function shouldAttemptGeminiApi(
  * touching the event stream; the caller is free to invoke the CLI
  * provider in that case.
  *
- * Step 2 scope:
+ * Step 3 scope:
  *   - Single user-turn prompt; no history replay (Step 5).
- *   - Text in, streamed text out.
- *   - No function calling / MCP (Step 3).
- *   - No approval gates (Step 4).
+ *   - Text + tool-call rounds streamed out.
+ *   - Function calling via AGBench MCP tools (Step 3 — this file).
+ *   - Approval gates inherited from `executeGeminiMcpTool`.
  *   - No image input (Step 7).
  *   - usageMetadata emitted on `result` event but not yet persisted to
  *     `recordUsage` (Step 8).
@@ -336,41 +444,152 @@ export async function tryRunGeminiApi(
   }
 
   // Build the single-turn contents. History replay is Step 5.
-  const contents = [{ role: 'user', parts: [{ text: payload.prompt }] }]
+  const contents: any[] = [{ role: 'user', parts: [{ text: payload.prompt }] }]
+
+  // Phase M1 Step 3: function-calling tool declarations.
+  // Translate the AGBench MCP tool surface into Gemini's FunctionDeclaration
+  // shape ONCE per run (the tool list is stable across rounds, and the
+  // converter is pure so the cost is trivial anyway). Empty array
+  // disables function calling — model can only emit text.
+  const mcpTools = deps.getMcpToolDefinitions()
+  const functionDeclarations = mcpTools.length ? buildGeminiFunctionDeclarations(mcpTools) : []
+  const generateConfig =
+    functionDeclarations.length > 0 ? { tools: [{ functionDeclarations }] } : undefined
 
   const startedAt = Date.now()
   let lastUsage: Record<string, number> | null = null
   let aborted = false
 
-  try {
-    const stream = await client.models.generateContentStream({ model, contents })
-    for await (const chunk of stream) {
+  // Phase M1 Step 3: outer round loop. Each iteration consumes one
+  // model response stream. If the model emits function calls, we
+  // dispatch them, append the `model` turn (with the calls) and a
+  // `user` turn (with the responses) to `contents`, and continue. We
+  // exit the loop when:
+  //   - A round produces no function calls (= final answer).
+  //   - The user cancels mid-stream (aborted = true).
+  //   - We hit MAX_TOOL_ROUNDS (runaway tool-use guard).
+  // The cap is intentionally generous; sane agent loops settle in
+  // 1-5 rounds. We surface an error event on cap-hit rather than
+  // silently emitting partial output, so the user sees something
+  // actionable in the chat.
+  let round = 0
+  for (; round < MAX_TOOL_ROUNDS; round++) {
+    if (controller.signal.aborted) {
+      aborted = true
+      break
+    }
+
+    const pendingFunctionCalls: PendingFunctionCall[] = []
+    try {
+      const stream = await client.models.generateContentStream(
+        generateConfig ? { model, contents, config: generateConfig } : { model, contents }
+      )
+      for await (const chunk of stream) {
+        if (controller.signal.aborted) {
+          aborted = true
+          break
+        }
+        const text = chunkText(chunk)
+        if (text) {
+          deps.sendAgentCompatLine(
+            event.sender,
+            'gemini',
+            { type: 'content', text, provider: 'gemini' },
+            normalizedRoute
+          )
+        }
+        const calls = chunkFunctionCalls(chunk)
+        if (calls.length) {
+          for (const call of calls) pendingFunctionCalls.push(call)
+        }
+        const usage = chunkUsage(chunk)
+        if (usage) lastUsage = usage
+      }
+    } catch (error) {
+      if (controller.signal.aborted) {
+        aborted = true
+      } else {
+        const message = `Gemini API stream failed: ${error instanceof Error ? error.message : String(error)}`
+        deps.sendAgentCompatError(event.sender, 'gemini', message, normalizedRoute)
+        deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
+        deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
+        return true
+      }
+    }
+
+    if (aborted) break
+
+    // No function calls this round → model emitted its final answer.
+    if (pendingFunctionCalls.length === 0) break
+
+    // Dispatch each pending function call through the host-side
+    // executor and accumulate the response parts for the next turn.
+    // `executeGeminiMcpTool` (via deps.executeMcpTool) already emits
+    // tool_use + tool_result events and handles approval gates, so
+    // we just relay the result back to the model. We DO NOT emit
+    // additional tool_use / tool_result here — that would double-up
+    // in the renderer.
+    const modelParts: any[] = pendingFunctionCalls.map((call) => ({
+      functionCall: {
+        ...(call.id ? { id: call.id } : {}),
+        name: call.name,
+        args: call.args
+      }
+    }))
+    const responseParts: any[] = []
+    for (const call of pendingFunctionCalls) {
+      // Re-check abort BEFORE each dispatch so a cancel mid-tool-loop
+      // (e.g. user clicked Stop while the executor is awaiting an
+      // approval modal) exits cleanly without spinning through every
+      // queued call. The executor itself may take a long time when
+      // it's gated on user approval.
       if (controller.signal.aborted) {
         aborted = true
         break
       }
-      const text = chunkText(chunk)
-      if (text) {
-        deps.sendAgentCompatLine(
-          event.sender,
-          'gemini',
-          { type: 'content', text, provider: 'gemini' },
-          normalizedRoute
-        )
+      let result: GeminiApiMcpExecutionResult
+      try {
+        result = await deps.executeMcpTool(call.name, call.args, normalizedRoute)
+      } catch (error) {
+        // Defensive: a thrown executor never happens in production
+        // (executeGeminiMcpTool catches everything), but tests and
+        // future refactors could regress this. Convert to an error
+        // result so the loop can still feed something back to the
+        // model rather than dying mid-turn.
+        result = {
+          text: `Tool execution threw: ${error instanceof Error ? error.message : String(error)}`,
+          isError: true
+        }
       }
-      const usage = chunkUsage(chunk)
-      if (usage) lastUsage = usage
+      // Also re-check after each dispatch — the user could have
+      // cancelled WHILE the executor was awaiting (long-running
+      // shells, approval modals, etc.).
+      if (controller.signal.aborted) {
+        aborted = true
+        break
+      }
+      // Gemini expects `response` to be a JSON object, not a raw
+      // string. Wrap the text + error flag in a small object so the
+      // model can disambiguate. The exact key (`output` for success,
+      // `error` for failure) follows Gemini's published convention.
+      const responseObject: Record<string, unknown> = result.isError
+        ? { error: result.text }
+        : { output: result.text }
+      responseParts.push({
+        functionResponse: {
+          ...(call.id ? { id: call.id } : {}),
+          name: call.name,
+          response: responseObject
+        }
+      })
     }
-  } catch (error) {
-    if (controller.signal.aborted) {
-      aborted = true
-    } else {
-      const message = `Gemini API stream failed: ${error instanceof Error ? error.message : String(error)}`
-      deps.sendAgentCompatError(event.sender, 'gemini', message, normalizedRoute)
-      deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
-      deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
-      return true
-    }
+
+    if (aborted) break
+
+    contents.push({ role: 'model', parts: modelParts })
+    contents.push({ role: 'user', parts: responseParts })
+    // Loop continues — next iteration calls generateContentStream
+    // with the updated contents.
   }
 
   if (aborted) {
@@ -378,6 +597,19 @@ export async function tryRunGeminiApi(
     // so the renderer's "Stopped" treatment kicks in.
     deps.sendAgentCompatExit(event.sender, 'gemini', 130, normalizedRoute)
     deps.runManager.finish(normalizedRoute.appRunId, 'cancelled' as RunSessionStatus)
+    return true
+  }
+
+  // Cap exhausted without the model producing a final text-only
+  // response → emit an actionable error rather than pretending success.
+  // We still emit the result event so the renderer can render
+  // duration / partial stats, but with status:error + a useful
+  // message in the error stream.
+  if (round >= MAX_TOOL_ROUNDS) {
+    const message = `Gemini API: model exceeded ${MAX_TOOL_ROUNDS} tool-use rounds without producing a final answer (possible loop).`
+    deps.sendAgentCompatError(event.sender, 'gemini', message, normalizedRoute)
+    deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
+    deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
     return true
   }
 
