@@ -17,19 +17,13 @@
 // Kept free of Electron / fs / IPC imports so it can be unit-tested
 // directly against fixed inputs.
 
+import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
+
 /**
- * AGBench MCP tool name list. Mirrors the constant in `index.ts` so
- * this module stays self-contained. Update both if the tool surface
- * changes — the test in `ClaudeAgentbenchMcp.test.ts` pins the list.
+ * AGBench MCP tool name list. Re-exported under the Claude-specific name
+ * for tests and call sites that validate Claude's `allowedTools` wiring.
  */
-export const CLAUDE_AGENTBENCH_TOOL_NAMES = [
-  'run_shell_command',
-  'write_file',
-  'replace',
-  'read_file',
-  'list_directory',
-  'delegate_to_subthread'
-] as const
+export const CLAUDE_AGENTBENCH_TOOL_NAMES = AGENTBENCH_MCP_TOOLS
 
 /**
  * Server name used as the key in `mcpServers` and as the prefix for

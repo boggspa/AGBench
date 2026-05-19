@@ -14,15 +14,10 @@ import type {
   ProviderToolingCapability,
   ProviderToolingCapabilityId
 } from './store/types'
+import { AGENTBENCH_MCP_TOOLS } from './AgentbenchMcpTools'
 import { providerLabel } from './ProviderAdapters'
 
-export const AGENTBENCH_GEMINI_MCP_TOOLS = [
-  'run_shell_command',
-  'write_file',
-  'replace',
-  'read_file',
-  'list_directory'
-] as const
+export const AGENTBENCH_GEMINI_MCP_TOOLS = AGENTBENCH_MCP_TOOLS
 
 const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   shellCommands: 'Shell commands',
@@ -214,6 +209,33 @@ function unsupportedMcpCapability(provider: ProviderId): ProviderMcpCapability {
     available: false,
     tools: [],
     message: `${providerLabel(provider)} MCP status is provider-managed or not exposed through a structured AGBench API yet.`
+  }
+}
+
+function cliAgentbenchMcpCapability(
+  provider: ProviderId,
+  mcpStatus: unknown
+): ProviderMcpCapability {
+  const record = asRecord(mcpStatus)
+  const enabled = Boolean(record.enabled)
+  const available = Boolean(record.available)
+  const tools = Array.isArray(record.tools)
+    ? record.tools.map((tool) => String(tool || '')).filter(Boolean)
+    : []
+  return {
+    state: available ? 'available' : enabled ? 'gated' : 'unavailable',
+    source: 'bridge',
+    available,
+    enabled,
+    installed: available,
+    serverName: typeof record.serverName === 'string' ? record.serverName : 'agentbench',
+    tools: available ? tools : [],
+    message:
+      typeof record.message === 'string'
+        ? record.message
+        : available
+          ? `AGBench registers the agentbench MCP bridge for ${providerLabel(provider)} runs.`
+          : `AGBench MCP bridge is not available for ${providerLabel(provider)}.`
   }
 }
 
@@ -414,7 +436,10 @@ export function buildProviderCapabilityContract({
       )
     }
   } else {
-    mcp = unsupportedMcpCapability(provider)
+    mcp =
+      provider === 'claude' || provider === 'kimi'
+        ? cliAgentbenchMcpCapability(provider, mcpStatus)
+        : unsupportedMcpCapability(provider)
     shellCommands = delegatedCapability(
       'shellCommands',
       services.shellCommands,
@@ -427,12 +452,15 @@ export function buildProviderCapabilityContract({
       provider === 'claude' ? ['provider_file_edit'] : ['provider_file_edit_or_wire_tool'],
       `${label} file edit handling is delegated to the provider CLI.`
     )
-    mcpTools = delegatedCapability(
-      'mcpTools',
-      services.mcpTools,
-      [],
-      mcp.message || `${label} MCP status is unavailable.`
-    )
+    mcpTools =
+      provider === 'claude' || provider === 'kimi'
+        ? serviceCapability('mcpTools', services.mcpTools, 'bridge', mcp.tools, mcp.message)
+        : delegatedCapability(
+            'mcpTools',
+            services.mcpTools,
+            mcp.tools,
+            mcp.message || `${label} MCP status is unavailable.`
+          )
     warnings.push(
       warning(
         `${provider}-provider-managed-tools`,

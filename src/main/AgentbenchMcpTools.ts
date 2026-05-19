@@ -1,0 +1,36 @@
+export const AGENTBENCH_MCP_TOOLS = [
+  'run_shell_command',
+  'write_file',
+  'replace',
+  'read_file',
+  'list_directory',
+  'workspace_search',
+  'apply_patch',
+  'git_status',
+  'git_diff',
+  'git_stage',
+  'git_commit',
+  'run_task',
+  'test_result_summary',
+  'list_subthreads',
+  'read_subthread_result',
+  'cancel_subthread',
+  'workspace_symbols',
+  'browser_open',
+  'browser_click',
+  'browser_screenshot',
+  'browser_console',
+  'approval_status',
+  'provider_auth_status',
+  'run_timeline',
+  'raw_provider_events',
+  'open_workspace_file',
+  'create_handoff_card',
+  'switch_auth_profile',
+  'agent_delegation_role',
+  'delegate_to_subthread'
+] as const
+
+export type AGBenchMcpToolName = (typeof AGENTBENCH_MCP_TOOLS)[number]
+
+export const AGENTBENCH_MCP_TOOL_LIST = AGENTBENCH_MCP_TOOLS.join(', ')

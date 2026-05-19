@@ -16,7 +16,13 @@ describe('buildClaudeAgentbenchMcpServers', () => {
   const fixture = {
     enabled: true,
     bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-    bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/tmp/agentbench.sock', '--token', 'deadbeef']
+    bridgeArgs: [
+      '--agentbench-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/agentbench.sock',
+      '--token',
+      'deadbeef'
+    ]
   }
 
   it('returns null when disabled so the caller can omit the SDK option entirely', () => {
@@ -29,7 +35,13 @@ describe('buildClaudeAgentbenchMcpServers', () => {
       agentbench: {
         type: 'stdio',
         command: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-        args: ['--agentbench-gemini-mcp-bridge', '--socket', '/tmp/agentbench.sock', '--token', 'deadbeef'],
+        args: [
+          '--agentbench-gemini-mcp-bridge',
+          '--socket',
+          '/tmp/agentbench.sock',
+          '--token',
+          'deadbeef'
+        ],
         env: { AGENTBENCH_PARENT_PROVIDER: 'claude' }
       }
     })
@@ -54,14 +66,26 @@ describe('buildClaudeAgentbenchMcpConfigJson', () => {
     const config = buildClaudeAgentbenchMcpConfigJson({
       enabled: true,
       bridgeBinaryPath: '/opt/agentbench/bin/AgentBench',
-      bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/run/agentbench.sock', '--token', 'cafebabe']
+      bridgeArgs: [
+        '--agentbench-gemini-mcp-bridge',
+        '--socket',
+        '/run/agentbench.sock',
+        '--token',
+        'cafebabe'
+      ]
     })
     expect(config).toEqual({
       mcpServers: {
         agentbench: {
           type: 'stdio',
           command: '/opt/agentbench/bin/AgentBench',
-          args: ['--agentbench-gemini-mcp-bridge', '--socket', '/run/agentbench.sock', '--token', 'cafebabe'],
+          args: [
+            '--agentbench-gemini-mcp-bridge',
+            '--socket',
+            '/run/agentbench.sock',
+            '--token',
+            'cafebabe'
+          ],
           env: { AGENTBENCH_PARENT_PROVIDER: 'claude' }
         }
       }
@@ -82,20 +106,24 @@ describe('buildClaudeAgentbenchAllowedToolNames', () => {
       expect(names).toContain(`mcp__agentbench__${tool}`)
       expect(names).toContain(tool)
     }
-    // 6 tools * 2 forms = 12 entries; pin the count so adding a tool
-    // requires updating the test list above.
+    // Each tool is emitted in both namespaced and bare form.
     expect(names).toHaveLength(CLAUDE_AGENTBENCH_TOOL_NAMES.length * 2)
   })
 
   it('lists the namespaced form before the bare form (Claude CLI namespacing comes first)', () => {
     const names = buildClaudeAgentbenchAllowedToolNames()
     const firstBareIndex = names.findIndex((name) => !name.startsWith('mcp__'))
-    const lastNamespacedIndex = names.map((name, index) => (name.startsWith('mcp__') ? index : -1)).filter((index) => index >= 0).pop()!
+    const lastNamespacedIndex = names
+      .map((name, index) => (name.startsWith('mcp__') ? index : -1))
+      .filter((index) => index >= 0)
+      .pop()!
     expect(firstBareIndex).toBeGreaterThan(lastNamespacedIndex)
   })
 
   it('always includes delegate_to_subthread (the headline Phase I tool)', () => {
-    expect(buildClaudeAgentbenchAllowedToolNames()).toContain('mcp__agentbench__delegate_to_subthread')
+    expect(buildClaudeAgentbenchAllowedToolNames()).toContain(
+      'mcp__agentbench__delegate_to_subthread'
+    )
     expect(buildClaudeAgentbenchAllowedToolNames()).toContain('delegate_to_subthread')
   })
 })
@@ -105,7 +133,13 @@ describe('extendClaudeCliArgsWithAgentbenchMcp', () => {
   const fixture = {
     enabled: true,
     bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-    bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/tmp/agentbench.sock', '--token', 'deadbeef'],
+    bridgeArgs: [
+      '--agentbench-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/agentbench.sock',
+      '--token',
+      'deadbeef'
+    ],
     configFilePath: '/tmp/agbench-claude-mcp-run-123.json'
   }
 

@@ -5,7 +5,19 @@ const os = require('node:os')
 const path = require('node:path')
 const { spawnSync } = require('node:child_process')
 
-const tools = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory']
+function readAgentbenchMcpTools() {
+  const sourcePath = path.join(__dirname, '..', 'src', 'main', 'AgentbenchMcpTools.ts')
+  const source = fs.readFileSync(sourcePath, 'utf8')
+  const match = source.match(/AGENTBENCH_MCP_TOOLS\s*=\s*\[([\s\S]*?)\]\s*as const/)
+  if (!match) throw new Error('Could not locate AGENTBENCH_MCP_TOOLS in source.')
+  const tools = [...match[1].matchAll(/'([^']+)'/g)].map((item) => item[1])
+  if (tools.length < 20 || !tools.includes('delegate_to_subthread')) {
+    throw new Error(`Parsed an unexpected AGBench MCP tool list: ${JSON.stringify(tools)}`)
+  }
+  return tools
+}
+
+const tools = readAgentbenchMcpTools()
 const geminiBin = process.env.GEMINI_BIN || 'gemini'
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'agbench-gemini-mcp-'))
 const project = fs.mkdtempSync(path.join(os.tmpdir(), 'agbench-gemini-mcp-project-'))
@@ -39,7 +51,9 @@ try {
   })
 
   if (result.status !== 0) {
-    throw new Error(`gemini ${args.join(' ')} failed with ${result.status}:\n${result.stderr || result.stdout}`)
+    throw new Error(
+      `gemini ${args.join(' ')} failed with ${result.status}:\n${result.stderr || result.stdout}`
+    )
   }
 
   const settingsPath = path.join(home, '.gemini', 'settings.json')
@@ -48,17 +62,22 @@ try {
   if (!server) throw new Error('agentbench MCP server was not written to settings.json.')
   if (server.command !== '/bin/cat') throw new Error(`Unexpected command: ${server.command}`)
   if (server.trust !== true) throw new Error('agentbench MCP server was not marked trusted.')
-  if (JSON.stringify(server.args) !== JSON.stringify([
-    '--agentbench-gemini-mcp-bridge',
-    '--socket',
-    '/tmp/agbench-gemini-mcp-test.sock',
-    '--token',
-    'test-token'
-  ])) {
+  if (
+    JSON.stringify(server.args) !==
+    JSON.stringify([
+      '--agentbench-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/agbench-gemini-mcp-test.sock',
+      '--token',
+      'test-token'
+    ])
+  ) {
     throw new Error(`Bridge args were not preserved correctly: ${JSON.stringify(server.args)}`)
   }
   if (JSON.stringify(server.includeTools) !== JSON.stringify(tools)) {
-    throw new Error(`includeTools were not written as separate entries: ${JSON.stringify(server.includeTools)}`)
+    throw new Error(
+      `includeTools were not written as separate entries: ${JSON.stringify(server.includeTools)}`
+    )
   }
 
   const projectResult = spawnSync(geminiBin, buildArgs('project'), {
@@ -73,16 +92,24 @@ try {
   })
 
   if (projectResult.status !== 0) {
-    throw new Error(`project-scoped gemini mcp add failed with ${projectResult.status}:\n${projectResult.stderr || projectResult.stdout}`)
+    throw new Error(
+      `project-scoped gemini mcp add failed with ${projectResult.status}:\n${projectResult.stderr || projectResult.stdout}`
+    )
   }
 
   const projectSettingsPath = path.join(project, '.gemini', 'settings.json')
   const projectSettings = JSON.parse(fs.readFileSync(projectSettingsPath, 'utf8'))
   const projectServer = projectSettings?.mcpServers?.agentbench
-  if (!projectServer) throw new Error('project-scoped agentbench MCP server was not written to .gemini/settings.json.')
-  if (projectServer.command !== '/bin/cat') throw new Error(`Unexpected project command: ${projectServer.command}`)
+  if (!projectServer)
+    throw new Error(
+      'project-scoped agentbench MCP server was not written to .gemini/settings.json.'
+    )
+  if (projectServer.command !== '/bin/cat')
+    throw new Error(`Unexpected project command: ${projectServer.command}`)
   if (JSON.stringify(projectServer.includeTools) !== JSON.stringify(tools)) {
-    throw new Error(`project includeTools were not written as separate entries: ${JSON.stringify(projectServer.includeTools)}`)
+    throw new Error(
+      `project includeTools were not written as separate entries: ${JSON.stringify(projectServer.includeTools)}`
+    )
   }
 
   console.log('gemini MCP add args smoke ok')
