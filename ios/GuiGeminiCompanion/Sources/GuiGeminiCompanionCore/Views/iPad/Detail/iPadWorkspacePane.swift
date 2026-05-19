@@ -317,61 +317,52 @@ public struct iPadWorkspacePane: View {
                 lastCommitTile
                 lastDiffTile
             }
-            if mocked {
-                Text("Sample preview — the Mac hasn't started broadcasting commit + diff summaries yet.")
-                    .font(Theme.Typography.smallCaption)
-                    .foregroundStyle(Theme.tertiaryText)
-            }
+            // Truthful empty-state hint — replaces the prior
+            // "sample preview" copy that implied real data was on the
+            // way. The desktop doesn't yet broadcast commit / diff
+            // summaries, so this hint stays visible regardless of the
+            // `mocked` flag.
+            Text("The desktop doesn't broadcast commit or diff summaries yet — these tiles will fill in once the bridge starts streaming them.")
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.tertiaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .padding(Theme.Spacing.screen)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cardGlassBackground(cornerRadius: Theme.Radius.panel)
     }
 
-    @ViewBuilder
+    /// Truthful empty state. The desktop bridge does not currently fan
+    /// commit summaries down to the iPad, so we render a placeholder
+    /// rather than the prior `iPadDetailSampleData.lastCommit` mock —
+    /// otherwise the user sees fake activity that never refreshes.
+    /// When the desktop starts emitting a commit channel the body of
+    /// this property will swap to a real `activityTile(...)` call and
+    /// the layout slot stays intact.
+    /// TODO: wire to a commit broadcast channel when the desktop ships
+    /// `BridgeRunEvent.channel.commitSummary` (or equivalent).
     private var lastCommitTile: some View {
-        // MOCK: Commit data is not yet streamed from the desktop. The
-        // mocked tile demonstrates the eventual layout.
-        // TODO: replace with a real commit payload from the bridge.
-        if let commit = mockedWorkspace?.lastCommit {
-            activityTile(
-                systemImage: "checkmark.seal",
-                title: "Last commit",
-                primary: commit.summary,
-                meta: [commit.shortHash, commit.author, commit.relativeTimeText]
-            )
-        } else {
-            activityTile(
-                systemImage: "checkmark.seal",
-                title: "Last commit",
-                primary: "No recent commits",
-                meta: ["Awaiting bridge data"],
-                muted: true
-            )
-        }
+        activityTile(
+            systemImage: "checkmark.seal",
+            title: "Last commit",
+            primary: "No recent commit broadcast yet",
+            meta: ["Will appear when the Mac fans commit summaries down"],
+            muted: true
+        )
     }
 
-    @ViewBuilder
+    /// Truthful empty state. Same reasoning as `lastCommitTile`: the
+    /// bridge has no diff-summary channel today.
+    /// TODO: wire to the most-recent approved diff event once the
+    /// bridge exposes it as a typed channel.
     private var lastDiffTile: some View {
-        // MOCK: Diff fan-out is bridge-only today.
-        // TODO: replace with the most-recent diff event from the store.
-        if let diff = mockedWorkspace?.lastDiff {
-            activityTile(
-                systemImage: "doc.text.magnifyingglass",
-                title: "Last diff",
-                primary: diff.path,
-                meta: ["+\(diff.plusLines) / -\(diff.minusLines)", diff.relativeTimeText],
-                tint: Theme.accent
-            )
-        } else {
-            activityTile(
-                systemImage: "doc.text.magnifyingglass",
-                title: "Last diff",
-                primary: "No recent diff",
-                meta: ["Approved file changes appear here"],
-                muted: true
-            )
-        }
+        activityTile(
+            systemImage: "doc.text.magnifyingglass",
+            title: "Last diff",
+            primary: "No diff broadcast yet",
+            meta: ["Will appear when the Mac fans diff summaries down"],
+            muted: true
+        )
     }
 
     private func activityTile(

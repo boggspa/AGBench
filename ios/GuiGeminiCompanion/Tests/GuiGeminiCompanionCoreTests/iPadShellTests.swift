@@ -23,9 +23,19 @@ final class iPadShellTests: XCTestCase {
     func testShellComposesWithEmptyPairedStateInputs() {
         let store = iPadSidebarStore()
         let selection = iPadSelectionState()
-        let shell = iPadShell(selectionState: selection, sidebarStore: store)
+        let shell = iPadShell(
+            yoloModeEnabled: true,
+            onSetYoloMode: { _ in },
+            selectionState: selection,
+            sidebarStore: store
+        )
         let sidebar = iPadSidebar(store: store, selectionState: selection)
-        let detail = iPadDetailHost(selection: selection.selection, store: store)
+        let detail = iPadDetailHost(
+            selection: selection.selection,
+            store: store,
+            yoloModeEnabled: true,
+            onSetYoloMode: { _ in }
+        )
         let inspector = iPadDiffInspector(event: nil)
 
         XCTAssertEqual([Any](arrayLiteral: shell, sidebar, detail, inspector).count, 4)
@@ -296,5 +306,24 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual(colors.count, 12)
         XCTAssertGreaterThan(Theme.Radius.card, Theme.Radius.small)
         XCTAssertGreaterThan(Theme.Spacing.section, Theme.Spacing.tight)
+    }
+
+    func testSubthreadIndexPromotesVisibleChildWhenParentIsFilteredOut() {
+        SidebarSubThreadAssociation.reset()
+        defer { SidebarSubThreadAssociation.reset() }
+        SidebarSubThreadAssociation.recordParent(threadId: "child", parentChatId: "parent")
+
+        let index = SidebarSubThreadIndex(threads: [
+            iPadThreadSummary(
+                id: "child",
+                workspaceID: "ws-1",
+                title: "Child match",
+                provider: "codex"
+            )
+        ])
+
+        let rows = index.flattenedRenderOrder()
+        XCTAssertEqual(rows.map(\.thread.id), ["child"])
+        XCTAssertEqual(rows.first?.depth, 0)
     }
 }

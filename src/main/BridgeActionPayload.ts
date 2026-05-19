@@ -37,7 +37,12 @@
  * `BridgeUnknownAction` (deny).
  */
 
-export type BridgeApprovalDecision = 'accept' | 'acceptForSession' | 'decline'
+export type BridgeApprovalDecision =
+  | 'accept'
+  | 'acceptForSession'
+  | 'acceptForWorkspace'
+  | 'decline'
+  | 'cancel'
 
 export interface BridgeApprovalReplyAction {
   kind: 'approvalReply'
@@ -111,6 +116,24 @@ export interface BridgeCancelRunAction {
   message?: string
 }
 
+export interface BridgeSetYoloModeAction {
+  kind: 'setYoloMode'
+  enabled: boolean
+}
+
+export interface BridgeTogglePinChatAction {
+  kind: 'togglePinChat'
+  workspaceId: string
+  appChatId: string
+  pinned: boolean
+}
+
+export interface BridgeTogglePinWorkspaceAction {
+  kind: 'togglePinWorkspace'
+  workspaceId: string
+  pinned: boolean
+}
+
 /** Fallback for any unrecognized `kind`. The router treats this as a
  * structured deny (no execution) but logs the original kind so we can
  * monitor schema drift between iOS and Electron versions. */
@@ -129,6 +152,9 @@ export type BridgeActionPayload =
   | BridgeComposerPromptAction
   | BridgeCancelRunAction
   | BridgeRegisterApnsTokenAction
+  | BridgeSetYoloModeAction
+  | BridgeTogglePinChatAction
+  | BridgeTogglePinWorkspaceAction
   | BridgeUnknownAction
 
 export interface DecodedActionPayload {
@@ -215,8 +241,11 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'togglePinChat':
+    case 'togglePinWorkspace':
       return payload.workspaceId
     case 'registerApnsToken':
+    case 'setYoloMode':
     case 'unknown':
       return null
   }
@@ -233,8 +262,11 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'togglePinChat':
+    case 'togglePinWorkspace':
       return true
     case 'registerApnsToken':
+    case 'setYoloMode':
       return false
     case 'unknown':
       // Unknown variants are rejected upstream; the gating question
@@ -276,6 +308,9 @@ export function payloadIsMutating(payload: BridgeActionPayload): boolean {
     case 'composerPrompt':
     case 'cancelRun':
     case 'questionReply':
+    case 'setYoloMode':
+    case 'togglePinChat':
+    case 'togglePinWorkspace':
       return true
     case 'approvalReply':
     case 'questionReject':
@@ -317,6 +352,18 @@ function coerceToPayload(parsed: unknown): BridgeActionPayload {
       return isRegisterApnsToken(parsed)
         ? (parsed as unknown as BridgeRegisterApnsTokenAction)
         : { kind: 'unknown', rawKind: 'registerApnsToken', raw: parsed }
+    case 'setYoloMode':
+      return isSetYoloMode(parsed)
+        ? (parsed as unknown as BridgeSetYoloModeAction)
+        : { kind: 'unknown', rawKind: 'setYoloMode', raw: parsed }
+    case 'togglePinChat':
+      return isTogglePinChat(parsed)
+        ? (parsed as unknown as BridgeTogglePinChatAction)
+        : { kind: 'unknown', rawKind: 'togglePinChat', raw: parsed }
+    case 'togglePinWorkspace':
+      return isTogglePinWorkspace(parsed)
+        ? (parsed as unknown as BridgeTogglePinWorkspaceAction)
+        : { kind: 'unknown', rawKind: 'togglePinWorkspace', raw: parsed }
     default:
       return { kind: 'unknown', rawKind: parsed.kind, raw: parsed }
   }
@@ -332,8 +379,18 @@ function isApprovalReply(v: Record<string, unknown>): boolean {
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.toolCallId === 'string' &&
-    (decision === 'accept' || decision === 'acceptForSession' || decision === 'decline') &&
+    isBridgeApprovalDecision(decision) &&
     (v.message === undefined || typeof v.message === 'string')
+  )
+}
+
+function isBridgeApprovalDecision(value: unknown): value is BridgeApprovalDecision {
+  return (
+    value === 'accept' ||
+    value === 'acceptForSession' ||
+    value === 'acceptForWorkspace' ||
+    value === 'decline' ||
+    value === 'cancel'
   )
 }
 
@@ -376,6 +433,22 @@ function isCancelRun(v: Record<string, unknown>): boolean {
     typeof v.runId === 'string' &&
     (v.message === undefined || typeof v.message === 'string')
   )
+}
+
+function isSetYoloMode(v: Record<string, unknown>): boolean {
+  return typeof v.enabled === 'boolean'
+}
+
+function isTogglePinChat(v: Record<string, unknown>): boolean {
+  return (
+    typeof v.workspaceId === 'string' &&
+    typeof v.appChatId === 'string' &&
+    typeof v.pinned === 'boolean'
+  )
+}
+
+function isTogglePinWorkspace(v: Record<string, unknown>): boolean {
+  return typeof v.workspaceId === 'string' && typeof v.pinned === 'boolean'
 }
 
 function isRegisterApnsToken(v: Record<string, unknown>): boolean {

@@ -14,7 +14,7 @@ struct iPadDetailProviderChip: View {
                 Circle()
                     .fill(tint)
                     .frame(width: 6, height: 6)
-                Text(provider)
+                Text(ProviderPalette.displayLabel(forRaw: provider))
                     .font(Theme.Typography.smallCaption)
                     .foregroundStyle(tint)
                     .textCase(.lowercase)
@@ -38,17 +38,6 @@ struct iPadDetailProviderChip: View {
     /// Stable per-provider color tint. Returns `Theme.accent` for unknown
     /// providers so new desktop additions still get a visible chip.
     static func tint(for provider: String?) -> Color {
-        switch provider?.lowercased() {
-        case "claude":
-            return Color(red: 0.84, green: 0.49, blue: 0.20)
-        case "codex":
-            return Color(red: 0.10, green: 0.58, blue: 0.36)
-        case "gemini":
-            return Color(red: 0.40, green: 0.39, blue: 0.96)
-        case "kimi":
-            return Color(red: 0.18, green: 0.66, blue: 0.86)
-        default:
-            return Theme.accent
-        }
+        ProviderPalette.color(forRaw: provider, fallback: Theme.accent)
     }
 }

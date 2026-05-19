@@ -65,6 +65,8 @@ export interface BridgeActionAckResult {
    * the daemon-side `BridgeActionAck` ignores it. */
   scope?: 'once' | 'session'
   message?: string
+  executed?: boolean
+  data?: Record<string, unknown>
 }
 
 export interface BridgePrepareStartTurnAckResult {
@@ -264,7 +266,9 @@ export class BridgeActionRouter {
     return {
       accepted: true,
       scope: 'once',
-      message: dispatch.message
+      message: dispatch.message,
+      executed: dispatch.executed,
+      data: dispatch.data
     }
   }
 
@@ -284,6 +288,12 @@ export class BridgeActionRouter {
         return this.executor.executeCancelRun(payload)
       case 'registerApnsToken':
         return this.executor.executeRegisterApnsToken(payload)
+      case 'setYoloMode':
+        return this.executor.executeSetYoloMode(payload)
+      case 'togglePinChat':
+        return this.executor.executeTogglePinChat(payload)
+      case 'togglePinWorkspace':
+        return this.executor.executeTogglePinWorkspace(payload)
       case 'unknown':
         // Should never reach here — `handleActionAck` denies `unknown`
         // before dispatch. Defensive fallthrough.

@@ -1,13 +1,13 @@
 import Foundation
 import BridgeCore
 
-/// Holds the GUIGemini-flavoured `BridgeProductConfiguration` and
+/// Holds the AGBench-flavoured `BridgeProductConfiguration` and
 /// exposes a single `install()` entry point that the iOS app calls at
 /// launch.
 ///
 /// Why this is its own helper: the default `BridgeProductConfiguration`
 /// inside BridgeCore is sized for CodexBridge — its ALPN, service
-/// types, and ports don't match the GUIGemini Mac daemon. Until
+/// types, and ports don't match the AGBench Mac daemon. Until
 /// CodexBridge gains a `BridgeProductConfiguration.guiGemini` static
 /// preset (Gap #6 in the roadmap), both the daemon and the iOS app
 /// have to construct the same record by hand. The two definitions
@@ -23,7 +23,7 @@ public enum GuiGeminiBridgeProductConfiguration {
     /// The product configuration the iOS companion runs under. Must
     /// match the daemon-side `guiGeminiConfiguration` exactly.
     public static let preset = BridgeProductConfiguration(
-        displayName: "GUIGemini",
+        displayName: "AGBench",
         macBundleIdentifier: "com.example.AGBench.mac",
         iosBundleIdentifier: "com.example.AGBench.ios",
         appGroupIdentifier: "group.com.example.AGBench",

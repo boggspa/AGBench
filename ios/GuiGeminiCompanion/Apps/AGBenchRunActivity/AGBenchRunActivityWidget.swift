@@ -183,14 +183,20 @@ private func providerLabel(_ provider: String) -> String {
     }
 }
 
+/// Provider accent for the Live Activity widget. Sourced from
+/// `AGBenchRunActivityShared.ProviderPaletteRGB` so the widget and the
+/// main app (`ProviderPalette` in `GuiGeminiCompanionCore`) draw chips
+/// from the same desktop-derived `--provider-*-color` hex values.
+///
+/// The widget targets dark surfaces almost exclusively (lock screen,
+/// dynamic island, always-on display) so we pick the `.dark` component
+/// regardless of trait collection — even on a light home-screen wallpaper
+/// the activity background tints the chrome dark enough that the brighter
+/// dark hue stays readable.
 private func providerAccent(_ provider: String) -> Color {
-    switch provider.lowercased() {
-    case "gemini": return Color(red: 0.44, green: 0.72, blue: 1.00)
-    case "codex": return Color(red: 0.35, green: 0.93, blue: 0.73)
-    case "claude": return Color(red: 1.00, green: 0.57, blue: 0.34)
-    case "kimi": return Color(red: 0.70, green: 0.62, blue: 1.00)
-    default: return Color(red: 0.48, green: 0.76, blue: 0.94)
-    }
+    let components = ProviderPaletteRGB.pair(for: provider)?.dark
+        ?? (red: 0.48, green: 0.76, blue: 0.94, alpha: 1.0)
+    return Color(.sRGB, red: components.red, green: components.green, blue: components.blue, opacity: components.alpha)
 }
 
 private func statusLabel(_ status: AGBenchRunActivityStatus) -> String {

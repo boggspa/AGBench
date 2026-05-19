@@ -77,6 +77,8 @@ public struct iPadSidebar: View {
                         isFocused: $searchFocused
                     )
                     activeRunsSection
+                    pinnedSection
+                    recentsSection
                     workspacesSection
                     threadsSection
                     settingsSection
@@ -141,6 +143,35 @@ public struct iPadSidebar: View {
         return pool.filter(\.isActive)
     }
 
+    /// Pinned workspaces — sourced via the desktop-broadcast `pinned`
+    /// flag (see `SidebarSubThreadAssociation`). Filtered by the search
+    /// query the same way the rest of the sidebar is.
+    private var pinnedWorkspaces: [iPadWorkspaceSummary] {
+        let pool = trimmedQuery.isEmpty ? sourceWorkspaces : filteredWorkspaces
+        return pool.filter(\.isPinned)
+    }
+
+    /// Pinned threads — same selector as pinned workspaces.
+    private var pinnedThreads: [iPadThreadSummary] {
+        let pool = trimmedQuery.isEmpty ? sourceThreads : filteredThreads
+        return pool.filter(\.isPinned)
+    }
+
+    /// Recents section content — top 5 most-recently-updated non-pinned
+    /// threads. Mirrors the desktop's `selectRecentChats({ limit: 5 })`
+    /// selector in `src/renderer/src/lib/recentChatsList.ts`.
+    private var recentThreads: [iPadThreadSummary] {
+        let pool = trimmedQuery.isEmpty ? sourceThreads : filteredThreads
+        return SidebarRecentsSelector.recentThreads(from: pool, limit: 5, excludePinned: true)
+    }
+
+    /// Parent → children index over the visible thread pool, built fresh
+    /// on every render. Cheap (O(N) on a bounded sidebar).
+    private var subThreadIndex: SidebarSubThreadIndex {
+        let pool = trimmedQuery.isEmpty ? sourceThreads : filteredThreads
+        return SidebarSubThreadIndex(threads: pool)
+    }
+
     private var totalResultCount: Int {
         filteredWorkspaces.count + filteredThreads.count
     }
@@ -165,7 +196,7 @@ public struct iPadSidebar: View {
                     .frame(width: 32, height: 32)
                     .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("GuiGemini")
+                    Text("AGBench")
                         .font(Theme.Typography.headline)
                         .foregroundStyle(Theme.primaryText)
                     Text("Remote Console")
@@ -235,8 +266,50 @@ public struct iPadSidebar: View {
             } else if filteredThreads.isEmpty {
                 noResultsRow(label: "No threads match \u{201C}\(trimmedQuery)\u{201D}")
             } else {
-                ForEach(filteredThreads) { thread in
-                    threadRow(thread)
+                // Render in parent → child order using the sub-thread index.
+                // Children appear indented immediately under their parent
+                // with a `↳` prefix; parents get a "branched · N" badge.
+                let renderOrder = subThreadIndex.flattenedRenderOrder()
+                ForEach(renderOrder) { row in
+                    threadRow(row.thread, depth: row.depth, branchCount: row.branchCount)
+                }
+            }
+        }
+    }
+
+    /// Pinned section — both pinned workspaces and pinned threads. Lifts
+    /// the desktop's `pinnedWorkspaces` + `pinnedChats` derivations from
+    /// `src/renderer/src/components/Sidebar.tsx`. Collapses (renders
+    /// nothing) when both lists are empty so the section doesn't show
+    /// until the desktop starts broadcasting pinned bits.
+    @ViewBuilder
+    private var pinnedSection: some View {
+        let workspacesShown = pinnedWorkspaces
+        let threadsShown = pinnedThreads
+        if !workspacesShown.isEmpty || !threadsShown.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+                sectionLabel("Pinned", trailingCount: workspacesShown.count + threadsShown.count)
+                ForEach(workspacesShown) { workspace in
+                    workspaceRow(workspace)
+                }
+                ForEach(threadsShown) { thread in
+                    threadRow(thread, depth: 0, branchCount: 0)
+                }
+            }
+        }
+    }
+
+    /// Recents section — top 5 most-recently-updated threads across all
+    /// workspaces. Lifts the desktop's `selectRecentChats({ limit: 5 })`
+    /// pattern from `src/renderer/src/lib/recentChatsList.ts`.
+    @ViewBuilder
+    private var recentsSection: some View {
+        let recents = recentThreads
+        if !recents.isEmpty {
+            VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+                sectionLabel("Recents", trailingCount: recents.count)
+                ForEach(recents) { thread in
+                    threadRow(thread, depth: 0, branchCount: 0)
                 }
             }
         }
@@ -291,8 +364,17 @@ public struct iPadSidebar: View {
         }
     }
 
-    private func threadRow(_ thread: iPadThreadSummary) -> some View {
+    /// Render a thread row. `depth > 0` indents the row and prefixes the
+    /// title with `↳` to signal that it's a child sub-thread of the row
+    /// above. `branchCount > 0` adds a "branched · N" badge — only set
+    /// for parent rows. Tapping a child still selects it normally.
+    private func threadRow(
+        _ thread: iPadThreadSummary,
+        depth: Int = 0,
+        branchCount: Int = 0
+    ) -> some View {
         let isSelected = selectionState.selection == .thread(thread.id)
+        let isChild = depth > 0
         return HoverableSidebarRow { isHovered in
             Button {
                 withAnimation(Theme.Motion.quick) {
@@ -307,10 +389,28 @@ public struct iPadSidebar: View {
                         .accessibilityHidden(true)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
+                            if isChild {
+                                Text("\u{21B3}")
+                                    .font(Theme.Typography.caption)
+                                    .foregroundStyle(Theme.tertiaryText)
+                                    .accessibilityHidden(true)
+                            }
                             Text(thread.title)
                                 .font(Theme.Typography.sectionTitle)
                                 .foregroundStyle(isSelected ? Theme.primaryText : Theme.secondaryText)
                                 .lineLimit(1)
+                            if branchCount > 0 {
+                                Text("branched · \(branchCount)")
+                                    .font(Theme.Typography.smallCaption)
+                                    .foregroundStyle(Theme.secondaryAccent)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        Theme.secondaryAccent.opacity(0.14),
+                                        in: Capsule(style: .continuous)
+                                    )
+                                    .accessibilityLabel("\(branchCount) sub-thread\(branchCount == 1 ? "" : "s")")
+                            }
                             Spacer(minLength: Theme.Spacing.tight)
                             Text(thread.lastActivityAt, style: .relative)
                                 .font(Theme.Typography.smallCaption)
@@ -336,10 +436,11 @@ public struct iPadSidebar: View {
                         }
                     }
                 }
+                .padding(.leading, isChild ? Theme.Spacing.section : 0)
                 .rowChrome(isSelected: isSelected, isHovered: isHovered)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Thread, \(thread.title)")
+            .accessibilityLabel(isChild ? "Sub-thread, \(thread.title)" : "Thread, \(thread.title)")
             .accessibilityValue(thread.accessibilitySummary)
             .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         }

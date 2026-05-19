@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os.log
 import GuiGeminiCompanionCore
 
 /// AppState — top-level observable state owning the bridge client (once
@@ -30,10 +31,19 @@ final class AppState {
     /// bind to it before pairing completes (it just starts empty).
     @ObservationIgnored
     let sidebarStore: iPadSidebarStore = iPadSidebarStore()
-    /// Task that drains the bridge client's `runEvents` stream and routes
-    /// summary-kind events to `sidebarStore`. Cancelled in `disconnect()`.
+    /// Single owner for `client.runEvents`. It fans each event out to the
+    /// transcript, sidebar summaries, approval queue, and composer run
+    /// state. Keeping one iterator prevents `AsyncStream` consumers from
+    /// racing each other and splitting events.
     @ObservationIgnored
-    private var sidebarSummariesTask: Task<Void, Never>?
+    private var runEventsFanoutTask: Task<Void, Never>?
+    /// Session-scope YOLO ("auto-allow every approval") toggle. Mirrors
+    /// the desktop's `sessionYoloState.enabled` flag. When set, the
+    /// iOS settings tab dispatches `BridgeActionPayload.setYoloMode`
+    /// so the desktop bypasses approval prompts; the iOS UI also
+    /// optimistically auto-accepts any incoming approval card so it
+    /// disappears without user interaction.
+    var yoloModeEnabled: Bool = false
     /// Last APNs registration message surfaced from the desktop's ack,
     /// or from an OS-side registration failure. nil when push hasn't
     /// completed a registration cycle yet.
@@ -63,7 +73,7 @@ final class AppState {
         let transcript = TranscriptViewModel(
             liveActivityController: AGBenchLiveActivityController()
         )
-        transcript.attach(to: client)
+        transcript.attach(to: client, consumeRunEvents: false)
         self.transcriptViewModel = transcript
         self.approvalViewModel = ApprovalViewModel(client: client)
         self.composerViewModel = ComposerViewModel(client: client)
@@ -80,33 +90,38 @@ final class AppState {
         #endif
         let registrar = PushNotificationRegistrar(client: client, pairID: pair.pairID, env: apnsEnv)
         self.pushRegistrar = registrar
-        // Workspace + thread summary subscriber. Drains the same
-        // `runEvents` stream the transcript consumes; the decoder returns
-        // nil for non-summary channels so we cheaply skip them without
-        // a second stream. The store is `@MainActor` so all apply calls
-        // hop back to the main actor.
-        let store = self.sidebarStore
-        let summaries = client.runEvents
-        sidebarSummariesTask?.cancel()
-        sidebarSummariesTask = Task { @MainActor in
-            for await event in summaries {
-                logIOSBridgeApp("summary stream event channel=\(event.channel.rawValue) provider=\(event.provider)")
-                guard let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) else {
-                    continue
+        let runEvents = client.runEvents
+        runEventsFanoutTask?.cancel()
+        runEventsFanoutTask = Task { @MainActor [weak self] in
+            for await event in runEvents {
+                guard let self else { continue }
+                transcript.ingest(event)
+                self.composerViewModel?.observeRunEvent(event)
+
+                if let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) {
+                    switch decoded {
+                    case .workspaceList(let payload):
+                        logIOSBridgeApp("apply workspace-list count=\(payload.workspaces.count)")
+                        self.sidebarStore.applyWorkspaceList(payload.workspaces)
+                    case .workspaceUpdated(let payload):
+                        logIOSBridgeApp("apply workspace-updated workspaceID=\(payload.workspace.workspaceId)")
+                        self.sidebarStore.applyWorkspaceUpdate(payload.workspace)
+                    case .threadList(let payload):
+                        logIOSBridgeApp("apply thread-list count=\(payload.threads.count)")
+                        self.sidebarStore.applyThreadList(payload.threads)
+                    case .threadUpdated(let payload):
+                        logIOSBridgeApp("apply thread-updated chatID=\(payload.thread.chatId)")
+                        self.sidebarStore.applyThreadUpdate(payload.thread)
+                    }
                 }
-                switch decoded {
-                case .workspaceList(let payload):
-                    logIOSBridgeApp("apply workspace-list count=\(payload.workspaces.count)")
-                    store.applyWorkspaceList(payload.workspaces)
-                case .workspaceUpdated(let payload):
-                    logIOSBridgeApp("apply workspace-updated workspaceID=\(payload.workspace.workspaceId)")
-                    store.applyWorkspaceUpdate(payload.workspace)
-                case .threadList(let payload):
-                    logIOSBridgeApp("apply thread-list count=\(payload.threads.count)")
-                    store.applyThreadList(payload.threads)
-                case .threadUpdated(let payload):
-                    logIOSBridgeApp("apply thread-updated chatID=\(payload.thread.chatId)")
-                    store.applyThreadUpdate(payload.thread)
+
+                guard let approval = BridgeApprovalEventDecoder.decode(event: event),
+                      let vm = self.approvalViewModel
+                else { continue }
+                logIOSBridgeApp("approval enqueued id=\(approval.id) provider=\(approval.provider ?? "?") title=\(approval.displayTitle)")
+                vm.enqueue(approval)
+                if self.yoloModeEnabled {
+                    await vm.respond(to: approval, decision: .accept, message: "yolo")
                 }
             }
         }
@@ -131,8 +146,9 @@ final class AppState {
     func disconnect() async {
         await bridgeClient?.stop()
         transcriptViewModel?.detach()
-        sidebarSummariesTask?.cancel()
-        sidebarSummariesTask = nil
+        runEventsFanoutTask?.cancel()
+        runEventsFanoutTask = nil
+        SidebarSubThreadAssociation.reset()
         sidebarStore.applyWorkspaceList([])
         sidebarStore.applyThreadList([])
         bridgeClient = nil
@@ -144,6 +160,28 @@ final class AppState {
             controllerDisplayName: friendlyDeviceName(),
             pairStorage: pairStorage
         )
+    }
+
+    /// Toggle the session-scope YOLO flag and notify the desktop. The
+    /// iOS-local boolean is mirrored on the desktop via
+    /// `BridgeActionPayload.setYoloMode` so subsequent approval
+    /// prompts never reach the bridge in the first place; this
+    /// remaining loop's local short-circuit is a belt-and-suspenders
+    /// for any approval already in flight when the toggle flips.
+    func setYoloMode(enabled: Bool) async {
+        guard let client = bridgeClient else { return }
+        do {
+            let ack = try await client.sendAction(.setYoloMode(enabled: enabled))
+            if ack?.accepted == true {
+                yoloModeEnabled = enabled
+            } else {
+                lastPushMessage = ack?.message ?? "YOLO mode update rejected by desktop"
+            }
+        } catch {
+            let log = OSLog(subsystem: "ai.guigemini.companion", category: "settings")
+            os_log("setYoloMode send failed: %{public}@", log: log, type: .error, error.localizedDescription)
+            lastPushMessage = "YOLO mode update failed: \(error.localizedDescription)"
+        }
     }
 
     // MARK: - APNs

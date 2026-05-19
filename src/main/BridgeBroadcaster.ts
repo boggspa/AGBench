@@ -48,6 +48,7 @@ export interface WorkspaceSummary {
   runningChatCount: number
   /** ISO8601. Omitted when AppStore has no timestamp for the row. */
   lastActivityAt?: string
+  pinned?: boolean
 }
 
 export type ThreadSummaryStatus = 'idle' | 'running' | 'failed' | 'success'
@@ -62,6 +63,10 @@ export interface ThreadSummary {
   status: ThreadSummaryStatus
   /** ISO8601. Omitted when AppStore has no timestamp. */
   lastMessageAt?: string
+  parentChatId?: string
+  pinned?: boolean
+  runId?: string
+  runStartedAt?: string
 }
 
 /** Narrowed view of `AppStore` the broadcaster needs. Using an
@@ -113,7 +118,8 @@ export function workspaceRecordToSummary(
     displayName: workspace.displayName || workspace.path,
     path: workspace.path,
     chatCount: scopedChats.length,
-    runningChatCount
+    runningChatCount,
+    pinned: Boolean(workspace.pinned)
   }
   if (lastActivityAt !== undefined) {
     summary.lastActivityAt = lastActivityAt
@@ -127,6 +133,7 @@ export function workspaceRecordToSummary(
 export function chatRecordToSummary(chat: ChatRecord): ThreadSummary {
   const provider: ProviderId = chat.provider ?? 'gemini'
   const status = deriveThreadStatus(chat)
+  const runningRun = latestRunningRun(chat)
   const lastMessageAt = msToIsoOrUndefined(chat.updatedAt)
   // `scope: 'global'` is the canonical signal but for the iOS contract
   // we collapse "no workspace id" → null regardless, which catches both
@@ -137,7 +144,18 @@ export function chatRecordToSummary(chat: ChatRecord): ThreadSummary {
     title: chat.title || 'Untitled chat',
     workspaceId,
     provider,
-    status
+    status,
+    pinned: Boolean(chat.pinned)
+  }
+  if (chat.parentChatId) {
+    summary.parentChatId = chat.parentChatId
+  }
+  if (runningRun?.runId) {
+    summary.runId = runningRun.runId
+    const runStartedAt = isoOrUndefined(runningRun.startedAt)
+    if (runStartedAt !== undefined) {
+      summary.runStartedAt = runStartedAt
+    }
   }
   if (lastMessageAt !== undefined) {
     summary.lastMessageAt = lastMessageAt
@@ -178,6 +196,24 @@ function deriveThreadStatus(chat: ChatRecord): ThreadSummaryStatus {
 
 function isChatRunning(chat: ChatRecord): boolean {
   return (chat.runs ?? []).some((run) => run.status === 'running')
+}
+
+function latestRunningRun(chat: ChatRecord): ChatRecord['runs'][number] | undefined {
+  return (chat.runs ?? [])
+    .filter((run) => run.status === 'running')
+    .slice()
+    .sort((a, b) => {
+      const aTime = Date.parse(a.startedAt || '') || 0
+      const bTime = Date.parse(b.startedAt || '') || 0
+      return bTime - aTime
+    })[0]
+}
+
+function isoOrUndefined(value: string | undefined): string | undefined {
+  if (!value) return undefined
+  const timestamp = Date.parse(value)
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return undefined
+  return new Date(timestamp).toISOString()
 }
 
 function msToIsoOrUndefined(ms: number | undefined): string | undefined {

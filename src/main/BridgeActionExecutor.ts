@@ -4,8 +4,12 @@ import type {
   BridgeComposerPromptAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
-  BridgeRegisterApnsTokenAction
+  BridgeRegisterApnsTokenAction,
+  BridgeSetYoloModeAction,
+  BridgeTogglePinChatAction,
+  BridgeTogglePinWorkspaceAction
 } from './BridgeActionPayload'
+import type { AgentApprovalAction } from './store/types'
 
 /**
  * BridgeActionExecutor — Phase C-late execution surface.
@@ -51,6 +55,9 @@ export interface BridgeActionExecutor {
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
   executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult>
+  executeSetYoloMode(action: BridgeSetYoloModeAction): Promise<BridgeActionExecutionResult>
+  executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult>
+  executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult>
 }
 
 /**
@@ -78,6 +85,15 @@ export class NoopActionExecutor implements BridgeActionExecutor {
   }
   async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
     return notWired('registerApnsToken', action.pairID)
+  }
+  async executeSetYoloMode(action: BridgeSetYoloModeAction): Promise<BridgeActionExecutionResult> {
+    return notWired('setYoloMode', String(action.enabled))
+  }
+  async executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult> {
+    return notWired('togglePinChat', action.appChatId)
+  }
+  async executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult> {
+    return notWired('togglePinWorkspace', action.workspaceId)
   }
 }
 
@@ -123,7 +139,7 @@ export interface MainProcessActionExecutorDependencies {
    * `mcp/elicitation/request` methods. */
   respondApprovalFn?: (
     requestId: string,
-    action: 'accept' | 'acceptForSession' | 'decline',
+    action: AgentApprovalAction,
     options?: { userInput?: string }
   ) => Promise<boolean>
   /** Callback the executor uses to dispatch an iOS-initiated agent run.
@@ -143,6 +159,15 @@ export interface MainProcessActionExecutorDependencies {
    * Returns true on success, false (with a reason) on validation failure. */
   registerApnsTokenFn?: (action: BridgeRegisterApnsTokenAction) => Promise<{
     registered: boolean
+    reason?: string
+  }>
+  setYoloModeFn?: (enabled: boolean) => Promise<{ enabled: boolean }>
+  togglePinChatFn?: (action: BridgeTogglePinChatAction) => Promise<{
+    pinned: boolean
+    reason?: string
+  }>
+  togglePinWorkspaceFn?: (action: BridgeTogglePinWorkspaceAction) => Promise<{
+    pinned: boolean
     reason?: string
   }>
   log?: (line: string) => void
@@ -325,6 +350,69 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
         executed: false,
         message: `APNs token registration failed: ${errMessage}`
       }
+    }
+  }
+
+  async executeSetYoloMode(action: BridgeSetYoloModeAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.setYoloModeFn) {
+      this.log('[BridgeActionExecutor] setYoloMode has no setYoloModeFn')
+      return notWired('setYoloMode', String(action.enabled))
+    }
+    try {
+      const result = await this.deps.setYoloModeFn(action.enabled)
+      return {
+        executed: true,
+        message: `YOLO mode ${result.enabled ? 'enabled' : 'disabled'}`,
+        data: { enabled: result.enabled }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] setYoloMode failed: ${errMessage}`)
+      return { executed: false, message: `YOLO mode update failed: ${errMessage}` }
+    }
+  }
+
+  async executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.togglePinChatFn) {
+      this.log(`[BridgeActionExecutor] togglePinChat has no togglePinChatFn — appChatId=${action.appChatId}`)
+      return notWired('togglePinChat', action.appChatId)
+    }
+    try {
+      const result = await this.deps.togglePinChatFn(action)
+      if (result.reason) {
+        return { executed: false, message: result.reason }
+      }
+      return {
+        executed: true,
+        message: `Chat "${action.appChatId}" ${result.pinned ? 'pinned' : 'unpinned'}`,
+        data: { appChatId: action.appChatId, pinned: result.pinned }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] togglePinChat failed: ${errMessage}`)
+      return { executed: false, message: `Pin chat update failed: ${errMessage}` }
+    }
+  }
+
+  async executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult> {
+    if (!this.deps.togglePinWorkspaceFn) {
+      this.log(`[BridgeActionExecutor] togglePinWorkspace has no togglePinWorkspaceFn — workspaceId=${action.workspaceId}`)
+      return notWired('togglePinWorkspace', action.workspaceId)
+    }
+    try {
+      const result = await this.deps.togglePinWorkspaceFn(action)
+      if (result.reason) {
+        return { executed: false, message: result.reason }
+      }
+      return {
+        executed: true,
+        message: `Workspace "${action.workspaceId}" ${result.pinned ? 'pinned' : 'unpinned'}`,
+        data: { workspaceId: action.workspaceId, pinned: result.pinned }
+      }
+    } catch (err) {
+      const errMessage = err instanceof Error ? err.message : String(err)
+      this.log(`[BridgeActionExecutor] togglePinWorkspace failed: ${errMessage}`)
+      return { executed: false, message: `Pin workspace update failed: ${errMessage}` }
     }
   }
 }

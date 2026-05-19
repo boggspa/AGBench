@@ -183,7 +183,7 @@ actor EndpointBoundQUICBridgeServer {
         case .replay:
             await sendStructuredError(
                 code: "unsupportedReplay",
-                message: "Direct replay is not supported on the GUIGemini Tailnet listener yet.",
+                message: "Direct replay is not supported on the AGBench Tailnet listener yet.",
                 unsupportedPayloadTag: envelope.payload.protocolTag,
                 correlationID: envelope.envelopeID,
                 session: session
@@ -192,7 +192,7 @@ actor EndpointBoundQUICBridgeServer {
         case .resumeStream:
             await sendStructuredError(
                 code: "unsupportedStreamReplay",
-                message: "Direct stream replay is not supported on the GUIGemini Tailnet listener yet.",
+                message: "Direct stream replay is not supported on the AGBench Tailnet listener yet.",
                 unsupportedPayloadTag: envelope.payload.protocolTag,
                 correlationID: envelope.envelopeID,
                 session: session

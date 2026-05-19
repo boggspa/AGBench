@@ -16,6 +16,9 @@ public struct iPadDetailHost: View {
     /// the workspace summary card can render a connection chip. nil =
     /// no paired desktop known yet.
     public let pairedMacName: String?
+    public let pushStatusMessage: String?
+    public let yoloModeEnabled: Bool
+    public let onSetYoloMode: ((Bool) -> Void)?
     public let onUnpair: (() -> Void)?
     /// Callback invoked when a thread row inside the workspace pane is
     /// tapped. The shell wires this into the sidebar selection state so
@@ -30,6 +33,9 @@ public struct iPadDetailHost: View {
         composerViewModel: ComposerViewModel? = nil,
         mocked: Bool = false,
         pairedMacName: String? = nil,
+        pushStatusMessage: String? = nil,
+        yoloModeEnabled: Bool = false,
+        onSetYoloMode: ((Bool) -> Void)? = nil,
         onUnpair: (() -> Void)? = nil,
         onSelectThread: @escaping (String) -> Void = { _ in }
     ) {
@@ -40,6 +46,9 @@ public struct iPadDetailHost: View {
         self.composerViewModel = composerViewModel
         self.mocked = mocked
         self.pairedMacName = pairedMacName
+        self.pushStatusMessage = pushStatusMessage
+        self.yoloModeEnabled = yoloModeEnabled
+        self.onSetYoloMode = onSetYoloMode
         self.onUnpair = onUnpair
         self.onSelectThread = onSelectThread
     }
@@ -96,7 +105,10 @@ public struct iPadDetailHost: View {
         iPadSettingsPane(
             pairingViewModel: pairingViewModel,
             transcriptViewModel: transcriptViewModel,
+            pushStatusMessage: pushStatusMessage,
+            yoloModeEnabled: yoloModeEnabled,
             mocked: mocked,
+            onSetYoloMode: onSetYoloMode,
             onUnpair: onUnpair
         )
     }

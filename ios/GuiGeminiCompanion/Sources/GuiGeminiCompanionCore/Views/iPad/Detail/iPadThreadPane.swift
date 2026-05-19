@@ -2,13 +2,15 @@ import SwiftUI
 
 /// Thread pane shown by `iPadDetailHost` when a thread is selected.
 /// Mirrors the visual language of the desktop's `RunInspector.tsx`
-/// (K1 Slice 1B): a tinted header card up top, then a dense, scannable
-/// timeline where each row is one event (time + kind glyph + summary +
-/// optional file/path chip).
+/// (K1 Slice 1B): a tinted header card up top, then either the new
+/// grouped-bubble transcript (primary) OR the dense classified
+/// timeline (secondary "timeline" tab — kept for when scanning lots of
+/// short events is more useful than reading the streaming bubbles).
 ///
 /// The header reads from the existing iPad data — title, provider chip,
-/// status pill, last-activity timestamp — and the timeline reads from
-/// the transcript's events array. When `mocked == true` and the
+/// status pill, last-activity timestamp — and the body reads from
+/// either the transcript store's grouped bubbles (primary tab) or the
+/// raw event stream (timeline tab). When `mocked == true` and the
 /// transcript is empty we render a soft "sample preview row" so the
 /// pane teaches rather than displaying an empty box.
 @available(iOS 17.0, macOS 14.0, *)
@@ -16,26 +18,158 @@ public struct iPadThreadPane: View {
     public let threadID: String
     public let thread: iPadThreadSummary?
     public let events: [BridgeRunEvent]
+    public let transcriptStore: TranscriptStore?
     public let mocked: Bool
+
+    @State private var selectedTab: BodyTab = .transcript
+
+    /// Which body section is showing — the new grouped transcript or the
+    /// classified-event timeline. Defaults to transcript on entry.
+    enum BodyTab: String, CaseIterable, Identifiable {
+        case transcript
+        case timeline
+
+        var id: String { rawValue }
+        var label: String {
+            switch self {
+            case .transcript: return "Transcript"
+            case .timeline: return "Timeline"
+            }
+        }
+        var systemImage: String {
+            switch self {
+            case .transcript: return "text.bubble.fill"
+            case .timeline: return "list.bullet.indent"
+            }
+        }
+    }
 
     public init(
         threadID: String,
         thread: iPadThreadSummary?,
         events: [BridgeRunEvent],
+        transcriptStore: TranscriptStore? = nil,
         mocked: Bool
     ) {
         self.threadID = threadID
         self.thread = thread
         self.events = events
+        self.transcriptStore = transcriptStore
         self.mocked = mocked
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.section) {
             headerCard
-            timelineCard
+            bodyTabPicker
+            switch selectedTab {
+            case .transcript:
+                transcriptCard
+            case .timeline:
+                timelineCard
+            }
         }
         .padding(Theme.Spacing.screen)
+    }
+
+    @ViewBuilder
+    private var bodyTabPicker: some View {
+        Picker("View", selection: $selectedTab) {
+            ForEach(BodyTab.allCases) { tab in
+                Label(tab.label, systemImage: tab.systemImage).tag(tab)
+            }
+        }
+        .pickerStyle(.segmented)
+        .padding(.horizontal, Theme.Spacing.tight)
+    }
+
+    @ViewBuilder
+    private var transcriptCard: some View {
+        let bubbleGroups = filteredTranscriptGroups
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            transcriptHeader(bubbleGroups.count)
+            if bubbleGroups.isEmpty {
+                emptyTranscriptState
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: Theme.Spacing.control) {
+                        ForEach(bubbleGroups) { group in
+                            TranscriptBubbleRow(group: group)
+                                .id(group.id)
+                        }
+                    }
+                    .padding(.vertical, Theme.Spacing.tight)
+                }
+                .scrollIndicators(.hidden)
+                .frame(maxHeight: .infinity)
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
+    }
+
+    @ViewBuilder
+    private func transcriptHeader(_ count: Int) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "text.bubble.fill")
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.accent)
+            Text("Conversation".uppercased())
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.tertiaryText)
+            Spacer(minLength: 0)
+            if count > 0 {
+                Text("\(count) message\(count == 1 ? "" : "s")")
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(Theme.inputSurface, in: Capsule(style: .continuous))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var emptyTranscriptState: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            HStack(spacing: Theme.Spacing.control) {
+                Image(systemName: "text.bubble")
+                    .font(Theme.Typography.iconMedium)
+                    .foregroundStyle(Theme.accent)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No messages yet")
+                        .font(Theme.Typography.sectionTitle)
+                        .foregroundStyle(Theme.primaryText)
+                    Text("Assistant replies and tool activity stream in here once the desktop emits this thread's first run event.")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.secondaryText)
+                        .lineLimit(3)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, Theme.Spacing.tight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Bubble groups visible in this pane. When a transcript store is
+    /// provided we use it (the new path). When it's nil we fall back to
+    /// building groups on the fly from `events` so the pane keeps
+    /// working in tests / previews that haven't wired the store yet.
+    private var filteredTranscriptGroups: [TranscriptMessageGroup] {
+        if let transcriptStore {
+            return transcriptStore.groups
+        }
+        // Inline single-shot build matches the live store's coalescing
+        // rule so the visual output is identical.
+        let store = TranscriptStore()
+        for event in events {
+            store.ingest(event)
+        }
+        return store.groups
     }
 
     // MARK: - Resolved values

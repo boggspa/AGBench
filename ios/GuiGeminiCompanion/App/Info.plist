@@ -13,7 +13,7 @@
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundleDisplayName</key>
-    <string>GUIGemini</string>
+    <string>AGBench</string>
     <key>CFBundlePackageType</key>
     <string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
     <key>CFBundleShortVersionString</key>
@@ -58,7 +58,7 @@
         <string>_guigemini._tcp</string>
     </array>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>GUIGemini discovers your paired Mac on the local network to relay agent transcripts and approve tool calls from your phone.</string>
+    <string>AGBench discovers your paired Mac on the local network to relay agent transcripts and approve tool calls from your phone.</string>
     <!--
       Camera access for QR-code scanning during pairing. The scaffold
       doesn't yet use AVFoundation (developers can paste-the-JSON for
@@ -66,6 +66,6 @@
       integration doesn't get blocked at the permission prompt.
     -->
     <key>NSCameraUsageDescription</key>
-    <string>GUIGemini scans the pairing QR code shown on your Mac to securely establish a connection.</string>
+    <string>AGBench scans the pairing QR code shown on your Mac to securely establish a connection.</string>
 </dict>
 </plist>

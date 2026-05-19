@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
 import { BridgeActionRouter } from './BridgeActionRouter'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
-import type {
-  BridgeActionExecutionResult,
-  BridgeActionExecutor
-} from './BridgeActionExecutor'
+import type { BridgeActionExecutionResult, BridgeActionExecutor } from './BridgeActionExecutor'
 
 /** Stub executor for router tests — captures method invocations + returns
  * configurable results. */
 function makeStubExecutor(
-  overrides: Partial<Record<keyof BridgeActionExecutor, () => Promise<BridgeActionExecutionResult>>> = {}
+  overrides: Partial<
+    Record<keyof BridgeActionExecutor, () => Promise<BridgeActionExecutionResult>>
+  > = {}
 ): { executor: BridgeActionExecutor; calls: Array<{ method: string; payload: unknown }> } {
   const calls: Array<{ method: string; payload: unknown }> = []
   const make = (method: keyof BridgeActionExecutor, defaultResult: BridgeActionExecutionResult) =>
@@ -18,12 +17,36 @@ function makeStubExecutor(
       return (await overrides[method]?.()) ?? defaultResult
     })
   const executor: BridgeActionExecutor = {
-    executeApprovalReply: make('executeApprovalReply', { executed: true, message: 'approvalReply done' }),
-    executeQuestionReply: make('executeQuestionReply', { executed: true, message: 'questionReply done' }),
-    executeQuestionReject: make('executeQuestionReject', { executed: true, message: 'questionReject done' }),
-    executeComposerPrompt: make('executeComposerPrompt', { executed: true, message: 'composerPrompt done' }),
+    executeApprovalReply: make('executeApprovalReply', {
+      executed: true,
+      message: 'approvalReply done'
+    }),
+    executeQuestionReply: make('executeQuestionReply', {
+      executed: true,
+      message: 'questionReply done'
+    }),
+    executeQuestionReject: make('executeQuestionReject', {
+      executed: true,
+      message: 'questionReject done'
+    }),
+    executeComposerPrompt: make('executeComposerPrompt', {
+      executed: true,
+      message: 'composerPrompt done'
+    }),
     executeCancelRun: make('executeCancelRun', { executed: true, message: 'cancelRun done' }),
-    executeRegisterApnsToken: make('executeRegisterApnsToken', { executed: true, message: 'registerApnsToken done' })
+    executeRegisterApnsToken: make('executeRegisterApnsToken', {
+      executed: true,
+      message: 'registerApnsToken done'
+    }),
+    executeSetYoloMode: make('executeSetYoloMode', { executed: true, message: 'setYoloMode done' }),
+    executeTogglePinChat: make('executeTogglePinChat', {
+      executed: true,
+      message: 'togglePinChat done'
+    }),
+    executeTogglePinWorkspace: make('executeTogglePinWorkspace', {
+      executed: true,
+      message: 'togglePinWorkspace done'
+    })
   }
   return { executor, calls }
 }
@@ -584,6 +607,65 @@ describe('BridgeActionRouter', () => {
       })) as { accepted: boolean }
       expect(result.accepted).toBe(true)
     })
+
+    it('setYoloMode bypasses workspace allowlist and dispatches to the executor', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'setYoloMode',
+          enabled: true
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string; executed?: boolean }
+      expect(result.accepted).toBe(true)
+      expect(result.executed).toBe(true)
+      expect(result.message).toBe('setYoloMode done')
+      expect(calls).toHaveLength(1)
+      expect(calls[0].method).toBe('executeSetYoloMode')
+    })
+
+    it('dispatches togglePinChat to executor.executeTogglePinChat', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'togglePinChat',
+          workspaceId: 'ws-allowed',
+          appChatId: 'chat-1',
+          pinned: true
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(true)
+      expect(result.message).toBe('togglePinChat done')
+      expect(calls[0].method).toBe('executeTogglePinChat')
+    })
+
+    it('dispatches togglePinWorkspace to executor.executeTogglePinWorkspace', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'togglePinWorkspace',
+          workspaceId: 'ws-allowed',
+          pinned: false
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(true)
+      expect(result.message).toBe('togglePinWorkspace done')
+      expect(calls[0].method).toBe('executeTogglePinWorkspace')
+    })
   })
 
   describe('read-only mode enforcement (Phase C-late slice)', () => {
@@ -654,6 +736,21 @@ describe('BridgeActionRouter', () => {
         threadId: 't-1',
         promptId: 'q-1',
         answer: 'yes'
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.message).toMatch(/read-only/i)
+    })
+
+    it('denies pin changes against read-only workspace', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const wire = encodeAction({
+        kind: 'togglePinChat',
+        workspaceId: 'ws-readonly',
+        appChatId: 'chat-1',
+        pinned: true
       })
       const result = (await router.route('bridge.requestActionAck', {
         payloadBase64: wire

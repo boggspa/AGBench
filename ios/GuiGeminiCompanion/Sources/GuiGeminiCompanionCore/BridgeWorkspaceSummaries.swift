@@ -25,6 +25,8 @@ public struct WorkspaceSummaryPayload: Codable, Sendable, Equatable {
     /// ISO8601 wall-clock at which any chat in the workspace last produced
     /// output. nil when the workspace has never been activated this session.
     public let lastActivityAt: Date?
+    /// True when the desktop marks this workspace as pinned.
+    public let pinned: Bool?
 
     public init(
         workspaceId: String,
@@ -32,7 +34,8 @@ public struct WorkspaceSummaryPayload: Codable, Sendable, Equatable {
         path: String,
         chatCount: Int,
         runningChatCount: Int,
-        lastActivityAt: Date? = nil
+        lastActivityAt: Date? = nil,
+        pinned: Bool? = nil
     ) {
         self.workspaceId = workspaceId
         self.displayName = displayName
@@ -40,6 +43,7 @@ public struct WorkspaceSummaryPayload: Codable, Sendable, Equatable {
         self.chatCount = chatCount
         self.runningChatCount = runningChatCount
         self.lastActivityAt = lastActivityAt
+        self.pinned = pinned
     }
 }
 
@@ -59,6 +63,19 @@ public struct ThreadSummaryPayload: Codable, Sendable, Equatable {
     /// ISO8601 wall-clock of the last message in the chat. nil when the
     /// chat has been created but no message exchanged yet.
     public let lastMessageAt: Date?
+    /// Parent chat id when this thread is a sub-thread spawned via the
+    /// desktop's Multi-Provider Sub-Threads feature (`ChatRecord.parentChatId`
+    /// in `src/main/store/types.ts`). nil for root chats — the common case.
+    public let parentChatId: String?
+    /// True when the desktop marks this chat as pinned. nil for chats
+    /// where the desktop has not surfaced a pinned flag — defaults to
+    /// "not pinned" in the sidebar's pinned section selector.
+    public let pinned: Bool?
+    /// Currently-running run id for this thread, when desktop has one.
+    public let runId: String?
+    /// Start timestamp for `runId`. Used by active-run elapsed timers so
+    /// message updates do not reset the clock.
+    public let runStartedAt: Date?
 
     public init(
         chatId: String,
@@ -66,7 +83,11 @@ public struct ThreadSummaryPayload: Codable, Sendable, Equatable {
         workspaceId: String?,
         provider: String,
         status: String,
-        lastMessageAt: Date? = nil
+        lastMessageAt: Date? = nil,
+        parentChatId: String? = nil,
+        pinned: Bool? = nil,
+        runId: String? = nil,
+        runStartedAt: Date? = nil
     ) {
         self.chatId = chatId
         self.title = title
@@ -74,6 +95,10 @@ public struct ThreadSummaryPayload: Codable, Sendable, Equatable {
         self.provider = provider
         self.status = status
         self.lastMessageAt = lastMessageAt
+        self.parentChatId = parentChatId
+        self.pinned = pinned
+        self.runId = runId
+        self.runStartedAt = runStartedAt
     }
 }
 

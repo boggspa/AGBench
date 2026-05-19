@@ -30,7 +30,13 @@ import SwiftUI
 public struct iPadSettingsPane: View {
     public let pairingViewModel: PairingViewModel?
     public let transcriptViewModel: TranscriptViewModel?
+    /// Most-recent push registration message surfaced by AppState
+    /// (`AppState.lastPushMessage`). When the host doesn't pass one in
+    /// the pane shows the default unregistered copy.
+    public let pushStatusMessage: String?
+    public let yoloModeEnabled: Bool
     public let mocked: Bool
+    public let onSetYoloMode: ((Bool) -> Void)?
     public let onUnpair: (() -> Void)?
 
     @State private var showUnpairConfirmation: Bool = false
@@ -39,12 +45,18 @@ public struct iPadSettingsPane: View {
     public init(
         pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
+        pushStatusMessage: String? = nil,
+        yoloModeEnabled: Bool = false,
         mocked: Bool = false,
+        onSetYoloMode: ((Bool) -> Void)? = nil,
         onUnpair: (() -> Void)? = nil
     ) {
         self.pairingViewModel = pairingViewModel
         self.transcriptViewModel = transcriptViewModel
+        self.pushStatusMessage = pushStatusMessage
+        self.yoloModeEnabled = yoloModeEnabled
         self.mocked = mocked
+        self.onSetYoloMode = onSetYoloMode
         self.onUnpair = onUnpair
     }
 
@@ -54,6 +66,7 @@ public struct iPadSettingsPane: View {
                 headerStrip
                 pairingCard
                 bridgeConnectionCard
+                approvalControlsCard
                 pushNotificationsCard
                 aboutCard
                 Spacer(minLength: 0)
@@ -141,7 +154,7 @@ public struct iPadSettingsPane: View {
         let route = resolvedActiveRoute
         let status = resolvedBridgeStatus
         let latency = resolvedLatency
-        let isSubscribed = status.lowercased().contains("subscribed")
+        let isSubscribed = status.lowercased().contains("subscribed") || status.lowercased().contains("reachable")
         return settingsCard(
             iconSystemName: "dot.radiowaves.left.and.right",
             iconTint: Theme.success,
@@ -153,7 +166,13 @@ public struct iPadSettingsPane: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
                 detailRow(label: "Transport", value: route)
                 detailRow(label: "Bridge status", value: status)
-                detailRow(label: "Latency", value: latency)
+                detailRow(
+                    label: "Latency",
+                    value: latency,
+                    valueAccessibilityHint: latency == "—"
+                        ? "RTT not yet exposed by transport"
+                        : nil
+                )
             }
         }
     }
@@ -173,6 +192,42 @@ public struct iPadSettingsPane: View {
                     .font(Theme.Typography.smallCaption)
                     .foregroundStyle(Theme.tertiaryText)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var approvalControlsCard: some View {
+        settingsCard(
+            iconSystemName: yoloModeEnabled ? "bolt.shield.fill" : "shield",
+            iconTint: yoloModeEnabled ? Theme.warning : Theme.accent,
+            title: "Approval controls",
+            subtitle: nil,
+            accessibilityHint: "Session approval mode controls."
+        ) {
+            VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+                Toggle(
+                    isOn: Binding(
+                        get: { yoloModeEnabled },
+                        set: { enabled in onSetYoloMode?(enabled) }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("YOLO approvals")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.primaryText)
+                        Text("Automatically accept guarded desktop approvals for this session.")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.tertiaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .toggleStyle(.switch)
+                .disabled(onSetYoloMode == nil)
+
+                detailRow(
+                    label: "Status",
+                    value: yoloModeEnabled ? "Auto-allow enabled" : "Manual approval"
+                )
             }
         }
     }
@@ -235,7 +290,11 @@ public struct iPadSettingsPane: View {
         .accessibilityHint(accessibilityHint)
     }
 
-    private func detailRow(label: String, value: String) -> some View {
+    private func detailRow(
+        label: String,
+        value: String,
+        valueAccessibilityHint: String? = nil
+    ) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.tight) {
             Text(label)
                 .font(Theme.Typography.caption)
@@ -247,6 +306,7 @@ public struct iPadSettingsPane: View {
                 .lineLimit(2)
                 .multilineTextAlignment(.trailing)
                 .truncationMode(.middle)
+                .accessibilityHint(valueAccessibilityHint ?? "")
         }
         .padding(.vertical, 2)
     }
@@ -333,36 +393,54 @@ public struct iPadSettingsPane: View {
         return "Tap the link icon on your Mac to pair this iPad."
     }
 
+    /// Live transport route label sourced from the transcript view
+    /// model's `activeRouteLabel` (which subscribes to
+    /// `GuiGeminiBridgeClient.activeRoute`). Mocked previews fall through
+    /// to a deterministic string so the pane still shows a populated
+    /// row in design review.
     private var resolvedActiveRoute: String {
-        if let route = transcriptViewModel?.activeRouteLabel, !route.isEmpty {
+        if let route = transcriptViewModel?.activeRouteLabel?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !route.isEmpty {
             return route
         }
         if mocked {
-            // MOCK: TODO — TranscriptViewModel.activeRouteLabel will populate
-            // once the bridge client emits an active-route event.
+            // Sample copy only — production callers pass a non-nil
+            // transcriptViewModel so this branch never fires outside
+            // previews.
             return "LAN · same Wi-Fi"
         }
         return "Not connected"
     }
 
+    /// Live bridge status summary sourced from the transcript view model's
+    /// `lastStatus` (formatted from `BridgeTransportStatus`). Mocked
+    /// previews show a sample string.
     private var resolvedBridgeStatus: String {
-        if let status = transcriptViewModel?.lastStatus, !status.isEmpty {
+        if let status = transcriptViewModel?.lastStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !status.isEmpty {
             return status
         }
         if mocked {
-            // MOCK: TODO — TranscriptViewModel.lastStatus formatting comes
-            // from `BridgeTransportStatus` description; this string is a
-            // rough preview of the shape.
             return "Subscribed, 12s since last event"
         }
         return "Awaiting status update"
     }
 
+    /// RTT in milliseconds. `BridgeTransportStatus` carries
+    /// `roundTripMilliseconds` but `TranscriptViewModel` doesn't yet
+    /// surface it as a typed property (it formats the whole status
+    /// snapshot into one string instead). Until the view model exposes
+    /// it, render an em-dash placeholder. The `Latency` row carries an
+    /// accessibility hint ("RTT not yet exposed by transport") so VoiceOver
+    /// users hear why the field is blank.
+    /// TODO(theme): when TranscriptViewModel exposes a typed
+    /// `lastRoundTripMilliseconds: Int?` (Agent B), swap this to format
+    /// the int as e.g. "48 ms".
     private var resolvedLatency: String {
         if mocked {
-            // MOCK: TODO — there's no latency probe today. Wire to the bridge
-            // client once it tracks RTT.
-            return "~48ms"
+            return "~48 ms"
         }
         return "—"
     }
@@ -372,10 +450,17 @@ public struct iPadSettingsPane: View {
         let explanation: String
     }
 
+    /// Live push registration status sourced from `AppState.lastPushMessage`
+    /// (or a TODO placeholder until the host plumbs it through). The
+    /// classification below maps known message prefixes to user-friendly
+    /// titles + explanations; unknown messages get rendered as-is so
+    /// engineers can debug.
     private var resolvedPushStatus: PushStatusCopy {
-        // MOCK: TODO — there's no live wiring for APNs token state on the
-        // iPad shell yet. Once AppState exposes a published push-status
-        // value, surface it here.
+        if let message = pushStatusMessage?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !message.isEmpty {
+            return classifyPushMessage(message)
+        }
         if mocked {
             return PushStatusCopy(
                 title: "Configured",
@@ -385,6 +470,32 @@ public struct iPadSettingsPane: View {
         return PushStatusCopy(
             title: "Not registered",
             explanation: "Configure APNs credentials in the desktop Settings → Bridge Networking to enable push wake-up."
+        )
+    }
+
+    private func classifyPushMessage(_ message: String) -> PushStatusCopy {
+        let lower = message.lowercased()
+        if lower.contains("accepted") || lower.contains("token unchanged") {
+            return PushStatusCopy(
+                title: "Configured",
+                explanation: message
+            )
+        }
+        if lower.contains("rejected") {
+            return PushStatusCopy(
+                title: "Rejected",
+                explanation: message
+            )
+        }
+        if lower.contains("failed") || lower.contains("error") {
+            return PushStatusCopy(
+                title: "Failed",
+                explanation: message
+            )
+        }
+        return PushStatusCopy(
+            title: "Updating",
+            explanation: message
         )
     }
 

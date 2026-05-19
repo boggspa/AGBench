@@ -160,6 +160,9 @@ public struct iPadShell: View {
     public let composerViewModel: ComposerViewModel?
     public let seededWorkspaces: [iPadWorkspaceSummary]
     public let seededThreads: [iPadThreadSummary]
+    public let pushStatusMessage: String?
+    public let yoloModeEnabled: Bool
+    public let onSetYoloMode: ((Bool) -> Void)?
     public let onUnpair: (() -> Void)?
 
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
@@ -173,6 +176,9 @@ public struct iPadShell: View {
         composerViewModel: ComposerViewModel? = nil,
         workspaces: [iPadWorkspaceSummary] = [],
         threads: [iPadThreadSummary] = [],
+        pushStatusMessage: String? = nil,
+        yoloModeEnabled: Bool = false,
+        onSetYoloMode: ((Bool) -> Void)? = nil,
         selectionState: iPadSelectionState? = nil,
         sidebarStore: iPadSidebarStore? = nil,
         onUnpair: (() -> Void)? = nil
@@ -183,6 +189,9 @@ public struct iPadShell: View {
         self.composerViewModel = composerViewModel
         self.seededWorkspaces = workspaces
         self.seededThreads = threads
+        self.pushStatusMessage = pushStatusMessage
+        self.yoloModeEnabled = yoloModeEnabled
+        self.onSetYoloMode = onSetYoloMode
         self.onUnpair = onUnpair
         _selectionState = State(initialValue: selectionState ?? iPadSelectionState())
         _sidebarStore = State(initialValue: sidebarStore ?? iPadSidebarStore(
@@ -206,6 +215,9 @@ public struct iPadShell: View {
                 transcriptViewModel: transcriptViewModel,
                 composerViewModel: composerViewModel,
                 pairedMacName: pairingViewModel?.confirmedPair?.macDisplayName,
+                pushStatusMessage: pushStatusMessage,
+                yoloModeEnabled: yoloModeEnabled,
+                onSetYoloMode: onSetYoloMode,
                 onUnpair: onUnpair
             )
             .navigationSplitViewColumnWidth(min: 500, ideal: 720)

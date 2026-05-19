@@ -20,7 +20,7 @@ struct RootView: View {
             } else {
                 NavigationStack {
                     PairingView(viewModel: appState.pairingViewModel)
-                        .navigationTitle("GUIGemini")
+                        .navigationTitle("AGBench")
                         .toolbarBackground(Theme.chromeBlur, for: .navigationBar)
                         .toolbarBackground(.visible, for: .navigationBar)
                 }
@@ -58,6 +58,11 @@ private extension iPadShell {
             transcriptViewModel: appState.transcriptViewModel,
             approvalViewModel: appState.approvalViewModel,
             composerViewModel: appState.composerViewModel,
+            pushStatusMessage: appState.lastPushMessage,
+            yoloModeEnabled: appState.yoloModeEnabled,
+            onSetYoloMode: { enabled in
+                Task { await appState.setYoloMode(enabled: enabled) }
+            },
             sidebarStore: appState.sidebarStore,
             onUnpair: {
                 Task { await appState.unpair() }
@@ -76,7 +81,15 @@ struct MainTabs: View {
         TabView {
             NavigationStack {
                 if let viewModel = appState.transcriptViewModel {
-                    TranscriptView(viewModel: viewModel)
+                    TranscriptView(
+                        viewModel: viewModel,
+                        cancelRunBinding: appState.composerViewModel.map { composer in
+                            TranscriptView.CancelRunBinding(
+                                canCancel: composer.canCancelRun,
+                                cancel: { await composer.cancelCurrentRun() }
+                            )
+                        }
+                    )
                         .navigationTitle("Transcript")
                 } else {
                     ConnectionEmptyState(

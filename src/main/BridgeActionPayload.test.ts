@@ -33,8 +33,14 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.message).toBe('approved from iPhone')
     })
 
-    it('decodes the three approval decisions', () => {
-      for (const decision of ['accept', 'acceptForSession', 'decline'] as const) {
+    it('decodes all approval decisions', () => {
+      for (const decision of [
+        'accept',
+        'acceptForSession',
+        'acceptForWorkspace',
+        'decline',
+        'cancel'
+      ] as const) {
         const wire = encode({
           kind: 'approvalReply',
           workspaceId: 'ws-1',
@@ -135,6 +141,45 @@ describe('decodeBridgeActionPayload', () => {
         expect(payload.provider).toBe('gemini')
         expect(payload.runId).toBe('run-1')
       }
+    })
+
+    it('decodes setYoloMode', () => {
+      const wire = encode({
+        kind: 'setYoloMode',
+        enabled: true
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload).toEqual({ kind: 'setYoloMode', enabled: true })
+    })
+
+    it('decodes togglePinChat', () => {
+      const wire = encode({
+        kind: 'togglePinChat',
+        workspaceId: 'ws-1',
+        appChatId: 'chat-1',
+        pinned: true
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload).toEqual({
+        kind: 'togglePinChat',
+        workspaceId: 'ws-1',
+        appChatId: 'chat-1',
+        pinned: true
+      })
+    })
+
+    it('decodes togglePinWorkspace', () => {
+      const wire = encode({
+        kind: 'togglePinWorkspace',
+        workspaceId: 'ws-1',
+        pinned: false
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload).toEqual({
+        kind: 'togglePinWorkspace',
+        workspaceId: 'ws-1',
+        pinned: false
+      })
     })
 
     it('decodes a registerApnsToken with production env', () => {
@@ -336,11 +381,23 @@ describe('workspaceIdFromPayload', () => {
   it('returns workspaceId for each known variant', () => {
     const variants: Array<{ payload: BridgeActionPayload; expected: string }> = [
       {
-        payload: { kind: 'approvalReply', workspaceId: 'ws-a', threadId: 't', toolCallId: 'tc', decision: 'accept' },
+        payload: {
+          kind: 'approvalReply',
+          workspaceId: 'ws-a',
+          threadId: 't',
+          toolCallId: 'tc',
+          decision: 'accept'
+        },
         expected: 'ws-a'
       },
       {
-        payload: { kind: 'questionReply', workspaceId: 'ws-b', threadId: 't', promptId: 'p', answer: 'y' },
+        payload: {
+          kind: 'questionReply',
+          workspaceId: 'ws-b',
+          threadId: 't',
+          promptId: 'p',
+          answer: 'y'
+        },
         expected: 'ws-b'
       },
       {
@@ -348,12 +405,32 @@ describe('workspaceIdFromPayload', () => {
         expected: 'ws-c'
       },
       {
-        payload: { kind: 'composerPrompt', workspaceId: 'ws-d', threadId: 't', provider: 'gemini', text: 'hi' },
+        payload: {
+          kind: 'composerPrompt',
+          workspaceId: 'ws-d',
+          threadId: 't',
+          provider: 'gemini',
+          text: 'hi'
+        },
         expected: 'ws-d'
       },
       {
-        payload: { kind: 'cancelRun', workspaceId: 'ws-e', threadId: 't', provider: 'gemini', runId: 'r' },
+        payload: {
+          kind: 'cancelRun',
+          workspaceId: 'ws-e',
+          threadId: 't',
+          provider: 'gemini',
+          runId: 'r'
+        },
         expected: 'ws-e'
+      },
+      {
+        payload: { kind: 'togglePinChat', workspaceId: 'ws-f', appChatId: 'chat-1', pinned: true },
+        expected: 'ws-f'
+      },
+      {
+        payload: { kind: 'togglePinWorkspace', workspaceId: 'ws-g', pinned: false },
+        expected: 'ws-g'
       }
     ]
     for (const { payload, expected } of variants) {
@@ -362,9 +439,7 @@ describe('workspaceIdFromPayload', () => {
   })
 
   it('returns null for unknown variant', () => {
-    expect(
-      workspaceIdFromPayload({ kind: 'unknown', rawKind: 'something', raw: {} })
-    ).toBeNull()
+    expect(workspaceIdFromPayload({ kind: 'unknown', rawKind: 'something', raw: {} })).toBeNull()
   })
 
   it('returns null for registerApnsToken (paired-device-level, not workspace-bound)', () => {
@@ -377,16 +452,28 @@ describe('workspaceIdFromPayload', () => {
       })
     ).toBeNull()
   })
+
+  it('returns null for setYoloMode (session-level, not workspace-bound)', () => {
+    expect(workspaceIdFromPayload({ kind: 'setYoloMode', enabled: true })).toBeNull()
+  })
 })
 
 describe('payloadRequiresWorkspaceGating', () => {
   it('returns true for workspace-bound variants', () => {
     const variants: BridgeActionPayload[] = [
-      { kind: 'approvalReply', workspaceId: 'w', threadId: 't', toolCallId: 'c', decision: 'accept' },
+      {
+        kind: 'approvalReply',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'c',
+        decision: 'accept'
+      },
       { kind: 'questionReply', workspaceId: 'w', threadId: 't', promptId: 'p', answer: 'a' },
       { kind: 'questionReject', workspaceId: 'w', threadId: 't', promptId: 'p' },
       { kind: 'composerPrompt', workspaceId: 'w', threadId: 't', provider: 'gemini', text: 'x' },
-      { kind: 'cancelRun', workspaceId: 'w', threadId: 't', provider: 'gemini', runId: 'r' }
+      { kind: 'cancelRun', workspaceId: 'w', threadId: 't', provider: 'gemini', runId: 'r' },
+      { kind: 'togglePinChat', workspaceId: 'w', appChatId: 'chat', pinned: true },
+      { kind: 'togglePinWorkspace', workspaceId: 'w', pinned: true }
     ]
     for (const v of variants) {
       expect(payloadRequiresWorkspaceGating(v)).toBe(true)
@@ -404,10 +491,12 @@ describe('payloadRequiresWorkspaceGating', () => {
     ).toBe(false)
   })
 
+  it('returns false for setYoloMode (session action)', () => {
+    expect(payloadRequiresWorkspaceGating({ kind: 'setYoloMode', enabled: false })).toBe(false)
+  })
+
   it('returns true defensively for unknown variants', () => {
-    expect(
-      payloadRequiresWorkspaceGating({ kind: 'unknown', rawKind: 'x', raw: {} })
-    ).toBe(true)
+    expect(payloadRequiresWorkspaceGating({ kind: 'unknown', rawKind: 'x', raw: {} })).toBe(true)
   })
 })
 
@@ -448,6 +537,25 @@ describe('payloadIsMutating', () => {
     ).toBe(true)
   })
 
+  it('classifies session and pin controls as mutating', () => {
+    expect(payloadIsMutating({ kind: 'setYoloMode', enabled: true })).toBe(true)
+    expect(
+      payloadIsMutating({
+        kind: 'togglePinChat',
+        workspaceId: 'w',
+        appChatId: 'chat',
+        pinned: true
+      })
+    ).toBe(true)
+    expect(
+      payloadIsMutating({
+        kind: 'togglePinWorkspace',
+        workspaceId: 'w',
+        pinned: true
+      })
+    ).toBe(true)
+  })
+
   it('classifies approvalReply as non-mutating (responds to desktop-initiated prompt)', () => {
     expect(
       payloadIsMutating({
@@ -483,8 +591,6 @@ describe('payloadIsMutating', () => {
   })
 
   it('classifies unknown variants as mutating defensively', () => {
-    expect(
-      payloadIsMutating({ kind: 'unknown', rawKind: 'futureKind', raw: {} })
-    ).toBe(true)
+    expect(payloadIsMutating({ kind: 'unknown', rawKind: 'futureKind', raw: {} })).toBe(true)
   })
 })

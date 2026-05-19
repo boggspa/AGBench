@@ -35,8 +35,14 @@ final class BridgeActionPayloadTests: XCTestCase {
         XCTAssertNil(dict["message"])
     }
 
-    func testApprovalReplyAllThreeDecisions() throws {
-        for decision in [BridgeActionPayload.ApprovalDecision.accept, .acceptForSession, .decline] {
+    func testApprovalReplyAllFiveDecisions() throws {
+        for decision in [
+            BridgeActionPayload.ApprovalDecision.accept,
+            .acceptForSession,
+            .acceptForWorkspace,
+            .decline,
+            .cancel
+        ] {
             let action = BridgeActionPayload.approvalReply(
                 workspaceId: "w", threadId: "t", toolCallId: "tc", decision: decision
             )
@@ -113,6 +119,34 @@ final class BridgeActionPayloadTests: XCTestCase {
         XCTAssertEqual(dict["kind"] as? String, "cancelRun")
         XCTAssertEqual(dict["provider"] as? String, "kimi")
         XCTAssertEqual(dict["runId"] as? String, "run-77")
+    }
+
+    func testSetYoloModeEncoding() throws {
+        let dict = parse(try BridgeActionPayload.setYoloMode(enabled: true).encode())
+        XCTAssertEqual(dict["kind"] as? String, "setYoloMode")
+        XCTAssertEqual(dict["enabled"] as? Bool, true)
+    }
+
+    func testTogglePinChatEncoding() throws {
+        let dict = parse(try BridgeActionPayload.togglePinChat(
+            workspaceId: "ws-1",
+            appChatId: "chat-1",
+            pinned: true
+        ).encode())
+        XCTAssertEqual(dict["kind"] as? String, "togglePinChat")
+        XCTAssertEqual(dict["workspaceId"] as? String, "ws-1")
+        XCTAssertEqual(dict["appChatId"] as? String, "chat-1")
+        XCTAssertEqual(dict["pinned"] as? Bool, true)
+    }
+
+    func testTogglePinWorkspaceEncoding() throws {
+        let dict = parse(try BridgeActionPayload.togglePinWorkspace(
+            workspaceId: "ws-1",
+            pinned: false
+        ).encode())
+        XCTAssertEqual(dict["kind"] as? String, "togglePinWorkspace")
+        XCTAssertEqual(dict["workspaceId"] as? String, "ws-1")
+        XCTAssertEqual(dict["pinned"] as? Bool, false)
     }
 
     func testRegisterApnsTokenEncoding() throws {

@@ -4718,7 +4718,37 @@ async function fetchGeminiUsageSnapshot(): Promise<any> {
 
 const KIMI_USAGE_FRESH_TTL_MS = 90_000
 const KIMI_USAGE_STALE_TTL_MS = 30 * 60_000
-let kimiUsageCache: { snapshot: any; fetchedAt: number } | null = null
+
+interface NormalizedProviderUsageWindow {
+  id: string
+  label: string
+  runs: number
+  totalTokens: number
+  limitLabel: string
+  resetAt?: string
+  trackingOnly: boolean
+  usedPercent: number
+  remainingPercent?: number
+  sourceModelId?: string
+}
+
+interface NormalizedProviderUsageSnapshot {
+  provider: string
+  source: string
+  configured: boolean
+  fetchedAt?: string
+  windows?: NormalizedProviderUsageWindow[]
+  stale?: boolean
+  error?: string
+}
+
+let kimiUsageCache: { snapshot: NormalizedProviderUsageSnapshot; fetchedAt: number } | null = null
+
+function usageRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null
+}
 
 async function readKimiOAuthAccessToken(): Promise<string | null> {
   try {
@@ -4752,9 +4782,10 @@ function numericUsageValue(value: unknown): number | undefined {
   return undefined
 }
 
-function kimiDurationLabel(window: any): string {
-  const duration = numericUsageValue(window?.duration)
-  const unit = String(window?.timeUnit || window?.time_unit || '').toUpperCase()
+function kimiDurationLabel(window: unknown): string {
+  const record = usageRecord(window)
+  const duration = numericUsageValue(record?.duration)
+  const unit = String(record?.timeUnit || record?.time_unit || '').toUpperCase()
   if (!duration || !unit) return 'Rolling'
   const rounded = Math.round(duration)
   if (unit.includes('MINUTE')) {
@@ -4771,9 +4802,14 @@ function kimiDurationLabel(window: any): string {
   return 'Rolling'
 }
 
-function kimiQuotaWindow(id: string, label: string, detail: any) {
-  const limit = numericUsageValue(detail?.limit)
-  const remaining = numericUsageValue(detail?.remaining)
+function kimiQuotaWindow(
+  id: string,
+  label: string,
+  detail: unknown
+): NormalizedProviderUsageWindow | null {
+  const record = usageRecord(detail)
+  const limit = numericUsageValue(record?.limit)
+  const remaining = numericUsageValue(record?.remaining)
   if (limit === undefined && remaining === undefined) return null
   const remainingPercent =
     limit && limit > 0 && remaining !== undefined
@@ -4792,7 +4828,7 @@ function kimiQuotaWindow(id: string, label: string, detail: any) {
     totalTokens: 0,
     limitLabel,
     resetAt: parseGeminiQuotaReset(
-      detail?.resetTime ?? detail?.reset_time ?? detail?.resetAt ?? detail?.reset_at
+      record?.resetTime ?? record?.reset_time ?? record?.resetAt ?? record?.reset_at
     ),
     trackingOnly: false,
     usedPercent: remainingPercent,
@@ -4800,20 +4836,24 @@ function kimiQuotaWindow(id: string, label: string, detail: any) {
   }
 }
 
-function normalizeKimiUsageSnapshot(payload: any): any {
-  const windows: any[] = []
-  const limits = Array.isArray(payload?.limits) ? payload.limits : []
-  limits.forEach((limit: any, index: number) => {
-    const detail = limit?.detail && typeof limit.detail === 'object' ? limit.detail : limit
+function normalizeKimiUsageSnapshot(payload: unknown): NormalizedProviderUsageSnapshot {
+  const record = usageRecord(payload)
+  const windows: NormalizedProviderUsageWindow[] = []
+  const rawLimits = record?.limits
+  const limits: unknown[] = Array.isArray(rawLimits) ? rawLimits : []
+  limits.forEach((limit, index) => {
+    const limitRecord = usageRecord(limit)
+    const detail = usageRecord(limitRecord?.detail) ?? limitRecord
     const windowEntry = kimiQuotaWindow(
       `kimi-limit-${index}`,
-      kimiDurationLabel(limit?.window),
+      kimiDurationLabel(limitRecord?.window),
       detail
     )
     if (windowEntry) windows.push(windowEntry)
   })
-  if (payload?.usage && typeof payload.usage === 'object') {
-    const weekly = kimiQuotaWindow('kimi-weekly', 'Weekly', payload.usage)
+  const usage = usageRecord(record?.usage)
+  if (usage) {
+    const weekly = kimiQuotaWindow('kimi-weekly', 'Weekly', usage)
     if (weekly) windows.push(weekly)
   }
   return {
@@ -4825,7 +4865,7 @@ function normalizeKimiUsageSnapshot(payload: any): any {
   }
 }
 
-async function fetchKimiUsageSnapshot(): Promise<any> {
+async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot> {
   const now = Date.now()
   if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_FRESH_TTL_MS) {
     return kimiUsageCache.snapshot
@@ -14620,9 +14660,6 @@ if (isGeminiMcpBridgeProcess) {
           return providerAdapters.require(assertProviderId(provider)).cancel(runId)
         },
         respondApprovalFn: async (requestId, action) => {
-          // iOS-side decision values are a strict subset of AgentApprovalAction
-          // ('accept' | 'acceptForSession' | 'decline'). Pass-through is safe.
-          // Phase B3: now routed through approvalService.resolve().
           return approvalService?.resolve(requestId, action) ?? false
         },
         registerApnsTokenFn: async (action) => {
@@ -14638,6 +14675,44 @@ if (isGeminiMcpBridgeProcess) {
               reason: err instanceof Error ? err.message : String(err)
             }
           }
+        },
+        setYoloModeFn: async (enabled) => {
+          setSessionYoloMode(enabled)
+          return { enabled: getSessionYoloMode().enabled }
+        },
+        togglePinWorkspaceFn: async (action) => {
+          const workspaceRecord = AppStore.getWorkspaces().find(
+            (workspace) => workspace.id === action.workspaceId
+          )
+          if (!workspaceRecord) {
+            return {
+              pinned: false,
+              reason: `Workspace id "${action.workspaceId}" is not registered`
+            }
+          }
+          AppStore.addOrUpdateWorkspace(workspaceRecord.path, { pinned: action.pinned })
+          broadcastWorkspaceUpdate(action.workspaceId)
+          broadcastWorkspaceList()
+          return { pinned: action.pinned }
+        },
+        togglePinChatFn: async (action) => {
+          const chat = AppStore.getChat(action.appChatId)
+          if (!chat) {
+            return {
+              pinned: false,
+              reason: `Chat id "${action.appChatId}" was not found`
+            }
+          }
+          if (chat.workspaceId && chat.workspaceId !== action.workspaceId) {
+            return {
+              pinned: Boolean(chat.pinned),
+              reason: `Chat "${action.appChatId}" does not belong to workspace "${action.workspaceId}"`
+            }
+          }
+          chatService.saveChat({ ...chat, pinned: action.pinned })
+          broadcastThreadUpdate(action.appChatId)
+          broadcastThreadList()
+          return { pinned: action.pinned }
         },
         composerPromptFn: async (action) => {
           // Resolve workspace path from the iOS-supplied workspaceId.

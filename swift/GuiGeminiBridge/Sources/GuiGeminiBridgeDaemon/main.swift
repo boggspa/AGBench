@@ -6,7 +6,7 @@ import BridgeLANTransport
 /// GuiGeminiBridgeDaemon — Phase C0 proof-of-life entry point.
 ///
 /// At this stage the daemon does nothing beyond:
-///   1. Configure `BridgeProductConfiguration.current` with GUIGemini's
+///   1. Configure `BridgeProductConfiguration.current` with AGBench's
 ///      product identifiers (so the BridgeCore transport stack uses the
 ///      right ALPN / Keychain entries / Bonjour service name when we wire
 ///      it up in Phase C2).
@@ -18,19 +18,19 @@ import BridgeLANTransport
 /// Phase C1 will replace the print-and-block loop with a real JSON-RPC
 /// dispatch over stdio. For now, this is enough to prove:
 ///   - The package compiles cleanly against BridgeCore.
-///   - `BridgeProductConfiguration` accepts a GUIGemini preset and the
+///   - `BridgeProductConfiguration` accepts an AGBench preset and the
 ///     transport identifiers swap correctly.
 ///   - Electron can spawn + monitor the daemon process.
 
-// MARK: - GUIGemini product preset
+// MARK: - AGBench product preset
 
-/// Identifiers the GUIGemini iOS bridge will use. Mirrors the shape of
-/// `BridgeProductConfiguration.codex` but with GUIGemini-specific values.
+/// Identifiers the AGBench iOS bridge will use. Mirrors the shape of
+/// `BridgeProductConfiguration.codex` but with AGBench-specific values.
 /// Bundle IDs / app group / Bonjour service names / Keychain scopes all
 /// distinct so a single iPhone can pair with both companions without
 /// identifier collisions.
 private let guiGeminiConfiguration = BridgeProductConfiguration(
-    displayName: "GUIGemini",
+    displayName: "AGBench",
     macBundleIdentifier: "com.example.AGBench.mac",
     iosBundleIdentifier: "com.example.AGBench.ios",
     appGroupIdentifier: "group.com.example.AGBench",
@@ -52,7 +52,7 @@ private let guiGeminiConfiguration = BridgeProductConfiguration(
     )
 )
 
-// Install the GUIGemini preset BEFORE any BridgeCore consumer reads
+// Install the AGBench preset BEFORE any BridgeCore consumer reads
 // `.current`. Subsequent transport spin-up (Phase C2) will pick this up.
 BridgeProductConfiguration.current = guiGeminiConfiguration
 

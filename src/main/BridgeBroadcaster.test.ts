@@ -79,6 +79,7 @@ describe('workspaceRecordToSummary', () => {
       path: '/tmp/projects/alpha',
       chatCount: 2,
       runningChatCount: 1,
+      pinned: false,
       lastActivityAt: new Date(ws.lastOpenedAt).toISOString()
     })
   })
@@ -112,6 +113,7 @@ describe('chatRecordToSummary', () => {
       workspaceId: 'workspace-1',
       provider: 'claude',
       status: 'idle',
+      pinned: false,
       lastMessageAt: new Date(chat.updatedAt).toISOString()
     })
   })
@@ -124,6 +126,30 @@ describe('chatRecordToSummary', () => {
       ]
     })
     expect(chatRecordToSummary(chat).status).toBe('running')
+  })
+
+  it('includes the latest running run id and stable start time', () => {
+    const chat = makeChat({
+      runs: [
+        { runId: 'older', startedAt: '2026-05-15T11:00:00Z', status: 'running' },
+        { runId: 'newer', startedAt: '2026-05-15T12:00:00Z', status: 'running' }
+      ]
+    })
+    expect(chatRecordToSummary(chat)).toMatchObject({
+      runId: 'newer',
+      runStartedAt: '2026-05-15T12:00:00.000Z'
+    })
+  })
+
+  it('forwards parent and pinned metadata for sub-thread rendering', () => {
+    const chat = makeChat({
+      parentChatId: 'parent-1',
+      pinned: true
+    })
+    expect(chatRecordToSummary(chat)).toMatchObject({
+      parentChatId: 'parent-1',
+      pinned: true
+    })
   })
 
   it('collapses success_with_warnings to success', () => {

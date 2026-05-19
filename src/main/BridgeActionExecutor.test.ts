@@ -6,7 +6,10 @@ import type {
   BridgeComposerPromptAction,
   BridgeQuestionRejectAction,
   BridgeQuestionReplyAction,
-  BridgeRegisterApnsTokenAction
+  BridgeRegisterApnsTokenAction,
+  BridgeSetYoloModeAction,
+  BridgeTogglePinChatAction,
+  BridgeTogglePinWorkspaceAction
 } from './BridgeActionPayload'
 
 const sample = {
@@ -49,7 +52,22 @@ const sample = {
     pairID: 'pair-1',
     deviceToken: 'abc123def456',
     env: 'production'
-  } satisfies BridgeRegisterApnsTokenAction
+  } satisfies BridgeRegisterApnsTokenAction,
+  setYoloMode: {
+    kind: 'setYoloMode',
+    enabled: true
+  } satisfies BridgeSetYoloModeAction,
+  togglePinChat: {
+    kind: 'togglePinChat',
+    workspaceId: 'ws-1',
+    appChatId: 'chat-1',
+    pinned: true
+  } satisfies BridgeTogglePinChatAction,
+  togglePinWorkspace: {
+    kind: 'togglePinWorkspace',
+    workspaceId: 'ws-1',
+    pinned: true
+  } satisfies BridgeTogglePinWorkspaceAction
 }
 
 describe('NoopActionExecutor', () => {
@@ -61,7 +79,10 @@ describe('NoopActionExecutor', () => {
       executor.executeQuestionReject(sample.questionReject),
       executor.executeComposerPrompt(sample.composerPrompt),
       executor.executeCancelRun(sample.cancelRun),
-      executor.executeRegisterApnsToken(sample.registerApnsToken)
+      executor.executeRegisterApnsToken(sample.registerApnsToken),
+      executor.executeSetYoloMode(sample.setYoloMode),
+      executor.executeTogglePinChat(sample.togglePinChat),
+      executor.executeTogglePinWorkspace(sample.togglePinWorkspace)
     ])
     for (const r of results) {
       expect(r.executed).toBe(false)
@@ -74,6 +95,9 @@ describe('NoopActionExecutor', () => {
     expect(results[3].message).toContain('t-1')
     expect(results[4].message).toContain('run-42')
     expect(results[5].message).toContain('pair-1')
+    expect(results[6].message).toContain('true')
+    expect(results[7].message).toContain('chat-1')
+    expect(results[8].message).toContain('ws-1')
   })
 })
 
@@ -123,6 +147,70 @@ describe('MainProcessActionExecutor.executeCancelRun', () => {
   })
 })
 
+describe('MainProcessActionExecutor session and pin controls', () => {
+  const cancelRunFn = vi.fn().mockResolvedValue(true)
+
+  it('updates YOLO mode through setYoloModeFn', async () => {
+    const setYoloModeFn = vi.fn().mockResolvedValue({ enabled: true })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, setYoloModeFn })
+    const result = await executor.executeSetYoloMode(sample.setYoloMode)
+    expect(setYoloModeFn).toHaveBeenCalledWith(true)
+    expect(result).toMatchObject({
+      executed: true,
+      data: { enabled: true }
+    })
+  })
+
+  it('reports setYoloModeFn failures without throwing', async () => {
+    const setYoloModeFn = vi.fn().mockRejectedValue(new Error('session store unavailable'))
+    const executor = new MainProcessActionExecutor({ cancelRunFn, setYoloModeFn })
+    const result = await executor.executeSetYoloMode(sample.setYoloMode)
+    expect(result.executed).toBe(false)
+    expect(result.message).toMatch(/session store unavailable/)
+  })
+
+  it('updates a chat pin through togglePinChatFn', async () => {
+    const togglePinChatFn = vi.fn().mockResolvedValue({ pinned: true })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, togglePinChatFn })
+    const result = await executor.executeTogglePinChat(sample.togglePinChat)
+    expect(togglePinChatFn).toHaveBeenCalledWith(sample.togglePinChat)
+    expect(result).toMatchObject({
+      executed: true,
+      data: { appChatId: 'chat-1', pinned: true }
+    })
+  })
+
+  it('surfaces togglePinChatFn decline reasons', async () => {
+    const togglePinChatFn = vi.fn().mockResolvedValue({ pinned: false, reason: 'chat missing' })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, togglePinChatFn })
+    const result = await executor.executeTogglePinChat(sample.togglePinChat)
+    expect(result.executed).toBe(false)
+    expect(result.message).toBe('chat missing')
+  })
+
+  it('updates a workspace pin through togglePinWorkspaceFn', async () => {
+    const togglePinWorkspaceFn = vi.fn().mockResolvedValue({ pinned: true })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, togglePinWorkspaceFn })
+    const result = await executor.executeTogglePinWorkspace(sample.togglePinWorkspace)
+    expect(togglePinWorkspaceFn).toHaveBeenCalledWith(sample.togglePinWorkspace)
+    expect(result).toMatchObject({
+      executed: true,
+      data: { workspaceId: 'ws-1', pinned: true }
+    })
+  })
+
+  it('surfaces togglePinWorkspaceFn decline reasons', async () => {
+    const togglePinWorkspaceFn = vi.fn().mockResolvedValue({
+      pinned: false,
+      reason: 'workspace missing'
+    })
+    const executor = new MainProcessActionExecutor({ cancelRunFn, togglePinWorkspaceFn })
+    const result = await executor.executeTogglePinWorkspace(sample.togglePinWorkspace)
+    expect(result.executed).toBe(false)
+    expect(result.message).toBe('workspace missing')
+  })
+})
+
 describe('MainProcessActionExecutor.executeApprovalReply', () => {
   const cancelRunFn = vi.fn().mockResolvedValue(true)
 
@@ -145,16 +233,24 @@ describe('MainProcessActionExecutor.executeApprovalReply', () => {
     expect(result.data).toMatchObject({ toolCallId: 'tc-99', decision: 'accept' })
   })
 
-  it('passes through all three decisions', async () => {
+  it('passes through all five decisions', async () => {
     const respondApprovalFn = vi.fn().mockResolvedValue(true)
     const executor = new MainProcessActionExecutor({ cancelRunFn, respondApprovalFn })
-    for (const decision of ['accept', 'acceptForSession', 'decline'] as const) {
+    for (const decision of [
+      'accept',
+      'acceptForSession',
+      'acceptForWorkspace',
+      'decline',
+      'cancel'
+    ] as const) {
       await executor.executeApprovalReply({ ...sample.approvalReply, decision })
     }
     expect(respondApprovalFn.mock.calls.map((c) => c[1])).toEqual([
       'accept',
       'acceptForSession',
-      'decline'
+      'acceptForWorkspace',
+      'decline',
+      'cancel'
     ])
   })
 
@@ -190,9 +286,7 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
   })
 
   it('dispatches the full action payload to composerPromptFn', async () => {
-    const composerPromptFn = vi
-      .fn()
-      .mockResolvedValue({ dispatched: true, appRunId: 'run-xyz' })
+    const composerPromptFn = vi.fn().mockResolvedValue({ dispatched: true, appRunId: 'run-xyz' })
     const executor = new MainProcessActionExecutor({ cancelRunFn, composerPromptFn })
     const result = await executor.executeComposerPrompt(sample.composerPrompt)
     expect(composerPromptFn).toHaveBeenCalledTimes(1)
@@ -235,9 +329,7 @@ describe('MainProcessActionExecutor.executeComposerPrompt', () => {
   it('reports executed=false when composerPromptFn returns dispatched=true but no appRunId', async () => {
     // Defensive: shouldn't happen in practice but the contract requires
     // an appRunId for a successful dispatch.
-    const composerPromptFn = vi
-      .fn()
-      .mockResolvedValue({ dispatched: true, appRunId: null })
+    const composerPromptFn = vi.fn().mockResolvedValue({ dispatched: true, appRunId: null })
     const executor = new MainProcessActionExecutor({ cancelRunFn, composerPromptFn })
     const result = await executor.executeComposerPrompt(sample.composerPrompt)
     expect(result.executed).toBe(false)

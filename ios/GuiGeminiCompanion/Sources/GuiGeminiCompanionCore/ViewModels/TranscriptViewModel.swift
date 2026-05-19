@@ -4,18 +4,21 @@ import BridgeCore
 import AGBenchRunActivityShared
 
 /// TranscriptViewModel — consumes a `GuiGeminiBridgeClient.runEvents`
-/// stream and renders an append-only list of events for the UI.
+/// stream and exposes BOTH the raw `events` log (for the legacy iPad
+/// timeline and the live-activity reducer) AND a coalesced
+/// `TranscriptStore` that groups streaming text deltas into message
+/// bubbles (for the new `TranscriptView` rendering).
 ///
-/// Today's shape is intentionally simple: every BridgeRunEvent that
-/// arrives gets appended. The view shows them in chronological order.
-/// When iOS-side filtering (subscribe to specific chats / runs) is added,
-/// the filter goes here so the underlying stream stays generic.
+/// Why both shapes side by side: the live-activity reducer downstream
+/// in `AGBenchRunActivityEventReducer` consumes raw events one-by-one,
+/// and the iPad's `iPadThreadPane` still wants the dense timeline as a
+/// secondary tab. The bubble view consumes `TranscriptStore.groups`.
+/// Both are derived from the same authoritative event sequence so there
+/// is no risk of the two diverging.
 ///
-/// Memory: capped to `maxRetained` events (default 500). Older events
-/// drop off the front when the cap is exceeded. UI consumers can hold a
-/// per-chat / per-run scroll position via the event identifiers since
-/// each carries a `publishedAt` timestamp that orders monotonically per
-/// stream.
+/// Memory: events are capped at `maxRetained` (default 500); groups at
+/// `TranscriptStore.maxRetainedGroups` (default 200). Older entries
+/// drop off the front when the cap is exceeded.
 @Observable
 @MainActor
 public final class TranscriptViewModel {
@@ -25,6 +28,10 @@ public final class TranscriptViewModel {
     public private(set) var lastStatus: String?
     /// Human-readable direct route currently carrying the bridge.
     public private(set) var activeRouteLabel: String?
+    /// Coalesced bubble groups built from `events`. The new transcript
+    /// view binds to this directly; the legacy timeline still walks the
+    /// raw `events` array.
+    public let transcriptStore: TranscriptStore
 
     public let maxRetained: Int
 
@@ -36,22 +43,26 @@ public final class TranscriptViewModel {
 
     public init(
         maxRetained: Int = 500,
-        liveActivityController: AGBenchLiveActivityController? = nil
+        liveActivityController: AGBenchLiveActivityController? = nil,
+        transcriptStore: TranscriptStore? = nil
     ) {
         self.maxRetained = maxRetained
         self.liveActivityController = liveActivityController
+        self.transcriptStore = transcriptStore ?? TranscriptStore()
     }
 
     /// Subscribe to a client's streams. Cancels any previous
     /// subscription. The view model retains the subscription tasks; call
     /// `detach()` when the view goes away.
-    public func attach(to client: GuiGeminiBridgeClient) {
+    public func attach(to client: GuiGeminiBridgeClient, consumeRunEvents: Bool = true) {
         detach()
-        let runEvents = client.runEvents
         let status = client.status
-        runEventsTask = Task { [weak self] in
-            for await event in runEvents {
-                self?.append(event)
+        if consumeRunEvents {
+            let runEvents = client.runEvents
+            runEventsTask = Task { [weak self] in
+                for await event in runEvents {
+                    self?.append(event)
+                }
             }
         }
         statusTask = Task { [weak self] in
@@ -77,9 +88,29 @@ public final class TranscriptViewModel {
         liveActivityReducer = AGBenchRunActivityEventReducer()
     }
 
-    /// Wipe the buffer — usually wired to a "clear transcript" button.
+    /// Wipe both the raw event buffer and the coalesced group array.
+    /// Usually wired to a "clear transcript" button.
     public func clear() {
         events.removeAll()
+        transcriptStore.clear()
+    }
+
+    // MARK: - Test affordance
+
+    /// Inject a synthetic event for unit tests and previews. Goes through
+    /// the same path as live events so tests exercise both the raw `events`
+    /// append AND the coalesced `transcriptStore` mutation.
+    public func ingestForTesting(_ event: BridgeRunEvent) {
+        append(event)
+    }
+
+    /// Ingest one live bridge event when a higher-level coordinator owns
+    /// the `client.runEvents` subscription and fans events out to multiple
+    /// consumers. This avoids multiple `AsyncStream` iterators racing each
+    /// other in production while preserving the old `attach(to:)` default
+    /// for tests and standalone use.
+    public func ingest(_ event: BridgeRunEvent) {
+        append(event)
     }
 
     // MARK: - Private
@@ -100,6 +131,7 @@ public final class TranscriptViewModel {
         if events.count > maxRetained {
             events.removeFirst(events.count - maxRetained)
         }
+        transcriptStore.ingest(event)
         guard let effect = liveActivityReducer.apply(event),
               let liveActivityController
         else { return }

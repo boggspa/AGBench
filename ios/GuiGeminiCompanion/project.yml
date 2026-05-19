@@ -26,13 +26,19 @@ targets:
       - target: AGBenchRunActivityExtension
     settings:
       base:
-        PRODUCT_NAME: "GUIGemini"
+        PRODUCT_NAME: "AGBench"
         PRODUCT_BUNDLE_IDENTIFIER: com.example.AGBench.ios
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/GuiGeminiCompanion.entitlements
-        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_APPICON_NAME: AGBenchAppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         TARGETED_DEVICE_FAMILY: "1,2"  # iPhone + iPad
         SUPPORTED_INTERFACE_ORIENTATIONS: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+      configs:
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: App/GuiGeminiCompanion.entitlements
+        Release:
+          CODE_SIGN_ENTITLEMENTS: App/GuiGeminiCompanion.release.entitlements
   AGBenchRunActivityExtension:
     type: app-extension
     platform: iOS

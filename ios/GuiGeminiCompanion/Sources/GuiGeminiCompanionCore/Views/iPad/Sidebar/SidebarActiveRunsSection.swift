@@ -200,27 +200,21 @@ private struct SidebarActiveRunRow: View {
 @available(iOS 17.0, macOS 14.0, *)
 extension SidebarActiveRunsSection {
     /// Provider label matching the Mac sidebar's capitalized short forms.
+    /// Thin shim over `ProviderPalette.displayLabel(forRaw:)` so the iPad
+    /// shell and the Live Activity widget share the same capitalisation
+    /// logic.
     static func providerLabel(for provider: String?) -> String {
-        switch (provider ?? "").lowercased() {
-        case "codex": return "Codex"
-        case "claude": return "Claude"
-        case "kimi": return "Kimi"
-        case "gemini": return "Gemini"
-        case let other where !other.isEmpty: return other.capitalized
-        default: return "Agent"
-        }
+        ProviderPalette.displayLabel(forRaw: provider)
     }
 
-    /// Tint per provider — kept simple, all rooted in the Theme tokens so
-    /// the palette stays consistent with the rest of the shell.
+    /// Tint per provider sourced from the shared `ProviderPalette`. Prior
+    /// to the palette landing this routed each provider to a different
+    /// `Theme` token (which produced colours that drifted from the
+    /// desktop's `--provider-*-color` CSS variables); now both this row
+    /// and the Live Activity badge resolve through the same shared
+    /// `Color` for each provider.
     static func providerTint(for provider: String?) -> Color {
-        switch (provider ?? "").lowercased() {
-        case "codex": return Theme.secondaryAccent
-        case "claude": return Theme.warning
-        case "kimi": return Theme.success
-        case "gemini": return Theme.accent
-        default: return Theme.accent
-        }
+        ProviderPalette.color(forRaw: provider, fallback: Theme.accent)
     }
 
     /// Format elapsed time as `Xs` / `Xm` / `Xh Ym`. Mirrors the Mac

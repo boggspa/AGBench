@@ -49,6 +49,12 @@ public final class iPadSidebarStore {
 
     public func applyWorkspaceList(_ payloads: [WorkspaceSummaryPayload]) {
         let mapped = payloads.map { Self.workspaceSummary(from: $0) }
+        for payload in payloads {
+            SidebarSubThreadAssociation.recordWorkspacePinned(
+                workspaceId: payload.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+                pinned: payload.pinned
+            )
+        }
         let next = Self.sortedWorkspaces(Self.deduplicate(mapped))
         if next != workspaces {
             workspaces = next
@@ -57,6 +63,10 @@ public final class iPadSidebarStore {
 
     public func applyWorkspaceUpdate(_ payload: WorkspaceSummaryPayload) {
         let summary = Self.workspaceSummary(from: payload)
+        SidebarSubThreadAssociation.recordWorkspacePinned(
+            workspaceId: payload.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+            pinned: payload.pinned
+        )
         var byID = Dictionary(uniqueKeysWithValues: workspaces.map { ($0.id, $0) })
         byID[summary.id] = summary
         let next = Self.sortedWorkspaces(Array(byID.values))
@@ -67,6 +77,19 @@ public final class iPadSidebarStore {
 
     public func applyThreadList(_ payloads: [ThreadSummaryPayload]) {
         let mapped = payloads.map { Self.threadSummary(from: $0) }
+        for payload in payloads {
+            // Stash optional sub-thread + pinned metadata in the side table
+            // since `iPadThreadSummary` doesn't carry those fields.
+            let trimmedID = payload.chatId.trimmingCharacters(in: .whitespacesAndNewlines)
+            SidebarSubThreadAssociation.recordParent(
+                threadId: trimmedID,
+                parentChatId: payload.parentChatId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            SidebarSubThreadAssociation.recordThreadPinned(
+                threadId: trimmedID,
+                pinned: payload.pinned
+            )
+        }
         let next = Self.sortedThreads(Self.deduplicate(mapped))
         if next != threads {
             threads = next
@@ -75,6 +98,15 @@ public final class iPadSidebarStore {
 
     public func applyThreadUpdate(_ payload: ThreadSummaryPayload) {
         let summary = Self.threadSummary(from: payload)
+        let trimmedID = payload.chatId.trimmingCharacters(in: .whitespacesAndNewlines)
+        SidebarSubThreadAssociation.recordParent(
+            threadId: trimmedID,
+            parentChatId: payload.parentChatId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        SidebarSubThreadAssociation.recordThreadPinned(
+            threadId: trimmedID,
+            pinned: payload.pinned
+        )
         var byID = Dictionary(uniqueKeysWithValues: threads.map { ($0.id, $0) })
         byID[summary.id] = summary
         let next = Self.sortedThreads(Array(byID.values))
@@ -115,8 +147,8 @@ public final class iPadSidebarStore {
             title: trimmedTitle.isEmpty ? trimmedID : trimmedTitle,
             subtitle: payload.status,
             provider: provider.isEmpty ? nil : provider,
-            runID: nil,
-            lastActivityAt: payload.lastMessageAt ?? Date(),
+            runID: payload.runId,
+            lastActivityAt: payload.runStartedAt ?? payload.lastMessageAt ?? Date(),
             isActive: isActive
         )
     }

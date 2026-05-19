@@ -112,10 +112,16 @@ public struct ApprovalCardsView: View {
                     .frame(width: 34, height: 34)
                     .background(Theme.warning.opacity(0.14), in: Circle())
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(approval.summary)
+                    Text(approval.displayTitle)
                         .font(Theme.Typography.body)
                         .foregroundStyle(Theme.Text.primary)
                         .fixedSize(horizontal: false, vertical: true)
+                    if let body = approval.body, !body.isEmpty {
+                        Text(body)
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.Text.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     HStack(spacing: 6) {
                         Label(approval.workspaceId, systemImage: "folder")
                         Text("/")
@@ -128,25 +134,10 @@ public struct ApprovalCardsView: View {
                 }
             }
             HStack(spacing: Theme.Spacing.tight) {
-                Button(role: .destructive) {
-                    Task { await viewModel.respond(to: approval, decision: .decline) }
-                } label: {
-                    Label("Decline", systemImage: "xmark")
-                }
-                .buttonStyle(.bordered)
                 Spacer()
-                Button {
-                    Task { await viewModel.respond(to: approval, decision: .accept) }
-                } label: {
-                    Label("Once", systemImage: "checkmark")
+                ForEach(approval.resolvedActions, id: \.rawValue) { decision in
+                    approvalButton(approval: approval, decision: decision)
                 }
-                .buttonStyle(.bordered)
-                Button {
-                    Task { await viewModel.respond(to: approval, decision: .acceptForSession) }
-                } label: {
-                    Label("For session", systemImage: "checkmark.seal.fill")
-                }
-                .buttonStyle(.borderedProminent)
             }
             .font(Theme.Typography.caption)
         }
@@ -157,5 +148,55 @@ public struct ApprovalCardsView: View {
                 .stroke(Theme.warning.opacity(0.30), lineWidth: 1)
         )
         .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    @ViewBuilder
+    private func approvalButton(
+        approval: PendingApproval,
+        decision: BridgeActionPayload.ApprovalDecision
+    ) -> some View {
+        if prominentDecision(decision) {
+            Button(role: destructiveDecision(decision) ? .destructive : nil) {
+                Task { await viewModel.respond(to: approval, decision: decision) }
+            } label: {
+                Label(decisionLabel(decision), systemImage: decisionIcon(decision))
+            }
+            .buttonStyle(.borderedProminent)
+        } else {
+            Button(role: destructiveDecision(decision) ? .destructive : nil) {
+                Task { await viewModel.respond(to: approval, decision: decision) }
+            } label: {
+                Label(decisionLabel(decision), systemImage: decisionIcon(decision))
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    private func destructiveDecision(_ decision: BridgeActionPayload.ApprovalDecision) -> Bool {
+        decision == .decline || decision == .cancel
+    }
+
+    private func prominentDecision(_ decision: BridgeActionPayload.ApprovalDecision) -> Bool {
+        decision == .acceptForSession || decision == .acceptForWorkspace
+    }
+
+    private func decisionLabel(_ decision: BridgeActionPayload.ApprovalDecision) -> String {
+        switch decision {
+        case .accept: return "Once"
+        case .acceptForSession: return "For session"
+        case .acceptForWorkspace: return "For workspace"
+        case .decline: return "Decline"
+        case .cancel: return "Cancel"
+        }
+    }
+
+    private func decisionIcon(_ decision: BridgeActionPayload.ApprovalDecision) -> String {
+        switch decision {
+        case .accept: return "checkmark"
+        case .acceptForSession: return "checkmark.seal.fill"
+        case .acceptForWorkspace: return "building.2.crop.circle"
+        case .decline: return "xmark"
+        case .cancel: return "stop.circle"
+        }
     }
 }

@@ -19,10 +19,20 @@ import Foundation
 /// The decoder there is strict; missing fields decode as `unknown` and the
 /// router denies with "unrecognized action kind".
 public enum BridgeActionPayload: Sendable, Equatable {
+    /// Mirrors the desktop's full five-way approval decision set. The
+    /// desktop's `AgentApprovalAction` union in
+    /// `src/main/services/ApprovalService.ts` is the source of truth:
+    /// `accept | acceptForSession | acceptForWorkspace | decline | cancel`.
+    /// Today the iPhone surface used to ship only three of those —
+    /// `acceptForWorkspace` and `cancel` were missing, so the operator
+    /// flow on phone was lossy versus desktop. This enum now matches the
+    /// desktop one-to-one.
     public enum ApprovalDecision: String, Sendable, Equatable {
         case accept
         case acceptForSession
+        case acceptForWorkspace
         case decline
+        case cancel
     }
 
     public enum ApnsEnv: String, Sendable, Equatable {
@@ -70,6 +80,21 @@ public enum BridgeActionPayload: Sendable, Equatable {
         deviceToken: String,
         env: ApnsEnv
     )
+    /// Toggle the desktop's session-scope "YOLO" (auto-approve every
+    /// guarded tool) flag. When `enabled == true` the desktop must flip
+    /// `sessionYoloState.enabled` and bypass all subsequent approval
+    /// prompts for the session; setting back to `false` restores the
+    /// normal approval flow. The user wants this surfaced on iOS for
+    /// unattended overnight runs so the iPhone can flip YOLO without
+    /// returning to the Mac.
+    case setYoloMode(enabled: Bool)
+    /// Toggle a pinned-chat flag in the desktop's AppStore. Pinned chats
+    /// sort to the top of the sidebar and survive the workspace
+    /// truncation cap.
+    case togglePinChat(workspaceId: String, appChatId: String, pinned: Bool)
+    /// Toggle a pinned-workspace flag. Same semantics as togglePinChat
+    /// but at the workspace level.
+    case togglePinWorkspace(workspaceId: String, pinned: Bool)
 
     /// Encode the action as UTF-8 JSON bytes matching the Electron-side
     /// decoder shape. Sorted keys for stable wire bytes (helps logging /
@@ -139,6 +164,24 @@ public enum BridgeActionPayload: Sendable, Equatable {
                 "pairID": pairID,
                 "deviceToken": deviceToken,
                 "env": env.rawValue
+            ]
+        case .setYoloMode(let enabled):
+            return [
+                "kind": "setYoloMode",
+                "enabled": enabled
+            ]
+        case .togglePinChat(let workspaceId, let appChatId, let pinned):
+            return [
+                "kind": "togglePinChat",
+                "workspaceId": workspaceId,
+                "appChatId": appChatId,
+                "pinned": pinned
+            ]
+        case .togglePinWorkspace(let workspaceId, let pinned):
+            return [
+                "kind": "togglePinWorkspace",
+                "workspaceId": workspaceId,
+                "pinned": pinned
             ]
         }
     }
