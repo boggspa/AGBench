@@ -321,6 +321,18 @@ export interface GeminiAuthProfile {
   vertexLocation?: string;
 }
 
+export type GeminiOAuthLoginStatusValue = 'idle' | 'running' | 'success' | 'error' | 'cancelled';
+
+export interface GeminiOAuthLoginStatus {
+  profileId: string;
+  status: GeminiOAuthLoginStatusValue;
+  startedAt?: string;
+  finishedAt?: string;
+  message?: string;
+  authUrl?: string;
+  exitCode?: number | null;
+}
+
 export interface GeminiAuthProfileSummary {
   id: string;
   label: string;
@@ -333,12 +345,16 @@ export interface GeminiAuthProfileSummary {
   lastUsedAt?: string;
   vertexProject?: string;
   vertexLocation?: string;
+  oauthEmail?: string;
+  oauthConfigured?: boolean;
+  oauthLogin?: GeminiOAuthLoginStatus;
 }
 
 export interface GeminiAuthStatus extends ProviderApiKeyStatus {
   activeProfileId?: string | null;
   activeProfileLabel?: string;
   profiles: GeminiAuthProfileSummary[];
+  oauthLogin?: GeminiOAuthLoginStatus;
 }
 
 export interface AppSettings {

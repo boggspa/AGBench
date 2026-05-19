@@ -1,4 +1,4 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, GeminiOAuthLoginStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 
@@ -190,6 +190,9 @@ declare global {
       saveGeminiAuthProfile: (profile: { id?: string; label?: string; kind: 'api-key' | 'vertex-ai' | 'google-oauth'; apiKey?: string; vertexProject?: string; vertexLocation?: string; makeDefault?: boolean }) => Promise<GeminiAuthProfileSummary>
       deleteGeminiAuthProfile: (profileId: string) => Promise<boolean>
       setDefaultGeminiAuthProfile: (profileId: string | null) => Promise<GeminiAuthProfileSummary | null>
+      startGeminiOAuthLogin: (input?: { id?: string; profileId?: string; label?: string; makeDefault?: boolean }) => Promise<GeminiOAuthLoginStatus>
+      getGeminiOAuthLoginStatus: (profileId?: string | null) => Promise<GeminiOAuthLoginStatus | null>
+      cancelGeminiOAuthLogin: (profileId?: string | null) => Promise<GeminiOAuthLoginStatus | null>
       getAgentMcpStatus: (provider: ProviderId) => Promise<any>
       listAgentThreads: (provider: ProviderId, params?: any) => Promise<any>
       forkAgentThread: (provider: ProviderId, threadId: string, params?: any) => Promise<any>

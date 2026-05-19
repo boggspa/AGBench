@@ -38,7 +38,7 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, GeminiAuthProfile, GeminiAuthProfileKind, GeminiAuthProfileSummary, GeminiAuthStatus } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, GeminiAuthProfile, GeminiAuthProfileKind, GeminiAuthProfileSummary, GeminiAuthStatus, GeminiOAuthLoginStatus } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -84,6 +84,13 @@ let geminiMcpBroker: NetServer | null = null
 let geminiMcpBrokerStartPromise: Promise<void> | null = null
 let geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
+
+type GeminiOAuthLoginRun = GeminiOAuthLoginStatus & {
+  child?: ChildProcess;
+  output?: string;
+}
+
+const geminiOAuthLoginRuns = new Map<string, GeminiOAuthLoginRun>()
 
 // Phase J3: session-scoped YOLO mode. When the user clicks "Trust this
 // session" on any approval modal, every subsequent `requestAgenticServiceApproval`
@@ -3161,6 +3168,61 @@ function getGeminiAuthProfiles(): GeminiAuthProfile[] {
     : []
 }
 
+function geminiAuthProfileDirName(profileId: string): string {
+  return profileId.replace(/[^a-zA-Z0-9._-]/g, '_') || 'profile'
+}
+
+function geminiOAuthProfilesRoot(): string {
+  return join(app.getPath('userData'), 'gemini-oauth-profiles')
+}
+
+function geminiOAuthProfileHome(profileId: string): string {
+  return join(geminiOAuthProfilesRoot(), geminiAuthProfileDirName(profileId), 'home')
+}
+
+function geminiOAuthProfileGeminiDir(profileId: string): string {
+  return join(geminiOAuthProfileHome(profileId), '.gemini')
+}
+
+function geminiOAuthProfileSettingsPath(profileId: string): string {
+  return join(geminiOAuthProfileGeminiDir(profileId), 'settings.json')
+}
+
+function geminiOAuthProfileCredentialsPath(profileId: string): string {
+  return join(geminiOAuthProfileGeminiDir(profileId), 'oauth_creds.json')
+}
+
+function geminiOAuthProfileAccountsPath(profileId: string): string {
+  return join(geminiOAuthProfileGeminiDir(profileId), 'google_accounts.json')
+}
+
+function readJsonFileSync(filePath: string): any | null {
+  try {
+    return JSON.parse(fsSync.readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+function readGeminiOAuthProfileCredentialsSync(profileId: string): { accessToken: string; refreshToken?: string; expiresAt?: number } | null {
+  const parsed = readJsonFileSync(geminiOAuthProfileCredentialsPath(profileId))
+  const accessToken = String(parsed?.access_token || '').trim()
+  if (!accessToken) return null
+  const refreshToken = typeof parsed?.refresh_token === 'string' ? parsed.refresh_token.trim() : undefined
+  const expiryDate = Number(parsed?.expiry_date || 0)
+  return {
+    accessToken,
+    refreshToken: refreshToken || undefined,
+    expiresAt: Number.isFinite(expiryDate) && expiryDate > 0 ? expiryDate : undefined
+  }
+}
+
+function readGeminiOAuthProfileEmail(profileId: string): string | undefined {
+  const parsed = readJsonFileSync(geminiOAuthProfileAccountsPath(profileId))
+  const active = typeof parsed?.active === 'string' ? parsed.active.trim() : ''
+  return active || undefined
+}
+
 function getDefaultGeminiAuthProfileId(): string | null {
   const settings = AppStore.getSettings()
   const configured = optionalStringOrNull(settings.defaultGeminiAuthProfileId)
@@ -3170,23 +3232,34 @@ function getDefaultGeminiAuthProfileId(): string | null {
 
 function summarizeGeminiAuthProfile(profile: GeminiAuthProfile, defaultProfileId: string | null): GeminiAuthProfileSummary {
   const hasApiKey = Boolean(decryptApiKey(profile.encryptedApiKey))
+  const oauthConfigured = profile.kind === 'google-oauth'
+    ? Boolean(readGeminiOAuthProfileCredentialsSync(profile.id))
+    : undefined
   const configured = profile.kind === 'api-key'
     ? hasApiKey
     : profile.kind === 'vertex-ai'
       ? Boolean(profile.vertexProject?.trim())
-      : true
+      : Boolean(oauthConfigured)
+  const login = geminiOAuthLoginRuns.get(profile.id)
   return {
     id: profile.id,
     label: profile.label || profile.kind,
     kind: profile.kind,
     configured,
     isDefault: profile.id === defaultProfileId,
-    authState: configured ? profile.kind : 'incomplete',
+    authState: configured ? profile.kind : profile.kind === 'google-oauth' ? 'oauth-login-required' : 'incomplete',
     createdAt: profile.createdAt,
     updatedAt: profile.updatedAt,
     lastUsedAt: profile.lastUsedAt,
     vertexProject: profile.vertexProject,
-    vertexLocation: profile.vertexLocation
+    vertexLocation: profile.vertexLocation,
+    ...(profile.kind === 'google-oauth'
+      ? {
+          oauthConfigured: Boolean(oauthConfigured),
+          oauthEmail: readGeminiOAuthProfileEmail(profile.id),
+          ...(login ? { oauthLogin: publicGeminiOAuthLoginStatus(login) } : {})
+        }
+      : {})
   }
 }
 
@@ -3213,7 +3286,10 @@ async function getGeminiAuthStatusSnapshot(): Promise<GeminiAuthStatus> {
     binaryPath: resolved.binaryPath || null,
     activeProfileId: defaultProfileId,
     activeProfileLabel: activeProfile?.label,
-    profiles
+    profiles,
+    ...(defaultProfileId && geminiOAuthLoginRuns.has(defaultProfileId)
+      ? { oauthLogin: publicGeminiOAuthLoginStatus(geminiOAuthLoginRuns.get(defaultProfileId)!) }
+      : {})
   }
 }
 
@@ -3254,16 +3330,28 @@ function saveGeminiAuthProfile(input: unknown): GeminiAuthProfileSummary {
   return summarizeGeminiAuthProfile(nextProfile, defaultGeminiAuthProfileId)
 }
 
-function deleteGeminiAuthProfile(profileId: unknown): boolean {
+async function deleteGeminiAuthProfile(profileId: unknown): Promise<boolean> {
   const id = requireNonEmptyString(profileId, 'Gemini auth profile id')
   const profiles = getGeminiAuthProfiles()
   const nextProfiles = profiles.filter((profile) => profile.id !== id)
   if (nextProfiles.length === profiles.length) return false
+  const loginRun = geminiOAuthLoginRuns.get(id)
+  if (loginRun?.status === 'running') {
+    loginRun.child?.kill()
+    geminiOAuthLoginRuns.set(id, {
+      ...loginRun,
+      child: undefined,
+      status: 'cancelled',
+      finishedAt: new Date().toISOString(),
+      message: 'Gemini Google login was cancelled because the profile was deleted.'
+    })
+  }
   const currentDefault = getDefaultGeminiAuthProfileId()
   AppStore.updateSettings({
     geminiAuthProfiles: nextProfiles,
     defaultGeminiAuthProfileId: currentDefault === id ? nextProfiles[0]?.id || null : currentDefault
   })
+  await removeGeminiOAuthProfileFiles(id)
   return true
 }
 
@@ -3291,6 +3379,226 @@ function markGeminiAuthProfileUsed(profileId?: string | null): void {
       profile.id === profileId ? { ...profile, lastUsedAt: now, updatedAt: now } : profile
     )
   })
+}
+
+async function startGeminiOAuthLogin(input: unknown): Promise<GeminiOAuthLoginStatus> {
+  const source = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+  const requestedId = optionalString(source.profileId) || optionalString(source.id)
+  const profiles = getGeminiAuthProfiles()
+  let profile = requestedId ? profiles.find((candidate) => candidate.id === requestedId) : undefined
+  if (profile && profile.kind !== 'google-oauth') {
+    throw new Error('Selected Gemini auth profile is not a Google login profile.')
+  }
+  if (!profile) {
+    const saved = saveGeminiAuthProfile({
+      id: requestedId,
+      label: optionalString(source.label) || 'Google login',
+      kind: 'google-oauth',
+      makeDefault: source.makeDefault !== false
+    })
+    profile = getGeminiAuthProfiles().find((candidate) => candidate.id === saved.id)
+  } else if (source.makeDefault !== false) {
+    AppStore.updateSettings({ defaultGeminiAuthProfileId: profile.id })
+  }
+  if (!profile) {
+    throw new Error('Gemini Google login profile could not be created.')
+  }
+
+  const activeRun = geminiOAuthLoginRuns.get(profile.id)
+  if (activeRun?.status === 'running') {
+    return publicGeminiOAuthLoginStatus(activeRun)
+  }
+
+  const resolved = await resolveCliProviderBinary('gemini')
+  if (!resolved.binaryPath) {
+    throw new Error(resolved.error || 'Gemini CLI is not configured.')
+  }
+
+  await ensureGeminiOAuthProfileSettings(profile.id)
+  const startedAt = new Date().toISOString()
+  const run: GeminiOAuthLoginRun = {
+    profileId: profile.id,
+    status: 'running',
+    startedAt,
+    message: 'Opening Google login in the browser.',
+    output: ''
+  }
+  geminiOAuthLoginRuns.set(profile.id, run)
+
+  const child = spawn(resolved.binaryPath, ['--list-sessions'], {
+    cwd: app.getPath('home'),
+    shell: false,
+    env: createCliEnv({
+      ...GEMINI_AUTH_CLEAR_ENV,
+      FORCE_COLOR: '0',
+      NO_COLOR: '1',
+      GEMINI_CLI_HOME: geminiOAuthProfileHome(profile.id),
+      GEMINI_DEFAULT_AUTH_TYPE: 'oauth-personal',
+      GOOGLE_APPLICATION_CREDENTIALS: '',
+      GOOGLE_GENAI_USE_GCA: 'true',
+      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id
+    }, resolved.binaryPath)
+  })
+  run.child = child
+
+  const capture = (chunk: Buffer | string): void => {
+    const text = chunk.toString()
+    run.output = `${run.output || ''}${text}`.slice(-12_000)
+    const urlMatch = text.match(/https:\/\/accounts\.google\.com\/[^\s]+/)
+    if (urlMatch) {
+      run.authUrl = urlMatch[0]
+      run.message = 'Google login is waiting for browser approval.'
+    }
+  }
+
+  child.stdout?.on('data', capture)
+  child.stderr?.on('data', capture)
+  child.stdin?.write('y\n')
+  child.stdin?.end()
+  child.on('error', (error) => {
+    geminiOAuthLoginRuns.set(profile!.id, {
+      ...run,
+      child: undefined,
+      status: 'error',
+      finishedAt: new Date().toISOString(),
+      message: `Failed to start Gemini Google login: ${error.message}`
+    })
+  })
+  child.on('close', (code) => {
+    const credentials = readGeminiOAuthProfileCredentialsSync(profile!.id)
+    const email = readGeminiOAuthProfileEmail(profile!.id)
+    const finishedAt = new Date().toISOString()
+    if (credentials) {
+      geminiOAuthLoginRuns.set(profile!.id, {
+        ...run,
+        child: undefined,
+        status: 'success',
+        finishedAt,
+        exitCode: code,
+        message: email ? `Signed in as ${email}.` : 'Google login completed.'
+      })
+      markGeminiAuthProfileUsed(profile!.id)
+      return
+    }
+    const output = (run.output || '').trim()
+    geminiOAuthLoginRuns.set(profile!.id, {
+      ...run,
+      child: undefined,
+      status: code === null ? 'cancelled' : 'error',
+      finishedAt,
+      exitCode: code,
+      message: output
+        ? output.split(/\r?\n/).slice(-4).join(' ').slice(0, 500)
+        : `Gemini Google login exited with code ${code ?? 'unknown'} before credentials were saved.`
+    })
+  })
+
+  return publicGeminiOAuthLoginStatus(run)
+}
+
+function getGeminiOAuthLoginStatus(profileId: unknown): GeminiOAuthLoginStatus | null {
+  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
+  if (!id) return null
+  const run = geminiOAuthLoginRuns.get(id)
+  return run ? publicGeminiOAuthLoginStatus(run) : null
+}
+
+function cancelGeminiOAuthLogin(profileId: unknown): GeminiOAuthLoginStatus | null {
+  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
+  if (!id) return null
+  const run = geminiOAuthLoginRuns.get(id)
+  if (!run) return null
+  if (run.status === 'running') {
+    run.child?.kill()
+    const next = {
+      ...run,
+      child: undefined,
+      status: 'cancelled' as const,
+      finishedAt: new Date().toISOString(),
+      message: 'Gemini Google login was cancelled.'
+    }
+    geminiOAuthLoginRuns.set(id, next)
+    return publicGeminiOAuthLoginStatus(next)
+  }
+  return publicGeminiOAuthLoginStatus(run)
+}
+
+function publicGeminiOAuthLoginStatus(run: GeminiOAuthLoginRun): GeminiOAuthLoginStatus {
+  return {
+    profileId: run.profileId,
+    status: run.status,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    message: run.message,
+    authUrl: run.authUrl,
+    exitCode: run.exitCode
+  }
+}
+
+async function readJsonFile(filePath: string): Promise<any | null> {
+  try {
+    return JSON.parse(await fs.readFile(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+async function writeJsonFile(filePath: string, value: any): Promise<void> {
+  await fs.mkdir(dirname(filePath), { recursive: true })
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+}
+
+function withNestedValue(base: any, pathParts: string[], value: unknown): any {
+  const root = base && typeof base === 'object' && !Array.isArray(base) ? { ...base } : {}
+  let cursor = root
+  for (let index = 0; index < pathParts.length - 1; index += 1) {
+    const key = pathParts[index]
+    const existing = cursor[key]
+    cursor[key] = existing && typeof existing === 'object' && !Array.isArray(existing) ? { ...existing } : {}
+    cursor = cursor[key]
+  }
+  cursor[pathParts[pathParts.length - 1]] = value
+  return root
+}
+
+async function ensureGeminiOAuthProfileSettings(profileId: string, options: { includeMcp?: boolean } = {}): Promise<void> {
+  const settingsPath = geminiOAuthProfileSettingsPath(profileId)
+  const existing = await readJsonFile(settingsPath)
+  let next = withNestedValue(existing, ['security', 'auth', 'selectedType'], 'oauth-personal')
+  if (options.includeMcp) {
+    next = {
+      ...next,
+      mcpServers: {
+        ...(next.mcpServers && typeof next.mcpServers === 'object' && !Array.isArray(next.mcpServers) ? next.mcpServers : {}),
+        [GEMINI_MCP_SERVER_NAME]: {
+          command: process.execPath,
+          args: agentbenchMcpBridgeArgs(geminiMcpSocketPath()),
+          trust: true,
+          includeTools: [...AGENTBENCH_MCP_TOOLS]
+        }
+      }
+    }
+  } else if (next.mcpServers && typeof next.mcpServers === 'object' && !Array.isArray(next.mcpServers)) {
+    const mcpServers = { ...next.mcpServers }
+    delete mcpServers[GEMINI_MCP_SERVER_NAME]
+    next = { ...next, mcpServers }
+  }
+  await writeJsonFile(settingsPath, next)
+}
+
+async function removeGeminiOAuthProfileFiles(profileId: string): Promise<void> {
+  await fs.rm(join(geminiOAuthProfilesRoot(), geminiAuthProfileDirName(profileId)), {
+    recursive: true,
+    force: true
+  }).catch(() => {})
+}
+
+async function ensureGeminiAuthProfileMaterialized(profileId?: string | null, options: { includeMcp?: boolean } = {}): Promise<void> {
+  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
+  if (!id) return
+  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
+  if (!profile || profile.kind !== 'google-oauth') return
+  await ensureGeminiOAuthProfileSettings(profile.id, options)
 }
 
 const GEMINI_AUTH_CLEAR_ENV: Record<string, string> = {
@@ -3329,6 +3637,8 @@ function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<string, 
   return {
     ...GEMINI_AUTH_CLEAR_ENV,
     AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+    GEMINI_CLI_HOME: geminiOAuthProfileHome(profile.id),
+    GOOGLE_APPLICATION_CREDENTIALS: '',
     GOOGLE_GENAI_USE_GCA: 'true'
   }
 }
@@ -3599,8 +3909,12 @@ let geminiRefreshPromise: Promise<string | null> | null = null
 let geminiLastRefreshFailureAt = 0
 
 function geminiCliRootPath(): string {
-  const configured = process.env.GEMINI_CLI_HOME || process.env.GEMINI_HOME
-  return configured && configured.trim() ? expandHomePath(configured.trim()) : join(os.homedir(), '.gemini')
+  const configuredHome = process.env.GEMINI_CLI_HOME
+  if (configuredHome && configuredHome.trim()) {
+    return join(expandHomePath(configuredHome.trim()), '.gemini')
+  }
+  const configuredRoot = process.env.GEMINI_HOME
+  return configuredRoot && configuredRoot.trim() ? expandHomePath(configuredRoot.trim()) : join(os.homedir(), '.gemini')
 }
 
 async function readGeminiOAuthCredentials(): Promise<{ accessToken: string; refreshToken?: string; expiresAt?: number } | null> {
@@ -7366,6 +7680,10 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
 
   void emitProviderCapabilityWarnings(event.sender, 'gemini', payload.workspace, effectiveApprovalMode, route)
+
+  await ensureGeminiAuthProfileMaterialized(payload.geminiAuthProfileId || getDefaultGeminiAuthProfileId(), {
+    includeMcp: settings.geminiMcpBridgeEnabled || requiresGeminiWriteTools
+  })
 
   const env = createCliEnv({
     FORCE_COLOR: '0',
@@ -11914,6 +12232,18 @@ app.whenReady().then(() => {
     return setDefaultGeminiAuthProfile(profileId)
   })
 
+  ipcMain.handle('start-gemini-oauth-login', async (_, input: unknown) => {
+    return startGeminiOAuthLogin(input)
+  })
+
+  ipcMain.handle('get-gemini-oauth-login-status', async (_, profileId: unknown) => {
+    return getGeminiOAuthLoginStatus(profileId)
+  })
+
+  ipcMain.handle('cancel-gemini-oauth-login', async (_, profileId: unknown) => {
+    return cancelGeminiOAuthLogin(profileId)
+  })
+
   ipcMain.handle('get-agent-mcp-status', async (_, provider: ProviderId) => {
     return getAgentMcpStatusSnapshot(assertProviderId(provider))
   })
@@ -12297,6 +12627,10 @@ app.whenReady().then(() => {
       event.sender.send('gemini-session-exit', -1)
       return
     }
+
+    await ensureGeminiAuthProfileMaterialized(getDefaultGeminiAuthProfileId(), {
+      includeMcp: settings.geminiMcpBridgeEnabled || requiresGeminiWriteTools
+    })
 
     const env: Record<string, string> = createCliEnv({
       FORCE_COLOR: '1',

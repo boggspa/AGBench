@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'rea
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, GeminiOAuthLoginStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -4438,6 +4438,14 @@ function App(): React.JSX.Element {
 	    }
 	  }
 
+	  useEffect(() => {
+	    if (!geminiAuthProfiles.some((profile) => profile.oauthLogin?.status === 'running')) return
+	    const interval = window.setInterval(() => {
+	      void refreshGeminiAuthStatus()
+	    }, 2000)
+	    return () => window.clearInterval(interval)
+	  }, [geminiAuthProfiles])
+
 	  const normalizeDiffPath = (value: string, workspacePathOverride?: string | null): string => {
     const normalized = value.replace(/\\/g, '/')
     const workspacePath = (workspacePathOverride || activeRunWorkspacePathRef.current || '').replace(/\\/g, '/')
@@ -4930,6 +4938,25 @@ function App(): React.JSX.Element {
 	    if (typeof window.api.saveGeminiAuthProfile !== 'function') return
 	    await window.api.saveGeminiAuthProfile(profile).catch((error) => {
 	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to save Gemini auth profile: ${redactLog(String(error))}` }])
+	    })
+	    await refreshGeminiAuthStatus()
+	  }
+
+	  const handleStartGeminiOAuthLogin = async (input: { profileId?: string; label?: string; makeDefault?: boolean }): Promise<GeminiOAuthLoginStatus | null> => {
+	    if (typeof window.api.startGeminiOAuthLogin !== 'function') return null
+	    const status = await window.api.startGeminiOAuthLogin(input).catch((error) => {
+	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to start Gemini Google login: ${redactLog(String(error))}` }])
+	      return null
+	    })
+	    await refreshGeminiAuthStatus()
+	    markPersistentSessionRestartNeeded('Gemini auth profile changed. Restart the persistent session to apply the selected account.')
+	    return status
+	  }
+
+	  const handleCancelGeminiOAuthLogin = async (profileId?: string | null) => {
+	    if (typeof window.api.cancelGeminiOAuthLogin !== 'function') return
+	    await window.api.cancelGeminiOAuthLogin(profileId).catch((error) => {
+	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to cancel Gemini Google login: ${redactLog(String(error))}` }])
 	    })
 	    await refreshGeminiAuthStatus()
 	  }
@@ -11361,6 +11388,8 @@ function App(): React.JSX.Element {
 	              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
 	              onClearKimiApiKey={() => void handleClearKimiApiKey()}
 	              onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
+	              onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
+	              onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}
 	              onSetDefaultGeminiAuthProfile={(profileId) => void handleSetDefaultGeminiAuthProfile(profileId)}
 	              onDeleteGeminiAuthProfile={(profileId) => void handleDeleteGeminiAuthProfile(profileId)}
 	              onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}

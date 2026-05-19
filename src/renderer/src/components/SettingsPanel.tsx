@@ -92,6 +92,8 @@ interface SettingsPanelProps {
     vertexLocation?: string;
     makeDefault?: boolean;
   }) => void;
+  onStartGeminiOAuthLogin?: (input: { profileId?: string; label?: string; makeDefault?: boolean }) => void;
+  onCancelGeminiOAuthLogin?: (profileId?: string | null) => void;
   onSetDefaultGeminiAuthProfile?: (profileId: string | null) => void;
   onDeleteGeminiAuthProfile?: (profileId: string) => void;
   onInstallGeminiMcpBridge: () => void;
@@ -262,6 +264,8 @@ export function SettingsPanel({
   onStoreKimiApiKey,
   onClearKimiApiKey,
   onSaveGeminiAuthProfile,
+  onStartGeminiOAuthLogin,
+  onCancelGeminiOAuthLogin,
   onSetDefaultGeminiAuthProfile,
   onDeleteGeminiAuthProfile,
   onInstallGeminiMcpBridge,
@@ -291,6 +295,9 @@ export function SettingsPanel({
     composerFontFamily || COMPOSER_FONT_MATCH_TRANSCRIPT
   );
   const previewComposerFontFamily = resolveComposerFontFamily(composerFontFamily, transcriptFontFamily);
+  const selectedGeminiAuthProfile = geminiAuthProfiles.find((profile) => profile.id === geminiAuthStatus?.activeProfileId);
+  const selectedGeminiOAuthLogin = selectedGeminiAuthProfile?.oauthLogin || geminiAuthStatus?.oauthLogin;
+  const isGeminiOAuthLoginRunning = selectedGeminiOAuthLogin?.status === 'running';
   const canLoadInstalledFonts =
     typeof window !== 'undefined' &&
     typeof (window as LocalFontWindow).queryLocalFonts === 'function';
@@ -999,6 +1006,42 @@ export function SettingsPanel({
 	                Save Vertex
 	              </button>
 	            </div>
+	            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-xs)', flexWrap: 'wrap' }}>
+	              <button
+	                className="btn btn-sm"
+	                type="button"
+	                disabled={isGeminiOAuthLoginRunning}
+	                onClick={() => {
+	                  onStartGeminiOAuthLogin?.({
+	                    profileId: selectedGeminiAuthProfile?.kind === 'google-oauth' ? selectedGeminiAuthProfile.id : undefined,
+	                    label: geminiProfileLabel.trim() || 'Google login',
+	                    makeDefault: true
+	                  });
+	                  setGeminiProfileLabel('');
+	                }}
+	              >
+	                {selectedGeminiAuthProfile?.kind === 'google-oauth' ? 'Log in selected Google profile' : 'Add Google login'}
+	              </button>
+	              {isGeminiOAuthLoginRunning && (
+	                <button
+	                  className="btn btn-sm btn-ghost"
+	                  type="button"
+	                  onClick={() => onCancelGeminiOAuthLogin?.(selectedGeminiAuthProfile?.id || geminiAuthStatus?.activeProfileId || null)}
+	                >
+	                  Cancel login
+	                </button>
+	              )}
+	              {selectedGeminiOAuthLogin?.message && (
+	                <span style={{ fontSize: '0.75rem', color: selectedGeminiOAuthLogin.status === 'error' ? 'var(--color-danger, #f85149)' : 'var(--text-tertiary)' }}>
+	                  {selectedGeminiOAuthLogin.message}
+	                </span>
+	              )}
+	              {selectedGeminiAuthProfile?.oauthEmail && (
+	                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>
+	                  {selectedGeminiAuthProfile.oauthEmail}
+	                </span>
+	              )}
+	            </div>
 	            {geminiAuthStatus?.activeProfileId && (
 	              <button
 	                className="btn btn-sm btn-ghost"
@@ -1010,7 +1053,7 @@ export function SettingsPanel({
 	              </button>
 	            )}
 	            <p className="settings-hint" style={{ margin: 0 }}>
-	              Browser Google-account switching is not exposed by this Gemini CLI build; API-key and Vertex profiles are isolated by AGBench env injection.
+	              Google login profiles use isolated Gemini CLI homes under AGBench, so browser OAuth persists across app restarts without using your host ~/.gemini account.
 	            </p>
 	          </div>
 	        </div>
