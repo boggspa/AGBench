@@ -323,7 +323,10 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
     // AFTER calling abort(), so the for-await loop pulls the second
     // chunk only once the signal is already aborted (matching how a
     // real SDK suspends between server responses).
-    let releaseSecond: (() => void) | null = null
+    // Initial no-op satisfies TS strict-null-check; the Promise constructor
+    // runs synchronously so the real `resolve` is in place before we ever
+    // call this through.
+    let releaseSecond: () => void = () => {}
     const secondReady = new Promise<void>((resolve) => {
       releaseSecond = resolve
     })
@@ -353,7 +356,7 @@ describe('GeminiApiProvider (Phase M1 Step 2)', () => {
     // gate so the loop wakes up, observes signal.aborted, and bails.
     await new Promise((resolve) => setImmediate(resolve))
     controllerHolder.current?.abort()
-    releaseSecond?.()
+    releaseSecond()
     await expect(promise).resolves.toBe(true)
     expect(exits).toEqual([{ provider: 'gemini', code: 130 }])
     expect(finishes).toEqual([{ runId: 'run-1', status: 'cancelled' }])
