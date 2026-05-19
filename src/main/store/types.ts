@@ -307,6 +307,40 @@ export interface ProviderApiKeyStatus {
   binaryPath?: string | null;
 }
 
+export type GeminiAuthProfileKind = 'api-key' | 'vertex-ai' | 'google-oauth';
+
+export interface GeminiAuthProfile {
+  id: string;
+  label: string;
+  kind: GeminiAuthProfileKind;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  encryptedApiKey?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}
+
+export interface GeminiAuthProfileSummary {
+  id: string;
+  label: string;
+  kind: GeminiAuthProfileKind;
+  configured: boolean;
+  isDefault: boolean;
+  authState: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+  vertexProject?: string;
+  vertexLocation?: string;
+}
+
+export interface GeminiAuthStatus extends ProviderApiKeyStatus {
+  activeProfileId?: string | null;
+  activeProfileLabel?: string;
+  profiles: GeminiAuthProfileSummary[];
+}
+
 export interface AppSettings {
   activeProvider?: ProviderId;
   windowBounds?: {
@@ -320,6 +354,8 @@ export interface AppSettings {
   claudeApiKey?: string;
   kimiBinaryPath?: string;
   kimiApiKey?: string;
+  defaultGeminiAuthProfileId?: string | null;
+  geminiAuthProfiles?: GeminiAuthProfile[];
   codexUsageCredential?: {
     encryptedAccessToken?: string;
     accountId?: string;
@@ -688,6 +724,7 @@ export interface ChatRun {
   preSnapshot?: WorkspaceSnapshot;
   postSnapshot?: WorkspaceSnapshot;
   runtimeProfileId?: string;
+  geminiAuthProfileId?: string | null;
   handoffSourceRunId?: string;
 }
 
@@ -1045,6 +1082,7 @@ export interface ScheduledTask {
   codexServiceTier?: string | null;
   kimiThinkingEnabled?: boolean;
   runtimeProfileId?: string;
+  geminiAuthProfileId?: string | null;
   handoffSourceRunId?: string;
   runAt: string;
   timezone: string;
@@ -1099,6 +1137,7 @@ export interface RunQueueRequestSnapshot {
   scheduledTaskId?: string;
   preserveComposer?: boolean;
   runtimeProfileId?: string;
+  geminiAuthProfileId?: string | null;
   handoffSourceRunId?: string;
 }
 

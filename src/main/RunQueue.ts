@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto'
-import type { ProviderId, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
+import type { RunQueueJob, RunQueueJobFilter, RunQueueJobStatus } from './store/types'
 
 export type RunQueueJobInput = Omit<
   RunQueueJob,
@@ -186,21 +186,22 @@ export function sortRunQueueJobs(jobs: RunQueueJob[]): RunQueueJob[] {
 }
 
 /**
- * Scheduling decision: find the first runnable job whose provider isn't
- * currently busy. Pure function — the caller supplies an `isProviderBusy`
- * predicate so this stays decoupled from React refs / RunManager singletons.
+ * Scheduling decision: find the first runnable job that the caller says can
+ * dispatch now. Pure function — the caller supplies a per-job predicate so this
+ * stays decoupled from React refs / RunManager singletons.
  *
  * Extracted from the renderer's pump effect (App.tsx ~7374) so the same
  * decision can run in main (for future bridge-driven dequeues) without
  * forking the logic.
  *
  * Returns the index into `jobs` of the chosen job, or -1 when no job is
- * runnable (queue empty, or every queued job's provider is already busy).
+ * runnable (queue empty, or every queued job is blocked by the caller's
+ * dispatch predicate).
  */
-export function findNextRunnableQueueIndex<T extends { provider: ProviderId }>(
+export function findNextRunnableQueueIndex<T>(
   jobs: T[],
-  isProviderBusy: (provider: ProviderId) => boolean
+  canDispatch: (job: T) => boolean
 ): number {
   if (!jobs || jobs.length === 0) return -1
-  return jobs.findIndex((job) => !isProviderBusy(job.provider))
+  return jobs.findIndex((job) => canDispatch(job))
 }

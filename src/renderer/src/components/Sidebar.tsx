@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect, type MouseEvent, type ReactNode } from 'react';
+import { useMemo, useRef, useState, useEffect, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types';
 import { selectRecentChats } from '../lib/recentChatsList';
 import { ActiveRunsSection } from './ActiveRunsSection';
@@ -76,6 +76,7 @@ interface SidebarProps {
 }
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids';
 
 function FolderSymbolIcon() {
   return (
@@ -409,6 +410,19 @@ export function Sidebar({
       return new Set<string>();
     }
   });
+  const [collapsedSubThreadParentIds, setCollapsedSubThreadParentIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY);
+      if (!raw) return new Set<string>();
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return new Set<string>();
+      }
+      return new Set(parsed.filter((value): value is string => typeof value === 'string'));
+    } catch {
+      return new Set<string>();
+    }
+  });
   const chatsByWorkspace = getChatsByWorkspace(chats);
   const globalChats = chats.filter((chat) => !chat.archived && chat.scope === 'global');
   const runningChatIdSet = new Set(runningChatIds);
@@ -489,17 +503,20 @@ export function Sidebar({
   // each parent immediately followed by its children, indented. We
   // build it once per render — sidebar size is bounded so cost is
   // negligible.
-  const subThreadsByParentId = new Map<string, ChatRecord[]>();
-  for (const chat of chats) {
-    if (!chat.parentChatId) continue;
-    const bucket = subThreadsByParentId.get(chat.parentChatId);
-    if (bucket) bucket.push(chat);
-    else subThreadsByParentId.set(chat.parentChatId, [chat]);
-  }
-  // Sort each bucket oldest-first for stable presentation.
-  for (const bucket of subThreadsByParentId.values()) {
-    bucket.sort((a, b) => a.createdAt - b.createdAt);
-  }
+  const subThreadsByParentId = useMemo(() => {
+    const grouped = new Map<string, ChatRecord[]>();
+    for (const chat of chats) {
+      if (!chat.parentChatId) continue;
+      const bucket = grouped.get(chat.parentChatId);
+      if (bucket) bucket.push(chat);
+      else grouped.set(chat.parentChatId, [chat]);
+    }
+    // Sort each bucket oldest-first for stable presentation.
+    for (const bucket of grouped.values()) {
+      bucket.sort((a, b) => a.createdAt - b.createdAt);
+    }
+    return grouped;
+  }, [chats]);
   const currentScopeTitle = currentWorkspace?.displayName || (currentChat?.scope === 'global' ? 'Global chats' : 'AGBench');
   const currentScopeMeta = currentWorkspace
     ? getWorkspaceMeta(currentWorkspace)
@@ -540,6 +557,31 @@ export function Sidebar({
     }
   }, [expandedWorkspaceIds]);
 
+  useEffect(() => {
+    if (chats.length === 0) return;
+    const parentIds = new Set(subThreadsByParentId.keys());
+    setCollapsedSubThreadParentIds((prev) => {
+      const next = new Set<string>();
+      for (const parentId of prev) {
+        if (parentIds.has(parentId)) {
+          next.add(parentId);
+        }
+      }
+      if (next.size === prev.size) {
+        return prev;
+      }
+      return next;
+    });
+  }, [chats.length, subThreadsByParentId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY, JSON.stringify([...collapsedSubThreadParentIds]));
+    } catch {
+      // Ignore persistence errors in constrained environments.
+    }
+  }, [collapsedSubThreadParentIds]);
+
   // Phase J2: auto-expand a workspace when a fresh sub-thread arrives
   // inside it. Pairs with the App.tsx onChatUpdated insert-when-not-
   // found fix so a brand-new sub-thread shows up in the sidebar
@@ -559,26 +601,41 @@ export function Sidebar({
       return;
     }
     const workspaceIdsToExpand = new Set<string>();
+    const parentChatIdsToExpand = new Set<string>();
     for (const chat of chats) {
       if (seenChatIdsRef.current.has(chat.appChatId)) continue;
       seenChatIdsRef.current.add(chat.appChatId);
       if (!chat.parentChatId) continue;
       if (chat.archived) continue;
+      parentChatIdsToExpand.add(chat.parentChatId);
       if (!chat.workspaceId) continue;
       workspaceIdsToExpand.add(chat.workspaceId);
     }
-    if (workspaceIdsToExpand.size === 0) return;
-    setExpandedWorkspaceIds((prev) => {
-      let changed = false;
-      const next = new Set(prev);
-      for (const id of workspaceIdsToExpand) {
-        if (!next.has(id)) {
-          next.add(id);
-          changed = true;
+    if (workspaceIdsToExpand.size > 0) {
+      setExpandedWorkspaceIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of workspaceIdsToExpand) {
+          if (!next.has(id)) {
+            next.add(id);
+            changed = true;
+          }
         }
-      }
-      return changed ? next : prev;
-    });
+        return changed ? next : prev;
+      });
+    }
+    if (parentChatIdsToExpand.size > 0) {
+      setCollapsedSubThreadParentIds((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const id of parentChatIdsToExpand) {
+          if (next.delete(id)) {
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
   }, [chats]);
 
   const toggleWorkspaceExpanded = (event: MouseEvent<HTMLButtonElement>, workspaceId: string) => {
@@ -590,6 +647,23 @@ export function Sidebar({
         next.delete(workspaceId);
       } else {
         next.add(workspaceId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSubThreadsExpanded = (
+    event: MouseEvent<HTMLSpanElement> | KeyboardEvent<HTMLSpanElement>,
+    parentChatId: string
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setCollapsedSubThreadParentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(parentChatId)) {
+        next.delete(parentChatId);
+      } else {
+        next.add(parentChatId);
       }
       return next;
     });
@@ -964,6 +1038,9 @@ export function Sidebar({
                           // terminated, so the user can spot orchestrating
                           // chats at a glance without losing the history.
                           const subThreadCount = subThreads.length;
+                          const subThreadsExpanded = isSidebarSearchActive
+                            ? true
+                            : !collapsedSubThreadParentIds.has(chat.appChatId);
                           const liveSubThreadCount = subThreads.reduce(
                             (count, sub) => count + (runningChatIdSet.has(sub.appChatId) ? 1 : 0),
                             0
@@ -976,6 +1053,24 @@ export function Sidebar({
                                 className={`sidebar-item sidebar-chat-item provider-${chat.provider || 'gemini'} ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isChatRunning ? 'running' : ''}`}
                                 onClick={() => onSelectChat(chat)}
                               >
+                                {subThreadCount > 0 && (
+                                  <span
+                                    role="button"
+                                    tabIndex={0}
+                                    className="sidebar-tree-toggle sidebar-chat-tree-toggle"
+                                    onClick={(event) => toggleSubThreadsExpanded(event, chat.appChatId)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter' || event.key === ' ') {
+                                        toggleSubThreadsExpanded(event, chat.appChatId);
+                                      }
+                                    }}
+                                    title={subThreadsExpanded ? 'Collapse sub-threads' : 'Expand sub-threads'}
+                                    aria-label={subThreadsExpanded ? 'Collapse sub-threads' : 'Expand sub-threads'}
+                                    aria-expanded={subThreadsExpanded}
+                                  >
+                                    <ChevronSymbolIcon isExpanded={subThreadsExpanded} />
+                                  </span>
+                                )}
                                 <span className="sidebar-chat-copy" title={chat.title}>
                                   <span className="sidebar-chat-title-line">
                                     <SidebarProviderLabel provider={chat.provider} />
@@ -1049,7 +1144,7 @@ export function Sidebar({
                                   </span>
                                 )}
                               </button>
-                              {subThreads.length > 0 && (
+                              {subThreads.length > 0 && subThreadsExpanded && (
                                 <div className="sidebar-chat-children">
                                   {subThreads.map((subChat) => {
                                     const subRunning = runningChatIdSet.has(subChat.appChatId);

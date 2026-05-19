@@ -40,6 +40,7 @@ export interface ComposerInput {
   claudeReasoningEffort?: string | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
   chatSnapshot?: ChatRecord
 }
@@ -112,13 +113,20 @@ export class ComposerService {
         ? normalizeComposerExternalPathGrants(input.externalPathGrants || [])
         : []
     const finalPrompt = `${basePrompt}${attachmentPromptAppendix(imagePaths)}${provider === 'codex' ? externalPathGrantPromptAppendix(externalPathGrants) : ''}`
+    const geminiAuthProfileId = provider === 'gemini'
+      ? optionalStringOrNull(input.geminiAuthProfileId) ||
+        metadataString(chat, 'geminiAuthProfileId') ||
+        optionalStringOrNull(settings.defaultGeminiAuthProfileId) ||
+        null
+      : null
 
     const resumeDecision = resolveResumeDecision(
       provider,
       chat,
       requestedModel,
       approvalMode,
-      input.geminiWorktree
+      input.geminiWorktree,
+      geminiAuthProfileId
     )
     const lastCompletedCodexModel =
       provider === 'codex' ? getLastCompletedCodexRunModel(chat) : null
@@ -137,7 +145,13 @@ export class ComposerService {
       providerLabel: getProviderLabel(provider)
     })
 
-    const providerMetadataPatch = buildProviderMetadataPatch(composed, codexHandoffsApplied)
+    const providerMetadataPatchData = {
+      ...buildProviderMetadataPatch(composed, codexHandoffsApplied),
+      ...(provider === 'gemini' ? { geminiAuthProfileId } : {})
+    }
+    const providerMetadataPatch = Object.keys(providerMetadataPatchData).length > 0
+      ? providerMetadataPatchData
+      : undefined
     const payload: ComposerRunPayload = {
       provider,
       scope,
@@ -165,6 +179,7 @@ export class ComposerService {
       sessionTrust: provider === 'gemini' ? Boolean(input.sessionTrust) : false,
       geminiWorktree: scope !== 'global' && provider === 'gemini' ? input.geminiWorktree : null,
       runtimeProfileId: optionalString(input.runtimeProfileId),
+      geminiAuthProfileId,
       handoffSourceRunId: optionalString(input.handoffSourceRunId),
       composer: {
         finalPrompt,
@@ -257,12 +272,13 @@ function resolveResumeDecision(
   chat: ChatRecord,
   requestedModel: string | undefined,
   approvalMode: string,
-  worktree?: GeminiWorktreeLaunchOption
+  worktree?: GeminiWorktreeLaunchOption,
+  geminiAuthProfileId?: string | null
 ): { sessionId?: string; skippedReason?: string } {
   if (provider !== 'gemini') {
     return { sessionId: normalizeProviderSessionId(chat.linkedProviderSessionId) }
   }
-  return resolveGeminiResumeForRun(chat, requestedModel, approvalMode, worktree)
+  return resolveGeminiResumeForRun(chat, requestedModel, approvalMode, worktree, geminiAuthProfileId)
 }
 
 function normalizeProviderSessionId(value?: string | null): string | undefined {
@@ -399,7 +415,8 @@ function resolveGeminiResumeForRun(
   chat: ChatRecord,
   requestedModel: string | undefined,
   approvalMode: string,
-  worktree?: GeminiWorktreeLaunchOption
+  worktree?: GeminiWorktreeLaunchOption,
+  geminiAuthProfileId?: string | null
 ): { sessionId?: string; skippedReason?: string } {
   const sessionId = normalizeProviderSessionId(chat.linkedGeminiSessionId)
   if (!sessionId) {
@@ -416,6 +433,16 @@ function resolveGeminiResumeForRun(
   const lastRun = getLastGeminiRunForResume(chat)
   if (!lastRun) {
     return { sessionId }
+  }
+
+  const previousAuthProfileId = typeof lastRun.geminiAuthProfileId === 'string'
+    ? lastRun.geminiAuthProfileId
+    : null
+  const nextAuthProfileId = geminiAuthProfileId || null
+  if (previousAuthProfileId !== nextAuthProfileId) {
+    return {
+      skippedReason: 'Starting a fresh Gemini session because the selected Gemini auth profile changed.'
+    }
   }
 
   const previousApprovalMode = lastRun.approvalMode || 'default'

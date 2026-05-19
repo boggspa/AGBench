@@ -38,7 +38,7 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { runEventBus, makeElectronIpcSink, makeDebugLoggerSink, type RunEventChannel } from './RunEventBus'
 import { AppStore } from './store'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter } from './store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, ChatScope, AppearanceMode, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiSessionSummary, GeminiWorktreeLaunchOption, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServiceId, GeminiMcpBridgeStatus, ProviderCapabilityContract, RunQueueJob, RunQueueJobFilter, RunQueueJobStatus, RunEventInput, AgentApprovalAction, ApprovalLedgerFilter, ApprovalLedgerRequestInput, ProviderAdapterDescriptor, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, GeminiAuthProfile, GeminiAuthProfileKind, GeminiAuthProfileSummary, GeminiAuthStatus } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
 import { isCodexSandboxToolingFailure, isSwiftPmNestedSandboxFailure } from './SandboxFallback'
@@ -441,6 +441,7 @@ export interface AgentRunPayload {
   sessionTrust?: boolean
   geminiWorktree?: GeminiWorktreeLaunchOption
   runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
   runtimeProfile?: RuntimeProfile
 }
@@ -858,6 +859,7 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     sessionTrust: Boolean(payload.sessionTrust),
     geminiWorktree: (payload.geminiWorktree ?? null) as GeminiWorktreeLaunchOption,
     runtimeProfileId: optionalString(payload.runtimeProfileId),
+    geminiAuthProfileId: optionalStringOrNull(payload.geminiAuthProfileId),
     handoffSourceRunId: optionalString(payload.handoffSourceRunId)
   }
 }
@@ -954,6 +956,7 @@ function sanitizeScheduledTaskForSave(task: unknown): Omit<ScheduledTask, 'id' |
     provider: assertProviderId(input.provider),
     externalPathGrants: normalizeScheduledTaskExternalGrants(input.externalPathGrants),
     runtimeProfileId: optionalString(input.runtimeProfileId),
+    geminiAuthProfileId: optionalStringOrNull(input.geminiAuthProfileId),
     handoffSourceRunId: optionalString(input.handoffSourceRunId)
   } as Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
 }
@@ -983,6 +986,9 @@ function sanitizeScheduledTaskPatch(id: string, partial: unknown): Partial<Sched
   }
   if ('runtimeProfileId' in input) {
     sanitized.runtimeProfileId = optionalString(input.runtimeProfileId)
+  }
+  if ('geminiAuthProfileId' in input) {
+    sanitized.geminiAuthProfileId = optionalStringOrNull(input.geminiAuthProfileId)
   }
   if ('handoffSourceRunId' in input) {
     sanitized.handoffSourceRunId = optionalString(input.handoffSourceRunId)
@@ -2888,13 +2894,14 @@ async function getCliProviderStatus(provider: ProviderId) {
     }
   }
 
+  const geminiAuth = provider === 'gemini' ? await getGeminiAuthStatusSnapshot().catch(() => null) : null
   return {
     provider,
     label: providerDisplayName(provider),
     available: true,
     version: await readResolvedCliVersion(resolved),
     appServer: provider === 'kimi' ? 'wire-supported' : 'sdk-or-cli',
-    authState: provider === 'claude' ? await readClaudeAuthState(resolved) : 'unknown',
+    authState: provider === 'claude' ? await readClaudeAuthState(resolved) : geminiAuth?.authState || 'unknown',
     setupRequired: false,
     binaryPath: resolved.binaryPath,
     binarySource: resolved.source,
@@ -3141,6 +3148,189 @@ function getStoredClaudeApiKey(): string | null {
 
 function getStoredKimiApiKey(): string | null {
   return decryptApiKey(AppStore.getSettings().kimiApiKey)
+}
+
+function sanitizeGeminiAuthProfileKind(value: unknown): GeminiAuthProfileKind {
+  return value === 'vertex-ai' || value === 'google-oauth' ? value : 'api-key'
+}
+
+function getGeminiAuthProfiles(): GeminiAuthProfile[] {
+  const profiles = AppStore.getSettings().geminiAuthProfiles
+  return Array.isArray(profiles)
+    ? profiles.filter((profile) => profile && typeof profile.id === 'string')
+    : []
+}
+
+function getDefaultGeminiAuthProfileId(): string | null {
+  const settings = AppStore.getSettings()
+  const configured = optionalStringOrNull(settings.defaultGeminiAuthProfileId)
+  if (!configured) return null
+  return getGeminiAuthProfiles().some((profile) => profile.id === configured) ? configured : null
+}
+
+function summarizeGeminiAuthProfile(profile: GeminiAuthProfile, defaultProfileId: string | null): GeminiAuthProfileSummary {
+  const hasApiKey = Boolean(decryptApiKey(profile.encryptedApiKey))
+  const configured = profile.kind === 'api-key'
+    ? hasApiKey
+    : profile.kind === 'vertex-ai'
+      ? Boolean(profile.vertexProject?.trim())
+      : true
+  return {
+    id: profile.id,
+    label: profile.label || profile.kind,
+    kind: profile.kind,
+    configured,
+    isDefault: profile.id === defaultProfileId,
+    authState: configured ? profile.kind : 'incomplete',
+    createdAt: profile.createdAt,
+    updatedAt: profile.updatedAt,
+    lastUsedAt: profile.lastUsedAt,
+    vertexProject: profile.vertexProject,
+    vertexLocation: profile.vertexLocation
+  }
+}
+
+async function getGeminiAuthStatusSnapshot(): Promise<GeminiAuthStatus> {
+  const encryptionAvailable = safeStorage.isEncryptionAvailable()
+  const resolved = await resolveCliProviderBinary('gemini')
+  const defaultProfileId = getDefaultGeminiAuthProfileId()
+  const profiles = getGeminiAuthProfiles().map((profile) => summarizeGeminiAuthProfile(profile, defaultProfileId))
+  const activeProfile = profiles.find((profile) => profile.id === defaultProfileId)
+  const localOauthConfigured = await readGeminiOAuthCredentials().then(Boolean).catch(() => false)
+  const apiKeyConfigured = Boolean(activeProfile?.configured && activeProfile.kind === 'api-key')
+  const authState = activeProfile
+    ? activeProfile.authState
+    : localOauthConfigured
+      ? 'google-oauth'
+      : 'unknown'
+  const version = resolved.binaryPath ? await readResolvedCliVersion(resolved).catch(() => undefined) : undefined
+  return {
+    available: Boolean(resolved.binaryPath),
+    authState,
+    apiKeyConfigured,
+    encryptionAvailable,
+    version,
+    binaryPath: resolved.binaryPath || null,
+    activeProfileId: defaultProfileId,
+    activeProfileLabel: activeProfile?.label,
+    profiles
+  }
+}
+
+function saveGeminiAuthProfile(input: unknown): GeminiAuthProfileSummary {
+  const source = requireRecord(input, 'Gemini auth profile')
+  const profiles = getGeminiAuthProfiles()
+  const now = new Date().toISOString()
+  const id = optionalString(source.id) || `gemini-auth-${randomBytes(8).toString('hex')}`
+  const existing = profiles.find((profile) => profile.id === id)
+  const kind = sanitizeGeminiAuthProfileKind(source.kind || existing?.kind)
+  const label = optionalString(source.label) || existing?.label || (kind === 'api-key' ? 'Gemini API key' : kind === 'vertex-ai' ? 'Vertex AI' : 'Google login')
+  const rawApiKey = optionalString(source.apiKey)
+  const encryptedApiKey = kind === 'api-key'
+    ? (rawApiKey ? encryptApiKey(rawApiKey) || existing?.encryptedApiKey : existing?.encryptedApiKey)
+    : undefined
+  const nextProfile: GeminiAuthProfile = {
+    id,
+    label,
+    kind,
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+    lastUsedAt: existing?.lastUsedAt,
+    ...(encryptedApiKey ? { encryptedApiKey } : {}),
+    ...(kind === 'vertex-ai'
+      ? {
+          vertexProject: optionalString(source.vertexProject) || existing?.vertexProject,
+          vertexLocation: optionalString(source.vertexLocation) || existing?.vertexLocation || 'us-central1'
+        }
+      : {})
+  }
+  const nextProfiles = existing
+    ? profiles.map((profile) => profile.id === id ? nextProfile : profile)
+    : [...profiles, nextProfile]
+  const currentDefault = getDefaultGeminiAuthProfileId()
+  const makeDefault = source.makeDefault !== false && (!currentDefault || source.makeDefault === true || !existing)
+  const defaultGeminiAuthProfileId = makeDefault ? id : currentDefault
+  AppStore.updateSettings({ geminiAuthProfiles: nextProfiles, defaultGeminiAuthProfileId })
+  return summarizeGeminiAuthProfile(nextProfile, defaultGeminiAuthProfileId)
+}
+
+function deleteGeminiAuthProfile(profileId: unknown): boolean {
+  const id = requireNonEmptyString(profileId, 'Gemini auth profile id')
+  const profiles = getGeminiAuthProfiles()
+  const nextProfiles = profiles.filter((profile) => profile.id !== id)
+  if (nextProfiles.length === profiles.length) return false
+  const currentDefault = getDefaultGeminiAuthProfileId()
+  AppStore.updateSettings({
+    geminiAuthProfiles: nextProfiles,
+    defaultGeminiAuthProfileId: currentDefault === id ? nextProfiles[0]?.id || null : currentDefault
+  })
+  return true
+}
+
+function setDefaultGeminiAuthProfile(profileId: unknown): GeminiAuthProfileSummary | null {
+  const id = optionalStringOrNull(profileId)
+  if (!id) {
+    AppStore.updateSettings({ defaultGeminiAuthProfileId: null })
+    return null
+  }
+  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
+  if (!profile) {
+    throw new Error('Gemini auth profile was not found.')
+  }
+  AppStore.updateSettings({ defaultGeminiAuthProfileId: id })
+  return summarizeGeminiAuthProfile(profile, id)
+}
+
+function markGeminiAuthProfileUsed(profileId?: string | null): void {
+  if (!profileId) return
+  const profiles = getGeminiAuthProfiles()
+  if (!profiles.some((profile) => profile.id === profileId)) return
+  const now = new Date().toISOString()
+  AppStore.updateSettings({
+    geminiAuthProfiles: profiles.map((profile) =>
+      profile.id === profileId ? { ...profile, lastUsedAt: now, updatedAt: now } : profile
+    )
+  })
+}
+
+const GEMINI_AUTH_CLEAR_ENV: Record<string, string> = {
+  GEMINI_API_KEY: '',
+  GOOGLE_API_KEY: '',
+  GOOGLE_GENAI_API_KEY: '',
+  GOOGLE_GENAI_USE_VERTEXAI: '',
+  GOOGLE_GENAI_USE_GCA: '',
+  GOOGLE_CLOUD_PROJECT: '',
+  GOOGLE_CLOUD_LOCATION: '',
+  GOOGLE_CLOUD_REGION: ''
+}
+
+function resolveGeminiAuthProfileEnv(profileId?: string | null): Record<string, string> {
+  const id = optionalStringOrNull(profileId) || getDefaultGeminiAuthProfileId()
+  if (!id) return {}
+  const profile = getGeminiAuthProfiles().find((candidate) => candidate.id === id)
+  if (!profile) return {}
+  if (profile.kind === 'api-key') {
+    const apiKey = decryptApiKey(profile.encryptedApiKey)
+    return {
+      ...GEMINI_AUTH_CLEAR_ENV,
+      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+      ...(apiKey ? { GEMINI_API_KEY: apiKey } : {})
+    }
+  }
+  if (profile.kind === 'vertex-ai') {
+    return {
+      ...GEMINI_AUTH_CLEAR_ENV,
+      AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+      GOOGLE_GENAI_USE_VERTEXAI: 'true',
+      ...(profile.vertexProject ? { GOOGLE_CLOUD_PROJECT: profile.vertexProject } : {}),
+      ...(profile.vertexLocation ? { GOOGLE_CLOUD_LOCATION: profile.vertexLocation, GOOGLE_CLOUD_REGION: profile.vertexLocation } : {})
+    }
+  }
+  return {
+    ...GEMINI_AUTH_CLEAR_ENV,
+    AGBENCH_GEMINI_AUTH_PROFILE_ID: profile.id,
+    GOOGLE_GENAI_USE_GCA: 'true'
+  }
 }
 
 /* ============================================================
@@ -5517,13 +5707,23 @@ function getRuntimeSession(provider: ProviderId, route?: AgentRunRoute | null) {
   return runManager.resolve(provider, route)
 }
 
+function getSingleActiveProviderSession(provider: ProviderId) {
+  const sessions = runManager.getActiveByProvider(provider)
+  return sessions.length === 1 ? sessions[0] : undefined
+}
+
 function getCodexStateFromSession(session: ReturnType<typeof getRuntimeSession> | undefined): CodexRunState | null {
   const state = session?.state
   return state && typeof state === 'object' && (state as CodexRunState).threadId ? state as CodexRunState : null
 }
 
 function getActiveCodexRunState(): CodexRunState | null {
-  const managed = getCodexStateFromSession(runManager.getLatestByProvider('codex'))
+  const activeCodexSessions = runManager.getActiveByProvider('codex')
+  const managedStates = activeCodexSessions
+    .map((session) => getCodexStateFromSession(session))
+    .filter((state): state is CodexRunState => Boolean(state))
+  if (managedStates.length > 1) return null
+  const managed = managedStates[0]
   if (managed) return managed
   if (!activeCodexRunState?.appRunId) return activeCodexRunState
   const session = runManager.get(activeCodexRunState.appRunId)
@@ -5555,7 +5755,14 @@ function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext |
       cwd: context.cwd || context.workspacePath || globalRunCwd()
     }
   }
-  return activeGeminiToolContext
+  const hasExplicitRoute = Boolean(route?.appRunId || route?.appChatId)
+  if (!hasExplicitRoute && activeGeminiToolContext?.appRunId) {
+    const activeSession = getSingleActiveProviderSession('gemini')
+    if (activeSession?.runId === activeGeminiToolContext.appRunId) {
+      return activeGeminiToolContext
+    }
+  }
+  return !hasExplicitRoute && !activeGeminiToolContext?.appRunId ? activeGeminiToolContext : null
 }
 
 /**
@@ -5581,7 +5788,7 @@ function getAgentToolContext(parentProvider: ProviderId, route?: AgentRunRoute |
   if (parentProvider === 'gemini') {
     return getGeminiToolContext(route)
   }
-  const session = getRuntimeSession(parentProvider, route) || runManager.getLatestByProvider(parentProvider)
+  const session = getRuntimeSession(parentProvider, route)
   const sender = session?.sender as Electron.WebContents | undefined
   if (!sender || !session) {
     return null
@@ -5606,7 +5813,7 @@ function getAgentToolContext(parentProvider: ProviderId, route?: AgentRunRoute |
 }
 
 function enrichAgentPayload(provider: ProviderId, payload: any, route?: AgentRunRoute | null) {
-  const inferredRoute: any = route || getRuntimeSession(provider, payload) || (provider === 'codex' ? getActiveCodexRunState() : activeGeminiToolContext)
+  const inferredRoute: any = route || getRuntimeSession(provider, payload) || (provider === 'codex' ? getActiveCodexRunState() : provider === 'gemini' ? getGeminiToolContext(null) : null)
   const resolvedRoute = normalizeRunRoute({
     appRunId: inferredRoute?.runId || inferredRoute?.appRunId || payload?.appRunId,
     appChatId: inferredRoute?.appChatId || payload?.appChatId
@@ -6327,7 +6534,7 @@ function handleCodexNotification(message: any) {
     sendAgentCompatExit(state.sender, 'codex', 0, state)
     runManager.finish(state.appRunId, 'completed')
     if (activeCodexRunState === state) {
-      setActiveCodexRunState(getCodexStateFromSession(runManager.getLatestByProvider('codex')))
+      setActiveCodexRunState(getCodexStateFromSession(getSingleActiveProviderSession('codex')))
     }
     return
   }
@@ -6338,7 +6545,7 @@ function handleCodexNotification(message: any) {
     sendAgentCompatExit(state.sender, 'codex', 1, state)
     runManager.finish(state.appRunId, 'failed')
     if (activeCodexRunState === state) {
-      setActiveCodexRunState(getCodexStateFromSession(runManager.getLatestByProvider('codex')))
+      setActiveCodexRunState(getCodexStateFromSession(getSingleActiveProviderSession('codex')))
     }
   }
 }
@@ -7001,7 +7208,7 @@ async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string
     return true
   }
 
-  const session = runManager.get(runId) || runManager.getLatestByProvider(provider)
+  const session = runManager.get(runId) || (!runId ? getSingleActiveProviderSession(provider) : undefined)
   if (session) {
     session.abortController?.abort()
     session.process?.kill()
@@ -7011,7 +7218,7 @@ async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string
         geminiProcess = null
       }
       if (!geminiSessionProcess) {
-        const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+        const latestGemini = getSingleActiveProviderSession('gemini')?.state as GeminiToolContext | undefined
         activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
       }
     }
@@ -7025,6 +7232,10 @@ async function cancelProviderRun(provider: ProviderId = 'gemini', runId?: string
       }
     }
     return true
+  }
+
+  if (!runId && runManager.getActiveByProvider(provider).length > 1) {
+    return false
   }
 
   if (provider === 'claude' || provider === 'kimi') {
@@ -7159,6 +7370,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   const env = createCliEnv({
     FORCE_COLOR: '0',
     NO_COLOR: '1',
+    ...resolveGeminiAuthProfileEnv(payload.geminiAuthProfileId),
     // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
     // connecting back to the broker. When write-capable AGBench MCP tools are
     // enabled, keep both the CLI --sandbox flag and GEMINI_SANDBOX env disabled.
@@ -7173,6 +7385,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     // CodexAppServerClient.
     AGENTBENCH_PARENT_PROVIDER: 'gemini'
   }, resolved.binaryPath)
+  markGeminiAuthProfileUsed(payload.geminiAuthProfileId || getDefaultGeminiAuthProfileId())
 
   const child = spawn(resolved.binaryPath, args, {
     cwd: payload.workspace!,
@@ -7208,7 +7421,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     runManager.finish(route.appRunId, code === 0 ? 'completed' : 'failed')
     if (route.appRunId) geminiCrossProviderWarningsFired.delete(route.appRunId)
     if (!geminiSessionProcess) {
-      const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+      const latestGemini = getSingleActiveProviderSession('gemini')?.state as GeminiToolContext | undefined
       activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
     }
   })
@@ -7225,7 +7438,7 @@ async function runGeminiProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     runManager.finish(route.appRunId, 'failed')
     if (route.appRunId) geminiCrossProviderWarningsFired.delete(route.appRunId)
     if (!geminiSessionProcess) {
-      const latestGemini = runManager.getLatestByProvider('gemini')?.state as GeminiToolContext | undefined
+      const latestGemini = getSingleActiveProviderSession('gemini')?.state as GeminiToolContext | undefined
       activeGeminiToolContext = latestGemini?.sender ? latestGemini : null
     }
   })
@@ -10422,7 +10635,14 @@ app.whenReady().then(() => {
     requireRegisteredWorkspace,
     findRegisteredWorkspace,
     validateChatWorkspaceIdentity,
-    isProviderActive: (provider) => runManager.getActiveByProvider(provider).length > 0
+    canLeaseJob: (job) => {
+      if (!job.chatId) return true
+      return !Array.from(PROVIDER_IDS).some((provider) =>
+        runManager
+          .getActiveByProvider(provider)
+          .some((session) => session.appChatId === job.chatId)
+      )
+    }
   })
   runQueueServiceRef = runQueueService
 
@@ -11673,6 +11893,27 @@ app.whenReady().then(() => {
     return true
   })
 
+  ipcMain.handle('get-gemini-auth-status', async () => {
+    return getGeminiAuthStatusSnapshot()
+  })
+
+  ipcMain.handle('list-gemini-auth-profiles', async () => {
+    const defaultProfileId = getDefaultGeminiAuthProfileId()
+    return getGeminiAuthProfiles().map((profile) => summarizeGeminiAuthProfile(profile, defaultProfileId))
+  })
+
+  ipcMain.handle('save-gemini-auth-profile', async (_, profile: unknown) => {
+    return saveGeminiAuthProfile(profile)
+  })
+
+  ipcMain.handle('delete-gemini-auth-profile', async (_, profileId: unknown) => {
+    return deleteGeminiAuthProfile(profileId)
+  })
+
+  ipcMain.handle('set-default-gemini-auth-profile', async (_, profileId: unknown) => {
+    return setDefaultGeminiAuthProfile(profileId)
+  })
+
   ipcMain.handle('get-agent-mcp-status', async (_, provider: ProviderId) => {
     return getAgentMcpStatusSnapshot(assertProviderId(provider))
   })
@@ -11765,7 +12006,7 @@ app.whenReady().then(() => {
       sendAgentCompatError(reviewState.sender, 'codex', message, reviewState)
       sendAgentCompatExit(reviewState.sender, 'codex', 1, reviewState)
       runManager.finish(reviewState.appRunId, 'failed')
-      if (activeCodexRunState === reviewState) setActiveCodexRunState(getCodexStateFromSession(runManager.getLatestByProvider('codex')))
+      if (activeCodexRunState === reviewState) setActiveCodexRunState(getCodexStateFromSession(getSingleActiveProviderSession('codex')))
       throw error
     }
   })
@@ -12059,6 +12300,7 @@ app.whenReady().then(() => {
 
     const env: Record<string, string> = createCliEnv({
       FORCE_COLOR: '1',
+      ...resolveGeminiAuthProfileEnv(getDefaultGeminiAuthProfileId()),
       // Gemini's sandbox prevents the AGBench MCP bridge subprocess from
       // connecting back to the broker. Keep it disabled whenever this session
       // exposes write-capable AGBench MCP tools.
@@ -12070,6 +12312,7 @@ app.whenReady().then(() => {
       // this the new I2 default could mis-route session tool calls.
       AGENTBENCH_PARENT_PROVIDER: 'gemini'
     }, resolved.binaryPath)
+    markGeminiAuthProfileUsed(getDefaultGeminiAuthProfileId())
 
     try {
       geminiSessionProcess = pty.spawn(resolved.binaryPath, args, {

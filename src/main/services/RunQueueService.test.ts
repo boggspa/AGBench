@@ -108,7 +108,7 @@ function makeDeps(overrides: Partial<RunQueueServiceDeps> = {}): {
     requireRegisteredWorkspace: vi.fn(() => '/repo'),
     findRegisteredWorkspace: vi.fn(() => makeWorkspace()),
     validateChatWorkspaceIdentity: vi.fn(),
-    isProviderActive: vi.fn(() => false),
+    canLeaseJob: vi.fn(() => true),
     ...overrides
   }
   return {
@@ -233,7 +233,7 @@ describe('RunQueueService', () => {
     expect(repository.saveRunQueueJob).not.toHaveBeenCalled()
   })
 
-  it('leases queued jobs only when provider and active-run gates pass', () => {
+  it('leases queued jobs only when provider and chat-capacity gates pass', () => {
     const { deps, repository, store } = makeDeps()
     const service = new RunQueueService(deps)
     expect(service.leaseJob({ provider: 'gemini' })).toEqual(
@@ -250,7 +250,44 @@ describe('RunQueueService', () => {
     })
   })
 
-  it('returns null from leaseJob for non-queued, provider mismatch, or active provider cases', () => {
+  it('skips busy same-provider chats when leasing the next queued job', () => {
+    const busyJob = makeJob({
+      id: 'run-busy',
+      runId: 'run-busy',
+      provider: 'codex',
+      chatId: 'chat-busy'
+    })
+    const idleJob = makeJob({
+      id: 'run-idle',
+      runId: 'run-idle',
+      provider: 'codex',
+      chatId: 'chat-idle'
+    })
+    const store = makeStore({
+      getRunQueueJobs: vi.fn(() => [busyJob, idleJob])
+    })
+    const canLeaseJob = vi.fn((job: RunQueueJob) => job.chatId !== 'chat-busy')
+    const { deps, repository } = makeDeps({ appStore: store, canLeaseJob })
+    const service = new RunQueueService(deps)
+
+    expect(service.leaseJob({ provider: 'codex' })).toEqual(
+      makeJob({
+        runId: 'run-idle',
+        provider: 'codex',
+        status: 'starting',
+        statusReason: 'Leased by AGBench main scheduler.'
+      })
+    )
+    expect(canLeaseJob).toHaveBeenCalledWith(busyJob)
+    expect(canLeaseJob).toHaveBeenCalledWith(idleJob)
+    expect(repository.leaseQueuedRun).toHaveBeenCalledWith({
+      runId: 'run-idle',
+      provider: 'codex',
+      statusReason: 'Leased by AGBench main scheduler.'
+    })
+  })
+
+  it('returns null from leaseJob for non-queued, provider mismatch, or busy target chat cases', () => {
     const nonQueuedStore = makeStore({ getRunQueueJob: vi.fn(() => makeJob({ status: 'active' })) })
     const nonQueuedDeps = makeDeps({ appStore: nonQueuedStore })
     expect(new RunQueueService(nonQueuedDeps.deps).leaseJob({ runId: 'run-1' })).toBeNull()
@@ -261,7 +298,7 @@ describe('RunQueueService', () => {
       new RunQueueService(mismatchDeps.deps).leaseJob({ runId: 'run-1', provider: 'gemini' })
     ).toBeNull()
 
-    const activeDeps = makeDeps({ isProviderActive: vi.fn(() => true) })
+    const activeDeps = makeDeps({ canLeaseJob: vi.fn(() => false) })
     expect(new RunQueueService(activeDeps.deps).leaseJob({ runId: 'run-1' })).toBeNull()
     expect(activeDeps.repository.leaseQueuedRun).not.toHaveBeenCalled()
   })

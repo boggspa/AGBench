@@ -27,13 +27,6 @@ const getChatProvider = (chat?: ChatRecord | null): ProviderId => chat?.provider
 const getRuntimeProfileLabel = (profiles: RuntimeProfile[], id?: string): string | undefined =>
   id ? profiles.find((profile) => profile.id === id)?.name || id : undefined
 
-const getProviderLabel = (provider: ProviderId): string => {
-  if (provider === 'codex') return 'Codex'
-  if (provider === 'claude') return 'Claude'
-  if (provider === 'kimi') return 'Kimi'
-  return 'Gemini'
-}
-
 export const compactPromptPreview = (value?: string): string => {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   return text.length > 140 ? `${text.slice(0, 140)}...` : text
@@ -97,7 +90,7 @@ export const buildRunLanes = (
       handoffSourceRunId: job.handoffSourceRunId || request?.handoffSourceRunId,
       promptPreview: compactPromptPreview(job.promptPreview || request?.displayPrompt || request?.prompt),
       blockedReason: job.status === 'queued'
-        ? job.statusReason || `${getProviderLabel(job.provider)} serializes one active run at a time.`
+        ? job.statusReason || 'Waiting for this chat to finish its active run.'
         : job.statusReason,
       touchedFiles: [],
       updatedAt: job.updatedAt
@@ -122,7 +115,7 @@ export const buildRunLanes = (
       runtimeProfileName: getRuntimeProfileLabel(runtimeProfiles, task.runtimeProfileId),
       handoffSourceRunId: task.handoffSourceRunId,
       promptPreview: compactPromptPreview(task.displayPrompt || task.prompt),
-      blockedReason: task.status === 'due' ? 'Due and waiting for provider capacity.' : `Scheduled for ${new Date(task.runAt).toLocaleString()}`,
+      blockedReason: task.status === 'due' ? 'Due and waiting for this chat to become idle.' : `Scheduled for ${new Date(task.runAt).toLocaleString()}`,
       touchedFiles: [],
       updatedAt: task.updatedAt
     })

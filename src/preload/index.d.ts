@@ -1,4 +1,4 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 
@@ -65,10 +65,11 @@ interface AgentRunPayload {
   providerSessionId?: string | null
   externalPathGrants?: ExternalPathGrant[]
   sessionTrust?: boolean
-  geminiWorktree?: GeminiWorktreeLaunchOption
-  runtimeProfileId?: string
-  handoffSourceRunId?: string
-}
+	  geminiWorktree?: GeminiWorktreeLaunchOption
+	  runtimeProfileId?: string
+	  geminiAuthProfileId?: string | null
+	  handoffSourceRunId?: string
+	}
 
 interface ComposerImageAttachment {
   id?: string
@@ -98,6 +99,7 @@ interface ComposerRunInput {
   claudeReasoningEffort?: string | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
   chatSnapshot?: ChatRecord
 }
@@ -183,6 +185,11 @@ declare global {
       getKimiAuthStatus: () => Promise<ProviderApiKeyStatus>
       storeKimiApiKey: (key: string) => Promise<void>
       clearKimiApiKey: () => Promise<void>
+      getGeminiAuthStatus: () => Promise<GeminiAuthStatus>
+      listGeminiAuthProfiles: () => Promise<GeminiAuthProfileSummary[]>
+      saveGeminiAuthProfile: (profile: { id?: string; label?: string; kind: 'api-key' | 'vertex-ai' | 'google-oauth'; apiKey?: string; vertexProject?: string; vertexLocation?: string; makeDefault?: boolean }) => Promise<GeminiAuthProfileSummary>
+      deleteGeminiAuthProfile: (profileId: string) => Promise<boolean>
+      setDefaultGeminiAuthProfile: (profileId: string | null) => Promise<GeminiAuthProfileSummary | null>
       getAgentMcpStatus: (provider: ProviderId) => Promise<any>
       listAgentThreads: (provider: ProviderId, params?: any) => Promise<any>
       forkAgentThread: (provider: ProviderId, threadId: string, params?: any) => Promise<any>

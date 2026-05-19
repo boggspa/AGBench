@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'rea
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -2669,6 +2669,7 @@ interface QueuedRunRequest {
   chatRecord?: ChatRecord
   preserveComposer?: boolean
   runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
 }
 
@@ -2920,7 +2921,8 @@ const resolveGeminiResumeForRun = (
   chat: ChatRecord,
   requestedModel: string | undefined,
   approvalMode: string,
-  worktree?: GeminiWorktreeConfig | null
+  worktree?: GeminiWorktreeConfig | null,
+  geminiAuthProfileId?: string | null
 ): { sessionId?: string; skippedReason?: string } => {
   const sessionId = normalizeGeminiResumeTarget(chat.linkedGeminiSessionId)
   if (!sessionId) {
@@ -2936,6 +2938,14 @@ const resolveGeminiResumeForRun = (
   const lastRun = getLastGeminiRunForResume(chat)
   if (!lastRun) {
     return { sessionId }
+  }
+
+  const previousAuthProfileId = typeof lastRun.geminiAuthProfileId === 'string' ? lastRun.geminiAuthProfileId : null
+  const nextAuthProfileId = geminiAuthProfileId || null
+  if (previousAuthProfileId !== nextAuthProfileId) {
+    return {
+      skippedReason: 'Starting a fresh Gemini session because the selected Gemini auth profile changed.'
+    }
   }
 
   const previousApprovalMode = lastRun.approvalMode || 'default'
@@ -3610,6 +3620,8 @@ function App(): React.JSX.Element {
   const [kimiBinaryPath, setKimiBinaryPath] = useState('')
   const [claudeAuthStatus, setClaudeAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
   const [kimiAuthStatus, setKimiAuthStatus] = useState<ProviderApiKeyStatus | null>(null)
+  const [geminiAuthStatus, setGeminiAuthStatus] = useState<GeminiAuthStatus | null>(null)
+  const [geminiAuthProfiles, setGeminiAuthProfiles] = useState<GeminiAuthProfileSummary[]>([])
   const [claudeLoginState, setClaudeLoginState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [agenticServices, setAgenticServices] = useState<AgenticServicesSettings>(DEFAULT_AGENTIC_SERVICES)
   const [autoResumeParentOnSubThreadCompletion, setAutoResumeParentOnSubThreadCompletion] = useState(true)
@@ -3717,7 +3729,6 @@ function App(): React.JSX.Element {
   const [scheduleRunAtByChatId, setScheduleRunAtForChat] = usePerChatState('')
   const [dueScheduledTasks, setDueScheduledTasks] = useState<ScheduledTask[]>([])
   const [runningChatIds, setRunningChatIds] = useState<Set<string>>(new Set())
-  const [runningProviders, setRunningProviders] = useState<Set<ProviderId>>(new Set())
 
   const imageDragCounterRef = useRef(0)
   const sendConfirmationTimeoutRef = useRef<number | null>(null)
@@ -3819,7 +3830,6 @@ function App(): React.JSX.Element {
     reduceMotion: false
   })
   const fxBurstTimeoutRef = useRef<number | null>(null)
-  const activeRunByProviderRef = useRef<Map<ProviderId, string>>(new Map())
   const currentWorkspaceIdRef = useRef<string | null>(null)
   const currentChatIdRef = useRef<string | null>(null)
   const chatByIdRef = useRef<Map<string, ChatRecord>>(new Map())
@@ -3841,7 +3851,6 @@ function App(): React.JSX.Element {
   const currentChatScope = getChatScope(currentChat)
   const isCurrentGlobalChat = currentChatScope === 'global'
   const hasWorkspaceContext = Boolean(currentWorkspace && currentChat && !isCurrentGlobalChat)
-  const isCurrentProviderRunning = runningProviders.has(currentProvider)
   const isCurrentChatProviderLocked = Boolean(
     currentChat && (
       (currentChat.messages?.length || 0) > 0 ||
@@ -4074,10 +4083,17 @@ function App(): React.JSX.Element {
     const activeRuns = activeRunsRef.current
     runSchedulerBusyRef.current = activeRuns.size > 0
     setIsRunning(activeRuns.size > 0)
-    setRunningProviders(new Set(activeRunByProviderRef.current.keys()))
   }
 
-  const isProviderBusy = (provider: ProviderId): boolean => activeRunByProviderRef.current.has(provider)
+  const getActiveRunContextsForProvider = (provider: ProviderId): ActiveRunContext[] => {
+    const contexts: ActiveRunContext[] = []
+    for (const context of activeRunsRef.current.values()) {
+      if (context.provider === provider) {
+        contexts.push(context)
+      }
+    }
+    return contexts
+  }
 
   // Per-chat busy check (replaces the per-provider check at every queue
   // decision site). Previously starting a new chat on a provider whose
@@ -4096,8 +4112,13 @@ function App(): React.JSX.Element {
   }
 
   const getActiveRunContextForProvider = (provider: ProviderId): ActiveRunContext | null => {
-    const runId = activeRunByProviderRef.current.get(provider)
-    return runId ? activeRunsRef.current.get(runId) || null : null
+    const contexts = getActiveRunContextsForProvider(provider)
+    const currentChatId = currentChatIdRef.current
+    if (currentChatId) {
+      const currentChatContext = contexts.find((context) => context.chatId === currentChatId)
+      if (currentChatContext) return currentChatContext
+    }
+    return contexts[0] || null
   }
 
   const markCapacityStoppedRun = (context: ActiveRunContext, message: string) => {
@@ -4158,17 +4179,12 @@ function App(): React.JSX.Element {
         if (context.chatId === appChatId && context.provider === provider) return context
       }
     }
-    const providerRunId = activeRunByProviderRef.current.get(provider)
-    return providerRunId ? activeRunsRef.current.get(providerRunId) || null : null
+    return getActiveRunContextForProvider(provider)
   }
 
   const clearActiveRunContext = (context: ActiveRunContext | null) => {
     if (!context) return
     activeRunsRef.current.delete(context.runId)
-    const providerRunId = activeRunByProviderRef.current.get(context.provider)
-    if (providerRunId === context.runId) {
-      activeRunByProviderRef.current.delete(context.provider)
-    }
     if (adapterRef.current === context.adapter) {
       adapterRef.current = null
     }
@@ -4348,7 +4364,7 @@ function App(): React.JSX.Element {
     }
   }
 
-  const refreshProviderMetadata = async (provider: ProviderId, workspacePath: string | null | undefined = currentWorkspace?.path) => {
+	  const refreshProviderMetadata = async (provider: ProviderId, workspacePath: string | null | undefined = currentWorkspace?.path) => {
     const capabilityWorkspacePath = workspacePath || undefined
     if (typeof window.api.getProviderCapabilities === 'function') {
       window.api.getProviderCapabilities(provider, capabilityWorkspacePath, approvalMode)
@@ -4408,9 +4424,21 @@ function App(): React.JSX.Element {
           else setAgentMcpStatusByProvider(prev => ({ ...prev, [provider]: null }))
         })
     }
-  }
+	  }
 
-  const normalizeDiffPath = (value: string, workspacePathOverride?: string | null): string => {
+	  const refreshGeminiAuthStatus = async () => {
+	    if (typeof window.api.getGeminiAuthStatus !== 'function') return
+	    try {
+	      const status = await window.api.getGeminiAuthStatus()
+	      setGeminiAuthStatus(status)
+	      setGeminiAuthProfiles(Array.isArray(status.profiles) ? status.profiles : [])
+	    } catch {
+	      setGeminiAuthStatus(null)
+	      setGeminiAuthProfiles([])
+	    }
+	  }
+
+	  const normalizeDiffPath = (value: string, workspacePathOverride?: string | null): string => {
     const normalized = value.replace(/\\/g, '/')
     const workspacePath = (workspacePathOverride || activeRunWorkspacePathRef.current || '').replace(/\\/g, '/')
     if (!workspacePath) {
@@ -4611,10 +4639,11 @@ function App(): React.JSX.Element {
     if (typeof window.api.getClaudeAuthStatus === 'function') {
       void window.api.getClaudeAuthStatus().then(setClaudeAuthStatus).catch(() => {})
     }
-    if (typeof window.api.getKimiAuthStatus === 'function') {
-      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
-    }
-    // Defensive: a previous regression where any of the four
+	    if (typeof window.api.getKimiAuthStatus === 'function') {
+	      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
+	    }
+	    void refreshGeminiAuthStatus()
+	    // Defensive: a previous regression where any of the four
     // mount-time loads threw silently (e.g. one malformed chat JSON in
     // `getChats`) would block the rest of the chain — `setWorkspaces`
     // would never fire and the sidebar painted with the initial empty
@@ -4881,15 +4910,49 @@ function App(): React.JSX.Element {
     }
   }
 
-  const handleClearKimiApiKey = async () => {
-    if (typeof window.api.clearKimiApiKey !== 'function') return
-    await window.api.clearKimiApiKey().catch(() => {})
-    if (typeof window.api.getKimiAuthStatus === 'function') {
-      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
-    }
-  }
+	  const handleClearKimiApiKey = async () => {
+	    if (typeof window.api.clearKimiApiKey !== 'function') return
+	    await window.api.clearKimiApiKey().catch(() => {})
+	    if (typeof window.api.getKimiAuthStatus === 'function') {
+	      void window.api.getKimiAuthStatus().then(setKimiAuthStatus).catch(() => {})
+	    }
+	  }
 
-  const handleProviderChange = async (provider: ProviderId) => {
+	  const handleSaveGeminiAuthProfile = async (profile: {
+	    id?: string
+	    label?: string
+	    kind: 'api-key' | 'vertex-ai' | 'google-oauth'
+	    apiKey?: string
+	    vertexProject?: string
+	    vertexLocation?: string
+	    makeDefault?: boolean
+	  }) => {
+	    if (typeof window.api.saveGeminiAuthProfile !== 'function') return
+	    await window.api.saveGeminiAuthProfile(profile).catch((error) => {
+	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to save Gemini auth profile: ${redactLog(String(error))}` }])
+	    })
+	    await refreshGeminiAuthStatus()
+	  }
+
+	  const handleSetDefaultGeminiAuthProfile = async (profileId: string | null) => {
+	    if (typeof window.api.setDefaultGeminiAuthProfile !== 'function') return
+	    await window.api.setDefaultGeminiAuthProfile(profileId).catch((error) => {
+	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to select Gemini auth profile: ${redactLog(String(error))}` }])
+	    })
+	    await refreshGeminiAuthStatus()
+	    markPersistentSessionRestartNeeded('Gemini auth profile changed. Restart the persistent session to apply the selected account.')
+	  }
+
+	  const handleDeleteGeminiAuthProfile = async (profileId: string) => {
+	    if (typeof window.api.deleteGeminiAuthProfile !== 'function') return
+	    await window.api.deleteGeminiAuthProfile(profileId).catch((error) => {
+	      setRawLogs(prev => [...prev, { type: 'stderr', content: `Failed to delete Gemini auth profile: ${redactLog(String(error))}` }])
+	    })
+	    await refreshGeminiAuthStatus()
+	    markPersistentSessionRestartNeeded('Gemini auth profile changed. Restart the persistent session to apply the selected account.')
+	  }
+
+	  const handleProviderChange = async (provider: ProviderId) => {
     if (currentChat && isCurrentChatProviderLocked && provider !== currentProvider) {
       setRawLogs(prev => [...prev, {
         type: 'info',
@@ -6912,6 +6975,7 @@ function App(): React.JSX.Element {
     ...(request.kimiThinkingEnabled !== undefined ? { kimiThinkingEnabled: request.kimiThinkingEnabled } : {}),
     ...(request.scheduledTaskId ? { scheduledTaskId: request.scheduledTaskId } : {}),
     ...(request.runtimeProfileId ? { runtimeProfileId: request.runtimeProfileId } : {}),
+    ...(request.geminiAuthProfileId ? { geminiAuthProfileId: request.geminiAuthProfileId } : {}),
     ...(request.handoffSourceRunId ? { handoffSourceRunId: request.handoffSourceRunId } : {}),
     ...(request.preserveComposer ? { preserveComposer: true } : {})
   })
@@ -6996,9 +7060,10 @@ function App(): React.JSX.Element {
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
       kimiThinkingEnabled: request.kimiThinkingEnabled,
-      scheduledTaskId: request.scheduledTaskId,
-      runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
-      handoffSourceRunId: job.handoffSourceRunId || request.handoffSourceRunId,
+	      scheduledTaskId: request.scheduledTaskId,
+	      runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
+	      geminiAuthProfileId: request.geminiAuthProfileId,
+	      handoffSourceRunId: job.handoffSourceRunId || request.handoffSourceRunId,
       workspaceRecord: scope === 'global' ? undefined : workspaceRecord,
       chatRecord,
       preserveComposer: request.preserveComposer
@@ -7153,6 +7218,11 @@ function App(): React.JSX.Element {
       claudeReasoningEffort: requestClaudeReasoningEffort,
       kimiThinkingEnabled: requestKimiThinkingEnabled,
       runtimeProfileId: getRuntimeProfileIdForChat(selectedChat, provider),
+      geminiAuthProfileId: provider === 'gemini'
+        ? (typeof selectedChat?.providerMetadata?.geminiAuthProfileId === 'string'
+            ? selectedChat.providerMetadata.geminiAuthProfileId
+            : geminiAuthStatus?.activeProfileId || null)
+        : null,
       workspaceRecord: selectedWorkspace || undefined,
       chatRecord: selectedChat || undefined
     }
@@ -7319,9 +7389,10 @@ function App(): React.JSX.Element {
         codexReasoningEffort: request.codexReasoningEffort,
         codexServiceTier: request.codexServiceTier,
         claudeReasoningEffort: request.claudeReasoningEffort,
-        kimiThinkingEnabled: request.kimiThinkingEnabled,
-        runtimeProfileId: request.runtimeProfileId,
-        handoffSourceRunId: request.handoffSourceRunId,
+	        kimiThinkingEnabled: request.kimiThinkingEnabled,
+	        runtimeProfileId: request.runtimeProfileId,
+	        geminiAuthProfileId: request.geminiAuthProfileId,
+	        handoffSourceRunId: request.handoffSourceRunId,
         chatSnapshot: runChat
       })
     } catch (error) {
@@ -7391,8 +7462,6 @@ function App(): React.JSX.Element {
       runStartedAt = lastUserMessage?.timestamp || runStartedAt
       promptMessageId = lastUserMessage?.id
     }
-    activeRunByProviderRef.current.set(runProvider, currentRunId)
-    setRunningProviders(new Set(activeRunByProviderRef.current.keys()))
     activeRunChatIdRef.current = chatToUpdate.appChatId
     activeRunIdRef.current = currentRunId
     activeRunWorkspacePathRef.current = runDiffWorkspacePath || null
@@ -7409,10 +7478,11 @@ function App(): React.JSX.Element {
       runtimeProfileId: request.runtimeProfileId,
       handoffSourceRunId: request.handoffSourceRunId,
       ...(runProvider !== 'gemini' && resumeSessionId ? { providerThreadId: resumeSessionId } : {}),
-      ...(runWorktree ? { geminiWorktree: runWorktree } : {}),
-      ...(runDiffWorkspacePath ? { effectiveWorkspacePath: runDiffWorkspacePath } : {}),
-      ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {})
-    }
+	      ...(runWorktree ? { geminiWorktree: runWorktree } : {}),
+	      ...(runDiffWorkspacePath ? { effectiveWorkspacePath: runDiffWorkspacePath } : {}),
+	      ...(runDiffUnavailable ? { diffUnavailableReason: WORKTREE_DIFF_UNAVAILABLE_TEXT } : {}),
+	      ...(composedPayload.geminiAuthProfileId ? { geminiAuthProfileId: composedPayload.geminiAuthProfileId } : {})
+	    }
     chatToUpdate.runs = [...(chatToUpdate.runs || []), newRun]
     if (composerMetadata.providerMetadataPatch) {
       chatToUpdate.providerMetadata = {
@@ -7836,7 +7906,6 @@ function App(): React.JSX.Element {
       scheduledTaskId: request.scheduledTaskId || null
     }
     activeRunsRef.current.set(currentRunId, runContext)
-    activeRunByProviderRef.current.set(runProvider, currentRunId)
     adapterRef.current = adapter
     syncRunningState()
 
@@ -8204,9 +8273,10 @@ function App(): React.JSX.Element {
       geminiWorktree: request.geminiWorktree,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
-      kimiThinkingEnabled: request.kimiThinkingEnabled,
-      runtimeProfileId: request.runtimeProfileId,
-      handoffSourceRunId: request.handoffSourceRunId,
+	      kimiThinkingEnabled: request.kimiThinkingEnabled,
+	      runtimeProfileId: request.runtimeProfileId,
+	      geminiAuthProfileId: request.geminiAuthProfileId,
+	      handoffSourceRunId: request.handoffSourceRunId,
       runAt: runAtDate.toISOString(),
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
     })
@@ -8455,9 +8525,10 @@ function App(): React.JSX.Element {
         geminiWorktree: task.geminiWorktree,
         codexReasoningEffort: task.codexReasoningEffort,
         codexServiceTier: task.codexServiceTier,
-        kimiThinkingEnabled: task.kimiThinkingEnabled,
-        runtimeProfileId: task.runtimeProfileId,
-        handoffSourceRunId: task.handoffSourceRunId,
+	        kimiThinkingEnabled: task.kimiThinkingEnabled,
+	        runtimeProfileId: task.runtimeProfileId,
+	        geminiAuthProfileId: task.geminiAuthProfileId,
+	        handoffSourceRunId: task.handoffSourceRunId,
         scheduledTaskId: task.id,
         workspaceRecord: workspace,
         chatRecord: chat,
@@ -8479,13 +8550,13 @@ function App(): React.JSX.Element {
     if (dueScheduledTasks.length === 0) {
       return
     }
-    const nextIndex = dueScheduledTasks.findIndex((task) => !isProviderBusy(task.provider))
+    const nextIndex = dueScheduledTasks.findIndex((task) => !isChatBusy(task.chatId))
     if (nextIndex < 0) return
     const nextTask = dueScheduledTasks[nextIndex]
     const remainingTasks = dueScheduledTasks.filter((_, index) => index !== nextIndex)
     setDueScheduledTasks(remainingTasks)
     void dispatchScheduledTask(nextTask)
-  }, [dueScheduledTasks, runningProviders, workspacesHydrated, workspaces])
+  }, [dueScheduledTasks, runningChatIds, workspacesHydrated, workspaces])
 
   const appendBridgeFallback = (commandText: string, reason: string) => {
     const timestamp = new Date().toISOString()
@@ -8569,9 +8640,9 @@ function App(): React.JSX.Element {
 
     const modelToPass = selectedModelType === 'custom' ? customModel.trim() : selectedModelType
     const worktree = resolveGeminiWorktreeConfig(currentWorkspace)
-    const resumeDecision = currentChat
-      ? resolveGeminiResumeForRun(currentChat, modelToPass, approvalMode, worktree)
-      : {}
+	    const resumeDecision = currentChat
+	      ? resolveGeminiResumeForRun(currentChat, modelToPass, approvalMode, worktree, geminiAuthStatus?.activeProfileId || null)
+	      : {}
     const resumeSessionId = resumeDecision.sessionId
     if (resumeDecision.skippedReason) {
       appendRawInfoOnce(resumeDecision.skippedReason)
@@ -8974,7 +9045,7 @@ function App(): React.JSX.Element {
       })
       void executeRun({ ...nextRun, appRunId: leased.runId })
     })
-  }, [queuedRuns, runningProviders, currentWorkspace, currentChat, executeRun])
+  }, [queuedRuns, runningChatIds, currentWorkspace, currentChat, executeRun])
 
   useEffect(() => {
     try {
@@ -10982,7 +11053,7 @@ function App(): React.JSX.Element {
                         <span>{steerIndicatorMessage}</span>
                       </span>
                     )}
-                    {isCurrentProviderRunning ? (
+                    {isCurrentChatRunning ? (
                       <>
                       <button
                           className={`composer-action-btn run-btn queue ${isSendConfirming ? 'send-confirming' : ''}`}
@@ -11277,17 +11348,22 @@ function App(): React.JSX.Element {
               funFxMode={appearance.funFxMode}
               advancedFx={appearance.advancedFx}
               updateChannel={updateChannel}
-              approvalTimeouts={approvalTimeouts}
-              productOperationsStatus={productOperationsStatus}
-              claudeAuthStatus={claudeAuthStatus}
+	              approvalTimeouts={approvalTimeouts}
+	              productOperationsStatus={productOperationsStatus}
+	              geminiAuthStatus={geminiAuthStatus}
+	              geminiAuthProfiles={geminiAuthProfiles}
+	              claudeAuthStatus={claudeAuthStatus}
               kimiAuthStatus={kimiAuthStatus}
               claudeLoginState={claudeLoginState}
               onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
               onStoreClaudeApiKey={(key) => void handleStoreClaudeApiKey(key)}
               onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
-              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
-              onClearKimiApiKey={() => void handleClearKimiApiKey()}
-              onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
+	              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
+	              onClearKimiApiKey={() => void handleClearKimiApiKey()}
+	              onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
+	              onSetDefaultGeminiAuthProfile={(profileId) => void handleSetDefaultGeminiAuthProfile(profileId)}
+	              onDeleteGeminiAuthProfile={(profileId) => void handleDeleteGeminiAuthProfile(profileId)}
+	              onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
               onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}
               onExportProductDiagnostics={() => void exportProductDiagnostics()}

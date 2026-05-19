@@ -14208,6 +14208,9 @@ input:disabled, select:disabled, textarea:disabled {
   flex-direction: column;
   gap: 2px;
 }
+.sidebar-chat-tree-toggle {
+  flex: 0 0 var(--control-hit-sm);
+}
 .sidebar-chat-children {
   display: flex;
   flex-direction: column;

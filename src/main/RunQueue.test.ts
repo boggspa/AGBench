@@ -4,6 +4,7 @@ import {
   filterRunQueueJobs,
   recoverInterruptedRunQueueJobs,
   sortRunQueueJobs,
+  findNextRunnableQueueIndex,
   updateRunQueueJobRecord
 } from './RunQueue'
 
@@ -177,5 +178,29 @@ describe('RunQueue', () => {
     expect(filterRunQueueJobs(jobs, { statuses: ['completed'] }).map((job) => job.id)).toEqual([
       'done'
     ])
+  })
+
+  it('finds the first queued job allowed by the per-job dispatch predicate', () => {
+    const jobs = [
+      createRunQueueJob({
+        id: 'chat-a',
+        runId: 'chat-a',
+        provider: 'codex',
+        workspacePath: '/workspace',
+        chatId: 'busy-chat',
+        source: 'manual'
+      }),
+      createRunQueueJob({
+        id: 'chat-b',
+        runId: 'chat-b',
+        provider: 'codex',
+        workspacePath: '/workspace',
+        chatId: 'idle-chat',
+        source: 'manual'
+      })
+    ]
+
+    expect(findNextRunnableQueueIndex(jobs, (job) => job.chatId !== 'busy-chat')).toBe(1)
+    expect(findNextRunnableQueueIndex(jobs, () => false)).toBe(-1)
   })
 })

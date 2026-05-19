@@ -158,7 +158,8 @@ export class RunManager<TState = unknown> {
       return undefined
     }
 
-    return this.getLatestByProvider(provider)
+    const activeProviderSessions = this.getActiveByProvider(provider)
+    return activeProviderSessions.length === 1 ? activeProviderSessions[0] : undefined
   }
 
   update(

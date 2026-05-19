@@ -68,7 +68,7 @@ export interface RunQueueServiceDeps {
     chatId: string | undefined,
     workspace: WorkspaceRecord | undefined
   ) => void
-  isProviderActive: (provider: ProviderId) => boolean
+  canLeaseJob: (job: RunQueueJob) => boolean
 }
 
 /**
@@ -97,14 +97,16 @@ export class RunQueueService {
     const runId = optionalString(request?.runId)
     const candidate = runId
       ? this.deps.appStore.getRunQueueJob(runId)
-      : this.deps.appStore.getRunQueueJobs({ provider, statuses: ['queued'] })[0]
+      : this.deps.appStore
+        .getRunQueueJobs({ provider, statuses: ['queued'] })
+        .find((job) => this.deps.canLeaseJob(job))
     if (!candidate || candidate.status !== 'queued') {
       return null
     }
     if (provider && candidate.provider !== provider) {
       return null
     }
-    if (this.deps.isProviderActive(candidate.provider)) {
+    if (runId && !this.deps.canLeaseJob(candidate)) {
       return null
     }
     return this.deps.getRunRepository().leaseQueuedRun({

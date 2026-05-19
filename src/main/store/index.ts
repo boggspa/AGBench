@@ -35,6 +35,8 @@ const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
   claudeBinaryPath: '',
   kimiBinaryPath: '',
+  defaultGeminiAuthProfileId: null,
+  geminiAuthProfiles: [],
   storeLocalChatHistory: true,
   storeRawEvents: false,
   storePromptResponseInUsage: false,
@@ -249,6 +251,13 @@ export class AppStore {
         ...defaultSettings.advancedFx,
         ...(stored.advancedFx || {})
       },
+      defaultGeminiAuthProfileId:
+        typeof stored.defaultGeminiAuthProfileId === 'string'
+          ? stored.defaultGeminiAuthProfileId
+          : stored.defaultGeminiAuthProfileId === null
+            ? null
+            : defaultSettings.defaultGeminiAuthProfileId,
+      geminiAuthProfiles: Array.isArray(stored.geminiAuthProfiles) ? stored.geminiAuthProfiles : [],
       agenticServices: {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})

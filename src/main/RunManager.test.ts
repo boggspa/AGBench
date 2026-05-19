@@ -88,6 +88,15 @@ describe('RunManager', () => {
     expect(manager.resolve('gemini')).toBe(manager.get('run-1'))
   })
 
+  it('does not guess a provider run when several same-provider sessions are active', () => {
+    const manager = new RunManager()
+    manager.create({ runId: 'run-1', provider: 'codex', appChatId: 'chat-1', status: 'running' })
+    manager.create({ runId: 'run-2', provider: 'codex', appChatId: 'chat-2', status: 'running' })
+
+    expect(manager.resolve('codex')).toBeUndefined()
+    expect(manager.resolve('codex', { appChatId: 'chat-2' })?.runId).toBe('run-2')
+  })
+
   it('emits lifecycle changes for persistence adapters', () => {
     const manager = new RunManager()
     const events: string[] = []

@@ -104,9 +104,9 @@ describe('buildRunLanes', () => {
       phase: 'queued',
       runtimeProfileName: 'Codex worktree',
       handoffSourceRunId: 'source-run',
-      blockedReason: 'Codex serializes one active run at a time.'
+      blockedReason: 'Waiting for this chat to finish its active run.'
     })
-    expect(lanes[1]).toMatchObject({ phase: 'scheduled', blockedReason: 'Due and waiting for provider capacity.' })
+    expect(lanes[1]).toMatchObject({ phase: 'scheduled', blockedReason: 'Due and waiting for this chat to become idle.' })
     expect(lanes[2].touchedFiles).toEqual(['src/app.ts'])
   })
 

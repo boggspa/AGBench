@@ -7,6 +7,8 @@ import type {
   CodexSandboxFallbackMode,
   AppSettings,
   GeminiMcpBridgeStatus,
+  GeminiAuthStatus,
+  GeminiAuthProfileSummary,
   ProviderApiKeyStatus,
   ProviderCapabilityContract,
   ProviderId,
@@ -71,6 +73,8 @@ interface SettingsPanelProps {
   updateChannel: ProductUpdateChannel;
   approvalTimeouts: AppSettings['approvalTimeouts'];
   productOperationsStatus: ProductOperationsStatus | null;
+  geminiAuthStatus?: GeminiAuthStatus | null;
+  geminiAuthProfiles?: GeminiAuthProfileSummary[];
   claudeAuthStatus?: ProviderApiKeyStatus | null;
   kimiAuthStatus?: ProviderApiKeyStatus | null;
   claudeLoginState?: 'idle' | 'loading' | 'success' | 'error';
@@ -79,6 +83,17 @@ interface SettingsPanelProps {
   onClearClaudeApiKey?: () => void;
   onStoreKimiApiKey?: (key: string) => void;
   onClearKimiApiKey?: () => void;
+  onSaveGeminiAuthProfile?: (profile: {
+    id?: string;
+    label?: string;
+    kind: 'api-key' | 'vertex-ai' | 'google-oauth';
+    apiKey?: string;
+    vertexProject?: string;
+    vertexLocation?: string;
+    makeDefault?: boolean;
+  }) => void;
+  onSetDefaultGeminiAuthProfile?: (profileId: string | null) => void;
+  onDeleteGeminiAuthProfile?: (profileId: string) => void;
   onInstallGeminiMcpBridge: () => void;
   onRefreshGeminiMcpBridgeStatus: () => void;
   onRefreshProductOperationsStatus: () => void;
@@ -236,6 +251,8 @@ export function SettingsPanel({
   updateChannel,
   approvalTimeouts,
   productOperationsStatus,
+  geminiAuthStatus,
+  geminiAuthProfiles = [],
   claudeAuthStatus,
   kimiAuthStatus,
   claudeLoginState = 'idle',
@@ -244,6 +261,9 @@ export function SettingsPanel({
   onClearClaudeApiKey,
   onStoreKimiApiKey,
   onClearKimiApiKey,
+  onSaveGeminiAuthProfile,
+  onSetDefaultGeminiAuthProfile,
+  onDeleteGeminiAuthProfile,
   onInstallGeminiMcpBridge,
   onRefreshGeminiMcpBridgeStatus,
   onRefreshProductOperationsStatus,
@@ -254,6 +274,10 @@ export function SettingsPanel({
 }: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('');
   const [kimiKeyInput, setKimiKeyInput] = useState('');
+  const [geminiProfileLabel, setGeminiProfileLabel] = useState('');
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('');
+  const [geminiVertexProject, setGeminiVertexProject] = useState('');
+  const [geminiVertexLocation, setGeminiVertexLocation] = useState('us-central1');
   const [activeTab, setActiveTab] = useState<SettingsTab>('appearance');
   const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([]);
   const [installedFontStatus, setInstalledFontStatus] = useState('');
@@ -882,11 +906,117 @@ export function SettingsPanel({
               <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
-        </label>
-        <p className="settings-hint">When Codex hits a Swift/Xcode sandbox/tooling collision, AGBench can ask to rerun that exact command once from the host process.</p>
+	        </label>
+	        <p className="settings-hint">When Codex hits a Swift/Xcode sandbox/tooling collision, AGBench can ask to rerun that exact command once from the host process.</p>
 
-        <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
-          <span>Gemini MCP bridge</span>
+	        <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
+	          <span>
+	            Gemini auth profile
+	            <small>Selected profiles are injected into Gemini runs and override inherited Gemini/Google auth env for that run.</small>
+	          </span>
+	          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', minWidth: 0 }}>
+	            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', flexWrap: 'wrap' }}>
+	              <span style={{ fontSize: '0.78rem', color: geminiAuthStatus?.activeProfileId ? 'var(--color-success, #3fb950)' : 'var(--text-secondary)' }}>
+	                ● {geminiAuthStatus?.activeProfileLabel || (geminiAuthStatus?.authState === 'google-oauth' ? 'Local Gemini login' : 'Default CLI auth')}
+	              </span>
+	              {geminiAuthStatus?.version && (
+	                <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>{geminiAuthStatus.version}</span>
+	              )}
+	            </div>
+	            <select
+	              className="settings-select"
+	              value={geminiAuthStatus?.activeProfileId || ''}
+	              onChange={(event) => onSetDefaultGeminiAuthProfile?.(event.target.value || null)}
+	            >
+	              <option value="">Use local Gemini CLI login/env</option>
+	              {geminiAuthProfiles.map((profile) => (
+	                <option key={profile.id} value={profile.id}>
+	                  {profile.label} ({profile.kind}{profile.configured ? '' : ', incomplete'})
+	                </option>
+	              ))}
+	            </select>
+	            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) auto', gap: 'var(--space-xs)', alignItems: 'center' }}>
+	              <input
+	                className="settings-select"
+	                value={geminiProfileLabel}
+	                onChange={(event) => setGeminiProfileLabel(event.target.value)}
+	                placeholder="Profile name"
+	              />
+	              <input
+	                className="settings-select"
+	                type="password"
+	                value={geminiApiKeyInput}
+	                onChange={(event) => setGeminiApiKeyInput(event.target.value)}
+	                placeholder="GEMINI_API_KEY"
+	              />
+	              <button
+	                className="btn btn-sm"
+	                type="button"
+	                disabled={!geminiApiKeyInput.trim()}
+	                onClick={() => {
+	                  onSaveGeminiAuthProfile?.({
+	                    label: geminiProfileLabel.trim() || 'Gemini API key',
+	                    kind: 'api-key',
+	                    apiKey: geminiApiKeyInput,
+	                    makeDefault: true
+	                  });
+	                  setGeminiProfileLabel('');
+	                  setGeminiApiKeyInput('');
+	                }}
+	              >
+	                Save key
+	              </button>
+	            </div>
+	            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', gap: 'var(--space-xs)', alignItems: 'center' }}>
+	              <input
+	                className="settings-select"
+	                value={geminiVertexProject}
+	                onChange={(event) => setGeminiVertexProject(event.target.value)}
+	                placeholder="Vertex project id"
+	              />
+	              <input
+	                className="settings-select"
+	                value={geminiVertexLocation}
+	                onChange={(event) => setGeminiVertexLocation(event.target.value)}
+	                placeholder="Location"
+	              />
+	              <button
+	                className="btn btn-sm btn-ghost"
+	                type="button"
+	                disabled={!geminiVertexProject.trim()}
+	                onClick={() => {
+	                  onSaveGeminiAuthProfile?.({
+	                    label: geminiProfileLabel.trim() || `Vertex ${geminiVertexProject.trim()}`,
+	                    kind: 'vertex-ai',
+	                    vertexProject: geminiVertexProject.trim(),
+	                    vertexLocation: geminiVertexLocation.trim() || 'us-central1',
+	                    makeDefault: true
+	                  });
+	                  setGeminiProfileLabel('');
+	                  setGeminiVertexProject('');
+	                }}
+	              >
+	                Save Vertex
+	              </button>
+	            </div>
+	            {geminiAuthStatus?.activeProfileId && (
+	              <button
+	                className="btn btn-sm btn-ghost"
+	                type="button"
+	                onClick={() => onDeleteGeminiAuthProfile?.(geminiAuthStatus.activeProfileId!)}
+	                style={{ alignSelf: 'flex-start' }}
+	              >
+	                Delete selected profile
+	              </button>
+	            )}
+	            <p className="settings-hint" style={{ margin: 0 }}>
+	              Browser Google-account switching is not exposed by this Gemini CLI build; API-key and Vertex profiles are isolated by AGBench env injection.
+	            </p>
+	          </div>
+	        </div>
+
+	        <div className="settings-service-row" style={{ alignItems: 'flex-start' }}>
+	          <span>Gemini MCP bridge</span>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-xs)', minWidth: 0 }}>
             <label className="settings-label" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-sm)', cursor: 'pointer', margin: 0 }}>
               <input
