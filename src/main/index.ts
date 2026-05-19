@@ -9,6 +9,7 @@ import * as fsSync from 'fs'
 import { createConnection, createServer, Socket, Server as NetServer } from 'net'
 import * as pty from 'node-pty'
 import os from 'os'
+import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { BridgeDaemonClient } from './BridgeDaemonClient'
@@ -84,6 +85,20 @@ let geminiMcpBroker: NetServer | null = null
 let geminiMcpBrokerStartPromise: Promise<void> | null = null
 let geminiMcpBridgeRepairPromise: Promise<GeminiMcpBridgeStatus> | null = null
 let activeGeminiToolContext: GeminiToolContext | null = null
+const rendererConsoleBuffer: Array<{ timestamp: string; level: number; message: string; sourceId?: string; line?: number }> = []
+let mcpBrowserWindow: BrowserWindow | null = null
+const mcpBrowserConsoleBuffer: Array<{ timestamp: string; level: number; message: string; sourceId?: string; line?: number; url?: string }> = []
+
+type McpToolContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image'; mimeType: string; data: string }
+
+type McpToolExecutionResult = {
+  text: string
+  isError?: boolean
+  structuredContent?: Record<string, unknown>
+  content?: McpToolContentBlock[]
+}
 
 type GeminiOAuthLoginRun = GeminiOAuthLoginStatus & {
   child?: ChildProcess;
@@ -164,7 +179,38 @@ const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const GEMINI_MCP_SOCKET_ARG = '--socket'
 const GEMINI_MCP_TOKEN_ARG = '--token'
 const isGeminiMcpBridgeProcess = process.argv.includes(GEMINI_MCP_BRIDGE_ARG)
-const AGENTBENCH_MCP_TOOLS = ['run_shell_command', 'write_file', 'replace', 'read_file', 'list_directory', 'delegate_to_subthread'] as const
+const AGENTBENCH_MCP_TOOLS = [
+  'run_shell_command',
+  'write_file',
+  'replace',
+  'read_file',
+  'list_directory',
+  'workspace_search',
+  'apply_patch',
+  'git_status',
+  'git_diff',
+  'git_stage',
+  'git_commit',
+  'run_task',
+  'test_result_summary',
+  'list_subthreads',
+  'read_subthread_result',
+  'cancel_subthread',
+  'workspace_symbols',
+  'browser_open',
+  'browser_click',
+  'browser_screenshot',
+  'browser_console',
+  'approval_status',
+  'provider_auth_status',
+  'run_timeline',
+  'raw_provider_events',
+  'open_workspace_file',
+  'create_handoff_card',
+  'switch_auth_profile',
+  'agent_delegation_role',
+  'delegate_to_subthread'
+] as const
 type AGBenchMcpToolName = typeof AGENTBENCH_MCP_TOOLS[number]
 type GeminiMcpRegistrationScope = 'user' | 'project'
 const GEMINI_MCP_ALLOWED_TOOL_NAMES = [
@@ -2488,6 +2534,22 @@ function previewForGeminiMcpTool(toolName: AGBenchMcpToolName, args: Record<stri
     }
   }
 
+  if (toolName === 'run_task') {
+    const command = Array.isArray(args.command)
+      ? args.command.map((part) => String(part)).join(' ')
+      : String(args.command || args.task || args.script || '')
+    return {
+      title: 'Approve task run',
+      body: `${command}\n${cwd}`,
+      service: 'shellCommands' as AgenticServiceId,
+      preview: {
+        kind: 'command',
+        command,
+        cwd
+      }
+    }
+  }
+
   if (toolName === 'write_file' || toolName === 'replace') {
     const filePath = String(args.path || args.file_path || '')
     const resolvedFilePath = filePath ? resolveGeminiMcpScopedPath(context, filePath) : ''
@@ -2507,6 +2569,49 @@ function previewForGeminiMcpTool(toolName: AGBenchMcpToolName, args: Record<stri
               String(args.new_string || args.newString || '').slice(0, 2000)
             ].join('\n')
           : String(args.content || '').slice(0, 2000)
+      }
+    }
+  }
+
+  if (toolName === 'apply_patch') {
+    const patch = String(args.patch || args.diff || '')
+    return {
+      title: args.dryRun === true || args.check === true ? 'Preview patch application' : 'Approve patch application',
+      body: `${cwd}\n${patch.slice(0, 1000)}`,
+      service: 'fileChanges' as AgenticServiceId,
+      preview: {
+        kind: 'fileChange',
+        changes: [],
+        patchPreview: patch.slice(0, 4000)
+      }
+    }
+  }
+
+  if (toolName === 'git_stage' || toolName === 'git_commit') {
+    return {
+      title: toolName === 'git_stage' ? 'Approve git stage' : 'Approve git commit',
+      body: toolName === 'git_stage' ? JSON.stringify(args) : String(args.message || ''),
+      service: 'fileChanges' as AgenticServiceId,
+      preview: {
+        kind: 'tool',
+        toolName,
+        params: args
+      }
+    }
+  }
+
+  if (toolName === 'cancel_subthread') {
+    return {
+      title: 'Approve sub-thread cancellation',
+      body: `Sub-thread: ${String(args.subThreadId || args.id || '')}`,
+      service: 'subThreadDelegation' as AgenticServiceId,
+      preview: {
+        kind: 'tool',
+        toolName,
+        params: {
+          subThreadId: args.subThreadId || args.id,
+          reason: args.reason
+        }
       }
     }
   }
@@ -8642,10 +8747,1033 @@ function formatHostCommandResult(result: HostCommandResult): string {
   return parts.join('\n\n')
 }
 
-async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null, parentProvider: ProviderId = 'gemini'): Promise<{ text: string; isError?: boolean }> {
+const MAX_MCP_TEXT_CHARS = 200_000
+const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
+  'approval_status',
+  'provider_auth_status',
+  'browser_console'
+])
+
+function mcpJson(value: unknown): string {
+  const text = JSON.stringify(value, null, 2)
+  if (text.length <= MAX_MCP_TEXT_CHARS) return text
+  return JSON.stringify({
+    truncated: true,
+    originalLength: text.length,
+    preview: text.slice(0, MAX_MCP_TEXT_CHARS)
+  }, null, 2)
+}
+
+function toStringArray(value: unknown): string[] {
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed ? [trimmed] : []
+  }
+  if (!Array.isArray(value)) return []
+  return value.map((item) => String(item || '').trim()).filter(Boolean)
+}
+
+function clampInteger(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return fallback
+  return Math.max(min, Math.min(max, Math.trunc(parsed)))
+}
+
+function truncateText(value: string, max = MAX_MCP_TEXT_CHARS): string {
+  return value.length <= max ? value : `${value.slice(0, max)}\n...truncated ${value.length - max} chars`
+}
+
+function mcpStructuredJsonResult(value: Record<string, unknown>, extraContent: McpToolContentBlock[] = []): McpToolExecutionResult {
+  const text = mcpJson(value)
+  return {
+    text,
+    structuredContent: value,
+    content: [{ type: 'text', text }, ...extraContent]
+  }
+}
+
+async function runCommandArgs(command: string[], cwd: string, timeoutMs = 120_000): Promise<HostCommandResult> {
+  return runHostCommand(command, cwd, timeoutMs)
+}
+
+async function executeWorkspaceSearch(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
+  const query = requireNonEmptyString(args.query || args.pattern, 'Search query')
+  const target = args.path || args.directory || '.'
+  const targetPath = resolveGeminiMcpScopedPath(context, String(target))
+  const maxResults = clampInteger(args.maxResults ?? args.limit, 100, 1, 500)
+  const contextLines = clampInteger(args.contextLines ?? args.context, 0, 0, 5)
+  const rgArgs = [
+    '--json',
+    '--line-number',
+    '--column',
+    '--hidden',
+    '--glob',
+    '!.git/**',
+    '--glob',
+    '!node_modules/**',
+    ...(contextLines > 0 ? ['--context', String(contextLines)] : []),
+    ...toStringArray(args.globs || args.glob).flatMap((glob) => ['--glob', glob]),
+    '--',
+    query,
+    targetPath
+  ]
+  const result = await runCommandArgs(['rg', ...rgArgs], cwd, 60_000)
+  const matches: any[] = []
+  for (const line of result.stdout.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    try {
+      const event = JSON.parse(line)
+      if (event.type !== 'match') continue
+      matches.push({
+        path: workspaceRelativeForContext(context, String(event.data?.path?.text || '')),
+        line: event.data?.line_number,
+        column: event.data?.submatches?.[0]?.start + 1,
+        text: String(event.data?.lines?.text || '').replace(/\r?\n$/, ''),
+        submatches: Array.isArray(event.data?.submatches) ? event.data.submatches : []
+      })
+      if (matches.length >= maxResults) break
+    } catch {
+      // Ignore malformed rg JSON lines; stderr is returned separately.
+    }
+  }
+  return {
+    query,
+    cwd,
+    target: workspaceRelativeForContext(context, targetPath),
+    ok: result.exitCode === 0 || result.exitCode === 1,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    count: matches.length,
+    truncated: matches.length >= maxResults,
+    matches,
+    stderr: truncateText(result.stderr, 20_000),
+    error: result.error
+  }
+}
+
+function workspaceRelativeForContext(context: GeminiToolContext, filePath: string): string {
+  if (!filePath) return ''
+  try {
+    return formatScopedPath(context, resolve(filePath))
+  } catch {
+    return filePath
+  }
+}
+
+function extractUnifiedPatchPaths(patch: string): string[] {
+  const paths = new Set<string>()
+  for (const line of patch.split(/\r?\n/)) {
+    const gitMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
+    if (gitMatch) {
+      paths.add(gitMatch[1])
+      paths.add(gitMatch[2])
+      continue
+    }
+    if (!line.startsWith('--- ') && !line.startsWith('+++ ')) continue
+    const rawPath = line.slice(4).trim().split('\t')[0]
+    if (!rawPath || rawPath === '/dev/null') continue
+    paths.add(rawPath.replace(/^[ab]\//, ''))
+  }
+  return [...paths].filter(Boolean)
+}
+
+function assertPatchPathsInScope(context: GeminiToolContext, cwd: string, patch: string): string[] {
+  const patchPaths = extractUnifiedPatchPaths(patch)
+  const workspaceRoot = resolve(context.workspacePath || context.cwd)
+  for (const patchPath of patchPaths) {
+    if (isAbsolute(patchPath) || patchPath.split(/[\\/]+/).includes('..')) {
+      throw new Error(`Patch path must stay inside the workspace: ${patchPath}`)
+    }
+    const resolvedPath = resolve(cwd, patchPath)
+    if (context.scope !== 'global' && !isPathInsideWorkspace(workspaceRoot, resolvedPath)) {
+      throw new Error(`Patch path is outside the workspace: ${patchPath}`)
+    }
+  }
+  return patchPaths
+}
+
+async function executeApplyPatch(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
+  const patch = requireNonEmptyString(args.patch || args.diff, 'Patch')
+  const patchPaths = assertPatchPathsInScope(context, cwd, patch)
+  const dryRun = args.dryRun === true || args.check === true || args.preview === true
+  const patchPath = join(app.getPath('temp'), `agbench-mcp-${Date.now()}-${randomBytes(4).toString('hex')}.patch`)
+  await fs.writeFile(patchPath, patch, 'utf8')
+  try {
+    const check = await runCommandArgs(['git', 'apply', '--check', patchPath], cwd, 30_000)
+    if (check.exitCode !== 0) {
+      return {
+        ok: false,
+        dryRun,
+        paths: patchPaths,
+        check,
+        message: 'Patch does not apply cleanly.'
+      }
+    }
+    if (dryRun) {
+      return {
+        ok: true,
+        dryRun: true,
+        paths: patchPaths,
+        message: 'Patch applies cleanly.',
+        check
+      }
+    }
+    const applied = await runCommandArgs(['git', 'apply', patchPath], cwd, 30_000)
+    return {
+      ok: applied.exitCode === 0,
+      dryRun: false,
+      paths: patchPaths,
+      applied,
+      message: applied.exitCode === 0 ? 'Patch applied.' : 'Patch apply failed after check.'
+    }
+  } finally {
+    await fs.rm(patchPath, { force: true }).catch(() => {})
+  }
+}
+
+async function executeGitStatus(cwd: string) {
+  const [shortStatus, branchStatus] = await Promise.all([
+    runCommandArgs(['git', 'status', '--short', '--branch'], cwd, 30_000),
+    runCommandArgs(['git', 'branch', '--show-current'], cwd, 30_000)
+  ])
+  return {
+    cwd,
+    branch: branchStatus.stdout.trim(),
+    exitCode: shortStatus.exitCode,
+    stdout: shortStatus.stdout,
+    stderr: shortStatus.stderr,
+    clean: shortStatus.exitCode === 0 && shortStatus.stdout.trim().split(/\r?\n/).every((line) => line.startsWith('##'))
+  }
+}
+
+async function executeGitDiff(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
+  const diffArgs = ['git', 'diff']
+  if (args.cached === true || args.staged === true) diffArgs.push('--cached')
+  if (args.stat === true) diffArgs.push('--stat')
+  const paths = toStringArray(args.paths || (args.path ? [args.path] : []))
+  if (paths.length) diffArgs.push('--', ...paths.map((pathArg) => resolveGeminiMcpScopedPath(context, pathArg)))
+  const result = await runCommandArgs(diffArgs, cwd, 60_000)
+  return {
+    cwd,
+    command: diffArgs,
+    exitCode: result.exitCode,
+    stdout: truncateText(result.stdout),
+    stderr: truncateText(result.stderr, 20_000),
+    timedOut: result.timedOut
+  }
+}
+
+async function executeGitStage(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
+  const patch = optionalString(args.patch)
+  if (patch) {
+    const patchPaths = assertPatchPathsInScope(context, cwd, patch)
+    const patchPath = join(app.getPath('temp'), `agbench-mcp-stage-${Date.now()}-${randomBytes(4).toString('hex')}.patch`)
+    await fs.writeFile(patchPath, patch, 'utf8')
+    try {
+      const check = await runCommandArgs(['git', 'apply', '--cached', '--check', patchPath], cwd, 30_000)
+      if (check.exitCode !== 0) {
+        return { ok: false, mode: 'patch', paths: patchPaths, check, message: 'Patch does not stage cleanly.' }
+      }
+      const result = await runCommandArgs(['git', 'apply', '--cached', patchPath], cwd, 30_000)
+      const status = await executeGitStatus(cwd)
+      return { ok: result.exitCode === 0, mode: 'patch', paths: patchPaths, result, status }
+    } finally {
+      await fs.rm(patchPath, { force: true }).catch(() => {})
+    }
+  }
+  const all = args.all === true || args.update === true
+  const paths = toStringArray(args.paths || (args.path ? [args.path] : []))
+  if (!all && paths.length === 0) {
+    throw new Error('git_stage requires paths, patch, or all=true.')
+  }
+  const gitArgs = ['git', 'add']
+  if (all) gitArgs.push(args.update === true ? '-u' : '-A')
+  if (paths.length) gitArgs.push('--', ...paths.map((pathArg) => resolveGeminiMcpScopedPath(context, pathArg)))
+  const result = await runCommandArgs(gitArgs, cwd, 30_000)
+  const status = await executeGitStatus(cwd)
+  return { command: gitArgs, result, status }
+}
+
+async function executeGitCommit(args: Record<string, any>, cwd: string) {
+  const message = requireNonEmptyString(args.message, 'Commit message')
+  const gitArgs = ['git', 'commit', '-m', message]
+  const result = await runCommandArgs(gitArgs, cwd, 60_000)
+  return {
+    command: ['git', 'commit', '-m', '[message]'],
+    exitCode: result.exitCode,
+    stdout: result.stdout,
+    stderr: result.stderr,
+    timedOut: result.timedOut
+  }
+}
+
+async function executeRunTask(args: Record<string, any>, cwd: string) {
+  const task = requireNonEmptyString(args.task || args.script || args.name, 'Task')
+  const packageJson = await readJsonFile(join(cwd, 'package.json'))
+  let command: string[]
+  if (packageJson?.scripts && typeof packageJson.scripts === 'object' && task in packageJson.scripts) {
+    command = ['npm', 'run', task]
+    const script = String(packageJson.scripts[task] || '')
+    if (task === 'test' && /\bvitest\b/.test(script) && !/\s--run\b/.test(script)) {
+      command.push('--', '--run')
+    }
+  } else if (task === 'test' && fsSync.existsSync(join(cwd, 'Package.swift'))) {
+    command = ['swift', 'test']
+  } else if (task === 'build' && fsSync.existsSync(join(cwd, 'Package.swift'))) {
+    command = ['swift', 'build']
+  } else {
+    throw new Error(`No known task "${task}" in this workspace.`)
+  }
+  command.push(...toStringArray(args.args))
+  const timeoutMs = clampInteger(args.timeoutMs, 120_000, 1_000, 30 * 60_000)
+  const result = await runCommandArgs(command, cwd, timeoutMs)
+  return {
+    task,
+    command,
+    cwd,
+    exitCode: result.exitCode,
+    timedOut: result.timedOut,
+    durationMs: result.durationMs,
+    stdout: truncateText(result.stdout),
+    stderr: truncateText(result.stderr),
+    summary: summarizeTestOutput(`${result.stdout}\n${result.stderr}`)
+  }
+}
+
+function summarizeTestOutput(output: string) {
+  const lines = output.split(/\r?\n/)
+  const failures: any[] = []
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]
+    if (
+      /\bFAIL\b/.test(line) ||
+      /^\s*[×✗]\s+/.test(line) ||
+      /AssertionError|XCTAssert|failed|Failure/i.test(line)
+    ) {
+      const location = line.match(/([A-Za-z0-9_./~ -]+\.(?:ts|tsx|js|jsx|swift|py|rs|go|java|kt|m|mm)):(\d+)(?::(\d+))?/)
+      failures.push({
+        line: index + 1,
+        text: line.trim(),
+        file: location?.[1],
+        fileLine: location ? Number(location[2]) : undefined,
+        column: location?.[3] ? Number(location[3]) : undefined,
+        excerpt: lines.slice(Math.max(0, index - 2), Math.min(lines.length, index + 4)).join('\n')
+      })
+    }
+    if (failures.length >= 50) break
+  }
+  const totals = {
+    failed: failures.length,
+    failedCount: Number(output.match(/(\d+)\s+(?:failed|failures?|failing)/i)?.[1] || failures.length || 0),
+    passedCount: Number(output.match(/(\d+)\s+(?:passed|passing)/i)?.[1] || 0),
+    passedMentions: lines.filter((line) => /\b(pass|passed|✓)\b/i.test(line)).length
+  }
+  const status = totals.failed > 0 || totals.failedCount > 0
+    ? 'failed'
+    : totals.passedCount > 0 || totals.passedMentions > 0
+      ? 'passed'
+      : 'unknown'
+  return {
+    status,
+    totals,
+    failures,
+    summary: status === 'failed'
+      ? `${totals.failedCount || totals.failed} test failure(s) detected.`
+      : status === 'passed'
+        ? `${totals.passedCount || 'Some'} test(s) passed.`
+        : 'No clear test result summary found.'
+  }
+}
+
+function latestAssistantMessage(chat: ChatRecord): ChatMessage | undefined {
+  return [...(chat.messages || [])].reverse().find((message) => message.role === 'assistant')
+}
+
+function summarizeChatRun(run?: ChatRun) {
+  if (!run) return null
+  return {
+    runId: run.runId,
+    provider: run.provider,
+    status: run.status,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt,
+    requestedModel: run.requestedModel,
+    actualModel: run.actualModel,
+    approvalMode: run.approvalMode,
+    providerThreadId: run.providerThreadId,
+    providerRunId: run.providerRunId,
+    cancelled: run.cancelled === true,
+    runtimeProfileId: run.runtimeProfileId,
+    geminiAuthProfileId: run.geminiAuthProfileId
+  }
+}
+
+function assertOwnedSubThread(context: GeminiToolContext, subThreadId: string): ChatRecord {
+  const chat = AppStore.getChat(requireNonEmptyString(subThreadId, 'Sub-thread id'))
+  if (!chat || chat.parentChatId !== context.appChatId) {
+    throw new Error('Sub-thread was not found under this parent chat.')
+  }
+  return chat
+}
+
+function subThreadRunStatus(chat: ChatRecord): string {
+  const activeSession = (chat.provider ? runManager.getActiveByProvider(chat.provider) : [])
+    .find((session) => session.appChatId === chat.appChatId)
+  if (activeSession) return activeSession.status
+  const queueJob = AppStore.getRunQueueJobs({ chatId: chat.appChatId })[0]
+  if (queueJob) return queueJob.status
+  const latestRun = [...(chat.runs || [])].reverse()[0]
+  return latestRun?.status || 'idle'
+}
+
+function executeListSubthreads(context: GeminiToolContext, args: Record<string, any>) {
+  const parentChatId = optionalString(args.parentChatId) || context.appChatId
+  if (!parentChatId || parentChatId !== context.appChatId) {
+    throw new Error('list_subthreads can only read sub-threads for the active parent chat.')
+  }
+  const includeArchived = args.includeArchived === true
+  const includePrompt = args.includePrompt === true
+  const subthreads = AppStore.getChildChats(parentChatId)
+    .filter((chat) => includeArchived || !chat.archived)
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map((chat) => ({
+      id: chat.appChatId,
+      title: chat.title,
+      provider: chat.provider,
+      status: subThreadRunStatus(chat),
+      archived: chat.archived,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+      workspaceId: chat.workspaceId,
+      workspacePath: chat.workspacePath,
+      delegationContext: chat.delegationContext
+        ? {
+            createdAt: chat.delegationContext.createdAt,
+            parentProvider: chat.delegationContext.parentProvider,
+            returnResultToParent: chat.delegationContext.returnResultToParent,
+            resultReturnedAt: chat.delegationContext.resultReturnedAt,
+            dispatchError: chat.delegationContext.dispatchError,
+            delegationPromptPreview: chat.delegationContext.delegationPrompt.slice(0, 500),
+            ...(includePrompt ? { delegationPrompt: chat.delegationContext.delegationPrompt } : {})
+          }
+        : undefined,
+      latestRun: summarizeChatRun([...(chat.runs || [])].reverse()[0]),
+      latestAssistantPreview: latestAssistantMessage(chat)?.content?.slice(0, 500),
+      messageCount: chat.messages?.length || 0,
+      runCount: chat.runs?.length || 0
+    }))
+  return {
+    parentChatId,
+    count: subthreads.length,
+    subthreads
+  }
+}
+
+function executeReadSubthreadResult(context: GeminiToolContext, args: Record<string, any>) {
+  const chat = assertOwnedSubThread(context, String(args.subThreadId || args.id || ''))
+  const assistant = latestAssistantMessage(chat)
+  const messageLimit = clampInteger(args.messageLimit ?? args.maxMessages, 20, 1, 200)
+  return {
+    id: chat.appChatId,
+    title: chat.title,
+    provider: chat.provider,
+    status: subThreadRunStatus(chat),
+    archived: chat.archived,
+    createdAt: chat.createdAt,
+    updatedAt: chat.updatedAt,
+    delegationContext: chat.delegationContext
+      ? {
+          createdAt: chat.delegationContext.createdAt,
+          parentProvider: chat.delegationContext.parentProvider,
+          returnResultToParent: chat.delegationContext.returnResultToParent,
+          resultReturnedAt: chat.delegationContext.resultReturnedAt,
+          dispatchError: chat.delegationContext.dispatchError
+        }
+      : undefined,
+    latestRun: summarizeChatRun([...(chat.runs || [])].reverse()[0]),
+    latestAssistantMessage: assistant || null,
+    result: assistant?.content || null,
+    messageCount: chat.messages?.length || 0,
+    runCount: chat.runs?.length || 0,
+    runs: args.includeRuns === true ? (chat.runs || []).map((run) => summarizeChatRun(run)) : undefined,
+    messages: args.includeMessages === true
+      ? (chat.messages || []).slice(-messageLimit).map((message) => ({
+          id: message.id,
+          role: message.role,
+          timestamp: message.timestamp,
+          runId: message.runId,
+          metadata: message.metadata,
+          content: message.content
+        }))
+      : undefined
+  }
+}
+
+async function executeCancelSubthread(context: GeminiToolContext, args: Record<string, any>) {
+  const chat = assertOwnedSubThread(context, String(args.subThreadId || args.id || ''))
+  const provider = chat.provider || 'gemini'
+  const activeSession = runManager.getActiveByProvider(provider)
+    .find((session) => session.appChatId === chat.appChatId)
+  const activeQueueJob = AppStore.getRunQueueJobs({ chatId: chat.appChatId })
+    .find((job) => job.status === 'queued' || job.status === 'paused' || job.status === 'starting' || job.status === 'active')
+  const activeRun = [...(chat.runs || [])].reverse()
+    .find((run) => run.status === 'running' || run.status === 'queued' || run.status === 'starting' || run.status === 'active')
+  const runId = activeSession?.runId || activeQueueJob?.runId || activeRun?.runId
+  if (!runId) {
+    return { ok: false, message: 'Sub-thread has no active running run.', subThreadId: chat.appChatId }
+  }
+  const ok = await cancelProviderRun(provider, runId)
+  if (ok) {
+    const endedAt = new Date().toISOString()
+    const updated: ChatRecord = {
+      ...chat,
+      runs: (chat.runs || []).map((run) =>
+        run.runId === runId
+          ? { ...run, status: 'cancelled', cancelled: true, endedAt: run.endedAt || endedAt }
+          : run
+      ),
+      updatedAt: Date.now()
+    }
+    saveAndBroadcastChat(updated)
+  }
+  return {
+    ok,
+    subThreadId: chat.appChatId,
+    runId,
+    provider,
+    previousStatus: activeSession?.status || activeQueueJob?.status || activeRun?.status || 'unknown'
+  }
+}
+
+async function executeWorkspaceSymbols(args: Record<string, any>, context: GeminiToolContext, cwd: string) {
+  const query = String(args.query || '').trim().toLowerCase()
+  const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || '.'))
+  const pattern = '^\\s*(?:(?:export|public|private|internal|open|final|static)\\s+)*(class|function|interface|type|enum|const|let|var|struct|actor|protocol|func)\\s+[A-Za-z_][A-Za-z0-9_]*'
+  const result = await runCommandArgs(['rg', '--line-number', '--column', '--hidden', '--glob', '!.git/**', '--glob', '!node_modules/**', pattern, targetPath], cwd, 60_000)
+  const symbols = result.stdout.split(/\r?\n/).filter(Boolean).slice(0, 1000).map((line) => {
+    const match = line.match(/^(.*?):(\d+):(\d+):(.*)$/)
+    const text = match?.[4]?.trim() || line
+    const name = text.match(/\b(?:class|function|interface|type|enum|const|let|var|struct|actor|protocol|func)\s+([A-Za-z_][A-Za-z0-9_]*)/)?.[1]
+    return {
+      path: match ? workspaceRelativeForContext(context, match[1]) : '',
+      line: match ? Number(match[2]) : undefined,
+      column: match ? Number(match[3]) : undefined,
+      name,
+      text
+    }
+  }).filter((symbol) => !query || symbol.name?.toLowerCase().includes(query) || symbol.text.toLowerCase().includes(query))
+  return { count: symbols.length, symbols: symbols.slice(0, clampInteger(args.maxResults ?? args.limit, 200, 1, 1000)), stderr: result.stderr }
+}
+
+function pushMcpBrowserConsoleEntry(entry: { level: number; message: string; sourceId?: string; line?: number; url?: string }): void {
+  mcpBrowserConsoleBuffer.push({
+    timestamp: new Date().toISOString(),
+    ...entry
+  })
+  if (mcpBrowserConsoleBuffer.length > 500) {
+    mcpBrowserConsoleBuffer.splice(0, mcpBrowserConsoleBuffer.length - 500)
+  }
+}
+
+function ensureMcpBrowserWindow(args: Record<string, any> = {}): BrowserWindow {
+  const existing = mcpBrowserWindow
+  if (existing && !existing.isDestroyed()) {
+    if (args.width || args.height) {
+      const bounds = existing.getBounds()
+      existing.setSize(
+        clampInteger(args.width, bounds.width, 320, 3840),
+        clampInteger(args.height, bounds.height, 240, 2160)
+      )
+    }
+    return existing
+  }
+
+  const win = new BrowserWindow({
+    width: clampInteger(args.width, 1280, 320, 3840),
+    height: clampInteger(args.height, 800, 240, 2160),
+    title: 'AGBench MCP Browser',
+    show: args.show === false ? false : true,
+    backgroundColor: '#111111',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    void shell.openExternal(url)
+    return { action: 'deny' }
+  })
+  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    pushMcpBrowserConsoleEntry({ level, message, line, sourceId, url: win.webContents.getURL() })
+  })
+  win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    pushMcpBrowserConsoleEntry({
+      level: 3,
+      message: `Navigation failed (${errorCode}): ${errorDescription}`,
+      sourceId: validatedURL,
+      url: validatedURL || win.webContents.getURL()
+    })
+  })
+  win.on('closed', () => {
+    if (mcpBrowserWindow === win) {
+      mcpBrowserWindow = null
+    }
+  })
+  mcpBrowserWindow = win
+  return win
+}
+
+function currentMcpBrowserWindow(): BrowserWindow {
+  if (!mcpBrowserWindow || mcpBrowserWindow.isDestroyed()) {
+    throw new Error('No MCP browser window is open. Call browser_open first.')
+  }
+  return mcpBrowserWindow
+}
+
+function describeMcpBrowserWindow(win: BrowserWindow): Record<string, unknown> {
+  return {
+    windowId: win.id,
+    url: win.webContents.getURL(),
+    title: win.webContents.getTitle(),
+    bounds: win.getBounds()
+  }
+}
+
+function normalizeMcpBrowserUrl(args: Record<string, any>, context: GeminiToolContext): { url: string; source: 'url' | 'file'; path?: string } {
+  const raw = requireNonEmptyString(args.url || args.href || args.path, 'URL or path').trim()
+  if (/^(localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/i.test(raw)) {
+    return { url: `http://${raw}`, source: 'url' }
+  }
+  try {
+    const parsed = new URL(raw)
+    if (parsed.protocol === 'file:') {
+      const targetPath = resolveGeminiMcpScopedPath(context, fileURLToPath(parsed))
+      return { url: pathToFileURL(targetPath).toString(), source: 'file', path: targetPath }
+    }
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'about:') {
+      return { url: parsed.toString(), source: 'url' }
+    }
+    throw new Error(`browser_open refused unsupported URL scheme: ${parsed.protocol}`)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('browser_open refused')) {
+      throw error
+    }
+    const targetPath = resolveGeminiMcpScopedPath(context, raw)
+    return { url: pathToFileURL(targetPath).toString(), source: 'file', path: targetPath }
+  }
+}
+
+function selectorClickPointScript(selector: string): string {
+  return `
+    (() => {
+      const element = document.querySelector(${JSON.stringify(selector)});
+      if (!element) return { ok: false, error: 'No element matches selector.' };
+      const rect = element.getBoundingClientRect();
+      return {
+        ok: true,
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + rect.height / 2),
+        tagName: element.tagName,
+        id: element.id || undefined,
+        className: typeof element.className === 'string' ? element.className : undefined,
+        text: (element.textContent || '').trim().slice(0, 200)
+      };
+    })()
+  `
+}
+
+function mcpBrowserConsoleResult(args: Record<string, any>): McpToolExecutionResult {
+  const target = optionalString(args.target) || 'browser'
+  const limit = clampInteger(args.limit, 100, 1, 500)
+  const browserEntries = mcpBrowserConsoleBuffer.map((entry) => ({ target: 'browser', ...entry }))
+  const appEntries = rendererConsoleBuffer.map((entry) => ({ target: 'app', ...entry }))
+  const sourceEntries =
+    target === 'app'
+      ? appEntries
+      : target === 'all'
+        ? [...appEntries, ...browserEntries].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+        : browserEntries
+  const entries = sourceEntries.slice(-limit)
+  if (args.clear === true) {
+    if (target === 'app' || target === 'all') rendererConsoleBuffer.splice(0, rendererConsoleBuffer.length)
+    if (target !== 'app') mcpBrowserConsoleBuffer.splice(0, mcpBrowserConsoleBuffer.length)
+  }
+  return mcpStructuredJsonResult({
+    ok: true,
+    target,
+    count: sourceEntries.length,
+    returned: entries.length,
+    entries
+  })
+}
+
+async function executeBrowserTool(toolName: AGBenchMcpToolName, args: Record<string, any>, context: GeminiToolContext): Promise<McpToolExecutionResult> {
+  if (toolName === 'browser_open') {
+    const target = normalizeMcpBrowserUrl(args, context)
+    const win = ensureMcpBrowserWindow(args)
+    await win.loadURL(target.url)
+    if (args.show !== false) {
+      win.show()
+      win.focus()
+    }
+    return mcpStructuredJsonResult({
+      ok: true,
+      action: 'open',
+      source: target.source,
+      path: target.path,
+      ...describeMcpBrowserWindow(win)
+    })
+  }
+  if (toolName === 'browser_click') {
+    const win = currentMcpBrowserWindow()
+    const selector = optionalString(args.selector)
+    let target: Record<string, unknown>
+    if (selector) {
+      target = await win.webContents.executeJavaScript(selectorClickPointScript(selector), true)
+      if (!target?.ok || typeof target.x !== 'number' || typeof target.y !== 'number') {
+        throw new Error(String(target?.error || 'Could not resolve selector click target.'))
+      }
+    } else {
+      const x = Number(args.x)
+      const y = Number(args.y)
+      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+        throw new Error('browser_click requires either selector or numeric x/y coordinates.')
+      }
+      target = { ok: true, x: Math.trunc(x), y: Math.trunc(y) }
+    }
+    const x = Number(target.x)
+    const y = Number(target.y)
+    win.show()
+    win.focus()
+    win.webContents.focus()
+    win.webContents.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+    win.webContents.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+    await new Promise((resolveClick) => setTimeout(resolveClick, 100))
+    return mcpStructuredJsonResult({
+      ok: true,
+      action: 'click',
+      clicked: target,
+      ...describeMcpBrowserWindow(win)
+    })
+  }
+  if (toolName === 'browser_screenshot') {
+    const win = currentMcpBrowserWindow()
+    const image = await win.webContents.capturePage()
+    const png = image.toPNG()
+    const requestedPath = optionalString(args.path || args.outputPath)
+    const outputPath = requestedPath ? resolveGeminiMcpScopedPath(context, requestedPath) : undefined
+    if (outputPath) {
+      await fs.mkdir(dirname(outputPath), { recursive: true })
+      await fs.writeFile(outputPath, png)
+    }
+    return mcpStructuredJsonResult({
+      ok: true,
+      action: 'screenshot',
+      mimeType: 'image/png',
+      byteLength: png.byteLength,
+      size: image.getSize(),
+      path: outputPath,
+      ...describeMcpBrowserWindow(win)
+    }, [{ type: 'image', mimeType: 'image/png', data: png.toString('base64') }])
+  }
+  return mcpBrowserConsoleResult(args)
+}
+
+function summarizeApprovalRecord(record: ReturnType<typeof AppStore.getApprovalLedger>[number], includePreview: boolean) {
+  return {
+    approvalId: record.approvalId,
+    provider: record.provider,
+    service: record.service,
+    method: record.method,
+    title: record.title,
+    status: record.status,
+    requestedAt: record.requestedAt,
+    respondedAt: record.respondedAt,
+    decision: record.decision,
+    decisionSource: record.decisionSource,
+    grantedScope: record.grantedScope,
+    expiration: record.expiration,
+    runId: record.runId,
+    chatId: record.chatId,
+    workspaceId: record.workspaceId,
+    workspacePath: record.workspacePath,
+    ...(includePreview ? { body: record.body, preview: record.preview } : {})
+  }
+}
+
+function mcpStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item || '').trim()).filter(Boolean)
+  if (typeof value === 'string' && value.trim()) {
+    return value.split(',').map((item) => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
+function executeApprovalStatus(context: GeminiToolContext, args: Record<string, any>, parentProvider: ProviderId) {
+  const settings = AppStore.getSettings()
+  const workspacePath = context.workspacePath || context.cwd
+  const provider = args.provider ? assertProviderId(args.provider) : parentProvider
+  const service = args.service ? assertAgenticServiceId(args.service) : undefined
+  const statuses = mcpStringList(args.statuses || args.status)
+  const scopes = mcpStringList(args.scopes || args.scope)
+  const filter: ApprovalLedgerFilter = {
+    provider,
+    ...(service ? { service } : {}),
+    ...(optionalString(args.approvalId) ? { approvalId: optionalString(args.approvalId) } : {}),
+    ...(optionalString(args.runId) || (!args.all && context.appRunId) ? { runId: optionalString(args.runId) || context.appRunId } : {}),
+    ...(optionalString(args.chatId) || (!args.all && context.appChatId) ? { chatId: optionalString(args.chatId) || context.appChatId } : {}),
+    ...(optionalString(args.workspaceId) ? { workspaceId: optionalString(args.workspaceId) } : {}),
+    ...(statuses.length ? { statuses: statuses as any } : {}),
+    ...(scopes.length ? { scopes: scopes as any } : {}),
+    includeExpired: args.includeExpired === true,
+    limit: clampInteger(args.limit, 25, 1, 200)
+  }
+  const approvals = AppStore.getApprovalLedger(filter)
+  const countsByStatus = approvals.reduce<Record<string, number>>((acc, record) => {
+    acc[record.status] = (acc[record.status] || 0) + 1
+    return acc
+  }, {})
+  return {
+    provider,
+    scope: context.scope,
+    workspacePath,
+    services: settings.agenticServices,
+    workspaceGrants: (settings.agenticWorkspaceGrants || []).filter((grant) =>
+      grant.provider === provider &&
+      (!workspacePath || resolve(grant.workspacePath) === resolve(workspacePath))
+    ),
+    filter,
+    count: approvals.length,
+    countsByStatus,
+    approvals: approvals.map((record) => summarizeApprovalRecord(record, args.includePreview === true))
+  }
+}
+
+function summarizeGeminiAuthStatusForMcp(status: GeminiAuthStatus) {
+  return {
+    provider: 'gemini',
+    available: status.available,
+    authState: status.authState,
+    apiKeyConfigured: status.apiKeyConfigured,
+    encryptionAvailable: status.encryptionAvailable,
+    version: status.version,
+    binaryPath: status.binaryPath,
+    activeProfileId: status.activeProfileId,
+    activeProfileLabel: status.activeProfileLabel,
+    profiles: status.profiles,
+    oauthLogin: status.oauthLogin
+      ? {
+          profileId: status.oauthLogin.profileId,
+          status: status.oauthLogin.status,
+          startedAt: status.oauthLogin.startedAt,
+          finishedAt: status.oauthLogin.finishedAt,
+          message: status.oauthLogin.message,
+          exitCode: status.oauthLogin.exitCode
+        }
+      : undefined
+  }
+}
+
+async function summarizeProviderAuthStatusForMcp(provider: ProviderId) {
+  if (provider === 'gemini') {
+    return summarizeGeminiAuthStatusForMcp(await getGeminiAuthStatusSnapshot())
+  }
+  const status = await getCliProviderStatus(provider)
+  if (provider === 'claude') {
+    return {
+      ...status,
+      apiKeyConfigured: Boolean(getStoredClaudeApiKey()),
+      encryptionAvailable: safeStorage.isEncryptionAvailable()
+    }
+  }
+  if (provider === 'kimi') {
+    return {
+      ...status,
+      apiKeyConfigured: Boolean(getStoredKimiApiKey()),
+      encryptionAvailable: safeStorage.isEncryptionAvailable()
+    }
+  }
+  return {
+    ...status,
+    apiKeyConfigured: false,
+    encryptionAvailable: safeStorage.isEncryptionAvailable(),
+    appServer: codexClient ? 'started' : 'lazy',
+    accountStatus: 'not-queried',
+    codexUsageConfigured: Boolean(AppStore.getSettings().codexUsageCredential?.accountId)
+  }
+}
+
+async function executeProviderAuthStatus(args: Record<string, any>) {
+  const providers = args.provider ? [assertProviderId(args.provider)] : Array.from(PROVIDER_IDS)
+  const entries: Record<string, any> = {}
+  for (const provider of providers) {
+    entries[provider] = await summarizeProviderAuthStatusForMcp(provider)
+  }
+  return {
+    checkedAt: new Date().toISOString(),
+    providers: entries
+  }
+}
+
+function executeRunTimeline(args: Record<string, any>, context: GeminiToolContext) {
+  const runId = optionalString(args.runId) || context.appRunId
+  if (!runId) throw new Error('run_timeline requires runId or an active run context.')
+  const replay = getRunRepository().getRunEventReplay(runId)
+  const limit = clampInteger(args.limit, 100, 1, 1000)
+  return {
+    runId,
+    count: replay.count,
+    lastSequence: replay.lastSequence,
+    hashHead: replay.hashHead,
+    startedAt: replay.startedAt,
+    endedAt: replay.endedAt,
+    hashChainValid: replay.hashChainValid,
+    countsByKind: replay.countsByKind,
+    timeline: replay.timeline.slice(-limit),
+    events: args.includeEvents === true
+      ? replay.events.slice(-limit).map((event) => ({
+          sequence: event.sequence,
+          timestamp: event.timestamp,
+          provider: event.provider,
+          providerSessionId: event.providerSessionId,
+          providerRunId: event.providerRunId,
+          kind: event.kind,
+          phase: event.phase,
+          source: event.source,
+          summary: event.summary,
+          spanId: event.spanId,
+          parentSpanId: event.parentSpanId,
+          toolCallId: event.toolCallId,
+          artifacts: event.artifacts,
+          payload: args.includePayload === true ? event.payload : undefined
+        }))
+      : undefined
+  }
+}
+
+function executeRawProviderEvents(args: Record<string, any>, context: GeminiToolContext) {
+  const runId = optionalString(args.runId) || context.appRunId
+  const chatId = optionalString(args.chatId) || (!runId ? context.appChatId : undefined)
+  if (!runId && !chatId) {
+    throw new Error('raw_provider_events requires runId, chatId, or an active run context.')
+  }
+  const limit = clampInteger(args.limit, 100, 1, 1000)
+  const filter = {
+    ...(runId ? { runId } : {}),
+    ...(chatId ? { chatId } : {}),
+    provider: args.provider ? assertProviderId(args.provider) : undefined,
+    kinds: ['provider_raw', 'provider_error', 'provider_exit'] as any
+  }
+  const events = getRunRepository().getRunEvents(filter).slice(-limit)
+  return {
+    filter,
+    count: events.length,
+    events: events.map((event) => ({
+      sequence: event.sequence,
+      timestamp: event.timestamp,
+      runId: event.runId,
+      chatId: event.chatId,
+      workspaceId: event.workspaceId,
+      provider: event.provider,
+      providerSessionId: event.providerSessionId,
+      providerRunId: event.providerRunId,
+      kind: event.kind,
+      phase: event.phase,
+      source: event.source,
+      summary: event.summary,
+      spanId: event.spanId,
+      parentSpanId: event.parentSpanId,
+      toolCallId: event.toolCallId,
+      payload: event.payload,
+      artifacts: args.includeArtifacts === false ? undefined : event.artifacts,
+      hash: event.hash
+    }))
+  }
+}
+
+async function executeOpenWorkspaceFile(args: Record<string, any>, context: GeminiToolContext) {
+  const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.file || ''))
+  if (args.reveal === true) {
+    shell.showItemInFolder(targetPath)
+    return { ok: true, path: targetPath, action: 'reveal' }
+  }
+  const error = await shell.openPath(targetPath)
+  return { ok: !error, path: targetPath, action: 'open', error: error || undefined }
+}
+
+function executeCreateHandoffCard(args: Record<string, any>, context: GeminiToolContext, parentProvider: ProviderId) {
+  const chatId = context.appChatId || optionalString(args.sourceChatId)
+  if (!chatId) throw new Error('create_handoff_card requires an active chat context.')
+  const chat = AppStore.getChat(chatId)
+  const card = AppStore.saveHandoffCard(sanitizeHandoffCardForSave({
+    sourceChatId: chatId,
+    sourceRunId: optionalString(args.sourceRunId) || context.appRunId,
+    sourceProvider: parentProvider,
+    workspaceId: chat?.workspaceId,
+    workspacePath: chat?.workspacePath || context.workspacePath,
+    summary: optionalString(args.summary) || 'Agent-created handoff',
+    selectedFiles: toStringArray(args.selectedFiles || args.files),
+    workspaceChangeSetIds: toStringArray(args.workspaceChangeSetIds),
+    rawEventRunIds: toStringArray(args.rawEventRunIds || (context.appRunId ? [context.appRunId] : [])),
+    recommendedProvider: args.recommendedProvider ? assertProviderId(args.recommendedProvider) : undefined,
+    recommendedModel: optionalString(args.recommendedModel),
+    recommendedApprovalMode: optionalString(args.recommendedApprovalMode),
+    finalPrompt: optionalString(args.finalPrompt || args.prompt) || optionalString(args.summary) || 'Continue this handoff.'
+  }))
+  mainWindow?.webContents.send('handoff-cards-changed', AppStore.getHandoffCards())
+  return card
+}
+
+async function executeSwitchAuthProfile(args: Record<string, any>) {
+  const provider = assertProviderId(args.provider || 'gemini')
+  if (provider !== 'gemini') {
+    throw new Error('switch_auth_profile currently supports Gemini profiles only.')
+  }
+  const selected = setDefaultGeminiAuthProfile(optionalStringOrNull(args.profileId))
+  return {
+    provider,
+    selected,
+    status: await getGeminiAuthStatusSnapshot()
+  }
+}
+
+function executeAgentDelegationRole(args: Record<string, any>, context: GeminiToolContext, parentProvider: ProviderId) {
+  const chatId = context.appChatId
+  if (!chatId) throw new Error('agent_delegation_role requires an active chat context.')
+  const chat = AppStore.getChat(chatId)
+  if (!chat) throw new Error('Active chat was not found.')
+  const provider = assertProviderId(args.provider || parentProvider)
+  const role = requireNonEmptyString(args.role || args.name, 'Delegation role')
+  const instructions = optionalString(args.instructions || args.prompt || args.description)
+  const providerMetadata = {
+    ...(chat.providerMetadata || {}),
+    agentDelegationRoles: {
+      ...((chat.providerMetadata?.agentDelegationRoles && typeof chat.providerMetadata.agentDelegationRoles === 'object') ? chat.providerMetadata.agentDelegationRoles as Record<string, unknown> : {}),
+      [provider]: {
+        role,
+        instructions,
+        updatedAt: new Date().toISOString()
+      }
+    }
+  }
+  const updated = { ...chat, providerMetadata, updatedAt: Date.now() }
+  AppStore.saveChat(updated)
+  mainWindow?.webContents.send('chat-updated', updated)
+  return providerMetadata.agentDelegationRoles
+}
+
+async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unknown, route?: AgentRunRoute | null, parentProvider: ProviderId = 'gemini'): Promise<McpToolExecutionResult> {
   const context = getAgentToolContext(parentProvider, route)
   if (!context) {
-    return { text: `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`, isError: true }
+    return {
+      ...mcpStructuredJsonResult({
+        ok: false,
+        tool: toolName,
+        error: `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`
+      }),
+      isError: true
+    }
   }
 
   const baseCwd = resolve(context.cwd || context.workspacePath || globalRunCwd())
@@ -8659,7 +9787,7 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
   // the generic `mcpTools` gate prompts the user first, then the
   // delegation gate prompts them again — TWO modals for the same logical
   // action. Skip the generic one; the delegation gate is authoritative.
-  const skipGenericApproval = toolName === 'delegate_to_subthread'
+  const skipGenericApproval = toolName === 'delegate_to_subthread' || MCP_AUTO_ALLOWED_TOOLS.has(toolName)
   const allowed = skipGenericApproval
     ? true
     : await requestAgenticServiceApproval(context.sender, parentProvider, approvalPreview.service, context.scope === 'global' ? undefined : workspacePath, {
@@ -8682,21 +9810,27 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
   })
 
   if (!allowed) {
-    const text = `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
+    const deniedResult = mcpStructuredJsonResult({
+      ok: false,
+      tool: toolName,
+      service: approvalPreview.service,
+      error: `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
+    })
     sendAgentCompatLine(context.sender, parentProvider, {
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: 'error',
-      output: text,
+      output: deniedResult.text,
       provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
-    return { text, isError: true }
+    return { ...deniedResult, isError: true }
   }
 
   try {
     let text = ''
+    let toolIsError = false
 
     if (toolName === 'run_shell_command') {
       const command = String(args.command || '').trim()
@@ -8717,7 +9851,70 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       return { text, isError }
     }
 
-    if (toolName === 'read_file') {
+    if (toolName === 'workspace_search') {
+      const result = await executeWorkspaceSearch(args, context, cwd)
+      toolIsError = result.ok === false || Boolean(result.timedOut || result.error)
+      text = mcpJson(result)
+    } else if (toolName === 'apply_patch') {
+      const result = await executeApplyPatch(args, context, cwd)
+      toolIsError = result.ok === false
+      text = mcpJson(result)
+    } else if (toolName === 'git_status') {
+      const result = await executeGitStatus(cwd)
+      toolIsError = result.exitCode !== 0
+      text = mcpJson(result)
+    } else if (toolName === 'git_diff') {
+      const result = await executeGitDiff(args, context, cwd)
+      toolIsError = result.exitCode !== 0 || result.timedOut === true
+      text = mcpJson(result)
+    } else if (toolName === 'git_stage') {
+      const result = await executeGitStage(args, context, cwd)
+      const stageExitCode = 'result' in result && result.result && typeof result.result === 'object'
+        ? (result.result as HostCommandResult).exitCode
+        : null
+      toolIsError = result.ok === false || (stageExitCode !== null && stageExitCode !== 0)
+      text = mcpJson(result)
+    } else if (toolName === 'git_commit') {
+      const result = await executeGitCommit(args, cwd)
+      toolIsError = result.exitCode !== 0 || result.timedOut === true
+      text = mcpJson(result)
+    } else if (toolName === 'run_task') {
+      const result = await executeRunTask(args, cwd)
+      toolIsError = result.exitCode !== null && result.exitCode !== 0 || result.timedOut === true
+      text = mcpJson(result)
+    } else if (toolName === 'test_result_summary') {
+      const runId = optionalString(args.runId)
+      const sourceOutput = optionalString(args.output) || (runId ? getRunRepository().getRunEvents({ runId }).map((event) => `${event.summary || ''}\n${JSON.stringify(event.payload || {})}`).join('\n') : '')
+      text = mcpJson(summarizeTestOutput(sourceOutput))
+    } else if (toolName === 'list_subthreads') {
+      text = mcpJson(executeListSubthreads(context, args))
+    } else if (toolName === 'read_subthread_result') {
+      text = mcpJson(executeReadSubthreadResult(context, args))
+    } else if (toolName === 'cancel_subthread') {
+      const result = await executeCancelSubthread(context, args)
+      toolIsError = result.ok === false
+      text = mcpJson(result)
+    } else if (toolName === 'workspace_symbols') {
+      text = mcpJson(await executeWorkspaceSymbols(args, context, cwd))
+    } else if (toolName === 'browser_open' || toolName === 'browser_click' || toolName === 'browser_screenshot' || toolName === 'browser_console') {
+      text = mcpJson(await executeBrowserTool(toolName, args, context))
+    } else if (toolName === 'approval_status') {
+      text = mcpJson(executeApprovalStatus(context, args, parentProvider))
+    } else if (toolName === 'provider_auth_status') {
+      text = mcpJson(await executeProviderAuthStatus(args))
+    } else if (toolName === 'run_timeline') {
+      text = mcpJson(executeRunTimeline(args, context))
+    } else if (toolName === 'raw_provider_events') {
+      text = mcpJson(executeRawProviderEvents(args, context))
+    } else if (toolName === 'open_workspace_file') {
+      text = mcpJson(await executeOpenWorkspaceFile(args, context))
+    } else if (toolName === 'create_handoff_card') {
+      text = mcpJson(executeCreateHandoffCard(args, context, parentProvider))
+    } else if (toolName === 'switch_auth_profile') {
+      text = mcpJson(await executeSwitchAuthProfile(args))
+    } else if (toolName === 'agent_delegation_role') {
+      text = mcpJson(executeAgentDelegationRole(args, context, parentProvider))
+    } else if (toolName === 'read_file') {
       const targetPath = resolveGeminiMcpScopedPath(context, String(args.path || args.file_path || ''))
       const stat = await fs.stat(targetPath)
       if (!stat.isFile()) throw new Error('Selected path is not a file.')
@@ -9121,24 +10318,28 @@ async function executeGeminiMcpTool(toolName: AGBenchMcpToolName, rawArgs: unkno
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
-      status: 'success',
+      status: toolIsError ? 'error' : 'success',
       output: text,
       provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
-    return { text }
+    return { text, ...(toolIsError ? { isError: true } : {}) }
   } catch (error) {
-    const text = error instanceof Error ? error.message : String(error)
+    const errorResult = mcpStructuredJsonResult({
+      ok: false,
+      tool: toolName,
+      error: error instanceof Error ? error.message : String(error)
+    })
     sendAgentCompatLine(context.sender, parentProvider, {
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: 'error',
-      output: text,
+      output: errorResult.text,
       provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
-    return { text, isError: true }
+    return { ...errorResult, isError: true }
   }
 }
 
@@ -9365,6 +10566,303 @@ function mcpToolDefinitions() {
         properties: {
           path: { type: 'string' }
         }
+      }
+    },
+    {
+      name: 'workspace_search',
+      description: 'Search the active workspace with ripgrep and return structured JSON matches.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          path: { type: 'string' },
+          globs: { type: 'array', items: { type: 'string' } },
+          contextLines: { type: 'number' },
+          maxResults: { type: 'number' }
+        },
+        required: ['query']
+      }
+    },
+    {
+      name: 'apply_patch',
+      description: 'Validate or apply a git-style unified diff patch in the active workspace.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          patch: { type: 'string' },
+          dryRun: { type: 'boolean' },
+          check: { type: 'boolean' }
+        },
+        required: ['patch']
+      }
+    },
+    {
+      name: 'git_status',
+      description: 'Return structured git status for the active workspace.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: { type: 'object', properties: {} }
+    },
+    {
+      name: 'git_diff',
+      description: 'Return git diff output for the active workspace.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          cached: { type: 'boolean' },
+          staged: { type: 'boolean' },
+          stat: { type: 'boolean' },
+          paths: { type: 'array', items: { type: 'string' } }
+        }
+      }
+    },
+    {
+      name: 'git_stage',
+      description: 'Stage selected files or all changes in the active workspace.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          paths: { type: 'array', items: { type: 'string' } },
+          patch: { type: 'string', description: 'Optional unified diff to stage with git apply --cached.' },
+          all: { type: 'boolean' },
+          update: { type: 'boolean' }
+        }
+      }
+    },
+    {
+      name: 'git_commit',
+      description: 'Create a git commit in the active workspace with the supplied message.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: { message: { type: 'string' } },
+        required: ['message']
+      }
+    },
+    {
+      name: 'run_task',
+      description: 'Run a known project task such as test, typecheck, lint, or build and return structured output.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          task: { type: 'string' },
+          args: { type: 'array', items: { type: 'string' } },
+          timeoutMs: { type: 'number' }
+        },
+        required: ['task']
+      }
+    },
+    {
+      name: 'test_result_summary',
+      description: 'Summarize test failures from supplied output or a durable run id.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          output: { type: 'string' },
+          runId: { type: 'string' }
+        }
+      }
+    },
+    {
+      name: 'list_subthreads',
+      description: 'List sub-threads under the active parent chat.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          parentChatId: { type: 'string' },
+          includeArchived: { type: 'boolean' },
+          includePrompt: { type: 'boolean' }
+        }
+      }
+    },
+    {
+      name: 'read_subthread_result',
+      description: 'Read the latest assistant result from a sub-thread owned by the active parent chat.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          subThreadId: { type: 'string' },
+          includeRuns: { type: 'boolean' },
+          includeMessages: { type: 'boolean' },
+          messageLimit: { type: 'number' }
+        },
+        required: ['subThreadId']
+      }
+    },
+    {
+      name: 'cancel_subthread',
+      description: 'Cancel an active run in a sub-thread owned by the active parent chat.',
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          subThreadId: { type: 'string' },
+          reason: { type: 'string' }
+        },
+        required: ['subThreadId']
+      }
+    },
+    {
+      name: 'workspace_symbols',
+      description: 'Find likely source symbols in the active workspace using a fast regex fallback.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          path: { type: 'string' },
+          maxResults: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'browser_open',
+      description: 'Open a URL or workspace file in the dedicated MCP browser window.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          url: { type: 'string' },
+          path: { type: 'string' },
+          show: { type: 'boolean' },
+          width: { type: 'number' },
+          height: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'browser_click',
+      description: 'Click in the dedicated MCP browser window by selector or viewport coordinates.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          selector: { type: 'string' },
+          x: { type: 'number' },
+          y: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'browser_screenshot',
+      description: 'Capture the dedicated MCP browser window and optionally write the PNG inside the workspace.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      inputSchema: { type: 'object', properties: { path: { type: 'string', description: 'Optional workspace-relative output path.' } } }
+    },
+    {
+      name: 'browser_console',
+      description: 'Return recent MCP browser console messages, or app renderer console messages with target=app/all.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          target: { type: 'string', enum: ['browser', 'app', 'all'] },
+          clear: { type: 'boolean' },
+          limit: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'approval_status',
+      description: 'Return approval policies, workspace grants, and recent approval ledger records.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          service: { type: 'string', enum: ['shellCommands', 'fileChanges', 'mcpTools', 'subThreadDelegation'] },
+          approvalId: { type: 'string' },
+          runId: { type: 'string' },
+          chatId: { type: 'string' },
+          statuses: { type: 'array', items: { type: 'string' } },
+          scopes: { type: 'array', items: { type: 'string' } },
+          includeExpired: { type: 'boolean' },
+          includePreview: { type: 'boolean' },
+          all: { type: 'boolean' },
+          limit: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'provider_auth_status',
+      description: 'Return sanitized provider authentication status. Tokens and secrets are never included.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: { type: 'object', properties: { provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] } } }
+    },
+    {
+      name: 'run_timeline',
+      description: 'Return structured durable run timeline events for a run.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          limit: { type: 'number' },
+          includeEvents: { type: 'boolean' },
+          includePayload: { type: 'boolean' }
+        }
+      }
+    },
+    {
+      name: 'raw_provider_events',
+      description: 'Return raw provider durable events for parser debugging.',
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          runId: { type: 'string' },
+          chatId: { type: 'string' },
+          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          includeArtifacts: { type: 'boolean' },
+          limit: { type: 'number' }
+        }
+      }
+    },
+    {
+      name: 'open_workspace_file',
+      description: 'Open or reveal a workspace file on the host.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+      inputSchema: { type: 'object', properties: { path: { type: 'string' }, reveal: { type: 'boolean' } }, required: ['path'] }
+    },
+    {
+      name: 'create_handoff_card',
+      description: 'Create an AGBench handoff card from the active chat/run.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          summary: { type: 'string' },
+          finalPrompt: { type: 'string' },
+          recommendedProvider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          selectedFiles: { type: 'array', items: { type: 'string' } }
+        }
+      }
+    },
+    {
+      name: 'switch_auth_profile',
+      description: 'Switch the active provider auth profile. Currently supports Gemini profiles.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      inputSchema: { type: 'object', properties: { provider: { type: 'string' }, profileId: { type: 'string' } } }
+    },
+    {
+      name: 'agent_delegation_role',
+      description: 'Store a preferred delegation role/instructions for a provider on the active chat.',
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          role: { type: 'string' },
+          instructions: { type: 'string' }
+        },
+        required: ['provider', 'role']
       }
     },
     {
@@ -10849,6 +12347,19 @@ function createWindow(): void {
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
+  })
+
+  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+    rendererConsoleBuffer.push({
+      timestamp: new Date().toISOString(),
+      level,
+      message,
+      sourceId,
+      line
+    })
+    if (rendererConsoleBuffer.length > 500) {
+      rendererConsoleBuffer.splice(0, rendererConsoleBuffer.length - 500)
+    }
   })
 
   // Phase K1: defense-in-depth against accidental navigation. The
