@@ -3,7 +3,7 @@ import type { GeminiWorktreeLaunchOption, ProviderId } from '../main/store/types
 
 // Custom APIs for renderer
 const api = {
-  getRuntimeVersions: () => ({ ...process.versions }),
+  getRuntimeVersions: () => ({ ...(process?.versions || {}) }),
   selectWorkspace: () => ipcRenderer.invoke('select-workspace'),
   selectImageFiles: () => ipcRenderer.invoke('select-image-files'),
   // Phase J1 (composer unification): the picker is now cross-provider —

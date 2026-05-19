@@ -34,6 +34,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run security:deps
       - run: npm run build:unpack
 
   notarized-macos-release:
@@ -56,4 +57,5 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run security:deps
       - run: npm run build:mac:notarized

@@ -50,6 +50,11 @@ step('typecheck:node', {
   args: ['run', 'typecheck:node'],
   required: true
 })
+step('security:deps', {
+  cmd: 'npm',
+  args: ['run', 'security:deps'],
+  required: true
+})
 step('typecheck:web', {
   cmd: 'npm',
   args: ['run', 'typecheck:web'],

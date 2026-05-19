@@ -198,8 +198,25 @@ actor EndpointBoundQUICBridgeServer {
                 session: session
             )
 
+        case .mediaRequest(let request):
+            guard let onMediaRequest = handlers.onMediaRequest else {
+                await sendStructuredError(
+                    code: "unsupportedDirectMedia",
+                    message: "Direct media range requests are not supported by this server.",
+                    unsupportedPayloadTag: "mediaRequest",
+                    correlationID: envelope.envelopeID,
+                    session: session
+                )
+                return
+            }
+            let chunk = await onMediaRequest(request, pairID)
+            try? await session.sendInbound(BridgeInboundEnvelope(
+                correlationID: envelope.envelopeID,
+                payload: .mediaChunk(chunk)
+            ))
+
         case .quicStreamOpenAck, .recordBatch, .durabilityCommit, .structuredError,
-             .streamBatch, .streamCommit, .eventRecord, .stateSnapshot, .pong,
+             .streamBatch, .streamCommit, .mediaChunk, .eventRecord, .stateSnapshot, .pong,
              .directRecord, .actionAck, .prepareStartTurnAck:
             break
         }
@@ -241,7 +258,7 @@ actor EndpointBoundQUICBridgeServer {
     }
 
     private func serverCapabilities() -> [String] {
-        [
+        var values = [
             BridgeDirectProtocolCapability.subscribe,
             BridgeDirectProtocolCapability.recordBatch,
             BridgeDirectProtocolCapability.directStreamV2,
@@ -252,6 +269,10 @@ actor EndpointBoundQUICBridgeServer {
             BridgeDirectProtocolCapability.directQUICV1,
             BridgeDirectProtocolCapability.directQUICMultiStreamV1
         ]
+        if handlers.onMediaRequest != nil {
+            values.append(BridgeDirectProtocolCapability.directMediaV1)
+        }
+        return values
     }
 
     private func quicBroadcastRoleMatches(payload: BridgeTransportPayload, session: LANSession) -> Bool {
@@ -282,6 +303,8 @@ actor EndpointBoundQUICBridgeServer {
              .eventRecord, .stateSnapshot:
             return .events
         case .resumeStream, .replay:
+            return .replay
+        case .mediaRequest, .mediaChunk:
             return .replay
         case .hello, .quicStreamOpen, .quicStreamOpenAck, .subscribe, .subscribeV2,
              .structuredError, .ping, .pong, .watchedThreads:

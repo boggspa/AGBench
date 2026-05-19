@@ -37,6 +37,49 @@ async function validateNativeModules(context) {
     }
     console.log(`Validated GuiGeminiBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
   }
+
+  await hardenElectronFuses(context, resourcesDir)
+}
+
+async function hardenElectronFuses(context, resourcesDir) {
+  const executablePath = resolveElectronExecutable(context, resourcesDir)
+  const { flipFuses, FuseVersion, FuseV1Options } = require('@electron/fuses')
+  await flipFuses(executablePath, {
+    version: FuseVersion.V1,
+    [FuseV1Options.RunAsNode]: false,
+    [FuseV1Options.EnableNodeOptionsEnvironmentVariable]: false,
+    [FuseV1Options.EnableNodeCliInspectArguments]: false
+  })
+  console.log(`Hardened Electron fuses: ${executablePath}`)
+}
+
+function resolveElectronExecutable(context, resourcesDir) {
+  const appOutDir = context.appOutDir
+  const platform = context.electronPlatformName || process.platform
+  const appInfo = context.packager && context.packager.appInfo
+  const productFilename = appInfo && (appInfo.productFilename || appInfo.productName)
+  const productName = appInfo && appInfo.productName
+  const names = Array.from(new Set([productFilename, productName, 'AGBench'].filter(Boolean)))
+
+  const candidates = []
+  if (platform === 'darwin') {
+    const contentsDir = path.dirname(resourcesDir)
+    for (const name of names) {
+      candidates.push(path.join(contentsDir, 'MacOS', name))
+    }
+  } else if (platform === 'win32') {
+    for (const name of names) {
+      candidates.push(path.join(appOutDir, `${name}.exe`))
+    }
+  } else {
+    for (const name of names) {
+      candidates.push(path.join(appOutDir, name))
+    }
+  }
+
+  const found = candidates.find((candidate) => fs.existsSync(candidate))
+  if (found) return found
+  throw new Error(`Electron executable was not found. Checked: ${candidates.join(', ')}`)
 }
 
 function isCompatibleNodePtyBinding(normalizedPath, platform, arch) {

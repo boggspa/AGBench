@@ -16,8 +16,11 @@ This application wraps the official `gemini` CLI tool in an Electron + React UI 
 ## Setup
 1. Ensure Node.js (>= 18) and the `gemini` CLI are installed.
 2. Clone or open this repository.
-3. Run `npm install`.
+3. Run `npm ci`.
 4. Run `npm run dev` to start the local development app.
+
+Use `npm ci` for clean installs so npm follows the committed lockfile exactly.
+Run `npm run security:deps` before release work or after dependency changes.
 
 ## Smoke Testing / Troubleshooting commands
 If you encounter issues in the GUI, verify your setup using these direct commands in an external terminal:

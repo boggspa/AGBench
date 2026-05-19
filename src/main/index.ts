@@ -127,6 +127,7 @@ import {
 } from './CrossProviderDelegationDetector'
 import { buildClaudeCliArgs } from './ClaudeCliArgs'
 import { resolveSubThreadRecall } from './SubThreadRecall'
+import { classifyShellOpenTarget } from './ShellOpenPolicy'
 import {
   AUTO_RESUME_CONTINUATION_KIND,
   buildAutoResumeContinuationPrompt,
@@ -158,6 +159,30 @@ const rendererConsoleBuffer: Array<{
   sourceId?: string
   line?: number
 }> = []
+
+async function openSafeShellTarget(hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> {
+  const decision = classifyShellOpenTarget(hrefRaw)
+  try {
+    if (decision.action === 'external') {
+      await shell.openExternal(decision.href)
+      return { ok: true }
+    }
+    if (decision.action === 'path') {
+      const result = await shell.openPath(decision.path)
+      return result === '' ? { ok: true } : { ok: false, error: result }
+    }
+    return { ok: false, error: decision.error }
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error)
+    }
+  }
+}
+
+function openSafeShellTargetDetached(hrefRaw: unknown): void {
+  void openSafeShellTarget(hrefRaw)
+}
 let mcpBrowserWindow: BrowserWindow | null = null
 const mcpBrowserConsoleBuffer: Array<{
   timestamp: string
@@ -10946,7 +10971,7 @@ function ensureMcpBrowserWindow(args: Record<string, any> = {}): BrowserWindow {
     }
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    openSafeShellTargetDetached(url)
     return { action: 'deny' }
   })
   win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
@@ -14396,7 +14421,7 @@ function createWindow(): void {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       allowRunningInsecureContent: false,
       experimentalFeatures: false
     }
@@ -14433,7 +14458,7 @@ function createWindow(): void {
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    openSafeShellTargetDetached(details.url)
     return { action: 'deny' }
   })
 
@@ -14476,18 +14501,7 @@ function createWindow(): void {
         return
       }
       event.preventDefault()
-      if (
-        target.protocol === 'http:' ||
-        target.protocol === 'https:' ||
-        target.protocol === 'mailto:'
-      ) {
-        shell.openExternal(url).catch(() => {})
-      } else if (target.protocol === 'file:') {
-        shell.openPath(decodeURIComponent(target.pathname)).catch(() => {})
-      }
-      // Any other protocol (javascript:, data:, ssh:, custom): the
-      // preventDefault above is enough — we explicitly do NOT route
-      // it anywhere.
+      openSafeShellTargetDetached(url)
     } catch {
       // Malformed URL — refuse to navigate.
       event.preventDefault()
@@ -16765,47 +16779,7 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'shell:open-link',
       async (_event, hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> => {
-        const href = typeof hrefRaw === 'string' ? hrefRaw.trim() : ''
-        if (!href) return { ok: false, error: 'Empty href' }
-        // Detect file:// URIs and convert them up-front to a plain path
-        // for shell.openPath (which doesn't accept file:// directly).
-        if (/^file:/i.test(href)) {
-          try {
-            const url = new URL(href)
-            const localPath = decodeURIComponent(url.pathname)
-            const result = await shell.openPath(localPath)
-            return result === '' ? { ok: true } : { ok: false, error: result }
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) }
-          }
-        }
-        // External web/email schemes.
-        if (/^(https?|mailto):/i.test(href)) {
-          try {
-            await shell.openExternal(href)
-            return { ok: true }
-          } catch (err) {
-            return { ok: false, error: err instanceof Error ? err.message : String(err) }
-          }
-        }
-        // Scheme-less: treat as a filesystem path (absolute or relative).
-        // Refuse anything containing a known unsafe scheme prefix.
-        if (/^(javascript|data|vbscript):/i.test(href)) {
-          return { ok: false, error: 'Refused unsafe scheme' }
-        }
-        // Refuse anything with an unrecognised `something:` scheme so we
-        // don't hand a `ssh://` or custom-protocol URL to shell.openPath.
-        // Allow single-letter "schemes" (Windows drive letters: `C:\...`).
-        const schemeMatch = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(href)
-        if (schemeMatch && schemeMatch[1].length > 1) {
-          return { ok: false, error: `Refused unsupported scheme: ${schemeMatch[1]}` }
-        }
-        try {
-          const result = await shell.openPath(href)
-          return result === '' ? { ok: true } : { ok: false, error: result }
-        } catch (err) {
-          return { ok: false, error: err instanceof Error ? err.message : String(err) }
-        }
+        return openSafeShellTarget(hrefRaw)
       }
     )
 

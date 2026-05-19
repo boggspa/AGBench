@@ -101,6 +101,11 @@ describe('IpcValidation', () => {
     expect(() => validateIpcArgs('stop-pty', ['terminal-1'])).not.toThrow()
   })
 
+  it('validates safe shell-open bridge arguments', () => {
+    expect(() => validateIpcArgs('shell:open-link', ['https://example.com'])).not.toThrow()
+    expect(() => validateIpcArgs('shell:open-link', [''])).toThrow(/non-empty/)
+  })
+
   it('accepts bridge daemon status and toggle APIs', () => {
     expect(() => validateIpcArgs('bridge-networking-status', [])).not.toThrow()
     expect(() => validateIpcArgs('set-bridge-daemon-enabled', [true])).not.toThrow()
