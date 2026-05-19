@@ -133,6 +133,9 @@ public struct ApprovalCardsView: View {
                     .minimumScaleFactor(0.78)
                 }
             }
+            if let preview = approval.preview, shouldRenderPreviewBlock(preview) {
+                previewBlock(for: preview)
+            }
             HStack(spacing: Theme.Spacing.tight) {
                 Spacer()
                 ForEach(approval.resolvedActions, id: \.rawValue) { decision in
@@ -148,6 +151,151 @@ public struct ApprovalCardsView: View {
                 .stroke(Theme.warning.opacity(0.30), lineWidth: 1)
         )
         .shadow(color: Theme.shadowColor, radius: Theme.Shadow.cardRadius, y: Theme.Shadow.cardY)
+    }
+
+    /// Should the preview block be rendered? `.generic` and previews that
+    /// would render nothing fall through to the existing title + body row
+    /// so we don't waste a card surface on an empty container.
+    private func shouldRenderPreviewBlock(_ preview: ApprovalPreview) -> Bool {
+        switch preview.kind {
+        case .generic:
+            return false
+        case .command:
+            return (preview.command?.isEmpty == false) || (preview.cwd?.isEmpty == false)
+        case .tool:
+            return preview.toolName?.isEmpty == false
+        case .patch:
+            return preview.patchPreview?.isEmpty == false
+        case .files:
+            return (preview.changes ?? []).contains(where: { !$0.isEmpty })
+        case .workspaceTrust:
+            return preview.workspacePath?.isEmpty == false
+        }
+    }
+
+    @ViewBuilder
+    private func previewBlock(for preview: ApprovalPreview) -> some View {
+        let kindTint: Color = previewTint(for: preview.kind)
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            switch preview.kind {
+            case .command:
+                if let command = preview.command, !command.isEmpty {
+                    Text(command)
+                        .font(Theme.Typography.code)
+                        .foregroundStyle(Theme.Text.primary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .textSelection(.enabled)
+                }
+                if let cwd = preview.cwd, !cwd.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "folder")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.Text.secondary)
+                        Text(cwd)
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.Text.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .truncationMode(.middle)
+                    }
+                }
+            case .tool:
+                if let toolName = preview.toolName, !toolName.isEmpty {
+                    HStack(spacing: Theme.Spacing.tight) {
+                        Image(systemName: "wrench.adjustable")
+                            .font(Theme.Typography.smallCaption)
+                        Text(toolName)
+                            .font(Theme.Typography.caption)
+                    }
+                    .foregroundStyle(kindTint)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(kindTint.opacity(0.14), in: Capsule())
+                }
+            case .patch:
+                if let patch = preview.patchPreview, !patch.isEmpty {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        Text(patch)
+                            .font(Theme.Typography.code)
+                            .foregroundStyle(Theme.Text.primary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                            .padding(Theme.Spacing.tight)
+                    }
+                    .frame(maxHeight: 180)
+                    .background(
+                        Theme.inputSurface,
+                        in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous)
+                    )
+                }
+            case .files:
+                let allFiles = preview.changes ?? []
+                let visible = Array(allFiles.prefix(8))
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(visible.enumerated()), id: \.offset) { _, file in
+                        HStack(spacing: 6) {
+                            Image(systemName: "doc.text")
+                                .font(Theme.Typography.smallCaption)
+                                .foregroundStyle(Theme.Text.secondary)
+                            Text(file)
+                                .font(Theme.Typography.code)
+                                .foregroundStyle(Theme.Text.primary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
+                    }
+                    if allFiles.count > visible.count {
+                        Text("+\(allFiles.count - visible.count) more")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.Text.tertiary)
+                    }
+                }
+            case .workspaceTrust:
+                if let path = preview.workspacePath, !path.isEmpty {
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder.badge.shield")
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.warning)
+                        Text(path)
+                            .font(Theme.Typography.code)
+                            .foregroundStyle(Theme.Text.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .truncationMode(.middle)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Theme.warning.opacity(0.10), in: Capsule())
+                    .overlay(
+                        Capsule().stroke(Theme.warning.opacity(0.30), lineWidth: 1)
+                    )
+                }
+            case .generic:
+                EmptyView()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(Theme.Spacing.control)
+        .background(
+            Theme.cardBlur.opacity(0.5),
+            in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+    }
+
+    private func previewTint(for kind: ApprovalPreview.Kind) -> Color {
+        switch kind {
+        case .command:       return Theme.accent
+        case .tool:          return Theme.secondaryAccent
+        case .patch:         return Theme.accent
+        case .files:         return Theme.accent
+        case .workspaceTrust: return Theme.warning
+        case .generic:       return Theme.Text.secondary
+        }
     }
 
     @ViewBuilder

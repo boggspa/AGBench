@@ -4,17 +4,39 @@ import SwiftUI
 /// workspace + provider + approvalMode + model + contextTurns and type
 /// a prompt, then sends as a `composerPrompt` action.
 ///
-/// Minimal-by-design: when the iOS UI gets the desktop's allowlisted
-/// workspace list (a future feed), the workspace field becomes a
-/// picker rather than free text. Same for provider + approvalMode +
-/// model — those are picker-shaped today via segmented controls.
+/// Allowlist pickers: when a `sidebarStore` is supplied and it has at
+/// least one workspace, the workspace + thread fields render as `Menu`
+/// pickers backed by the live sidebar lists (which are populated from
+/// the desktop's `workspaceList` / `threadList` bridge broadcasts).
+/// Threads filter to the selected workspace. When the store is empty
+/// or nil, both fields fall back to the original free-text inputs so
+/// the user can type an id manually — useful on first connect before
+/// summaries arrive. A small "type id manually" toggle inside each
+/// picker also lets users opt out of the picker explicitly for ids
+/// that haven't been broadcast yet.
 @available(iOS 17.0, macOS 14.0, *)
 public struct ComposerView: View {
     @Bindable public var viewModel: ComposerViewModel
+    /// Optional sidebar store. When non-nil and populated, the workspace
+    /// + thread fields render as `Menu` pickers; when nil or empty, they
+    /// fall back to the original `themedTextField` free-text inputs.
+    @Bindable private var sidebarStoreOrEmpty: iPadSidebarStore
+    private let hasSidebarStore: Bool
     @FocusState private var promptFocused: Bool
 
-    public init(viewModel: ComposerViewModel) {
+    /// Local overrides letting the user "type id manually" even when the
+    /// sidebar lists would normally drive a Menu picker. Resets when the
+    /// user picks an item from the menu.
+    @State private var workspaceManualOverride: Bool = false
+    @State private var threadManualOverride: Bool = false
+
+    public init(
+        viewModel: ComposerViewModel,
+        sidebarStore: iPadSidebarStore? = nil
+    ) {
         self.viewModel = viewModel
+        self.sidebarStoreOrEmpty = sidebarStore ?? iPadSidebarStore()
+        self.hasSidebarStore = sidebarStore != nil
     }
 
     public var body: some View {
@@ -26,8 +48,8 @@ public struct ComposerView: View {
                         composeEmptyState
                     }
                     composerSection(title: "Target", systemImage: "scope") {
-                        themedTextField("Workspace id", text: $viewModel.workspaceId)
-                        themedTextField("Thread id", text: $viewModel.threadId)
+                        workspaceField
+                        threadField
                     }
                     composerSection(title: "Provider", systemImage: "cpu") {
                         pickerBlock(title: "Provider") {
@@ -138,6 +160,217 @@ public struct ComposerView: View {
                     RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
                         .stroke(Theme.border, lineWidth: 1)
                 )
+        }
+    }
+
+    // MARK: - Workspace + thread pickers (allowlist driven)
+
+    /// True when the sidebar store is non-nil AND has at least one
+    /// workspace summary (meaning the desktop has broadcast its allowlist).
+    private var workspacePickerAvailable: Bool {
+        hasSidebarStore && !sidebarStoreOrEmpty.workspaces.isEmpty
+    }
+
+    private var threadPickerAvailable: Bool {
+        hasSidebarStore && !scopedThreads.isEmpty
+    }
+
+    /// Threads filtered to the currently-selected workspace. Falls back to
+    /// the full thread list when no workspace is picked yet so the user
+    /// isn't blocked by ordering.
+    private var scopedThreads: [iPadThreadSummary] {
+        let trimmed = viewModel.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            return sidebarStoreOrEmpty.threads
+        }
+        return sidebarStoreOrEmpty.threads.filter { $0.workspaceID == trimmed }
+    }
+
+    @ViewBuilder
+    private var workspaceField: some View {
+        if workspacePickerAvailable && !workspaceManualOverride {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Workspace")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Text.secondary)
+                Menu {
+                    ForEach(sidebarStoreOrEmpty.workspaces, id: \.id) { workspace in
+                        Button {
+                            viewModel.workspaceId = workspace.id
+                            // Selecting a new workspace can orphan the
+                            // current thread id (no longer in scope); clear
+                            // only when the chosen workspace doesn't carry it.
+                            if !sidebarStoreOrEmpty.threads.contains(where: {
+                                $0.workspaceID == workspace.id && $0.id == viewModel.threadId
+                            }) {
+                                // Leave threadId alone so a manual entry
+                                // survives — only the picker UI re-filters.
+                            }
+                        } label: {
+                            menuRowLabel(
+                                title: workspace.displayName,
+                                subtitle: workspace.pathDisplayHint,
+                                selected: viewModel.workspaceId == workspace.id
+                            )
+                        }
+                    }
+                    Divider()
+                    Button {
+                        workspaceManualOverride = true
+                    } label: {
+                        Label("Type id manually", systemImage: "keyboard")
+                    }
+                } label: {
+                    pickerLabel(
+                        systemImage: "folder",
+                        title: resolvedWorkspaceLabel,
+                        placeholder: "Choose workspace"
+                    )
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                themedTextField("Workspace id", text: $viewModel.workspaceId)
+                if workspacePickerAvailable && workspaceManualOverride {
+                    Button {
+                        workspaceManualOverride = false
+                    } label: {
+                        Label("Use workspace list", systemImage: "list.bullet.rectangle")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var threadField: some View {
+        if threadPickerAvailable && !threadManualOverride {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Thread")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Text.secondary)
+                Menu {
+                    ForEach(scopedThreads, id: \.id) { thread in
+                        Button {
+                            viewModel.threadId = thread.id
+                            // If the picker for workspace is empty but the
+                            // chosen thread carries one, backfill so the
+                            // composer is internally consistent.
+                            if viewModel.workspaceId.isEmpty,
+                               let ws = thread.workspaceID, !ws.isEmpty {
+                                viewModel.workspaceId = ws
+                            }
+                        } label: {
+                            menuRowLabel(
+                                title: thread.title,
+                                subtitle: thread.subtitle.isEmpty ? thread.id : thread.subtitle,
+                                selected: viewModel.threadId == thread.id
+                            )
+                        }
+                    }
+                    Divider()
+                    Button {
+                        threadManualOverride = true
+                    } label: {
+                        Label("Type id manually", systemImage: "keyboard")
+                    }
+                } label: {
+                    pickerLabel(
+                        systemImage: "bubble.left.and.bubble.right",
+                        title: resolvedThreadLabel,
+                        placeholder: "Choose thread"
+                    )
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 6) {
+                themedTextField("Thread id", text: $viewModel.threadId)
+                if threadPickerAvailable && threadManualOverride {
+                    Button {
+                        threadManualOverride = false
+                    } label: {
+                        Label("Use thread list", systemImage: "list.bullet.rectangle")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// What the picker button shows. Prefer the displayName of the
+    /// currently-selected sidebar entry; fall back to the raw id (still
+    /// useful when the desktop broadcast hasn't arrived yet) or the
+    /// placeholder copy when nothing is set.
+    private var resolvedWorkspaceLabel: String {
+        let id = viewModel.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return "" }
+        if let match = sidebarStoreOrEmpty.workspace(id: id) {
+            return match.displayName
+        }
+        return id
+    }
+
+    private var resolvedThreadLabel: String {
+        let id = viewModel.threadId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !id.isEmpty else { return "" }
+        if let match = sidebarStoreOrEmpty.thread(id: id) {
+            return match.title
+        }
+        return id
+    }
+
+    @ViewBuilder
+    private func pickerLabel(
+        systemImage: String,
+        title: String,
+        placeholder: String
+    ) -> some View {
+        HStack(spacing: Theme.Spacing.tight) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Theme.accent)
+            Text(title.isEmpty ? placeholder : title)
+                .foregroundStyle(title.isEmpty ? Theme.Text.tertiary : Theme.Text.primary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: Theme.Spacing.tight)
+            Image(systemName: "chevron.down")
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.Text.secondary)
+        }
+        .font(Theme.Typography.body)
+        .padding(Theme.Spacing.control)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .stroke(Theme.border, lineWidth: 1)
+        )
+    }
+
+    @ViewBuilder
+    private func menuRowLabel(
+        title: String,
+        subtitle: String?,
+        selected: Bool
+    ) -> some View {
+        if let subtitle, !subtitle.isEmpty, subtitle != title {
+            Label {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                    Text(subtitle)
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.Text.secondary)
+                }
+            } icon: {
+                Image(systemName: selected ? "checkmark" : "circle")
+            }
+        } else {
+            Label(title, systemImage: selected ? "checkmark" : "circle")
         }
     }
 

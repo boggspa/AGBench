@@ -411,6 +411,11 @@ public struct iPadSidebar: View {
                                     )
                                     .accessibilityLabel("\(branchCount) sub-thread\(branchCount == 1 ? "" : "s")")
                             }
+                            // TODO: wire SubThreadCreatorView sheet from sidebar.
+                            // Add an `arrow.branch` Button here that calls a
+                            // host-supplied closure with `thread` so iPadShell can
+                            // present the sheet. Held back today to avoid stomping
+                            // on Codex's concurrent edits in this file.
                             Spacer(minLength: Theme.Spacing.tight)
                             Text(thread.lastActivityAt, style: .relative)
                                 .font(Theme.Typography.smallCaption)
