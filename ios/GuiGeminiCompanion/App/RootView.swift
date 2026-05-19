@@ -119,7 +119,7 @@ struct MainTabs: View {
 
             NavigationStack {
                 if let viewModel = appState.composerViewModel {
-                    ComposerView(viewModel: viewModel)
+                    ComposerView(viewModel: viewModel, sidebarStore: appState.sidebarStore)
                         .navigationTitle("Compose")
                         .toolbar {
                             ToolbarItem(placement: .topBarTrailing) {
@@ -138,6 +138,23 @@ struct MainTabs: View {
                 }
             }
             .tabItem { Label("Compose", systemImage: "square.and.pencil") }
+
+            NavigationStack {
+                iPhoneSettingsView(
+                    pairingViewModel: appState.pairingViewModel,
+                    transcriptViewModel: appState.transcriptViewModel,
+                    pushStatusMessage: appState.lastPushMessage,
+                    yoloModeEnabled: appState.yoloModeEnabled,
+                    onSetYoloMode: { enabled in
+                        Task { await appState.setYoloMode(enabled: enabled) }
+                    },
+                    onUnpair: {
+                        Task { await appState.unpair() }
+                    }
+                )
+                .navigationTitle("Settings")
+            }
+            .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .tint(Theme.accent)
         .toolbarBackground(Theme.chromeBlur, for: .tabBar)
