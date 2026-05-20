@@ -219,6 +219,36 @@ actor EndpointBoundQUICBridgeServer {
              .streamBatch, .streamCommit, .mediaChunk, .eventRecord, .stateSnapshot, .pong,
              .directRecord, .actionAck, .prepareStartTurnAck:
             break
+
+        // CodexBridge dependency added these payloads for its Mac → iOS
+        // preview-streaming feature. AGBench doesn't surface live previews
+        // today, so we explicitly reject with a structured error rather
+        // than silently dropping. The CodexBridge `LANBridgeServer` uses
+        // the same `unsupportedPayloadTag` pattern.
+        case .previewFrame:
+            await sendStructuredError(
+                code: "unsupportedDirectPreview",
+                message: "Live preview frames are not supported by this server.",
+                unsupportedPayloadTag: "previewFrame",
+                correlationID: envelope.envelopeID,
+                session: session
+            )
+        case .previewInputEvent:
+            await sendStructuredError(
+                code: "unsupportedDirectPreview",
+                message: "Live preview input events are not supported by this server.",
+                unsupportedPayloadTag: "previewInputEvent",
+                correlationID: envelope.envelopeID,
+                session: session
+            )
+        case .previewSessionControl:
+            await sendStructuredError(
+                code: "unsupportedDirectPreview",
+                message: "Live preview session control is not supported by this server.",
+                unsupportedPayloadTag: "previewSessionControl",
+                correlationID: envelope.envelopeID,
+                session: session
+            )
         }
     }
 
@@ -308,6 +338,17 @@ actor EndpointBoundQUICBridgeServer {
             return .replay
         case .hello, .quicStreamOpen, .quicStreamOpenAck, .subscribe, .subscribeV2,
              .structuredError, .ping, .pong, .watchedThreads:
+            return .control
+        // Preview payloads from CodexBridge: AGBench doesn't surface
+        // previews so any inbound preview payload gets routed to the
+        // closest semantic stream and then rejected by `dispatch()`.
+        // (Mapping rationale: frame data is bulk like events; input
+        // events are like actions; session control is like .control.)
+        case .previewFrame:
+            return .events
+        case .previewInputEvent:
+            return .actions
+        case .previewSessionControl:
             return .control
         }
     }
