@@ -2923,7 +2923,16 @@ function previewForGeminiMcpTool(
 function runHostCommand(
   command: unknown,
   cwd: string,
-  timeoutMs = 120_000
+  // Default bumped from 120s → 600s (10 min). The prior 120s ceiling
+  // was killing legitimate SwiftPM cold-cache `swift build` / `swift
+  // test` cycles (60-180s on a warm cache, much longer cold) and
+  // agents were having to manually split tests to fit. Fast commands
+  // (grep / ls / file ops) finish in seconds so the new default is
+  // free; failed / hung commands cost an extra ~8 minutes before the
+  // killer fires, which is an acceptable tradeoff. `run_task` lets
+  // agents override up to a 30-minute hard clamp via its `timeoutMs`
+  // arg if they need more.
+  timeoutMs = 600_000
 ): Promise<HostCommandResult> {
   return new Promise((resolveRun) => {
     const startedAt = Date.now()
@@ -10463,7 +10472,7 @@ function mcpToolCallResponseFromBrokerResult(result: unknown): {
 async function runCommandArgs(
   command: string[],
   cwd: string,
-  timeoutMs = 120_000
+  timeoutMs = 600_000
 ): Promise<HostCommandResult> {
   return runHostCommand(command, cwd, timeoutMs)
 }
@@ -10732,7 +10741,10 @@ async function executeRunTask(args: Record<string, any>, cwd: string) {
     throw new Error(`No known task "${task}" in this workspace.`)
   }
   command.push(...toStringArray(args.args))
-  const timeoutMs = clampInteger(args.timeoutMs, 120_000, 1_000, 30 * 60_000)
+  // Default 600s (10 min) for the tool when the agent doesn't specify
+  // a timeout — matches the new `runHostCommand` default. Agents can
+  // still override anywhere in [1s, 30min] via the `timeoutMs` arg.
+  const timeoutMs = clampInteger(args.timeoutMs, 600_000, 1_000, 30 * 60_000)
   const result = await runCommandArgs(command, cwd, timeoutMs)
   return {
     task,
