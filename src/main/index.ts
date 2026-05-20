@@ -9294,7 +9294,18 @@ async function runGeminiProvider(
       // broker requests with the right routing key. Codex's persistent
       // app-server sets this via `-c mcp_servers.agentbench.env` in
       // CodexAppServerClient.
-      AGENTBENCH_PARENT_PROVIDER: 'gemini'
+      AGENTBENCH_PARENT_PROVIDER: 'gemini',
+      // Recent Gemini CLI versions tightened the headless trust check:
+      // even when the user has trusted the directory interactively, a
+      // headless spawn fails with "Gemini CLI is not running in a
+      // trusted directory" unless --skip-trust is passed OR this env
+      // var is set. AGBench has already validated workspace trust
+      // upstream (prepareGeminiMcpBridgeForRun + the run dispatcher's
+      // approval gate), so passing this through is safe — we're only
+      // bypassing Gemini's redundant second-layer check, not AGBench's
+      // own trust enforcement. Docs:
+      // https://geminicli.com/docs/cli/trusted-folders/#headless-and-automated-environments
+      GEMINI_CLI_TRUST_WORKSPACE: 'true'
     },
     resolved.binaryPath
   )
