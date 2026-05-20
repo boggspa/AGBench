@@ -36,7 +36,7 @@
  *     come for free — `executeGeminiMcpTool` already handles all of
  *     those internally. We don't re-implement.
  *
- * Step 5 (this file) lights up multi-turn continuity:
+ * Step 5 lit up multi-turn continuity:
  *   - History replay: prior `ChatMessage[]` → Gemini `Content[]` via
  *     `GeminiApiHistoryAdapter.buildGeminiTurnContents`, prepended to
  *     the current user turn. The renderer pre-trims to
@@ -48,11 +48,28 @@
  *     "session continuity" UI working when we're not really using a
  *     server-side session.
  *
+ * Steps 7+8+9 (this file) round out the image / usage / migration story:
+ *   - Step 7 (image input): when `payload.imagePaths` is non-empty, each
+ *     file is mime-sniffed by extension and attached as an `inlineData`
+ *     part (base64) when ≤20MB, or uploaded via `client.files.upload`
+ *     and referenced as `fileData.fileUri` when larger. Image parts go
+ *     BEFORE the text part in the current user turn (Gemini convention).
+ *     Unsupported extensions are warned + skipped — never a hard fail.
+ *     Replayed history is text-only by design (prior images would be
+ *     stale paths anyway), so the model only sees images attached to
+ *     the current turn.
+ *   - Step 8 (usage persistence): the API's `usageMetadata` is routed
+ *     into the existing `AppStore.recordUsage` IPC via a new optional
+ *     `deps.recordUsage` hook. Best-effort: a save failure is swallowed
+ *     so the user-visible run still completes cleanly.
+ *   - Step 9 (migration banner): a chat that has `linkedGeminiSessionId`
+ *     (i.e. it used to run via the CLI) and is taking its FIRST turn on
+ *     the API path gets a one-time `role: system` notice appended noting
+ *     the runtime swap. The gate fires once per chat — the same chat
+ *     never sees a duplicate notice on subsequent API turns.
+ *
  * Still TODO in later steps:
- *   - Step 6: settings UI + model picker.
- *   - Step 7: image input.
- *   - Step 8: persist usageMetadata to recordUsage.
- *   - Step 9: migration banner.
+ *   - Step 10: polish + SDK-load smoke + AGENTS.md note.
  *   - vertex-ai / google-oauth profile kinds (Step 2 only handles
  *     `api-key`; other kinds fall through to the CLI path).
  *
@@ -63,11 +80,19 @@
  * and bundling stay clean when the SDK is absent.
  */
 
+import { promises as fsPromises } from 'fs'
+import { extname } from 'path'
 import type { AgentRunPayload, AgentRunRoute } from './index'
-import type { AppSettings, ChatRecord, GeminiAuthProfile } from './store/types'
+import type {
+  AppSettings,
+  ChatMessage,
+  ChatRecord,
+  GeminiAuthProfile,
+  UsageRecord
+} from './store/types'
 import type { RunManager, RunSessionStatus } from './RunManager'
 import { buildGeminiFunctionDeclarations } from './GeminiApiToolDeclarations'
-import { buildGeminiTurnContents } from './GeminiApiHistoryAdapter'
+import { buildGeminiTurnContents, type GeminiContentPart } from './GeminiApiHistoryAdapter'
 
 /** Hard cap on how many tool-call rounds we permit inside a single
  *  Gemini turn. Each round adds one model response + at least one tool
@@ -76,6 +101,43 @@ import { buildGeminiTurnContents } from './GeminiApiHistoryAdapter'
  *  above the natural ceiling for any sane agent task (most settle in
  *  1-5 rounds) and well below where token budgets become punitive. */
 const MAX_TOOL_ROUNDS = 20
+
+/** Cutoff for `inlineData` (base64) vs. `files.upload` (`fileData`).
+ *  Gemini accepts inline payloads up to ~20MB before request size pressure
+ *  starts to bite (slower TTFB, occasional truncation). Above that we
+ *  upload via the Files API and reference the returned URI — same model
+ *  visibility, much smaller user-turn payload. The exact boundary is a
+ *  policy call; 20MB matches the documented per-request inline limit. */
+const INLINE_IMAGE_MAX_BYTES = 20 * 1024 * 1024
+
+/** Extension → mime-type map for image inputs. We sniff by extension
+ *  rather than reading magic bytes because (1) the renderer typically
+ *  only attaches paths picked through the OS file picker and (2)
+ *  reading the first N bytes for sniffing would double the IO cost
+ *  for small files. Unknown extensions get warned + skipped — never
+ *  fail the whole run.
+ *
+ *  `image/heic` is included for forward-compat with Apple Photos
+ *  attachments — the Gemini API doesn't natively accept HEIC today but
+ *  may in future. Listed so users with HEIC attachments at least see
+ *  a coherent attempt rather than a silent drop. */
+const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.heic': 'image/heic',
+  '.heif': 'image/heic'
+}
+
+/** Pick a mime-type from a path's extension. Returns null for unknown
+ *  extensions so the caller can warn + skip. */
+function sniffImageMimeType(imagePath: string): string | null {
+  const ext = extname(imagePath).toLowerCase()
+  if (!ext) return null
+  return IMAGE_MIME_BY_EXTENSION[ext] || null
+}
 
 /** Shape the function-calling loop expects out of the MCP tool list
  *  and the executor. Kept narrow on purpose so `index.ts` can satisfy
@@ -184,6 +246,28 @@ export interface GeminiApiProviderDeps {
    *  Optional so existing tests that don't exercise persistence can
    *  omit it without churn. */
   saveChatLinkedSessionId?: (chatId: string, sessionId: string) => void
+  /** Phase M1 Step 7: read an image file at the host. Defaults to
+   *  `fs.promises.readFile` if absent. Tests inject a stub so they can
+   *  simulate arbitrary file sizes without touching the disk. Returns
+   *  the raw bytes so the provider can decide between `inlineData`
+   *  (base64) and `files.upload` based on size. Returning `null` (or
+   *  throwing) skips the image with a warning — same behaviour as an
+   *  unsupported extension. */
+  readImageFile?: (imagePath: string) => Promise<Buffer | null>
+  /** Phase M1 Step 8: persist a usage record. Defaults to no-op if
+   *  absent so existing tests stay green without wiring AppStore.
+   *  Wrapped in try/catch internally — a save failure never fails the
+   *  user-visible run. Field mapping (provider/model/workspaceId/etc.)
+   *  is the provider's responsibility; the dep just hands the row to
+   *  the storage layer. */
+  recordUsage?: (entry: Omit<UsageRecord, 'id' | 'timestamp'>) => void
+  /** Phase M1 Step 9: append a single system-role message to a chat's
+   *  transcript (the migration notice). Implementations should
+   *  read-modify-write the chat record, then broadcast `chat-updated`
+   *  so the renderer picks up the new entry without a manual refresh.
+   *  Optional so older tests can omit it; when absent, no notice is
+   *  emitted (the run still completes normally). */
+  appendChatSystemMessage?: (chatId: string, message: ChatMessage) => void
   /** Optional SDK loader override; defaults to `loadOptionalGeminiSdk`.
    *  Tests pass a synthetic SDK to avoid real network calls. */
   loadSdk?: () => Promise<any | null>
@@ -263,6 +347,114 @@ function chunkText(chunk: any): string {
     // Defensive: never let chunk shape weirdness crash the loop.
   }
   return ''
+}
+
+/** Phase M1 Step 7: load + classify image attachments for the current
+ *  user turn. Returns an ordered list of Gemini content parts to PREPEND
+ *  to the text part. Each input path is handled independently:
+ *    - unsupported extension → log warning, skip
+ *    - read fails → log warning, skip
+ *    - size ≤ INLINE_IMAGE_MAX_BYTES → `inlineData` with base64
+ *    - size > INLINE_IMAGE_MAX_BYTES → `client.files.upload` →
+ *      `fileData` with the returned `fileUri`
+ *
+ *  A skipped image is NEVER a hard failure for the run — the model
+ *  just sees fewer attachments. The warning surfaces in the host
+ *  console so a developer can debug "why didn't my screenshot land".
+ *
+ *  The SDK client is passed in because the upload path needs it; it's
+ *  fine if it's null (e.g. tests that only exercise inline) — we'll
+ *  treat oversized images as "skip + warn" in that case.
+ */
+async function loadImageParts(
+  imagePaths: ReadonlyArray<string>,
+  client: any,
+  deps: GeminiApiProviderDeps
+): Promise<GeminiContentPart[]> {
+  if (!imagePaths.length) return []
+  const reader =
+    deps.readImageFile ||
+    (async (path: string): Promise<Buffer | null> => {
+      try {
+        return await fsPromises.readFile(path)
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[GeminiApiProvider] Image read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`
+        )
+        return null
+      }
+    })
+  const parts: GeminiContentPart[] = []
+  for (const imagePath of imagePaths) {
+    if (!imagePath || typeof imagePath !== 'string') continue
+    const mimeType = sniffImageMimeType(imagePath)
+    if (!mimeType) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[GeminiApiProvider] Skipping image with unsupported extension: ${imagePath}`
+      )
+      continue
+    }
+    let bytes: Buffer | null
+    try {
+      bytes = await reader(imagePath)
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[GeminiApiProvider] Image read threw for ${imagePath}: ${error instanceof Error ? error.message : String(error)}`
+      )
+      continue
+    }
+    if (!bytes) continue
+    if (bytes.length <= INLINE_IMAGE_MAX_BYTES) {
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: bytes.toString('base64')
+        }
+      })
+      continue
+    }
+    // Oversized — use the Files API. Falls back to skip+warn if the
+    // SDK client is missing the files surface (older SDK build, or a
+    // test that didn't mock it).
+    const uploader = client?.files?.upload
+    if (typeof uploader !== 'function') {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[GeminiApiProvider] Image ${imagePath} exceeds inline limit (${bytes.length} > ${INLINE_IMAGE_MAX_BYTES}) and SDK files.upload is unavailable; skipping.`
+      )
+      continue
+    }
+    try {
+      const uploaded = await client.files.upload({
+        file: imagePath,
+        config: { mimeType }
+      })
+      const fileUri = typeof uploaded?.uri === 'string' ? uploaded.uri : ''
+      if (!fileUri) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[GeminiApiProvider] files.upload returned no uri for ${imagePath}; skipping.`
+        )
+        continue
+      }
+      parts.push({
+        fileData: {
+          fileUri,
+          mimeType
+        }
+      })
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[GeminiApiProvider] files.upload failed for ${imagePath}: ${error instanceof Error ? error.message : String(error)}`
+      )
+      continue
+    }
+  }
+  return parts
 }
 
 function chunkUsage(chunk: any): Record<string, number> | null {
@@ -392,15 +584,15 @@ export function shouldAttemptGeminiApi(
  * touching the event stream; the caller is free to invoke the CLI
  * provider in that case.
  *
- * Current scope (Steps 2–5):
+ * Current scope (Steps 2–9):
  *   - Multi-turn continuity via history replay (Step 5).
  *   - Text + tool-call rounds streamed out (Steps 2 + 3).
  *   - Function calling via AGBench MCP tools (Step 3).
  *   - Approval gates inherited from `executeGeminiMcpTool` (Step 4).
  *   - Synthetic `api://<chatId>` session id pinned on success (Step 5).
- *   - No image input (Step 7).
- *   - usageMetadata emitted on `result` event but not yet persisted to
- *     `recordUsage` (Step 8).
+ *   - Image input attached as inlineData / fileData parts (Step 7).
+ *   - usageMetadata persisted via recordUsage on success (Step 8).
+ *   - One-time migration banner for chats moving CLI → API (Step 9).
  */
 export async function tryRunGeminiApi(
   event: Electron.IpcMainInvokeEvent,
@@ -490,6 +682,27 @@ export async function tryRunGeminiApi(
   // — the same behaviour Steps 2–4 had.
   const priorChat = deps.getChat && payload.appChatId ? deps.getChat(payload.appChatId) : null
   const contents: any[] = buildGeminiTurnContents(priorChat, payload.prompt)
+
+  // Phase M1 Step 7: image input. Load + classify each path into a
+  // Gemini content part (inlineData for ≤20MB, fileData via files.upload
+  // for larger). We deliberately only attach images to the CURRENT user
+  // turn — replayed history is text-only since older image paths are
+  // typically stale or already shrunk into a tool result. The model
+  // sees images for the in-flight turn, which matches what the CLI
+  // path does via `--include-directories`.
+  //
+  // Image parts go BEFORE the text part (Gemini's convention: visual
+  // context first, then the prompt that references it).
+  const imagePaths = Array.isArray(payload.imagePaths) ? payload.imagePaths : []
+  if (imagePaths.length) {
+    const imageParts = await loadImageParts(imagePaths, client, deps)
+    if (imageParts.length) {
+      const lastTurn = contents[contents.length - 1]
+      if (lastTurn && lastTurn.role === 'user' && Array.isArray(lastTurn.parts)) {
+        lastTurn.parts = [...imageParts, ...lastTurn.parts]
+      }
+    }
+  }
 
   // Phase M1 Step 3: function-calling tool declarations.
   // Translate the AGBench MCP tool surface into Gemini's FunctionDeclaration
@@ -676,9 +889,88 @@ export async function tryRunGeminiApi(
     }
   }
 
-  // Final `result` event carries the usage block so future Step 8
-  // can scrape it without re-listening to the entire stream. Stats
-  // mirror the Claude SDK path's shape (duration_ms + token counts).
+  const durationMs = Date.now() - startedAt
+
+  // Phase M1 Step 8: route the API's `usageMetadata` into the host-side
+  // `AppStore.recordUsage` so the renderer's usage card + quota
+  // tracking surfaces it the same way it does for the CLI path. We do
+  // this from the provider (not the renderer) for two reasons:
+  //   1. The renderer's `extractUsageCountsFromCandidate` doesn't know
+  //      about the Gemini API's `promptTokenCount`/`candidatesTokenCount`
+  //      key shape — it sniffs `input_tokens`/`prompt_tokens`/etc.
+  //      Doing the mapping here keeps the renderer provider-agnostic.
+  //   2. Tracking lives behind the dep, so existing back-compat tests
+  //      that omit `recordUsage` still pass — the call is a no-op when
+  //      the dep is absent.
+  // We swallow any thrown error so a flaky disk doesn't crash the run.
+  if (deps.recordUsage && normalizedRoute.appRunId && normalizedRoute.appChatId) {
+    try {
+      const inputTokens = lastUsage?.promptTokenCount ?? 0
+      const outputTokens = lastUsage?.candidatesTokenCount ?? 0
+      const totalTokens = lastUsage?.totalTokenCount ?? inputTokens + outputTokens
+      const workspaceId =
+        priorChat?.workspaceId ||
+        (priorChat?.scope === 'global' ? '__agentbench_global_chats__' : '') ||
+        ''
+      deps.recordUsage({
+        provider: 'gemini',
+        workspaceId,
+        chatId: normalizedRoute.appChatId,
+        runId: normalizedRoute.appRunId,
+        usageKind: 'run',
+        model,
+        inputTokens,
+        outputTokens,
+        totalTokens,
+        durationMs
+      })
+    } catch {
+      // Best-effort: usage tracking failure must not fail the run.
+    }
+  }
+
+  // Phase M1 Step 9: one-time migration banner. A chat that previously
+  // ran on the CLI (signal: `linkedGeminiSessionId` set) and is taking
+  // its FIRST turn through the API path gets a synthetic system message
+  // explaining the runtime swap. The gate is "`linkedGeminiSessionId`
+  // present AND `linkedProviderSessionId` was NOT an `api://...` id
+  // before this run" — exactly the case where Step 5's persistence
+  // helper just transitioned the chat from CLI-flavoured continuity to
+  // API-flavoured continuity. Subsequent API turns find the field
+  // already starts with `api://` and so the gate stays closed (one
+  // notice per chat lifetime).
+  //
+  // Best-effort: the notice is a UX courtesy, not a correctness
+  // requirement, so a save failure here is swallowed.
+  if (
+    deps.appendChatSystemMessage &&
+    normalizedRoute.appChatId &&
+    priorChat &&
+    priorChat.linkedGeminiSessionId &&
+    !(priorChat.linkedProviderSessionId || '').startsWith('api://')
+  ) {
+    try {
+      const noticeRunId = normalizedRoute.appRunId || 'unknown'
+      deps.appendChatSystemMessage(normalizedRoute.appChatId, {
+        id: `gemini-api-migration-${noticeRunId}`,
+        role: 'system',
+        content:
+          'This chat is now running via the Gemini API runtime. Its CLI session id is preserved for fallback.',
+        timestamp: new Date().toISOString(),
+        runId: normalizedRoute.appRunId,
+        metadata: { kind: 'geminiApiMigrationNotice' }
+      })
+    } catch {
+      // Best-effort: notice append failure shouldn't fail the run.
+    }
+  }
+
+  // Final `result` event carries the usage block so the renderer's
+  // run-finished handler can render duration / token stats inline with
+  // the chat. `durationMs` is captured above so the Step-8 recordUsage
+  // call and this stats payload agree on the same elapsed value
+  // (otherwise the persisted row and the on-screen number could drift
+  // by a few ms — small, but easy to avoid).
   deps.sendAgentCompatLine(
     event.sender,
     'gemini',
@@ -687,7 +979,7 @@ export async function tryRunGeminiApi(
       status: 'success',
       stats: {
         ...(lastUsage || {}),
-        duration_ms: Date.now() - startedAt
+        duration_ms: durationMs
       },
       provider: 'gemini',
       runtime: 'api-sdk',

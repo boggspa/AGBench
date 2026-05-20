@@ -54,6 +54,7 @@ export type GeminiContentPart =
   | { functionCall: { name: string; args: Record<string, unknown> } }
   | { functionResponse: { name: string; response: { result?: unknown; error?: string } } }
   | { inlineData: { mimeType: string; data: string } }
+  | { fileData: { fileUri: string; mimeType: string } }
 
 export interface HistoryReplayOptions {
   /** Max prior messages to replay. Defaults to no cap (relies on caller's

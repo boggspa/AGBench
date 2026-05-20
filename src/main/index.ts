@@ -95,7 +95,8 @@ import {
   GeminiAuthProfileKind,
   GeminiAuthProfileSummary,
   GeminiAuthStatus,
-  GeminiOAuthLoginStatus
+  GeminiOAuthLoginStatus,
+  UsageRecord
 } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
@@ -9078,6 +9079,16 @@ async function cancelProviderRun(
 // `cli://...` ids (the chat just transitioned runtimes), set when
 // missing. Read-modify-write through AppStore.saveChat is fine because
 // these calls are serialised on the main thread.
+//
+// Phase M1 Step 8: extended with `recordUsage` so the provider can
+// persist the API's `usageMetadata` directly (the renderer's mapping
+// doesn't recognise the Gemini API's promptTokenCount/etc. key shape).
+//
+// Phase M1 Step 9: extended with `appendChatSystemMessage` so the
+// provider can emit the one-time migration notice when a CLI-linked
+// chat takes its first API-runtime turn. We broadcast the chat-updated
+// event after the append so the renderer picks up the new message
+// without a manual refresh.
 function geminiApiProviderDeps() {
   return {
     sendAgentCompatLine,
@@ -9110,6 +9121,24 @@ function geminiApiProviderDeps() {
       // Overwrite + persist.
       existing.linkedProviderSessionId = sessionId
       AppStore.saveChat(existing)
+    },
+    recordUsage: (entry: Omit<UsageRecord, 'id' | 'timestamp'>) => {
+      AppStore.recordUsage(entry)
+    },
+    appendChatSystemMessage: (chatId: string, message: ChatMessage) => {
+      const existing = AppStore.getChat(chatId)
+      if (!existing) return
+      const updated: ChatRecord = {
+        ...existing,
+        messages: [...existing.messages, message],
+        updatedAt: Date.now()
+      }
+      AppStore.saveChat(updated)
+      try {
+        mainWindow?.webContents.send('chat-updated', updated)
+      } catch {
+        // Renderer may be detached — non-fatal.
+      }
     }
   }
 }

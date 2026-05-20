@@ -3,7 +3,13 @@ import fs from 'fs'
 import { tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
 import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './index'
-import type { AppSettings, ChatMessage, ChatRecord, GeminiAuthProfile } from './store/types'
+import type {
+  AppSettings,
+  ChatMessage,
+  ChatRecord,
+  GeminiAuthProfile,
+  UsageRecord
+} from './store/types'
 
 const userDataPath = vi.hoisted(() => `/tmp/agentbench-gemini-api-provider-test-${process.pid}`)
 
@@ -45,6 +51,18 @@ function makeDeps(overrides: {
   // request).
   getChat?: (chatId: string) => ChatRecord | null | undefined
   saveChatLinkedSessionId?: (chatId: string, sessionId: string) => void
+  // Phase M1 Step 7 deps (optional — default omitted so existing tests
+  // skip the image-mounting branch entirely; a test that wants to drive
+  // image handling supplies its own reader).
+  readImageFile?: (imagePath: string) => Promise<Buffer | null>
+  // Phase M1 Step 8 deps (optional — default omitted so existing tests
+  // don't accumulate phantom usage rows; tests that exercise usage
+  // tracking either supply their own or assert on the captured list).
+  recordUsage?: (entry: Omit<UsageRecord, 'id' | 'timestamp'>) => void
+  // Phase M1 Step 9 deps (optional — default captures invocations into
+  // `migrationNotices` so tests can assert presence/absence by reading
+  // that array directly).
+  appendChatSystemMessage?: (chatId: string, message: ChatMessage) => void
 }): {
   deps: GeminiApiProviderDeps
   lines: SendLineCall[]
@@ -53,6 +71,8 @@ function makeDeps(overrides: {
   finishes: Array<{ runId: string | undefined; status: string }>
   toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }>
   sessionSaves: Array<{ chatId: string; sessionId: string }>
+  usageRecords: Array<Omit<UsageRecord, 'id' | 'timestamp'>>
+  migrationNotices: Array<{ chatId: string; message: ChatMessage }>
 } {
   const lines: SendLineCall[] = []
   const errors: SendErrorCall[] = []
@@ -60,6 +80,8 @@ function makeDeps(overrides: {
   const finishes: Array<{ runId: string | undefined; status: string }> = []
   const toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }> = []
   const sessionSaves: Array<{ chatId: string; sessionId: string }> = []
+  const usageRecords: Array<Omit<UsageRecord, 'id' | 'timestamp'>> = []
+  const migrationNotices: Array<{ chatId: string; message: ChatMessage }> = []
   const baseSettings: AppSettings = {
     geminiApiRuntime: 'auto',
     geminiAuthProfiles: overrides.profiles || [],
@@ -136,9 +158,36 @@ function makeDeps(overrides: {
       : (chatId, sessionId) => {
           sessionSaves.push({ chatId, sessionId })
         },
+    readImageFile: overrides.readImageFile,
+    recordUsage: overrides.recordUsage
+      ? (entry) => {
+          usageRecords.push(entry)
+          overrides.recordUsage!(entry)
+        }
+      : (entry) => {
+          usageRecords.push(entry)
+        },
+    appendChatSystemMessage: overrides.appendChatSystemMessage
+      ? (chatId, message) => {
+          migrationNotices.push({ chatId, message })
+          overrides.appendChatSystemMessage!(chatId, message)
+        }
+      : (chatId, message) => {
+          migrationNotices.push({ chatId, message })
+        },
     loadSdk: overrides.loadSdk
   }
-  return { deps, lines, errors, exits, finishes, toolCalls, sessionSaves }
+  return {
+    deps,
+    lines,
+    errors,
+    exits,
+    finishes,
+    toolCalls,
+    sessionSaves,
+    usageRecords,
+    migrationNotices
+  }
 }
 
 function makeApiKeyProfile(overrides: Partial<GeminiAuthProfile> = {}): GeminiAuthProfile {
@@ -1017,5 +1066,440 @@ describe('GeminiApiProvider (Phase M1 Step 5 — history replay & session pinnin
     expect(contents[1].parts[0].text).toBe('4')
     // Turn 2's prompt is the current user turn.
     expect(contents[2].parts[0].text).toBe('double that')
+  })
+})
+
+/**
+ * Phase M1 Step 7 — image input. We mock `readImageFile` so tests stay
+ * IO-free and can simulate arbitrary file sizes (and the oversize
+ * upload path) without touching the disk. The provider mounts image
+ * parts BEFORE the text part in the current user turn.
+ */
+describe('GeminiApiProvider (Phase M1 Step 7 — image input)', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('attaches a single image as inlineData before the text part', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'ack' }]])
+    const fakeBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0xde, 0xad, 0xbe, 0xef])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      readImageFile: async (path) => (path === '/tmp/screenshot.png' ? fakeBytes : null)
+    })
+    await tryRunGeminiApi(
+      stubEvent,
+      { ...basePayload, imagePaths: ['/tmp/screenshot.png'] },
+      baseRoute,
+      deps
+    )
+    expect(callsRef).toHaveLength(1)
+    const lastTurn = callsRef[0].contents[callsRef[0].contents.length - 1]
+    expect(lastTurn.role).toBe('user')
+    // image part comes first, text part second
+    expect(lastTurn.parts).toHaveLength(2)
+    expect(lastTurn.parts[0].inlineData.mimeType).toBe('image/png')
+    expect(lastTurn.parts[0].inlineData.data).toBe(fakeBytes.toString('base64'))
+    expect(lastTurn.parts[1].text).toBe('Hello Gemini')
+  })
+
+  it('attaches two images in order before the text part', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'got both' }]])
+    const png = Buffer.from('first-png-bytes')
+    const jpg = Buffer.from('second-jpg-bytes')
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      readImageFile: async (path) => {
+        if (path === '/tmp/a.png') return png
+        if (path === '/tmp/b.jpg') return jpg
+        return null
+      }
+    })
+    await tryRunGeminiApi(
+      stubEvent,
+      { ...basePayload, imagePaths: ['/tmp/a.png', '/tmp/b.jpg'] },
+      baseRoute,
+      deps
+    )
+    const lastTurn = callsRef[0].contents[callsRef[0].contents.length - 1]
+    expect(lastTurn.parts).toHaveLength(3)
+    expect(lastTurn.parts[0].inlineData.mimeType).toBe('image/png')
+    expect(lastTurn.parts[1].inlineData.mimeType).toBe('image/jpeg')
+    expect(lastTurn.parts[2].text).toBe('Hello Gemini')
+  })
+
+  it('logs a warning and skips images with unsupported extensions (run still completes)', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'partial' }]])
+    const png = Buffer.from('valid-png')
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+    const { deps, exits, finishes } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      readImageFile: async (path) => (path === '/tmp/ok.png' ? png : Buffer.from('unused'))
+    })
+    await tryRunGeminiApi(
+      stubEvent,
+      {
+        ...basePayload,
+        imagePaths: ['/tmp/ok.png', '/tmp/mystery.xyz', '/tmp/notes.txt']
+      },
+      baseRoute,
+      deps
+    )
+    const lastTurn = callsRef[0].contents[callsRef[0].contents.length - 1]
+    // Only the .png makes it through; the unsupported ones are dropped.
+    expect(lastTurn.parts).toHaveLength(2)
+    expect(lastTurn.parts[0].inlineData.mimeType).toBe('image/png')
+    expect(lastTurn.parts[1].text).toBe('Hello Gemini')
+    expect(warnSpy).toHaveBeenCalled()
+    const warnings = warnSpy.mock.calls.map((c) => String(c[0]))
+    expect(warnings.some((m) => m.includes('/tmp/mystery.xyz'))).toBe(true)
+    expect(warnings.some((m) => m.includes('/tmp/notes.txt'))).toBe(true)
+    // Run still completes successfully.
+    expect(exits).toEqual([{ provider: 'gemini', code: 0 }])
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'completed' }])
+    warnSpy.mockRestore()
+  })
+
+  it('emits no inlineData parts when payload.imagePaths is empty/absent', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'no-image' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      readImageFile: async () => {
+        throw new Error('reader should not be called when imagePaths is empty')
+      }
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    const lastTurn = callsRef[0].contents[callsRef[0].contents.length - 1]
+    expect(lastTurn.parts).toHaveLength(1)
+    expect(lastTurn.parts[0].text).toBe('Hello Gemini')
+    expect(lastTurn.parts.every((p: any) => !('inlineData' in p) && !('fileData' in p))).toBe(true)
+  })
+
+  it('uses files.upload for oversized images and emits a fileData part', async () => {
+    // 21MB synthetic buffer — over the 20MB inline cutoff.
+    const oversized = Buffer.alloc(21 * 1024 * 1024, 0xab)
+    // Build a custom SDK that also records files.upload calls so we can
+    // assert the mime-type passed through.
+    const uploadCalls: Array<{ file: string; mimeType: string }> = []
+    let streamCalls: Array<{ contents: any[] }> = []
+    const loader = async () => ({
+      GoogleGenAI: class {
+        models = {
+          generateContentStream: async (params: any) => {
+            streamCalls.push({ contents: JSON.parse(JSON.stringify(params.contents)) })
+            return (async function* () {
+              yield { text: 'uploaded' }
+            })()
+          }
+        }
+        files = {
+          upload: async (params: any) => {
+            uploadCalls.push({
+              file: params.file,
+              mimeType: params.config?.mimeType
+            })
+            return { uri: `gs://fake-bucket/${params.file.split('/').pop()}` }
+          }
+        }
+      }
+    })
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      readImageFile: async () => oversized
+    })
+    await tryRunGeminiApi(
+      stubEvent,
+      { ...basePayload, imagePaths: ['/tmp/huge.png'] },
+      baseRoute,
+      deps
+    )
+    expect(uploadCalls).toHaveLength(1)
+    expect(uploadCalls[0]).toEqual({
+      file: '/tmp/huge.png',
+      mimeType: 'image/png'
+    })
+    expect(streamCalls).toHaveLength(1)
+    const lastTurn = streamCalls[0].contents[streamCalls[0].contents.length - 1]
+    expect(lastTurn.parts).toHaveLength(2)
+    expect(lastTurn.parts[0].fileData).toEqual({
+      fileUri: 'gs://fake-bucket/huge.png',
+      mimeType: 'image/png'
+    })
+    expect(lastTurn.parts[1].text).toBe('Hello Gemini')
+  })
+})
+
+/**
+ * Phase M1 Step 8 — usage tracking persistence. The provider calls
+ * `deps.recordUsage` after a successful run, mapping the API's
+ * `usageMetadata` keys (`promptTokenCount`/etc.) onto the host's
+ * `UsageRecord` shape (`inputTokens`/etc.).
+ */
+describe('GeminiApiProvider (Phase M1 Step 8 — usage tracking)', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('calls recordUsage with mapped fields on a successful run', async () => {
+    const chat = makeChat({ workspaceId: 'ws-1', messages: [] })
+    const usage = {
+      promptTokenCount: 17,
+      candidatesTokenCount: 23,
+      totalTokenCount: 40
+    }
+    const chunks = [{ text: 'hi' }, { text: '', usageMetadata: usage }]
+    const { deps, usageRecords } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk(chunks),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(usageRecords).toHaveLength(1)
+    const entry = usageRecords[0]
+    expect(entry.provider).toBe('gemini')
+    expect(entry.workspaceId).toBe('ws-1')
+    expect(entry.chatId).toBe('chat-1')
+    expect(entry.runId).toBe('run-1')
+    expect(entry.usageKind).toBe('run')
+    expect(entry.inputTokens).toBe(17)
+    expect(entry.outputTokens).toBe(23)
+    expect(entry.totalTokens).toBe(40)
+    expect(typeof entry.durationMs).toBe('number')
+    expect(typeof entry.model).toBe('string')
+    expect(entry.model.length).toBeGreaterThan(0)
+  })
+
+  it('records zeros (and derives total) when the stream never reports usageMetadata', async () => {
+    const chat = makeChat({ workspaceId: 'ws-1', messages: [] })
+    // No usageMetadata in any chunk — older SDK shapes / streaming-only
+    // responses can omit it.
+    const { deps, usageRecords } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'just text' }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(usageRecords).toHaveLength(1)
+    expect(usageRecords[0].inputTokens).toBe(0)
+    expect(usageRecords[0].outputTokens).toBe(0)
+    expect(usageRecords[0].totalTokens).toBe(0)
+  })
+
+  it('uses the global workspace marker for chats with scope=global', async () => {
+    const chat = makeChat({ scope: 'global', workspaceId: undefined, messages: [] })
+    const { deps, usageRecords } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok', usageMetadata: { totalTokenCount: 5 } }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(usageRecords).toHaveLength(1)
+    expect(usageRecords[0].workspaceId).toBe('__agentbench_global_chats__')
+  })
+
+  it('does NOT call recordUsage on a failed-stream run', async () => {
+    const chat = makeChat({ workspaceId: 'ws-1', messages: [] })
+    const { deps, usageRecords } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([], { throwOn: 'stream' }),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(usageRecords).toEqual([])
+  })
+
+  it('does NOT call recordUsage on an aborted run', async () => {
+    const controllerHolder: { current: AbortController | null } = { current: null }
+    let releaseSecond: () => void = () => {}
+    const secondReady = new Promise<void>((resolve) => {
+      releaseSecond = resolve
+    })
+    const generator = async function* () {
+      yield { text: 'partial' }
+      await secondReady
+      yield { text: 'should-not-stream', usageMetadata: { totalTokenCount: 99 } }
+    }
+    const sdk = async () => ({
+      GoogleGenAI: class {
+        models = {
+          generateContentStream: async () => generator()
+        }
+      }
+    })
+    const { deps, usageRecords } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: sdk
+    })
+    deps.runManager.attachAbortController = (_runId, c) => {
+      controllerHolder.current = c as AbortController
+      return undefined
+    }
+    const promise = tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    await new Promise((resolve) => setImmediate(resolve))
+    controllerHolder.current?.abort()
+    releaseSecond()
+    await promise
+    expect(usageRecords).toEqual([])
+  })
+
+  it("does not crash when recordUsage throws (best-effort tracking)", async () => {
+    const chat = makeChat({ workspaceId: 'ws-1', messages: [] })
+    const { deps, finishes, errors } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok', usageMetadata: { totalTokenCount: 1 } }]),
+      getChat: () => chat,
+      recordUsage: () => {
+        throw new Error('disk full')
+      }
+    })
+    await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'completed' }])
+    // The error must NOT have surfaced via the agent-compat error channel.
+    expect(errors).toEqual([])
+  })
+})
+
+/**
+ * Phase M1 Step 9 — migration banner. A chat that previously ran on
+ * the Gemini CLI (linkedGeminiSessionId set) emits a single
+ * system-role notice the first time it runs through the API path. The
+ * gate keys off `linkedProviderSessionId` NOT already starting with
+ * `api://` — so a chat that has already migrated never sees the
+ * notice again.
+ */
+describe('GeminiApiProvider (Phase M1 Step 9 — migration banner)', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('appends the migration notice when a CLI-linked chat takes its first API turn', async () => {
+    const chat = makeChat({
+      linkedGeminiSessionId: '12345678-1234-1234-1234-123456789abc',
+      linkedProviderSessionId: undefined,
+      messages: []
+    })
+    const { deps, migrationNotices } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(migrationNotices).toHaveLength(1)
+    const notice = migrationNotices[0]
+    expect(notice.chatId).toBe('chat-1')
+    expect(notice.message.role).toBe('system')
+    expect(notice.message.id).toBe('gemini-api-migration-run-1')
+    expect(notice.message.content).toMatch(/now running via the Gemini API runtime/i)
+    expect(notice.message.metadata?.kind).toBe('geminiApiMigrationNotice')
+    expect(notice.message.runId).toBe('run-1')
+  })
+
+  it('also fires when chat had a legacy cli://... linkedProviderSessionId', async () => {
+    // The cli:// id is overwritten by Step 5's saver in the same run,
+    // but the GATE looks at the *prior* value (the chat record we read
+    // before the run). Step 5's saver writes back after the gate has
+    // already fired, so the notice still appears on this first API
+    // turn — exactly what we want when a chat transitions runtimes.
+    const chat = makeChat({
+      linkedGeminiSessionId: '12345678-1234-1234-1234-123456789abc',
+      linkedProviderSessionId: 'cli://12345678-1234-1234-1234-123456789abc',
+      messages: []
+    })
+    const { deps, migrationNotices } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(migrationNotices).toHaveLength(1)
+  })
+
+  it('does NOT append the notice when the chat already migrated (linkedProviderSessionId starts with api://)', async () => {
+    const chat = makeChat({
+      linkedGeminiSessionId: '12345678-1234-1234-1234-123456789abc',
+      linkedProviderSessionId: 'api://chat-1',
+      messages: []
+    })
+    const { deps, migrationNotices } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(migrationNotices).toEqual([])
+  })
+
+  it('does NOT append the notice when the chat has no linkedGeminiSessionId (fresh chat)', async () => {
+    const chat = makeChat({
+      linkedGeminiSessionId: undefined,
+      linkedProviderSessionId: undefined,
+      messages: []
+    })
+    const { deps, migrationNotices } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(migrationNotices).toEqual([])
+  })
+
+  it('does NOT append the notice on a failed-stream run', async () => {
+    const chat = makeChat({
+      linkedGeminiSessionId: '12345678-1234-1234-1234-123456789abc',
+      linkedProviderSessionId: undefined,
+      messages: []
+    })
+    const { deps, migrationNotices } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([], { throwOn: 'stream' }),
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(migrationNotices).toEqual([])
+  })
+
+  it('swallows appendChatSystemMessage failures (best-effort notice)', async () => {
+    const chat = makeChat({
+      linkedGeminiSessionId: '12345678-1234-1234-1234-123456789abc',
+      linkedProviderSessionId: undefined,
+      messages: []
+    })
+    const { deps, finishes, errors } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat,
+      appendChatSystemMessage: () => {
+        throw new Error('write failed')
+      }
+    })
+    await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'completed' }])
+    expect(errors).toEqual([])
   })
 })
