@@ -2,7 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'rea
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
-import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, GeminiOAuthLoginStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
+import { AppSettings, WorkspaceRecord, ChatRecord, ChatMessage, ChatRun, RunWarning, DiffFileSummary, UsageRecord, ToolActivity, RunDiffResult, GeminiWorktreeConfig, ProviderId, ExternalPathGrant, ScheduledTask, AgenticServicesSettings, AgenticWorkspaceGrant, AgenticServiceId, GeminiApiRuntimeMode, GeminiMcpBridgeStatus, CodexSandboxFallbackMode, ProviderCapabilityContract, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, GeminiOAuthLoginStatus, RunQueueJob, RunQueueJobSource, RunQueueJobStatus, RunQueueRequestSnapshot, RunEventInput, RunEventRecord, RunRecoveryRecord, ProductOperationsStatus, ProductUpdateChannel, ChatScope, RuntimeProfile, HandoffCard } from '../../main/store/types'
 import { createToolActivity, pairToolResult, isToolUseEvent, isToolResultEvent, estimateLineChanges } from './lib/ToolParser'
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
@@ -3554,6 +3554,9 @@ type SettingsPanelUpdate = {
   reduceMotion?: boolean
   compactDensity?: boolean
   geminiCheckpointingEnabled?: boolean
+  // Phase M1 Step 6 — Gemini API vs CLI runtime selection. See
+  // GeminiApiRuntimeMode in main/store/types.ts. Defaults to 'auto'.
+  geminiApiRuntime?: GeminiApiRuntimeMode
   chatContextTurns?: number
   claudeBinaryPath?: string
   kimiBinaryPath?: string
@@ -3646,6 +3649,11 @@ function App(): React.JSX.Element {
   const [persistentSessionStatus, setPersistentSessionStatus] = useState<PersistentSessionStatus>('idle')
   const [persistentSessionNeedsRestart, setPersistentSessionNeedsRestart] = useState(false)
   const [geminiCheckpointingEnabled, setGeminiCheckpointingEnabled] = useState(false)
+  // Phase M1 Step 6 — Gemini API runtime mode. Defaults to 'auto' (the
+  // same default the main store applies on first load). The actual
+  // API-vs-CLI dispatch lives in main; this state is only used by the
+  // Settings UI to surface the picker and the runtime status row.
+  const [geminiApiRuntime, setGeminiApiRuntime] = useState<GeminiApiRuntimeMode>('auto')
 
   // Diff & Logs
   const [rawLogs, setRawLogs] = useState<RawLogEntry[]>([])
@@ -4637,6 +4645,11 @@ function App(): React.JSX.Element {
     }
     setChatContextTurns(clampContextTurns(s.chatContextTurns))
     setGeminiCheckpointingEnabled(Boolean(s.geminiCheckpointingEnabled))
+    setGeminiApiRuntime(
+      s.geminiApiRuntime === 'auto' || s.geminiApiRuntime === 'always' || s.geminiApiRuntime === 'never'
+        ? s.geminiApiRuntime
+        : 'auto'
+    )
     void refreshProviderMetadata(s.activeProvider || 'gemini')
     if (typeof window.api.getGeminiMcpBridgeStatus === 'function') {
       void window.api.getGeminiMcpBridgeStatus().then(setGeminiMcpBridgeStatus).catch(() => {})
@@ -4800,6 +4813,16 @@ function App(): React.JSX.Element {
         setPersistentSessionNeedsRestart(true)
         setRawLogs(prev => [...prev, { type: 'info', content: 'Gemini checkpointing setting changed. Restart the persistent session to apply --checkpointing.' }])
       }
+    }
+    if (next.geminiApiRuntime !== undefined) {
+      setGeminiApiRuntime(next.geminiApiRuntime)
+      settingsPatch.geminiApiRuntime = next.geminiApiRuntime
+      // Refresh the Gemini provider metadata so any cached capability /
+      // status reflects the new runtime intent on the next render. The
+      // actual dispatch logic in main reads the setting at run time, so
+      // no extra IPC call is needed beyond the standard updateSettings
+      // below.
+      if (currentProvider === 'gemini') providersToRefresh.push('gemini')
     }
     if (next.claudeBinaryPath !== undefined) {
       setClaudeBinaryPath(next.claudeBinaryPath)
@@ -11360,6 +11383,7 @@ function App(): React.JSX.Element {
               reduceMotion={appearance.reduceMotion}
               compactDensity={appearance.compactDensity}
               geminiCheckpointingEnabled={geminiCheckpointingEnabled}
+              geminiApiRuntime={geminiApiRuntime}
               chatContextTurns={chatContextTurns}
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
