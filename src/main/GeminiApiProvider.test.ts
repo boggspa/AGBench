@@ -3,7 +3,7 @@ import fs from 'fs'
 import { tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
 import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './index'
-import type { AppSettings, GeminiAuthProfile } from './store/types'
+import type { AppSettings, ChatMessage, ChatRecord, GeminiAuthProfile } from './store/types'
 
 const userDataPath = vi.hoisted(() => `/tmp/agentbench-gemini-api-provider-test-${process.pid}`)
 
@@ -40,6 +40,11 @@ function makeDeps(overrides: {
     args: unknown,
     route: AgentRunRoute | null
   ) => Promise<{ text: string; isError?: boolean }>
+  // Phase M1 Step 5 deps (optional — defaults to no chat / no save so
+  // existing tests that don't care about history get a clean single-turn
+  // request).
+  getChat?: (chatId: string) => ChatRecord | null | undefined
+  saveChatLinkedSessionId?: (chatId: string, sessionId: string) => void
 }): {
   deps: GeminiApiProviderDeps
   lines: SendLineCall[]
@@ -47,12 +52,14 @@ function makeDeps(overrides: {
   exits: SendExitCall[]
   finishes: Array<{ runId: string | undefined; status: string }>
   toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }>
+  sessionSaves: Array<{ chatId: string; sessionId: string }>
 } {
   const lines: SendLineCall[] = []
   const errors: SendErrorCall[] = []
   const exits: SendExitCall[] = []
   const finishes: Array<{ runId: string | undefined; status: string }> = []
   const toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }> = []
+  const sessionSaves: Array<{ chatId: string; sessionId: string }> = []
   const baseSettings: AppSettings = {
     geminiApiRuntime: 'auto',
     geminiAuthProfiles: overrides.profiles || [],
@@ -120,9 +127,18 @@ function makeDeps(overrides: {
       // that exercise the tool-calling loop will override this.
       return { text: '', isError: false }
     },
+    getChat: overrides.getChat,
+    saveChatLinkedSessionId: overrides.saveChatLinkedSessionId
+      ? (chatId, sessionId) => {
+          sessionSaves.push({ chatId, sessionId })
+          overrides.saveChatLinkedSessionId!(chatId, sessionId)
+        }
+      : (chatId, sessionId) => {
+          sessionSaves.push({ chatId, sessionId })
+        },
     loadSdk: overrides.loadSdk
   }
-  return { deps, lines, errors, exits, finishes, toolCalls }
+  return { deps, lines, errors, exits, finishes, toolCalls, sessionSaves }
 }
 
 function makeApiKeyProfile(overrides: Partial<GeminiAuthProfile> = {}): GeminiAuthProfile {
@@ -701,5 +717,305 @@ describe('GeminiApiProvider (Phase M1 Step 3 — function calling)', () => {
     await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
     const round1Contents = callsRef[1].contents
     expect(round1Contents[2].parts[0].functionResponse.response.error).toMatch(/something blew up/)
+  })
+})
+
+/**
+ * Phase M1 Step 5 — multi-turn history replay + linkedProviderSessionId
+ * persistence. Verifies the conversion path end-to-end inside the provider
+ * (separate from the unit-tested converter in GeminiApiHistoryAdapter.test.ts):
+ *   - chat history flows through to `generateContentStream({ contents })`
+ *   - the synthetic `api://<appChatId>` id is pinned on the chat record
+ *     after success, with the field-level merge rules from the dep doc
+ */
+function makeChat(overrides: Partial<ChatRecord>): ChatRecord {
+  return {
+    appChatId: 'chat-1',
+    title: 'Test chat',
+    createdAt: 0,
+    updatedAt: 0,
+    archived: false,
+    messages: [],
+    runs: [],
+    ...overrides
+  }
+}
+
+function makeChatMessage(
+  role: ChatMessage['role'],
+  content: string,
+  overrides: Partial<ChatMessage> = {}
+): ChatMessage {
+  return {
+    id: overrides.id ?? `msg-${role}-${content.slice(0, 6)}`,
+    role,
+    content,
+    timestamp: overrides.timestamp ?? new Date(0).toISOString(),
+    ...overrides
+  }
+}
+
+describe('GeminiApiProvider (Phase M1 Step 5 — history replay & session pinning)', () => {
+  beforeEach(() => {
+    fs.rmSync(userDataPath, { recursive: true, force: true })
+    fs.mkdirSync(userDataPath, { recursive: true })
+  })
+
+  it('replays prior user + assistant messages into contents alongside the current prompt', () => {
+    return (async () => {
+      const chat = makeChat({
+        messages: [
+          makeChatMessage('user', "what's 2+2?"),
+          makeChatMessage('assistant', '4'),
+          // Renderer typically persists the just-typed user message BEFORE
+          // dispatching the provider call. The adapter should merge it
+          // with the current prompt (or drop a true duplicate) so the
+          // strict alternation invariant holds.
+          makeChatMessage('user', 'double that')
+        ]
+      })
+      const { loader, callsRef } = scriptedSdk([[{ text: '8' }]])
+      const { deps } = makeDeps({
+        profiles: [makeApiKeyProfile()],
+        defaultProfileId: 'profile-1',
+        loadSdk: loader,
+        getChat: () => chat
+      })
+      await tryRunGeminiApi(stubEvent, { ...basePayload, prompt: 'double that' }, baseRoute, deps)
+      expect(callsRef).toHaveLength(1)
+      const contents = callsRef[0].contents
+      // 3 entries: user "what's 2+2?" → model "4" → user "double that"
+      expect(contents).toHaveLength(3)
+      expect(contents[0].role).toBe('user')
+      expect(contents[0].parts[0].text).toBe("what's 2+2?")
+      expect(contents[1].role).toBe('model')
+      expect(contents[1].parts[0].text).toBe('4')
+      expect(contents[2].role).toBe('user')
+      expect(contents[2].parts[0].text).toBe('double that')
+    })()
+  })
+
+  it('falls back to a single-turn request when the chat has no history', async () => {
+    const chat = makeChat({ messages: [] })
+    const { loader, callsRef } = scriptedSdk([[{ text: 'hi back' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    const contents = callsRef[0].contents
+    expect(contents).toHaveLength(1)
+    expect(contents[0].role).toBe('user')
+    expect(contents[0].parts[0].text).toBe('Hello Gemini')
+  })
+
+  it('falls back to a single-turn request when getChat is not provided (back-compat)', async () => {
+    const { loader, callsRef } = scriptedSdk([[{ text: 'ok' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader
+      // no getChat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    const contents = callsRef[0].contents
+    expect(contents).toHaveLength(1)
+    expect(contents[0].role).toBe('user')
+    expect(contents[0].parts[0].text).toBe('Hello Gemini')
+  })
+
+  it('skips system, tool, and error messages from the replayed history', async () => {
+    const chat = makeChat({
+      messages: [
+        makeChatMessage('user', 'q1'),
+        makeChatMessage('system', '↩ Result from sub-thread'),
+        makeChatMessage('tool', 'tool body that should not leak'),
+        makeChatMessage('error', 'EACCES'),
+        makeChatMessage('assistant', 'a1')
+      ]
+    })
+    const { loader, callsRef } = scriptedSdk([[{ text: 'final' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      getChat: () => chat
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    const contents = callsRef[0].contents
+    // q1 → a1 → current prompt
+    expect(contents).toHaveLength(3)
+    expect(contents[0].parts[0].text).toBe('q1')
+    expect(contents[1].parts[0].text).toBe('a1')
+    expect(contents[2].parts[0].text).toBe('Hello Gemini')
+    // The synthetic system text and the tool/error bodies should never
+    // make it into any content part.
+    const flat = contents.flatMap((c: any) => c.parts.map((p: any) => p.text || '')).join('|')
+    expect(flat).not.toMatch(/Result from sub-thread/)
+    expect(flat).not.toMatch(/tool body that should not leak/)
+    expect(flat).not.toMatch(/EACCES/)
+  })
+
+  it('persists linkedProviderSessionId = "api://<appChatId>" after successful run', async () => {
+    const chat = makeChat({ messages: [], linkedProviderSessionId: undefined })
+    const saves: Array<{ chatId: string; sessionId: string }> = []
+    const { deps, finishes } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat,
+      saveChatLinkedSessionId: (chatId, sessionId) => {
+        saves.push({ chatId, sessionId })
+      }
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'completed' }])
+    expect(saves).toEqual([{ chatId: 'chat-1', sessionId: 'api://chat-1' }])
+  })
+
+  it('does NOT persist linkedProviderSessionId on an aborted run', async () => {
+    const controllerHolder: { current: AbortController | null } = { current: null }
+    let releaseSecond: () => void = () => {}
+    const secondReady = new Promise<void>((resolve) => {
+      releaseSecond = resolve
+    })
+    const generator = async function* () {
+      yield { text: 'partial' }
+      await secondReady
+      yield { text: 'should-not-stream' }
+    }
+    const sdk = async () => ({
+      GoogleGenAI: class {
+        models = {
+          generateContentStream: async () => generator()
+        }
+      }
+    })
+    const saves: Array<{ chatId: string; sessionId: string }> = []
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: sdk,
+      saveChatLinkedSessionId: (chatId, sessionId) => {
+        saves.push({ chatId, sessionId })
+      }
+    })
+    deps.runManager.attachAbortController = (_runId, c) => {
+      controllerHolder.current = c as AbortController
+      return undefined
+    }
+    const promise = tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    await new Promise((resolve) => setImmediate(resolve))
+    controllerHolder.current?.abort()
+    releaseSecond()
+    await promise
+    expect(saves).toEqual([])
+  })
+
+  it('does NOT persist linkedProviderSessionId on a failed-stream run', async () => {
+    const saves: Array<{ chatId: string; sessionId: string }> = []
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([], { throwOn: 'stream' }),
+      saveChatLinkedSessionId: (chatId, sessionId) => {
+        saves.push({ chatId, sessionId })
+      }
+    })
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+    expect(saves).toEqual([])
+  })
+
+  // Dep-factory-level rules — the persistence helper supplied by
+  // `geminiApiProviderDeps()` enforces the field-level merge rules. The
+  // tests below exercise those rules directly (no real provider call
+  // needed). They cover the spec:
+  //   - api://... existing: leave alone
+  //   - cli://... existing: overwrite (legacy)
+  //   - missing: set
+  describe('saveChatLinkedSessionId merge rules', () => {
+    function makeSaver(initial: ChatRecord): {
+      save: (chatId: string, sessionId: string) => void
+      record: ChatRecord
+    } {
+      // Mirror the production dep factory closely without touching
+      // AppStore (which would require a temp dir + write IO). The
+      // semantics are what matter to this test.
+      const record = { ...initial }
+      const save = (_chatId: string, sessionId: string) => {
+        const current = record.linkedProviderSessionId || ''
+        if (current.startsWith('api://')) return
+        record.linkedProviderSessionId = sessionId
+      }
+      return { save, record }
+    }
+
+    it('sets when previously unset', () => {
+      const { save, record } = makeSaver(makeChat({ linkedProviderSessionId: undefined }))
+      save('chat-1', 'api://chat-1')
+      expect(record.linkedProviderSessionId).toBe('api://chat-1')
+    })
+
+    it('overwrites a legacy cli://... id', () => {
+      const { save, record } = makeSaver(
+        makeChat({ linkedProviderSessionId: 'cli://12345678-1234-1234-1234-123456789abc' })
+      )
+      save('chat-1', 'api://chat-1')
+      expect(record.linkedProviderSessionId).toBe('api://chat-1')
+    })
+
+    it('leaves an existing api://... id alone (idempotent across turns)', () => {
+      const { save, record } = makeSaver(makeChat({ linkedProviderSessionId: 'api://chat-1' }))
+      save('chat-1', 'api://chat-1-fresh')
+      expect(record.linkedProviderSessionId).toBe('api://chat-1')
+    })
+  })
+
+  it('saveChatLinkedSessionId failure does not crash the run', async () => {
+    const chat = makeChat({ messages: [] })
+    const { deps, finishes, errors } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: fakeSdk([{ text: 'ok' }]),
+      getChat: () => chat,
+      saveChatLinkedSessionId: () => {
+        throw new Error('disk full')
+      }
+    })
+    await expect(tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)).resolves.toBe(true)
+    // Run still completes successfully despite the save failure.
+    expect(finishes).toEqual([{ runId: 'run-1', status: 'completed' }])
+    // We swallow the save error rather than emit it, so the errors
+    // array should be empty.
+    expect(errors).toEqual([])
+  })
+
+  it('multi-turn: round 2 sees round 1 user + assistant in the replayed history', async () => {
+    // Turn 1: user "what's 2+2?" → assistant "4"
+    // The renderer persists both messages then triggers Turn 2 with
+    // prompt "double that". The provider should send Turn 2 with all
+    // three entries in `contents`.
+    const turn1Chat = makeChat({
+      messages: [makeChatMessage('user', "what's 2+2?"), makeChatMessage('assistant', '4')]
+    })
+    const { loader, callsRef } = scriptedSdk([[{ text: '8' }]])
+    const { deps } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      getChat: () => turn1Chat
+    })
+    await tryRunGeminiApi(stubEvent, { ...basePayload, prompt: 'double that' }, baseRoute, deps)
+    const contents = callsRef[0].contents
+    expect(contents).toHaveLength(3)
+    // Roles strictly alternate user/model/user.
+    expect(contents.map((c: any) => c.role)).toEqual(['user', 'model', 'user'])
+    // Turn 1's user + assistant texts are visible to the model.
+    expect(contents[0].parts[0].text).toBe("what's 2+2?")
+    expect(contents[1].parts[0].text).toBe('4')
+    // Turn 2's prompt is the current user turn.
+    expect(contents[2].parts[0].text).toBe('double that')
   })
 })

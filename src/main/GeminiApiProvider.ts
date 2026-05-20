@@ -24,7 +24,7 @@
  *   - Final `result` event carries `usageMetadata` for future Step-8
  *     quota persistence.
  *
- * Step 3 (this file) lights up function calling:
+ * Step 3 lit up function calling:
  *   - Per-turn translation of `mcpToolDefinitions()` into Gemini's
  *     `FunctionDeclaration[]` shape (see `GeminiApiToolDeclarations.ts`).
  *   - Outer round loop: stream → collect function calls → dispatch via
@@ -36,9 +36,19 @@
  *     come for free — `executeGeminiMcpTool` already handles all of
  *     those internally. We don't re-implement.
  *
+ * Step 5 (this file) lights up multi-turn continuity:
+ *   - History replay: prior `ChatMessage[]` → Gemini `Content[]` via
+ *     `GeminiApiHistoryAdapter.buildGeminiTurnContents`, prepended to
+ *     the current user turn. The renderer pre-trims to
+ *     `chatContextTurns`, so the in-flight request stays bounded.
+ *   - Synthetic `api://<appChatId>` session id persisted onto
+ *     `ChatRecord.linkedProviderSessionId` after each successful run,
+ *     overwriting any legacy `cli://...` value but leaving an existing
+ *     `api://...` value alone (idempotent). Keeps the renderer's
+ *     "session continuity" UI working when we're not really using a
+ *     server-side session.
+ *
  * Still TODO in later steps:
- *   - Step 4: approval gates (verified working — they're inherited).
- *   - Step 5: history replay from chat record.
  *   - Step 6: settings UI + model picker.
  *   - Step 7: image input.
  *   - Step 8: persist usageMetadata to recordUsage.
@@ -54,9 +64,10 @@
  */
 
 import type { AgentRunPayload, AgentRunRoute } from './index'
-import type { AppSettings, GeminiAuthProfile } from './store/types'
+import type { AppSettings, ChatRecord, GeminiAuthProfile } from './store/types'
 import type { RunManager, RunSessionStatus } from './RunManager'
 import { buildGeminiFunctionDeclarations } from './GeminiApiToolDeclarations'
+import { buildGeminiTurnContents } from './GeminiApiHistoryAdapter'
 
 /** Hard cap on how many tool-call rounds we permit inside a single
  *  Gemini turn. Each round adds one model response + at least one tool
@@ -149,6 +160,30 @@ export interface GeminiApiProviderDeps {
     args: unknown,
     route: AgentRunRoute | null
   ) => Promise<GeminiApiMcpExecutionResult>
+  /** Phase M1 Step 5: chat-history accessor for multi-turn replay. The
+   *  API path is stateless per request, so to give the model the same
+   *  multi-turn awareness the CLI gets via `--resume`, we read the
+   *  chat's prior `ChatMessage[]` and convert them to Gemini
+   *  `Content[]` (see `GeminiApiHistoryAdapter.ts`). Returns `null`
+   *  for non-existent chats — that just collapses to a first-turn
+   *  request. Tests can stub this trivially with a closure. */
+  getChat?: (chatId: string) => ChatRecord | null | undefined
+  /** Phase M1 Step 5: persist the synthetic `api://<appChatId>` session
+   *  id back onto the chat record after the first successful API run.
+   *  The renderer's continuity UI keys off `linkedProviderSessionId`
+   *  (it shows "Resuming session …" / colors the chat icon / etc.) so
+   *  if we leave the field empty the user sees "fresh chat" on every
+   *  turn even though we're sending replay history.
+   *
+   *  Implementations should:
+   *    - leave an existing `api://...` id alone (idempotent)
+   *    - overwrite `cli://...` ids (treat as legacy from before the
+   *      runtime switch)
+   *    - set when missing
+   *
+   *  Optional so existing tests that don't exercise persistence can
+   *  omit it without churn. */
+  saveChatLinkedSessionId?: (chatId: string, sessionId: string) => void
   /** Optional SDK loader override; defaults to `loadOptionalGeminiSdk`.
    *  Tests pass a synthetic SDK to avoid real network calls. */
   loadSdk?: () => Promise<any | null>
@@ -357,11 +392,12 @@ export function shouldAttemptGeminiApi(
  * touching the event stream; the caller is free to invoke the CLI
  * provider in that case.
  *
- * Step 3 scope:
- *   - Single user-turn prompt; no history replay (Step 5).
- *   - Text + tool-call rounds streamed out.
- *   - Function calling via AGBench MCP tools (Step 3 — this file).
- *   - Approval gates inherited from `executeGeminiMcpTool`.
+ * Current scope (Steps 2–5):
+ *   - Multi-turn continuity via history replay (Step 5).
+ *   - Text + tool-call rounds streamed out (Steps 2 + 3).
+ *   - Function calling via AGBench MCP tools (Step 3).
+ *   - Approval gates inherited from `executeGeminiMcpTool` (Step 4).
+ *   - Synthetic `api://<chatId>` session id pinned on success (Step 5).
  *   - No image input (Step 7).
  *   - usageMetadata emitted on `result` event but not yet persisted to
  *     `recordUsage` (Step 8).
@@ -443,8 +479,17 @@ export async function tryRunGeminiApi(
     return true
   }
 
-  // Build the single-turn contents. History replay is Step 5.
-  const contents: any[] = [{ role: 'user', parts: [{ text: payload.prompt }] }]
+  // Phase M1 Step 5: multi-turn history replay.
+  // The API path is stateless per request — there's no `--resume` token
+  // — so we read the chat's prior `ChatMessage[]` and prepend them as
+  // Gemini `Content[]` before the current user prompt. This is what
+  // gives "what's 2+2?" → "double that" the context to answer correctly.
+  // When `getChat` is absent (older tests, or when running without a
+  // chat record), or when the payload has no `appChatId` (global
+  // ad-hoc run, etc.), we degrade gracefully to a single-turn request
+  // — the same behaviour Steps 2–4 had.
+  const priorChat = deps.getChat && payload.appChatId ? deps.getChat(payload.appChatId) : null
+  const contents: any[] = buildGeminiTurnContents(priorChat, payload.prompt)
 
   // Phase M1 Step 3: function-calling tool declarations.
   // Translate the AGBench MCP tool surface into Gemini's FunctionDeclaration
@@ -611,6 +656,24 @@ export async function tryRunGeminiApi(
     deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
     deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
     return true
+  }
+
+  // Phase M1 Step 5: pin the synthetic `api://<appChatId>` id onto the
+  // chat record so the renderer's continuity UI ("Resuming session …",
+  // session-coloured chat icon, etc.) sees this turn as part of a
+  // logically-linked session even though the API runtime is stateless.
+  // We do this only on success (not on aborted/error paths) so a
+  // failed first turn doesn't leave a stale "session linked" marker.
+  // Idempotency rules + the cli://-overwrite case live in the dep
+  // implementation; see `geminiApiProviderDeps()` in index.ts.
+  if (deps.saveChatLinkedSessionId && normalizedRoute.appChatId) {
+    try {
+      deps.saveChatLinkedSessionId(normalizedRoute.appChatId, sessionId)
+    } catch {
+      // Best-effort: a save failure shouldn't crash the run after the
+      // model already streamed a successful answer. The next turn will
+      // try again.
+    }
   }
 
   // Final `result` event carries the usage block so future Step 8
