@@ -12085,6 +12085,19 @@ async function executeGeminiMcpTool(
         approvalMode: delegatedApprovalMode,
         resumeSessionId: recalledProviderSessionId
       })
+      // Runtime profiles are PER-PROVIDER (resolveRuntimeProfileForPayload
+       // throws "Runtime profile is for X, not Y" on mismatch). When the
+       // sub-thread targets a DIFFERENT provider than the parent (the
+       // overwhelming common case: Codex → Gemini, Codex → Claude, etc.),
+       // inheriting the parent's runtime profile id guarantees a preflight
+       // throw → dispatched:false → the sub-thread surfacing the generic
+       // "RunCoordinator completed preflight without dispatching" failure.
+       // Only inherit when the target provider matches the parent (rare,
+       // but legitimate — e.g. parallel Codex sub-threads sharing one
+       // runtime profile). Otherwise the sub-thread gets the target
+       // provider's defaults.
+      const inheritableRuntimeProfileId =
+        providerArg === parentProvider ? context.runtimeProfileId : undefined
       const subThreadRunId = seedAgentDrivenSubThreadTranscript({
         subThread,
         parentProvider,
@@ -12093,7 +12106,7 @@ async function executeGeminiMcpTool(
         returnResultToParent: returnResult,
         requestedModel: 'cli-default',
         approvalMode: delegatedApprovalMode,
-        runtimeProfileId: context.runtimeProfileId
+        runtimeProfileId: inheritableRuntimeProfileId
       })
       const runPayload: AgentRunPayload = {
         provider: providerArg,
@@ -12106,7 +12119,7 @@ async function executeGeminiMcpTool(
         model: 'cli-default',
         sessionTrust: Boolean(context.sessionTrust),
         externalPathGrants: context.externalPathGrants,
-        runtimeProfileId: context.runtimeProfileId,
+        runtimeProfileId: inheritableRuntimeProfileId,
         // Phase J2: on recall, inject the existing sub-thread's
         // linked provider session id so the target provider's native
         // session resumes (Codex `thread/resume`, Claude SDK
