@@ -25,6 +25,32 @@ The desktop hosts the runtime; an iPhone / iPad companion app can pair
 to it and remote-control approvals + start new turns when the user is
 away.
 
+### Gemini runtime (Phase M1)
+
+Gemini chats run via one of two runtimes:
+
+- **API path (in-process)** via `@google/genai` — preferred. Streams
+  text, supports the full AGBench MCP tool surface via Gemini function
+  calling, replays prior turns for multi-turn continuity, attaches
+  images as `inlineData` (≤20MB) or via `files.upload` (larger). Runs
+  entirely inside the Electron main process; no child CLI is spawned.
+- **CLI path** via the `gemini` binary — legacy fallback. Stays
+  available for OAuth-only profiles until a follow-up phase wires
+  OAuth into the API path. The `gemini` CLI is on a ~30-day
+  deprecation track (replaced by vendor-locked Antigravity that drops
+  MCP/ACP), so users with an API key configured should let the API
+  path become the default.
+
+Selection is controlled by `settings.geminiApiRuntime`:
+- `auto` (default) — use API when an api-key profile is selected, else CLI
+- `always` — force API (run fails without an API key)
+- `never` — force CLI
+
+Approval gates, audit events, durable run events, and `recordUsage`
+quota tracking all work identically across both runtimes — the API
+path calls into the same `executeGeminiMcpTool` host that the CLI's
+MCP bridge subprocess calls back into.
+
 ---
 
 ## Sub-Threads (Phase F1) — multi-provider delegation
