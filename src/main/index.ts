@@ -9065,6 +9065,19 @@ async function cancelProviderRun(
 // provider to 'gemini' (since this factory is only used by the Gemini
 // API path). The Step-3 deps still satisfy the Step-2 type, but tests
 // covering tool calling must provide both new fields.
+//
+// Phase M1 Step 5: extended with `getChat` + `saveChatLinkedSessionId`.
+// Together they let the provider replay multi-turn history (via
+// GeminiApiHistoryAdapter) and pin a synthetic `api://<chatId>` id on
+// the chat record so the renderer's session-continuity UI sees the
+// chat as "linked" even though the API is stateless.
+//
+// `saveChatLinkedSessionId` enforces the field-level merge rules
+// described in the GeminiApiProviderDeps doc: leave existing
+// `api://...` ids alone (idempotent across turns), overwrite legacy
+// `cli://...` ids (the chat just transitioned runtimes), set when
+// missing. Read-modify-write through AppStore.saveChat is fine because
+// these calls are serialised on the main thread.
 function geminiApiProviderDeps() {
   return {
     sendAgentCompatLine,
@@ -9085,6 +9098,18 @@ function geminiApiProviderDeps() {
       }
       const result = await executeGeminiMcpTool(toolName, args, route, 'gemini')
       return { text: result.text, isError: result.isError }
+    },
+    getChat: (chatId: string) => AppStore.getChat(chatId),
+    saveChatLinkedSessionId: (chatId: string, sessionId: string) => {
+      const existing = AppStore.getChat(chatId)
+      if (!existing) return
+      const current = existing.linkedProviderSessionId || ''
+      // Already pinned to an api://... id (typical follow-up turns): no-op.
+      if (current.startsWith('api://')) return
+      // Either empty or a legacy cli://... id from a prior CLI run.
+      // Overwrite + persist.
+      existing.linkedProviderSessionId = sessionId
+      AppStore.saveChat(existing)
     }
   }
 }

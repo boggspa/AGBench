@@ -1,0 +1,297 @@
+import { describe, expect, it } from 'vitest'
+import {
+  buildGeminiTurnContents,
+  chatMessagesToGeminiContents,
+  type GeminiContent
+} from './GeminiApiHistoryAdapter'
+import type { ChatMessage, ChatRecord } from './store/types'
+
+/** Tight helper for constructing test ChatMessage records. Defaults keep the
+ *  test cases readable — most fields are irrelevant to the adapter. */
+function msg(
+  role: ChatMessage['role'],
+  content: string,
+  overrides: Partial<ChatMessage> = {}
+): ChatMessage {
+  return {
+    id: overrides.id ?? `msg-${role}-${content.slice(0, 8)}`,
+    role,
+    content,
+    timestamp: overrides.timestamp ?? new Date(0).toISOString(),
+    ...overrides
+  }
+}
+
+/** Helper to extract the text out of a single-text-part Content for terse
+ *  test assertions. Throws if the part isn't a text part — flushes out any
+ *  accidental shape regressions immediately. */
+function textOf(content: GeminiContent): string {
+  const part = content.parts[0]
+  if (!part || !('text' in part)) {
+    throw new Error('expected first part to be a text part')
+  }
+  return part.text
+}
+
+function chat(messages: ChatMessage[]): ChatRecord {
+  return {
+    appChatId: 'chat-test',
+    title: 'Test chat',
+    createdAt: 0,
+    updatedAt: 0,
+    archived: false,
+    messages,
+    runs: []
+  }
+}
+
+describe('chatMessagesToGeminiContents', () => {
+  it('returns empty array for empty input', () => {
+    expect(chatMessagesToGeminiContents([])).toEqual([])
+  })
+
+  it('maps user -> user and assistant -> model with single text parts', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'hi'),
+      msg('assistant', 'hello'),
+      msg('user', 'how are you?')
+    ])
+    expect(out).toHaveLength(3)
+    expect(out[0]).toEqual({ role: 'user', parts: [{ text: 'hi' }] })
+    expect(out[1]).toEqual({ role: 'model', parts: [{ text: 'hello' }] })
+    expect(out[2]).toEqual({ role: 'user', parts: [{ text: 'how are you?' }] })
+  })
+
+  it('merges adjacent assistant messages with \\n\\n joiner', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'q'),
+      msg('assistant', 'part one'),
+      msg('assistant', 'part two')
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[1].role).toBe('model')
+    expect(textOf(out[1])).toBe('part one\n\npart two')
+  })
+
+  it('merges adjacent user messages with \\n\\n joiner', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'first'),
+      msg('user', 'second'),
+      msg('assistant', 'ack')
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(textOf(out[0])).toBe('first\n\nsecond')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('merges three or more adjacent same-role messages in order', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('assistant', 'a'),
+      msg('assistant', 'b'),
+      msg('assistant', 'c')
+    ])
+    expect(out).toHaveLength(1)
+    expect(textOf(out[0])).toBe('a\n\nb\n\nc')
+  })
+
+  it('skips system messages by default', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'q'),
+      msg('system', '↩ Result from Codex: …'),
+      msg('assistant', 'a')
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('includes system messages as user-role text when includeSystem=true', () => {
+    const out = chatMessagesToGeminiContents(
+      [msg('user', 'q'), msg('system', 'reminder note'), msg('assistant', 'a')],
+      { includeSystem: true }
+    )
+    // System should be merged with the preceding user message (both map to 'user' role).
+    expect(out).toHaveLength(2)
+    expect(textOf(out[0])).toBe('q\n\nreminder note')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('skips tool messages', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'q'),
+      msg('tool', 'tool output that should not leak'),
+      msg('assistant', 'a')
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(textOf(out[0])).toBe('q')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('skips error messages', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'q'),
+      msg('error', 'EACCES while reading /etc/shadow'),
+      msg('assistant', 'a')
+    ])
+    expect(out).toHaveLength(2)
+    expect(out[0].role).toBe('user')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('skips messages with empty / whitespace-only content', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'q'),
+      msg('assistant', '   '),
+      msg('user', ''),
+      msg('assistant', 'a')
+    ])
+    expect(out).toHaveLength(2)
+    expect(textOf(out[0])).toBe('q')
+    expect(textOf(out[1])).toBe('a')
+  })
+
+  it('maxPriorMessages: 2 keeps only the last two messages', () => {
+    const out = chatMessagesToGeminiContents(
+      [msg('user', 'one'), msg('assistant', 'two'), msg('user', 'three'), msg('assistant', 'four')],
+      { maxPriorMessages: 2 }
+    )
+    expect(out).toHaveLength(2)
+    expect(textOf(out[0])).toBe('three')
+    expect(out[0].role).toBe('user')
+    expect(textOf(out[1])).toBe('four')
+    expect(out[1].role).toBe('model')
+  })
+
+  it('maxPriorMessages: 0 returns empty array', () => {
+    const out = chatMessagesToGeminiContents([msg('user', 'one'), msg('assistant', 'two')], {
+      maxPriorMessages: 0
+    })
+    expect(out).toEqual([])
+  })
+
+  it('maxPriorMessages caps AFTER system/tool/error filtering', () => {
+    // We want the "last 2 replayable messages", not "last 2 raw messages".
+    const out = chatMessagesToGeminiContents(
+      [
+        msg('user', 'one'),
+        msg('assistant', 'two'),
+        msg('tool', 'noise'),
+        msg('error', 'more noise'),
+        msg('user', 'three'),
+        msg('assistant', 'four')
+      ],
+      { maxPriorMessages: 2 }
+    )
+    expect(out).toHaveLength(2)
+    expect(textOf(out[0])).toBe('three')
+    expect(textOf(out[1])).toBe('four')
+  })
+
+  it('sanity: 10 random alternating messages roundtrip without throwing', () => {
+    const messages: ChatMessage[] = []
+    for (let i = 0; i < 10; i++) {
+      const role = i % 2 === 0 ? 'user' : 'assistant'
+      messages.push(msg(role, `msg-${i}`))
+    }
+    const out = chatMessagesToGeminiContents(messages)
+    expect(out).toHaveLength(10)
+    for (let i = 0; i < 10; i++) {
+      expect(out[i].role).toBe(i % 2 === 0 ? 'user' : 'model')
+      expect(textOf(out[i])).toBe(`msg-${i}`)
+    }
+  })
+
+  it('produces strictly alternating role sequence after merging', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('user', 'u1'),
+      msg('user', 'u2'),
+      msg('assistant', 'a1'),
+      msg('assistant', 'a2'),
+      msg('user', 'u3')
+    ])
+    expect(out.map((content) => content.role)).toEqual(['user', 'model', 'user'])
+  })
+})
+
+describe('buildGeminiTurnContents', () => {
+  it('returns just the current prompt as a user turn when chat is null', () => {
+    const out = buildGeminiTurnContents(null, 'first turn')
+    expect(out).toEqual([{ role: 'user', parts: [{ text: 'first turn' }] }])
+  })
+
+  it('returns just the current prompt as a user turn when chat is undefined', () => {
+    const out = buildGeminiTurnContents(undefined, 'first turn')
+    expect(out).toEqual([{ role: 'user', parts: [{ text: 'first turn' }] }])
+  })
+
+  it('returns just the current prompt when chat has no messages', () => {
+    const out = buildGeminiTurnContents(chat([]), 'first turn')
+    expect(out).toEqual([{ role: 'user', parts: [{ text: 'first turn' }] }])
+  })
+
+  it('prepends prior history then appends the current user turn', () => {
+    const record = chat([msg('user', 'q1'), msg('assistant', 'a1')])
+    const out = buildGeminiTurnContents(record, 'q2')
+    expect(out).toHaveLength(3)
+    expect(textOf(out[0])).toBe('q1')
+    expect(out[0].role).toBe('user')
+    expect(textOf(out[1])).toBe('a1')
+    expect(out[1].role).toBe('model')
+    expect(textOf(out[2])).toBe('q2')
+    expect(out[2].role).toBe('user')
+  })
+
+  it('merges current prompt into a trailing user message in history (renderer race)', () => {
+    // Scenario: the renderer persisted the user's just-typed message into
+    // `chat.messages` before calling the provider. The replay's last entry
+    // would be a `user`, and our prompt is also `user` — naive
+    // concatenation would yield two consecutive user turns. Either merge
+    // or drop the duplicate.
+    const record = chat([
+      msg('user', 'q1'),
+      msg('assistant', 'a1'),
+      msg('user', 'pending prompt') // last user message, distinct from current
+    ])
+    const out = buildGeminiTurnContents(record, 'current prompt')
+    expect(out).toHaveLength(3)
+    expect(out[2].role).toBe('user')
+    expect(textOf(out[2])).toBe('pending prompt\n\ncurrent prompt')
+  })
+
+  it('drops the duplicate when the trailing user message equals the current prompt', () => {
+    const record = chat([msg('user', 'q1'), msg('assistant', 'a1'), msg('user', 'same prompt')])
+    const out = buildGeminiTurnContents(record, 'same prompt')
+    expect(out).toHaveLength(3)
+    expect(out[2].role).toBe('user')
+    expect(textOf(out[2])).toBe('same prompt')
+  })
+
+  it('honours maxPriorMessages option', () => {
+    const record = chat([
+      msg('user', 'q1'),
+      msg('assistant', 'a1'),
+      msg('user', 'q2'),
+      msg('assistant', 'a2')
+    ])
+    const out = buildGeminiTurnContents(record, 'q3', { maxPriorMessages: 2 })
+    expect(out).toHaveLength(3) // last 2 history + current
+    expect(textOf(out[0])).toBe('q2')
+    expect(textOf(out[1])).toBe('a2')
+    expect(textOf(out[2])).toBe('q3')
+  })
+
+  it('output for a typical 2-turn chat ends with current user prompt', () => {
+    const record = chat([msg('user', "what's 2+2?"), msg('assistant', '4')])
+    const out = buildGeminiTurnContents(record, 'double that')
+    expect(out).toHaveLength(3)
+    expect(out[out.length - 1]).toEqual({
+      role: 'user',
+      parts: [{ text: 'double that' }]
+    })
+    expect(out[0].role).toBe('user')
+    expect(out[1].role).toBe('model')
+    expect(out[2].role).toBe('user')
+  })
+})
