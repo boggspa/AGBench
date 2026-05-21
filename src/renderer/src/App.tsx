@@ -3595,6 +3595,14 @@ function App(): React.JSX.Element {
   // `lib/steerState.ts` for unit-testability.
   const [steerState, setSteerState] = useState<SteerState>(IDLE_STEER_STATE)
   const steerStateRef = useRef<SteerState>(IDLE_STEER_STATE)
+  // Chats whose in-flight assistant_message_delta + _complete events
+  // should be dropped because the user clicked Steer and we're cancelling
+  // the active run. Without this, providers like Codex emit a brief
+  // "farewell summary" agentMessage while exiting that pollutes the
+  // transcript with a mid-flow run summary the user explicitly moved
+  // on from. Cleared when the cancel lands OR the steer times out (in
+  // the timeout case the prior run survives so deltas are legitimate).
+  const steerSuppressionChatIdsRef = useRef<Set<string>>(new Set())
   const [runQueueJobs, setRunQueueJobs] = useState<RunQueueJob[]>([])
   const [runtimeProfiles, setRuntimeProfiles] = useState<RuntimeProfile[]>([])
   const [selectedRuntimeProfileByChatId, setSelectedRuntimeProfileByChatId] = useState<Record<string, string>>({})
@@ -7697,7 +7705,18 @@ function App(): React.JSX.Element {
 
       updateChatById(runChatId, (source) => {
         let updated = { ...source }
-        
+
+        // Steer suppression: while the user has clicked Steer and the
+        // cancel is in flight, drop in-flight assistant content so the
+        // provider's farewell wrap-up doesn't pollute the transcript
+        // with a mid-flow "final summary." See `handleSteer`.
+        const isSteerSuppressed =
+          (event.type === 'assistant_message_delta' || event.type === 'assistant_message_complete') &&
+          steerSuppressionChatIdsRef.current.has(runChatId)
+        if (isSteerSuppressed) {
+          return updated
+        }
+
         if (event.type === 'user_message') {
           // Handled manually before run
         } else if (event.type === 'assistant_message_delta') {
@@ -8141,6 +8160,11 @@ function App(): React.JSX.Element {
     const cancellingState = beginSteer({ chatId: targetChatId, cancelTargetRunId })
     setSteerState(cancellingState)
     steerStateRef.current = cancellingState
+    // Mark this chat for delta+complete suppression so the provider's
+    // wrap-up text emitted between SIGTERM and exit doesn't land as a
+    // mid-transcript "final summary." Cleared in the cancel-landed or
+    // timeout paths below.
+    steerSuppressionChatIdsRef.current.add(targetChatId)
     clearComposerAttachmentsForSubmittedRequest(request)
     if (!request.existingPrompt) {
       setChatPromptDraft(targetChatId, '')
@@ -8196,13 +8220,21 @@ function App(): React.JSX.Element {
 
     // The user may have navigated away from this chat or kicked off
     // another steer while we slept. Bail (no further state changes)
-    // if either happened.
+    // if either happened. Also clear the suppression entry — even
+    // though another steer/navigation owns the state machine now, the
+    // suppression set is keyed by chatId and we must not leak it.
     const stillCurrent = steerStateRef.current
     if (stillCurrent.phase !== 'cancelling' || stillCurrent.chatId !== targetChatId) {
+      steerSuppressionChatIdsRef.current.delete(targetChatId)
       return
     }
 
     if (outcome === 'cancel-landed') {
+      // Cancel landed — release the delta suppression so the NEW
+      // (steered-into) run's tokens stream into the transcript as
+      // normal. Any farewell tokens from the cancelled run that were
+      // already buffered get dropped on the floor (intentional).
+      steerSuppressionChatIdsRef.current.delete(targetChatId)
       // The cancel-path already marks the previous run's row + may emit
       // a "Task ended before completing" system message; we add an
       // additional, more meaningful `↳ Steered` system note so the
@@ -8259,11 +8291,15 @@ function App(): React.JSX.Element {
       return
     }
 
-    // Timeout path: cancel didn't land cleanly. The user's prompt is
-    // too valuable to drop, so queue it (the existing fallback) and
-    // surface a visible error note. The active run keeps running;
-    // when it finishes the queue scheduler dispatches the steered
-    // prompt automatically.
+    // Timeout path: cancel didn't land cleanly. Release the
+    // suppression — the prior run is going to continue (and complete
+    // naturally), so its remaining tokens are legitimate transcript
+    // content the user should still see.
+    steerSuppressionChatIdsRef.current.delete(targetChatId)
+    // The user's prompt is too valuable to drop, so queue it (the
+    // existing fallback) and surface a visible error note. The active
+    // run keeps running; when it finishes the queue scheduler
+    // dispatches the steered prompt automatically.
     const failedMessage = `Steer timed out after ${(DEFAULT_STEER_CANCEL_TIMEOUT_MS / 1000).toFixed(0)}s; the ${providerLabel} run is still running. Your prompt was queued instead.`
     const failedState = markSteerFailed({
       chatId: targetChatId,
