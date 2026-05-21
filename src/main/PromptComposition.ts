@@ -297,7 +297,14 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // delegation tool so Gemini doesn't quietly fall back to its built-in
   // invoke_agent for tasks the user expressed should be handled by Kimi
   // / Codex / Claude.
-  if (provider === 'gemini' && !isGlobalRun && approvalMode !== 'plan') {
+  //
+  // Tier 1 (turn-1 only): Gemini CLI's `--resume` restores the FULL
+  // session including prior message history + our preamble. After the
+  // first turn the agent has the instructions in its retained context;
+  // re-sending wastes ~1.9k tokens per turn (the observed "hi kimi" turn
+  // sent 13.7k tokens for a 6-token greeting). Skip the preamble when a
+  // resumeSessionId is present.
+  if (provider === 'gemini' && !isGlobalRun && approvalMode !== 'plan' && !resumeSessionId) {
     const geminiWriteToolPreamble = [
       'AGBench runtime note: this Gemini workspace run is write-capable.',
       `Use the AGBench MCP tools directly for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control. Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
@@ -319,7 +326,12 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // Claude tends to reach for its own Task tool for sub-agent work,
   // which stays inside Claude's process and cannot reach other AGBench
   // providers.
-  if (provider === 'claude' && !isGlobalRun && approvalMode !== 'plan') {
+  //
+  // Tier 1 (turn-1 only): Claude SDK `resume:` and Claude CLI `--resume`
+  // both restore prior conversation including the original preamble. The
+  // model retains MCP-tool awareness across resumes; skip the preamble
+  // when resuming.
+  if (provider === 'claude' && !isGlobalRun && approvalMode !== 'plan' && !resumeSessionId) {
     const claudeDelegationPreamble = [
       'AGBench runtime note: this Claude workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
       `Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
@@ -339,6 +351,15 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // agentbench MCP tool list and forbid built-in generalist-agent paths
   // for cross-provider work. Kimi's MCP host inherits the tools from
   // `~/.kimi/mcp.json` (installed by `kimi mcp add agentbench …`).
+  //
+  // Tier 1 EXCEPTION: Kimi's Wire-protocol `--resume` restores only the
+  // session token, NOT message history (see the conversation-context
+  // logic above where we ALSO replay history for Kimi unconditionally).
+  // We have low confidence the original turn-1 preamble survives the
+  // resume — so we keep injecting it every turn for Kimi. The other
+  // three providers skip on resume; Kimi pays the boilerplate cost
+  // until we either verify the session retains it or switch to direct
+  // Kimi API where a real system-prompt slot exists.
   if (provider === 'kimi' && !isGlobalRun && approvalMode !== 'plan') {
     const kimiDelegationPreamble = [
       'AGBench runtime note: this Kimi workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
@@ -374,7 +395,10 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // stamp) was already correct, agents just needed to be told the
   // tools exist and that built-in invoke paths can't reach other
   // providers.
-  if (provider === 'codex' && !isGlobalRun && approvalMode !== 'plan') {
+  //
+  // Tier 1 (turn-1 only): Codex's `thread/resume` against the app-server
+  // restores the full thread state. Skip the preamble on resume.
+  if (provider === 'codex' && !isGlobalRun && approvalMode !== 'plan' && !resumeSessionId) {
     const codexDelegationPreamble = [
       'AGBench runtime note: this Codex workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
       `Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,

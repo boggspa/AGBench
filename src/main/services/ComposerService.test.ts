@@ -392,10 +392,17 @@ describe('ComposerService', () => {
       { selectedModelType: 'claude-sonnet-4-6', claudeReasoningEffort: 'medium' }
     )
     // Phase I3 (Claude initiator): workspace Claude runs outside plan
-    // mode now get a delegation preamble pointing at the agentbench
-    // MCP server. The user request is preserved verbatim after it.
+    // mode get a delegation preamble pointing at the agentbench MCP
+    // server. The user request is preserved verbatim after it.
+    //
+    // Tier 1 (turn-1 only): when a Claude session is being resumed via
+    // `linkedProviderSessionId`, the prior turn's preamble is already in
+    // the retained context. We skip re-injection to save ~1.9k tokens
+    // per turn. The user prompt is still preserved; the preamble text
+    // must NOT be present on resume turns.
     expect(payload.prompt).toContain('Do the thing')
-    expect(payload.prompt).toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('agentbench MCP server')
     expect(payload.providerSessionId).toBe('claude-thread-1')
     expect(payload.claudeReasoningEffort).toBe('medium')
   })
