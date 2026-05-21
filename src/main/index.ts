@@ -7081,7 +7081,17 @@ function getActiveCodexRunState(): CodexRunState | null {
   const managedStates = activeCodexSessions
     .map((session) => getCodexStateFromSession(session))
     .filter((state): state is CodexRunState => Boolean(state))
-  if (managedStates.length > 1) return null
+  // Same tiebreaker as RunManager.resolve — multiple active Codex
+  // sessions per chat are legitimate (per-chat run lanes). Picking the
+  // most-recently-updated session keeps MCP tool calls from breaking
+  // when the bridge subprocess has no route metadata to disambiguate.
+  if (managedStates.length > 1) {
+    return [...managedStates].sort((a, b) => {
+      const aRun = a.appRunId ? runManager.get(a.appRunId)?.updatedAt ?? 0 : 0
+      const bRun = b.appRunId ? runManager.get(b.appRunId)?.updatedAt ?? 0 : 0
+      return bRun - aRun
+    })[0] ?? null
+  }
   const managed = managedStates[0]
   if (managed) return managed
   if (!activeCodexRunState?.appRunId) return activeCodexRunState

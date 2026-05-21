@@ -159,7 +159,26 @@ export class RunManager<TState = unknown> {
     }
 
     const activeProviderSessions = this.getActiveByProvider(provider)
-    return activeProviderSessions.length === 1 ? activeProviderSessions[0] : undefined
+    if (activeProviderSessions.length === 0) return undefined
+    if (activeProviderSessions.length === 1) return activeProviderSessions[0]
+    // Multiple active sessions for one provider — pre-Codex-refactor this
+    // was structurally impossible, so the resolver returned undefined to
+    // bail loudly. Post per-chat run lanes (Codex's `Add Gemini auth
+    // profiles and per-chat run lanes` work), it's a normal state — but
+    // returning undefined here breaks every MCP tool call from the
+    // provider's bridge subprocess with "no active workspace context",
+    // because the bridge has no route metadata to disambiguate. Real
+    // observed trigger: three concurrent Codex `init` events with the
+    // same session_id but different appRunIds → resolver bails → every
+    // subsequent agentbench__* tool call errors out, even though the
+    // sessions themselves are running fine.
+    //
+    // Tiebreaker: pick the most-recently-updated active session. This
+    // is the session most likely to be the one the bridge subprocess
+    // was just spawned to serve. Long-term we should plumb the bridge
+    // token through to identify the exact run, but the tiebreaker
+    // unblocks all currently-broken cases without that infra work.
+    return [...activeProviderSessions].sort((a, b) => b.updatedAt - a.updatedAt)[0]
   }
 
   update(
