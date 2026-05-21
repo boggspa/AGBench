@@ -11689,7 +11689,27 @@ async function executeGeminiMcpTool(
       )
   const toolId = `${parentProvider}-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 
-  sendAgentCompatLine(context.sender, parentProvider, {
+  // Phase L2 — duplicate-tool-card fix. For Codex the app-server's own
+  // `mcpToolCall` item handlers (see `codexToolUseFromItem` /
+  // `codexToolResultFromItem` + `handleCodexItemStarted` /
+  // `handleCodexItemCompleted`) already emit `tool_use` and
+  // `tool_result` events keyed on Codex's `call_XXXX` id. Re-emitting
+  // here with a synthesised `codex-mcp-{tool}-{ts}-{rand}` id produced
+  // TWO complete tool activity cards in the transcript for every
+  // single MCP invocation (the renderer pairs use→result by tool_id,
+  // and the two ids don't match). The MCP-protocol return value is
+  // delivered to the agent via the function return — separate from
+  // these renderer-only emissions — so suppression is purely visual
+  // and does not affect what Codex sees. For Gemini/Claude/Kimi the
+  // synthetic emissions are still the authoritative source: those
+  // providers don't natively stream `mcpToolCall` items.
+  const emitMcpToolTranscriptEvent =
+    parentProvider === 'codex'
+      ? (_payload: Record<string, unknown>) => {}
+      : (payload: Record<string, unknown>) =>
+          sendAgentCompatLine(context.sender, parentProvider, payload)
+
+  emitMcpToolTranscriptEvent({
     type: 'tool_use',
     tool_id: toolId,
     tool_name: toolName,
@@ -11705,7 +11725,7 @@ async function executeGeminiMcpTool(
       service: approvalPreview.service,
       error: `${AGENTIC_SERVICE_LABELS[approvalPreview.service]} denied by AGBench.`
     })
-    sendAgentCompatLine(context.sender, parentProvider, {
+    emitMcpToolTranscriptEvent({
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
@@ -11729,7 +11749,7 @@ async function executeGeminiMcpTool(
       const isError = Boolean(
         result.error || result.timedOut || (result.exitCode !== null && result.exitCode !== 0)
       )
-      sendAgentCompatLine(context.sender, parentProvider, {
+      emitMcpToolTranscriptEvent({
         type: 'tool_result',
         tool_id: toolId,
         tool_name: toolName,
@@ -11919,7 +11939,7 @@ async function executeGeminiMcpTool(
         (chatId) => AppStore.getChat(chatId) ?? undefined
       )
       if (recallResolution.mode === 'error') {
-        sendAgentCompatLine(context.sender, parentProvider, {
+        emitMcpToolTranscriptEvent({
           type: 'tool_result',
           tool_id: toolId,
           tool_name: toolName,
@@ -12007,7 +12027,7 @@ async function executeGeminiMcpTool(
           `Sub-thread delegation to ${targetProviderLabel} was declined by AGBench policy. ` +
           `${parentProviderLabel} continues without delegating; ` +
           `the user can change the policy in Settings → Behavior → Agentic Services → Sub-thread delegation.`
-        sendAgentCompatLine(context.sender, parentProvider, {
+        emitMcpToolTranscriptEvent({
           type: 'tool_result',
           tool_id: toolId,
           tool_name: toolName,
@@ -12253,7 +12273,7 @@ async function executeGeminiMcpTool(
           `\nReuse this id by passing subThreadId="${subThread.appChatId}" on the next delegate_to_subthread call if you want to continue the conversation with this same sub-agent.`
     }
 
-    sendAgentCompatLine(context.sender, parentProvider, {
+    emitMcpToolTranscriptEvent({
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
@@ -12269,7 +12289,7 @@ async function executeGeminiMcpTool(
       tool: toolName,
       error: error instanceof Error ? error.message : String(error)
     })
-    sendAgentCompatLine(context.sender, parentProvider, {
+    emitMcpToolTranscriptEvent({
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
