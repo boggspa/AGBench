@@ -6031,14 +6031,31 @@ async function canUseClaudeSdkTool(
   payload: AgentRunPayload,
   toolNameOrRequest: unknown,
   input?: unknown
-): Promise<{ behavior: 'allow' } | { behavior: 'deny'; message: string }> {
+): Promise<
+  | { behavior: 'allow'; updatedInput: Record<string, unknown> }
+  | { behavior: 'deny'; message: string }
+> {
   const { toolName, input: normalizedInput } = normalizeClaudeCanUseToolArgs(
     toolNameOrRequest,
     input
   )
+  // Coerce the SDK's `input` into a plain record so Zod accepts it.
+  // The Claude Agent SDK validates the canUseTool response with Zod:
+  // an `allow` response REQUIRES `updatedInput: Record<string, unknown>`
+  // (it's the args the SDK forwards to the tool — we pass them through
+  // unchanged). Returning `{ behavior: 'allow' }` without `updatedInput`
+  // makes Zod report ALL its union-arm failures, which surfaced in the
+  // delegated-Claude run as: "Tool permission request failed: ZodError
+  // — updatedInput: expected record, received undefined". The error
+  // looks like a broken settings.json entry but is actually our
+  // canUseTool response missing a required field.
+  const updatedInput: Record<string, unknown> =
+    typeof normalizedInput === 'object' && normalizedInput !== null && !Array.isArray(normalizedInput)
+      ? (normalizedInput as Record<string, unknown>)
+      : {}
   const service = claudeAgenticServiceForTool(toolName)
   if (!service) {
-    return { behavior: 'allow' }
+    return { behavior: 'allow', updatedInput }
   }
   const allowed = await requestAgenticServiceApproval(
     sender,
@@ -6059,7 +6076,7 @@ async function canUseClaudeSdkTool(
     }
   )
   return allowed
-    ? { behavior: 'allow' }
+    ? { behavior: 'allow', updatedInput }
     : { behavior: 'deny', message: `AGBench denied Claude tool ${toolName}.` }
 }
 
