@@ -6230,10 +6230,70 @@ function App(): React.JSX.Element {
   }, [currentChat])
 
   useEffect(() => {
+    // Phase L2 — fix streaming transcript content loss.
+    //
+    // The naive rebuild (`chatByIdRef.current = new Map(chats)`) caused
+    // visible token drops in long Codex assistant messages. Sequence:
+    //
+    //   1. Render N commits with chats[i].content = "abcde" (5 deltas
+    //      accumulated).
+    //   2. Delta 6 arrives. `updateChatById` reads the ref → "abcde",
+    //      writes "abcdef" to the ref, schedules setChats.
+    //   3. Delta 7 arrives. Reads ref → "abcdef", writes "abcdefg",
+    //      schedules setChats.
+    //   4. React hasn't repainted yet, but this effect's closure was
+    //      captured at render N — its `chats` value is the "abcde"
+    //      snapshot.
+    //   5. Effect fires (post-commit hook for render N) and overwrites
+    //      `chatByIdRef.current` with a map built from the closed-over
+    //      "abcde" snapshot — wiping deltas 6+7 from the ref.
+    //   6. Delta 8 arrives. Reads ref → "abcde" (stale), writes
+    //      "abcdeh". Deltas 6+7 are now permanently lost.
+    //   7. setChats from step 6 runs with prev=chats[N] (post react
+    //      batch resolution → "abcdefg"), then overwrites with our
+    //      broken "abcdeh".
+    //
+    // Symptom in user-visible transcript: alternating runs of ~5
+    // tokens kept / 1-6 tokens dropped, matching React's frame pacing
+    // against Codex's 5-60 deltas/sec stream. The raw event log on
+    // disk shows the full content — only the rendered/persisted view
+    // is broken. Garbled saved messages like "Phase 0 handoff is to
+    // Gemini for research use a new V2 this is a fresh pass subthread
+    // for any Phase." come from this clobber path; raw events show
+    // the full "Phase 0 handoff is going to Gemini for research only;
+    // I'll use a new V2 Gemini subthread now because this is a fresh
+    // pass, and I'll reuse that subthread for any Phase 0 follow-
+    // ups." sequence.
+    //
+    // Fix: still rebuild from React state for the GENERAL case (new
+    // chats, deletions, workspace switches) but PRESERVE the ref's
+    // entry for any chat with an active or recently-completed run.
+    // Those chats' content is being written directly to the ref by
+    // the streaming hot path, and that ref content is strictly more
+    // up-to-date than any React-state-derived snapshot.
     const next = new Map<string, ChatRecord>()
     chats.forEach((chat) => next.set(chat.appChatId, chat))
     if (currentChat?.appChatId) {
       next.set(currentChat.appChatId, currentChat)
+    }
+    const now = Date.now()
+    for (const [chatId, liveEntry] of chatByIdRef.current.entries()) {
+      let preserve = false
+      for (const ctx of activeRunsRef.current.values()) {
+        if (ctx.chatId === chatId) {
+          preserve = true
+          break
+        }
+      }
+      if (!preserve) {
+        const completedAt = recentlyCompletedChatIdsRef.current.get(chatId)
+        if (completedAt !== undefined && now - completedAt < RECENTLY_COMPLETED_WINDOW_MS) {
+          preserve = true
+        }
+      }
+      if (preserve) {
+        next.set(chatId, liveEntry)
+      }
     }
     chatByIdRef.current = next
   }, [chats, currentChat])
