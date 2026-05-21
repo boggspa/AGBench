@@ -17,13 +17,29 @@ interface MarkdownMessageProps {
  *   1. We split `content` into stable blocks + an optional tail via
  *      `splitMarkdownIntoBlocks` (pure string scan, no mdast).
  *   2. Each stable block goes through `StableMarkdownBlock`, keyed by
- *      its content-hashed id. That subtree is `React.memo`'d on `raw`,
+ *      `<index>-<content-hash>`. That subtree is `React.memo`'d on `raw`,
  *      so a parent re-render driven by `assistant_message_delta` only
  *      diffs the tail.
- *   3. The tail is rendered through the same memoised component, but
- *      its key (content hash) changes per keystroke — React unmounts
- *      the old tail and mounts a new one. The stable prefix survives
+ *   3. The tail is rendered through the same memoised component, keyed
+ *      by `tail-<content-hash>` (the index portion is the literal
+ *      string "tail" to avoid colliding with the highest stable
+ *      index). Its hash changes per keystroke — React unmounts the
+ *      old tail and mounts a new one. The stable prefix survives
  *      unchanged.
+ *
+ * Position-aware keys (the `<index>-` prefix) fix a class of bugs where
+ * two blocks within the SAME message share identical raw content —
+ * most prominently the `\n\n---\n\n` horizontal-rule separators K2 (b)
+ * injects between Codex item transitions. With pure content-hash keys,
+ * a message containing two `---` blocks (e.g. body + summary + extra
+ * agentMessage in one turn) produced two siblings with the SAME React
+ * key; React's prod reconciler silently merged them, leaving the
+ * rendered transcript missing chars / words and shuffled — the
+ * "Route 120-second MCP I'm rer..." style garbling observed on Codex.
+ * Including the position guarantees siblings always have distinct keys
+ * regardless of content collisions. The `React.memo` short-circuit on
+ * `raw` is preserved because position is stable for stable blocks
+ * across append-only re-renders.
  *
  * The output HTML is byte-for-byte identical to the pre-L1a renderer
  * for any complete (non-streaming) message — the existing snapshot
@@ -40,10 +56,10 @@ export function MarkdownMessage({ content, chat }: MarkdownMessageProps) {
   return (
     <AgentIdentityContext.Provider value={chat}>
       <div className="message-markdown message-markdown-pro">
-        {stable.map((block) => (
-          <StableMarkdownBlock key={block.id} raw={block.raw} />
+        {stable.map((block, index) => (
+          <StableMarkdownBlock key={`${index}-${block.id}`} raw={block.raw} />
         ))}
-        {tail ? <StableMarkdownBlock key={tail.id} raw={tail.raw} /> : null}
+        {tail ? <StableMarkdownBlock key={`tail-${tail.id}`} raw={tail.raw} /> : null}
       </div>
     </AgentIdentityContext.Provider>
   )
