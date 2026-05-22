@@ -3,7 +3,7 @@ import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/ty
 interface SubThreadDelegationCardProps {
   message: ChatMessage;
   /** All chats — used to look up the live sub-thread record by id so the
-   * card can render Running / Completed / Failed / Declined status. */
+   * card can render Created / Running / Completed / Returned / Failed status. */
   chats: ChatRecord[];
   /** Which chat ids currently have an active run on the run-queue. The
    * status display ticks "Running ▶" while the sub-thread's id is in
@@ -13,10 +13,12 @@ interface SubThreadDelegationCardProps {
 }
 
 type DelegationCardStatus =
+  | { kind: 'created' }
   | { kind: 'running' }
   | { kind: 'completed' }
   | { kind: 'failed'; reason?: string }
-  | { kind: 'declined'; reason?: string }
+  | { kind: 'cancelled'; reason?: string }
+  | { kind: 'returned' }
   | { kind: 'unknown' };
 
 function providerLabel(provider?: ProviderId | string): string {
@@ -54,28 +56,49 @@ export function resolveDelegationStatus(
 
   const lastRun = subThread.runs?.[subThread.runs.length - 1];
   if (!lastRun) {
-    // Sub-thread created but no run dispatched yet — still warming up.
+    // Sub-thread exists but no run has been recorded yet.
+    return { kind: 'created' };
+  }
+  if (
+    lastRun.status === 'running' ||
+    lastRun.status === 'queued' ||
+    lastRun.status === 'starting' ||
+    lastRun.status === 'active' ||
+    lastRun.status === 'paused'
+  ) {
     return { kind: 'running' };
+  }
+  const resultReturnedAt = subThread.delegationContext?.resultReturnedAt;
+  const lastRunEndedAt = lastRun.endedAt ? Date.parse(lastRun.endedAt) : NaN;
+  if (
+    resultReturnedAt &&
+    (!Number.isFinite(lastRunEndedAt) || lastRunEndedAt <= resultReturnedAt)
+  ) {
+    return { kind: 'returned' };
   }
   if (lastRun.status === 'success' || lastRun.status === 'success_with_warnings') {
     return { kind: 'completed' };
   }
   if (lastRun.status === 'failed') return { kind: 'failed', reason: 'Run failed' };
-  if (lastRun.status === 'cancelled') return { kind: 'declined', reason: 'Run cancelled' };
+  if (lastRun.status === 'cancelled') return { kind: 'cancelled', reason: 'Run cancelled' };
   if (!lastRun.endedAt) return { kind: 'running' };
   return { kind: 'unknown' };
 }
 
 function statusGlyph(status: DelegationCardStatus): string {
   switch (status.kind) {
+    case 'created':
+      return '·';
     case 'running':
       return '▶';
     case 'completed':
       return '✓';
     case 'failed':
       return '✗';
-    case 'declined':
+    case 'cancelled':
       return '⊘';
+    case 'returned':
+      return '↩';
     default:
       return '·';
   }
@@ -83,14 +106,18 @@ function statusGlyph(status: DelegationCardStatus): string {
 
 function statusLabel(status: DelegationCardStatus): string {
   switch (status.kind) {
+    case 'created':
+      return 'Created';
     case 'running':
       return 'Running';
     case 'completed':
       return 'Completed';
     case 'failed':
       return status.reason || 'Failed';
-    case 'declined':
-      return status.reason || 'Declined';
+    case 'cancelled':
+      return status.reason || 'Cancelled';
+    case 'returned':
+      return 'Returned';
     default:
       return 'Pending';
   }
@@ -127,7 +154,7 @@ export function SubThreadDelegationCard({
   };
 
   const isClickable = Boolean(subThreadId && onOpenSubThread);
-  const resultReturned = returnResultToParent && status.kind === 'completed';
+  const resultReturned = returnResultToParent && status.kind === 'returned';
 
   return (
     <article
@@ -178,7 +205,7 @@ export function SubThreadDelegationCard({
       {resultReturned && (
         <div className="subthread-delegation-footer">
           <span aria-hidden="true">↩</span>
-          <span>Result back-propagated to this thread</span>
+          <span>Result returned to this thread</span>
         </div>
       )}
       {dispatchErrorMessage && (

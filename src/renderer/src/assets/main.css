@@ -3277,11 +3277,17 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--warning) 14%, transparent);
 }
 
+.subthread-delegation-status.status-created {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.05);
+}
+
 .subthread-delegation-status.status-running .subthread-delegation-status-glyph {
   animation: subthreadDelegationPulse 1.4s ease-in-out infinite;
 }
 
-.subthread-delegation-status.status-completed {
+.subthread-delegation-status.status-completed,
+.subthread-delegation-status.status-returned {
   color: var(--success);
   background: color-mix(in srgb, var(--success) 14%, transparent);
 }
@@ -3291,6 +3297,7 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
+.subthread-delegation-status.status-cancelled,
 .subthread-delegation-status.status-declined {
   color: var(--text-secondary);
   background: rgb(255 255 255 / 0.05);

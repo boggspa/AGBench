@@ -50,15 +50,59 @@ describe('resolveDelegationStatus', () => {
     expect(status.kind).toBe('running');
   });
 
-  it('returns running when chat has no runs yet (just-spawned)', () => {
+  it('returns created when chat has no runs yet (just-spawned)', () => {
     const chat = makeChat({ runs: [] });
     const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('running');
+    expect(status.kind).toBe('created');
   });
 
   it('returns completed when the last run ended successfully', () => {
     const chat = makeChat({
       runs: [{ runId: 'r', startedAt: 't', endedAt: 't+1', status: 'success' }]
+    });
+    const status = resolveDelegationStatus(chat, new Set());
+    expect(status.kind).toBe('completed');
+  });
+
+  it('returns returned when a successful run was propagated to the parent', () => {
+    const chat = makeChat({
+      delegationContext: {
+        createdAt: 1,
+        parentProvider: 'gemini',
+        delegationPrompt: 'Do work',
+        returnResultToParent: true,
+        resultReturnedAt: Date.parse('2026-01-01T00:00:02Z')
+      },
+      runs: [
+        {
+          runId: 'r',
+          startedAt: '2026-01-01T00:00:00Z',
+          endedAt: '2026-01-01T00:00:01Z',
+          status: 'success'
+        }
+      ]
+    });
+    const status = resolveDelegationStatus(chat, new Set());
+    expect(status.kind).toBe('returned');
+  });
+
+  it('returns completed when the latest successful run is newer than a prior return', () => {
+    const chat = makeChat({
+      delegationContext: {
+        createdAt: 1,
+        parentProvider: 'gemini',
+        delegationPrompt: 'Do work',
+        returnResultToParent: true,
+        resultReturnedAt: Date.parse('2026-01-01T00:00:02Z')
+      },
+      runs: [
+        {
+          runId: 'r',
+          startedAt: '2026-01-01T00:00:03Z',
+          endedAt: '2026-01-01T00:00:04Z',
+          status: 'success'
+        }
+      ]
     });
     const status = resolveDelegationStatus(chat, new Set());
     expect(status.kind).toBe('completed');
@@ -72,12 +116,12 @@ describe('resolveDelegationStatus', () => {
     expect(status.kind).toBe('failed');
   });
 
-  it('returns declined when the last run was cancelled', () => {
+  it('returns cancelled when the last run was cancelled', () => {
     const chat = makeChat({
       runs: [{ runId: 'r', startedAt: 't', endedAt: 't+1', status: 'cancelled' }]
     });
     const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('declined');
+    expect(status.kind).toBe('cancelled');
   });
 
   it('returns unknown when no chat record is available', () => {

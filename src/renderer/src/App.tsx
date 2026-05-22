@@ -3317,7 +3317,29 @@ const TranscriptPanel = memo(function TranscriptPanel({
                   onInspect={onInspectRun}
                 />
               )}
-              {msg.role === 'tool' ? (
+              {isDelegationCard || isReturnCard ? (
+                <div
+                  key={msg.id}
+                  className={`message-group ${
+                    isReturnCard ? 'subthread-return-message' : ''
+                  } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
+                >
+                  {isDelegationCard ? (
+                    <SubThreadDelegationCard
+                      message={msg}
+                      chats={chats}
+                      runningChatIds={runningChatIds}
+                      onOpenSubThread={onOpenSubThread}
+                    />
+                  ) : (
+                    <SubThreadReturnCard
+                      message={msg}
+                      chat={currentChat || undefined}
+                      onOpenSubThread={onOpenSubThread}
+                    />
+                  )}
+                </div>
+              ) : msg.role === 'tool' ? (
                 <ActivityStack
                   key={msg.id}
                   activities={msg.toolActivities || []}
@@ -3334,21 +3356,6 @@ const TranscriptPanel = memo(function TranscriptPanel({
                     isReturnCard ? 'subthread-return-message' : ''
                   } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
                 >
-              {isDelegationCard ? (
-                <SubThreadDelegationCard
-                  message={msg}
-                  chats={chats}
-                  runningChatIds={runningChatIds}
-                  onOpenSubThread={onOpenSubThread}
-                />
-              ) : isReturnCard ? (
-                <SubThreadReturnCard
-                  message={msg}
-                  chat={currentChat || undefined}
-                  onOpenSubThread={onOpenSubThread}
-                />
-              ) : (
-                <>
                   <div className="message-meta">
                     {msg.role === 'user' ? 'You' : msg.role === 'assistant' ? currentProviderLabel : msg.role === 'error' ? 'Error' : 'System'}
                   </div>
@@ -3392,26 +3399,24 @@ const TranscriptPanel = memo(function TranscriptPanel({
                         : msg.content}
                     </div>
                   )}
-                </>
-              )}
-              {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
-                <div className="plan-choice-card">
-                  <div className="plan-choice-question">{pendingPlanChoice.question}</div>
-                  <div className="plan-choice-actions">
-                    {pendingPlanChoice.options.map((option) => (
-                      <button
-                        key={option}
-                        type="button"
-                        className="plan-choice-action-btn"
-                        onClick={() => onPlanChoiceSubmit(msg.id, option)}
-                        title={`Continue with "${option}"`}
-                      >
-                        {option}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                  {pendingPlanChoice && pendingPlanChoice.messageId === msg.id && (
+                    <div className="plan-choice-card">
+                      <div className="plan-choice-question">{pendingPlanChoice.question}</div>
+                      <div className="plan-choice-actions">
+                        {pendingPlanChoice.options.map((option) => (
+                          <button
+                            key={option}
+                            type="button"
+                            className="plan-choice-action-btn"
+                            onClick={() => onPlanChoiceSubmit(msg.id, option)}
+                            title={`Continue with "${option}"`}
+                          >
+                            {option}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
