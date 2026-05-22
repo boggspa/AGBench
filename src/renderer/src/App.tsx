@@ -1682,6 +1682,20 @@ const WELCOME_USAGE_RANGES: Array<{ value: WelcomeUsageRange; label: string; ari
   { value: 'all', label: 'All', aria: 'All recorded activity' }
 ]
 
+/** Human copy for the L6 empty-state — "No activity in the last 7 days." */
+function rangeLabelFor(range: WelcomeUsageRange): string {
+  switch (range) {
+    case '24h':
+      return 'the last 24 hours'
+    case '7d':
+      return 'the last 7 days'
+    case '30d':
+      return 'the last 30 days'
+    case 'all':
+      return 'any tracked activity yet'
+  }
+}
+
 const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
 // `ActivityContributionGrid` retired in Welcome L1 — the welcome
@@ -1746,7 +1760,18 @@ function WelcomeUsageDashboard({
         </div>
       </div>
 
-      {tab === 'overview' ? (
+      {/* Welcome L6 — empty-state copy for the selected range. Mounted
+          on both tabs so the user can pick a wider range from the
+          toggle without leaving the dashboard. */}
+      {!data.hasActivity ? (
+        <div className="welcome-usage-empty welcome-usage-empty--range">
+          <strong>No activity in {rangeLabelFor(range)}.</strong>
+          <span>
+            Try the <em>All</em> tab above to see your lifetime usage, or kick off a run on this
+            workspace.
+          </span>
+        </div>
+      ) : tab === 'overview' ? (
         <>
           <div className="welcome-usage-stat-grid">
             {statItems.map((item) => (
@@ -1785,7 +1810,7 @@ function WelcomeUsageDashboard({
                           key={model.id}
                           className={`welcome-usage-bar-segment ${providerModelColorClass(model.provider)}`}
                           style={{ height: `${Math.max(4, (value / data.maxChartTotal) * 100)}%` }}
-                          title={`${model.label}: ${formatCompactUsageNumber(value)} tokens`}
+                          title={`${model.label} · ${day.label} · ${formatCompactUsageNumber(value)} tokens`}
                         />
                       )
                     })}
@@ -11461,7 +11486,12 @@ function App(): React.JSX.Element {
     () => buildWelcomeUsageDashboardData(usageRecords, chats, welcomeUsageRange),
     [usageRecords, chats, welcomeUsageRange]
   )
-  const shouldShowWelcomeUsageDashboard = isWelcomeChat && welcomeUsageDashboardData.hasActivity
+  // Welcome L6 — the outer guard uses `lifetimeHasActivity` so the
+  // dashboard (and its range toggle) stay mounted even when the
+  // currently-selected window happens to be empty. The empty-state
+  // copy lives INSIDE the dashboard, gated on `hasActivity`.
+  const shouldShowWelcomeUsageDashboard =
+    isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
   const runCompleteDurationText =
     runCompleteNotice && !isWelcomeChat
       ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)

@@ -4416,6 +4416,31 @@ button.sidebar-item {
   padding: 12px 0 2px;
 }
 
+/* Welcome L6 — empty-state for an empty range. Centred block with a
+ * headline ("No activity in the last 24 hours.") + a hint nudging
+ * the user to the All toggle. Mounted on both tabs in place of the
+ * stat grid / chart, so the range toggle stays visible above. */
+.welcome-usage-empty--range {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 48px 24px;
+  text-align: center;
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+}
+.welcome-usage-empty--range strong {
+  color: color-mix(in srgb, var(--text-primary) 90%, transparent);
+  font-size: calc(var(--font-size-sm) + 1px);
+  font-weight: 600;
+}
+.welcome-usage-empty--range em {
+  font-style: normal;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--accent) 80%, var(--text-primary) 20%);
+}
+
 .welcome-usage-model-dot.provider-gemini,
 .welcome-usage-bar-segment.provider-gemini { color: #5a8cff; }
 .welcome-usage-model-dot.provider-codex,

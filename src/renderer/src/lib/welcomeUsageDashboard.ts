@@ -50,7 +50,19 @@ export interface WelcomeUsageModelDatum {
 }
 
 export interface WelcomeUsageDashboardData {
+  /**
+   * True when the SELECTED RANGE has activity. Drives empty-state
+   * copy inside the dashboard ("No activity in the last 24 hours").
+   */
   hasActivity: boolean
+  /**
+   * True when the user has ANY lifetime activity at all. Drives the
+   * outer "should the welcome dashboard render?" decision in the
+   * renderer — the toggle stays visible even when the current
+   * range happens to be empty, so the user can switch ranges from
+   * the empty state.
+   */
+  lifetimeHasActivity: boolean
   sessions: number
   messages: number
   totalTokens: number
@@ -431,9 +443,18 @@ export const buildWelcomeUsageDashboardData = (
   const maxChartTotal = Math.max(1, ...chartDays.map((day) => day.total))
   const favoriteModel = modelBreakdown[0]?.label || 'n/a'
   const hasActivity = runRecords.length > 0 || messageEvents.length > 0
+  // Welcome L6 — lifetime "has any activity ever" flag. Used by the
+  // renderer to decide whether to mount the dashboard at all. Without
+  // this, a 24h range that happens to be empty would unmount the
+  // dashboard wholesale and the user would lose access to the toggle
+  // even though their lifetime history is rich.
+  const lifetimeHasActivity =
+    records.some((record) => record.usageKind !== 'reset_hint') ||
+    chats.some((chat) => (chat.messages || []).length > 0)
 
   return {
     hasActivity,
+    lifetimeHasActivity,
     sessions: sessionIds.size,
     messages: messageEvents.length || runRecords.length * 2,
     totalTokens,

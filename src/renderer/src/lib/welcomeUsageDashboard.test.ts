@@ -196,6 +196,31 @@ describe('buildWelcomeUsageDashboardData model breakdown — range scoping (Welc
     expect(data.hasActivity).toBe(false)
     expect(data.favoriteModel).toBe('n/a')
   })
+
+  it('reports lifetimeHasActivity=true even when the selected window is empty (Welcome L6)', () => {
+    // Same shape as the previous test but check the L6 flag: when the
+    // user has historical activity but nothing in the selected range,
+    // lifetimeHasActivity must stay true so the renderer keeps the
+    // dashboard + range-toggle mounted.
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old-only',
+        timestamp: NOW - 60 * DAY,
+        provider: 'kimi',
+        model: 'kimi-k2.6',
+        totalTokens: 12_345
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    expect(data.hasActivity).toBe(false)
+    expect(data.lifetimeHasActivity).toBe(true)
+
+    // And conversely: when there is literally no data anywhere, both
+    // flags read false and the renderer hides the dashboard entirely.
+    const dryData = buildWelcomeUsageDashboardData([], [], 'all', NOW)
+    expect(dryData.hasActivity).toBe(false)
+    expect(dryData.lifetimeHasActivity).toBe(false)
+  })
 })
 
 describe('buildWelcomeUsageDashboardData headline stats — range scoping (Welcome L5)', () => {
