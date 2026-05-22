@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ChatRecord,
   ChildAgentThread,
@@ -13,6 +13,8 @@ import { inlineStatsForActivity } from '../lib/ActivityInlineStats'
 import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay'
 import { FileTypeIcon } from './FileTypeIcon'
 import { DigitOdometer } from './DigitOdometer'
+import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
+import { TurnReceiptCard } from './TurnReceiptCard'
 
 interface ActivityStackProps {
   activities: ToolActivity[]
@@ -23,6 +25,10 @@ interface ActivityStackProps {
   /** Chat record — when present, subagent threads pick up a stable visual
    * identity (name + color) via `assignAgentIdentity`. */
   chat?: ChatRecord
+  /** Phase L3 slice 6 — when true (from `settings.compactDensity`),
+   * tool cards collapse to their inline form and the turn-receipt
+   * tape switches to its one-line summary variant. */
+  compactDensity?: boolean
 }
 
 const SEARCH_PARAM_KEYS = ['query', 'search_query', 'pattern', 'regex', 'term']
@@ -589,10 +595,14 @@ function ActivityProgressNote({ activity }: { activity: ToolActivity }) {
 
 function ActivityCompactGroup({
   activities,
-  workspacePath
+  workspacePath,
+  provider
 }: {
   activities: ToolActivity[]
   workspacePath?: string
+  /** Chat-context provider, forwarded to inner ActivityRow rows for
+   * the provider-coloured border (Phase L3 slice 2). */
+  provider?: ProviderId
 }) {
   const [expanded, setExpanded] = useState(false)
   const searchCount = activities.filter(isSearchActivity).length
@@ -665,6 +675,7 @@ function ActivityCompactGroup({
               activity={activity}
               workspacePath={workspacePath}
               forceCompact
+              provider={provider}
             />
           ))}
         </div>
@@ -886,7 +897,8 @@ export function ActivityStack({
   provider,
   chatId,
   runId,
-  chat
+  chat,
+  compactDensity = false
 }: ActivityStackProps) {
   const childThreads = useMemo(() => {
     if (!provider || !activities || activities.length === 0) return [] as ChildAgentThread[]
@@ -931,6 +943,7 @@ export function ActivityStack({
               key={item.id}
               activities={item.activities}
               workspacePath={workspacePath}
+              provider={provider}
             />
           )
         }
@@ -942,9 +955,17 @@ export function ActivityStack({
             workspacePath={workspacePath}
             childThread={thread}
             childActivities={thread ? resolveThreadActivities(thread) : undefined}
+            provider={provider}
+            forceCompact={compactDensity}
           />
         )
       })}
+      {/* Phase L3 slice 5 — turn-receipt tape. Renders only when this
+       * tool group has ≥2 activities and nothing is still running.
+       * Pure derived render — no message, no history-replay concern.
+       * Slice 6 forwards `compactDensity` so the tape collapses to a
+       * one-line summary in compact mode. */}
+      <TurnReceiptCard activities={topLevelActivities} compact={compactDensity} />
     </div>
   )
 }
@@ -1114,6 +1135,12 @@ function ChildAgentThreadCard({
                     activity={childActivity}
                     workspacePath={workspacePath}
                     forceCompact
+                    /* Inside a ChildAgentThreadCard, the runtime-
+                     * execution provider for the sub-thread is what
+                     * matters — that's `thread.provider`. The chat-
+                     * context provider would point at the OUTER chat,
+                     * which is misleading for these inner rows. */
+                    provider={thread.provider}
                   />
                 ))}
               </div>
@@ -1139,15 +1166,49 @@ function ActivityRow({
   workspacePath,
   forceCompact = false,
   childThread,
-  childActivities
+  childActivities,
+  provider
 }: {
   activity: ToolActivity
   workspacePath?: string
   forceCompact?: boolean
   childThread?: ChildAgentThread
   childActivities?: ToolActivity[]
+  /** Chat-context provider — the CLI/runtime that owns the chat this
+   * activity belongs to. Drives the left-border color via the
+   * `[data-provider]` selector so a long transcript visually clusters
+   * by which provider is doing the work. Sub-thread cards passed
+   * through `ChildAgentThreadCard` can supply their own provider
+   * here when the runtime-execution provider differs from the
+   * outer chat. */
+  provider?: ProviderId
 }) {
   const [expanded, setExpanded] = useState(false)
+  // Phase L3 slice 4 — stamp animation on status transition. When a
+  // tool finishes (running → success/warning/error), we briefly mount
+  // a `.activity-status-stamping` class on the status icon so the
+  // CSS `activity-stamp-land` keyframe runs once. `prevStatusRef`
+  // tracks the previous value so the very first render (and any
+  // already-completed activity loaded from disk) doesn't fire the
+  // stamp on mount — only genuine transitions in this session do.
+  // Respects `[data-reduce-motion="true"]` via a CSS-side suppression.
+  const prevStatusRef = useRef<ToolActivity['status'] | null>(null)
+  const [justCompleted, setJustCompleted] = useState(false)
+  useEffect(() => {
+    const previous = prevStatusRef.current
+    prevStatusRef.current = activity.status
+    if (
+      previous === 'running' &&
+      (activity.status === 'success' ||
+        activity.status === 'warning' ||
+        activity.status === 'error')
+    ) {
+      setJustCompleted(true)
+      const timer = window.setTimeout(() => setJustCompleted(false), 260)
+      return () => window.clearTimeout(timer)
+    }
+    return undefined
+  }, [activity.status])
   const progressNote = getProgressNote(activity)
   if (progressNote && !forceCompact) {
     return (
@@ -1228,6 +1289,7 @@ function ActivityRow({
         className={`activity-row ${isInlineActivity ? 'activity-row-inline' : 'activity-row-card'} ${expanded ? 'expanded' : 'collapsed'}${!canExpand ? ' no-expand' : ''}${showInlinePulse ? ' is-pulsing' : ''}`}
         data-category={activity.category || 'unknown'}
         data-status={activity.status}
+        data-provider={provider || 'unknown'}
         role={canExpand ? 'button' : undefined}
         tabIndex={canExpand ? 0 : -1}
         aria-expanded={canExpand ? expanded : undefined}
@@ -1243,7 +1305,9 @@ function ActivityRow({
             : undefined
         }
       >
-        <ActivityStatusIcon status={activity.status} />
+        <span className={justCompleted ? 'activity-status-stamping' : undefined}>
+          <ActivityStatusIcon status={activity.status} />
+        </span>
         <div className="activity-body">
           <div className="activity-header">
             <div className="activity-label">
@@ -1256,9 +1320,25 @@ function ActivityRow({
                     workspacePath={workspacePath}
                   />
                 ) : null}
-                {!isInlineActivity && !(isWriteAction && activityFilePath) && (
-                  <ToolCategoryIcon category={activity.category} />
-                )}
+                {!isInlineActivity &&
+                  !(isWriteAction && activityFilePath) &&
+                  (() => {
+                    // Prefer the hand-drawn tool-family icon (Phase L3
+                    // skeuomorphic redesign — see `ToolFamilyIcon.tsx`).
+                    // Fall back to the legacy category icon when the
+                    // tool name doesn't map to any known family — keeps
+                    // unknown / custom MCP tools visible rather than
+                    // disappearing into a placeholder.
+                    const family = toolNameToFamily(activity.toolName)
+                    return family ? (
+                      <ToolFamilyIcon
+                        family={family}
+                        className="activity-category-icon"
+                      />
+                    ) : (
+                      <ToolCategoryIcon category={activity.category} />
+                    )
+                  })()}
                 {isInlineActivity && (
                   <span
                     className={`activity-category-pip category-${activity.category || 'unknown'}`}

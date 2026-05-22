@@ -6065,6 +6065,75 @@ button.diff-file-row {
   position: relative;
 }
 
+/* Phase L3 slice 5 — turn-receipt tape. Renders at the foot of an
+ * `.activity-timeline` after the last tool card. The perforated top
+ * + bottom edges (via radial-gradient masking) evoke a thermal
+ * printer tape; the body holds a one-line summary the user can scan
+ * in a long transcript without expanding individual tool cards.
+ *
+ * Stays understated by design: no background, just a hairline border
+ * and the perforation pattern. The receipt is a visual rhythm marker,
+ * not a piece of content competing with the assistant's message
+ * above it.
+ */
+.turn-receipt-card {
+  position: relative;
+  margin-top: 4px;
+  padding: 0;
+  align-self: flex-end;
+  display: flex;
+  flex-direction: column;
+  background: color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
+  border-radius: 3px;
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  max-width: 360px;
+}
+
+.turn-receipt-perf {
+  height: 5px;
+  background:
+    radial-gradient(circle at 3px 2px, var(--app-bg) 1.6px, transparent 1.8px) 0 0 / 6px 5px,
+    color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
+}
+
+.turn-receipt-perf-top {
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+}
+
+.turn-receipt-perf-bot {
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+}
+
+.turn-receipt-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.turn-receipt-label {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-size: 9px;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+  padding: 1px 5px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-primary, white) 6%, transparent);
+}
+
+.turn-receipt-summary {
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .activity-timeline::before {
   content: '';
   position: absolute;
@@ -6091,6 +6160,28 @@ button.diff-file-row {
 @keyframes activity-border-pulse {
   from { border-left-color: color-mix(in srgb, var(--accent) 30%, transparent); }
   to   { border-left-color: var(--accent); }
+}
+
+/* Phase L3 slice 4 — stamp animation on status transition. Triggered
+ * by ActivityRow adding `.activity-status-stamping` for ~260ms when
+ * the activity transitions running → success/warning/error. The
+ * scale-from-1.15 + fade-in evokes a rubber stamp landing on paper.
+ * Single-shot; the class is removed by ActivityRow after the
+ * animation completes. */
+@keyframes activity-stamp-land {
+  0%   { transform: scale(1.15); opacity: 0; }
+  60%  { transform: scale(0.96); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+.activity-status-stamping {
+  display: inline-flex;
+  transform-origin: center;
+  animation: activity-stamp-land 220ms ease-out;
+}
+/* Reduce-motion: skip the stamp animation entirely; the icon still
+ * changes appearance via the status transition, just statically. */
+[data-reduce-motion="true"] .activity-status-stamping {
+  animation: none;
 }
 
 .activity-status-spin {
@@ -6136,10 +6227,120 @@ button.diff-file-row {
 .activity-row-card[data-category="write"]  { border-left-color: var(--accent); }
 .activity-row-card[data-category="shell"]  { border-left-color: var(--warning); }
 .activity-row-card[data-category="task"]   { border-left-color: var(--accent); }
+
+/* Phase L3 — provider-coloured left border (slice 2). The chat-context
+ * provider drives the stripe color so a long transcript visually
+ * clusters by which CLI/runtime owns the work. Inner rows inside a
+ * `ChildAgentThreadCard` pass `thread.provider` instead so cross-
+ * provider sub-thread cards show the runtime-execution color.
+ *
+ * Placed AFTER the category rules so provider color wins on same
+ * specificity, and BEFORE the status rules so status (running / error)
+ * still takes precedence — running pulse + error red are urgent signals
+ * the user must not miss to a brand color. Provider tokens are defined
+ * in `styles/theme.css` (--provider-{id}-color). */
+.activity-row-card[data-provider="gemini"] { border-left-color: var(--provider-gemini-color); }
+.activity-row-card[data-provider="codex"]  { border-left-color: var(--provider-codex-color); }
+.activity-row-card[data-provider="claude"] { border-left-color: var(--provider-claude-color); }
+.activity-row-card[data-provider="kimi"]   { border-left-color: var(--provider-kimi-color); }
+
 .activity-row-card[data-status="error"]    { border-left-color: var(--danger); }
 .activity-row-card[data-status="running"]  {
   border-left-color: var(--accent);
   animation: activity-border-pulse 0.9s ease-in-out infinite alternate;
+}
+
+/* Phase L3 — theme-aware skeuomorphic skin (slice 3).
+ *
+ * The 21 AGBench themes (see `ThemeAppearance` in `store/types.ts`)
+ * collapse to 5 skin archetypes that flow from the active `data-theme`
+ * attribute (set on `<html>` by `useAppearance`). Each skin is a
+ * lightweight visual layer on top of the base `.activity-row-card`
+ * structure — backgrounds, borders, shadows. Structure stays
+ * identical across themes so the card's footprint doesn't shift when
+ * the user switches themes.
+ *
+ * Skin mappings:
+ *   paper   — light, system, citrus, yellow, orange
+ *   slate   — dark, midnight, graphite
+ *   glass   — blue, purple, pink, red, green, ocean, sunset, forest, twilight
+ *   neon    — cyber, rainbow
+ *   playful — nebula, candy
+ *
+ * `[data-reduce-motion="true"]` is already respected by the base
+ * card (no transitions on hover); skins add no new motion of their
+ * own (motion lives in slice 4's stamp animation).
+ */
+
+/* paper — warm cream tint, soft drop-shadow lift, subtle hairline
+ * top edge that hints at a ruled notebook page without going full
+ * texture. Works against light/warm themes where a deeper shadow
+ * reads as physical depth. */
+[data-theme="light"] .activity-row-card,
+[data-theme="system"] .activity-row-card,
+[data-theme="citrus"] .activity-row-card,
+[data-theme="yellow"] .activity-row-card,
+[data-theme="orange"] .activity-row-card {
+  background: color-mix(in srgb, var(--app-bg-elevated) 92%, #fff8eb 8%);
+  box-shadow:
+    0 1px 0 color-mix(in srgb, var(--sidebar-border) 60%, transparent) inset,
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 4px 8px -3px rgba(0, 0, 0, 0.06);
+}
+
+/* slate — chalkboard family: slight inset shadow at the top edge
+ * suggesting chalk dust, subtle outer shadow grounds the card. */
+[data-theme="dark"] .activity-row-card,
+[data-theme="midnight"] .activity-row-card,
+[data-theme="graphite"] .activity-row-card {
+  background: color-mix(in srgb, var(--app-bg-elevated) 88%, #0a0a10 12%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 4px 8px -4px rgba(0, 0, 0, 0.45);
+}
+
+/* glass — frosted-glass family. Subtle backdrop blur + edge
+ * highlight gives the card a translucent feel without overwhelming
+ * the existing `subthread-delegation-card` (which uses a stronger
+ * frosted-glass treatment). Both can coexist in a single transcript;
+ * the slight contrast tells them apart. */
+[data-theme="blue"] .activity-row-card,
+[data-theme="purple"] .activity-row-card,
+[data-theme="pink"] .activity-row-card,
+[data-theme="red"] .activity-row-card,
+[data-theme="green"] .activity-row-card,
+[data-theme="ocean"] .activity-row-card,
+[data-theme="sunset"] .activity-row-card,
+[data-theme="forest"] .activity-row-card,
+[data-theme="twilight"] .activity-row-card {
+  background: color-mix(in srgb, var(--app-bg-elevated) 78%, transparent);
+  backdrop-filter: saturate(120%) blur(6px);
+  -webkit-backdrop-filter: saturate(120%) blur(6px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 2px 8px -4px rgba(0, 0, 0, 0.35);
+}
+
+/* neon — thin outer glow that hints at the cyber/rainbow aesthetic
+ * without changing the card's fill. The provider-coloured left
+ * border becomes the dominant accent. */
+[data-theme="cyber"] .activity-row-card,
+[data-theme="rainbow"] .activity-row-card {
+  background: color-mix(in srgb, var(--app-bg-elevated) 94%, transparent);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent) inset,
+    0 0 14px -6px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+/* playful — brighter, looser. Slight outer shadow combined with a
+ * warm-tinted background pull keeps it cheerful without going full
+ * theme-park. */
+[data-theme="nebula"] .activity-row-card,
+[data-theme="candy"] .activity-row-card {
+  background: color-mix(in srgb, var(--app-bg-elevated) 90%, color-mix(in srgb, var(--accent) 18%, transparent) 10%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 14px -6px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .activity-row-inline {

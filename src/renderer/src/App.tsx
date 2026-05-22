@@ -3823,6 +3823,10 @@ type TranscriptPanelProps = {
   /** Phase K1B: when set, RunCard's "Inspect →" affordance enters Run
    * mode for the clicked run. Plumbed from App.tsx down. */
   onInspectRun?: (runId: string) => void
+  /** Phase L3 slice 6 — `settings.compactDensity` plumbed through so
+   * every `ActivityStack` inside the transcript renders in the same
+   * density as the rest of the chat. */
+  compactDensity: boolean
 }
 
 const TranscriptPanel = memo(
@@ -3850,7 +3854,8 @@ const TranscriptPanel = memo(
     onPlanChoiceSubmit,
     onRunFallback,
     onOpenSubThread,
-    onInspectRun
+    onInspectRun,
+    compactDensity
   }: TranscriptPanelProps) {
     const visibleMessages = useMemo(
       () => (isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages),
@@ -3943,6 +3948,7 @@ const TranscriptPanel = memo(
                     chatId={currentChat?.appChatId}
                     runId={msg.runId || boundaryRun?.runId}
                     chat={currentChat || undefined}
+                    compactDensity={compactDensity}
                   />
                 ) : (
                   <div
@@ -12099,6 +12105,7 @@ function App(): React.JSX.Element {
               onRunFallback={handleRunFallback}
               onOpenSubThread={handleOpenCockpitThread}
               onInspectRun={(runId) => setInspectingRunId(runId)}
+              compactDensity={appearance.compactDensity}
             />
           )}
 

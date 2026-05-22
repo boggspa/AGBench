@@ -1,0 +1,122 @@
+import { describe, expect, it } from 'vitest'
+import { toolNameToFamily } from './ToolFamilyIcon'
+
+/*
+ * Pins the tool-name → icon-family mapping so a future tool addition
+ * doesn't silently fall back to the legacy category icon. Each AGBench
+ * MCP tool (and Codex-internal synthetic tool name) should resolve to
+ * a recognisable family; unknown/empty names return null so the caller
+ * can render its own fallback.
+ */
+describe('toolNameToFamily', () => {
+  it('returns null for null / undefined / empty / whitespace input', () => {
+    expect(toolNameToFamily(null)).toBeNull()
+    expect(toolNameToFamily(undefined)).toBeNull()
+    expect(toolNameToFamily('')).toBeNull()
+    expect(toolNameToFamily('   ')).toBeNull()
+  })
+
+  it('maps file-reading tools to the file family', () => {
+    expect(toolNameToFamily('read_file')).toBe('file')
+    expect(toolNameToFamily('list_directory')).toBe('file')
+    expect(toolNameToFamily('open_workspace_file')).toBe('file')
+  })
+
+  it('maps edit / write tools to the edit family', () => {
+    expect(toolNameToFamily('write_file')).toBe('edit')
+    expect(toolNameToFamily('replace')).toBe('edit')
+    expect(toolNameToFamily('edit_file')).toBe('edit')
+    expect(toolNameToFamily('create_file')).toBe('edit')
+    expect(toolNameToFamily('delete_file')).toBe('edit')
+    expect(toolNameToFamily('apply_patch')).toBe('edit')
+    expect(toolNameToFamily('str_replace')).toBe('edit')
+    expect(toolNameToFamily('multiedit')).toBe('edit')
+  })
+
+  it('maps git_* tools to the git family', () => {
+    expect(toolNameToFamily('git_status')).toBe('git')
+    expect(toolNameToFamily('git_diff')).toBe('git')
+    expect(toolNameToFamily('git_stage')).toBe('git')
+    expect(toolNameToFamily('git_commit')).toBe('git')
+  })
+
+  it('maps shell-execution tools to the shell family', () => {
+    expect(toolNameToFamily('run_shell_command')).toBe('shell')
+    expect(toolNameToFamily('shell')).toBe('shell')
+  })
+
+  it('maps workspace search/symbols to the search family', () => {
+    expect(toolNameToFamily('workspace_search')).toBe('search')
+    expect(toolNameToFamily('workspace_symbols')).toBe('search')
+  })
+
+  it('maps task/test tools to the task family', () => {
+    expect(toolNameToFamily('run_task')).toBe('task')
+    expect(toolNameToFamily('test_result_summary')).toBe('task')
+  })
+
+  it('maps browser_* tools to the browser family', () => {
+    expect(toolNameToFamily('browser_open')).toBe('browser')
+    expect(toolNameToFamily('browser_click')).toBe('browser')
+    expect(toolNameToFamily('browser_screenshot')).toBe('browser')
+    expect(toolNameToFamily('browser_console')).toBe('browser')
+  })
+
+  it('maps attached_window_* tools to window-context (Appshots)', () => {
+    expect(toolNameToFamily('attached_window_capture')).toBe('window-context')
+    expect(toolNameToFamily('attached_window_status')).toBe('window-context')
+  })
+
+  it('maps delegate_to_subthread to the delegate family', () => {
+    expect(toolNameToFamily('delegate_to_subthread')).toBe('delegate')
+  })
+
+  it('maps subthread inspection tools to the subthread family', () => {
+    expect(toolNameToFamily('list_subthreads')).toBe('subthread')
+    expect(toolNameToFamily('read_subthread_result')).toBe('subthread')
+    expect(toolNameToFamily('cancel_subthread')).toBe('subthread')
+    expect(toolNameToFamily('collabToolCall')).toBe('subthread')
+  })
+
+  it('maps diagnostic / status tools to the diagnostic family', () => {
+    expect(toolNameToFamily('approval_status')).toBe('diagnostic')
+    expect(toolNameToFamily('provider_auth_status')).toBe('diagnostic')
+    expect(toolNameToFamily('run_timeline')).toBe('diagnostic')
+    expect(toolNameToFamily('raw_provider_events')).toBe('diagnostic')
+    expect(toolNameToFamily('switch_auth_profile')).toBe('diagnostic')
+    expect(toolNameToFamily('agent_delegation_role')).toBe('diagnostic')
+  })
+
+  it('maps codex_reasoning / codex_plan to their dedicated families', () => {
+    expect(toolNameToFamily('codex_reasoning')).toBe('reasoning')
+    expect(toolNameToFamily('codex_plan')).toBe('plan')
+  })
+
+  it('maps create_handoff_card to the handoff family', () => {
+    expect(toolNameToFamily('create_handoff_card')).toBe('handoff')
+  })
+
+  it('maps generic MCP/dynamic tool placeholders to the mcp family', () => {
+    expect(toolNameToFamily('mcp_tool')).toBe('mcp')
+    expect(toolNameToFamily('dynamic_tool')).toBe('mcp')
+  })
+
+  it('strips MCP namespace prefixes before matching', () => {
+    expect(toolNameToFamily('mcp__AGBench__delegate_to_subthread')).toBe('delegate')
+    expect(toolNameToFamily('mcp__server__write_file')).toBe('edit')
+    expect(toolNameToFamily('AGBench__git_status')).toBe('git')
+    expect(toolNameToFamily('agentbench__read_file')).toBe('file')
+  })
+
+  it('is case-insensitive', () => {
+    expect(toolNameToFamily('READ_FILE')).toBe('file')
+    expect(toolNameToFamily('Git_Status')).toBe('git')
+    expect(toolNameToFamily('MCP__AGBench__delegate_to_subthread')).toBe('delegate')
+  })
+
+  it('returns null for unknown tool names', () => {
+    expect(toolNameToFamily('completely_unknown_tool')).toBeNull()
+    expect(toolNameToFamily('xyzzy')).toBeNull()
+    expect(toolNameToFamily('mcp__weird__nonsense')).toBeNull()
+  })
+})
