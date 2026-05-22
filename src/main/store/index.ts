@@ -383,20 +383,47 @@ export class AppStore {
 
   static getDefaultRuntimeProfiles(): RuntimeProfile[] {
     const now = new Date(0).toISOString()
-    return providerIds.map((provider) => ({
-      id: `builtin:${provider}:local`,
-      name: `${provider[0].toUpperCase()}${provider.slice(1)} local`,
-      provider,
-      scope: 'workspace',
-      workspaceMode: provider === 'gemini' ? 'worktree' : 'local',
-      env: {},
-      approvalMode: 'default',
-      networkPolicy: 'inherit',
-      persistence: 'reusable',
-      builtin: true,
-      createdAt: now,
-      updatedAt: now
-    }))
+    // Two built-in profiles per provider: `{provider} local` (workspace-scoped,
+    // the historical default) and `{provider} global` (scope=global) so a
+    // freshly-installed AGBench can run a Global chat without the user having
+    // to create a custom profile first. The guard in
+    // `resolveRuntimeProfileForPayload` rejected workspace-scoped profiles in
+    // global chats, leaving global chats with no usable runtime out of the box.
+    return providerIds.flatMap((provider) => {
+      const label = `${provider[0].toUpperCase()}${provider.slice(1)}`
+      return [
+        {
+          id: `builtin:${provider}:local`,
+          name: `${label} local`,
+          provider,
+          scope: 'workspace' as const,
+          workspaceMode: provider === 'gemini' ? ('worktree' as const) : ('local' as const),
+          env: {},
+          approvalMode: 'default' as const,
+          networkPolicy: 'inherit' as const,
+          persistence: 'reusable' as const,
+          builtin: true,
+          createdAt: now,
+          updatedAt: now
+        },
+        {
+          id: `builtin:${provider}:global`,
+          name: `${label} global`,
+          provider,
+          scope: 'global' as const,
+          // Global chats have no workspace cwd to bind a worktree against, so
+          // every provider's global variant runs in plain local mode.
+          workspaceMode: 'local' as const,
+          env: {},
+          approvalMode: 'default' as const,
+          networkPolicy: 'inherit' as const,
+          persistence: 'reusable' as const,
+          builtin: true,
+          createdAt: now,
+          updatedAt: now
+        }
+      ]
+    })
   }
 
   static getRuntimeProfiles(provider?: ProviderId): RuntimeProfile[] {

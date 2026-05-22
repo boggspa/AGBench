@@ -4663,11 +4663,25 @@ function App(): React.JSX.Element {
   const geminiTerminalInput = currentComposerChatId
     ? geminiTerminalInputByChatId[currentComposerChatId] || ''
     : ''
+  // Auto-default picks a built-in profile whose scope matches the current
+  // chat — workspace chats get `{provider} local` (worktree mode for gemini),
+  // global chats get `{provider} global`. Falls back to any matching-provider
+  // profile if neither scope variant is registered (e.g. user has wiped the
+  // builtins and only has a custom profile).
+  const defaultRuntimeProfileIdForProvider = (provider: ProviderId): string => {
+    const desiredScope: ChatScope = isCurrentGlobalChat ? 'global' : 'workspace'
+    return (
+      runtimeProfiles.find(
+        (profile) => profile.provider === provider && profile.scope === desiredScope
+      )?.id ||
+      runtimeProfiles.find((profile) => profile.provider === provider)?.id ||
+      ''
+    )
+  }
   const selectedRuntimeProfileId = currentComposerChatId
     ? selectedRuntimeProfileByChatId[currentComposerChatId] ||
-      runtimeProfiles.find((profile) => profile.provider === currentProvider)?.id ||
-      ''
-    : runtimeProfiles.find((profile) => profile.provider === currentProvider)?.id || ''
+      defaultRuntimeProfileIdForProvider(currentProvider)
+    : defaultRuntimeProfileIdForProvider(currentProvider)
   const currentProviderRuntimeProfiles = runtimeProfiles.filter(
     (profile) => profile.provider === currentProvider
   )
@@ -6017,8 +6031,7 @@ function App(): React.JSX.Element {
       return
     }
     const nextModel = getDefaultModelForProvider(provider)
-    const nextRuntimeProfileId =
-      runtimeProfiles.find((profile) => profile.provider === provider)?.id || ''
+    const nextRuntimeProfileId = defaultRuntimeProfileIdForProvider(provider)
     const nextMetadata = {
       selectedModelType: nextModel,
       customModel: '',
