@@ -13312,6 +13312,32 @@ input:disabled, select:disabled, textarea:disabled {
   gap: 8px;
 }
 
+/* Native Claude Code parks the send arrow at the right of the textarea's
+ * placeholder line, not in the footer row. Float the primary action
+ * button (run when idle, stop when busy) absolutely into the textarea
+ * bubble's top-right; .composer-surface is the positioning context. The
+ * surrounding footer pickers stay where they are but no longer have to
+ * carry the send button alongside them. */
+[data-composer-style="claude"] .composer-action-btn.run-btn,
+[data-composer-style="claude"] .composer-action-btn.stop-btn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  z-index: 3;
+}
+
+/* Belt-and-braces: ensure nothing in the footer chrome carries a
+ * leftover background so the surrounding controls read as floating
+ * satellites instead of a contained rect. */
+[data-composer-style="claude"] .composer-control-footer,
+[data-composer-style="claude"] .composer-inline-pickers,
+[data-composer-style="claude"] .composer-inline-pickers-left,
+[data-composer-style="claude"] .composer-inline-actions {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 /* ============================================================
  * Claude-mode satellite footer (mirrors codex footer)
  * Provider + workspace chips sit below the bubble + action row.
