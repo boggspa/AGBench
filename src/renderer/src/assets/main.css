@@ -12439,9 +12439,11 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"] .composer-top-toggles,
 [data-composer-style="claude"] .composer-top-toggles,
 [data-composer-style="codex"] .composer-chips,
-/* Codex keeps the provider chip in its satellite footer, so still hide the inline one. */
-[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]),
-/* Claude now shows the provider inline in the action-row gap (no satellite footer). */
+/* Codex + Claude both keep the provider picker inline now (control parity).
+ * Anything else AGBench-specific in the left bar (model-aware reasoning
+ * pills, extra workspace chips, etc.) still gets hidden by these :not()
+ * allowlists. */
+[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]),
 [data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
@@ -12479,7 +12481,35 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="codex"] [data-composer-control="attach"] { order: 0; }
 [data-composer-style="codex"] [data-composer-control="permission"] { order: 1; }
-[data-composer-style="codex"] [data-composer-control="model"] { order: 2; margin-left: auto; }
+/* Provider sits between permission and the right-aligned model picker,
+ * styled as a low-key outlined chip matching the codex purple palette. */
+[data-composer-style="codex"] [data-composer-control="provider"] { order: 2; }
+[data-composer-style="codex"] [data-composer-control="model"] { order: 3; margin-left: auto; }
+
+[data-composer-style="codex"] [data-composer-control="provider"] {
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 1px solid color-mix(in srgb, #8c80ff 22%, #ffffff 8%);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #8c80ff 8%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="provider"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+[data-composer-style="codex"] [data-composer-control="provider"] select {
+  font: inherit;
+  color: inherit;
+}
 
 [data-composer-style="codex"] .composer-image-picker-btn {
   width: 28px;
