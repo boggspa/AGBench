@@ -28,9 +28,10 @@ export function resolveRuntimeProfileIdForChat(input: {
   const { chat, provider, selectionByChatId, profiles } = input
   const chatId = chat?.appChatId
   const sessionOverride = chatId && selectionByChatId ? selectionByChatId[chatId] : undefined
-  const metadataRuntimeProfileId = typeof chat?.providerMetadata?.runtimeProfileId === 'string'
-    ? chat.providerMetadata.runtimeProfileId
-    : undefined
+  const metadataRuntimeProfileId =
+    typeof chat?.providerMetadata?.runtimeProfileId === 'string'
+      ? chat.providerMetadata.runtimeProfileId
+      : undefined
   const providerDefault = profiles.find((profile) => profile.provider === provider)?.id
 
   return sessionOverride || metadataRuntimeProfileId || providerDefault

@@ -10,7 +10,14 @@ import type {
 } from '../../../main/store/types'
 import { attachIdentitiesToThreads } from './agentIdentity'
 
-const TASK_TOOL_NAMES = new Set(['task', 'agent', 'invoke_agent', 'subagent', 'subagentevent', 'collabtoolcall'])
+const TASK_TOOL_NAMES = new Set([
+  'task',
+  'agent',
+  'invoke_agent',
+  'subagent',
+  'subagentevent',
+  'collabtoolcall'
+])
 
 function isTaskActivity(activity: ToolActivity): boolean {
   if (activity.category === 'task') return true
@@ -18,7 +25,10 @@ function isTaskActivity(activity: ToolActivity): boolean {
   return TASK_TOOL_NAMES.has(name)
 }
 
-function getParamString(params: Record<string, unknown> | undefined, keys: string[]): string | undefined {
+function getParamString(
+  params: Record<string, unknown> | undefined,
+  keys: string[]
+): string | undefined {
   if (!params) return undefined
   for (const key of keys) {
     const value = params[key]
@@ -31,17 +41,23 @@ function getParamString(params: Record<string, unknown> | undefined, keys: strin
 
 function inferKindFromProvider(provider: ProviderId): ChildAgentKind {
   switch (provider) {
-    case 'claude': return 'claude-task'
-    case 'codex': return 'codex-background'
-    case 'kimi': return 'kimi-swarm'
-    default: return 'gemini-subagent'
+    case 'claude':
+      return 'claude-task'
+    case 'codex':
+      return 'codex-background'
+    case 'kimi':
+      return 'kimi-swarm'
+    default:
+      return 'gemini-subagent'
   }
 }
 
 function inferInteractivity(kind: ChildAgentKind): ChildAgentInteractivity {
   switch (kind) {
-    case 'codex-background': return 'interactive'
-    case 'kimi-swarm': return 'observe-only'
+    case 'codex-background':
+      return 'interactive'
+    case 'kimi-swarm':
+      return 'observe-only'
     case 'claude-task':
     case 'gemini-subagent':
     case 'manual':
@@ -68,9 +84,18 @@ function inferState(activity: ToolActivity): ChildAgentState {
 function inferName(activity: ToolActivity, index: number): { name: string; role?: string } {
   const params = activity.parameters || {}
   const description = getParamString(params, ['description', 'title', 'task'])
-  const subagentType = getParamString(params, ['subagent_type', 'subagentType', 'agent_type', 'agentType', 'role'])
+  const subagentType = getParamString(params, [
+    'subagent_type',
+    'subagentType',
+    'agent_type',
+    'agentType',
+    'role'
+  ])
   if (description) {
-    return { name: description.length > 64 ? `${description.slice(0, 61)}…` : description, role: subagentType }
+    return {
+      name: description.length > 64 ? `${description.slice(0, 61)}…` : description,
+      role: subagentType
+    }
   }
   return { name: `Task #${index + 1}`, role: subagentType }
 }

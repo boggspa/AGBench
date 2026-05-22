@@ -47,9 +47,7 @@ function stripLineColSuffix(input: string): { path: string; line?: number; colum
   }
 }
 
-export function classifyMarkdownLink(
-  href: string | undefined | null
-): MarkdownLinkClassification {
+export function classifyMarkdownLink(href: string | undefined | null): MarkdownLinkClassification {
   const raw = typeof href === 'string' ? href.trim() : ''
   if (!raw) return { kind: 'unknown', resolved: '' }
 

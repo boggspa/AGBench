@@ -174,9 +174,7 @@ describe('TranscriptScroll', () => {
       for (const autoFollow of [true, false]) {
         for (const userScrolledAwayInThisFrame of [true, false]) {
           const input = { autoFollow, userScrolledAwayInThisFrame }
-          expect(shouldRepinAfterTranscriptResize(input)).toBe(
-            shouldRepinAfterFrame(input)
-          )
+          expect(shouldRepinAfterTranscriptResize(input)).toBe(shouldRepinAfterFrame(input))
         }
       }
     })

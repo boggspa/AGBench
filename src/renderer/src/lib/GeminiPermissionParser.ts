@@ -19,7 +19,7 @@ const STRICT_PERMISSION_PHRASES = [
   /\bnot (?:in|under|inside) (?:the )?workspace\b/i,
   /\binclude-directories\b/i,
   /\buntrusted workspace\b/i,
-  /\btrust workspace\b/i,
+  /\btrust workspace\b/i
 ]
 
 const PATH_KEYS = new Set([
@@ -36,7 +36,7 @@ const PATH_KEYS = new Set([
   'requestedPath',
   'requested_path',
   'requestedPaths',
-  'requested_paths',
+  'requested_paths'
 ])
 
 const MESSAGE_KEYS = [
@@ -47,11 +47,14 @@ const MESSAGE_KEYS = [
   'detail',
   'description',
   'stderr',
-  'content',
+  'content'
 ]
 
 const sanitizePath = (value: string): string => {
-  return value.trim().replace(/^\s*["'`]|["'`]\s*$/g, '').replace(/[)\]}.,;:!?`]+$/g, '')
+  return value
+    .trim()
+    .replace(/^\s*["'`]|["'`]\s*$/g, '')
+    .replace(/[)\]}.,;:!?`]+$/g, '')
 }
 
 const hasLikelyFileName = (value: string): boolean => {
@@ -60,7 +63,14 @@ const hasLikelyFileName = (value: string): boolean => {
 
 const looksLikeRealFilePath = (value: string): boolean => {
   const trimmed = sanitizePath(value)
-  if (!trimmed || trimmed === '/' || trimmed === './' || trimmed === '../' || trimmed === '~/' || trimmed.startsWith('//')) {
+  if (
+    !trimmed ||
+    trimmed === '/' ||
+    trimmed === './' ||
+    trimmed === '../' ||
+    trimmed === '~/' ||
+    trimmed.startsWith('//')
+  ) {
     return false
   }
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
@@ -69,11 +79,13 @@ const looksLikeRealFilePath = (value: string): boolean => {
   if (!hasLikelyFileName(trimmed)) {
     return false
   }
-  return trimmed.startsWith('/') ||
+  return (
+    trimmed.startsWith('/') ||
     /^[A-Za-z]:[\\/]/.test(trimmed) ||
     /^\.\.?\//.test(trimmed) ||
     /^\.\.?\\/.test(trimmed) ||
     /^~[\\/]/.test(trimmed)
+  )
 }
 
 const dedupePaths = (values: string[]): string[] => {
@@ -131,7 +143,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 const collectStructuredStrings = (
   value: unknown,
   options: { includeAllStrings: boolean },
-  visited = new Set<unknown>(),
+  visited = new Set<unknown>()
 ): { paths: string[]; messages: string[]; permissionHints: string[] } => {
   const paths: string[] = []
   const messages: string[] = []
@@ -225,7 +237,7 @@ export function parseGeminiPermissionRequest(input: unknown): GeminiPermissionRe
     const structuredText = [
       String(input.type || ''),
       ...structured.permissionHints,
-      ...structured.messages,
+      ...structured.messages
     ].join('\n')
     const paths = dedupePaths(structured.paths)
 
@@ -234,7 +246,7 @@ export function parseGeminiPermissionRequest(input: unknown): GeminiPermissionRe
         kind: kindFromText(structuredText),
         message: messageFromStructured(structured.messages, structuredText),
         paths,
-        source: 'structured',
+        source: 'structured'
       }
     }
   }
@@ -253,6 +265,6 @@ export function parseGeminiPermissionRequest(input: unknown): GeminiPermissionRe
     kind: kindFromText(text),
     message: text,
     paths,
-    source: 'text',
+    source: 'text'
   }
 }

@@ -38,10 +38,18 @@ function MarkdownCodeBlock({ content, language }: { content: string; language?: 
       <div className="message-code-header">
         <span className="message-code-language">{displayLanguage}</span>
         <div className="message-code-actions">
-          <button type="button" className="message-code-action" onClick={() => setWrap((current) => !current)}>
+          <button
+            type="button"
+            className="message-code-action"
+            onClick={() => setWrap((current) => !current)}
+          >
             {wrap ? 'No wrap' : 'Wrap'}
           </button>
-          <button type="button" className="message-code-action" onClick={() => void copyText(content)}>
+          <button
+            type="button"
+            className="message-code-action"
+            onClick={() => void copyText(content)}
+          >
             Copy
           </button>
         </div>
@@ -79,7 +87,9 @@ const MARKDOWN_COMPONENTS: Components = {
       event.preventDefault()
       event.stopPropagation()
       if (classification.kind === 'unknown') return
-      const api = (window as unknown as { api?: { openExternalOrPath?: (h: string) => Promise<unknown> } }).api
+      const api = (
+        window as unknown as { api?: { openExternalOrPath?: (h: string) => Promise<unknown> } }
+      ).api
       try {
         void api?.openExternalOrPath?.(classification.resolved)
       } catch {

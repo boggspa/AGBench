@@ -16,7 +16,15 @@ import React, { useCallback, useEffect, useState } from 'react'
  */
 
 interface UpdateSnapshot {
-  status: 'disabled' | 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error'
+  status:
+    | 'disabled'
+    | 'idle'
+    | 'checking'
+    | 'available'
+    | 'not-available'
+    | 'downloading'
+    | 'downloaded'
+    | 'error'
   enabled: boolean
   channel: 'debug' | 'stable' | 'nightly'
   latestVersion?: string
@@ -95,9 +103,7 @@ export function UpdateStatusPane(): React.JSX.Element {
         <span className={`update-status-pill update-status-pill-${snap.status}`}>
           {labelForStatus(snap.status)}
         </span>
-        {snap.latestVersion && (
-          <span className="update-status-version">v{snap.latestVersion}</span>
-        )}
+        {snap.latestVersion && <span className="update-status-version">v{snap.latestVersion}</span>}
         {snap.lastCheckedAt && (
           <span className="update-status-checked">
             Last checked {formatRelative(snap.lastCheckedAt)}
@@ -112,7 +118,9 @@ export function UpdateStatusPane(): React.JSX.Element {
             style={{ width: `${Math.max(0, Math.min(100, snap.downloadProgress.percent))}%` }}
           />
           <span className="update-status-progress-label">
-            {snap.downloadProgress.percent.toFixed(1)}% — {formatBytes(snap.downloadProgress.transferred)} / {formatBytes(snap.downloadProgress.total)}
+            {snap.downloadProgress.percent.toFixed(1)}% —{' '}
+            {formatBytes(snap.downloadProgress.transferred)} /{' '}
+            {formatBytes(snap.downloadProgress.total)}
           </span>
         </div>
       )}
@@ -125,7 +133,9 @@ export function UpdateStatusPane(): React.JSX.Element {
         <button
           type="button"
           className="btn btn-sm"
-          disabled={busy || !snap.enabled || snap.status === 'checking' || snap.status === 'downloading'}
+          disabled={
+            busy || !snap.enabled || snap.status === 'checking' || snap.status === 'downloading'
+          }
           onClick={() => void handleCheck()}
         >
           {snap.status === 'checking' ? 'Checking…' : 'Check for updates'}
@@ -154,11 +164,10 @@ export function UpdateStatusPane(): React.JSX.Element {
 
       {!snap.enabled && (
         <p className="settings-hint update-status-disabled-hint">
-          Auto-updates are disabled. They activate automatically in packaged
-          builds when the update channel is set to <strong>Stable</strong> or
-          <strong> Nightly</strong> (currently <strong>{snap.channel}</strong>).
-          Override with <code>AGBENCH_AUTO_UPDATE=on</code> for testing against
-          a local feed.
+          Auto-updates are disabled. They activate automatically in packaged builds when the update
+          channel is set to <strong>Stable</strong> or
+          <strong> Nightly</strong> (currently <strong>{snap.channel}</strong>). Override with{' '}
+          <code>AGBENCH_AUTO_UPDATE=on</code> for testing against a local feed.
         </p>
       )}
     </div>
@@ -167,14 +176,22 @@ export function UpdateStatusPane(): React.JSX.Element {
 
 function labelForStatus(status: UpdateSnapshot['status']): string {
   switch (status) {
-    case 'disabled': return 'Disabled'
-    case 'idle': return 'Up to date check'
-    case 'checking': return 'Checking…'
-    case 'available': return 'Update available'
-    case 'not-available': return 'Up to date'
-    case 'downloading': return 'Downloading'
-    case 'downloaded': return 'Ready to install'
-    case 'error': return 'Error'
+    case 'disabled':
+      return 'Disabled'
+    case 'idle':
+      return 'Up to date check'
+    case 'checking':
+      return 'Checking…'
+    case 'available':
+      return 'Update available'
+    case 'not-available':
+      return 'Up to date'
+    case 'downloading':
+      return 'Downloading'
+    case 'downloaded':
+      return 'Ready to install'
+    case 'error':
+      return 'Error'
   }
 }
 
@@ -182,7 +199,7 @@ function formatRelative(iso: string): string {
   try {
     const ms = Date.parse(iso)
     if (!Number.isFinite(ms)) return iso
-    // eslint-disable-next-line react-hooks/purity
+
     const deltaS = Math.round((Date.now() - ms) / 1000)
     if (deltaS < 5) return 'just now'
     if (deltaS < 60) return `${deltaS}s ago`

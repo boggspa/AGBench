@@ -45,9 +45,7 @@ export function BackgroundTasksPanel({ chat, provider }: BackgroundTasksPanelPro
         </span>
       </div>
       {liveThreads.length === 0 ? (
-        <div className="background-tasks-panel-empty">
-          No background tasks running.
-        </div>
+        <div className="background-tasks-panel-empty">No background tasks running.</div>
       ) : (
         <ul className="background-tasks-panel-list">
           {liveThreads.map((thread) => (
@@ -71,14 +69,17 @@ function BackgroundTaskRow({
   const role = identity?.role || thread.role
   const color = identity?.color
   const startedAt = thread.startedAt ? new Date(thread.startedAt) : null
-  const elapsed = startedAt ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000)) : null
-  const elapsedLabel = elapsed === null
-    ? null
-    : elapsed < 60
-      ? `${elapsed}s`
-      : elapsed < 3600
-        ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
-        : `${Math.floor(elapsed / 3600)}h`
+  const elapsed = startedAt
+    ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+    : null
+  const elapsedLabel =
+    elapsed === null
+      ? null
+      : elapsed < 60
+        ? `${elapsed}s`
+        : elapsed < 3600
+          ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
+          : `${Math.floor(elapsed / 3600)}h`
 
   return (
     <li className={`background-task-row state-${thread.state}`}>

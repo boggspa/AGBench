@@ -1,4 +1,4 @@
-import type { ToolActivity } from '../../../main/store/types';
+import type { ToolActivity } from '../../../main/store/types'
 
 /**
  * Pure helper that decides whether an activity has enough substantive content
@@ -18,36 +18,38 @@ import type { ToolActivity } from '../../../main/store/types';
 
 export interface ActivityRenderInputs {
   /** Whether the user has expanded the row (sticky disclosure state). */
-  expanded: boolean;
+  expanded: boolean
   /** Detail rows produced by `buildSanitizedDetail` (parameter/file rows). */
-  detailRowCount: number;
+  detailRowCount: number
   /** Previews produced by `buildSanitizedDetail` (output / diff / terminal blocks). */
-  previews: Array<{ content: string }>;
+  previews: Array<{ content: string }>
   /** Number of files in any computed diff summary. */
-  diffFileCount: number;
+  diffFileCount: number
   /** Whether the activity is missing-name and we must dump the raw event. */
-  shouldShowRawEvent: boolean;
+  shouldShowRawEvent: boolean
 }
 
 /** Long enough on its own that a preview block carries real content. */
-const PREVIEW_CARD_CHAR_THRESHOLD = 120;
+const PREVIEW_CARD_CHAR_THRESHOLD = 120
 
 /** True when at least one preview is multi-line or carries ≥ threshold chars. */
 export function hasSubstantivePreview(previews: ActivityRenderInputs['previews']): boolean {
   for (const preview of previews) {
-    if (!preview || typeof preview.content !== 'string') continue;
-    const content = preview.content;
-    if (content.includes('\n')) return true;
-    if (content.trim().length >= PREVIEW_CARD_CHAR_THRESHOLD) return true;
+    if (!preview || typeof preview.content !== 'string') continue
+    const content = preview.content
+    if (content.includes('\n')) return true
+    if (content.trim().length >= PREVIEW_CARD_CHAR_THRESHOLD) return true
   }
-  return false;
+  return false
 }
 
 /** True when there is *any* persistent body the card mode would expose. */
-export function hasCardContent(inputs: Pick<ActivityRenderInputs, 'previews' | 'diffFileCount' | 'shouldShowRawEvent'>): boolean {
-  if (inputs.shouldShowRawEvent) return true;
-  if (inputs.diffFileCount > 0) return true;
-  return hasSubstantivePreview(inputs.previews);
+export function hasCardContent(
+  inputs: Pick<ActivityRenderInputs, 'previews' | 'diffFileCount' | 'shouldShowRawEvent'>
+): boolean {
+  if (inputs.shouldShowRawEvent) return true
+  if (inputs.diffFileCount > 0) return true
+  return hasSubstantivePreview(inputs.previews)
 }
 
 /**
@@ -58,9 +60,9 @@ export function hasCardContent(inputs: Pick<ActivityRenderInputs, 'previews' | '
  *     "succeeded with no body" cases that previously left an empty rectangle.
  */
 export function shouldRenderAsCard(inputs: ActivityRenderInputs): boolean {
-  if (inputs.shouldShowRawEvent) return true;
-  if (!inputs.expanded) return false;
-  return hasCardContent(inputs);
+  if (inputs.shouldShowRawEvent) return true
+  if (!inputs.expanded) return false
+  return hasCardContent(inputs)
 }
 
 /**
@@ -74,9 +76,12 @@ export function shouldRenderAsCard(inputs: ActivityRenderInputs): boolean {
  */
 export function hasExpandableDetail(
   activity: Pick<ToolActivity, 'rawUseEvent' | 'rawResultEvent'>,
-  inputs: Pick<ActivityRenderInputs, 'detailRowCount' | 'previews' | 'diffFileCount' | 'shouldShowRawEvent'>
+  inputs: Pick<
+    ActivityRenderInputs,
+    'detailRowCount' | 'previews' | 'diffFileCount' | 'shouldShowRawEvent'
+  >
 ): boolean {
-  if (inputs.shouldShowRawEvent) return Boolean(activity.rawUseEvent || activity.rawResultEvent);
-  if (inputs.diffFileCount > 0) return true;
-  return hasSubstantivePreview(inputs.previews);
+  if (inputs.shouldShowRawEvent) return Boolean(activity.rawUseEvent || activity.rawResultEvent)
+  if (inputs.diffFileCount > 0) return true
+  return hasSubstantivePreview(inputs.previews)
 }

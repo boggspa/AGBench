@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useState, type JSX } from 'react'
-import type { ChatRecord, ProviderId, RunQueueJob, RunQueueJobStatus } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  ProviderId,
+  RunQueueJob,
+  RunQueueJobStatus
+} from '../../../main/store/types'
 
 const ACTIVE_STATUSES: RunQueueJobStatus[] = ['queued', 'starting', 'active']
 
@@ -19,7 +24,7 @@ export function ActiveRunsSection({
   currentChat,
   runningChatIds = [],
   onSelectChat,
-  onInspectRun,
+  onInspectRun
 }: ActiveRunsSectionProps): JSX.Element | null {
   const [jobs, setJobs] = useState<RunQueueJob[]>([])
   const [, setNowTick] = useState(0)
@@ -53,7 +58,9 @@ export function ActiveRunsSection({
   }, [refresh])
 
   useEffect(() => {
-    const onFocus = (): void => { void refresh() }
+    const onFocus = (): void => {
+      void refresh()
+    }
     window.addEventListener('focus', onFocus)
     return () => window.removeEventListener('focus', onFocus)
   }, [refresh])
@@ -87,10 +94,14 @@ export function ActiveRunsSection({
                 {getProviderLabel(job.provider)}
               </span>
               <span className="sidebar-active-run-copy">
-                <span className="sidebar-active-run-workspace">{getWorkspaceShortName(job, chat)}</span>
+                <span className="sidebar-active-run-workspace">
+                  {getWorkspaceShortName(job, chat)}
+                </span>
                 <span className="sidebar-active-run-elapsed">{formatElapsed(job)}</span>
               </span>
-              <span className={`sidebar-run-status tone-${statusTone(job.status)}`}>{statusLabel(job.status)}</span>
+              <span className={`sidebar-run-status tone-${statusTone(job.status)}`}>
+                {statusLabel(job.status)}
+              </span>
             </button>
           )
         })}

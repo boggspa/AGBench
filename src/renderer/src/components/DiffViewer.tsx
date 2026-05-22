@@ -1,24 +1,64 @@
-import { useState } from 'react';
-import { DiffFileSummary, DiffPreviewKind } from '../../../main/store/types';
-import { FileTypeIcon } from './FileTypeIcon';
+import { useState } from 'react'
+import { DiffFileSummary, DiffPreviewKind } from '../../../main/store/types'
+import { FileTypeIcon } from './FileTypeIcon'
 
 interface DiffViewerProps {
-  diff: { type: string; text?: string; statusText?: string; diffText?: string; summaries?: DiffFileSummary[] } | null;
+  diff: {
+    type: string
+    text?: string
+    statusText?: string
+    diffText?: string
+    summaries?: DiffFileSummary[]
+  } | null
   workspacePath?: string
 }
 
 export function DiffViewer({ diff, workspacePath }: DiffViewerProps) {
-  const [hideNoise, setHideNoise] = useState(true);
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [hideNoise, setHideNoise] = useState(true)
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
 
-  if (!diff) return <div style={{ color: 'var(--text-muted)', padding: 'var(--space-md)', fontSize: 'var(--font-size-sm)' }}>Run a task to see changes.</div>;
-  if (diff.type === 'not_repo' || diff.type === 'no_changes') return <div style={{ color: 'var(--text-muted)', padding: 'var(--space-md)', fontSize: 'var(--font-size-sm)' }}>{diff.text || diff.statusText || 'No changes.'}</div>;
-  if (diff.type === 'error') return <div style={{ color: 'var(--danger)', padding: 'var(--space-md)', fontSize: 'var(--font-size-sm)' }}>{diff.text}</div>;
+  if (!diff)
+    return (
+      <div
+        style={{
+          color: 'var(--text-muted)',
+          padding: 'var(--space-md)',
+          fontSize: 'var(--font-size-sm)'
+        }}
+      >
+        Run a task to see changes.
+      </div>
+    )
+  if (diff.type === 'not_repo' || diff.type === 'no_changes')
+    return (
+      <div
+        style={{
+          color: 'var(--text-muted)',
+          padding: 'var(--space-md)',
+          fontSize: 'var(--font-size-sm)'
+        }}
+      >
+        {diff.text || diff.statusText || 'No changes.'}
+      </div>
+    )
+  if (diff.type === 'error')
+    return (
+      <div
+        style={{
+          color: 'var(--danger)',
+          padding: 'var(--space-md)',
+          fontSize: 'var(--font-size-sm)'
+        }}
+      >
+        {diff.text}
+      </div>
+    )
 
-  const summaries = diff.summaries || [];
-  const filteredSummaries = hideNoise ? summaries.filter(s => !s.isNoise) : summaries;
+  const summaries = diff.summaries || []
+  const filteredSummaries = hideNoise ? summaries.filter((s) => !s.isNoise) : summaries
 
-  const selectedSummary = filteredSummaries.find(s => s.path === selectedPath) || filteredSummaries[0] || null;
+  const selectedSummary =
+    filteredSummaries.find((s) => s.path === selectedPath) || filteredSummaries[0] || null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -26,18 +66,39 @@ export function DiffViewer({ diff, workspacePath }: DiffViewerProps) {
         <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
           {filteredSummaries.length} changed
         </span>
-        <label style={{ fontSize: 'var(--font-size-xs)', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-          <input type="checkbox" checked={hideNoise} onChange={e => setHideNoise(e.target.checked)} />
+        <label
+          style={{
+            fontSize: 'var(--font-size-xs)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
+            color: 'var(--text-secondary)',
+            cursor: 'pointer'
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={hideNoise}
+            onChange={(e) => setHideNoise(e.target.checked)}
+          />
           Hide noise
         </label>
       </div>
 
       {filteredSummaries.length === 0 ? (
-        <div style={{ padding: 'var(--space-md)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>No changes to display.</div>
+        <div
+          style={{
+            padding: 'var(--space-md)',
+            color: 'var(--text-muted)',
+            fontSize: 'var(--font-size-sm)'
+          }}
+        >
+          No changes to display.
+        </div>
       ) : (
         <>
           <div className="diff-file-list">
-            {filteredSummaries.map(s => (
+            {filteredSummaries.map((s) => (
               <button
                 type="button"
                 key={s.path}
@@ -46,49 +107,105 @@ export function DiffViewer({ diff, workspacePath }: DiffViewerProps) {
                 aria-pressed={selectedSummary?.path === s.path}
                 title={`Show diff for ${s.path}`}
               >
-                <FileTypeIcon path={s.path} size={14} className="diff-file-type-icon" workspacePath={workspacePath} />
+                <FileTypeIcon
+                  path={s.path}
+                  size={14}
+                  className="diff-file-type-icon"
+                  workspacePath={workspacePath}
+                />
                 <span className="diff-file-name">{s.path}</span>
                 <span className={`diff-file-badge ${s.status}`}>
-                  {s.additions !== undefined && s.deletions !== undefined
-                    ? (
-                      <>
-                        <span className="diff-file-stat diff-file-stat-add">+{s.additions}</span>
-                        <span className="diff-file-stat-divider">|</span>
-                        <span className="diff-file-stat diff-file-stat-delete">-{s.deletions}</span>
-                      </>
-                    )
-                    : s.status}
+                  {s.additions !== undefined && s.deletions !== undefined ? (
+                    <>
+                      <span className="diff-file-stat diff-file-stat-add">+{s.additions}</span>
+                      <span className="diff-file-stat-divider">|</span>
+                      <span className="diff-file-stat diff-file-stat-delete">-{s.deletions}</span>
+                    </>
+                  ) : (
+                    s.status
+                  )}
                 </span>
               </button>
             ))}
           </div>
 
-          {selectedSummary && (
-            <DiffDetail summary={selectedSummary} />
-          )}
+          {selectedSummary && <DiffDetail summary={selectedSummary} />}
         </>
       )}
     </div>
-  );
+  )
 }
 
 function DiffDetail({ summary }: { summary: DiffFileSummary }) {
   const renderPreview = () => {
-    const kind: DiffPreviewKind = summary.previewKind || 'none';
+    const kind: DiffPreviewKind = summary.previewKind || 'none'
     switch (kind) {
       case 'hidden':
-        return <div style={{ padding: 'var(--space-md)', color: 'var(--warning)', fontSize: 'var(--font-size-sm)' }}>Sensitive file — preview hidden</div>;
+        return (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              color: 'var(--warning)',
+              fontSize: 'var(--font-size-sm)'
+            }}
+          >
+            Sensitive file — preview hidden
+          </div>
+        )
       case 'binary':
-        return <div style={{ padding: 'var(--space-md)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>Binary file</div>;
+        return (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--font-size-sm)'
+            }}
+          >
+            Binary file
+          </div>
+        )
       case 'synthetic_new_file':
       case 'git_diff':
-        return summary.diffText ? formatDiff(summary.diffText) : <div style={{ padding: 'var(--space-md)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>No diff available.</div>;
+        return summary.diffText ? (
+          formatDiff(summary.diffText)
+        ) : (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--font-size-sm)'
+            }}
+          >
+            No diff available.
+          </div>
+        )
       case 'text_preview':
-        return <div style={{ padding: 'var(--space-md)', color: 'var(--text-secondary)', fontSize: 'var(--font-size-sm)', whiteSpace: 'pre-wrap' }}>{summary.diffText}</div>;
+        return (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              color: 'var(--text-secondary)',
+              fontSize: 'var(--font-size-sm)',
+              whiteSpace: 'pre-wrap'
+            }}
+          >
+            {summary.diffText}
+          </div>
+        )
       default:
-        return <div style={{ padding: 'var(--space-md)', color: 'var(--text-muted)', fontSize: 'var(--font-size-sm)' }}>No preview available.</div>;
+        return (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              color: 'var(--text-muted)',
+              fontSize: 'var(--font-size-sm)'
+            }}
+          >
+            No preview available.
+          </div>
+        )
     }
-  };
+  }
 
   return (
     <div className="diff-detail">
@@ -106,31 +223,31 @@ function DiffDetail({ summary }: { summary: DiffFileSummary }) {
       </div>
       {renderPreview()}
     </div>
-  );
+  )
 }
 
 function formatDiff(text: string) {
-  const lines = text.split('\n');
-  const sections: Array<{ header?: string; lines: string[] }> = [];
-  let current: { header?: string; lines: string[] } = { lines: [] };
+  const lines = text.split('\n')
+  const sections: Array<{ header?: string; lines: string[] }> = []
+  let current: { header?: string; lines: string[] } = { lines: [] }
 
   lines.forEach((line) => {
     if (line.startsWith('@@')) {
       if (current.lines.length > 0 || current.header) {
-        sections.push(current);
+        sections.push(current)
       }
-      current = { header: line, lines: [] };
-      return;
+      current = { header: line, lines: [] }
+      return
     }
-    current.lines.push(line);
-  });
+    current.lines.push(line)
+  })
 
   if (current.lines.length > 0 || current.header) {
-    sections.push(current);
+    sections.push(current)
   }
 
   if (sections.length === 0) {
-    return <div className="diff-lines-section">No diff hunks to display.</div>;
+    return <div className="diff-lines-section">No diff hunks to display.</div>
   }
 
   const getHunkStartLines = (header?: string): { oldLine: number; newLine: number } => {
@@ -142,7 +259,8 @@ function formatDiff(text: string) {
   }
 
   const isDiffMetadata = (line: string): boolean => {
-    return line.startsWith('diff --git') ||
+    return (
+      line.startsWith('diff --git') ||
       line.startsWith('index ') ||
       line.startsWith('+++ ') ||
       line.startsWith('--- ') ||
@@ -150,6 +268,7 @@ function formatDiff(text: string) {
       line.startsWith('rename to ') ||
       line.startsWith('new file mode ') ||
       line.startsWith('deleted file mode ')
+    )
   }
 
   return (
@@ -165,7 +284,7 @@ function formatDiff(text: string) {
             (() => {
               const counters = getHunkStartLines(section.header)
               return section.lines.map((line, index) => {
-                let className = 'diff-line';
+                let className = 'diff-line'
                 let oldLabel = ''
                 let newLabel = ''
 
@@ -192,12 +311,12 @@ function formatDiff(text: string) {
                     <span className="diff-line-gutter new">{newLabel}</span>
                     <span className="diff-line-code">{line || ' '}</span>
                   </div>
-                );
+                )
               })
             })()
           )}
         </div>
       ))}
     </div>
-  );
+  )
 }

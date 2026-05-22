@@ -26,18 +26,18 @@
  * before invoking.
  */
 
-const SEPARATOR_RE = /[\\/]+$/;
-const HOME_PREFIX_RE = /^\/Users\/[^/]+\//;
+const SEPARATOR_RE = /[\\/]+$/
+const HOME_PREFIX_RE = /^\/Users\/[^/]+\//
 
 function stripTrailingSeparator(value: string): string {
-  return value.replace(SEPARATOR_RE, '');
+  return value.replace(SEPARATOR_RE, '')
 }
 
 function startsWithSegment(haystack: string, prefix: string): boolean {
-  if (haystack === prefix) return true;
-  if (!haystack.startsWith(prefix)) return false;
-  const nextChar = haystack.charAt(prefix.length);
-  return nextChar === '/' || nextChar === '\\';
+  if (haystack === prefix) return true
+  if (!haystack.startsWith(prefix)) return false
+  const nextChar = haystack.charAt(prefix.length)
+  return nextChar === '/' || nextChar === '\\'
 }
 
 /**
@@ -53,26 +53,26 @@ export function displayPathRelativeToWorkspace(
   filePath: string | undefined | null,
   workspacePath: string | undefined | null
 ): string {
-  if (!filePath || typeof filePath !== 'string') return '';
-  const trimmedPath = filePath.trim();
-  if (!trimmedPath) return '';
+  if (!filePath || typeof filePath !== 'string') return ''
+  const trimmedPath = filePath.trim()
+  if (!trimmedPath) return ''
 
   if (workspacePath && typeof workspacePath === 'string') {
-    const trimmedWorkspace = stripTrailingSeparator(workspacePath.trim());
+    const trimmedWorkspace = stripTrailingSeparator(workspacePath.trim())
     if (trimmedWorkspace) {
-      if (trimmedPath === trimmedWorkspace) return '.';
+      if (trimmedPath === trimmedWorkspace) return '.'
       if (startsWithSegment(trimmedPath, trimmedWorkspace)) {
         // +1 to drop the separator character that follows the prefix match.
-        const relative = trimmedPath.slice(trimmedWorkspace.length + 1);
-        return relative || '.';
+        const relative = trimmedPath.slice(trimmedWorkspace.length + 1)
+        return relative || '.'
       }
     }
   }
 
-  const homeMatch = trimmedPath.match(HOME_PREFIX_RE);
+  const homeMatch = trimmedPath.match(HOME_PREFIX_RE)
   if (homeMatch) {
-    return `~/${trimmedPath.slice(homeMatch[0].length)}`;
+    return `~/${trimmedPath.slice(homeMatch[0].length)}`
   }
 
-  return trimmedPath;
+  return trimmedPath
 }

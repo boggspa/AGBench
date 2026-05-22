@@ -21,7 +21,13 @@ import {
 describe('buildKimiMcpBridgeAddArgs', () => {
   const fixture = {
     bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-    bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/tmp/agentbench.sock', '--token', 'deadbeef']
+    bridgeArgs: [
+      '--agentbench-gemini-mcp-bridge',
+      '--socket',
+      '/tmp/agentbench.sock',
+      '--token',
+      'deadbeef'
+    ]
   }
 
   it('emits the canonical kimi mcp add argv with --env env-stamp and -- separator', () => {
@@ -53,7 +59,7 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     expect(KIMI_AGENTBENCH_SERVER_NAME).toBe('AGBench')
   })
 
-  it("declares stdio transport explicitly via `--transport stdio`", () => {
+  it('declares stdio transport explicitly via `--transport stdio`', () => {
     const args = buildKimiMcpBridgeAddArgs(fixture)
     const transportIndex = args.indexOf('--transport')
     expect(transportIndex).toBeGreaterThan(-1)
@@ -110,7 +116,13 @@ describe('redactKimiMcpBridgeAddArgs', () => {
   it('redacts the argument immediately following --token so logs do not leak the broker secret', () => {
     const args = buildKimiMcpBridgeAddArgs({
       bridgeBinaryPath: '/opt/agentbench/bin/AgentBench',
-      bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/run/agentbench.sock', '--token', 'cafebabe-secret-token']
+      bridgeArgs: [
+        '--agentbench-gemini-mcp-bridge',
+        '--socket',
+        '/run/agentbench.sock',
+        '--token',
+        'cafebabe-secret-token'
+      ]
     })
     const redacted = redactKimiMcpBridgeAddArgs(args)
     expect(redacted).not.toContain('cafebabe-secret-token')
@@ -121,7 +133,13 @@ describe('redactKimiMcpBridgeAddArgs', () => {
   it('does not redact any other argument', () => {
     const args = buildKimiMcpBridgeAddArgs({
       bridgeBinaryPath: '/opt/agentbench/bin/AgentBench',
-      bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/run/agentbench.sock', '--token', 'cafebabe']
+      bridgeArgs: [
+        '--agentbench-gemini-mcp-bridge',
+        '--socket',
+        '/run/agentbench.sock',
+        '--token',
+        'cafebabe'
+      ]
     })
     const redacted = redactKimiMcpBridgeAddArgs(args)
     expect(redacted).toContain('/opt/agentbench/bin/AgentBench')

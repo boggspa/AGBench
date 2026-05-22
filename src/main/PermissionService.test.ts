@@ -64,28 +64,37 @@ describe('PermissionService', () => {
     runManager.create({ runId: 'run-1', provider: 'gemini', workspacePath: '/repo' })
     const service = new PermissionService({ runManager, sessionGrants: new Set() })
 
-    expect(service.resolvePermission('gemini', 'shellCommands', '/repo', 'run-1', settings).decision).toBe('ask')
+    expect(
+      service.resolvePermission('gemini', 'shellCommands', '/repo', 'run-1', settings).decision
+    ).toBe('ask')
 
     service.addSessionGrant('gemini', '/repo', 'shellCommands', 'run-1')
-    expect(service.resolvePermission('gemini', 'shellCommands', '/repo', 'run-1', settings).decision).toBe('allow')
+    expect(
+      service.resolvePermission('gemini', 'shellCommands', '/repo', 'run-1', settings).decision
+    ).toBe('allow')
 
     expect(
       service.resolvePermission('gemini', 'shellCommands', '/repo', undefined, {
         ...settings,
-        agenticWorkspaceGrants: [{
-          id: 'grant-1',
-          provider: 'gemini',
-          service: 'shellCommands',
-          workspacePath: '/repo',
-          createdAt: '2026-05-08T00:00:00.000Z',
-          updatedAt: '2026-05-08T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-1',
+            provider: 'gemini',
+            service: 'shellCommands',
+            workspacePath: '/repo',
+            createdAt: '2026-05-08T00:00:00.000Z',
+            updatedAt: '2026-05-08T00:00:00.000Z'
+          }
+        ]
       }).decision
     ).toBe('allow')
   })
 
   it('applies approved actions while keeping declines non-approved', () => {
-    const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+    const service = new PermissionService({
+      runManager: new RunManager(),
+      sessionGrants: new Set()
+    })
 
     expect(service.isApprovedAction('accept')).toBe(true)
     expect(service.isApprovedAction('acceptForSession')).toBe(true)
@@ -94,16 +103,23 @@ describe('PermissionService', () => {
   })
 
   it('uses session grants for global approvals without workspace grants', () => {
-    const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+    const service = new PermissionService({
+      runManager: new RunManager(),
+      sessionGrants: new Set()
+    })
 
-    expect(service.resolvePermission('codex', 'shellCommands', undefined, undefined, settings).decision).toBe('ask')
+    expect(
+      service.resolvePermission('codex', 'shellCommands', undefined, undefined, settings).decision
+    ).toBe('ask')
     service.applyApprovalDecision({
       provider: 'codex',
       service: 'shellCommands',
       action: 'acceptForSession'
     })
 
-    expect(service.resolvePermission('codex', 'shellCommands', undefined, undefined, settings).decision).toBe('allow')
+    expect(
+      service.resolvePermission('codex', 'shellCommands', undefined, undefined, settings).decision
+    ).toBe('allow')
     expect(service.hasWorkspaceGrant(settings, 'codex', undefined, 'shellCommands')).toBe(false)
   })
 
@@ -114,31 +130,41 @@ describe('PermissionService', () => {
   // gate (e.g. someone hardcodes a special case) trips immediately.
   describe('subThreadDelegation service', () => {
     it("default 'ask' policy returns ask decision", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, settings).decision
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, settings)
+          .decision
       ).toBe('ask')
     })
 
     it("workspace grant for 'subThreadDelegation' auto-allows subsequent calls (with 'workspace' policy)", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const withGrant: AppSettings = {
         ...settings,
         agenticServices: {
           ...settings.agenticServices,
           subThreadDelegation: 'workspace'
         },
-        agenticWorkspaceGrants: [{
-          id: 'grant-delegation',
-          provider: 'gemini',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-delegation',
+            provider: 'gemini',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant).decision
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant)
+          .decision
       ).toBe('allow')
     })
 
@@ -148,7 +174,13 @@ describe('PermissionService', () => {
       const service = new PermissionService({ runManager, sessionGrants: new Set() })
       // First call: ask.
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', 'delegating-run', settings).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          'delegating-run',
+          settings
+        ).decision
       ).toBe('ask')
       // Apply "acceptForSession" → second call: allow.
       service.applyApprovalDecision({
@@ -159,12 +191,21 @@ describe('PermissionService', () => {
         action: 'acceptForSession'
       })
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', 'delegating-run', settings).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          'delegating-run',
+          settings
+        ).decision
       ).toBe('allow')
     })
 
     it("'deny' policy short-circuits to deny without prompting", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const denySettings: AppSettings = {
         ...settings,
         agenticServices: {
@@ -173,12 +214,16 @@ describe('PermissionService', () => {
         }
       }
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, denySettings).decision
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, denySettings)
+          .decision
       ).toBe('deny')
     })
 
     it("'allow' policy short-circuits to allow without prompting", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const allowSettings: AppSettings = {
         ...settings,
         agenticServices: {
@@ -187,12 +232,21 @@ describe('PermissionService', () => {
         }
       }
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, allowSettings).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          allowSettings
+        ).decision
       ).toBe('allow')
     })
 
     it("'workspace' policy returns ask until a workspace grant exists", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const workspaceSettings: AppSettings = {
         ...settings,
         agenticServices: {
@@ -202,49 +256,75 @@ describe('PermissionService', () => {
       }
       // No grant yet → ask.
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, workspaceSettings).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          workspaceSettings
+        ).decision
       ).toBe('ask')
       // With grant → allow.
       const withGrant: AppSettings = {
         ...workspaceSettings,
-        agenticWorkspaceGrants: [{
-          id: 'grant-delegation-2',
-          provider: 'gemini',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-delegation-2',
+            provider: 'gemini',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant).decision
+        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGrant)
+          .decision
       ).toBe('allow')
     })
 
     it('workspace grant is provider-scoped: a Gemini grant does not auto-allow Codex delegation', () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const withGeminiGrant: AppSettings = {
         ...settings,
         agenticServices: {
           ...settings.agenticServices,
           subThreadDelegation: 'workspace'
         },
-        agenticWorkspaceGrants: [{
-          id: 'grant-gemini-delegation',
-          provider: 'gemini',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-gemini-delegation',
+            provider: 'gemini',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       // Gemini parent → allow (has grant matching its provider).
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withGeminiGrant
+        ).decision
       ).toBe('allow')
       // Codex parent → ask (no Codex grant; orthogonal to the Gemini one).
       expect(
-        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+        service.resolvePermission(
+          'codex',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withGeminiGrant
+        ).decision
       ).toBe('ask')
     })
 
@@ -255,42 +335,69 @@ describe('PermissionService', () => {
     // approval modal and workspace-grant logic stay symmetric with
     // Gemini/Codex.
     it("Claude-initiated delegation triggers the gate with provider: 'claude'", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       // Default 'ask' policy: every Claude-initiated delegate_to_subthread
       // hits the approval modal until a grant exists.
       expect(
-        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, settings).decision
+        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, settings)
+          .decision
       ).toBe('ask')
     })
 
     it("Claude workspace grant auto-allows subsequent Claude delegations (and only Claude's)", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const withClaudeGrant: AppSettings = {
         ...settings,
         agenticServices: {
           ...settings.agenticServices,
           subThreadDelegation: 'workspace'
         },
-        agenticWorkspaceGrants: [{
-          id: 'grant-claude-delegation',
-          provider: 'claude',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-claude-delegation',
+            provider: 'claude',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       // Claude parent → allow.
       expect(
-        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+        service.resolvePermission(
+          'claude',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withClaudeGrant
+        ).decision
       ).toBe('allow')
       // Gemini parent → still ask (provider-scoped grant).
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withClaudeGrant
+        ).decision
       ).toBe('ask')
       // Codex parent → still ask.
       expect(
-        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withClaudeGrant).decision
+        service.resolvePermission(
+          'codex',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withClaudeGrant
+        ).decision
       ).toBe('ask')
     })
 
@@ -301,47 +408,70 @@ describe('PermissionService', () => {
     // approval modal and workspace-grant logic stay symmetric with
     // Gemini / Codex / Claude.
     it("Kimi-initiated delegation triggers the gate with provider: 'kimi'", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       // Default 'ask' policy: every Kimi-initiated delegate_to_subthread
       // hits the approval modal until a grant exists.
       expect(
-        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, settings).decision
+        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, settings)
+          .decision
       ).toBe('ask')
     })
 
     it("Kimi workspace grant auto-allows subsequent Kimi delegations (and only Kimi's)", () => {
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const withKimiGrant: AppSettings = {
         ...settings,
         agenticServices: {
           ...settings.agenticServices,
           subThreadDelegation: 'workspace'
         },
-        agenticWorkspaceGrants: [{
-          id: 'grant-kimi-delegation',
-          provider: 'kimi',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-kimi-delegation',
+            provider: 'kimi',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       // Kimi parent → allow.
       expect(
-        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, withKimiGrant)
+          .decision
       ).toBe('allow')
       // Gemini parent → still ask (provider-scoped grant; Gemini grant
       // does not auto-allow Kimi delegation in the same workspace).
       expect(
-        service.resolvePermission('gemini', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+        service.resolvePermission(
+          'gemini',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withKimiGrant
+        ).decision
       ).toBe('ask')
       // Codex parent → still ask.
       expect(
-        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+        service.resolvePermission('codex', 'subThreadDelegation', '/repo', undefined, withKimiGrant)
+          .decision
       ).toBe('ask')
       // Claude parent → still ask.
       expect(
-        service.resolvePermission('claude', 'subThreadDelegation', '/repo', undefined, withKimiGrant).decision
+        service.resolvePermission(
+          'claude',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withKimiGrant
+        ).decision
       ).toBe('ask')
     })
 
@@ -349,25 +479,36 @@ describe('PermissionService', () => {
       // Mirror of the "Claude grant doesn't auto-allow Gemini" test for
       // the new Kimi parent provider. Phase I4 closes the matrix so
       // every combination of grant-direction needs to be provider-scoped.
-      const service = new PermissionService({ runManager: new RunManager(), sessionGrants: new Set() })
+      const service = new PermissionService({
+        runManager: new RunManager(),
+        sessionGrants: new Set()
+      })
       const withGeminiGrant: AppSettings = {
         ...settings,
         agenticServices: {
           ...settings.agenticServices,
           subThreadDelegation: 'workspace'
         },
-        agenticWorkspaceGrants: [{
-          id: 'grant-gemini-for-kimi-test',
-          provider: 'gemini',
-          service: 'subThreadDelegation',
-          workspacePath: '/repo',
-          createdAt: '2026-05-16T00:00:00.000Z',
-          updatedAt: '2026-05-16T00:00:00.000Z'
-        }]
+        agenticWorkspaceGrants: [
+          {
+            id: 'grant-gemini-for-kimi-test',
+            provider: 'gemini',
+            service: 'subThreadDelegation',
+            workspacePath: '/repo',
+            createdAt: '2026-05-16T00:00:00.000Z',
+            updatedAt: '2026-05-16T00:00:00.000Z'
+          }
+        ]
       }
       // Kimi parent → ask (no Kimi grant; provider-scoped).
       expect(
-        service.resolvePermission('kimi', 'subThreadDelegation', '/repo', undefined, withGeminiGrant).decision
+        service.resolvePermission(
+          'kimi',
+          'subThreadDelegation',
+          '/repo',
+          undefined,
+          withGeminiGrant
+        ).decision
       ).toBe('ask')
     })
   })

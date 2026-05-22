@@ -1,9 +1,9 @@
-import type { ChatRecord } from '../../../main/store/types';
+import type { ChatRecord } from '../../../main/store/types'
 
 export interface SelectRecentChatsOptions {
-  limit: number;
-  excludeArchived?: boolean;
-  excludePinned?: boolean;
+  limit: number
+  excludeArchived?: boolean
+  excludePinned?: boolean
 }
 
 /** Pure derivation used by the sidebar Recents section.
@@ -19,25 +19,25 @@ export interface SelectRecentChatsOptions {
  * the whole sidebar. The flags exist so other callers can opt out. */
 export function selectRecentChats(
   chats: ChatRecord[],
-  options: SelectRecentChatsOptions,
+  options: SelectRecentChatsOptions
 ): ChatRecord[] {
-  const { limit, excludeArchived = true, excludePinned = true } = options;
+  const { limit, excludeArchived = true, excludePinned = true } = options
   if (!Array.isArray(chats) || chats.length === 0 || limit <= 0) {
-    return [];
+    return []
   }
 
   const filtered = chats.filter((chat) => {
-    if (excludeArchived && chat.archived) return false;
-    if (excludePinned && chat.pinned) return false;
-    return true;
-  });
+    if (excludeArchived && chat.archived) return false
+    if (excludePinned && chat.pinned) return false
+    return true
+  })
 
   const sorted = filtered.slice().sort((a, b) => {
-    const aTime = Number.isFinite(a.updatedAt) ? a.updatedAt : 0;
-    const bTime = Number.isFinite(b.updatedAt) ? b.updatedAt : 0;
-    if (aTime !== bTime) return bTime - aTime;
-    return String(a.appChatId).localeCompare(String(b.appChatId));
-  });
+    const aTime = Number.isFinite(a.updatedAt) ? a.updatedAt : 0
+    const bTime = Number.isFinite(b.updatedAt) ? b.updatedAt : 0
+    if (aTime !== bTime) return bTime - aTime
+    return String(a.appChatId).localeCompare(String(b.appChatId))
+  })
 
-  return sorted.slice(0, limit);
+  return sorted.slice(0, limit)
 }

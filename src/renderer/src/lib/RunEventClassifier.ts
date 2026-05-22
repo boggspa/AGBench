@@ -38,7 +38,7 @@ const FILE_EDIT_TOOL_NAMES = new Set([
   'replace',
   'write_file',
   'apply_patch',
-  'patch',
+  'patch'
 ])
 
 export function classifyRunEvent(event: RunEventRecord): ClassifiedRunEvent {
@@ -57,7 +57,7 @@ export function classifyRunEvent(event: RunEventRecord): ClassifiedRunEvent {
 
   return {
     kind: 'file_edit',
-    files: extractFilePaths(payload),
+    files: extractFilePaths(payload)
   }
 }
 
@@ -66,7 +66,9 @@ function readToolName(payload: Record<string, unknown>): string {
     payload.tool_name ??
     payload.toolName ??
     payload.name ??
-    (isRecord(payload.data) ? payload.data.tool_name ?? payload.data.toolName ?? payload.data.name : undefined)
+    (isRecord(payload.data)
+      ? (payload.data.tool_name ?? payload.data.toolName ?? payload.data.name)
+      : undefined)
   return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
 }
 
@@ -134,7 +136,13 @@ export type InspectorRow =
     }
   | {
       kind: 'approval_response'
-      decision: 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel' | 'unknown'
+      decision:
+        | 'accept'
+        | 'acceptForSession'
+        | 'acceptForWorkspace'
+        | 'decline'
+        | 'cancel'
+        | 'unknown'
       raw: RunEventRecord
     }
   | {

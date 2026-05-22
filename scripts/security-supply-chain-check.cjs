@@ -20,7 +20,10 @@ const DENYLIST = [
   { pattern: /^@cap-js\//, reason: 'recent Mini Shai-Hulud package compromise wave' },
   { pattern: /^@sap\//, reason: 'recent Mini Shai-Hulud package compromise wave' },
   { pattern: /^echarts-for-react$/, reason: 'flagged during recent @antv/ecosystem compromise' },
-  { pattern: /^echarts$/, reason: 'charting dependency review required during @antv incident window' },
+  {
+    pattern: /^echarts$/,
+    reason: 'charting dependency review required during @antv incident window'
+  },
   { pattern: /^timeago\.js$/, reason: 'recent Mini Shai-Hulud package compromise wave' },
   { pattern: /^size-sensor$/, reason: 'recent Mini Shai-Hulud package compromise wave' },
   { pattern: /^canvas-nest\.js$/, reason: 'recent Mini Shai-Hulud package compromise wave' },
@@ -53,7 +56,12 @@ const MALWARE_TEXT_PATTERNS = [
   /getsession/i,
   /shai-hulud/i
 ]
-const MALWARE_FILE_NAMES = new Set(['router_runtime.js', 'router_init.js', 'setup.mjs', 'execution.js'])
+const MALWARE_FILE_NAMES = new Set([
+  'router_runtime.js',
+  'router_init.js',
+  'setup.mjs',
+  'execution.js'
+])
 
 const failures = []
 const warnings = []
@@ -80,7 +88,9 @@ function packageNameFromLockPath(lockPath) {
 }
 
 function isLocalOrLinkPackage(meta) {
-  return Boolean(meta.link || (typeof meta.resolved === 'string' && meta.resolved.startsWith('file:')))
+  return Boolean(
+    meta.link || (typeof meta.resolved === 'string' && meta.resolved.startsWith('file:'))
+  )
 }
 
 function checkRootDependencySpecs(pkg, lock) {
@@ -100,7 +110,9 @@ function checkRootDependencySpecs(pkg, lock) {
     }
     for (const name of expectedKeys) {
       if (expected[name] !== actual[name]) {
-        fail(`package-lock.json root ${field}.${name} is ${actual[name]}, expected ${expected[name]}.`)
+        fail(
+          `package-lock.json root ${field}.${name} is ${actual[name]}, expected ${expected[name]}.`
+        )
       }
     }
   }
@@ -154,13 +166,25 @@ function normalizeScripts(scripts) {
 }
 
 function sameObject(a, b) {
-  return JSON.stringify(Object.keys(a).sort().map((key) => [key, a[key]])) ===
-    JSON.stringify(Object.keys(b).sort().map((key) => [key, b[key]]))
+  return (
+    JSON.stringify(
+      Object.keys(a)
+        .sort()
+        .map((key) => [key, a[key]])
+    ) ===
+    JSON.stringify(
+      Object.keys(b)
+        .sort()
+        .map((key) => [key, b[key]])
+    )
+  )
 }
 
 function checkInstallScripts(lock) {
   if (!fs.existsSync(NODE_MODULES_PATH)) {
-    warn('node_modules is absent; install-script allowlist check skipped. Run after npm ci for full coverage.')
+    warn(
+      'node_modules is absent; install-script allowlist check skipped. Run after npm ci for full coverage.'
+    )
     return
   }
   for (const [lockPath, meta] of Object.entries(lock.packages || {})) {
@@ -172,11 +196,15 @@ function checkInstallScripts(lock) {
     const key = `${installed.name || packageNameFromLockPath(lockPath)}@${installed.version || meta.version || 'unknown'}`
     const allowed = ALLOWED_INSTALL_SCRIPTS.get(key)
     if (!allowed) {
-      fail(`${key} declares install lifecycle scripts but is not allowlisted: ${JSON.stringify(scripts)}`)
+      fail(
+        `${key} declares install lifecycle scripts but is not allowlisted: ${JSON.stringify(scripts)}`
+      )
       continue
     }
     if (!sameObject(scripts, allowed)) {
-      fail(`${key} install lifecycle scripts changed. Found ${JSON.stringify(scripts)}, expected ${JSON.stringify(allowed)}.`)
+      fail(
+        `${key} install lifecycle scripts changed. Found ${JSON.stringify(scripts)}, expected ${JSON.stringify(allowed)}.`
+      )
     }
   }
 }
@@ -210,7 +238,9 @@ function checkPersistenceIndicators() {
         fail(`Suspicious persistence indicator file found: ${rel}`)
         return
       }
-      if (!['settings.json', 'settings.local.json', 'tasks.json', 'package.json'].includes(basename)) {
+      if (
+        !['settings.json', 'settings.local.json', 'tasks.json', 'package.json'].includes(basename)
+      ) {
         return
       }
       let text = ''

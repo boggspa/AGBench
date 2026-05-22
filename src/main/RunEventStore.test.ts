@@ -48,7 +48,13 @@ describe('RunEventStore', () => {
       { now: '2026-05-07T00:00:00.000Z' }
     )
     const second = createRunEventRecord(
-      { runId: 'run-1', kind: 'provider_raw', phase: 'raw', source: 'provider', payload: { data: 'hello' } },
+      {
+        runId: 'run-1',
+        kind: 'provider_raw',
+        phase: 'raw',
+        source: 'provider',
+        payload: { data: 'hello' }
+      },
       2,
       { now: '2026-05-07T00:00:01.000Z', previousHash: first.hash }
     )
@@ -134,38 +140,38 @@ describe('RunEventStore', () => {
 
   it('builds replay metadata for a run journal', () => {
     const first = createRunEventRecord(
-        {
-          runId: 'run-1',
-          kind: 'lifecycle',
-          phase: 'control',
-          source: 'renderer',
-          payload: { status: 'starting' }
-        },
-        1,
-        { now: '2026-05-07T00:00:00.000Z' }
-      )
+      {
+        runId: 'run-1',
+        kind: 'lifecycle',
+        phase: 'control',
+        source: 'renderer',
+        payload: { status: 'starting' }
+      },
+      1,
+      { now: '2026-05-07T00:00:00.000Z' }
+    )
     const second = createRunEventRecord(
-        {
-          runId: 'run-1',
-          kind: 'final_message',
-          phase: 'normalized',
-          source: 'renderer',
-          payload: { content: 'Done' }
-        },
-        2,
-        { now: '2026-05-07T00:00:01.000Z', previousHash: first.hash }
-      )
+      {
+        runId: 'run-1',
+        kind: 'final_message',
+        phase: 'normalized',
+        source: 'renderer',
+        payload: { content: 'Done' }
+      },
+      2,
+      { now: '2026-05-07T00:00:01.000Z', previousHash: first.hash }
+    )
     const third = createRunEventRecord(
-        {
-          runId: 'run-1',
-          kind: 'lifecycle',
-          phase: 'control',
-          source: 'main',
-          payload: { status: 'completed' }
-        },
-        3,
-        { now: '2026-05-07T00:00:02.000Z', previousHash: second.hash }
-      )
+      {
+        runId: 'run-1',
+        kind: 'lifecycle',
+        phase: 'control',
+        source: 'main',
+        payload: { status: 'completed' }
+      },
+      3,
+      { now: '2026-05-07T00:00:02.000Z', previousHash: second.hash }
+    )
     const events: RunEventRecord[] = [first, second, third]
 
     const replay = createRunEventReplay('run-1', events)

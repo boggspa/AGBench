@@ -18,7 +18,9 @@ export interface RunEventCatchupResolution {
   warning?: string
 }
 
-export function resolveRunEventCatchup(input: ResolveRunEventCatchupInput): RunEventCatchupResolution {
+export function resolveRunEventCatchup(
+  input: ResolveRunEventCatchupInput
+): RunEventCatchupResolution {
   const events = [...input.storedEvents].sort((a, b) => a.sequence - b.sequence)
   const highWater = events.reduce((max, event) => Math.max(max, event.sequence), 0)
   const safetyLimit = Math.max(1, Math.floor(input.safetyLimit || RUN_EVENT_CATCHUP_FRAME_LIMIT))

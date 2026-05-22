@@ -56,7 +56,9 @@ async function main() {
   ok('GoogleGenAI client instantiated with apiKey')
 
   if (!client.models || typeof client.models.generateContentStream !== 'function') {
-    fail(`client.models.generateContentStream missing — got ${typeof (client.models && client.models.generateContentStream)}`)
+    fail(
+      `client.models.generateContentStream missing — got ${typeof (client.models && client.models.generateContentStream)}`
+    )
     return
   }
   ok('client.models.generateContentStream is a function')
@@ -64,7 +66,9 @@ async function main() {
   if (!client.files || typeof client.files.upload !== 'function') {
     // Files API is only required for Step 7's large-image path. Warn,
     // don't fail — small images use inline base64 and don't need it.
-    console.warn('[smoke-gemini-api-sdk] WARN: client.files.upload missing — large-image uploads will fall back to inline base64')
+    console.warn(
+      '[smoke-gemini-api-sdk] WARN: client.files.upload missing — large-image uploads will fall back to inline base64'
+    )
   } else {
     ok('client.files.upload is a function')
   }

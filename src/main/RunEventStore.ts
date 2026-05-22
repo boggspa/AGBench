@@ -65,7 +65,15 @@ export function hashRunEventRecord(record: Omit<RunEventRecord, 'hash'>): string
 function inferToolCallId(payload: unknown): string | undefined {
   if (!payload || typeof payload !== 'object') return undefined
   const record = payload as Record<string, unknown>
-  for (const key of ['tool_id', 'toolId', 'tool_call_id', 'toolCallId', 'call_id', 'callId', 'id']) {
+  for (const key of [
+    'tool_id',
+    'toolId',
+    'tool_call_id',
+    'toolCallId',
+    'call_id',
+    'callId',
+    'id'
+  ]) {
     const value = record[key]
     if (typeof value === 'string' && value.trim()) return value.trim()
   }
@@ -115,7 +123,12 @@ export function prepareRunEventPayload(
 export function createRunEventRecord(
   input: RunEventInput,
   sequence: number,
-  options: { now?: string; storeRawPayload?: boolean; previousHash?: string; artifacts?: RunEventArtifactRef[] } = {}
+  options: {
+    now?: string
+    storeRawPayload?: boolean
+    previousHash?: string
+    artifacts?: RunEventArtifactRef[]
+  } = {}
 ): RunEventRecord {
   const runId = String(input.runId || '').trim()
   if (!runId) {
@@ -135,7 +148,9 @@ export function createRunEventRecord(
     provider: input.provider,
     providerSessionId: input.providerSessionId || undefined,
     providerRunId: input.providerRunId || undefined,
-    spanId: input.spanId || `${runId}:${Number.isFinite(sequence) && sequence > 0 ? Math.floor(sequence) : 1}`,
+    spanId:
+      input.spanId ||
+      `${runId}:${Number.isFinite(sequence) && sequence > 0 ? Math.floor(sequence) : 1}`,
     parentSpanId: input.parentSpanId || undefined,
     toolCallId: input.toolCallId || inferToolCallId(input.payload),
     kind: input.kind,
@@ -178,10 +193,12 @@ export function nextRunEventSequence(events: RunEventRecord[]): number {
 }
 
 export function lastRunEventHash(events: RunEventRecord[]): string {
-  return [...events]
-    .sort((a, b) => a.sequence - b.sequence)
-    .reverse()
-    .find((event) => event.hash)?.hash || RUN_EVENT_EMPTY_HASH
+  return (
+    [...events]
+      .sort((a, b) => a.sequence - b.sequence)
+      .reverse()
+      .find((event) => event.hash)?.hash || RUN_EVENT_EMPTY_HASH
+  )
 }
 
 export function verifyRunEventHashChain(events: RunEventRecord[]): boolean {

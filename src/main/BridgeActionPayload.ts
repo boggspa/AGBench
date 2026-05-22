@@ -421,7 +421,9 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
     (v.approvalMode === undefined || typeof v.approvalMode === 'string') &&
     (v.model === undefined || typeof v.model === 'string') &&
     (v.contextTurns === undefined ||
-      (typeof v.contextTurns === 'number' && Number.isInteger(v.contextTurns) && v.contextTurns >= 0))
+      (typeof v.contextTurns === 'number' &&
+        Number.isInteger(v.contextTurns) &&
+        v.contextTurns >= 0))
   )
 }
 

@@ -146,7 +146,9 @@ describe('createBridgeApnsPusher factory', () => {
       expect(pusher).not.toBeInstanceOf(NoopApnsPusher)
       // The real pusher exposes pushApprovalToToken / pushSilentToToken
       // beyond the base interface. Verify duck-typed.
-      expect(typeof (pusher as { pushApprovalToToken?: unknown }).pushApprovalToToken).toBe('function')
+      expect(typeof (pusher as { pushApprovalToToken?: unknown }).pushApprovalToToken).toBe(
+        'function'
+      )
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }

@@ -1,14 +1,14 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
-import type { ChatMessage } from '../../../main/store/types';
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import type { ChatMessage } from '../../../main/store/types'
 import {
   isSubThreadReturnMessage,
   SubThreadReturnCard,
   subThreadReturnBody
-} from './SubThreadReturnCard';
+} from './SubThreadReturnCard'
 
 function subThreadMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
-    return {
+  return {
     id: 'message-1',
     role: 'tool',
     content: '↩ Result from Codex sub-thread (Build agent):\n\n**Done**\n\n- Tests passed',
@@ -20,37 +20,37 @@ function subThreadMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
       subThreadTitle: 'Build agent'
     },
     ...overrides
-  };
+  }
 }
 
 describe('SubThreadReturnCard', () => {
   it('detects sub-thread return tool messages', () => {
-    expect(isSubThreadReturnMessage(subThreadMessage())).toBe(true);
-    expect(isSubThreadReturnMessage(subThreadMessage({ role: 'system' }))).toBe(true);
-    expect(isSubThreadReturnMessage(subThreadMessage({ role: 'assistant' }))).toBe(false);
-    expect(isSubThreadReturnMessage(subThreadMessage({ metadata: { kind: 'other' } }))).toBe(false);
-  });
+    expect(isSubThreadReturnMessage(subThreadMessage())).toBe(true)
+    expect(isSubThreadReturnMessage(subThreadMessage({ role: 'system' }))).toBe(true)
+    expect(isSubThreadReturnMessage(subThreadMessage({ role: 'assistant' }))).toBe(false)
+    expect(isSubThreadReturnMessage(subThreadMessage({ metadata: { kind: 'other' } }))).toBe(false)
+  })
 
   it('strips the synthetic transcript prefix and untrusted payload wrapper from the markdown body', () => {
-    expect(subThreadReturnBody(subThreadMessage().content)).toBe('**Done**\n\n- Tests passed');
+    expect(subThreadReturnBody(subThreadMessage().content)).toBe('**Done**\n\n- Tests passed')
     expect(
       subThreadReturnBody(
         'Sub-thread result payload (untrusted child-agent output):\n\n<subthread_result>\n**Done**\n</subthread_result>'
       )
-    ).toBe('**Done**');
-    expect(subThreadReturnBody('plain body')).toBe('plain body');
-  });
+    ).toBe('**Done**')
+    expect(subThreadReturnBody('plain body')).toBe('plain body')
+  })
 
   it('renders provider, title, markdown body, and open control', () => {
     const html = renderToStaticMarkup(
       <SubThreadReturnCard message={subThreadMessage()} onOpenSubThread={() => {}} />
-    );
+    )
 
-    expect(html).toContain('subthread-return-card');
-    expect(html).toContain('Result from');
-    expect(html).toContain('Codex');
-    expect(html).toContain('Build agent');
-    expect(html).toContain('<strong>Done</strong>');
-    expect(html).toContain('Open sub-thread');
-  });
-});
+    expect(html).toContain('subthread-return-card')
+    expect(html).toContain('Result from')
+    expect(html).toContain('Codex')
+    expect(html).toContain('Build agent')
+    expect(html).toContain('<strong>Done</strong>')
+    expect(html).toContain('Open sub-thread')
+  })
+})

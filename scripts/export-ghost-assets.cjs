@@ -50,8 +50,12 @@ const buildGhostSvg = ({ id, title, shadow }) => `<?xml version="1.0" encoding="
     </radialGradient>
   </defs>
   <g shape-rendering="crispEdges">
-    ${shadow ? `<ellipse cx="68" cy="116" rx="34" ry="7" fill="#050a18" opacity="0.28"/>
-    <ellipse cx="68" cy="58" rx="50" ry="58" fill="url(#${id}-glow)"/>` : ''}
+    ${
+      shadow
+        ? `<ellipse cx="68" cy="116" rx="34" ry="7" fill="#050a18" opacity="0.28"/>
+    <ellipse cx="68" cy="58" rx="50" ry="58" fill="url(#${id}-glow)"/>`
+        : ''
+    }
     <polygon fill="url(#${id}-fill)" stroke="url(#${id}-rim)" stroke-width="7" stroke-linejoin="miter" points="56 30 80 30 92 36 98 48 98 84 92 84 86 90 80 84 74 96 68 84 56 96 50 84 38 84 38 48 44 36"/>
     <polygon fill="#ffffff" opacity="0.34" points="46 34 64 37 56 52 48 47"/>
     <polygon fill="#40689d" opacity="0.18" points="78 44 94 49 90 72 78 64"/>
@@ -64,17 +68,25 @@ const buildGhostSvg = ({ id, title, shadow }) => `<?xml version="1.0" encoding="
     <rect x="44" y="92" width="12" height="12" fill="#f7fcff"/>
     <rect x="62" y="92" width="12" height="12" fill="#e6f6ff"/>
     <rect x="80" y="92" width="12" height="12" fill="#c8e4f5"/>
-    ${shadow ? `<rect x="44" y="104" width="12" height="4" fill="#11192b" opacity="0.38"/>
+    ${
+      shadow
+        ? `<rect x="44" y="104" width="12" height="4" fill="#11192b" opacity="0.38"/>
     <rect x="62" y="104" width="12" height="4" fill="#11192b" opacity="0.38"/>
-    <rect x="80" y="104" width="12" height="4" fill="#11192b" opacity="0.38"/>` : ''}
+    <rect x="80" y="104" width="12" height="4" fill="#11192b" opacity="0.38"/>`
+        : ''
+    }
   </g>
 </svg>
 `
 
 const renderPng = (svgPath, pngPath, size) => {
-  const result = spawnSync('sips', ['-s', 'format', 'png', '-z', String(size), String(size), svgPath, '--out', pngPath], {
-    encoding: 'utf8'
-  })
+  const result = spawnSync(
+    'sips',
+    ['-s', 'format', 'png', '-z', String(size), String(size), svgPath, '--out', pngPath],
+    {
+      encoding: 'utf8'
+    }
+  )
 
   if (result.status !== 0) {
     throw new Error(result.stderr || result.stdout || `sips failed for ${pngPath}`)
@@ -99,7 +111,10 @@ const exportSvgAssets = (sizes) => {
 
   for (const variant of variants) {
     const svgPath = path.join(outDir, `${variant.name}.svg`)
-    fs.writeFileSync(svgPath, buildGhostSvg({ id: variant.name, title: variant.title, shadow: variant.shadow }))
+    fs.writeFileSync(
+      svgPath,
+      buildGhostSvg({ id: variant.name, title: variant.title, shadow: variant.shadow })
+    )
 
     for (const size of sizes) {
       renderPng(svgPath, path.join(outDir, `${variant.name}-${size}.png`), size)

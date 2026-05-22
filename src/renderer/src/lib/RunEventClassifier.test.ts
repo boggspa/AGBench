@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { classifyForInspector, classifyEventsForInspector, type InspectorRow } from './RunEventClassifier'
+import {
+  classifyForInspector,
+  classifyEventsForInspector,
+  type InspectorRow
+} from './RunEventClassifier'
 import type { RunEventRecord, RunEventKind } from '../../../main/store/types'
 
 /** Minimal RunEventRecord factory — the classifier only reads `kind`,
@@ -62,7 +66,13 @@ describe('classifyForInspector', () => {
 
   describe('approval_response', () => {
     it('classifies known decisions', () => {
-      const decisions = ['accept', 'acceptForSession', 'acceptForWorkspace', 'decline', 'cancel'] as const
+      const decisions = [
+        'accept',
+        'acceptForSession',
+        'acceptForWorkspace',
+        'decline',
+        'cancel'
+      ] as const
       for (const d of decisions) {
         const row = classifyForInspector(
           makeEvent({ kind: 'approval_response', payload: { decision: d } })
@@ -114,9 +124,7 @@ describe('classifyForInspector', () => {
     })
 
     it('extracts paths from top-level path field', () => {
-      const row = classifyForInspector(
-        makeEvent({ kind: 'diff', payload: { path: 'solo.ts' } })
-      )
+      const row = classifyForInspector(makeEvent({ kind: 'diff', payload: { path: 'solo.ts' } }))
       if (row.kind === 'diff') expect(row.paths).toEqual(['solo.ts'])
     })
 
@@ -253,9 +261,7 @@ describe('classifyForInspector', () => {
     })
 
     it('extracts exit code from payload.code; null when missing', () => {
-      const a = classifyForInspector(
-        makeEvent({ kind: 'provider_exit', payload: { code: 137 } })
-      )
+      const a = classifyForInspector(makeEvent({ kind: 'provider_exit', payload: { code: 137 } }))
       if (a.kind === 'provider_exit') expect(a.code).toBe(137)
 
       const b = classifyForInspector(makeEvent({ kind: 'provider_exit' }))

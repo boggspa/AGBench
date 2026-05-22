@@ -27,7 +27,11 @@ export interface AutomaticApprovalRequest {
 }
 
 export type AutomaticApprovalDecision = 'autoAllow' | 'autoDeny'
-export type AutomaticApprovalDecisionSource = 'policy' | 'workspace_grant' | 'session_grant' | 'session_yolo'
+export type AutomaticApprovalDecisionSource =
+  | 'policy'
+  | 'workspace_grant'
+  | 'session_grant'
+  | 'session_yolo'
 export type AutomaticApprovalGrantedScope = 'request' | 'session' | 'workspace'
 
 export interface AuditServiceDeps {

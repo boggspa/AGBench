@@ -54,10 +54,14 @@ export interface BridgeActionExecutor {
   executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult>
   executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult>
   executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult>
-  executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult>
+  executeRegisterApnsToken(
+    action: BridgeRegisterApnsTokenAction
+  ): Promise<BridgeActionExecutionResult>
   executeSetYoloMode(action: BridgeSetYoloModeAction): Promise<BridgeActionExecutionResult>
   executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult>
-  executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult>
+  executeTogglePinWorkspace(
+    action: BridgeTogglePinWorkspaceAction
+  ): Promise<BridgeActionExecutionResult>
 }
 
 /**
@@ -68,31 +72,45 @@ export interface BridgeActionExecutor {
  * "scaffolded, not wired" instead of a generic deny.
  */
 export class NoopActionExecutor implements BridgeActionExecutor {
-  async executeApprovalReply(action: BridgeApprovalReplyAction): Promise<BridgeActionExecutionResult> {
+  async executeApprovalReply(
+    action: BridgeApprovalReplyAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('approvalReply', action.toolCallId)
   }
-  async executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult> {
+  async executeQuestionReply(
+    action: BridgeQuestionReplyAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('questionReply', action.promptId)
   }
-  async executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult> {
+  async executeQuestionReject(
+    action: BridgeQuestionRejectAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('questionReject', action.promptId)
   }
-  async executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult> {
+  async executeComposerPrompt(
+    action: BridgeComposerPromptAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('composerPrompt', action.threadId)
   }
   async executeCancelRun(action: BridgeCancelRunAction): Promise<BridgeActionExecutionResult> {
     return notWired('cancelRun', action.runId)
   }
-  async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
+  async executeRegisterApnsToken(
+    action: BridgeRegisterApnsTokenAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('registerApnsToken', action.pairID)
   }
   async executeSetYoloMode(action: BridgeSetYoloModeAction): Promise<BridgeActionExecutionResult> {
     return notWired('setYoloMode', String(action.enabled))
   }
-  async executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult> {
+  async executeTogglePinChat(
+    action: BridgeTogglePinChatAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('togglePinChat', action.appChatId)
   }
-  async executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult> {
+  async executeTogglePinWorkspace(
+    action: BridgeTogglePinWorkspaceAction
+  ): Promise<BridgeActionExecutionResult> {
     return notWired('togglePinWorkspace', action.workspaceId)
   }
 }
@@ -182,12 +200,18 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     this.log = deps.log ?? (() => {})
   }
 
-  async executeApprovalReply(action: BridgeApprovalReplyAction): Promise<BridgeActionExecutionResult> {
+  async executeApprovalReply(
+    action: BridgeApprovalReplyAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.respondApprovalFn) {
-      this.log(`[BridgeActionExecutor] approvalReply has no respondApprovalFn — toolCallId=${action.toolCallId}`)
+      this.log(
+        `[BridgeActionExecutor] approvalReply has no respondApprovalFn — toolCallId=${action.toolCallId}`
+      )
       return notWired('approvalReply', action.toolCallId)
     }
-    this.log(`[BridgeActionExecutor] approvalReply toolCallId=${action.toolCallId} decision=${action.decision}`)
+    this.log(
+      `[BridgeActionExecutor] approvalReply toolCallId=${action.toolCallId} decision=${action.decision}`
+    )
     try {
       const resolved = await this.deps.respondApprovalFn(action.toolCallId, action.decision)
       if (resolved) {
@@ -211,12 +235,18 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeQuestionReply(action: BridgeQuestionReplyAction): Promise<BridgeActionExecutionResult> {
+  async executeQuestionReply(
+    action: BridgeQuestionReplyAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.respondApprovalFn) {
-      this.log(`[BridgeActionExecutor] questionReply has no respondApprovalFn — promptId=${action.promptId}`)
+      this.log(
+        `[BridgeActionExecutor] questionReply has no respondApprovalFn — promptId=${action.promptId}`
+      )
       return notWired('questionReply', action.promptId)
     }
-    this.log(`[BridgeActionExecutor] questionReply promptId=${action.promptId} answerLen=${action.answer.length}`)
+    this.log(
+      `[BridgeActionExecutor] questionReply promptId=${action.promptId} answerLen=${action.answer.length}`
+    )
     try {
       const resolved = await this.deps.respondApprovalFn(action.promptId, 'accept', {
         userInput: action.answer
@@ -242,9 +272,13 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeQuestionReject(action: BridgeQuestionRejectAction): Promise<BridgeActionExecutionResult> {
+  async executeQuestionReject(
+    action: BridgeQuestionRejectAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.respondApprovalFn) {
-      this.log(`[BridgeActionExecutor] questionReject has no respondApprovalFn — promptId=${action.promptId}`)
+      this.log(
+        `[BridgeActionExecutor] questionReject has no respondApprovalFn — promptId=${action.promptId}`
+      )
       return notWired('questionReject', action.promptId)
     }
     this.log(`[BridgeActionExecutor] questionReject promptId=${action.promptId}`)
@@ -271,12 +305,18 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeComposerPrompt(action: BridgeComposerPromptAction): Promise<BridgeActionExecutionResult> {
+  async executeComposerPrompt(
+    action: BridgeComposerPromptAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.composerPromptFn) {
-      this.log(`[BridgeActionExecutor] composerPrompt has no composerPromptFn — threadId=${action.threadId}`)
+      this.log(
+        `[BridgeActionExecutor] composerPrompt has no composerPromptFn — threadId=${action.threadId}`
+      )
       return notWired('composerPrompt', action.threadId)
     }
-    this.log(`[BridgeActionExecutor] composerPrompt provider=${action.provider} ws=${action.workspaceId} thread=${action.threadId}`)
+    this.log(
+      `[BridgeActionExecutor] composerPrompt provider=${action.provider} ws=${action.workspaceId} thread=${action.threadId}`
+    )
     try {
       const result = await this.deps.composerPromptFn(action)
       if (result.dispatched && result.appRunId) {
@@ -312,7 +352,11 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
       return {
         executed: true,
         message: `Run "${action.runId}" cancellation dispatched to provider "${action.provider}"`,
-        data: { cancelResult: serializableOrNull(result), runId: action.runId, provider: action.provider }
+        data: {
+          cancelResult: serializableOrNull(result),
+          runId: action.runId,
+          provider: action.provider
+        }
       }
     } catch (err) {
       const errMessage = err instanceof Error ? err.message : String(err)
@@ -324,9 +368,13 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeRegisterApnsToken(action: BridgeRegisterApnsTokenAction): Promise<BridgeActionExecutionResult> {
+  async executeRegisterApnsToken(
+    action: BridgeRegisterApnsTokenAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.registerApnsTokenFn) {
-      this.log(`[BridgeActionExecutor] registerApnsToken has no registerApnsTokenFn — pairID=${action.pairID}`)
+      this.log(
+        `[BridgeActionExecutor] registerApnsToken has no registerApnsTokenFn — pairID=${action.pairID}`
+      )
       return notWired('registerApnsToken', action.pairID)
     }
     this.log(`[BridgeActionExecutor] registerApnsToken pairID=${action.pairID} env=${action.env}`)
@@ -372,9 +420,13 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeTogglePinChat(action: BridgeTogglePinChatAction): Promise<BridgeActionExecutionResult> {
+  async executeTogglePinChat(
+    action: BridgeTogglePinChatAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.togglePinChatFn) {
-      this.log(`[BridgeActionExecutor] togglePinChat has no togglePinChatFn — appChatId=${action.appChatId}`)
+      this.log(
+        `[BridgeActionExecutor] togglePinChat has no togglePinChatFn — appChatId=${action.appChatId}`
+      )
       return notWired('togglePinChat', action.appChatId)
     }
     try {
@@ -394,9 +446,13 @@ export class MainProcessActionExecutor implements BridgeActionExecutor {
     }
   }
 
-  async executeTogglePinWorkspace(action: BridgeTogglePinWorkspaceAction): Promise<BridgeActionExecutionResult> {
+  async executeTogglePinWorkspace(
+    action: BridgeTogglePinWorkspaceAction
+  ): Promise<BridgeActionExecutionResult> {
     if (!this.deps.togglePinWorkspaceFn) {
-      this.log(`[BridgeActionExecutor] togglePinWorkspace has no togglePinWorkspaceFn — workspaceId=${action.workspaceId}`)
+      this.log(
+        `[BridgeActionExecutor] togglePinWorkspace has no togglePinWorkspaceFn — workspaceId=${action.workspaceId}`
+      )
       return notWired('togglePinWorkspace', action.workspaceId)
     }
     try {

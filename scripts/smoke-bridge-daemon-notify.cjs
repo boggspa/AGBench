@@ -155,11 +155,7 @@ stdoutReader.on('line', (line) => {
       fail(`testNotify returned error: ${JSON.stringify(parsed.error)}`)
       return
     }
-    if (
-      !parsed.result ||
-      parsed.result.published !== true ||
-      parsed.result.method !== testMethod
-    ) {
+    if (!parsed.result || parsed.result.published !== true || parsed.result.method !== testMethod) {
       fail(`testNotify result shape unexpected: ${JSON.stringify(parsed.result)}`)
       return
     }

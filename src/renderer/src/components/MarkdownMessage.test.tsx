@@ -1,6 +1,6 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
-import { MarkdownMessage } from './MarkdownMessage';
+import { renderToStaticMarkup } from 'react-dom/server'
+import { describe, expect, it } from 'vitest'
+import { MarkdownMessage } from './MarkdownMessage'
 
 describe('MarkdownMessage', () => {
   it('renders GFM tables, task lists, inline code, and fenced code', () => {
@@ -19,17 +19,19 @@ describe('MarkdownMessage', () => {
           '```'
         ].join('\n')}
       />
-    );
+    )
 
-    expect(html).toContain('<table>');
-    expect(html).toContain('type="checkbox"');
-    expect(html).toContain('<code>ready</code>');
-    expect(html).toContain('message-code-shell');
-    expect(html).toContain('ts');
-  });
+    expect(html).toContain('<table>')
+    expect(html).toContain('type="checkbox"')
+    expect(html).toContain('<code>ready</code>')
+    expect(html).toContain('message-code-shell')
+    expect(html).toContain('ts')
+  })
 
   it('escapes raw html instead of rendering it', () => {
-    const html = renderToStaticMarkup(<MarkdownMessage content={'<img src=x onerror=alert(1)> **safe**'} />);
+    const html = renderToStaticMarkup(
+      <MarkdownMessage content={'<img src=x onerror=alert(1)> **safe**'} />
+    )
 
     // The XSS gate: no real `<img>` element exists in the DOM, and no
     // tag-style `onerror=` attribute attaches to a real element. The
@@ -38,11 +40,11 @@ describe('MarkdownMessage', () => {
     // not parse it as markup. Checking for the literal string `onerror`
     // anywhere in the document was a too-strict assertion that flagged
     // the safe escaped form.
-    expect(html).not.toContain('<img');
-    expect(html).not.toMatch(/<[a-z][^>]*\bonerror\s*=/i);
-    expect(html).toContain('&lt;img');
-    expect(html).toContain('<strong>safe</strong>');
-  });
+    expect(html).not.toContain('<img')
+    expect(html).not.toMatch(/<[a-z][^>]*\bonerror\s*=/i)
+    expect(html).toContain('&lt;img')
+    expect(html).toContain('<strong>safe</strong>')
+  })
 
   it('renders identically across calls and matches block-by-block output (append-only contract)', () => {
     // Phase L1a: the renderer is now block-aware. This test verifies
@@ -56,20 +58,22 @@ describe('MarkdownMessage', () => {
     //      indirectly verifies the append-only contract: blocks are
     //      independent renders, so a stable prefix can short-circuit
     //      through React.memo without affecting the tail.
-    const content = 'A first paragraph with *emphasis*.\n\nA second paragraph.';
-    const htmlA = renderToStaticMarkup(<MarkdownMessage content={content} />);
-    const htmlB = renderToStaticMarkup(<MarkdownMessage content={content} />);
-    expect(htmlA).toBe(htmlB);
+    const content = 'A first paragraph with *emphasis*.\n\nA second paragraph.'
+    const htmlA = renderToStaticMarkup(<MarkdownMessage content={content} />)
+    const htmlB = renderToStaticMarkup(<MarkdownMessage content={content} />)
+    expect(htmlA).toBe(htmlB)
 
     // Rendering each block individually as MarkdownMessage and
     // concatenating their outputs (stripping outer wrappers) gives the
     // same per-block HTML the orchestrator emits. Easier proxy: confirm
     // both block bodies appear in the combined output.
-    const piece1 = renderToStaticMarkup(<MarkdownMessage content={'A first paragraph with *emphasis*.'} />);
-    const piece2 = renderToStaticMarkup(<MarkdownMessage content={'A second paragraph.'} />);
-    expect(piece1).toContain('<em>emphasis</em>');
-    expect(piece2).toContain('A second paragraph.');
-    expect(htmlA).toContain('<em>emphasis</em>');
-    expect(htmlA).toContain('A second paragraph.');
-  });
-});
+    const piece1 = renderToStaticMarkup(
+      <MarkdownMessage content={'A first paragraph with *emphasis*.'} />
+    )
+    const piece2 = renderToStaticMarkup(<MarkdownMessage content={'A second paragraph.'} />)
+    expect(piece1).toContain('<em>emphasis</em>')
+    expect(piece2).toContain('A second paragraph.')
+    expect(htmlA).toContain('<em>emphasis</em>')
+    expect(htmlA).toContain('A second paragraph.')
+  })
+})

@@ -180,7 +180,7 @@ describe('RunCoordinator', () => {
     expect(spies.applyRuntimeProfileToPayload).toHaveBeenCalledTimes(1)
   })
 
-  it('uses the routed appRunId when the payload doesn\'t carry one', async () => {
+  it("uses the routed appRunId when the payload doesn't carry one", async () => {
     const { deps, spies } = makeDeps()
     spies.routeWithRunId.mockReturnValue({ appRunId: 'fresh-id', appChatId: 'chat-1' })
     const coord = new RunCoordinator(deps)
@@ -206,9 +206,10 @@ describe('RunCoordinator', () => {
 
   it('looks up the adapter using the normalized provider', async () => {
     const { deps, spies } = makeDeps()
-    spies.normalizePayload.mockImplementation(
-      (raw: unknown) => ({ ...(raw as AgentRunPayload), provider: 'codex' as ProviderId })
-    )
+    spies.normalizePayload.mockImplementation((raw: unknown) => ({
+      ...(raw as AgentRunPayload),
+      provider: 'codex' as ProviderId
+    }))
     const coord = new RunCoordinator(deps)
     await coord.dispatch(samplePayload, makeFakeEvent())
     expect(spies.getAdapter).toHaveBeenCalledWith('codex')
@@ -252,8 +253,8 @@ describe('RunCoordinator', () => {
       throw new Error('Provider adapter is not registered: kimi')
     })
     const coord = new RunCoordinator(deps)
-    await expect(
-      coord.dispatch(samplePayload, makeMinimalDispatchEvent())
-    ).rejects.toThrow(/not registered: kimi/)
+    await expect(coord.dispatch(samplePayload, makeMinimalDispatchEvent())).rejects.toThrow(
+      /not registered: kimi/
+    )
   })
 })

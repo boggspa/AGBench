@@ -44,8 +44,7 @@ export function isUserAtDesktop(inputs: ApnsIdleGateInputs): boolean {
   if (inputs.idleGateEnv === 'off') return true
   if (!inputs.windowFocused) return false
   const thresholdRaw = Number(inputs.idleThresholdEnv)
-  const threshold = Number.isFinite(thresholdRaw) && thresholdRaw > 0
-    ? thresholdRaw
-    : DEFAULT_APNS_IDLE_THRESHOLD_S
+  const threshold =
+    Number.isFinite(thresholdRaw) && thresholdRaw > 0 ? thresholdRaw : DEFAULT_APNS_IDLE_THRESHOLD_S
   return inputs.idleSec < threshold
 }

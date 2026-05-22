@@ -26,12 +26,15 @@ describe('Http2ApnsPusher — JWT generation', () => {
     const path = join(dir, 'bogus.p8')
     writeFileSync(path, 'not a pem key', 'utf-8')
     try {
-      expect(() => new Http2ApnsPusher({
-        authKeyPath: path,
-        keyId: 'KEYID000',
-        teamId: 'TEAM00000',
-        bundleId: 'com.example.app'
-      })).toThrow(/PEM-encoded PKCS8/)
+      expect(
+        () =>
+          new Http2ApnsPusher({
+            authKeyPath: path,
+            keyId: 'KEYID000',
+            teamId: 'TEAM00000',
+            bundleId: 'com.example.app'
+          })
+      ).toThrow(/PEM-encoded PKCS8/)
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -56,12 +59,15 @@ describe('Http2ApnsPusher — JWT generation', () => {
   })
 
   it('rejects authKeyPem that does not look like a PKCS8 PEM', () => {
-    expect(() => new Http2ApnsPusher({
-      authKeyPem: '-----BEGIN GARBAGE-----\nblob\n-----END GARBAGE-----\n',
-      keyId: 'TESTKEYID0',
-      teamId: 'TESTTEAM00',
-      bundleId: 'com.example.app'
-    })).toThrow(/PEM-encoded PKCS8/)
+    expect(
+      () =>
+        new Http2ApnsPusher({
+          authKeyPem: '-----BEGIN GARBAGE-----\nblob\n-----END GARBAGE-----\n',
+          keyId: 'TESTKEYID0',
+          teamId: 'TESTTEAM00',
+          bundleId: 'com.example.app'
+        })
+    ).toThrow(/PEM-encoded PKCS8/)
   })
 
   it('throws when neither authKeyPem nor authKeyPath is provided', () => {
@@ -142,28 +148,23 @@ describe('Http2ApnsPusher — JWT generation', () => {
         const parts = jwt.split('.')
         expect(parts.length).toBe(3)
         // Decode header
-        const headerJson = JSON.parse(Buffer.from(
-          parts[0].replace(/-/g, '+').replace(/_/g, '/'),
-          'base64'
-        ).toString('utf-8'))
+        const headerJson = JSON.parse(
+          Buffer.from(parts[0].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+        )
         expect(headerJson.alg).toBe('ES256')
         expect(headerJson.kid).toBe('TESTKEYID0')
         expect(headerJson.typ).toBe('JWT')
         // Decode claims
-        const claimsJson = JSON.parse(Buffer.from(
-          parts[1].replace(/-/g, '+').replace(/_/g, '/'),
-          'base64'
-        ).toString('utf-8'))
+        const claimsJson = JSON.parse(
+          Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf-8')
+        )
         expect(claimsJson.iss).toBe('TESTTEAM00')
         expect(claimsJson.iat).toBe(1_700_000_000)
 
         // Verify the signature using the public key. APNs accepts r||s
         // concat; Node's verifier wants DER. To verify here, we
         // re-construct DER from the concat signature.
-        const signature = Buffer.from(
-          parts[2].replace(/-/g, '+').replace(/_/g, '/'),
-          'base64'
-        )
+        const signature = Buffer.from(parts[2].replace(/-/g, '+').replace(/_/g, '/'), 'base64')
         // signature is 64 bytes (r||s) for ES256.
         expect(signature.length).toBe(64)
         const r = signature.subarray(0, 32)
@@ -192,21 +193,22 @@ describe('Http2ApnsPusher — JWT generation', () => {
     const { dir, path } = writeTestAuthKey()
     try {
       const headerCaptures: Array<Record<string, unknown>> = []
-      const mockConnect = (_authority: string) => ({
-        closed: false,
-        destroyed: false,
-        on: () => {},
-        request: (headers: Record<string, unknown>) => {
-          headerCaptures.push(headers)
-          return {
-            on: (_event: string, _cb: unknown) => {},
-            setEncoding: () => {},
-            write: () => {},
-            end: () => {}
-          }
-        },
-        close: () => {}
-      } as never)
+      const mockConnect = (_authority: string) =>
+        ({
+          closed: false,
+          destroyed: false,
+          on: () => {},
+          request: (headers: Record<string, unknown>) => {
+            headerCaptures.push(headers)
+            return {
+              on: (_event: string, _cb: unknown) => {},
+              setEncoding: () => {},
+              write: () => {},
+              end: () => {}
+            }
+          },
+          close: () => {}
+        }) as never
       const pusher = new Http2ApnsPusher({
         authKeyPath: path,
         keyId: 'KEYIDABCDE',
@@ -215,18 +217,38 @@ describe('Http2ApnsPusher — JWT generation', () => {
         connect: mockConnect,
         now: () => new Date(1_700_000_000_000)
       })
-      void pusher.pushApprovalToToken('a', 'sandbox', { pairID: 'p1', workspaceId: 'w', threadId: 't', toolCallId: 'tc1', summary: 's' })
-      void pusher.pushApprovalToToken('b', 'sandbox', { pairID: 'p1', workspaceId: 'w', threadId: 't', toolCallId: 'tc2', summary: 's' })
-      void pusher.pushApprovalToToken('c', 'sandbox', { pairID: 'p1', workspaceId: 'w', threadId: 't', toolCallId: 'tc3', summary: 's' })
-      return Promise.resolve().then(() => Promise.resolve()).then(() => {
-        expect(headerCaptures.length).toBe(3)
-        const jwt1 = String(headerCaptures[0].authorization)
-        const jwt2 = String(headerCaptures[1].authorization)
-        const jwt3 = String(headerCaptures[2].authorization)
-        // All three should share the same JWT (same iat, same signature).
-        expect(jwt1).toBe(jwt2)
-        expect(jwt2).toBe(jwt3)
+      void pusher.pushApprovalToToken('a', 'sandbox', {
+        pairID: 'p1',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc1',
+        summary: 's'
       })
+      void pusher.pushApprovalToToken('b', 'sandbox', {
+        pairID: 'p1',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc2',
+        summary: 's'
+      })
+      void pusher.pushApprovalToToken('c', 'sandbox', {
+        pairID: 'p1',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc3',
+        summary: 's'
+      })
+      return Promise.resolve()
+        .then(() => Promise.resolve())
+        .then(() => {
+          expect(headerCaptures.length).toBe(3)
+          const jwt1 = String(headerCaptures[0].authorization)
+          const jwt2 = String(headerCaptures[1].authorization)
+          const jwt3 = String(headerCaptures[2].authorization)
+          // All three should share the same JWT (same iat, same signature).
+          expect(jwt1).toBe(jwt2)
+          expect(jwt2).toBe(jwt3)
+        })
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
@@ -236,21 +258,22 @@ describe('Http2ApnsPusher — JWT generation', () => {
     const { dir, path } = writeTestAuthKey()
     try {
       const headerCaptures: Array<Record<string, unknown>> = []
-      const mockConnect = (_authority: string) => ({
-        closed: false,
-        destroyed: false,
-        on: () => {},
-        request: (headers: Record<string, unknown>) => {
-          headerCaptures.push(headers)
-          return {
-            on: (_event: string, _cb: unknown) => {},
-            setEncoding: () => {},
-            write: () => {},
-            end: () => {}
-          }
-        },
-        close: () => {}
-      } as never)
+      const mockConnect = (_authority: string) =>
+        ({
+          closed: false,
+          destroyed: false,
+          on: () => {},
+          request: (headers: Record<string, unknown>) => {
+            headerCaptures.push(headers)
+            return {
+              on: (_event: string, _cb: unknown) => {},
+              setEncoding: () => {},
+              write: () => {},
+              end: () => {}
+            }
+          },
+          close: () => {}
+        }) as never
       let clock = 1_700_000_000_000
       const pusher = new Http2ApnsPusher({
         authKeyPath: path,
@@ -261,16 +284,28 @@ describe('Http2ApnsPusher — JWT generation', () => {
         jwtLifetimeSeconds: 60, // very short for the test
         now: () => new Date(clock)
       })
-      void pusher.pushApprovalToToken('a', 'sandbox', { pairID: 'p', workspaceId: 'w', threadId: 't', toolCallId: 'tc1', summary: 's' })
+      void pusher.pushApprovalToToken('a', 'sandbox', {
+        pairID: 'p',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc1',
+        summary: 's'
+      })
       return Promise.resolve().then(() => {
         // Advance clock past the JWT's lifetime
-        clock += 2 * 60 * 1000  // 2 minutes
-        void pusher.pushApprovalToToken('b', 'sandbox', { pairID: 'p', workspaceId: 'w', threadId: 't', toolCallId: 'tc2', summary: 's' })
+        clock += 2 * 60 * 1000 // 2 minutes
+        void pusher.pushApprovalToToken('b', 'sandbox', {
+          pairID: 'p',
+          workspaceId: 'w',
+          threadId: 't',
+          toolCallId: 'tc2',
+          summary: 's'
+        })
         return Promise.resolve().then(() => {
           expect(headerCaptures.length).toBe(2)
           const jwt1 = String(headerCaptures[0].authorization)
           const jwt2 = String(headerCaptures[1].authorization)
-          expect(jwt1).not.toBe(jwt2)  // different iat → different signature
+          expect(jwt1).not.toBe(jwt2) // different iat → different signature
         })
       })
     } finally {
@@ -306,7 +341,13 @@ describe('Http2ApnsPusher — endpoint selection', () => {
         bundleId: 'com.example.app',
         connect: mockConnect
       })
-      void pusher.pushApprovalToToken('a', 'sandbox', { pairID: 'p', workspaceId: 'w', threadId: 't', toolCallId: 'tc', summary: 's' })
+      void pusher.pushApprovalToToken('a', 'sandbox', {
+        pairID: 'p',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc',
+        summary: 's'
+      })
       return Promise.resolve().then(() => {
         expect(authorities).toContain('https://api.sandbox.push.apple.com')
       })
@@ -341,7 +382,13 @@ describe('Http2ApnsPusher — endpoint selection', () => {
         bundleId: 'com.example.app',
         connect: mockConnect
       })
-      void pusher.pushApprovalToToken('a', 'production', { pairID: 'p', workspaceId: 'w', threadId: 't', toolCallId: 'tc', summary: 's' })
+      void pusher.pushApprovalToToken('a', 'production', {
+        pairID: 'p',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc',
+        summary: 's'
+      })
       return Promise.resolve().then(() => {
         expect(authorities).toContain('https://api.push.apple.com')
       })
@@ -378,7 +425,13 @@ describe('Http2ApnsPusher — endpoint selection', () => {
         connect: mockConnect
       })
       // Caller says 'production' but forceEnv pins to sandbox.
-      void pusher.pushApprovalToToken('a', 'production', { pairID: 'p', workspaceId: 'w', threadId: 't', toolCallId: 'tc', summary: 's' })
+      void pusher.pushApprovalToToken('a', 'production', {
+        pairID: 'p',
+        workspaceId: 'w',
+        threadId: 't',
+        toolCallId: 'tc',
+        summary: 's'
+      })
       return Promise.resolve().then(() => {
         expect(authorities).toContain('https://api.sandbox.push.apple.com')
         expect(authorities).not.toContain('https://api.push.apple.com')
@@ -393,9 +446,14 @@ describe('derEcdsaToConcat', () => {
   it('strips leading 0x00 padding from r and s INTEGERs', () => {
     // DER for r=0x01, s=0x02 (both 1-byte values)
     const der = Buffer.from([
-      0x30, 0x06,  // SEQUENCE length 6
-      0x02, 0x01, 0x01,  // INTEGER 1 byte = 0x01
-      0x02, 0x01, 0x02   // INTEGER 1 byte = 0x02
+      0x30,
+      0x06, // SEQUENCE length 6
+      0x02,
+      0x01,
+      0x01, // INTEGER 1 byte = 0x01
+      0x02,
+      0x01,
+      0x02 // INTEGER 1 byte = 0x02
     ])
     const concat = derEcdsaToConcat(der, 32)
     expect(concat.length).toBe(64)
@@ -410,8 +468,8 @@ describe('derEcdsaToConcat', () => {
     // 64-byte raw signature (random data) → concat → re-encode → parse
     // For this test we just verify the length + structural integrity.
     // Use a known ES256 sig length: typical DER is 70-72 bytes.
-    const r = Buffer.alloc(32, 0xAB)
-    const s = Buffer.alloc(32, 0xCD)
+    const r = Buffer.alloc(32, 0xab)
+    const s = Buffer.alloc(32, 0xcd)
     const derSig = concatToDer(r, s)
     const back = derEcdsaToConcat(derSig, 32)
     expect(back.length).toBe(64)

@@ -27,16 +27,12 @@ describe('visibleRunningChatIds', () => {
   })
 
   it('treats a cleared approval entry as no approval', () => {
-    expect(
-      visibleRunningChatIds(['chat-1'], { 'chat-1': null })
-    ).toEqual(['chat-1'])
+    expect(visibleRunningChatIds(['chat-1'], { 'chat-1': null })).toEqual(['chat-1'])
   })
 
   it('accepts a Set as input', () => {
     const set = new Set(['chat-1', 'chat-2'])
-    expect(
-      visibleRunningChatIds(set, { 'chat-2': { provider: 'kimi' } })
-    ).toEqual(['chat-1'])
+    expect(visibleRunningChatIds(set, { 'chat-2': { provider: 'kimi' } })).toEqual(['chat-1'])
   })
 
   it('only filters the chat whose pending approval is Kimi-owned', () => {
@@ -55,53 +51,67 @@ describe('visibleRunningChatIds', () => {
     // had already been evicted, or `cancelAgentRun` killed the child
     // without an `agent-exit` IPC).
     expect(
-      visibleRunningChatIds(['chat-stuck'], {}, {
-        'chat-stuck': {
-          appChatId: 'chat-stuck',
-          provider: 'kimi',
-          runs: [{ endedAt: '2026-05-16T12:00:00.000Z', status: 'failed' }]
+      visibleRunningChatIds(
+        ['chat-stuck'],
+        {},
+        {
+          'chat-stuck': {
+            appChatId: 'chat-stuck',
+            provider: 'kimi',
+            runs: [{ endedAt: '2026-05-16T12:00:00.000Z', status: 'failed' }]
+          }
         }
-      })
+      )
     ).toEqual([])
   })
 
   it('drops a chat whose last run status is terminal even without endedAt', () => {
     expect(
-      visibleRunningChatIds(['chat-stuck'], {}, {
-        'chat-stuck': {
-          appChatId: 'chat-stuck',
-          provider: 'codex',
-          runs: [{ status: 'failed' }]
+      visibleRunningChatIds(
+        ['chat-stuck'],
+        {},
+        {
+          'chat-stuck': {
+            appChatId: 'chat-stuck',
+            provider: 'codex',
+            runs: [{ status: 'failed' }]
+          }
         }
-      })
+      )
     ).toEqual([])
   })
 
   it('keeps a chat whose last run is genuinely still running', () => {
     expect(
-      visibleRunningChatIds(['chat-live'], {}, {
-        'chat-live': {
-          appChatId: 'chat-live',
-          provider: 'gemini',
-          // No endedAt and no terminal status -> still running.
-          runs: [{}]
+      visibleRunningChatIds(
+        ['chat-live'],
+        {},
+        {
+          'chat-live': {
+            appChatId: 'chat-live',
+            provider: 'gemini',
+            // No endedAt and no terminal status -> still running.
+            runs: [{}]
+          }
         }
-      })
+      )
     ).toEqual(['chat-live'])
   })
 
   it('keeps a chat with no runs (newly-started, persisted snapshot not yet flushed)', () => {
     expect(
-      visibleRunningChatIds(['chat-new'], {}, {
-        'chat-new': { appChatId: 'chat-new', provider: 'kimi', runs: [] }
-      })
+      visibleRunningChatIds(
+        ['chat-new'],
+        {},
+        {
+          'chat-new': { appChatId: 'chat-new', provider: 'kimi', runs: [] }
+        }
+      )
     ).toEqual(['chat-new'])
   })
 
   it('ignores a missing chat record (running chat id without a snapshot)', () => {
-    expect(
-      visibleRunningChatIds(['chat-orphan'], {}, {})
-    ).toEqual(['chat-orphan'])
+    expect(visibleRunningChatIds(['chat-orphan'], {}, {})).toEqual(['chat-orphan'])
   })
 
   it('combines the pending-approval filter with the terminal-run filter', () => {
@@ -131,26 +141,18 @@ describe('hasTerminalLastRun', () => {
   })
 
   it('returns true when the last run has an endedAt', () => {
-    expect(
-      hasTerminalLastRun({ appChatId: 'c', runs: [{ endedAt: 'now' }] })
-    ).toBe(true)
+    expect(hasTerminalLastRun({ appChatId: 'c', runs: [{ endedAt: 'now' }] })).toBe(true)
   })
 
   it('returns true for terminal status strings without endedAt', () => {
     for (const status of ['failed', 'cancelled', 'success', 'success_with_warnings']) {
-      expect(
-        hasTerminalLastRun({ appChatId: 'c', runs: [{ status }] })
-      ).toBe(true)
+      expect(hasTerminalLastRun({ appChatId: 'c', runs: [{ status }] })).toBe(true)
     }
   })
 
   it('returns false for a non-terminal status without endedAt', () => {
-    expect(
-      hasTerminalLastRun({ appChatId: 'c', runs: [{ status: 'running' }] })
-    ).toBe(false)
-    expect(
-      hasTerminalLastRun({ appChatId: 'c', runs: [{}] })
-    ).toBe(false)
+    expect(hasTerminalLastRun({ appChatId: 'c', runs: [{ status: 'running' }] })).toBe(false)
+    expect(hasTerminalLastRun({ appChatId: 'c', runs: [{}] })).toBe(false)
   })
 
   it('looks at the LAST run when the chat has prior completed runs', () => {

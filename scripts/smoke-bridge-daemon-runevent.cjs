@@ -78,7 +78,9 @@ function teardown() {
 
 function pass() {
   teardown()
-  console.log('[smoke-bridge-daemon-runevent] OK — daemon received notification and issued broadcast')
+  console.log(
+    '[smoke-bridge-daemon-runevent] OK — daemon received notification and issued broadcast'
+  )
   process.exit(0)
 }
 
@@ -126,7 +128,11 @@ proc.stderr.on('data', (chunk) => {
   stderrTail += text
   if (stderrTail.length > 4096) stderrTail = stderrTail.slice(-4096)
   // The daemon emits one of these per bridge.runEvent handled.
-  if (text.includes('[bridge.runEvent] broadcast') && text.includes('channel=agent-output') && text.includes('provider=gemini')) {
+  if (
+    text.includes('[bridge.runEvent] broadcast') &&
+    text.includes('channel=agent-output') &&
+    text.includes('provider=gemini')
+  ) {
     broadcastLogSeen = true
     pass()
   }

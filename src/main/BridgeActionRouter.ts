@@ -115,7 +115,9 @@ export class BridgeActionRouter {
     this.allowlist = options.allowlist
     this.executor = options.executor ?? new NoopActionExecutor()
     if (this.permissiveDev) {
-      this.log('[BridgeActionRouter] WARN: permissive-dev mode is ON — every iOS action ack request will be accepted')
+      this.log(
+        '[BridgeActionRouter] WARN: permissive-dev mode is ON — every iOS action ack request will be accepted'
+      )
     }
   }
 
@@ -154,7 +156,9 @@ export class BridgeActionRouter {
     const payloadBase64 = typeof dict.payloadBase64 === 'string' ? dict.payloadBase64 : ''
 
     if (this.permissiveDev) {
-      this.log(`[BridgeActionRouter] permissive-dev ACCEPT actionAck pairID=${pairID} bytes=${bytes}`)
+      this.log(
+        `[BridgeActionRouter] permissive-dev ACCEPT actionAck pairID=${pairID} bytes=${bytes}`
+      )
       return {
         accepted: true,
         scope: 'once',
@@ -170,14 +174,18 @@ export class BridgeActionRouter {
       payload = decodeBridgeActionPayload(payloadBase64).payload
     } catch (err) {
       if (err instanceof BridgeActionPayloadDecodeError) {
-        this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} malformed payload (stage=${err.stage}): ${err.message}`)
+        this.log(
+          `[BridgeActionRouter] DENY actionAck pairID=${pairID} malformed payload (stage=${err.stage}): ${err.message}`
+        )
         return {
           accepted: false,
           scope: 'once',
           message: `Malformed action payload (${err.stage}): ${err.message}`
         }
       }
-      this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} payload decode threw unexpectedly: ${err instanceof Error ? err.message : String(err)}`)
+      this.log(
+        `[BridgeActionRouter] DENY actionAck pairID=${pairID} payload decode threw unexpectedly: ${err instanceof Error ? err.message : String(err)}`
+      )
       return {
         accepted: false,
         scope: 'once',
@@ -188,7 +196,9 @@ export class BridgeActionRouter {
     // Unknown action kind → safe deny. We log the rawKind so future iOS
     // releases sending new actions to an older Electron are observable.
     if (payload.kind === 'unknown') {
-      this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} unknown kind="${payload.rawKind}"`)
+      this.log(
+        `[BridgeActionRouter] DENY actionAck pairID=${pairID} unknown kind="${payload.rawKind}"`
+      )
       return {
         accepted: false,
         scope: 'once',
@@ -204,7 +214,9 @@ export class BridgeActionRouter {
       const workspaceId = workspaceIdFromPayload(payload)
       if (workspaceId === null) {
         // Shouldn't reach here for known kinds — but defensively deny.
-        this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} missing workspaceId`)
+        this.log(
+          `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} missing workspaceId`
+        )
         return {
           accepted: false,
           scope: 'once',
@@ -212,12 +224,19 @@ export class BridgeActionRouter {
         }
       }
       if (this.allowlist) {
-        const provider = 'provider' in payload && typeof payload.provider === 'string' ? payload.provider : undefined
+        const provider =
+          'provider' in payload && typeof payload.provider === 'string'
+            ? payload.provider
+            : undefined
         const approvalMode =
-          'approvalMode' in payload && typeof payload.approvalMode === 'string' ? payload.approvalMode : undefined
+          'approvalMode' in payload && typeof payload.approvalMode === 'string'
+            ? payload.approvalMode
+            : undefined
         const decision = this.allowlist.evaluate({ workspaceId, provider, approvalMode })
         if (!decision.allowed) {
-          this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${decision.reason}"`)
+          this.log(
+            `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${decision.reason}"`
+          )
           return {
             accepted: false,
             scope: 'once',
@@ -232,7 +251,9 @@ export class BridgeActionRouter {
         // `payloadIsMutating` for per-variant classification + rationale.
         if (decision.entry.mode === 'read-only' && payloadIsMutating(payload)) {
           const reason = `Workspace "${workspaceId}" is read-only; action "${payload.kind}" requires read-write access`
-          this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${reason}"`)
+          this.log(
+            `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${reason}"`
+          )
           return {
             accepted: false,
             scope: 'once',
@@ -240,7 +261,9 @@ export class BridgeActionRouter {
           }
         }
       } else {
-        this.log(`[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} — no allowlist configured`)
+        this.log(
+          `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} — no allowlist configured`
+        )
         return {
           accepted: false,
           scope: 'once',
@@ -248,7 +271,9 @@ export class BridgeActionRouter {
         }
       }
     } else {
-      this.log(`[BridgeActionRouter] system action accepted pairID=${pairID} kind=${payload.kind} (workspace-gate skipped)`)
+      this.log(
+        `[BridgeActionRouter] system action accepted pairID=${pairID} kind=${payload.kind} (workspace-gate skipped)`
+      )
     }
 
     // Policy cleared the action. Hand off to the executor for the real
@@ -262,7 +287,9 @@ export class BridgeActionRouter {
     // workspaceIdFromPayload may legitimately be null for non-workspace-bound
     // variants (e.g. registerApnsToken); the log shows "ws=null" in that case.
     const workspaceIdForLog = workspaceIdFromPayload(payload) ?? 'null'
-    this.log(`[BridgeActionRouter] ACCEPT actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceIdForLog} executed=${dispatch.executed}`)
+    this.log(
+      `[BridgeActionRouter] ACCEPT actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceIdForLog} executed=${dispatch.executed}`
+    )
     return {
       accepted: true,
       scope: 'once',
@@ -312,7 +339,9 @@ export class BridgeActionRouter {
     const approvalMode = typeof dict.approvalMode === 'string' ? dict.approvalMode : undefined
 
     if (this.permissiveDev) {
-      this.log(`[BridgeActionRouter] permissive-dev ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID}`)
+      this.log(
+        `[BridgeActionRouter] permissive-dev ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID}`
+      )
       return {
         accepted: true,
         message: 'permissive-dev: accepted without allowlist check'
@@ -320,7 +349,9 @@ export class BridgeActionRouter {
     }
 
     if (!this.allowlist) {
-      this.log(`[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} — no allowlist configured`)
+      this.log(
+        `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} — no allowlist configured`
+      )
       return {
         accepted: false,
         message: 'iOS-initiated turns not yet enabled — no workspace allowlist configured'
@@ -333,13 +364,17 @@ export class BridgeActionRouter {
       approvalMode
     })
     if (decision.allowed) {
-      this.log(`[BridgeActionRouter] ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID} mode=${decision.entry.mode}`)
+      this.log(
+        `[BridgeActionRouter] ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID} mode=${decision.entry.mode}`
+      )
       return {
         accepted: true,
         message: `Workspace "${workspaceID}" allowed (${decision.entry.mode})`
       }
     }
-    this.log(`[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} reason="${decision.reason}"`)
+    this.log(
+      `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} reason="${decision.reason}"`
+    )
     return {
       accepted: false,
       message: decision.reason

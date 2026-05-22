@@ -143,7 +143,8 @@ describe('ProductOperations', () => {
           ci: 'npm run typecheck && npm run test && npm run smoke:node-pty',
           'smoke:node-pty': 'node scripts/smoke-node-pty.cjs',
           'smoke:package': 'node scripts/smoke-packaged-electron.cjs',
-          'build:unpack': 'npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist',
+          'build:unpack':
+            'npm run build && electron-builder --dir && node scripts/smoke-packaged-electron.cjs dist',
           'build:mac': 'npm run build && electron-builder --mac',
           'build:mac:notarized':
             'npm run build && CSC_NAME=${CSC_NAME:-ABC} APPLE_KEYCHAIN_PROFILE=${APPLE_KEYCHAIN_PROFILE:-<your-notary-profile>} electron-builder --mac -c.mac.notarize=true',

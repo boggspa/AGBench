@@ -10,9 +10,10 @@ export function resolveGeminiCliResumePolicy(
   effectiveApprovalMode: string,
   resumeSessionId?: string | null
 ): GeminiCliResumePolicy {
-  const sessionId = typeof resumeSessionId === 'string' && resumeSessionId.trim()
-    ? resumeSessionId.trim()
-    : undefined
+  const sessionId =
+    typeof resumeSessionId === 'string' && resumeSessionId.trim()
+      ? resumeSessionId.trim()
+      : undefined
   if (!sessionId) {
     return {}
   }

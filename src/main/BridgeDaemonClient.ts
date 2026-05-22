@@ -138,9 +138,27 @@ export class BridgeDaemonClient {
 
     // Dev: prefer debug, fall back to release. Path is relative to
     // src/main/ → repo root.
-    const devDebug = join(__dirname, '..', '..', 'swift', 'GuiGeminiBridge', '.build', 'debug', 'GuiGeminiBridgeDaemon')
+    const devDebug = join(
+      __dirname,
+      '..',
+      '..',
+      'swift',
+      'GuiGeminiBridge',
+      '.build',
+      'debug',
+      'GuiGeminiBridgeDaemon'
+    )
     if (existsSync(devDebug)) return devDebug
-    return join(__dirname, '..', '..', 'swift', 'GuiGeminiBridge', '.build', 'release', 'GuiGeminiBridgeDaemon')
+    return join(
+      __dirname,
+      '..',
+      '..',
+      'swift',
+      'GuiGeminiBridge',
+      '.build',
+      'release',
+      'GuiGeminiBridgeDaemon'
+    )
   }
 
   /** Spawn the daemon. Resolves once the first hello line has been read,
@@ -151,7 +169,9 @@ export class BridgeDaemonClient {
     }
     const binaryPath = this.resolveBinaryPath()
     if (!existsSync(binaryPath)) {
-      throw new Error(`BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/GuiGeminiBridge first.`)
+      throw new Error(
+        `BridgeDaemonClient: daemon binary not found at ${binaryPath}. Run \`swift build\` in swift/GuiGeminiBridge first.`
+      )
     }
 
     this.startedAt = new Date()
@@ -285,7 +305,11 @@ export class BridgeDaemonClient {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
-          reject(new Error(`BridgeDaemonClient.request("${method}"): timeout after ${this.requestTimeoutMs}ms`))
+          reject(
+            new Error(
+              `BridgeDaemonClient.request("${method}"): timeout after ${this.requestTimeoutMs}ms`
+            )
+          )
         }
       }, this.requestTimeoutMs)
       timer.unref?.()

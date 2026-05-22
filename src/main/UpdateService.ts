@@ -1,4 +1,9 @@
-import { autoUpdater, type UpdateCheckResult, type UpdateInfo, type ProgressInfo } from 'electron-updater'
+import {
+  autoUpdater,
+  type UpdateCheckResult,
+  type UpdateInfo,
+  type ProgressInfo
+} from 'electron-updater'
 import type { ProductUpdateChannel } from './store/types'
 
 /**

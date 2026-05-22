@@ -131,9 +131,10 @@ export function resolveApprovalLedgerRecord(
     decisionSource,
     grantedScope: scopeForApprovalAction(action),
     expiration: expirationForApprovalAction(action, decidedAt),
-    metadata: Object.keys(extraMetadata).length > 0
-      ? { ...(record.metadata || {}), ...extraMetadata }
-      : record.metadata
+    metadata:
+      Object.keys(extraMetadata).length > 0
+        ? { ...(record.metadata || {}), ...extraMetadata }
+        : record.metadata
   }
 }
 

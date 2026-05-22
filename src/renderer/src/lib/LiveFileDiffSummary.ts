@@ -4,12 +4,8 @@ import type {
   DiffFileStatus,
   ToolActivity,
   ToolDiffFileSummary
-} from '../../../main/store/types';
-import {
-  deriveToolDiffSummary,
-  estimateLineChanges,
-  parseUnifiedDiffSummary
-} from './ToolParser';
+} from '../../../main/store/types'
+import { deriveToolDiffSummary, estimateLineChanges, parseUnifiedDiffSummary } from './ToolParser'
 
 /**
  * "Task complete" file-change extractor — the fallback path the renderer
@@ -40,7 +36,7 @@ const RENDERABLE_FILE_STATUSES = new Set<DiffFileStatus>([
   'binary',
   'too_large',
   'hidden_sensitive'
-]);
+])
 
 const WRITE_LIKE_TOOL_NAMES = new Set([
   'replace',
@@ -56,17 +52,11 @@ const WRITE_LIKE_TOOL_NAMES = new Set([
   'str_replace',
   'str_replace_editor',
   'strreplaceeditor'
-]);
+])
 
-const CREATE_HINT_TOOL_NAMES = new Set([
-  'create_file',
-  'write_file',
-  'write'
-]);
+const CREATE_HINT_TOOL_NAMES = new Set(['create_file', 'write_file', 'write'])
 
-const DELETE_HINT_TOOL_NAMES = new Set([
-  'delete_file'
-]);
+const DELETE_HINT_TOOL_NAMES = new Set(['delete_file'])
 
 const STATUS_PRIORITY: Record<DiffFileStatus, number> = {
   created: 3,
@@ -78,105 +68,120 @@ const STATUS_PRIORITY: Record<DiffFileStatus, number> = {
   too_large: 0,
   hidden_sensitive: 0,
   noise: 0
-};
+}
 
 export interface PerFileContribution {
-  path: string;
-  status: DiffFileStatus;
-  additions?: number;
-  deletions?: number;
+  path: string
+  status: DiffFileStatus
+  additions?: number
+  deletions?: number
 }
 
 interface AccumulatorEntry {
-  path: string;
-  status: DiffFileStatus;
-  additions?: number;
-  deletions?: number;
-  contributors: number;
-  statedContributors: number;
+  path: string
+  status: DiffFileStatus
+  additions?: number
+  deletions?: number
+  contributors: number
+  statedContributors: number
 }
 
 function looksWriteLike(toolName: string): boolean {
-  const normalised = (toolName || '').toLowerCase();
-  if (!normalised) return false;
-  if (WRITE_LIKE_TOOL_NAMES.has(normalised)) return true;
-  if (normalised.endsWith('__write_file')) return true;
-  if (normalised.endsWith('__replace')) return true;
-  if (normalised.endsWith('__create_file')) return true;
-  if (normalised.endsWith('__edit_file')) return true;
-  if (normalised.endsWith('__edit')) return true;
-  if (normalised.endsWith('__apply_patch')) return true;
-  return false;
+  const normalised = (toolName || '').toLowerCase()
+  if (!normalised) return false
+  if (WRITE_LIKE_TOOL_NAMES.has(normalised)) return true
+  if (normalised.endsWith('__write_file')) return true
+  if (normalised.endsWith('__replace')) return true
+  if (normalised.endsWith('__create_file')) return true
+  if (normalised.endsWith('__edit_file')) return true
+  if (normalised.endsWith('__edit')) return true
+  if (normalised.endsWith('__apply_patch')) return true
+  return false
 }
 
 function normalisePath(value: string, workspacePath?: string | null): string {
-  const normalised = value.replace(/\\/g, '/');
-  const workspace = (workspacePath || '').replace(/\\/g, '/');
-  if (!workspace) return normalised;
-  const ws = workspace.endsWith('/') ? workspace : `${workspace}/`;
-  return normalised.startsWith(ws) ? normalised.slice(ws.length) : normalised;
+  const normalised = value.replace(/\\/g, '/')
+  const workspace = (workspacePath || '').replace(/\\/g, '/')
+  if (!workspace) return normalised
+  const ws = workspace.endsWith('/') ? workspace : `${workspace}/`
+  return normalised.startsWith(ws) ? normalised.slice(ws.length) : normalised
 }
 
 function statusFromToolName(toolName: string): DiffFileStatus | null {
-  const name = (toolName || '').toLowerCase();
-  if (CREATE_HINT_TOOL_NAMES.has(name)) return 'created';
-  if (DELETE_HINT_TOOL_NAMES.has(name)) return 'deleted';
-  return null;
+  const name = (toolName || '').toLowerCase()
+  if (CREATE_HINT_TOOL_NAMES.has(name)) return 'created'
+  if (DELETE_HINT_TOOL_NAMES.has(name)) return 'deleted'
+  return null
 }
 
-function normaliseFileStatus(raw: ToolDiffFileSummary['status'] | string | undefined, fallback: DiffFileStatus): DiffFileStatus {
-  if (!raw) return fallback;
-  const value = String(raw).toLowerCase();
-  if (value === 'add' || value === 'create' || value === 'created' || value === 'new') return 'created';
-  if (value === 'delete' || value === 'deleted' || value === 'remove' || value === 'removed') return 'deleted';
-  if (value === 'rename' || value === 'renamed') return 'renamed';
-  if (value === 'modify' || value === 'modified' || value === 'edit' || value === 'update' || value === 'updated' || value === 'update_file' || value === 'edit_file') return 'modified';
-  if (RENDERABLE_FILE_STATUSES.has(value as DiffFileStatus)) return value as DiffFileStatus;
-  return fallback;
+function normaliseFileStatus(
+  raw: ToolDiffFileSummary['status'] | string | undefined,
+  fallback: DiffFileStatus
+): DiffFileStatus {
+  if (!raw) return fallback
+  const value = String(raw).toLowerCase()
+  if (value === 'add' || value === 'create' || value === 'created' || value === 'new')
+    return 'created'
+  if (value === 'delete' || value === 'deleted' || value === 'remove' || value === 'removed')
+    return 'deleted'
+  if (value === 'rename' || value === 'renamed') return 'renamed'
+  if (
+    value === 'modify' ||
+    value === 'modified' ||
+    value === 'edit' ||
+    value === 'update' ||
+    value === 'updated' ||
+    value === 'update_file' ||
+    value === 'edit_file'
+  )
+    return 'modified'
+  if (RENDERABLE_FILE_STATUSES.has(value as DiffFileStatus)) return value as DiffFileStatus
+  return fallback
 }
 
 function readStringField(record: Record<string, unknown>, keys: string[]): string {
   for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value;
+    const value = record[key]
+    if (typeof value === 'string' && value.trim()) return value
   }
-  return '';
+  return ''
 }
 
 function readNumericField(record: Record<string, unknown>, keys: string[]): number | undefined {
   for (const key of keys) {
-    const value = record[key];
-    const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-    if (Number.isFinite(numeric)) return Math.max(0, Math.trunc(numeric));
+    const value = record[key]
+    const numeric =
+      typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+    if (Number.isFinite(numeric)) return Math.max(0, Math.trunc(numeric))
   }
-  return undefined;
+  return undefined
 }
 
 function countNonEmptyLines(text: string): number {
-  if (!text) return 0;
-  const lines = text.split('\n');
+  if (!text) return 0
+  const lines = text.split('\n')
   // Trailing newline produces an extra empty entry; count meaningful lines.
-  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
-  return lines.length;
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop()
+  return lines.length
 }
 
 function countDiffStatsFromUnifiedDiff(diff: string): { additions?: number; deletions?: number } {
-  if (!diff.trim()) return {};
-  let additions = 0;
-  let deletions = 0;
-  let counted = false;
+  if (!diff.trim()) return {}
+  let additions = 0
+  let deletions = 0
+  let counted = false
   for (const line of diff.split('\n')) {
-    if (line.startsWith('+++') || line.startsWith('---')) continue;
+    if (line.startsWith('+++') || line.startsWith('---')) continue
     if (line.startsWith('+')) {
-      additions += 1;
-      counted = true;
+      additions += 1
+      counted = true
     } else if (line.startsWith('-')) {
-      deletions += 1;
-      counted = true;
+      deletions += 1
+      counted = true
     }
   }
-  if (!counted) return {};
-  return { additions, deletions };
+  if (!counted) return {}
+  return { additions, deletions }
 }
 
 /** Extract per-file additions/deletions from a single Codex-style change record. */
@@ -186,39 +191,46 @@ function extractContributionFromChangeRecord(
   fallbackStatus: DiffFileStatus,
   workspacePath?: string | null
 ): PerFileContribution | null {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
-  const record = raw as Record<string, unknown>;
-  const rawPath = readStringField(record, ['path', 'filePath', 'file_path', 'target', 'target_file', 'target_file_path']);
-  const path = rawPath ? normalisePath(rawPath.trim(), workspacePath) : fallbackPath;
-  if (!path) return null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const record = raw as Record<string, unknown>
+  const rawPath = readStringField(record, [
+    'path',
+    'filePath',
+    'file_path',
+    'target',
+    'target_file',
+    'target_file_path'
+  ])
+  const path = rawPath ? normalisePath(rawPath.trim(), workspacePath) : fallbackPath
+  if (!path) return null
 
-  const kindOrType = readStringField(record, ['kind', 'type', 'operation', 'status']);
-  const status = normaliseFileStatus(kindOrType, fallbackStatus);
+  const kindOrType = readStringField(record, ['kind', 'type', 'operation', 'status'])
+  const status = normaliseFileStatus(kindOrType, fallbackStatus)
 
-  let additions = readNumericField(record, ['additions', 'added', 'linesAdded', 'insertions']);
-  let deletions = readNumericField(record, ['deletions', 'deleted', 'linesDeleted', 'removals']);
+  let additions = readNumericField(record, ['additions', 'added', 'linesAdded', 'insertions'])
+  let deletions = readNumericField(record, ['deletions', 'deleted', 'linesDeleted', 'removals'])
 
   // No directly-attached numstat: try per-file unified diff / patch content.
   if (additions === undefined && deletions === undefined) {
-    const diff = readStringField(record, ['unified_diff', 'unifiedDiff', 'diff', 'patch']);
+    const diff = readStringField(record, ['unified_diff', 'unifiedDiff', 'diff', 'patch'])
     if (diff) {
-      const counts = countDiffStatsFromUnifiedDiff(diff);
-      additions = counts.additions;
-      deletions = counts.deletions;
+      const counts = countDiffStatsFromUnifiedDiff(diff)
+      additions = counts.additions
+      deletions = counts.deletions
     }
   }
 
   // For `add` / `delete` types with full content, infer counts from the content body.
   if (additions === undefined && deletions === undefined) {
-    const content = readStringField(record, ['content', 'new_content', 'newContent']);
+    const content = readStringField(record, ['content', 'new_content', 'newContent'])
     if (content) {
-      const lineCount = countNonEmptyLines(content);
-      if (status === 'deleted') deletions = lineCount;
-      else additions = lineCount;
+      const lineCount = countNonEmptyLines(content)
+      if (status === 'deleted') deletions = lineCount
+      else additions = lineCount
     }
   }
 
-  return { path, status, additions, deletions };
+  return { path, status, additions, deletions }
 }
 
 /** Extract per-file contributions from a Claude `MultiEdit` parameters payload. */
@@ -227,30 +239,30 @@ function extractMultiEditContribution(
   fallbackPath: string,
   workspacePath?: string | null
 ): PerFileContribution | null {
-  const edits = parameters.edits;
-  if (!Array.isArray(edits) || edits.length === 0) return null;
-  const rawPath = readStringField(parameters, ['file_path', 'filePath', 'path']);
-  const path = rawPath ? normalisePath(rawPath.trim(), workspacePath) : fallbackPath;
-  if (!path) return null;
-  let additions = 0;
-  let deletions = 0;
-  let touched = false;
+  const edits = parameters.edits
+  if (!Array.isArray(edits) || edits.length === 0) return null
+  const rawPath = readStringField(parameters, ['file_path', 'filePath', 'path'])
+  const path = rawPath ? normalisePath(rawPath.trim(), workspacePath) : fallbackPath
+  if (!path) return null
+  let additions = 0
+  let deletions = 0
+  let touched = false
   for (const edit of edits) {
-    if (!edit || typeof edit !== 'object') continue;
-    const item = edit as Record<string, unknown>;
-    const oldString = item.old_string ?? item.oldString;
-    const newString = item.new_string ?? item.newString;
+    if (!edit || typeof edit !== 'object') continue
+    const item = edit as Record<string, unknown>
+    const oldString = item.old_string ?? item.oldString
+    const newString = item.new_string ?? item.newString
     if (typeof oldString === 'string') {
-      deletions += oldString.split('\n').length;
-      touched = true;
+      deletions += oldString.split('\n').length
+      touched = true
     }
     if (typeof newString === 'string') {
-      additions += newString.split('\n').length;
-      touched = true;
+      additions += newString.split('\n').length
+      touched = true
     }
   }
-  if (!touched) return null;
-  return { path, status: 'modified', additions, deletions };
+  if (!touched) return null
+  return { path, status: 'modified', additions, deletions }
 }
 
 /**
@@ -260,40 +272,62 @@ function extractMultiEditContribution(
  * Exported for tests; the aggregator below combines contributions across an
  * entire chat transcript.
  */
-export function extractToolFileContributions(activity: ToolActivity, workspacePath?: string | null): PerFileContribution[] {
-  if (!activity) return [];
-  const toolName = activity.toolName || '';
-  const parameters = activity.parameters || {};
-  const fallbackStatus = statusFromToolName(toolName) ?? 'modified';
+export function extractToolFileContributions(
+  activity: ToolActivity,
+  workspacePath?: string | null
+): PerFileContribution[] {
+  if (!activity) return []
+  const toolName = activity.toolName || ''
+  const parameters = activity.parameters || {}
+  const fallbackStatus = statusFromToolName(toolName) ?? 'modified'
 
-  const contributions: PerFileContribution[] = [];
-  const seen = new Set<string>();
+  const contributions: PerFileContribution[] = []
+  const seen = new Set<string>()
 
   const addContribution = (entry: PerFileContribution | null) => {
-    if (!entry || !entry.path) return;
-    const key = `${entry.path}::${entry.status}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    contributions.push(entry);
-  };
+    if (!entry || !entry.path) return
+    const key = `${entry.path}::${entry.status}`
+    if (seen.has(key)) return
+    seen.add(key)
+    contributions.push(entry)
+  }
 
-  const fallbackPathRaw = readStringField(parameters, ['file_path', 'filePath', 'path', 'target', 'target_file', 'target_file_path'])
-    || (activity.filePath ?? activity.affectedFilePath ?? '');
-  const fallbackPath = fallbackPathRaw ? normalisePath(String(fallbackPathRaw).trim(), workspacePath) : '';
+  const fallbackPathRaw =
+    readStringField(parameters, [
+      'file_path',
+      'filePath',
+      'path',
+      'target',
+      'target_file',
+      'target_file_path'
+    ]) ||
+    (activity.filePath ?? activity.affectedFilePath ?? '')
+  const fallbackPath = fallbackPathRaw
+    ? normalisePath(String(fallbackPathRaw).trim(), workspacePath)
+    : ''
 
   // 1. Honour a pre-computed diffSummary from the activity itself.
-  const diffSummary = activity.diffSummary;
+  const diffSummary = activity.diffSummary
   if (diffSummary?.files && diffSummary.files.length > 0) {
     for (const file of diffSummary.files) {
-      const recordCandidate = file as unknown as Record<string, unknown>;
-      addContribution(extractContributionFromChangeRecord(recordCandidate, fallbackPath, fallbackStatus, workspacePath));
+      const recordCandidate = file as unknown as Record<string, unknown>
+      addContribution(
+        extractContributionFromChangeRecord(
+          recordCandidate,
+          fallbackPath,
+          fallbackStatus,
+          workspacePath
+        )
+      )
     }
   }
 
   // 2. Per-provider rich payloads on parameters (Codex `changes`, Gemini `changes`, etc).
   if (Array.isArray(parameters.changes)) {
     for (const change of parameters.changes) {
-      addContribution(extractContributionFromChangeRecord(change, fallbackPath, fallbackStatus, workspacePath));
+      addContribution(
+        extractContributionFromChangeRecord(change, fallbackPath, fallbackStatus, workspacePath)
+      )
     }
   }
 
@@ -306,9 +340,9 @@ export function extractToolFileContributions(activity: ToolActivity, workspacePa
       typeof parameters.diff === 'string' ? parameters.diff : '',
       typeof parameters.unifiedDiff === 'string' ? parameters.unifiedDiff : '',
       typeof parameters.unified_diff === 'string' ? parameters.unified_diff : ''
-    ].find((value) => value && value.trim());
+    ].find((value) => value && value.trim())
     if (patchText) {
-      const patchSummary = parseUnifiedDiffSummary(patchText);
+      const patchSummary = parseUnifiedDiffSummary(patchText)
       if (patchSummary?.files) {
         for (const file of patchSummary.files) {
           addContribution({
@@ -316,7 +350,7 @@ export function extractToolFileContributions(activity: ToolActivity, workspacePa
             status: normaliseFileStatus(file.status as string | undefined, fallbackStatus),
             additions: file.additions,
             deletions: file.deletions
-          });
+          })
         }
       }
     }
@@ -324,8 +358,8 @@ export function extractToolFileContributions(activity: ToolActivity, workspacePa
 
   // 4. Claude MultiEdit (edits[] payload).
   if (contributions.length === 0) {
-    const multiEdit = extractMultiEditContribution(parameters, fallbackPath, workspacePath);
-    if (multiEdit) addContribution(multiEdit);
+    const multiEdit = extractMultiEditContribution(parameters, fallbackPath, workspacePath)
+    if (multiEdit) addContribution(multiEdit)
   }
 
   // 5. Whole-file content / string replacement on a single-file path.
@@ -335,45 +369,54 @@ export function extractToolFileContributions(activity: ToolActivity, workspacePa
     // `deriveToolDiffSummary` collapses everything that isn't `create_file` to
     // `modified` — but `write_file` and `write` mean "create-or-overwrite", so
     // we want to surface `created` in the panel.
-    const explicitStatusFromTool = statusFromToolName(toolName);
-    const derived = activity.diffSummary
-      || deriveToolDiffSummary(toolName, parameters, activity.resultSummary || activity.outputPreview);
+    const explicitStatusFromTool = statusFromToolName(toolName)
+    const derived =
+      activity.diffSummary ||
+      deriveToolDiffSummary(toolName, parameters, activity.resultSummary || activity.outputPreview)
     if (derived?.files && derived.files.length > 0) {
       for (const file of derived.files) {
         addContribution({
           path: file.path ? normalisePath(file.path, workspacePath) : fallbackPath,
-          status: explicitStatusFromTool ?? normaliseFileStatus(file.status as string | undefined, fallbackStatus),
+          status:
+            explicitStatusFromTool ??
+            normaliseFileStatus(file.status as string | undefined, fallbackStatus),
           additions: file.additions,
           deletions: file.deletions
-        });
+        })
       }
     } else {
       // Final fallback: at least record the file with `undefined` counts so the
       // row renders (just without a `+x -y` pill).
-      const estimate = estimateLineChanges(parameters);
+      const estimate = estimateLineChanges(parameters)
       addContribution({
         path: fallbackPath,
         status: fallbackStatus,
         additions: estimate.additions,
         deletions: estimate.deletions
-      });
+      })
     }
   }
 
-  return contributions;
+  return contributions
 }
 
-function mergeStatus(existing: DiffFileStatus | undefined, incoming: DiffFileStatus): DiffFileStatus {
-  if (!existing) return incoming;
-  const existingPriority = STATUS_PRIORITY[existing] ?? 0;
-  const incomingPriority = STATUS_PRIORITY[incoming] ?? 0;
-  return incomingPriority > existingPriority ? incoming : existing;
+function mergeStatus(
+  existing: DiffFileStatus | undefined,
+  incoming: DiffFileStatus
+): DiffFileStatus {
+  if (!existing) return incoming
+  const existingPriority = STATUS_PRIORITY[existing] ?? 0
+  const incomingPriority = STATUS_PRIORITY[incoming] ?? 0
+  return incomingPriority > existingPriority ? incoming : existing
 }
 
-function mergeNumeric(existing: number | undefined, incoming: number | undefined): number | undefined {
-  if (incoming === undefined) return existing;
-  if (existing === undefined) return incoming;
-  return existing + incoming;
+function mergeNumeric(
+  existing: number | undefined,
+  incoming: number | undefined
+): number | undefined {
+  if (incoming === undefined) return existing
+  if (existing === undefined) return incoming
+  return existing + incoming
 }
 
 function buildSummary(entry: AccumulatorEntry): DiffFileSummary {
@@ -383,7 +426,7 @@ function buildSummary(entry: AccumulatorEntry): DiffFileSummary {
     additions: entry.additions,
     deletions: entry.deletions,
     previewKind: 'none'
-  };
+  }
 }
 
 /**
@@ -397,15 +440,15 @@ export function getLiveToolFileDiffSummaries(
   messages: ChatMessage[] = [],
   workspacePath?: string | null
 ): DiffFileSummary[] {
-  const accumulator = new Map<string, AccumulatorEntry>();
+  const accumulator = new Map<string, AccumulatorEntry>()
   for (const message of messages) {
-    const activities = message?.toolActivities;
-    if (!activities) continue;
+    const activities = message?.toolActivities
+    if (!activities) continue
     for (const activity of activities) {
-      const contributions = extractToolFileContributions(activity, workspacePath);
+      const contributions = extractToolFileContributions(activity, workspacePath)
       for (const contribution of contributions) {
-        const existing = accumulator.get(contribution.path);
-        const hasStat = contribution.additions !== undefined || contribution.deletions !== undefined;
+        const existing = accumulator.get(contribution.path)
+        const hasStat = contribution.additions !== undefined || contribution.deletions !== undefined
         if (!existing) {
           accumulator.set(contribution.path, {
             path: contribution.path,
@@ -414,8 +457,8 @@ export function getLiveToolFileDiffSummaries(
             deletions: contribution.deletions,
             contributors: 1,
             statedContributors: hasStat ? 1 : 0
-          });
-          continue;
+          })
+          continue
         }
         accumulator.set(contribution.path, {
           path: existing.path,
@@ -424,13 +467,13 @@ export function getLiveToolFileDiffSummaries(
           deletions: mergeNumeric(existing.deletions, contribution.deletions),
           contributors: existing.contributors + 1,
           statedContributors: existing.statedContributors + (hasStat ? 1 : 0)
-        });
+        })
       }
     }
   }
   return Array.from(accumulator.values())
     .filter((entry) => entry.path && RENDERABLE_FILE_STATUSES.has(entry.status))
-    .map(buildSummary);
+    .map(buildSummary)
 }
 
 /**
@@ -439,8 +482,8 @@ export function getLiveToolFileDiffSummaries(
  * should appear next to the change-count header.
  */
 export function liveSummariesAreFuzzy(summaries: DiffFileSummary[]): boolean {
-  if (!summaries || summaries.length === 0) return false;
-  return summaries.some((entry) => entry.additions === undefined && entry.deletions === undefined);
+  if (!summaries || summaries.length === 0) return false
+  return summaries.some((entry) => entry.additions === undefined && entry.deletions === undefined)
 }
 
 /**
@@ -462,41 +505,41 @@ export function applyWorkspaceDiffOverlay(
   workspacePath?: string | null,
   options: { addMissing?: boolean } = {}
 ): DiffFileSummary[] {
-  if (!Array.isArray(workspaceSummaries) || workspaceSummaries.length === 0) return summaries;
-  const lookup = new Map<string, DiffFileSummary>();
+  if (!Array.isArray(workspaceSummaries) || workspaceSummaries.length === 0) return summaries
+  const lookup = new Map<string, DiffFileSummary>()
   for (const summary of workspaceSummaries) {
-    if (!summary?.path) continue;
-    lookup.set(normalisePath(summary.path, workspacePath), summary);
+    if (!summary?.path) continue
+    lookup.set(normalisePath(summary.path, workspacePath), summary)
   }
-  const seen = new Set<string>();
+  const seen = new Set<string>()
   const overlaid = summaries.map((summary) => {
-    seen.add(summary.path);
-    if (summary.additions !== undefined || summary.deletions !== undefined) return summary;
-    const match = lookup.get(summary.path);
-    if (!match) return summary;
-    if (match.additions === undefined && match.deletions === undefined) return summary;
+    seen.add(summary.path)
+    if (summary.additions !== undefined || summary.deletions !== undefined) return summary
+    const match = lookup.get(summary.path)
+    if (!match) return summary
+    if (match.additions === undefined && match.deletions === undefined) return summary
     return {
       ...summary,
       additions: match.additions,
       deletions: match.deletions
-    };
-  });
-  if (!options.addMissing) return overlaid;
+    }
+  })
+  if (!options.addMissing) return overlaid
   for (const [path, match] of lookup.entries()) {
-    if (seen.has(path)) continue;
-    if (!RENDERABLE_FILE_STATUSES.has(match.status)) continue;
+    if (seen.has(path)) continue
+    if (!RENDERABLE_FILE_STATUSES.has(match.status)) continue
     overlaid.push({
       path,
       status: match.status,
       additions: match.additions,
       deletions: match.deletions,
       previewKind: 'none'
-    });
+    })
   }
-  return overlaid;
+  return overlaid
 }
 
 export const __test__ = {
   countDiffStatsFromUnifiedDiff,
   extractMultiEditContribution
-};
+}

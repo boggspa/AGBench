@@ -1,15 +1,15 @@
-import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/types';
+import type { ChatMessage, ChatRecord, ProviderId } from '../../../main/store/types'
 
 interface SubThreadDelegationCardProps {
-  message: ChatMessage;
+  message: ChatMessage
   /** All chats — used to look up the live sub-thread record by id so the
    * card can render Created / Running / Completed / Returned / Failed status. */
-  chats: ChatRecord[];
+  chats: ChatRecord[]
   /** Which chat ids currently have an active run on the run-queue. The
    * status display ticks "Running ▶" while the sub-thread's id is in
    * this set. */
-  runningChatIds?: string[];
-  onOpenSubThread?: (chatId: string) => void;
+  runningChatIds?: string[]
+  onOpenSubThread?: (chatId: string) => void
 }
 
 type DelegationCardStatus =
@@ -19,22 +19,22 @@ type DelegationCardStatus =
   | { kind: 'failed'; reason?: string }
   | { kind: 'cancelled'; reason?: string }
   | { kind: 'returned' }
-  | { kind: 'unknown' };
+  | { kind: 'unknown' }
 
 function providerLabel(provider?: ProviderId | string): string {
-  if (provider === 'codex') return 'Codex';
-  if (provider === 'claude') return 'Claude';
-  if (provider === 'kimi') return 'Kimi';
-  if (provider === 'gemini') return 'Gemini';
-  return 'Sub-thread';
+  if (provider === 'codex') return 'Codex'
+  if (provider === 'claude') return 'Claude'
+  if (provider === 'kimi') return 'Kimi'
+  if (provider === 'gemini') return 'Gemini'
+  return 'Sub-thread'
 }
 
 function textValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
 }
 
 export function isSubThreadDelegationMessage(message: ChatMessage): boolean {
-  return message.role === 'system' && message.metadata?.kind === 'subThreadDelegation';
+  return message.role === 'system' && message.metadata?.kind === 'subThreadDelegation'
 }
 
 /** Determine the visible status of a sub-thread based on its persisted
@@ -44,20 +44,20 @@ export function resolveDelegationStatus(
   subThread: ChatRecord | undefined,
   runningChatIds: Set<string>
 ): DelegationCardStatus {
-  if (!subThread) return { kind: 'unknown' };
-  if (runningChatIds.has(subThread.appChatId)) return { kind: 'running' };
+  if (!subThread) return { kind: 'unknown' }
+  if (runningChatIds.has(subThread.appChatId)) return { kind: 'running' }
 
   if (subThread.delegationContext?.dispatchError) {
     return {
       kind: 'failed',
       reason: 'Failed to start'
-    };
+    }
   }
 
-  const lastRun = subThread.runs?.[subThread.runs.length - 1];
+  const lastRun = subThread.runs?.[subThread.runs.length - 1]
   if (!lastRun) {
     // Sub-thread exists but no run has been recorded yet.
-    return { kind: 'created' };
+    return { kind: 'created' }
   }
   if (
     lastRun.status === 'running' ||
@@ -66,60 +66,60 @@ export function resolveDelegationStatus(
     lastRun.status === 'active' ||
     lastRun.status === 'paused'
   ) {
-    return { kind: 'running' };
+    return { kind: 'running' }
   }
-  const resultReturnedAt = subThread.delegationContext?.resultReturnedAt;
-  const lastRunEndedAt = lastRun.endedAt ? Date.parse(lastRun.endedAt) : NaN;
+  const resultReturnedAt = subThread.delegationContext?.resultReturnedAt
+  const lastRunEndedAt = lastRun.endedAt ? Date.parse(lastRun.endedAt) : NaN
   if (
     resultReturnedAt &&
     (!Number.isFinite(lastRunEndedAt) || lastRunEndedAt <= resultReturnedAt)
   ) {
-    return { kind: 'returned' };
+    return { kind: 'returned' }
   }
   if (lastRun.status === 'success' || lastRun.status === 'success_with_warnings') {
-    return { kind: 'completed' };
+    return { kind: 'completed' }
   }
-  if (lastRun.status === 'failed') return { kind: 'failed', reason: 'Run failed' };
-  if (lastRun.status === 'cancelled') return { kind: 'cancelled', reason: 'Run cancelled' };
-  if (!lastRun.endedAt) return { kind: 'running' };
-  return { kind: 'unknown' };
+  if (lastRun.status === 'failed') return { kind: 'failed', reason: 'Run failed' }
+  if (lastRun.status === 'cancelled') return { kind: 'cancelled', reason: 'Run cancelled' }
+  if (!lastRun.endedAt) return { kind: 'running' }
+  return { kind: 'unknown' }
 }
 
 function statusGlyph(status: DelegationCardStatus): string {
   switch (status.kind) {
     case 'created':
-      return '·';
+      return '·'
     case 'running':
-      return '▶';
+      return '▶'
     case 'completed':
-      return '✓';
+      return '✓'
     case 'failed':
-      return '✗';
+      return '✗'
     case 'cancelled':
-      return '⊘';
+      return '⊘'
     case 'returned':
-      return '↩';
+      return '↩'
     default:
-      return '·';
+      return '·'
   }
 }
 
 function statusLabel(status: DelegationCardStatus): string {
   switch (status.kind) {
     case 'created':
-      return 'Created';
+      return 'Created'
     case 'running':
-      return 'Running';
+      return 'Running'
     case 'completed':
-      return 'Completed';
+      return 'Completed'
     case 'failed':
-      return status.reason || 'Failed';
+      return status.reason || 'Failed'
     case 'cancelled':
-      return status.reason || 'Cancelled';
+      return status.reason || 'Cancelled'
     case 'returned':
-      return 'Returned';
+      return 'Returned'
     default:
-      return 'Pending';
+      return 'Pending'
   }
 }
 
@@ -129,32 +129,35 @@ export function SubThreadDelegationCard({
   runningChatIds = [],
   onOpenSubThread
 }: SubThreadDelegationCardProps) {
-  const metadata = message.metadata || {};
-  const subThreadId = textValue(metadata.subThreadId);
-  const parentProvider = typeof metadata.parentProvider === 'string'
-    ? metadata.parentProvider as ProviderId
-    : undefined;
-  const targetProvider = typeof metadata.subThreadProvider === 'string'
-    ? metadata.subThreadProvider as ProviderId
-    : undefined;
-  const subThreadTitle = textValue(metadata.subThreadTitle) || 'Untitled sub-thread';
-  const promptPreview = textValue(metadata.delegationPromptPreview) || textValue(metadata.delegationPrompt) || '';
-  const returnResultToParent = metadata.returnResultToParent === true;
+  const metadata = message.metadata || {}
+  const subThreadId = textValue(metadata.subThreadId)
+  const parentProvider =
+    typeof metadata.parentProvider === 'string'
+      ? (metadata.parentProvider as ProviderId)
+      : undefined
+  const targetProvider =
+    typeof metadata.subThreadProvider === 'string'
+      ? (metadata.subThreadProvider as ProviderId)
+      : undefined
+  const subThreadTitle = textValue(metadata.subThreadTitle) || 'Untitled sub-thread'
+  const promptPreview =
+    textValue(metadata.delegationPromptPreview) || textValue(metadata.delegationPrompt) || ''
+  const returnResultToParent = metadata.returnResultToParent === true
 
-  const subThread = subThreadId ? chats.find((chat) => chat.appChatId === subThreadId) : undefined;
-  const runningSet = new Set(runningChatIds);
-  const status = resolveDelegationStatus(subThread, runningSet);
-  const dispatchErrorMessage = textValue(subThread?.delegationContext?.dispatchError?.message);
+  const subThread = subThreadId ? chats.find((chat) => chat.appChatId === subThreadId) : undefined
+  const runningSet = new Set(runningChatIds)
+  const status = resolveDelegationStatus(subThread, runningSet)
+  const dispatchErrorMessage = textValue(subThread?.delegationContext?.dispatchError?.message)
 
-  const parentColorVar = `var(--provider-${parentProvider || 'gemini'}-color)`;
-  const targetColorVar = `var(--provider-${targetProvider || 'gemini'}-color)`;
+  const parentColorVar = `var(--provider-${parentProvider || 'gemini'}-color)`
+  const targetColorVar = `var(--provider-${targetProvider || 'gemini'}-color)`
 
   const handleOpen = () => {
-    if (subThreadId && onOpenSubThread) onOpenSubThread(subThreadId);
-  };
+    if (subThreadId && onOpenSubThread) onOpenSubThread(subThreadId)
+  }
 
-  const isClickable = Boolean(subThreadId && onOpenSubThread);
-  const resultReturned = returnResultToParent && status.kind === 'returned';
+  const isClickable = Boolean(subThreadId && onOpenSubThread)
+  const resultReturned = returnResultToParent && status.kind === 'returned'
 
   return (
     <article
@@ -163,10 +166,10 @@ export function SubThreadDelegationCard({
       tabIndex={isClickable ? 0 : undefined}
       onClick={isClickable ? handleOpen : undefined}
       onKeyDown={(event) => {
-        if (!isClickable) return;
+        if (!isClickable) return
         if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          handleOpen();
+          event.preventDefault()
+          handleOpen()
         }
       }}
       title={isClickable ? 'Open sub-thread' : undefined}
@@ -215,5 +218,5 @@ export function SubThreadDelegationCard({
         </div>
       )}
     </article>
-  );
+  )
 }

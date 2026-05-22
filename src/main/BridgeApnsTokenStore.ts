@@ -123,7 +123,9 @@ export class BridgeApnsTokenStore {
       writeFileSync(tmpPath, serialized, 'utf-8')
       renameSync(tmpPath, this.storagePath)
     } catch (err) {
-      this.log(`[BridgeApnsTokenStore] persist failed: ${err instanceof Error ? err.message : String(err)}`)
+      this.log(
+        `[BridgeApnsTokenStore] persist failed: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 
@@ -133,7 +135,9 @@ export class BridgeApnsTokenStore {
       const raw = readFileSync(this.storagePath, 'utf-8')
       const parsed = JSON.parse(raw) as unknown
       if (!isPersistedShape(parsed) || parsed.version !== SCHEMA_VERSION) {
-        this.log(`[BridgeApnsTokenStore] discarded malformed/unknown-version token file at ${this.storagePath}`)
+        this.log(
+          `[BridgeApnsTokenStore] discarded malformed/unknown-version token file at ${this.storagePath}`
+        )
         return
       }
       for (const entry of parsed.tokens) {
@@ -143,7 +147,9 @@ export class BridgeApnsTokenStore {
       }
       this.log(`[BridgeApnsTokenStore] loaded ${this.tokens.size} tokens from ${this.storagePath}`)
     } catch (err) {
-      this.log(`[BridgeApnsTokenStore] load failed (starting empty): ${err instanceof Error ? err.message : String(err)}`)
+      this.log(
+        `[BridgeApnsTokenStore] load failed (starting empty): ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 }

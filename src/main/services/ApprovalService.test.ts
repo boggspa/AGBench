@@ -65,7 +65,9 @@ function makeDeps(overrides: Partial<ApprovalServiceDeps> = {}): {
     },
     permissionService: {
       applyApprovalDecision: vi.fn(() => true),
-      isApprovedAction: vi.fn((action: string) => action === 'accept' || action === 'acceptForSession')
+      isApprovedAction: vi.fn(
+        (action: string) => action === 'accept' || action === 'acceptForSession'
+      )
     },
     appendDurableRunEventForRoute: vi.fn(),
     resolveApprovalLedger: vi.fn(),
@@ -477,7 +479,11 @@ describe('ApprovalService — resolve dispatch', () => {
     svc.registerMain('m-1', { provider: 'gemini', resolve: vi.fn() })
     await svc.resolve('m-1', 'decline', {
       decisionSource: 'system',
-      extraMetadata: { autoDeniedByTimeout: true, timeoutMs: 30_000, timeoutSource: 'providerDefault' }
+      extraMetadata: {
+        autoDeniedByTimeout: true,
+        timeoutMs: 30_000,
+        timeoutSource: 'providerDefault'
+      }
     })
     expect(spies.resolveApprovalLedger).toHaveBeenCalledWith(
       'm-1',
@@ -508,7 +514,11 @@ describe('ApprovalService — wake-push gating', () => {
       remove: vi.fn()
     }
     const pusher = {
-      pushApprovalToToken: vi.fn(async () => ({ delivered: true, apnsId: 'apns-1', reason: 'sent' }))
+      pushApprovalToToken: vi.fn(async () => ({
+        delivered: true,
+        apnsId: 'apns-1',
+        reason: 'sent'
+      }))
     }
     const { deps, spies } = makeDeps({
       getApnsPusher: () => pusher as never,
@@ -525,9 +535,7 @@ describe('ApprovalService — wake-push gating', () => {
     // Microtask flush so any async work would run.
     await new Promise((r) => setTimeout(r, 0))
     expect(pusher.pushApprovalToToken).not.toHaveBeenCalled()
-    expect(spies.log).toHaveBeenCalledWith(
-      expect.stringContaining('user is at desktop')
-    )
+    expect(spies.log).toHaveBeenCalledWith(expect.stringContaining('user is at desktop'))
   })
 
   it('fires push when user is away from desktop', async () => {
@@ -537,7 +545,7 @@ describe('ApprovalService — wake-push gating', () => {
     }
     const pushFn = vi.fn(async () => ({ delivered: true, apnsId: 'apns-1', reason: '' }))
     const { deps } = makeDeps({
-      getApnsPusher: () => ({ pushApprovalToToken: pushFn } as never),
+      getApnsPusher: () => ({ pushApprovalToToken: pushFn }) as never,
       getApnsTokenStore: () => tokenStore as never,
       isUserAtDesktop: () => false
     })
@@ -564,7 +572,7 @@ describe('ApprovalService — wake-push gating', () => {
     }
     const pushFn = vi.fn(async () => ({ delivered: false, apnsId: '', reason: 'Unregistered' }))
     const { deps } = makeDeps({
-      getApnsPusher: () => ({ pushApprovalToToken: pushFn } as never),
+      getApnsPusher: () => ({ pushApprovalToToken: pushFn }) as never,
       getApnsTokenStore: () => tokenStore as never,
       isUserAtDesktop: () => false
     })

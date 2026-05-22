@@ -93,7 +93,7 @@ const APNS_HOST_SANDBOX = 'https://api.sandbox.push.apple.com'
 
 interface CachedJwt {
   token: string
-  expiresAt: number  // ms since epoch
+  expiresAt: number // ms since epoch
 }
 
 interface CachedSession {
@@ -164,7 +164,8 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     return {
       delivered: false,
       apnsId: '',
-      reason: 'Http2ApnsPusher: device-token lookup not wired in pushApprovalNeeded (use pushApprovalToToken instead)'
+      reason:
+        'Http2ApnsPusher: device-token lookup not wired in pushApprovalNeeded (use pushApprovalToToken instead)'
     }
   }
 
@@ -215,7 +216,11 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
     for (const env of Object.keys(this.sessions) as BridgeApnsEnv[]) {
       const cached = this.sessions[env]
       if (cached) {
-        try { cached.session.close() } catch { /* best effort */ }
+        try {
+          cached.session.close()
+        } catch {
+          /* best effort */
+        }
         delete this.sessions[env]
       }
     }
@@ -277,15 +282,23 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
   /** Build the JWT Apple requires: ES256-signed `{header.claims}` where
    * header = {alg:ES256, kid, typ:JWT} and claims = {iss:teamId, iat}. */
   private signJwt(nowMs: number): string {
-    const header = base64url(Buffer.from(JSON.stringify({
-      alg: 'ES256',
-      kid: this.keyId,
-      typ: 'JWT'
-    })))
-    const claims = base64url(Buffer.from(JSON.stringify({
-      iss: this.teamId,
-      iat: Math.floor(nowMs / 1000)
-    })))
+    const header = base64url(
+      Buffer.from(
+        JSON.stringify({
+          alg: 'ES256',
+          kid: this.keyId,
+          typ: 'JWT'
+        })
+      )
+    )
+    const claims = base64url(
+      Buffer.from(
+        JSON.stringify({
+          iss: this.teamId,
+          iat: Math.floor(nowMs / 1000)
+        })
+      )
+    )
     const signingInput = `${header}.${claims}`
     // Node's createSign for ES256 returns ASN.1 DER signature by
     // default; APNs requires raw r||s concatenation. Convert.
@@ -358,7 +371,9 @@ export class Http2ApnsPusher implements BridgeApnsPusher {
         try {
           const parsed = JSON.parse(responseBody) as { reason?: string }
           if (parsed.reason) reason = parsed.reason
-        } catch { /* keep status-only reason */ }
+        } catch {
+          /* keep status-only reason */
+        }
         resolve({ delivered: false, apnsId, reason })
       })
       req.on('error', (err) => {

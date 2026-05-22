@@ -247,7 +247,7 @@ describe('RemoteWorkspaceAllowlist', () => {
         updatedAt: 1
       }
       const badEntry = {
-        workspaceId: 'bad',
+        workspaceId: 'bad'
         // missing required fields
       }
       writeFileSync(

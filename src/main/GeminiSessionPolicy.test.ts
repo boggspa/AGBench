@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { GEMINI_WRITE_RESUME_SKIPPED_REASON, resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
+import {
+  GEMINI_WRITE_RESUME_SKIPPED_REASON,
+  resolveGeminiCliResumePolicy
+} from './GeminiSessionPolicy'
 
 describe('GeminiSessionPolicy', () => {
   it('allows resume only for explicit plan mode sessions', () => {

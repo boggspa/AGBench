@@ -100,9 +100,12 @@ export function buildCodexAgentbenchMcpArgs(config: CodexMcpAgentbenchConfig): s
   const args = config.bridgeArgs.map((arg) => `"${tomlEscapeString(arg)}"`).join(', ')
   const parentProvider = tomlEscapeString(config.parentProvider)
   return [
-    '-c', `mcp_servers.AGBench.command="${command}"`,
-    '-c', `mcp_servers.AGBench.args=[${args}]`,
-    '-c', `mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
+    '-c',
+    `mcp_servers.AGBench.command="${command}"`,
+    '-c',
+    `mcp_servers.AGBench.args=[${args}]`,
+    '-c',
+    `mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
   ]
 }
 
@@ -212,7 +215,14 @@ export class CodexAppServerClient {
     // from the inline `mcp_servers.AGBench.env` override (belt &
     // braces — Codex CLI strips inherited env from MCP subprocesses
     // on some platforms, so we set it both ways).
-    const mcpArgs = buildCodexAgentbenchMcpArgs(this.mcpConfig ?? { enabled: false, bridgeBinaryPath: '', bridgeArgs: [], parentProvider: 'codex' })
+    const mcpArgs = buildCodexAgentbenchMcpArgs(
+      this.mcpConfig ?? {
+        enabled: false,
+        bridgeBinaryPath: '',
+        bridgeArgs: [],
+        parentProvider: 'codex'
+      }
+    )
     const codexArgs = [...mcpArgs, 'app-server']
     const codexEnv: Record<string, string> = {
       FORCE_COLOR: '0',
@@ -235,7 +245,9 @@ export class CodexAppServerClient {
     })
 
     this.proc.on('close', (code) => {
-      this.stderrHandler?.(`Codex app-server exited with code ${typeof code === 'number' ? code : 'unknown'}.`)
+      this.stderrHandler?.(
+        `Codex app-server exited with code ${typeof code === 'number' ? code : 'unknown'}.`
+      )
       this.proc = null
       this.stdoutReader?.close()
       this.stdoutReader = null
@@ -247,16 +259,20 @@ export class CodexAppServerClient {
       this.rejectPending(error)
     })
 
-    await this.request('initialize', {
-      clientInfo: {
-        name: 'guigemini',
-        title: 'GUIGemini',
-        version: appVersion
+    await this.request(
+      'initialize',
+      {
+        clientInfo: {
+          name: 'guigemini',
+          title: 'GUIGemini',
+          version: appVersion
+        },
+        capabilities: {
+          experimentalApi: true
+        }
       },
-      capabilities: {
-        experimentalApi: true
-      }
-    }, 15_000)
+      15_000
+    )
     this.notify('initialized')
   }
 
@@ -272,7 +288,11 @@ export class CodexAppServerClient {
     }
 
     const id = parsed?.id
-    if (id !== undefined && (Object.prototype.hasOwnProperty.call(parsed, 'result') || Object.prototype.hasOwnProperty.call(parsed, 'error'))) {
+    if (
+      id !== undefined &&
+      (Object.prototype.hasOwnProperty.call(parsed, 'result') ||
+        Object.prototype.hasOwnProperty.call(parsed, 'error'))
+    ) {
       const pending = this.pending.get(id)
       if (!pending) return
       clearTimeout(pending.timeout)

@@ -138,7 +138,12 @@ describe('BenchmarkPrimitives', () => {
         scorers: [
           { id: 'text', kind: 'regex_match', pattern: '42' },
           { id: 'file', kind: 'file_exists', path: 'nested/result.json' },
-          { id: 'artifact', kind: 'artifact_exists', artifactName: 'stdout.txt', artifactKind: 'stdout' }
+          {
+            id: 'artifact',
+            kind: 'artifact_exists',
+            artifactName: 'stdout.txt',
+            artifactKind: 'stdout'
+          }
         ]
       }
       const environment = await captureBenchmarkEnvironmentManifest({

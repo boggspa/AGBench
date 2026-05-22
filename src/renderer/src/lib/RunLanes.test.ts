@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { ChatRecord, RunQueueJob, ScheduledTask, RuntimeProfile } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  RunQueueJob,
+  ScheduledTask,
+  RuntimeProfile
+} from '../../../main/store/types'
 import { buildRunLanes } from './RunLanes'
 
 const now = '2026-05-12T10:00:00.000Z'
@@ -76,27 +81,37 @@ describe('buildRunLanes', () => {
   it('normalizes queued, scheduled, and completed runs into one lane model', () => {
     const sourceChat = chat({
       messages: [{ id: 'msg-1', role: 'user', content: 'completed prompt', timestamp: now }],
-      runs: [{
-        runId: 'completed-1',
-        provider: 'codex',
-        startedAt: now,
-        endedAt: now,
-        promptMessageId: 'msg-1',
-        status: 'success',
-        runtimeProfileId: 'profile-1',
-        runDiff: {
-          createdFiles: [],
-          modifiedFiles: [{ path: 'src/app.ts' }],
-          deletedFiles: []
-        } as any
-      }]
+      runs: [
+        {
+          runId: 'completed-1',
+          provider: 'codex',
+          startedAt: now,
+          endedAt: now,
+          promptMessageId: 'msg-1',
+          status: 'success',
+          runtimeProfileId: 'profile-1',
+          runDiff: {
+            createdFiles: [],
+            modifiedFiles: [{ path: 'src/app.ts' }],
+            deletedFiles: []
+          } as any
+        }
+      ]
     })
 
     const lanes = buildRunLanes(
       [queuedJob()],
       [sourceChat],
       [scheduledTask()],
-      [runtimeProfile(), runtimeProfile({ id: 'profile-2', name: 'Gemini local', provider: 'gemini', workspaceMode: 'local' })]
+      [
+        runtimeProfile(),
+        runtimeProfile({
+          id: 'profile-2',
+          name: 'Gemini local',
+          provider: 'gemini',
+          workspaceMode: 'local'
+        })
+      ]
     )
 
     expect(lanes.map((lane) => lane.id)).toEqual(['job:run-1', 'task:task-1', 'run:completed-1'])
@@ -106,14 +121,23 @@ describe('buildRunLanes', () => {
       handoffSourceRunId: 'source-run',
       blockedReason: 'Waiting for this chat to finish its active run.'
     })
-    expect(lanes[1]).toMatchObject({ phase: 'scheduled', blockedReason: 'Due and waiting for this chat to become idle.' })
+    expect(lanes[1]).toMatchObject({
+      phase: 'scheduled',
+      blockedReason: 'Due and waiting for this chat to become idle.'
+    })
     expect(lanes[2].touchedFiles).toEqual(['src/app.ts'])
   })
 
   it('flags live lanes sharing the same workspace before launch', () => {
     const lanes = buildRunLanes(
       [
-        queuedJob({ runId: 'active-1', id: 'active-1', status: 'active', provider: 'gemini', runtimeProfileId: undefined }),
+        queuedJob({
+          runId: 'active-1',
+          id: 'active-1',
+          status: 'active',
+          provider: 'gemini',
+          runtimeProfileId: undefined
+        }),
         queuedJob({ runId: 'queued-2', id: 'queued-2', provider: 'codex' })
       ],
       [chat()],

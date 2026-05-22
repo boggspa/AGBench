@@ -132,7 +132,7 @@ export function detectCrossProviderDelegationMisuse(
  * this verbatim from the `provider_warning` event. */
 export function crossProviderDelegationWarningMessage(): string {
   return (
-    'This delegation used Gemini\'s internal agents (no AGBench sub-thread spawned). ' +
+    "This delegation used Gemini's internal agents (no AGBench sub-thread spawned). " +
     'For cross-provider delegation to Kimi/Codex/Claude, the agent should call ' +
     'AGBench__delegate_to_subthread instead.'
   )

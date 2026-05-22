@@ -378,7 +378,6 @@ async function loadImageParts(
       try {
         return await fsPromises.readFile(path)
       } catch (error) {
-        // eslint-disable-next-line no-console
         console.warn(
           `[GeminiApiProvider] Image read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`
         )
@@ -390,17 +389,13 @@ async function loadImageParts(
     if (!imagePath || typeof imagePath !== 'string') continue
     const mimeType = sniffImageMimeType(imagePath)
     if (!mimeType) {
-      // eslint-disable-next-line no-console
-      console.warn(
-        `[GeminiApiProvider] Skipping image with unsupported extension: ${imagePath}`
-      )
+      console.warn(`[GeminiApiProvider] Skipping image with unsupported extension: ${imagePath}`)
       continue
     }
     let bytes: Buffer | null
     try {
       bytes = await reader(imagePath)
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.warn(
         `[GeminiApiProvider] Image read threw for ${imagePath}: ${error instanceof Error ? error.message : String(error)}`
       )
@@ -421,7 +416,6 @@ async function loadImageParts(
     // test that didn't mock it).
     const uploader = client?.files?.upload
     if (typeof uploader !== 'function') {
-      // eslint-disable-next-line no-console
       console.warn(
         `[GeminiApiProvider] Image ${imagePath} exceeds inline limit (${bytes.length} > ${INLINE_IMAGE_MAX_BYTES}) and SDK files.upload is unavailable; skipping.`
       )
@@ -434,10 +428,7 @@ async function loadImageParts(
       })
       const fileUri = typeof uploaded?.uri === 'string' ? uploaded.uri : ''
       if (!fileUri) {
-        // eslint-disable-next-line no-console
-        console.warn(
-          `[GeminiApiProvider] files.upload returned no uri for ${imagePath}; skipping.`
-        )
+        console.warn(`[GeminiApiProvider] files.upload returned no uri for ${imagePath}; skipping.`)
         continue
       }
       parts.push({
@@ -447,7 +438,6 @@ async function loadImageParts(
         }
       })
     } catch (error) {
-      // eslint-disable-next-line no-console
       console.warn(
         `[GeminiApiProvider] files.upload failed for ${imagePath}: ${error instanceof Error ? error.message : String(error)}`
       )

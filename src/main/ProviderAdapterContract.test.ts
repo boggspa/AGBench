@@ -51,7 +51,9 @@ describe('makeFakeProviderAdapter', () => {
   it('respects overrides', async () => {
     const adapter = makeFakeProviderAdapter('codex', {
       label: 'Custom Label',
-      async cancel(_runId?: string) { return true }
+      async cancel(_runId?: string) {
+        return true
+      }
     })
     expect(adapter.label).toBe('Custom Label')
     expect(await adapter.cancel()).toBe(true)

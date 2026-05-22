@@ -9,11 +9,12 @@ import type {
 import type { AgentRunRoute } from '../index'
 import type { RunManager } from '../RunManager'
 import type { PermissionService } from '../PermissionService'
+import type { ApprovalTimeoutScheduler, ApprovalTimeoutReason } from '../ApprovalTimeoutScheduler'
 import type {
-  ApprovalTimeoutScheduler,
-  ApprovalTimeoutReason
-} from '../ApprovalTimeoutScheduler'
-import type { BridgeApnsPusher, BridgeApprovalPushPayload, BridgeApnsPushResult } from '../BridgeApnsPusher'
+  BridgeApnsPusher,
+  BridgeApprovalPushPayload,
+  BridgeApnsPushResult
+} from '../BridgeApnsPusher'
 import type { BridgeApnsTokenStore } from '../BridgeApnsTokenStore'
 
 /**
@@ -197,11 +198,7 @@ export interface ApprovalServiceDeps {
     state?: AgentRunRoute | null
   ) => void
   /** Reply to a pending Kimi wire request. */
-  respondToKimiWireRequest: (
-    child: ChildProcess,
-    rpcId: number | string,
-    result: unknown
-  ) => void
+  respondToKimiWireRequest: (child: ChildProcess, rpcId: number | string, result: unknown) => void
   /** Execute a previously-pending host command. */
   runApprovedHostCommand: (approvalId: string) => Promise<boolean>
   /** Active CLI provider processes (for Kimi cancel kill cleanup). */
@@ -414,9 +411,7 @@ export class ApprovalService {
     const tokens = tokenStore.list()
     if (tokens.length === 0) return
     if (this.deps.isUserAtDesktop()) {
-      this.deps.log(
-        `[APNs] skipping approval push for ${args.approvalId} — user is at desktop`
-      )
+      this.deps.log(`[APNs] skipping approval push for ${args.approvalId} — user is at desktop`)
       return
     }
     const maybePushable = pusher as unknown as {
@@ -430,23 +425,17 @@ export class ApprovalService {
     for (const entry of tokens) {
       void (async () => {
         try {
-          const result = await maybePushable.pushApprovalToToken!(
-            entry.deviceToken,
-            entry.env,
-            {
-              pairID: entry.pairID,
-              workspaceId: args.workspaceId,
-              threadId: args.threadId,
-              toolCallId: args.approvalId,
-              summary: args.summary
-            }
-          )
+          const result = await maybePushable.pushApprovalToToken!(entry.deviceToken, entry.env, {
+            pairID: entry.pairID,
+            workspaceId: args.workspaceId,
+            threadId: args.threadId,
+            toolCallId: args.approvalId,
+            summary: args.summary
+          })
           if (!result.delivered) {
             const reason = result.reason ?? ''
             if (/^Unregistered$|^BadDeviceToken$/i.test(reason)) {
-              this.deps.log(
-                `[APNs] pruning dead token for pairID=${entry.pairID}: ${reason}`
-              )
+              this.deps.log(`[APNs] pruning dead token for pairID=${entry.pairID}: ${reason}`)
               tokenStore.remove(entry.pairID)
             } else if (reason && reason !== 'noop') {
               this.deps.log(
@@ -486,7 +475,8 @@ export class ApprovalService {
     // ── Main authority approval ─────────────────────────────────
     const pendingMain = this.pendingMain.get(requestId)
     if (pendingMain) {
-      const session = this.deps.runManager.resolveApproval(requestId) ||
+      const session =
+        this.deps.runManager.resolveApproval(requestId) ||
         this.deps.runManager.get(pendingMain.runId)
       this.deps.appendDurableRunEventForRoute(
         pendingMain.provider,
@@ -513,7 +503,8 @@ export class ApprovalService {
     // ── Gemini tool approval ────────────────────────────────────
     const pendingGeminiTool = this.pendingGeminiTool.get(requestId)
     if (pendingGeminiTool) {
-      const session = this.deps.runManager.resolveApproval(requestId) ||
+      const session =
+        this.deps.runManager.resolveApproval(requestId) ||
         this.deps.runManager.get(pendingGeminiTool.runId)
       this.deps.appendDurableRunEventForRoute(
         pendingGeminiTool.provider,
@@ -598,7 +589,8 @@ export class ApprovalService {
     // ── Kimi wire approval ──────────────────────────────────────
     const pendingKimi = this.pendingKimi.get(requestId)
     if (pendingKimi) {
-      const session = this.deps.runManager.resolveApproval(requestId) ||
+      const session =
+        this.deps.runManager.resolveApproval(requestId) ||
         this.deps.runManager.get(pendingKimi.runId)
       this.deps.appendDurableRunEventForRoute(
         'kimi',
@@ -624,11 +616,12 @@ export class ApprovalService {
       this.deps.runManager.clearApproval(requestId)
       const params = pendingKimi.params as { payload?: { id?: string } } | null
       const payload = params?.payload || {}
-      const response = action === 'acceptForSession' || action === 'acceptForWorkspace'
-        ? 'approve_for_session'
-        : action === 'accept'
-          ? 'approve'
-          : 'reject'
+      const response =
+        action === 'acceptForSession' || action === 'acceptForWorkspace'
+          ? 'approve_for_session'
+          : action === 'accept'
+            ? 'approve'
+            : 'reject'
       this.deps.respondToKimiWireRequest(pendingKimi.child, pendingKimi.rpcId, {
         request_id: payload.id || requestId,
         response,
@@ -647,8 +640,8 @@ export class ApprovalService {
     if (!pending || !codexClient) {
       return false
     }
-    const session = this.deps.runManager.resolveApproval(requestId) ||
-      this.deps.runManager.get(pending.runId)
+    const session =
+      this.deps.runManager.resolveApproval(requestId) || this.deps.runManager.get(pending.runId)
     this.deps.appendDurableRunEventForRoute(
       'codex',
       { appRunId: session?.runId || pending.runId, appChatId: session?.appChatId },
@@ -711,7 +704,10 @@ export class ApprovalService {
     // prompt-level fix made them actually try the tool. See
     // ~/Library/Logs/AGBench/bridge-subprocess.log + the codex run's
     // raw events stream for `mcpServer/elicitation/request`.
-    if (pending.method === 'mcp/elicitation/request' || pending.method === 'mcpServer/elicitation/request') {
+    if (
+      pending.method === 'mcp/elicitation/request' ||
+      pending.method === 'mcpServer/elicitation/request'
+    ) {
       codexClient.respond(pending.rpcId, {
         action: action === 'acceptForSession' ? 'accept' : action,
         content: options?.userInput ?? null,
@@ -722,9 +718,7 @@ export class ApprovalService {
 
     if (pending.method === 'tool/requestUserInput') {
       if (action === 'accept' || action === 'acceptForSession') {
-        const answers = options?.userInput !== undefined
-          ? { default: options.userInput }
-          : {}
+        const answers = options?.userInput !== undefined ? { default: options.userInput } : {}
         codexClient.respond(pending.rpcId, { answers })
       } else {
         codexClient.reject(pending.rpcId, `User ${action}ed Codex input request.`)

@@ -119,7 +119,9 @@ export class RemoteWorkspaceAllowlist {
     }
     this.entries.set(entry.workspaceId, merged)
     this.persist()
-    this.log(`[RemoteWorkspaceAllowlist] upserted workspaceId=${entry.workspaceId} mode=${entry.mode}`)
+    this.log(
+      `[RemoteWorkspaceAllowlist] upserted workspaceId=${entry.workspaceId} mode=${entry.mode}`
+    )
     return merged
   }
 
@@ -174,7 +176,10 @@ export class RemoteWorkspaceAllowlist {
         reason: `Provider "${check.provider}" is not allowed for workspace "${check.workspaceId}"`
       }
     }
-    if (check.approvalMode !== undefined && !entry.allowedApprovalModes.includes(check.approvalMode)) {
+    if (
+      check.approvalMode !== undefined &&
+      !entry.allowedApprovalModes.includes(check.approvalMode)
+    ) {
       return {
         allowed: false,
         reason: `Approval mode "${check.approvalMode}" is not allowed for workspace "${check.workspaceId}"`
@@ -198,7 +203,9 @@ export class RemoteWorkspaceAllowlist {
       writeFileSync(tmpPath, serialized, 'utf-8')
       renameSync(tmpPath, this.storagePath)
     } catch (err) {
-      this.log(`[RemoteWorkspaceAllowlist] persist failed: ${err instanceof Error ? err.message : String(err)}`)
+      this.log(
+        `[RemoteWorkspaceAllowlist] persist failed: ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 
@@ -208,12 +215,16 @@ export class RemoteWorkspaceAllowlist {
       const raw = readFileSync(this.storagePath, 'utf-8')
       const parsed = JSON.parse(raw) as unknown
       if (!isPersistedShape(parsed)) {
-        this.log(`[RemoteWorkspaceAllowlist] discarded malformed allowlist file at ${this.storagePath}`)
+        this.log(
+          `[RemoteWorkspaceAllowlist] discarded malformed allowlist file at ${this.storagePath}`
+        )
         return
       }
       if (parsed.version !== SCHEMA_VERSION) {
         // Future migration hook lands here. For now: drop unknown versions.
-        this.log(`[RemoteWorkspaceAllowlist] unknown schema version ${parsed.version} — starting empty`)
+        this.log(
+          `[RemoteWorkspaceAllowlist] unknown schema version ${parsed.version} — starting empty`
+        )
         return
       }
       for (const entry of parsed.entries) {
@@ -221,9 +232,13 @@ export class RemoteWorkspaceAllowlist {
           this.entries.set(entry.workspaceId, entry)
         }
       }
-      this.log(`[RemoteWorkspaceAllowlist] loaded ${this.entries.size} entries from ${this.storagePath}`)
+      this.log(
+        `[RemoteWorkspaceAllowlist] loaded ${this.entries.size} entries from ${this.storagePath}`
+      )
     } catch (err) {
-      this.log(`[RemoteWorkspaceAllowlist] load failed (starting empty): ${err instanceof Error ? err.message : String(err)}`)
+      this.log(
+        `[RemoteWorkspaceAllowlist] load failed (starting empty): ${err instanceof Error ? err.message : String(err)}`
+      )
     }
   }
 }

@@ -35,7 +35,10 @@ export interface ApprovalDecisionInput {
 export class PermissionService {
   constructor(private readonly options: PermissionServiceOptions) {}
 
-  getServicePolicy(service: AgenticServiceId, settings: AppSettings = AppStore.getSettings()): AgenticServicePolicy {
+  getServicePolicy(
+    service: AgenticServiceId,
+    settings: AppSettings = AppStore.getSettings()
+  ): AgenticServicePolicy {
     return settings.agenticServices?.[service] || 'ask'
   }
 
@@ -48,18 +51,34 @@ export class PermissionService {
     if (!workspacePath) return false
     const normalizedWorkspace = resolve(workspacePath)
     return (settings.agenticWorkspaceGrants || []).some((grant) => {
-      if (!grant || grant.provider !== provider || grant.service !== service || !grant.workspacePath) return false
+      if (
+        !grant ||
+        grant.provider !== provider ||
+        grant.service !== service ||
+        !grant.workspacePath
+      )
+        return false
       return resolve(grant.workspacePath) === normalizedWorkspace
     })
   }
 
-  upsertWorkspaceGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId): void {
+  upsertWorkspaceGrant(
+    provider: ProviderId,
+    workspacePath: string | undefined,
+    service: AgenticServiceId
+  ): void {
     if (!workspacePath) return
     const settings = AppStore.getSettings()
     const normalizedWorkspace = resolve(workspacePath)
     const now = new Date().toISOString()
     const grants = (settings.agenticWorkspaceGrants || []).filter((grant) => {
-      if (!grant || grant.provider !== provider || grant.service !== service || !grant.workspacePath) return true
+      if (
+        !grant ||
+        grant.provider !== provider ||
+        grant.service !== service ||
+        !grant.workspacePath
+      )
+        return true
       return resolve(grant.workspacePath) !== normalizedWorkspace
     })
     grants.push({
@@ -74,23 +93,43 @@ export class PermissionService {
     AppStore.updateSettings({ agenticWorkspaceGrants: grants })
   }
 
-  removeWorkspaceGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId): void {
+  removeWorkspaceGrant(
+    provider: ProviderId,
+    workspacePath: string | undefined,
+    service: AgenticServiceId
+  ): void {
     if (!workspacePath) return
     const settings = AppStore.getSettings()
     const normalizedWorkspace = resolve(workspacePath)
     const grants = (settings.agenticWorkspaceGrants || []).filter((grant) => {
-      if (!grant || grant.provider !== provider || grant.service !== service || !grant.workspacePath) return true
+      if (
+        !grant ||
+        grant.provider !== provider ||
+        grant.service !== service ||
+        !grant.workspacePath
+      )
+        return true
       return resolve(grant.workspacePath) !== normalizedWorkspace
     })
     AppStore.updateSettings({ agenticWorkspaceGrants: grants })
   }
 
-  hasSessionGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId, runId?: string): boolean {
+  hasSessionGrant(
+    provider: ProviderId,
+    workspacePath: string | undefined,
+    service: AgenticServiceId,
+    runId?: string
+  ): boolean {
     if (runId && this.options.runManager.hasSessionGrant(runId, service)) return true
     return this.options.sessionGrants.has(this.sessionGrantKey(provider, workspacePath, service))
   }
 
-  addSessionGrant(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId, runId?: string): void {
+  addSessionGrant(
+    provider: ProviderId,
+    workspacePath: string | undefined,
+    service: AgenticServiceId,
+    runId?: string
+  ): void {
     if (runId && this.options.runManager.get(runId)) {
       this.options.runManager.addSessionGrant(runId, service)
       return
@@ -106,13 +145,15 @@ export class PermissionService {
     settings: AppSettings = AppStore.getSettings()
   ): AgenticPermissionResolution {
     const policy = this.getServicePolicy(service, settings)
-    const workspaceGrantAllowed = policy !== 'deny' && this.hasWorkspaceGrant(settings, provider, workspacePath, service)
+    const workspaceGrantAllowed =
+      policy !== 'deny' && this.hasWorkspaceGrant(settings, provider, workspacePath, service)
     const sessionGrantAllowed = this.hasSessionGrant(provider, workspacePath, service, runId)
-    const decision = policy === 'deny'
-      ? 'deny'
-      : workspaceGrantAllowed || sessionGrantAllowed
-        ? 'allow'
-        : resolveAgenticPermission(policy, false, false)
+    const decision =
+      policy === 'deny'
+        ? 'deny'
+        : workspaceGrantAllowed || sessionGrantAllowed
+          ? 'allow'
+          : resolveAgenticPermission(policy, false, false)
     return {
       policy,
       workspaceGrantAllowed,
@@ -148,8 +189,18 @@ export class PermissionService {
     return action === 'accept' || action === 'acceptForSession' || action === 'acceptForWorkspace'
   }
 
-  expireRunScopedApprovals(session: { runId: string; provider: ProviderId; workspacePath?: string; status?: string }): void {
-    if (session.status !== 'completed' && session.status !== 'failed' && session.status !== 'cancelled') return
+  expireRunScopedApprovals(session: {
+    runId: string
+    provider: ProviderId
+    workspacePath?: string
+    status?: string
+  }): void {
+    if (
+      session.status !== 'completed' &&
+      session.status !== 'failed' &&
+      session.status !== 'cancelled'
+    )
+      return
     AppStore.expireApprovalLedgerScope({
       runId: session.runId,
       provider: session.provider,
@@ -159,7 +210,11 @@ export class PermissionService {
     })
   }
 
-  private sessionGrantKey(provider: ProviderId, workspacePath: string | undefined, service: AgenticServiceId): string {
+  private sessionGrantKey(
+    provider: ProviderId,
+    workspacePath: string | undefined,
+    service: AgenticServiceId
+  ): string {
     return `${provider}:${service}:${workspacePath ? resolve(workspacePath) : 'global'}`
   }
 }

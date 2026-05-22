@@ -29,56 +29,59 @@ const formatBytes = (value?: number): string => {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`
 }
 
-const codeEditorTheme = EditorView.theme({
-  '&': {
-    height: '100%',
-    background: 'transparent',
-    color: 'var(--text-primary)',
-    fontSize: '12px'
+const codeEditorTheme = EditorView.theme(
+  {
+    '&': {
+      height: '100%',
+      background: 'transparent',
+      color: 'var(--text-primary)',
+      fontSize: '12px'
+    },
+    '&.cm-focused': {
+      outline: 'none'
+    },
+    '.cm-scroller': {
+      fontFamily: 'var(--font-mono)',
+      lineHeight: '20px',
+      background: 'transparent',
+      overflow: 'auto'
+    },
+    '.cm-content': {
+      padding: 'var(--space-sm) 0',
+      caretColor: 'var(--accent)',
+      background: 'transparent',
+      minWidth: 'max-content'
+    },
+    '.cm-line': {
+      padding: '0 var(--space-sm)',
+      background: 'transparent',
+      whiteSpace: 'pre'
+    },
+    '.cm-gutters': {
+      background: 'rgba(0,0,0,0.18)',
+      color: 'var(--text-muted)',
+      borderRight: '1px solid rgba(255,255,255,0.06)'
+    },
+    '.cm-activeLine': {
+      background: 'rgba(255,255,255,0.045)'
+    },
+    '.cm-activeLineGutter': {
+      background: 'rgba(255,255,255,0.045)',
+      color: 'var(--text-secondary)'
+    },
+    '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
+      background: 'color-mix(in srgb, var(--accent) 34%, transparent)'
+    },
+    '.cm-matchingBracket, .cm-nonmatchingBracket': {
+      background: 'rgba(255,255,255,0.12)',
+      outline: '1px solid var(--accent)'
+    },
+    '.cm-line ::selection, .cm-content ::selection': {
+      background: 'color-mix(in srgb, var(--accent) 34%, transparent)'
+    }
   },
-  '&.cm-focused': {
-    outline: 'none'
-  },
-  '.cm-scroller': {
-    fontFamily: 'var(--font-mono)',
-    lineHeight: '20px',
-    background: 'transparent',
-    overflow: 'auto'
-  },
-  '.cm-content': {
-    padding: 'var(--space-sm) 0',
-    caretColor: 'var(--accent)',
-    background: 'transparent',
-    minWidth: 'max-content'
-  },
-  '.cm-line': {
-    padding: '0 var(--space-sm)',
-    background: 'transparent',
-    whiteSpace: 'pre'
-  },
-  '.cm-gutters': {
-    background: 'rgba(0,0,0,0.18)',
-    color: 'var(--text-muted)',
-    borderRight: '1px solid rgba(255,255,255,0.06)'
-  },
-  '.cm-activeLine': {
-    background: 'rgba(255,255,255,0.045)'
-  },
-  '.cm-activeLineGutter': {
-    background: 'rgba(255,255,255,0.045)',
-    color: 'var(--text-secondary)'
-  },
-  '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-    background: 'color-mix(in srgb, var(--accent) 34%, transparent)'
-  },
-  '.cm-matchingBracket, .cm-nonmatchingBracket': {
-    background: 'rgba(255,255,255,0.12)',
-    outline: '1px solid var(--accent)'
-  },
-  '.cm-line ::selection, .cm-content ::selection': {
-    background: 'color-mix(in srgb, var(--accent) 34%, transparent)'
-  }
-}, { dark: true })
+  { dark: true }
+)
 
 const codeHighlightStyle = HighlightStyle.define([
   { tag: tags.keyword, color: '#ff8fb3', fontWeight: '600' },
@@ -89,7 +92,11 @@ const codeHighlightStyle = HighlightStyle.define([
   { tag: [tags.number, tags.bool, tags.null, tags.atom], color: '#c7a6ff' },
   { tag: [tags.string, tags.special(tags.string)], color: '#9be69f' },
   { tag: [tags.regexp, tags.escape], color: '#86e1d1' },
-  { tag: [tags.comment, tags.lineComment, tags.blockComment], color: 'rgba(255,255,255,0.42)', fontStyle: 'italic' },
+  {
+    tag: [tags.comment, tags.lineComment, tags.blockComment],
+    color: 'rgba(255,255,255,0.42)',
+    fontStyle: 'italic'
+  },
   { tag: tags.meta, color: '#9aa7ff' },
   { tag: tags.heading, color: '#f4f7ff', fontWeight: '700' },
   { tag: tags.link, color: 'var(--accent)', textDecoration: 'underline' },
@@ -108,7 +115,11 @@ const extensionForPath = (filePath: string): Extension[] => {
   if (/\.(html|htm|xml|svg)$/.test(lower)) return [html()]
   if (/\.(css|scss|sass|less)$/.test(lower)) return [css()]
   if (/\.(c|h|cc|cpp|cxx|hpp|hh|m|mm|metal|swift)$/.test(lower)) return [cpp()]
-  if (/\.(sh|bash|zsh|fish|command|env)$/.test(lower) || /(^|\/)(bashrc|zshrc|profile|env)$/.test(lower)) return [shellLanguage]
+  if (
+    /\.(sh|bash|zsh|fish|command|env)$/.test(lower) ||
+    /(^|\/)(bashrc|zshrc|profile|env)$/.test(lower)
+  )
+    return [shellLanguage]
   return []
 }
 
@@ -119,7 +130,11 @@ const editorApi = {
   readFile: (workspacePath: string, filePath: string): Promise<WorkspaceFileReadResult> => {
     return window.api.readWorkspaceFile(workspacePath, filePath)
   },
-  writeFile: (workspacePath: string, filePath: string, content: string): Promise<WorkspaceFileReadResult> => {
+  writeFile: (
+    workspacePath: string,
+    filePath: string,
+    content: string
+  ): Promise<WorkspaceFileReadResult> => {
     return window.api.writeWorkspaceFile(workspacePath, filePath, content)
   }
 }
@@ -142,13 +157,16 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
     return files.filter((item) => item.path.toLowerCase().includes(needle))
   }, [files, filter])
 
-  const editorExtensions = useMemo<Extension[]>(() => [
-    codeEditorTheme,
-    syntaxHighlighting(codeHighlightStyle),
-    highlightSelectionMatches(),
-    keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
-    ...extensionForPath(selectedPath)
-  ], [selectedPath])
+  const editorExtensions = useMemo<Extension[]>(
+    () => [
+      codeEditorTheme,
+      syntaxHighlighting(codeHighlightStyle),
+      highlightSelectionMatches(),
+      keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]),
+      ...extensionForPath(selectedPath)
+    ],
+    [selectedPath]
+  )
 
   const refreshFiles = async () => {
     if (!workspacePath) {
@@ -262,7 +280,12 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
       <section className="file-editor-files">
         <div className="file-editor-header">
           <strong>Files</strong>
-          <button className="btn btn-sm btn-ghost" type="button" onClick={refreshFiles} disabled={!workspacePath || isLoading}>
+          <button
+            className="btn btn-sm btn-ghost"
+            type="button"
+            onClick={refreshFiles}
+            disabled={!workspacePath || isLoading}
+          >
             Refresh
           </button>
         </div>
@@ -286,9 +309,16 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
                 disabled={entry.isDirectory || isLoading}
                 title={entry.path}
               >
-                <FileTypeIcon path={entry.path} size={14} className="file-editor-file-icon" workspacePath={workspacePath} />
+                <FileTypeIcon
+                  path={entry.path}
+                  size={14}
+                  className="file-editor-file-icon"
+                  workspacePath={workspacePath}
+                />
                 <span className="file-editor-file-name">{entry.name}</span>
-                {!entry.isDirectory && <span className="file-editor-file-size">{formatBytes(entry.sizeBytes)}</span>}
+                {!entry.isDirectory && (
+                  <span className="file-editor-file-size">{formatBytes(entry.sizeBytes)}</span>
+                )}
               </button>
             ))
           ) : (
@@ -312,11 +342,18 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
           <strong className="file-editor-title">
             {selectedPath ? (
               <>
-                <FileTypeIcon path={selectedPath} size={14} className="file-editor-file-icon" workspacePath={workspacePath} />
+                <FileTypeIcon
+                  path={selectedPath}
+                  size={14}
+                  className="file-editor-file-icon"
+                  workspacePath={workspacePath}
+                />
                 <span>{selectedName}</span>
                 {isDirty && <span className="file-editor-dirty-dot" title="Unsaved changes" />}
               </>
-            ) : 'Editor'}
+            ) : (
+              'Editor'
+            )}
           </strong>
           <button
             className="btn btn-sm"
@@ -330,14 +367,22 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
           </button>
         </div>
         {pendingOpenEntry && (
-          <div className="file-editor-unsaved-card" role="alertdialog" aria-label="Unsaved editor changes">
+          <div
+            className="file-editor-unsaved-card"
+            role="alertdialog"
+            aria-label="Unsaved editor changes"
+          >
             <strong>Unsaved changes</strong>
             <span>Save or discard changes before opening {pendingOpenEntry.path}.</span>
             <div className="file-editor-unsaved-actions">
               <button className="btn btn-sm" type="button" onClick={() => void saveFile()}>
                 Save
               </button>
-              <button className="btn btn-sm btn-ghost" type="button" onClick={() => void discardChangesAndOpenPending()}>
+              <button
+                className="btn btn-sm btn-ghost"
+                type="button"
+                onClick={() => void discardChangesAndOpenPending()}
+              >
                 Discard
               </button>
               <button className="btn btn-sm btn-ghost" type="button" onClick={cancelPendingOpen}>
@@ -372,7 +417,9 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
           )}
         </div>
         <div className="file-editor-status">
-          <span role="status" aria-live="polite">{isDirty ? 'Unsaved changes' : status}</span>
+          <span role="status" aria-live="polite">
+            {isDirty ? 'Unsaved changes' : status}
+          </span>
         </div>
       </section>
     </aside>

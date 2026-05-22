@@ -1,5 +1,5 @@
-import type { ToolActivity, ToolActivityStatus, ToolDiffSummary } from '../../../main/store/types';
-import { deriveToolDiffSummary, estimateLineChanges } from './ToolParser';
+import type { ToolActivity, ToolActivityStatus, ToolDiffSummary } from '../../../main/store/types'
+import { deriveToolDiffSummary, estimateLineChanges } from './ToolParser'
 
 /**
  * Pure helper that decides what (if anything) the per-row inline odometer
@@ -18,23 +18,23 @@ import { deriveToolDiffSummary, estimateLineChanges } from './ToolParser';
  *   - Activities with neither additions nor deletions defined render nothing.
  */
 
-export type InlineStatStatus = ToolActivityStatus;
+export type InlineStatStatus = ToolActivityStatus
 
 export interface InlineStatInputs {
-  toolName: string;
-  status: InlineStatStatus;
-  parameters?: Record<string, unknown>;
-  resultText?: string;
-  diffSummary?: ToolDiffSummary;
+  toolName: string
+  status: InlineStatStatus
+  parameters?: Record<string, unknown>
+  resultText?: string
+  diffSummary?: ToolDiffSummary
 }
 
 export interface InlineStatResult {
   /** When true, the odometer should render. */
-  visible: boolean;
-  additions: number;
-  deletions: number;
+  visible: boolean
+  additions: number
+  deletions: number
   /** Diff confidence — used to surface the `~` "estimated" marker. */
-  confidence?: ToolDiffSummary['confidence'];
+  confidence?: ToolDiffSummary['confidence']
 }
 
 const WRITE_LIKE_TOOLS = new Set([
@@ -50,79 +50,81 @@ const WRITE_LIKE_TOOLS = new Set([
   'str_replace',
   'str_replace_editor',
   'strreplaceeditor'
-]);
+])
 
 function looksWriteLike(toolName: string): boolean {
-  const normalised = (toolName || '').toLowerCase();
-  if (!normalised) return false;
-  if (WRITE_LIKE_TOOLS.has(normalised)) return true;
+  const normalised = (toolName || '').toLowerCase()
+  if (!normalised) return false
+  if (WRITE_LIKE_TOOLS.has(normalised)) return true
   // MCP-prefixed names like `AGBench__write_file` or `mcp__server__replace`.
-  if (normalised.endsWith('__write_file')) return true;
-  if (normalised.endsWith('__replace')) return true;
-  if (normalised.endsWith('__create_file')) return true;
-  if (normalised.endsWith('__edit_file')) return true;
-  if (normalised.endsWith('__edit')) return true;
-  return false;
+  if (normalised.endsWith('__write_file')) return true
+  if (normalised.endsWith('__replace')) return true
+  if (normalised.endsWith('__create_file')) return true
+  if (normalised.endsWith('__edit_file')) return true
+  if (normalised.endsWith('__edit')) return true
+  return false
 }
 
 /** Stats from a Claude `MultiEdit` parameters payload (`edits: [{old_string, new_string}, ...]`). */
-function multiEditLineChanges(parameters: Record<string, unknown>): { additions?: number; deletions?: number } {
-  const edits = parameters.edits;
-  if (!Array.isArray(edits) || edits.length === 0) return {};
-  let additions = 0;
-  let deletions = 0;
-  let touched = false;
+function multiEditLineChanges(parameters: Record<string, unknown>): {
+  additions?: number
+  deletions?: number
+} {
+  const edits = parameters.edits
+  if (!Array.isArray(edits) || edits.length === 0) return {}
+  let additions = 0
+  let deletions = 0
+  let touched = false
   for (const raw of edits) {
-    if (!raw || typeof raw !== 'object') continue;
-    const item = raw as Record<string, unknown>;
-    const oldString = item.old_string ?? item.oldString;
-    const newString = item.new_string ?? item.newString;
+    if (!raw || typeof raw !== 'object') continue
+    const item = raw as Record<string, unknown>
+    const oldString = item.old_string ?? item.oldString
+    const newString = item.new_string ?? item.newString
     if (typeof oldString === 'string' || typeof newString === 'string') {
-      additions += typeof newString === 'string' ? newString.split('\n').length : 0;
-      deletions += typeof oldString === 'string' ? oldString.split('\n').length : 0;
-      touched = true;
+      additions += typeof newString === 'string' ? newString.split('\n').length : 0
+      deletions += typeof oldString === 'string' ? oldString.split('\n').length : 0
+      touched = true
     }
   }
-  if (!touched) return {};
-  return { additions, deletions };
+  if (!touched) return {}
+  return { additions, deletions }
 }
 
-function lineChangesFromContent(toolName: string, parameters: Record<string, unknown>): { additions?: number; deletions?: number } {
-  if (typeof parameters.content !== 'string') return {};
-  if (!looksWriteLike(toolName)) return {};
-  return { additions: (parameters.content as string).split('\n').length, deletions: 0 };
+function lineChangesFromContent(
+  toolName: string,
+  parameters: Record<string, unknown>
+): { additions?: number; deletions?: number } {
+  if (typeof parameters.content !== 'string') return {}
+  if (!looksWriteLike(toolName)) return {}
+  return { additions: (parameters.content as string).split('\n').length, deletions: 0 }
 }
 
 export function computeInlineStats(inputs: InlineStatInputs): InlineStatResult {
-  const parameters = inputs.parameters || {};
-  const diffSummary = inputs.diffSummary
-    || deriveToolDiffSummary(inputs.toolName, parameters, inputs.resultText);
-  const paramChanges = estimateLineChanges(parameters);
-  const multiEdit = multiEditLineChanges(parameters);
-  const fromContent = lineChangesFromContent(inputs.toolName, parameters);
+  const parameters = inputs.parameters || {}
+  const diffSummary =
+    inputs.diffSummary || deriveToolDiffSummary(inputs.toolName, parameters, inputs.resultText)
+  const paramChanges = estimateLineChanges(parameters)
+  const multiEdit = multiEditLineChanges(parameters)
+  const fromContent = lineChangesFromContent(inputs.toolName, parameters)
 
-  const additions = diffSummary?.additions
-    ?? paramChanges.additions
-    ?? multiEdit.additions
-    ?? fromContent.additions;
-  const deletions = diffSummary?.deletions
-    ?? paramChanges.deletions
-    ?? multiEdit.deletions
-    ?? fromContent.deletions;
-  const anyDefined = additions !== undefined || deletions !== undefined;
+  const additions =
+    diffSummary?.additions ?? paramChanges.additions ?? multiEdit.additions ?? fromContent.additions
+  const deletions =
+    diffSummary?.deletions ?? paramChanges.deletions ?? multiEdit.deletions ?? fromContent.deletions
+  const anyDefined = additions !== undefined || deletions !== undefined
 
   // Suppress entirely when nothing useful is known.
   if (!anyDefined) {
-    return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence };
+    return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence }
   }
 
-  const running = inputs.status === 'running' || inputs.status === 'pending';
-  const bothZero = (additions || 0) === 0 && (deletions || 0) === 0;
+  const running = inputs.status === 'running' || inputs.status === 'pending'
+  const bothZero = (additions || 0) === 0 && (deletions || 0) === 0
 
   // Running activities with no real signal yet stay silent — `+0 -0` reads as
   // "no change" but actually means "still working".
   if (running && bothZero) {
-    return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence };
+    return { visible: false, additions: 0, deletions: 0, confidence: diffSummary?.confidence }
   }
 
   return {
@@ -130,7 +132,7 @@ export function computeInlineStats(inputs: InlineStatInputs): InlineStatResult {
     additions: additions || 0,
     deletions: deletions || 0,
     confidence: diffSummary?.confidence
-  };
+  }
 }
 
 /** Convenience: derive inline stats directly from a `ToolActivity` record. */
@@ -141,5 +143,5 @@ export function inlineStatsForActivity(activity: ToolActivity): InlineStatResult
     parameters: activity.parameters,
     resultText: activity.resultSummary || activity.outputPreview,
     diffSummary: activity.diffSummary
-  });
+  })
 }

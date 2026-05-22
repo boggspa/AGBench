@@ -10,7 +10,9 @@ describe('resolveRunEventCatchup', () => {
     })
 
     expect(resolution.catchupEvents.map((event) => event.sequence)).toEqual([3, 4])
-    expect(resolution.catchupBatches.map((batch) => batch.map((event) => event.sequence))).toEqual([[3, 4]])
+    expect(resolution.catchupBatches.map((batch) => batch.map((event) => event.sequence))).toEqual([
+      [3, 4]
+    ])
     expect(resolution.nextLiveSeq).toBe(5)
     expect(resolution.warning).toBeUndefined()
   })
@@ -46,7 +48,11 @@ describe('resolveRunEventCatchup', () => {
     })
 
     expect(resolution.catchupEvents.map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5])
-    expect(resolution.catchupBatches.map((batch) => batch.map((event) => event.sequence))).toEqual([[1, 2], [3, 4], [5]])
+    expect(resolution.catchupBatches.map((batch) => batch.map((event) => event.sequence))).toEqual([
+      [1, 2],
+      [3, 4],
+      [5]
+    ])
     expect(resolution.oversized).toBe(true)
     expect(resolution.nextLiveSeq).toBe(6)
   })
@@ -64,8 +70,13 @@ describe('resolveRunEventCatchup', () => {
   })
 
   it('treats negative and non-finite resumeFrom values as fresh subscriptions', () => {
-    expect(resolveRunEventCatchup({ storedEvents: events(1), resumeFrom: -1 }).normalizedResumeFrom).toBeNull()
-    expect(resolveRunEventCatchup({ storedEvents: events(1), resumeFrom: Number.NaN }).normalizedResumeFrom).toBeNull()
+    expect(
+      resolveRunEventCatchup({ storedEvents: events(1), resumeFrom: -1 }).normalizedResumeFrom
+    ).toBeNull()
+    expect(
+      resolveRunEventCatchup({ storedEvents: events(1), resumeFrom: Number.NaN })
+        .normalizedResumeFrom
+    ).toBeNull()
   })
 })
 

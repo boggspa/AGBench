@@ -71,7 +71,9 @@ describe('RunRepository', () => {
       })
 
       expect(event?.sequence).toBe(7)
-      expect(emitRunEventsChanged).toHaveBeenCalledWith(expect.objectContaining({ runId: 'run-1', sequence: 7 }))
+      expect(emitRunEventsChanged).toHaveBeenCalledWith(
+        expect.objectContaining({ runId: 'run-1', sequence: 7 })
+      )
     } finally {
       append.mockRestore()
     }
@@ -127,10 +129,12 @@ describe('RunRepository', () => {
       updatedAt: '2026-05-08T00:00:00.000Z'
     }
     const get = vi.spyOn(AppStore, 'getRunQueueJob').mockReturnValue(queuedJob)
-    const update = vi.spyOn(AppStore, 'updateRunQueueJob').mockImplementation((_runId, partial: any) => ({
-      ...queuedJob,
-      ...partial
-    }))
+    const update = vi
+      .spyOn(AppStore, 'updateRunQueueJob')
+      .mockImplementation((_runId, partial: any) => ({
+        ...queuedJob,
+        ...partial
+      }))
 
     try {
       const leased = repository.leaseQueuedRun({ runId: 'run-1', provider: 'gemini' })
@@ -165,16 +169,21 @@ describe('RunRepository', () => {
       updatedAt: '2026-05-08T00:00:00.000Z'
     }
     const get = vi.spyOn(AppStore, 'getRunQueueJob').mockReturnValue(queuedJob)
-    const update = vi.spyOn(AppStore, 'updateRunQueueJob').mockImplementation((_runId, partial: any) => ({
-      ...queuedJob,
-      ...partial
-    }))
+    const update = vi
+      .spyOn(AppStore, 'updateRunQueueJob')
+      .mockImplementation((_runId, partial: any) => ({
+        ...queuedJob,
+        ...partial
+      }))
 
     try {
       const leased = repository.leaseQueuedRun({ runId: 'global-run-1', provider: 'codex' })
 
       expect(leased).toMatchObject({ scope: 'global', status: 'starting' })
-      expect(update).toHaveBeenCalledWith('global-run-1', expect.objectContaining({ status: 'starting' }))
+      expect(update).toHaveBeenCalledWith(
+        'global-run-1',
+        expect.objectContaining({ status: 'starting' })
+      )
       expect(emitRunQueueChanged).toHaveBeenCalledTimes(1)
     } finally {
       get.mockRestore()
@@ -189,20 +198,22 @@ describe('RunRepository', () => {
       emitRunQueueChanged,
       emitRunEventsChanged: vi.fn()
     })
-    const update = vi.spyOn(AppStore, 'updateRunQueueJob').mockImplementation((runId, partial: any) => ({
-      id: runId,
-      runId,
-      provider: 'codex',
-      workspacePath: '/repo',
-      source: 'manual',
-      status: partial.status,
-      statusReason: partial.statusReason,
-      lastError: partial.lastError,
-      priority: 0,
-      attempt: 1,
-      createdAt: '2026-05-08T00:00:00.000Z',
-      updatedAt: '2026-05-08T00:00:00.000Z'
-    }))
+    const update = vi
+      .spyOn(AppStore, 'updateRunQueueJob')
+      .mockImplementation((runId, partial: any) => ({
+        id: runId,
+        runId,
+        provider: 'codex',
+        workspacePath: '/repo',
+        source: 'manual',
+        status: partial.status,
+        statusReason: partial.statusReason,
+        lastError: partial.lastError,
+        priority: 0,
+        attempt: 1,
+        createdAt: '2026-05-08T00:00:00.000Z',
+        updatedAt: '2026-05-08T00:00:00.000Z'
+      }))
 
     try {
       const transitioned = repository.transitionRunQueueJob('run-1', 'failed', {
@@ -210,7 +221,11 @@ describe('RunRepository', () => {
         lastError: 'boom'
       })
 
-      expect(transitioned).toMatchObject({ status: 'failed', statusReason: 'Provider failed.', lastError: 'boom' })
+      expect(transitioned).toMatchObject({
+        status: 'failed',
+        statusReason: 'Provider failed.',
+        lastError: 'boom'
+      })
       expect(emitRunQueueChanged).toHaveBeenCalledTimes(1)
     } finally {
       update.mockRestore()

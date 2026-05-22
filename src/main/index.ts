@@ -1561,7 +1561,6 @@ runManager.onChange((event) => {
   // (errors don't break the run-event subscriber chain).
   if (event.type === 'updated' && event.session.status === 'completed') {
     void maybePropagateSubThreadResult(event.session.appChatId).catch((err) => {
-      // eslint-disable-next-line no-console
       console.warn(
         `[SubThreadReturn] propagation failed for chatId=${event.session.appChatId}:`,
         err instanceof Error ? err.message : String(err)
@@ -1716,7 +1715,7 @@ async function maybePropagateSubThreadResult(chatId: string | undefined): Promis
     // Best-effort: a failed auto-resume must NOT undo the
     // back-propagation. Log and move on; the user can always nudge
     // manually.
-    // eslint-disable-next-line no-console
+
     console.warn(
       `[AutoResumeParent] dispatch attempt failed for parentChatId=${updatedParent.appChatId}:`,
       err instanceof Error ? err.message : String(err)
@@ -4277,7 +4276,6 @@ function decryptApnsAuthKey(): string | null {
 function buildBridgeApnsPusherFromSettings(): BridgeApnsPusher {
   const config = AppStore.getSettings().apnsConfig
   const log = (line: string) => {
-    // eslint-disable-next-line no-console
     console.log(line)
   }
   if (config?.encryptedAuthKey && config.keyId && config.teamId) {
@@ -6099,7 +6097,9 @@ async function canUseClaudeSdkTool(
   // looks like a broken settings.json entry but is actually our
   // canUseTool response missing a required field.
   const updatedInput: Record<string, unknown> =
-    typeof normalizedInput === 'object' && normalizedInput !== null && !Array.isArray(normalizedInput)
+    typeof normalizedInput === 'object' &&
+    normalizedInput !== null &&
+    !Array.isArray(normalizedInput)
       ? (normalizedInput as Record<string, unknown>)
       : {}
   const service = claudeAgenticServiceForTool(toolName)
@@ -7135,11 +7135,13 @@ function getActiveCodexRunState(): CodexRunState | null {
   // most-recently-updated session keeps MCP tool calls from breaking
   // when the bridge subprocess has no route metadata to disambiguate.
   if (managedStates.length > 1) {
-    return [...managedStates].sort((a, b) => {
-      const aRun = a.appRunId ? runManager.get(a.appRunId)?.updatedAt ?? 0 : 0
-      const bRun = b.appRunId ? runManager.get(b.appRunId)?.updatedAt ?? 0 : 0
-      return bRun - aRun
-    })[0] ?? null
+    return (
+      [...managedStates].sort((a, b) => {
+        const aRun = a.appRunId ? (runManager.get(a.appRunId)?.updatedAt ?? 0) : 0
+        const bRun = b.appRunId ? (runManager.get(b.appRunId)?.updatedAt ?? 0) : 0
+        return bRun - aRun
+      })[0] ?? null
+    )
   }
   const managed = managedStates[0]
   if (managed) return managed
@@ -10959,8 +10961,8 @@ function subThreadLifecycle(chat: ChatRecord): {
   const assistantTimestamp = assistant ? Date.parse(assistant.timestamp) : NaN
   const latestAssistantReturned = Boolean(
     returnedAt &&
-      assistant &&
-      (!Number.isFinite(assistantTimestamp) || assistantTimestamp <= returnedAt)
+    assistant &&
+    (!Number.isFinite(assistantTimestamp) || assistantTimestamp <= returnedAt)
   )
   const resultAvailable = Boolean(assistant?.content?.trim())
   const canCancel = Boolean(
@@ -14934,7 +14936,6 @@ if (isGeminiMcpBridgeProcess) {
     const bridgeAllowlist = new RemoteWorkspaceAllowlist({
       storagePath: bridgeAllowlistPath,
       log: (line) => {
-        // eslint-disable-next-line no-console
         console.log(line)
       }
     })
@@ -14983,7 +14984,6 @@ if (isGeminiMcpBridgeProcess) {
     const bridgeApnsTokenStore = new BridgeApnsTokenStore({
       storagePath: bridgeApnsTokenStorePath,
       log: (line) => {
-        // eslint-disable-next-line no-console
         console.log(line)
       }
     })
@@ -15014,7 +15014,6 @@ if (isGeminiMcpBridgeProcess) {
       try {
         bridgeBroadcaster.broadcastWorkspaceUpdated(workspaceId)
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[BridgeBroadcaster] workspace update failed:', err)
       }
     }
@@ -15023,7 +15022,6 @@ if (isGeminiMcpBridgeProcess) {
       try {
         bridgeBroadcaster.broadcastThreadUpdated(chatId)
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[BridgeBroadcaster] thread update failed:', err)
       }
     }
@@ -15032,7 +15030,6 @@ if (isGeminiMcpBridgeProcess) {
       try {
         bridgeBroadcaster.broadcastWorkspaceList()
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[BridgeBroadcaster] workspace list failed:', err)
       }
     }
@@ -15041,7 +15038,6 @@ if (isGeminiMcpBridgeProcess) {
       try {
         bridgeBroadcaster.broadcastThreadList()
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[BridgeBroadcaster] thread list failed:', err)
       }
     }
@@ -15178,7 +15174,6 @@ if (isGeminiMcpBridgeProcess) {
           }
         },
         log: (line) => {
-          // eslint-disable-next-line no-console
           console.log(line)
         }
       })
@@ -15194,11 +15189,7 @@ if (isGeminiMcpBridgeProcess) {
       unsubscribeBridgeRunSink = runEventBus.subscribe(
         makeBridgeRunEventSink({
           notifier: { notify: (method, params) => daemon.notify(method, params) },
-          log:
-            process.env.AGBENCH_DEBUG_BUS === '1'
-              ? // eslint-disable-next-line no-console
-                (line) => console.log(line)
-              : undefined
+          log: process.env.AGBENCH_DEBUG_BUS === '1' ? (line) => console.log(line) : undefined
         })
       )
     }
@@ -15222,7 +15213,6 @@ if (isGeminiMcpBridgeProcess) {
       // actions through the executor for real effect (cancel run, etc.).
       const bridgeActionRouter = BridgeActionRouter.fromEnvironment(
         (line) => {
-          // eslint-disable-next-line no-console
           console.log(line)
         },
         bridgeAllowlist,
@@ -15230,15 +15220,12 @@ if (isGeminiMcpBridgeProcess) {
       )
       const daemon = new BridgeDaemonClient({
         onHello: (hello) => {
-          // eslint-disable-next-line no-console
           console.log('[BridgeDaemon] hello:', JSON.stringify(hello))
         },
         onStderr: (text) => {
-          // eslint-disable-next-line no-console
           console.error('[BridgeDaemon stderr]', text.trimEnd())
         },
         onExit: (code) => {
-          // eslint-disable-next-line no-console
           console.log(`[BridgeDaemon] exited with code ${code ?? 'unknown'}`)
           unsubscribeBridgeRunEvents()
           const wasActiveDaemon = bridgeDaemon === daemon
@@ -15256,7 +15243,6 @@ if (isGeminiMcpBridgeProcess) {
         // emissions. Logging only for now — Phase C-late will route into
         // RunService / ApprovalService.
         onNotification: (method, params) => {
-          // eslint-disable-next-line no-console
           console.log(`[BridgeDaemon notif] ${method}`, JSON.stringify(params))
           if (
             method === 'bridge.didReceivePairingResponse' &&
@@ -15277,7 +15263,6 @@ if (isGeminiMcpBridgeProcess) {
             try {
               bridgeBroadcaster.broadcastSnapshot()
             } catch (err) {
-              // eslint-disable-next-line no-console
               console.error('[BridgeBroadcaster] snapshot on subscribe failed:', err)
             }
           }
@@ -15301,7 +15286,6 @@ if (isGeminiMcpBridgeProcess) {
         daemon: { notify: (m, p) => daemon.notify(m, p) },
         appStore: AppStore,
         log: (line) => {
-          // eslint-disable-next-line no-console
           console.log(line)
         }
       })
@@ -15317,7 +15301,7 @@ if (isGeminiMcpBridgeProcess) {
           if (bridgeDaemon === daemon || bridgeDaemonStartPromise === startPromise) {
             bridgeDaemonLastError = message
           }
-          // eslint-disable-next-line no-console
+
           console.error('[BridgeDaemon] failed to start:', message)
           unsubscribeBridgeRunEvents()
           if (bridgeDaemon === daemon) {
@@ -15460,7 +15444,6 @@ if (isGeminiMcpBridgeProcess) {
     //   unset                    → enabled when app.isPackaged + channel != 'debug'
     const updateService = new UpdateService({
       log: (line) => {
-        // eslint-disable-next-line no-console
         console.log(line)
       }
     })
@@ -16799,7 +16782,6 @@ if (isGeminiMcpBridgeProcess) {
         return AppStore.getSettings().approvalTimeouts
       },
       log: (line) => {
-        // eslint-disable-next-line no-console
         console.log(line)
       }
     })
@@ -16816,7 +16798,6 @@ if (isGeminiMcpBridgeProcess) {
         await handleApprovalTimeout(approvalServiceInstance, reason, {
           appendDurableRunEventForRoute,
           log: (line) => {
-            // eslint-disable-next-line no-console
             console.log(line)
           },
           sendTimeoutToRenderer: (snapshot) => {
@@ -16830,7 +16811,6 @@ if (isGeminiMcpBridgeProcess) {
       },
       {
         log: (line) => {
-          // eslint-disable-next-line no-console
           console.log(line)
         }
       }

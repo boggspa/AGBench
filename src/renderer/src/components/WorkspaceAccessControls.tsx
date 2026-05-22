@@ -87,7 +87,17 @@ interface WorkspaceAccessControlsProps {
 
 function PermissionGlyph(): React.JSX.Element {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M4 7v-1a4 4 0 1 1 8 0v1" />
       <rect x="3" y="7" width="10" height="7" rx="1.5" />
     </svg>
@@ -96,7 +106,17 @@ function PermissionGlyph(): React.JSX.Element {
 
 function WorktreeGlyph(): React.JSX.Element {
   return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
       <path d="M4.2 3.2v6.1a2.5 2.5 0 0 0 2.5 2.5h5.1" />
       <path d="M4.2 5.6h3.6a2.5 2.5 0 0 0 2.5-2.5" />
       <circle cx="4.2" cy="3.2" r="1.2" />
@@ -136,7 +156,9 @@ function normalizedWorkspacePath(path: string | undefined): string {
   return (path || '').replace(/\/+$/, '')
 }
 
-export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): React.JSX.Element | null {
+export function WorkspaceAccessControls(
+  props: WorkspaceAccessControlsProps
+): React.JSX.Element | null {
   const {
     variant,
     provider,
@@ -157,16 +179,22 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
 
   const [policyOpen, setPolicyOpen] = useState(false)
   const workspacePath = normalizedWorkspacePath(currentWorkspace?.path)
-  const workspaceGrantServices = useMemo(() => new Set(
-    agenticWorkspaceGrants
-      .filter((grant) => {
-        if (!grant || grant.provider !== provider || !grant.workspacePath) return false
-        return normalizedWorkspacePath(grant.workspacePath) === workspacePath
-      })
-      .map((grant) => grant.service)
-  ), [agenticWorkspaceGrants, provider, workspacePath])
+  const workspaceGrantServices = useMemo(
+    () =>
+      new Set(
+        agenticWorkspaceGrants
+          .filter((grant) => {
+            if (!grant || grant.provider !== provider || !grant.workspacePath) return false
+            return normalizedWorkspacePath(grant.workspacePath) === workspacePath
+          })
+          .map((grant) => grant.service)
+      ),
+    [agenticWorkspaceGrants, provider, workspacePath]
+  )
   const grantsCount = externalPathGrants.length
-  const enabledGrantCount = WORKSPACE_POLICY_SERVICES.filter((service) => workspaceGrantServices.has(service.id)).length
+  const enabledGrantCount = WORKSPACE_POLICY_SERVICES.filter((service) =>
+    workspaceGrantServices.has(service.id)
+  ).length
 
   // Hide entirely for global-scope chats: External Path and Worktree
   // are workspace-scoped concepts, no sense surfacing them when the
@@ -175,9 +203,10 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
     return null
   }
 
-  const externalPathTitle = grantsCount > 0
-    ? `External path access (${grantsCount} granted). Add another below.`
-    : 'Grant access to a file or folder outside this workspace.'
+  const externalPathTitle =
+    grantsCount > 0
+      ? `External path access (${grantsCount} granted). Add another below.`
+      : 'Grant access to a file or folder outside this workspace.'
 
   const worktreeInteractive = provider === 'gemini'
 
@@ -203,7 +232,9 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
             }
           }}
         >
-          <option value="">{grantsCount > 0 ? `External path (${grantsCount})` : 'External path'}</option>
+          <option value="">
+            {grantsCount > 0 ? `External path (${grantsCount})` : 'External path'}
+          </option>
           <option value="read">Grant read…</option>
           <option value="write">Grant edit…</option>
         </select>
@@ -218,23 +249,34 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
           title="Workspace tool permission grants"
         >
           <PermissionGlyph />
-          <span>{enabledGrantCount > 0 ? `Tool grants (${enabledGrantCount})` : 'Tool grants'}</span>
+          <span>
+            {enabledGrantCount > 0 ? `Tool grants (${enabledGrantCount})` : 'Tool grants'}
+          </span>
         </button>
         {policyOpen && (
-          <div className="composer-workspace-policy-popover" role="dialog" aria-label="Workspace tool permission grants">
+          <div
+            className="composer-workspace-policy-popover"
+            role="dialog"
+            aria-label="Workspace tool permission grants"
+          >
             <div className="composer-workspace-policy-header">
               <strong>Workspace grants</strong>
               <span>{provider}</span>
             </div>
             <p>
-              These toggles pre-authorize this provider in this workspace. Global <strong>Deny</strong> still wins.
+              These toggles pre-authorize this provider in this workspace. Global{' '}
+              <strong>Deny</strong> still wins.
             </p>
             <div className="composer-workspace-policy-list">
               {WORKSPACE_POLICY_SERVICES.map((service) => {
                 const checked = workspaceGrantServices.has(service.id)
                 const policy = agenticServices[service.id]
                 return (
-                  <label key={service.id} className="composer-workspace-policy-row" title={service.help}>
+                  <label
+                    key={service.id}
+                    className="composer-workspace-policy-row"
+                    title={service.help}
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
@@ -242,7 +284,13 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
                     />
                     <span>
                       <strong>{service.label}</strong>
-                      <small>{policy === 'deny' ? 'Blocked globally' : checked ? 'Allowed for this workspace' : `Global policy: ${policy}`}</small>
+                      <small>
+                        {policy === 'deny'
+                          ? 'Blocked globally'
+                          : checked
+                            ? 'Allowed for this workspace'
+                            : `Global policy: ${policy}`}
+                      </small>
                     </span>
                   </label>
                 )
@@ -257,9 +305,11 @@ export function WorkspaceAccessControls(props: WorkspaceAccessControlsProps): Re
           className={`composer-workspace-access-pill composer-workspace-access-worktree ${currentGeminiWorktree?.enabled ? 'is-active' : ''} ${worktreeDiffUnavailable ? 'is-warning' : ''}`}
           onClick={onGeminiWorktreeToggle}
           disabled={!hasWorkspaceContext || isCurrentComposerLocked}
-          title={currentGeminiWorktree?.enabled
-            ? 'Disable Gemini CLI worktree mode for this workspace'
-            : 'Run Gemini in an auto-created CLI worktree for this workspace'}
+          title={
+            currentGeminiWorktree?.enabled
+              ? 'Disable Gemini CLI worktree mode for this workspace'
+              : 'Run Gemini in an auto-created CLI worktree for this workspace'
+          }
         >
           <WorktreeGlyph />
           <span>{worktreeToggleLabel}</span>

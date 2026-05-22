@@ -86,7 +86,9 @@ describe('detectTailscale', () => {
       })
     })
     expect(result.available).toBe(false)
-    expect(result.reason).toBe("The Tailscale daemon is not running. Run 'sudo tailscale up' or open Tailscale.")
+    expect(result.reason).toBe(
+      "The Tailscale daemon is not running. Run 'sudo tailscale up' or open Tailscale."
+    )
     expect(result.reason).not.toContain('JSON parse failed')
   })
 

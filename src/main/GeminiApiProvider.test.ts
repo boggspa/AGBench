@@ -1190,7 +1190,7 @@ describe('GeminiApiProvider (Phase M1 Step 7 — image input)', () => {
     // Build a custom SDK that also records files.upload calls so we can
     // assert the mime-type passed through.
     const uploadCalls: Array<{ file: string; mimeType: string }> = []
-    let streamCalls: Array<{ contents: any[] }> = []
+    const streamCalls: Array<{ contents: any[] }> = []
     const loader = async () => ({
       GoogleGenAI: class {
         models = {
@@ -1359,7 +1359,7 @@ describe('GeminiApiProvider (Phase M1 Step 8 — usage tracking)', () => {
     expect(usageRecords).toEqual([])
   })
 
-  it("does not crash when recordUsage throws (best-effort tracking)", async () => {
+  it('does not crash when recordUsage throws (best-effort tracking)', async () => {
     const chat = makeChat({ workspaceId: 'ws-1', messages: [] })
     const { deps, finishes, errors } = makeDeps({
       profiles: [makeApiKeyProfile()],

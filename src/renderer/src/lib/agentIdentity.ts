@@ -23,12 +23,40 @@ import type {
  */
 
 const SCIENTIST_NAME_POOL: readonly string[] = [
-  'Ohm', 'Beauvoir', 'Hilbert', 'Aquinas', 'Poincare', 'Einstein',
-  'Bernoulli', 'Curie', 'Darwin', 'Euler', 'Fermat', 'Galois',
-  'Hawking', 'Itō', 'Joule', 'Kepler', 'Lorenz', 'Maxwell',
-  'Newton', 'Oppenheimer', 'Pauli', 'Quine', 'Riemann', 'Shannon',
-  'Turing', 'Wittgenstein', 'Zermelo', 'Pythagoras', 'Russell',
-  'Tesla', 'Faraday', 'Gauss', 'Heisenberg', 'Lovelace'
+  'Ohm',
+  'Beauvoir',
+  'Hilbert',
+  'Aquinas',
+  'Poincare',
+  'Einstein',
+  'Bernoulli',
+  'Curie',
+  'Darwin',
+  'Euler',
+  'Fermat',
+  'Galois',
+  'Hawking',
+  'Itō',
+  'Joule',
+  'Kepler',
+  'Lorenz',
+  'Maxwell',
+  'Newton',
+  'Oppenheimer',
+  'Pauli',
+  'Quine',
+  'Riemann',
+  'Shannon',
+  'Turing',
+  'Wittgenstein',
+  'Zermelo',
+  'Pythagoras',
+  'Russell',
+  'Tesla',
+  'Faraday',
+  'Gauss',
+  'Heisenberg',
+  'Lovelace'
 ]
 
 const COLOR_POOL: readonly string[] = [
@@ -39,7 +67,7 @@ const COLOR_POOL: readonly string[] = [
   '#b88aff', // purple
   '#e6c14a', // yellow
   '#4ad6cc', // cyan
-  '#ff7ed4'  // pink
+  '#ff7ed4' // pink
 ]
 
 /** Field names where Codex (or future providers) might surface a platform-assigned name. */
@@ -80,7 +108,10 @@ function safeAgentIdentitiesMap(chat: ChatRecord | undefined): Record<string, Ag
  * Read-only lookup. Returns the identity for an agent id if it has been
  * assigned, otherwise undefined. Never mutates the chat.
  */
-export function findIdentity(chat: ChatRecord | undefined, agentId: string | undefined): AgentIdentity | undefined {
+export function findIdentity(
+  chat: ChatRecord | undefined,
+  agentId: string | undefined
+): AgentIdentity | undefined {
   if (!chat || !agentId) return undefined
   const map = safeAgentIdentitiesMap(chat)
   return map[agentId]

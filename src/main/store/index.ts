@@ -1,35 +1,95 @@
-import { app } from 'electron';
-import * as fs from 'fs';
-import * as path from 'path';
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, ScheduledTask, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventInput, RunEventRecord, RunEventArtifactRef, ApprovalLedgerFilter, ApprovalLedgerRecord, ApprovalLedgerRequestInput, AgentApprovalAction, ApprovalLedgerScope, ProviderId, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, WorkspaceChangeSetInput, WorkspaceEditorChangeInput, WorkspaceRunChangeInput, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, RuntimeProfile, HandoffCard, HandoffCardFilter } from './types';
-import { createHash, randomUUID } from 'crypto';
-import { createRunQueueJob, filterRunQueueJobs, recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs, sortRunQueueJobs, updateRunQueueJobRecord, type RunQueueJobInput } from '../RunQueue';
-import { createRunEventRecord, createRunEventReplay, filterRunEvents, lastRunEventHash, nextRunEventSequence, parseRunEventLine, safeRunEventFileName, serializeRunEventRecord } from '../RunEventStore';
-import { createApprovalLedgerRecord, expireScopedApprovalLedgerRecords, filterApprovalLedgerRecords, recoverExpiredApprovalLedgerRecords, resolveApprovalLedgerRecord } from '../ApprovalLedger';
-import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery';
-import { createWorkspaceChangeSet, createWorkspaceChangeSetFromEditorWrite, createWorkspaceChangeSetFromRunDiff, filterWorkspaceChangeSets } from '../WorkspaceChangeModel';
-import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations';
+import { app } from 'electron'
+import * as fs from 'fs'
+import * as path from 'path'
+import {
+  AppSettings,
+  WorkspaceRecord,
+  ChatRecord,
+  UsageRecord,
+  ScheduledTask,
+  RunQueueJob,
+  RunQueueJobFilter,
+  RunEventFilter,
+  RunEventInput,
+  RunEventRecord,
+  RunEventArtifactRef,
+  ApprovalLedgerFilter,
+  ApprovalLedgerRecord,
+  ApprovalLedgerRequestInput,
+  AgentApprovalAction,
+  ApprovalLedgerScope,
+  ProviderId,
+  RunRecoveryFilter,
+  RunRecoveryRecord,
+  WorkspaceChangeFilter,
+  WorkspaceChangeSet,
+  WorkspaceChangeSetInput,
+  WorkspaceEditorChangeInput,
+  WorkspaceRunChangeInput,
+  ProductCrashFilter,
+  ProductCrashInput,
+  ProductCrashRecord,
+  RuntimeProfile,
+  HandoffCard,
+  HandoffCardFilter
+} from './types'
+import { createHash, randomUUID } from 'crypto'
+import {
+  createRunQueueJob,
+  filterRunQueueJobs,
+  recoverInterruptedRunQueueJobs as recoverInterruptedQueueJobs,
+  sortRunQueueJobs,
+  updateRunQueueJobRecord,
+  type RunQueueJobInput
+} from '../RunQueue'
+import {
+  createRunEventRecord,
+  createRunEventReplay,
+  filterRunEvents,
+  lastRunEventHash,
+  nextRunEventSequence,
+  parseRunEventLine,
+  safeRunEventFileName,
+  serializeRunEventRecord
+} from '../RunEventStore'
+import {
+  createApprovalLedgerRecord,
+  expireScopedApprovalLedgerRecords,
+  filterApprovalLedgerRecords,
+  recoverExpiredApprovalLedgerRecords,
+  resolveApprovalLedgerRecord
+} from '../ApprovalLedger'
+import { filterRunRecoveryRecords, recoverRunQueueJobsAfterStartup } from '../RunRecovery'
+import {
+  createWorkspaceChangeSet,
+  createWorkspaceChangeSetFromEditorWrite,
+  createWorkspaceChangeSetFromRunDiff,
+  filterWorkspaceChangeSets
+} from '../WorkspaceChangeModel'
+import { createProductCrashRecord, filterProductCrashRecords } from '../ProductOperations'
 
-const userDataPath = app.getPath('userData');
-const settingsPath = path.join(userDataPath, 'settings.json');
-const workspacesPath = path.join(userDataPath, 'workspaces.json');
-const usagePath = path.join(userDataPath, 'usage.json');
-const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json');
-const runQueuePath = path.join(userDataPath, 'run-queue.json');
-const runRecoveryPath = path.join(userDataPath, 'run-recovery.json');
-const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json');
-const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json');
-const productCrashesPath = path.join(userDataPath, 'product-crashes.json');
-const runtimeProfilesPath = path.join(userDataPath, 'runtime-profiles.json');
-const handoffCardsPath = path.join(userDataPath, 'handoff-cards.json');
-const legacySettingsMigrationPath = path.join(userDataPath, 'legacy-settings-migration.json');
-const legacyUserDataDirs = ['AgentBench'].map((dirName) => path.join(path.dirname(userDataPath), dirName));
-const chatsDir = path.join(userDataPath, 'chats');
-const runEventsDir = path.join(userDataPath, 'run-events');
-const runArtifactsDir = path.join(userDataPath, 'run-artifacts');
-const runEventSequenceCache = new Map<string, number>();
-const runEventHashCache = new Map<string, string>();
-const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi'];
+const userDataPath = app.getPath('userData')
+const settingsPath = path.join(userDataPath, 'settings.json')
+const workspacesPath = path.join(userDataPath, 'workspaces.json')
+const usagePath = path.join(userDataPath, 'usage.json')
+const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json')
+const runQueuePath = path.join(userDataPath, 'run-queue.json')
+const runRecoveryPath = path.join(userDataPath, 'run-recovery.json')
+const workspaceChangesPath = path.join(userDataPath, 'workspace-changes.json')
+const approvalLedgerPath = path.join(userDataPath, 'approval-ledger.json')
+const productCrashesPath = path.join(userDataPath, 'product-crashes.json')
+const runtimeProfilesPath = path.join(userDataPath, 'runtime-profiles.json')
+const handoffCardsPath = path.join(userDataPath, 'handoff-cards.json')
+const legacySettingsMigrationPath = path.join(userDataPath, 'legacy-settings-migration.json')
+const legacyUserDataDirs = ['AgentBench'].map((dirName) =>
+  path.join(path.dirname(userDataPath), dirName)
+)
+const chatsDir = path.join(userDataPath, 'chats')
+const runEventsDir = path.join(userDataPath, 'run-events')
+const runArtifactsDir = path.join(userDataPath, 'run-artifacts')
+const runEventSequenceCache = new Map<string, number>()
+const runEventHashCache = new Map<string, string>()
+const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',
@@ -50,7 +110,8 @@ const defaultSettings: AppSettings = {
   themeAccentStyle: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
-  transcriptFontFamily: '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
+  transcriptFontFamily:
+    '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
   composerFontFamily: 'match-transcript',
   reduceTransparency: false,
   reduceMotion: false,
@@ -95,156 +156,174 @@ const defaultSettings: AppSettings = {
       kimi: 60_000
     },
     mainAuthorityMs: 60_000
-  },
-};
+  }
+}
 
 function readJson<T>(filePath: string, defaultData: T): T {
   try {
     if (fs.existsSync(filePath)) {
-      const data = fs.readFileSync(filePath, 'utf-8');
-      return JSON.parse(data);
+      const data = fs.readFileSync(filePath, 'utf-8')
+      return JSON.parse(data)
     }
   } catch (e) {
-    console.error(`Failed to read ${filePath}`, e);
+    console.error(`Failed to read ${filePath}`, e)
     try {
       if (fs.existsSync(filePath)) {
-        fs.copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`);
+        fs.copyFileSync(filePath, `${filePath}.corrupt-${Date.now()}`)
       }
     } catch (backupError) {
-      console.error(`Failed to preserve corrupt ${filePath}`, backupError);
+      console.error(`Failed to preserve corrupt ${filePath}`, backupError)
     }
   }
-  return defaultData;
+  return defaultData
 }
 
 function writeJson<T>(filePath: string, data: T) {
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
-  let fd: number | null = null;
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  let fd: number | null = null
   try {
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fd = fs.openSync(tempPath, 'w');
-    fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8');
-    fs.fsyncSync(fd);
-    fs.closeSync(fd);
-    fd = null;
-    fs.renameSync(tempPath, filePath);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fd = fs.openSync(tempPath, 'w')
+    fs.writeFileSync(fd, JSON.stringify(data, null, 2), 'utf-8')
+    fs.fsyncSync(fd)
+    fs.closeSync(fd)
+    fd = null
+    fs.renameSync(tempPath, filePath)
     try {
-      const dirFd = fs.openSync(path.dirname(filePath), 'r');
-      fs.fsyncSync(dirFd);
-      fs.closeSync(dirFd);
+      const dirFd = fs.openSync(path.dirname(filePath), 'r')
+      fs.fsyncSync(dirFd)
+      fs.closeSync(dirFd)
     } catch {
       // Directory fsync is best effort on some filesystems.
     }
   } catch (e) {
-    console.error(`Failed to write ${filePath}`, e);
+    console.error(`Failed to write ${filePath}`, e)
     if (fd !== null) {
       try {
-        fs.closeSync(fd);
+        fs.closeSync(fd)
       } catch {}
     }
     try {
-      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath)
     } catch {}
   }
 }
 
 function migrateLegacySettingsIfMissing() {
   if (fs.existsSync(settingsPath)) {
-    return;
+    return
   }
 
   for (const legacyDir of legacyUserDataDirs) {
-    const legacySettingsPath = path.join(legacyDir, 'settings.json');
+    const legacySettingsPath = path.join(legacyDir, 'settings.json')
     if (!fs.existsSync(legacySettingsPath)) {
-      continue;
+      continue
     }
 
     try {
-      const legacySettings = JSON.parse(fs.readFileSync(legacySettingsPath, 'utf-8')) as Partial<AppSettings>;
+      const legacySettings = JSON.parse(
+        fs.readFileSync(legacySettingsPath, 'utf-8')
+      ) as Partial<AppSettings>
       writeJson(settingsPath, {
         ...legacySettings,
         geminiMcpBridgeLastStatus: undefined
-      });
+      })
       writeJson(legacySettingsMigrationPath, {
         migratedAt: new Date().toISOString(),
         source: legacySettingsPath
-      });
+      })
     } catch (e) {
-      console.error(`Failed to migrate legacy settings from ${legacySettingsPath}`, e);
+      console.error(`Failed to migrate legacy settings from ${legacySettingsPath}`, e)
     }
-    return;
+    return
   }
 }
 
 function runEventFilePath(runId: string): string {
-  return path.join(runEventsDir, safeRunEventFileName(runId));
+  return path.join(runEventsDir, safeRunEventFileName(runId))
 }
 
 function readRunEventFile(filePath: string): RunEventRecord[] {
   try {
-    if (!fs.existsSync(filePath)) return [];
+    if (!fs.existsSync(filePath)) return []
     return fs
       .readFileSync(filePath, 'utf-8')
       .split(/\r?\n/)
       .map(parseRunEventLine)
-      .filter((event): event is RunEventRecord => Boolean(event));
+      .filter((event): event is RunEventRecord => Boolean(event))
   } catch (e) {
-    console.error(`Failed to read ${filePath}`, e);
-    return [];
+    console.error(`Failed to read ${filePath}`, e)
+    return []
   }
 }
 
 function readAllRunEventFiles(): RunEventRecord[] {
   try {
-    if (!fs.existsSync(runEventsDir)) return [];
+    if (!fs.existsSync(runEventsDir)) return []
     return fs
       .readdirSync(runEventsDir)
       .filter((file) => file.endsWith('.jsonl'))
-      .flatMap((file) => readRunEventFile(path.join(runEventsDir, file)));
+      .flatMap((file) => readRunEventFile(path.join(runEventsDir, file)))
   } catch (e) {
-    console.error(`Failed to read ${runEventsDir}`, e);
-    return [];
+    console.error(`Failed to read ${runEventsDir}`, e)
+    return []
   }
 }
 
-function extractRunStreamText(input: RunEventInput): { stream: 'stdout' | 'stderr' | 'stdin'; text: string } | null {
+function extractRunStreamText(
+  input: RunEventInput
+): { stream: 'stdout' | 'stderr' | 'stdin'; text: string } | null {
   if (input.kind === 'provider_raw') {
-    const payload = input.payload as { data?: unknown } | string | undefined;
-    const text = typeof payload === 'string' ? payload : typeof payload?.data === 'string' ? payload.data : '';
-    return text ? { stream: 'stdout', text } : null;
+    const payload = input.payload as { data?: unknown } | string | undefined
+    const text =
+      typeof payload === 'string' ? payload : typeof payload?.data === 'string' ? payload.data : ''
+    return text ? { stream: 'stdout', text } : null
   }
   if (input.kind === 'provider_error') {
-    const payload = input.payload as { error?: unknown } | string | undefined;
-    const text = typeof payload === 'string' ? payload : typeof payload?.error === 'string' ? payload.error : '';
-    return text ? { stream: 'stderr', text } : null;
+    const payload = input.payload as { error?: unknown } | string | undefined
+    const text =
+      typeof payload === 'string'
+        ? payload
+        : typeof payload?.error === 'string'
+          ? payload.error
+          : ''
+    return text ? { stream: 'stderr', text } : null
   }
-  return null;
+  return null
 }
 
-function appendRunStreamArtifact(input: RunEventInput, sequence: number): RunEventArtifactRef[] | undefined {
-  const stream = extractRunStreamText(input);
-  if (!stream) return undefined;
-  const runFileName = safeRunEventFileName(input.runId).replace(/\.jsonl$/, '');
-  const artifactRelativePath = path.join(safeRunEventFileName(input.runId).replace(/\.jsonl$/, ''), `${stream.stream}.log`);
-  const artifactPath = path.join(runArtifactsDir, artifactRelativePath);
-  const bytes = Buffer.from(stream.text, 'utf8');
-  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
-  fs.appendFileSync(artifactPath, bytes);
-  return [{
-    id: `${runFileName}:${stream.stream}:${sequence}`,
-    kind: stream.stream,
-    path: artifactRelativePath.split(path.sep).join('/'),
-    sha256: createHash('sha256').update(bytes).digest('hex'),
-    sizeBytes: bytes.byteLength,
-    sequence
-  }];
+function appendRunStreamArtifact(
+  input: RunEventInput,
+  sequence: number
+): RunEventArtifactRef[] | undefined {
+  const stream = extractRunStreamText(input)
+  if (!stream) return undefined
+  const runFileName = safeRunEventFileName(input.runId).replace(/\.jsonl$/, '')
+  const artifactRelativePath = path.join(
+    safeRunEventFileName(input.runId).replace(/\.jsonl$/, ''),
+    `${stream.stream}.log`
+  )
+  const artifactPath = path.join(runArtifactsDir, artifactRelativePath)
+  const bytes = Buffer.from(stream.text, 'utf8')
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true })
+  fs.appendFileSync(artifactPath, bytes)
+  return [
+    {
+      id: `${runFileName}:${stream.stream}:${sequence}`,
+      kind: stream.stream,
+      path: artifactRelativePath.split(path.sep).join('/'),
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      sizeBytes: bytes.byteLength,
+      sequence
+    }
+  ]
 }
 
 export class AppStore {
   // Settings
   static getSettings(): AppSettings {
-    migrateLegacySettingsIfMissing();
-    const stored = readJson<Partial<AppSettings>>(settingsPath, {});
+    migrateLegacySettingsIfMissing()
+    const stored = readJson<Partial<AppSettings>>(settingsPath, {})
     return {
       ...defaultSettings,
       ...stored,
@@ -272,7 +351,9 @@ export class AppStore {
         ...defaultSettings.agenticServices,
         ...(stored.agenticServices || {})
       },
-      agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants) ? stored.agenticWorkspaceGrants : [],
+      agenticWorkspaceGrants: Array.isArray(stored.agenticWorkspaceGrants)
+        ? stored.agenticWorkspaceGrants
+        : [],
       // Normalize: a stored non-boolean (e.g. an older settings file
       // where the field is missing) falls back to the default (true)
       // so the auto-resume behaviour is on for upgrading users.
@@ -288,16 +369,16 @@ export class AppStore {
           ...(stored.approvalTimeouts?.perProviderMs || {})
         }
       }
-    };
+    }
   }
 
   static updateSettings(partial: Partial<AppSettings>) {
-    const current = this.getSettings();
-    writeJson(settingsPath, { ...current, ...partial });
+    const current = this.getSettings()
+    writeJson(settingsPath, { ...current, ...partial })
   }
 
   static getDefaultRuntimeProfiles(): RuntimeProfile[] {
-    const now = new Date(0).toISOString();
+    const now = new Date(0).toISOString()
     return providerIds.map((provider) => ({
       id: `builtin:${provider}:local`,
       name: `${provider[0].toUpperCase()}${provider.slice(1)} local`,
@@ -311,21 +392,26 @@ export class AppStore {
       builtin: true,
       createdAt: now,
       updatedAt: now
-    }));
+    }))
   }
 
   static getRuntimeProfiles(provider?: ProviderId): RuntimeProfile[] {
-    const customProfiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, []);
-    const profiles = [...this.getDefaultRuntimeProfiles(), ...customProfiles];
+    const customProfiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, [])
+    const profiles = [...this.getDefaultRuntimeProfiles(), ...customProfiles]
     return profiles
       .filter((profile) => !provider || profile.provider === provider)
-      .sort((a, b) => Number(Boolean(b.builtin)) - Number(Boolean(a.builtin)) || a.name.localeCompare(b.name));
+      .sort(
+        (a, b) =>
+          Number(Boolean(b.builtin)) - Number(Boolean(a.builtin)) || a.name.localeCompare(b.name)
+      )
   }
 
-  static saveRuntimeProfile(input: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>): RuntimeProfile {
-    const profiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, []);
-    const now = new Date().toISOString();
-    const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined;
+  static saveRuntimeProfile(
+    input: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>
+  ): RuntimeProfile {
+    const profiles = readJson<RuntimeProfile[]>(runtimeProfilesPath, [])
+    const now = new Date().toISOString()
+    const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined
     const record: RuntimeProfile = {
       id: input.id && !input.id.startsWith('builtin:') ? input.id : randomUUID(),
       name: input.name.trim() || 'Runtime profile',
@@ -342,35 +428,41 @@ export class AppStore {
       containerConfig: input.containerConfig,
       createdAt: existing?.createdAt || now,
       updatedAt: now
-    };
-    const index = profiles.findIndex((profile) => profile.id === record.id);
-    if (index >= 0) {
-      profiles[index] = record;
-    } else {
-      profiles.push(record);
     }
-    writeJson(runtimeProfilesPath, profiles);
-    return record;
+    const index = profiles.findIndex((profile) => profile.id === record.id)
+    if (index >= 0) {
+      profiles[index] = record
+    } else {
+      profiles.push(record)
+    }
+    writeJson(runtimeProfilesPath, profiles)
+    return record
   }
 
   static deleteRuntimeProfile(id: string) {
-    if (id.startsWith('builtin:')) return;
-    writeJson(runtimeProfilesPath, readJson<RuntimeProfile[]>(runtimeProfilesPath, []).filter((profile) => profile.id !== id));
+    if (id.startsWith('builtin:')) return
+    writeJson(
+      runtimeProfilesPath,
+      readJson<RuntimeProfile[]>(runtimeProfilesPath, []).filter((profile) => profile.id !== id)
+    )
   }
 
   static getHandoffCards(filter: HandoffCardFilter = {}): HandoffCard[] {
-    const cards = readJson<HandoffCard[]>(handoffCardsPath, []);
+    const cards = readJson<HandoffCard[]>(handoffCardsPath, [])
     return cards
       .filter((card) => !filter.sourceChatId || card.sourceChatId === filter.sourceChatId)
       .filter((card) => !filter.sourceRunId || card.sourceRunId === filter.sourceRunId)
       .filter((card) => !filter.status || card.status === filter.status)
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
   }
 
-  static saveHandoffCard(input: Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>): HandoffCard {
-    const cards = readJson<HandoffCard[]>(handoffCardsPath, []);
-    const now = new Date().toISOString();
-    const existing = input.id ? cards.find((card) => card.id === input.id) : undefined;
+  static saveHandoffCard(
+    input: Partial<HandoffCard> &
+      Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>
+  ): HandoffCard {
+    const cards = readJson<HandoffCard[]>(handoffCardsPath, [])
+    const now = new Date().toISOString()
+    const existing = input.id ? cards.find((card) => card.id === input.id) : undefined
     const record: HandoffCard = {
       id: input.id || randomUUID(),
       status: input.status || 'draft',
@@ -381,7 +473,9 @@ export class AppStore {
       workspacePath: input.workspacePath,
       summary: input.summary,
       selectedFiles: Array.isArray(input.selectedFiles) ? input.selectedFiles : [],
-      workspaceChangeSetIds: Array.isArray(input.workspaceChangeSetIds) ? input.workspaceChangeSetIds : [],
+      workspaceChangeSetIds: Array.isArray(input.workspaceChangeSetIds)
+        ? input.workspaceChangeSetIds
+        : [],
       rawEventRunIds: Array.isArray(input.rawEventRunIds) ? input.rawEventRunIds : [],
       recommendedProvider: input.recommendedProvider,
       recommendedModel: input.recommendedModel,
@@ -392,35 +486,41 @@ export class AppStore {
       createdAt: existing?.createdAt || input.createdAt || now,
       updatedAt: now,
       dispatchedAt: input.dispatchedAt
-    };
-    const index = cards.findIndex((card) => card.id === record.id);
-    if (index >= 0) {
-      cards[index] = record;
-    } else {
-      cards.push(record);
     }
-    writeJson(handoffCardsPath, cards);
-    return record;
+    const index = cards.findIndex((card) => card.id === record.id)
+    if (index >= 0) {
+      cards[index] = record
+    } else {
+      cards.push(record)
+    }
+    writeJson(handoffCardsPath, cards)
+    return record
   }
 
   static updateHandoffCard(id: string, partial: Partial<HandoffCard>): HandoffCard | null {
-    const existing = this.getHandoffCards().find((card) => card.id === id);
-    if (!existing) return null;
-    return this.saveHandoffCard({ ...existing, ...partial, id });
+    const existing = this.getHandoffCards().find((card) => card.id === id)
+    if (!existing) return null
+    return this.saveHandoffCard({ ...existing, ...partial, id })
   }
 
   static deleteHandoffCard(id: string) {
-    writeJson(handoffCardsPath, readJson<HandoffCard[]>(handoffCardsPath, []).filter((card) => card.id !== id));
+    writeJson(
+      handoffCardsPath,
+      readJson<HandoffCard[]>(handoffCardsPath, []).filter((card) => card.id !== id)
+    )
   }
 
   // Workspaces
   static getWorkspaces(): WorkspaceRecord[] {
-    return readJson<WorkspaceRecord[]>(workspacesPath, []);
+    return readJson<WorkspaceRecord[]>(workspacesPath, [])
   }
 
-  static addOrUpdateWorkspace(workspacePath: string, partial: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
-    const workspaces = this.getWorkspaces();
-    let ws = workspaces.find(w => w.path === workspacePath);
+  static addOrUpdateWorkspace(
+    workspacePath: string,
+    partial: Partial<WorkspaceRecord> = {}
+  ): WorkspaceRecord {
+    const workspaces = this.getWorkspaces()
+    let ws = workspaces.find((w) => w.path === workspacePath)
     if (!ws) {
       ws = {
         id: randomUUID(),
@@ -430,68 +530,68 @@ export class AppStore {
         lastOpenedAt: Date.now(),
         pinned: false,
         ...partial
-      };
-      workspaces.push(ws);
+      }
+      workspaces.push(ws)
     } else {
-      ws = { ...ws, ...partial, lastOpenedAt: Date.now() };
-      const index = workspaces.findIndex(w => w.path === workspacePath);
-      workspaces[index] = ws;
+      ws = { ...ws, ...partial, lastOpenedAt: Date.now() }
+      const index = workspaces.findIndex((w) => w.path === workspacePath)
+      workspaces[index] = ws
     }
-    writeJson(workspacesPath, workspaces);
-    return ws;
+    writeJson(workspacesPath, workspaces)
+    return ws
   }
 
   static removeWorkspace(workspaceId: string) {
-    const workspaces = this.getWorkspaces().filter(w => w.id !== workspaceId);
-    writeJson(workspacesPath, workspaces);
+    const workspaces = this.getWorkspaces().filter((w) => w.id !== workspaceId)
+    writeJson(workspacesPath, workspaces)
   }
 
   static clearWorkspaces() {
-    writeJson(workspacesPath, []);
+    writeJson(workspacesPath, [])
   }
 
   // Chats
   static normalizeChatRecord(chat: ChatRecord): ChatRecord {
-    const scope = chat.scope === 'global' ? 'global' : 'workspace';
+    const scope = chat.scope === 'global' ? 'global' : 'workspace'
     if (scope === 'global') {
-      const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat;
+      const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat
       return {
         ...rest,
         scope
-      };
+      }
     }
     return {
       ...chat,
       scope,
       workspaceId: chat.workspaceId || '',
       workspacePath: chat.workspacePath || ''
-    };
+    }
   }
 
   static getChats(workspaceId?: string): ChatRecord[] {
-    if (!fs.existsSync(chatsDir)) return [];
-    const files = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json'));
-    const chats: ChatRecord[] = [];
+    if (!fs.existsSync(chatsDir)) return []
+    const files = fs.readdirSync(chatsDir).filter((f) => f.endsWith('.json'))
+    const chats: ChatRecord[] = []
     for (const file of files) {
-      const chat = readJson<ChatRecord | null>(path.join(chatsDir, file), null);
+      const chat = readJson<ChatRecord | null>(path.join(chatsDir, file), null)
       if (chat) {
-        const normalizedChat = this.normalizeChatRecord(chat);
+        const normalizedChat = this.normalizeChatRecord(chat)
         if (!workspaceId || normalizedChat.workspaceId === workspaceId) {
-          chats.push(normalizedChat);
+          chats.push(normalizedChat)
         }
       }
     }
-    return chats.sort((a, b) => b.updatedAt - a.updatedAt);
+    return chats.sort((a, b) => b.updatedAt - a.updatedAt)
   }
 
   static getChat(chatId: string): ChatRecord | null {
-    const chatPath = path.join(chatsDir, `${chatId}.json`);
-    const chat = readJson<ChatRecord | null>(chatPath, null);
-    return chat ? this.normalizeChatRecord(chat) : null;
+    const chatPath = path.join(chatsDir, `${chatId}.json`)
+    const chat = readJson<ChatRecord | null>(chatPath, null)
+    return chat ? this.normalizeChatRecord(chat) : null
   }
 
   static createChat(workspaceId: string, workspacePath: string): ChatRecord {
-    const settings = this.getSettings();
+    const settings = this.getSettings()
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       scope: 'workspace',
@@ -504,15 +604,15 @@ export class AppStore {
       archived: false,
       messages: [],
       runs: []
-    };
-    if (settings.storeLocalChatHistory) {
-      this.saveChat(chat);
     }
-    return chat;
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat)
+    }
+    return chat
   }
 
   static createGlobalChat(): ChatRecord {
-    const settings = this.getSettings();
+    const settings = this.getSettings()
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       scope: 'global',
@@ -523,11 +623,11 @@ export class AppStore {
       archived: false,
       messages: [],
       runs: []
-    };
-    if (settings.storeLocalChatHistory) {
-      this.saveChat(chat);
     }
-    return chat;
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat)
+    }
+    return chat
   }
 
   /** Phase F1: spawn a sub-thread under an existing parent chat.
@@ -544,28 +644,28 @@ export class AppStore {
    * itself set, enforcing the max-depth-1 invariant.
    */
   static createSubThread(args: {
-    parentChatId: string;
-    provider: ProviderId;
-    delegationPrompt: string;
-    returnResultToParent: boolean;
+    parentChatId: string
+    provider: ProviderId
+    delegationPrompt: string
+    returnResultToParent: boolean
     /** Override the workspace if the user explicitly picked a
      * different one. Defaults to inheriting the parent's workspace. */
-    workspaceId?: string;
-    workspacePath?: string;
+    workspaceId?: string
+    workspacePath?: string
   }): ChatRecord {
-    const parent = this.getChat(args.parentChatId);
+    const parent = this.getChat(args.parentChatId)
     if (!parent) {
-      throw new Error(`Cannot create sub-thread: parent chat ${args.parentChatId} not found`);
+      throw new Error(`Cannot create sub-thread: parent chat ${args.parentChatId} not found`)
     }
     if (parent.parentChatId) {
       throw new Error(
         `Cannot create sub-thread: parent ${args.parentChatId} is itself a sub-thread (max depth 1 in v1)`
-      );
+      )
     }
-    const settings = this.getSettings();
-    const inheritWorkspace = args.workspaceId === undefined && args.workspacePath === undefined;
-    const workspaceId = inheritWorkspace ? parent.workspaceId : args.workspaceId;
-    const workspacePath = inheritWorkspace ? parent.workspacePath : args.workspacePath;
+    const settings = this.getSettings()
+    const inheritWorkspace = args.workspaceId === undefined && args.workspacePath === undefined
+    const workspaceId = inheritWorkspace ? parent.workspaceId : args.workspaceId
+    const workspacePath = inheritWorkspace ? parent.workspacePath : args.workspacePath
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       // Scope inherited from parent — a sub-thread of a workspace
@@ -588,11 +688,11 @@ export class AppStore {
         delegationPrompt: args.delegationPrompt,
         returnResultToParent: args.returnResultToParent
       }
-    };
-    if (settings.storeLocalChatHistory) {
-      this.saveChat(chat);
     }
-    return chat;
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat)
+    }
+    return chat
   }
 
   /** Phase F1: every chat whose `parentChatId` is `parentChatId`,
@@ -602,7 +702,7 @@ export class AppStore {
   static getChildChats(parentChatId: string): ChatRecord[] {
     return this.getChats()
       .filter((chat) => chat.parentChatId === parentChatId)
-      .sort((a, b) => a.createdAt - b.createdAt);
+      .sort((a, b) => a.createdAt - b.createdAt)
   }
 
   /** Phase F1: walk up to the topmost ancestor of a chat. Used by the
@@ -610,293 +710,299 @@ export class AppStore {
    * that needs the "thread family" of a delegation. Returns the input
    * chat if it has no parent. */
   static getRootChat(chatId: string): ChatRecord | null {
-    let current = this.getChat(chatId);
-    const visited = new Set<string>();
+    let current = this.getChat(chatId)
+    const visited = new Set<string>()
     while (current?.parentChatId) {
       if (visited.has(current.appChatId)) {
         // Defensive: malformed data with a cycle. Treat as root.
-        return current;
+        return current
       }
-      visited.add(current.appChatId);
-      const parent = this.getChat(current.parentChatId);
-      if (!parent) return current;
-      current = parent;
+      visited.add(current.appChatId)
+      const parent = this.getChat(current.parentChatId)
+      if (!parent) return current
+      current = parent
     }
-    return current;
+    return current
   }
 
   static saveChat(chat: ChatRecord) {
-    const settings = this.getSettings();
-    if (!settings.storeLocalChatHistory) return;
+    const settings = this.getSettings()
+    if (!settings.storeLocalChatHistory) return
 
-    const normalizedChat = this.normalizeChatRecord(chat);
-    normalizedChat.updatedAt = Date.now();
-    const chatPath = path.join(chatsDir, `${normalizedChat.appChatId}.json`);
-    writeJson(chatPath, normalizedChat);
+    const normalizedChat = this.normalizeChatRecord(chat)
+    normalizedChat.updatedAt = Date.now()
+    const chatPath = path.join(chatsDir, `${normalizedChat.appChatId}.json`)
+    writeJson(chatPath, normalizedChat)
   }
 
   static deleteChat(chatId: string) {
-    const chatPath = path.join(chatsDir, `${chatId}.json`);
+    const chatPath = path.join(chatsDir, `${chatId}.json`)
     if (fs.existsSync(chatPath)) {
-      fs.unlinkSync(chatPath);
+      fs.unlinkSync(chatPath)
     }
   }
 
   static clearChats(workspaceId?: string) {
-    const chats = this.getChats(workspaceId);
+    const chats = this.getChats(workspaceId)
     for (const chat of chats) {
-      this.deleteChat(chat.appChatId);
+      this.deleteChat(chat.appChatId)
     }
   }
 
   // Usage
   static getUsage(workspaceId?: string, chatId?: string) {
-    const records = readJson<UsageRecord[]>(usagePath, []);
+    const records = readJson<UsageRecord[]>(usagePath, [])
     return records.filter((record) => {
-      if (workspaceId && record.workspaceId !== workspaceId) return false;
-      if (chatId && record.chatId !== chatId) return false;
-      return true;
-    });
+      if (workspaceId && record.workspaceId !== workspaceId) return false
+      if (chatId && record.chatId !== chatId) return false
+      return true
+    })
   }
 
   static recordUsage(usage: Omit<UsageRecord, 'id' | 'timestamp'>) {
-    const settings = this.getSettings();
-    const records = readJson<UsageRecord[]>(usagePath, []);
-    
+    const settings = this.getSettings()
+    const records = readJson<UsageRecord[]>(usagePath, [])
+
     const record: UsageRecord = {
       id: randomUUID(),
       timestamp: Date.now(),
       ...usage
-    };
-
-    if (!settings.storePromptResponseInUsage) {
-      delete record.promptText;
-      delete record.responseText;
     }
 
-    records.push(record);
-    writeJson(usagePath, records);
+    if (!settings.storePromptResponseInUsage) {
+      delete record.promptText
+      delete record.responseText
+    }
+
+    records.push(record)
+    writeJson(usagePath, records)
   }
 
   // Scheduled tasks
   static getScheduledTasks(workspaceId?: string): ScheduledTask[] {
-    const tasks = readJson<ScheduledTask[]>(scheduledTasksPath, []);
+    const tasks = readJson<ScheduledTask[]>(scheduledTasksPath, [])
     return tasks
       .filter((task) => !workspaceId || task.workspaceId === workspaceId)
-      .sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime());
+      .sort((a, b) => new Date(a.runAt).getTime() - new Date(b.runAt).getTime())
   }
 
-  static saveScheduledTask(task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>): ScheduledTask {
-    const tasks = this.getScheduledTasks();
-    const now = new Date().toISOString();
+  static saveScheduledTask(
+    task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
+      Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
+  ): ScheduledTask {
+    const tasks = this.getScheduledTasks()
+    const now = new Date().toISOString()
     const record: ScheduledTask = {
       ...task,
       id: task.id || randomUUID(),
       status: task.status || 'pending',
       createdAt: task.createdAt || now,
       updatedAt: now
-    };
-    const index = tasks.findIndex((item) => item.id === record.id);
-    if (index >= 0) {
-      tasks[index] = { ...tasks[index], ...record, updatedAt: now };
-    } else {
-      tasks.push(record);
     }
-    writeJson(scheduledTasksPath, tasks);
-    return record;
+    const index = tasks.findIndex((item) => item.id === record.id)
+    if (index >= 0) {
+      tasks[index] = { ...tasks[index], ...record, updatedAt: now }
+    } else {
+      tasks.push(record)
+    }
+    writeJson(scheduledTasksPath, tasks)
+    return record
   }
 
   static updateScheduledTask(id: string, partial: Partial<ScheduledTask>): ScheduledTask | null {
-    const tasks = this.getScheduledTasks();
-    const index = tasks.findIndex((task) => task.id === id);
-    if (index < 0) return null;
-    const updated = { ...tasks[index], ...partial, id, updatedAt: new Date().toISOString() };
-    tasks[index] = updated;
-    writeJson(scheduledTasksPath, tasks);
-    return updated;
+    const tasks = this.getScheduledTasks()
+    const index = tasks.findIndex((task) => task.id === id)
+    if (index < 0) return null
+    const updated = { ...tasks[index], ...partial, id, updatedAt: new Date().toISOString() }
+    tasks[index] = updated
+    writeJson(scheduledTasksPath, tasks)
+    return updated
   }
 
   static deleteScheduledTask(id: string) {
-    writeJson(scheduledTasksPath, this.getScheduledTasks().filter((task) => task.id !== id));
+    writeJson(
+      scheduledTasksPath,
+      this.getScheduledTasks().filter((task) => task.id !== id)
+    )
   }
 
   static getDueScheduledTasks(nowMs: number = Date.now()): ScheduledTask[] {
     return this.getScheduledTasks().filter((task) => {
-      if (task.status !== 'pending') return false;
-      const runAtMs = new Date(task.runAt).getTime();
-      return Number.isFinite(runAtMs) && runAtMs <= nowMs;
-    });
+      if (task.status !== 'pending') return false
+      const runAtMs = new Date(task.runAt).getTime()
+      return Number.isFinite(runAtMs) && runAtMs <= nowMs
+    })
   }
 
   // Run queue
   static getRunQueueJobs(filter: RunQueueJobFilter = {}): RunQueueJob[] {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    return sortRunQueueJobs(filterRunQueueJobs(jobs, filter));
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    return sortRunQueueJobs(filterRunQueueJobs(jobs, filter))
   }
 
   static getRunQueueJob(runIdOrId: string): RunQueueJob | null {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    return jobs.find((job) => job.id === runIdOrId || job.runId === runIdOrId) || null;
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    return jobs.find((job) => job.id === runIdOrId || job.runId === runIdOrId) || null
   }
 
   static saveRunQueueJob(input: RunQueueJobInput): RunQueueJob {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    const index = jobs.findIndex((job) => job.id === input.id || job.runId === input.runId);
-    const now = new Date().toISOString();
-    const record = index >= 0
-      ? updateRunQueueJobRecord(jobs[index], input, now)
-      : createRunQueueJob(input, now);
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    const index = jobs.findIndex((job) => job.id === input.id || job.runId === input.runId)
+    const now = new Date().toISOString()
+    const record =
+      index >= 0 ? updateRunQueueJobRecord(jobs[index], input, now) : createRunQueueJob(input, now)
 
     if (index >= 0) {
-      jobs[index] = record;
+      jobs[index] = record
     } else {
-      jobs.push(record);
+      jobs.push(record)
     }
-    writeJson(runQueuePath, sortRunQueueJobs(jobs));
-    return record;
+    writeJson(runQueuePath, sortRunQueueJobs(jobs))
+    return record
   }
 
   static updateRunQueueJob(runIdOrId: string, partial: Partial<RunQueueJob>): RunQueueJob | null {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    const index = jobs.findIndex((job) => job.id === runIdOrId || job.runId === runIdOrId);
-    if (index < 0) return null;
-    const updated = updateRunQueueJobRecord(jobs[index], partial);
-    jobs[index] = updated;
-    writeJson(runQueuePath, sortRunQueueJobs(jobs));
-    return updated;
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    const index = jobs.findIndex((job) => job.id === runIdOrId || job.runId === runIdOrId)
+    if (index < 0) return null
+    const updated = updateRunQueueJobRecord(jobs[index], partial)
+    jobs[index] = updated
+    writeJson(runQueuePath, sortRunQueueJobs(jobs))
+    return updated
   }
 
   static deleteRunQueueJob(runIdOrId: string) {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    writeJson(runQueuePath, jobs.filter((job) => job.id !== runIdOrId && job.runId !== runIdOrId));
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    writeJson(
+      runQueuePath,
+      jobs.filter((job) => job.id !== runIdOrId && job.runId !== runIdOrId)
+    )
   }
 
   static recoverInterruptedRunQueueJobs(): RunQueueJob[] {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    const recovered = recoverInterruptedQueueJobs(jobs);
-    writeJson(runQueuePath, sortRunQueueJobs(recovered));
-    return recovered;
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    const recovered = recoverInterruptedQueueJobs(jobs)
+    writeJson(runQueuePath, sortRunQueueJobs(recovered))
+    return recovered
   }
 
   static recoverRunQueueAfterStartup(): RunRecoveryRecord[] {
-    const jobs = readJson<RunQueueJob[]>(runQueuePath, []);
-    const recovered = recoverRunQueueJobsAfterStartup(jobs);
-    writeJson(runQueuePath, sortRunQueueJobs(recovered.jobs));
+    const jobs = readJson<RunQueueJob[]>(runQueuePath, [])
+    const recovered = recoverRunQueueJobsAfterStartup(jobs)
+    writeJson(runQueuePath, sortRunQueueJobs(recovered.jobs))
     if (recovered.records.length > 0) {
-      const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, []);
-      writeJson(runRecoveryPath, [...records, ...recovered.records]);
+      const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, [])
+      writeJson(runRecoveryPath, [...records, ...recovered.records])
     }
-    return recovered.records;
+    return recovered.records
   }
 
   static getRunRecoveryRecords(filter: RunRecoveryFilter = {}): RunRecoveryRecord[] {
-    const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, []);
-    return filterRunRecoveryRecords(Array.isArray(records) ? records : [], filter);
+    const records = readJson<RunRecoveryRecord[]>(runRecoveryPath, [])
+    return filterRunRecoveryRecords(Array.isArray(records) ? records : [], filter)
   }
 
   // Run transcript/event store
   static appendRunEvent(input: RunEventInput): RunEventRecord {
-    const filePath = runEventFilePath(input.runId);
-    const cachedSequence = runEventSequenceCache.get(input.runId);
-    const cachedHash = runEventHashCache.get(input.runId);
-    const existingEvents = cachedSequence !== undefined && cachedHash !== undefined
-      ? []
-      : readRunEventFile(filePath);
-    const sequence = cachedSequence !== undefined
-      ? cachedSequence + 1
-      : nextRunEventSequence(existingEvents);
-    const previousHash = cachedHash || lastRunEventHash(existingEvents);
-    const settings = this.getSettings();
-    const artifacts = appendRunStreamArtifact(input, sequence);
+    const filePath = runEventFilePath(input.runId)
+    const cachedSequence = runEventSequenceCache.get(input.runId)
+    const cachedHash = runEventHashCache.get(input.runId)
+    const existingEvents =
+      cachedSequence !== undefined && cachedHash !== undefined ? [] : readRunEventFile(filePath)
+    const sequence =
+      cachedSequence !== undefined ? cachedSequence + 1 : nextRunEventSequence(existingEvents)
+    const previousHash = cachedHash || lastRunEventHash(existingEvents)
+    const settings = this.getSettings()
+    const artifacts = appendRunStreamArtifact(input, sequence)
     const record = createRunEventRecord(input, sequence, {
       storeRawPayload: settings.storeRawEvents,
       previousHash,
       artifacts
-    });
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const fd = fs.openSync(filePath, 'a');
+    })
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    const fd = fs.openSync(filePath, 'a')
     try {
-      fs.writeFileSync(fd, serializeRunEventRecord(record), 'utf-8');
+      fs.writeFileSync(fd, serializeRunEventRecord(record), 'utf-8')
       if (input.kind === 'lifecycle' || sequence % 25 === 0) {
-        fs.fsyncSync(fd);
+        fs.fsyncSync(fd)
       }
     } finally {
-      fs.closeSync(fd);
+      fs.closeSync(fd)
     }
-    runEventSequenceCache.set(input.runId, record.sequence);
-    runEventHashCache.set(input.runId, record.hash || previousHash);
-    return record;
+    runEventSequenceCache.set(input.runId, record.sequence)
+    runEventHashCache.set(input.runId, record.hash || previousHash)
+    return record
   }
 
   static appendRunEvents(inputs: RunEventInput[]): RunEventRecord[] {
-    return inputs.map((input) => this.appendRunEvent(input));
+    return inputs.map((input) => this.appendRunEvent(input))
   }
 
   static getRunEvents(filter: RunEventFilter = {}): RunEventRecord[] {
     const events = filter.runId
       ? readRunEventFile(runEventFilePath(filter.runId))
-      : readAllRunEventFiles();
-    return filterRunEvents(events, filter);
+      : readAllRunEventFiles()
+    return filterRunEvents(events, filter)
   }
 
   static getRunEventReplay(runId: string) {
-    return createRunEventReplay(runId, readRunEventFile(runEventFilePath(runId)));
+    return createRunEventReplay(runId, readRunEventFile(runEventFilePath(runId)))
   }
 
   // Workspace change model
   static getWorkspaceChangeSets(filter: WorkspaceChangeFilter = {}): WorkspaceChangeSet[] {
-    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, []);
-    return filterWorkspaceChangeSets(Array.isArray(records) ? records : [], filter);
+    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, [])
+    return filterWorkspaceChangeSets(Array.isArray(records) ? records : [], filter)
   }
 
   static saveWorkspaceChangeSet(input: WorkspaceChangeSetInput): WorkspaceChangeSet {
-    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, []);
-    const record = createWorkspaceChangeSet(input);
-    const index = records.findIndex((item) => item.id === record.id);
+    const records = readJson<WorkspaceChangeSet[]>(workspaceChangesPath, [])
+    const record = createWorkspaceChangeSet(input)
+    const index = records.findIndex((item) => item.id === record.id)
     if (index >= 0) {
       records[index] = {
         ...records[index],
         ...record,
         id: records[index].id,
         createdAt: records[index].createdAt
-      };
+      }
     } else {
-      records.push(record);
+      records.push(record)
     }
-    writeJson(workspaceChangesPath, filterWorkspaceChangeSets(records));
-    return index >= 0 ? records[index] : record;
+    writeJson(workspaceChangesPath, filterWorkspaceChangeSets(records))
+    return index >= 0 ? records[index] : record
   }
 
   static recordWorkspaceRunChange(input: WorkspaceRunChangeInput): WorkspaceChangeSet {
-    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromRunDiff(input));
+    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromRunDiff(input))
   }
 
   static recordWorkspaceEditorChange(input: WorkspaceEditorChangeInput): WorkspaceChangeSet {
-    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromEditorWrite(input));
+    return this.saveWorkspaceChangeSet(createWorkspaceChangeSetFromEditorWrite(input))
   }
 
   // Approval ledger
   static getApprovalLedger(filter: ApprovalLedgerFilter = {}): ApprovalLedgerRecord[] {
-    const records = this.recoverExpiredApprovalLedger();
-    return filterApprovalLedgerRecords(records, filter);
+    const records = this.recoverExpiredApprovalLedger()
+    return filterApprovalLedgerRecords(records, filter)
   }
 
   static recordApprovalRequest(input: ApprovalLedgerRequestInput): ApprovalLedgerRecord {
-    const records = this.recoverExpiredApprovalLedger();
-    const record = createApprovalLedgerRecord(input);
-    const index = records.findIndex((item) => item.approvalId === record.approvalId);
+    const records = this.recoverExpiredApprovalLedger()
+    const record = createApprovalLedgerRecord(input)
+    const index = records.findIndex((item) => item.approvalId === record.approvalId)
     if (index >= 0) {
       records[index] = {
         ...records[index],
         ...record,
         id: records[index].id,
         requestedAt: records[index].requestedAt
-      };
+      }
     } else {
-      records.push(record);
+      records.push(record)
     }
-    writeJson(approvalLedgerPath, records);
-    return index >= 0 ? records[index] : record;
+    writeJson(approvalLedgerPath, records)
+    return index >= 0 ? records[index] : record
   }
 
   static resolveApprovalRequest(
@@ -905,61 +1011,62 @@ export class AppStore {
     decisionSource: 'user' | 'system' = 'user',
     extraMetadata: Record<string, unknown> = {}
   ): ApprovalLedgerRecord | null {
-    const records = this.recoverExpiredApprovalLedger();
-    const index = records.findIndex((record) => record.approvalId === approvalId);
-    if (index < 0) return null;
+    const records = this.recoverExpiredApprovalLedger()
+    const index = records.findIndex((record) => record.approvalId === approvalId)
+    if (index < 0) return null
     const updated = resolveApprovalLedgerRecord(
       records[index],
       action,
       undefined,
       decisionSource,
       extraMetadata
-    );
-    records[index] = updated;
-    writeJson(approvalLedgerPath, records);
-    return updated;
+    )
+    records[index] = updated
+    writeJson(approvalLedgerPath, records)
+    return updated
   }
 
   static expireApprovalLedgerScope(filter: {
-    runId?: string;
-    provider?: ProviderId;
-    workspacePath?: string;
-    scopes: ApprovalLedgerScope[];
-    reason: string;
+    runId?: string
+    provider?: ProviderId
+    workspacePath?: string
+    scopes: ApprovalLedgerScope[]
+    reason: string
   }): ApprovalLedgerRecord[] {
-    const records = this.recoverExpiredApprovalLedger();
-    const updated = expireScopedApprovalLedgerRecords(records, filter);
-    writeJson(approvalLedgerPath, updated);
-    return updated;
+    const records = this.recoverExpiredApprovalLedger()
+    const updated = expireScopedApprovalLedgerRecords(records, filter)
+    writeJson(approvalLedgerPath, updated)
+    return updated
   }
 
   static recoverExpiredApprovalLedger(): ApprovalLedgerRecord[] {
-    const stored = readJson<ApprovalLedgerRecord[] | unknown>(approvalLedgerPath, []);
-    const records = Array.isArray(stored) ? stored : [];
-    const recovered = recoverExpiredApprovalLedgerRecords(records);
-    const changed = !Array.isArray(stored) || recovered.some((record, index) => record !== records[index]);
+    const stored = readJson<ApprovalLedgerRecord[] | unknown>(approvalLedgerPath, [])
+    const records = Array.isArray(stored) ? stored : []
+    const recovered = recoverExpiredApprovalLedgerRecords(records)
+    const changed =
+      !Array.isArray(stored) || recovered.some((record, index) => record !== records[index])
     if (changed) {
-      writeJson(approvalLedgerPath, recovered);
+      writeJson(approvalLedgerPath, recovered)
     }
-    return recovered;
+    return recovered
   }
 
   // Product operations
   static getProductCrashes(filter: ProductCrashFilter = {}): ProductCrashRecord[] {
-    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, []);
-    return filterProductCrashRecords(Array.isArray(records) ? records : [], filter);
+    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, [])
+    return filterProductCrashRecords(Array.isArray(records) ? records : [], filter)
   }
 
   static recordProductCrash(input: ProductCrashInput): ProductCrashRecord {
-    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, []);
-    const current = Array.isArray(records) ? records : [];
+    const records = readJson<ProductCrashRecord[] | unknown>(productCrashesPath, [])
+    const current = Array.isArray(records) ? records : []
     const record = createProductCrashRecord(input, {
       appVersion: app.getVersion() || 'unknown',
       platform: process.platform,
       arch: process.arch
-    });
-    current.push(record);
-    writeJson(productCrashesPath, filterProductCrashRecords(current, { limit: 200 }));
-    return record;
+    })
+    current.push(record)
+    writeJson(productCrashesPath, filterProductCrashRecords(current, { limit: 200 }))
+    return record
   }
 }

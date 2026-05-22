@@ -1,4 +1,11 @@
-import type { ChatRecord, ChatRun, ProviderId, RunQueueJob, ScheduledTask, RuntimeProfile } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  ChatRun,
+  ProviderId,
+  RunQueueJob,
+  ScheduledTask,
+  RuntimeProfile
+} from '../../../main/store/types'
 
 export interface RunLane {
   id: string
@@ -28,7 +35,9 @@ const getRuntimeProfileLabel = (profiles: RuntimeProfile[], id?: string): string
   id ? profiles.find((profile) => profile.id === id)?.name || id : undefined
 
 export const compactPromptPreview = (value?: string): string => {
-  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  const text = String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
   return text.length > 140 ? `${text.slice(0, 140)}...` : text
 }
 
@@ -88,10 +97,13 @@ export const buildRunLanes = (
       runtimeProfileId,
       runtimeProfileName: getRuntimeProfileLabel(runtimeProfiles, runtimeProfileId),
       handoffSourceRunId: job.handoffSourceRunId || request?.handoffSourceRunId,
-      promptPreview: compactPromptPreview(job.promptPreview || request?.displayPrompt || request?.prompt),
-      blockedReason: job.status === 'queued'
-        ? job.statusReason || 'Waiting for this chat to finish its active run.'
-        : job.statusReason,
+      promptPreview: compactPromptPreview(
+        job.promptPreview || request?.displayPrompt || request?.prompt
+      ),
+      blockedReason:
+        job.status === 'queued'
+          ? job.statusReason || 'Waiting for this chat to finish its active run.'
+          : job.statusReason,
       touchedFiles: [],
       updatedAt: job.updatedAt
     })
@@ -115,7 +127,10 @@ export const buildRunLanes = (
       runtimeProfileName: getRuntimeProfileLabel(runtimeProfiles, task.runtimeProfileId),
       handoffSourceRunId: task.handoffSourceRunId,
       promptPreview: compactPromptPreview(task.displayPrompt || task.prompt),
-      blockedReason: task.status === 'due' ? 'Due and waiting for this chat to become idle.' : `Scheduled for ${new Date(task.runAt).toLocaleString()}`,
+      blockedReason:
+        task.status === 'due'
+          ? 'Due and waiting for this chat to become idle.'
+          : `Scheduled for ${new Date(task.runAt).toLocaleString()}`,
       touchedFiles: [],
       updatedAt: task.updatedAt
     })
@@ -125,11 +140,8 @@ export const buildRunLanes = (
     for (const run of chat.runs || []) {
       if (seenRunIds.has(run.runId)) continue
       const provider = run.provider || getChatProvider(chat)
-      const phase = run.status === 'failed'
-        ? 'failed'
-        : run.status === 'cancelled'
-          ? 'cancelled'
-          : 'completed'
+      const phase =
+        run.status === 'failed' ? 'failed' : run.status === 'cancelled' ? 'cancelled' : 'completed'
       lanes.push({
         id: `run:${run.runId}`,
         runId: run.runId,
@@ -144,7 +156,9 @@ export const buildRunLanes = (
         runtimeProfileId: run.runtimeProfileId,
         runtimeProfileName: getRuntimeProfileLabel(runtimeProfiles, run.runtimeProfileId),
         handoffSourceRunId: run.handoffSourceRunId,
-        promptPreview: compactPromptPreview(chat.messages.find((message) => message.id === run.promptMessageId)?.content),
+        promptPreview: compactPromptPreview(
+          chat.messages.find((message) => message.id === run.promptMessageId)?.content
+        ),
         touchedFiles: extractRunTouchedFiles(run),
         updatedAt: run.endedAt || run.startedAt
       })
@@ -155,29 +169,35 @@ export const buildRunLanes = (
   const livePhases = new Set<RunLane['phase']>(['active', 'queued', 'paused', 'scheduled'])
   for (const lane of supervised) {
     if (!lane.workspacePath || !livePhases.has(lane.phase)) continue
-    const peers = supervised.filter((peer) =>
-      peer.id !== lane.id &&
-      peer.workspacePath === lane.workspacePath &&
-      livePhases.has(peer.phase)
+    const peers = supervised.filter(
+      (peer) =>
+        peer.id !== lane.id &&
+        peer.workspacePath === lane.workspacePath &&
+        livePhases.has(peer.phase)
     )
     if (peers.length === 0) continue
     const laneFiles = new Set(lane.touchedFiles)
-    const overlappingFiles = peers.flatMap((peer) => peer.touchedFiles.filter((file) => laneFiles.has(file)))
-    lane.conflictSummary = overlappingFiles.length > 0
-      ? `Potential file overlap: ${[...new Set(overlappingFiles)].slice(0, 3).join(', ')}`
-      : `Shares workspace with ${peers.length} other live lane${peers.length === 1 ? '' : 's'}.`
+    const overlappingFiles = peers.flatMap((peer) =>
+      peer.touchedFiles.filter((file) => laneFiles.has(file))
+    )
+    lane.conflictSummary =
+      overlappingFiles.length > 0
+        ? `Potential file overlap: ${[...new Set(overlappingFiles)].slice(0, 3).join(', ')}`
+        : `Shares workspace with ${peers.length} other live lane${peers.length === 1 ? '' : 's'}.`
   }
 
-  return supervised.sort((a, b) => {
-    const phaseRank: Record<RunLane['phase'], number> = {
-      active: 0,
-      queued: 1,
-      paused: 2,
-      scheduled: 3,
-      failed: 4,
-      cancelled: 5,
-      completed: 6
-    }
-    return phaseRank[a.phase] - phaseRank[b.phase] || laneUpdatedAt(b) - laneUpdatedAt(a)
-  }).slice(0, 80)
+  return supervised
+    .sort((a, b) => {
+      const phaseRank: Record<RunLane['phase'], number> = {
+        active: 0,
+        queued: 1,
+        paused: 2,
+        scheduled: 3,
+        failed: 4,
+        cancelled: 5,
+        completed: 6
+      }
+      return phaseRank[a.phase] - phaseRank[b.phase] || laneUpdatedAt(b) - laneUpdatedAt(a)
+    })
+    .slice(0, 80)
 }

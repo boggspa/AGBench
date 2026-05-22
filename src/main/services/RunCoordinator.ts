@@ -114,10 +114,7 @@ export class RunCoordinator {
    * resolution and adapter runtime failures intentionally propagate so
    * non-IPC callers such as `delegate_to_subthread` can surface the
    * failed child-run dispatch instead of leaving a sub-thread pending. */
-  async dispatch(
-    payload: AgentRunPayload,
-    event: RunDispatchEvent
-  ): Promise<DispatchResult> {
+  async dispatch(payload: AgentRunPayload, event: RunDispatchEvent): Promise<DispatchResult> {
     const normalizedPayload = this.deps.normalizePayload(payload)
     normalizedPayload.appRunId = this.deps.routeWithRunId(
       normalizedPayload.provider,

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyRecoveryRecordsToChatRuns, mapRecoveryStatusToRunStatus } from './recoverChatRunTerminals'
+import {
+  applyRecoveryRecordsToChatRuns,
+  mapRecoveryStatusToRunStatus
+} from './recoverChatRunTerminals'
 import type { ChatRecord, RunRecoveryRecord } from '../../../main/store/types'
 
 function makeChat(overrides: Partial<ChatRecord> & Pick<ChatRecord, 'appChatId'>): ChatRecord {
@@ -15,7 +18,9 @@ function makeChat(overrides: Partial<ChatRecord> & Pick<ChatRecord, 'appChatId'>
   }
 }
 
-function makeRecord(overrides: Partial<RunRecoveryRecord> & Pick<RunRecoveryRecord, 'runId' | 'chatId'>): RunRecoveryRecord {
+function makeRecord(
+  overrides: Partial<RunRecoveryRecord> & Pick<RunRecoveryRecord, 'runId' | 'chatId'>
+): RunRecoveryRecord {
   return {
     schemaVersion: 1,
     id: `${overrides.runId}-record`,
@@ -156,9 +161,7 @@ describe('applyRecoveryRecordsToChatRuns', () => {
         runs: [{ runId: 'run-2', startedAt: 'start' }]
       })
     ]
-    const records = [
-      makeRecord({ runId: 'run-2', chatId: 'chat-2', recoveredAt: 'later' })
-    ]
+    const records = [makeRecord({ runId: 'run-2', chatId: 'chat-2', recoveredAt: 'later' })]
     const result = applyRecoveryRecordsToChatRuns(records, chats)
     expect(result[0]).toBe(chats[0]) // chat-1 reference-equal
     expect(result[1]).not.toBe(chats[1])
@@ -212,6 +215,8 @@ describe('mapRecoveryStatusToRunStatus', () => {
   })
 
   it('prefers the existing fallback when one is provided for a non-terminal status', () => {
-    expect(mapRecoveryStatusToRunStatus('queued', 'success_with_warnings')).toBe('success_with_warnings')
+    expect(mapRecoveryStatusToRunStatus('queued', 'success_with_warnings')).toBe(
+      'success_with_warnings'
+    )
   })
 })

@@ -274,10 +274,10 @@ export function buildReleaseAutomationStatus(input: {
   )
   const nativeModulesConfigured = Boolean(
     smokeNodePtyScript &&
-      smokePackageScript &&
-      afterPack?.includes('validate-native-modules') &&
-      hasNodePtyAsarUnpack &&
-      npmRebuild === 'true'
+    smokePackageScript &&
+    afterPack?.includes('validate-native-modules') &&
+    hasNodePtyAsarUnpack &&
+    npmRebuild === 'true'
   )
   const updateDistributionConfigured =
     publishProvider === 'github'

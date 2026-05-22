@@ -6,9 +6,10 @@ const marker = `agentbench-node-pty-smoke-${Date.now()}`
 const timeoutMs = Number(process.env.PTY_SMOKE_TIMEOUT_MS || 8000)
 const isWindows = process.platform === 'win32'
 const shell = isWindows ? 'powershell.exe' : process.env.SHELL || '/bin/sh'
-const unixShellArgs = pathBasename(shell) === 'sh'
-  ? ['-c', `printf '%s\\n' '${marker}'`]
-  : ['-lc', `printf '%s\\n' '${marker}'`]
+const unixShellArgs =
+  pathBasename(shell) === 'sh'
+    ? ['-c', `printf '%s\\n' '${marker}'`]
+    : ['-lc', `printf '%s\\n' '${marker}'`]
 const args = isWindows
   ? ['-NoProfile', '-NonInteractive', '-Command', `Write-Output "${marker}"`]
   : unixShellArgs

@@ -14,13 +14,13 @@
 
 export interface UserMessageCollapseThresholds {
   /** Lines beyond this trigger collapse. */
-  readonly maxLines: number;
+  readonly maxLines: number
   /** Characters beyond this trigger collapse. */
-  readonly maxChars: number;
+  readonly maxChars: number
   /** Lines shown when collapsed. */
-  readonly previewLines: number;
+  readonly previewLines: number
   /** Characters shown when collapsed. */
-  readonly previewChars: number;
+  readonly previewChars: number
 }
 
 /**
@@ -33,13 +33,13 @@ export const DEFAULT_USER_MESSAGE_COLLAPSE_THRESHOLDS: UserMessageCollapseThresh
   maxChars: 800,
   previewLines: 8,
   previewChars: 500
-};
+}
 
 function countLines(content: string): number {
-  if (content.length === 0) return 0;
+  if (content.length === 0) return 0
   // Splitting on \n counts an N-line block as N lines even without a trailing
   // newline — that matches what a reader visually sees in the bubble.
-  return content.split('\n').length;
+  return content.split('\n').length
 }
 
 /**
@@ -50,11 +50,11 @@ export function shouldCollapseUserMessage(
   content: string,
   thresholds: UserMessageCollapseThresholds = DEFAULT_USER_MESSAGE_COLLAPSE_THRESHOLDS
 ): boolean {
-  if (typeof content !== 'string') return false;
-  if (content.trim().length === 0) return false;
-  if (content.length > thresholds.maxChars) return true;
-  if (countLines(content) > thresholds.maxLines) return true;
-  return false;
+  if (typeof content !== 'string') return false
+  if (content.trim().length === 0) return false
+  if (content.length > thresholds.maxChars) return true
+  if (countLines(content) > thresholds.maxLines) return true
+  return false
 }
 
 /**
@@ -63,17 +63,17 @@ export function shouldCollapseUserMessage(
  * exceed the budget.
  */
 function truncateAtWordBoundary(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  const slice = text.slice(0, maxChars);
+  if (text.length <= maxChars) return text
+  const slice = text.slice(0, maxChars)
   // Look for the last whitespace inside the slice. The match position is the
   // index of the trailing whitespace+word run we want to drop. Anything > 0
   // is a safe place to cut — we just need *some* word to remain in the
   // preview, otherwise the bubble would look empty.
-  const lastWs = slice.search(/\s\S*$/);
+  const lastWs = slice.search(/\s\S*$/)
   if (lastWs > 0) {
-    return slice.slice(0, lastWs);
+    return slice.slice(0, lastWs)
   }
-  return slice;
+  return slice
 }
 
 /**
@@ -92,28 +92,28 @@ export function truncateUserMessagePreview(
   content: string,
   thresholds: UserMessageCollapseThresholds = DEFAULT_USER_MESSAGE_COLLAPSE_THRESHOLDS
 ): string {
-  if (typeof content !== 'string' || content.length === 0) return '';
+  if (typeof content !== 'string' || content.length === 0) return ''
 
-  const lines = content.split('\n');
-  let byLines: string;
+  const lines = content.split('\n')
+  let byLines: string
   if (lines.length > thresholds.previewLines) {
-    byLines = lines.slice(0, thresholds.previewLines).join('\n');
+    byLines = lines.slice(0, thresholds.previewLines).join('\n')
   } else {
-    byLines = content;
+    byLines = content
   }
 
-  const byChars = truncateAtWordBoundary(byLines, thresholds.previewChars);
+  const byChars = truncateAtWordBoundary(byLines, thresholds.previewChars)
 
   // Guard against breaking a markdown code fence in half. If the preview
   // contains an odd number of ``` fences, walk back to before the unclosed
   // opener so the bubble never renders a dangling block.
-  const fenceCount = (byChars.match(/```/g) || []).length;
+  const fenceCount = (byChars.match(/```/g) || []).length
   if (fenceCount % 2 === 1) {
-    const lastFenceIdx = byChars.lastIndexOf('```');
+    const lastFenceIdx = byChars.lastIndexOf('```')
     if (lastFenceIdx > 0) {
-      return byChars.slice(0, lastFenceIdx).replace(/\s+$/, '');
+      return byChars.slice(0, lastFenceIdx).replace(/\s+$/, '')
     }
   }
 
-  return byChars;
+  return byChars
 }

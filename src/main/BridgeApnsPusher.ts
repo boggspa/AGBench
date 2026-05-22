@@ -202,7 +202,9 @@ export function createBridgeApnsPusher(options: BridgeApnsPusherOptions = {}): B
   }
 }
 
-function resolveCredentials(options: BridgeApnsPusherOptions): BridgeApnsPusherOptions['credentials'] | null {
+function resolveCredentials(
+  options: BridgeApnsPusherOptions
+): BridgeApnsPusherOptions['credentials'] | null {
   if (options.credentials) {
     const c = options.credentials
     if ((c.authKeyPath || c.authKeyPem) && c.keyId && c.teamId && c.bundleId) {

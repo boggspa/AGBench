@@ -54,9 +54,8 @@ export function visibleRunningChatIds(
   pendingApprovalsByChatId: Readonly<Record<string, RunningChatApprovalLike | null>>,
   chatsByAppChatId?: Readonly<Record<string, RunningChatRecordLike | null | undefined>>
 ): string[] {
-  const iterable: Iterable<string> = runningChatIds instanceof Set
-    ? runningChatIds
-    : runningChatIds as ReadonlyArray<string>
+  const iterable: Iterable<string> =
+    runningChatIds instanceof Set ? runningChatIds : (runningChatIds as ReadonlyArray<string>)
   const result: string[] = []
   for (const chatId of iterable) {
     const pending = pendingApprovalsByChatId[chatId]

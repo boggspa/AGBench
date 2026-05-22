@@ -1,24 +1,24 @@
-import type { ChatRecord, ProviderId } from '../../../main/store/types';
+import type { ChatRecord, ProviderId } from '../../../main/store/types'
 
 interface SubThreadStatusTickerProps {
   /** The currently-active chat. The ticker only renders when at least
    * one of its direct sub-threads is running. */
-  currentChat: ChatRecord | null;
+  currentChat: ChatRecord | null
   /** All chats — used to find sub-threads whose parentChatId points at
    * the active chat. */
-  chats: ChatRecord[];
+  chats: ChatRecord[]
   /** Live running set so we can skip terminated sub-threads. */
-  runningChatIds: string[];
+  runningChatIds: string[]
   /** Click handler to navigate to a specific sub-thread. */
-  onOpenSubThread?: (chatId: string) => void;
+  onOpenSubThread?: (chatId: string) => void
 }
 
 function providerLabel(provider?: ProviderId): string {
-  if (provider === 'codex') return 'Codex';
-  if (provider === 'claude') return 'Claude';
-  if (provider === 'kimi') return 'Kimi';
-  if (provider === 'gemini') return 'Gemini';
-  return 'Sub-thread';
+  if (provider === 'codex') return 'Codex'
+  if (provider === 'claude') return 'Claude'
+  if (provider === 'kimi') return 'Kimi'
+  if (provider === 'gemini') return 'Gemini'
+  return 'Sub-thread'
 }
 
 /** Subtle status strip rendered above the transcript. Only present
@@ -30,18 +30,16 @@ export function SubThreadStatusTicker({
   runningChatIds,
   onOpenSubThread
 }: SubThreadStatusTickerProps) {
-  if (!currentChat) return null;
-  const runningSet = new Set(runningChatIds);
+  if (!currentChat) return null
+  const runningSet = new Set(runningChatIds)
   const activeSubThreads = chats.filter(
-    (chat) =>
-      chat.parentChatId === currentChat.appChatId &&
-      runningSet.has(chat.appChatId)
-  );
-  if (activeSubThreads.length === 0) return null;
+    (chat) => chat.parentChatId === currentChat.appChatId && runningSet.has(chat.appChatId)
+  )
+  if (activeSubThreads.length === 0) return null
 
-  const parentProvider = currentChat.provider;
-  const parentColor = `var(--provider-${parentProvider || 'gemini'}-color)`;
-  const parentLabel = providerLabel(parentProvider);
+  const parentProvider = currentChat.provider
+  const parentColor = `var(--provider-${parentProvider || 'gemini'}-color)`
+  const parentLabel = providerLabel(parentProvider)
 
   return (
     <div className="subthread-status-ticker" role="status" aria-live="polite">
@@ -54,12 +52,14 @@ export function SubThreadStatusTicker({
         </span>
         <span className="subthread-status-text">orchestrating</span>
       </div>
-      <span className="subthread-status-ticker-divider" aria-hidden="true">·</span>
+      <span className="subthread-status-ticker-divider" aria-hidden="true">
+        ·
+      </span>
       <div className="subthread-status-ticker-subs">
         {activeSubThreads.map((sub) => {
-          const subColor = `var(--provider-${sub.provider || 'gemini'}-color)`;
-          const subLabel = providerLabel(sub.provider);
-          const isClickable = Boolean(onOpenSubThread);
+          const subColor = `var(--provider-${sub.provider || 'gemini'}-color)`
+          const subLabel = providerLabel(sub.provider)
+          const isClickable = Boolean(onOpenSubThread)
           return (
             <button
               key={sub.appChatId}
@@ -69,7 +69,11 @@ export function SubThreadStatusTicker({
               disabled={!isClickable}
               title={sub.title}
             >
-              <span className="subthread-status-pulse-dot" style={{ background: subColor }} aria-hidden="true" />
+              <span
+                className="subthread-status-pulse-dot"
+                style={{ background: subColor }}
+                aria-hidden="true"
+              />
               <span
                 className={`subthread-status-chip provider-${sub.provider || 'gemini'}`}
                 style={{ background: subColor }}
@@ -78,9 +82,9 @@ export function SubThreadStatusTicker({
               </span>
               <span className="subthread-status-text">sub-thread active</span>
             </button>
-          );
+          )
         })}
       </div>
     </div>
-  );
+  )
 }

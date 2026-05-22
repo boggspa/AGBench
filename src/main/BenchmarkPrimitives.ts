@@ -121,7 +121,10 @@ function toPosixPath(value: string): string {
 }
 
 function safeSegment(value: string): string {
-  const normalized = value.trim().replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '')
+  const normalized = value
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
   return normalized || 'artifact'
 }
 
@@ -152,23 +155,35 @@ async function pinFile(filePath: string, displayPath: string): Promise<Benchmark
   }
 }
 
-export async function pinWorkspaceFiles(workspacePath: string, filePaths: string[] = []): Promise<BenchmarkPinnedFile[]> {
-  const uniquePaths = Array.from(new Set(filePaths.filter((filePath) => typeof filePath === 'string' && filePath.trim())))
+export async function pinWorkspaceFiles(
+  workspacePath: string,
+  filePaths: string[] = []
+): Promise<BenchmarkPinnedFile[]> {
+  const uniquePaths = Array.from(
+    new Set(filePaths.filter((filePath) => typeof filePath === 'string' && filePath.trim()))
+  )
   const pinned = await Promise.all(
-    uniquePaths.sort().map((filePath) => pinFile(resolveWorkspaceChild(workspacePath, filePath), filePath))
+    uniquePaths
+      .sort()
+      .map((filePath) => pinFile(resolveWorkspaceChild(workspacePath, filePath), filePath))
   )
   return pinned
 }
 
 function execFileText(command: string, args: string[], cwd: string): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(command, args, { cwd, timeout: 8_000, maxBuffer: 20 * 1024 * 1024 }, (error, stdout) => {
-      if (error) {
-        resolve(null)
-        return
+    execFile(
+      command,
+      args,
+      { cwd, timeout: 8_000, maxBuffer: 20 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error) {
+          resolve(null)
+          return
+        }
+        resolve(stdout.toString())
       }
-      resolve(stdout.toString())
-    })
+    )
   })
 }
 
@@ -208,7 +223,9 @@ export async function captureBenchmarkEnvironmentManifest(
   options: CaptureBenchmarkEnvironmentOptions = {}
 ): Promise<BenchmarkEnvironmentManifest> {
   const workspacePath = options.workspacePath ? path.resolve(options.workspacePath) : undefined
-  const files = workspacePath ? await pinWorkspaceFiles(workspacePath, options.inputFiles || []) : []
+  const files = workspacePath
+    ? await pinWorkspaceFiles(workspacePath, options.inputFiles || [])
+    : []
   const env = (options.envKeys || []).reduce<Record<string, string>>((result, key) => {
     if (process.env[key] !== undefined) {
       result[key] = String(process.env[key])
@@ -226,10 +243,10 @@ export async function captureBenchmarkEnvironmentManifest(
     workspacePath,
     git: workspacePath
       ? await captureGitManifest(
-        workspacePath,
-        Boolean(options.includeGitTrackedFiles),
-        options.maxGitTrackedFiles || 500
-      )
+          workspacePath,
+          Boolean(options.includeGitTrackedFiles),
+          options.maxGitTrackedFiles || 500
+        )
       : undefined,
     files,
     env: Object.keys(env).length ? env : undefined
@@ -295,15 +312,16 @@ function outputTarget(context: BenchmarkEvaluationContext, target: string | unde
 
 function jsonField(value: unknown, target: string | undefined): unknown {
   const pathParts = (target || '').split('.').filter(Boolean)
-  let current = typeof value === 'string'
-    ? (() => {
-      try {
-        return JSON.parse(value)
-      } catch {
-        return undefined
-      }
-    })()
-    : value
+  let current =
+    typeof value === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(value)
+          } catch {
+            return undefined
+          }
+        })()
+      : value
   for (const part of pathParts) {
     if (!current || typeof current !== 'object') {
       return undefined
@@ -318,7 +336,11 @@ async function evaluateScorer(
   context: BenchmarkEvaluationContext
 ): Promise<BenchmarkScoreResult> {
   const maxScore = scorerWeight(scorer)
-  const pass = (passed: boolean, message?: string, metadata?: Record<string, unknown>): BenchmarkScoreResult => ({
+  const pass = (
+    passed: boolean,
+    message?: string,
+    metadata?: Record<string, unknown>
+  ): BenchmarkScoreResult => ({
     scorerId: scorer.id,
     kind: scorer.kind,
     passed,
@@ -331,7 +353,10 @@ async function evaluateScorer(
   if (scorer.kind === 'exact_match') {
     const actual = String(outputTarget(context, scorer.target) ?? '')
     const expected = String(scorer.expected ?? '')
-    return pass(actual === expected, actual === expected ? undefined : 'Output did not exactly match expected text.')
+    return pass(
+      actual === expected,
+      actual === expected ? undefined : 'Output did not exactly match expected text.'
+    )
   }
 
   if (scorer.kind === 'regex_match') {
@@ -340,7 +365,10 @@ async function evaluateScorer(
       return pass(false, 'Regex scorer is missing a pattern.')
     }
     const regex = new RegExp(scorer.pattern, scorer.flags)
-    return pass(regex.test(actual), `Pattern ${scorer.pattern} ${regex.test(actual) ? 'matched' : 'did not match'}.`)
+    return pass(
+      regex.test(actual),
+      `Pattern ${scorer.pattern} ${regex.test(actual) ? 'matched' : 'did not match'}.`
+    )
   }
 
   if (scorer.kind === 'file_exists') {
@@ -355,7 +383,11 @@ async function evaluateScorer(
       }
       if (scorer.sha256) {
         const actualSha = await sha256File(targetPath)
-        return pass(actualSha === scorer.sha256, actualSha === scorer.sha256 ? undefined : 'File hash mismatch.', { sha256: actualSha })
+        return pass(
+          actualSha === scorer.sha256,
+          actualSha === scorer.sha256 ? undefined : 'File hash mismatch.',
+          { sha256: actualSha }
+        )
       }
       return pass(true)
     } catch {
@@ -370,13 +402,27 @@ async function evaluateScorer(
       if (scorer.sha256 && item.sha256 !== scorer.sha256) return false
       return true
     })
-    return pass(Boolean(artifact), artifact ? undefined : 'Expected artifact was not recorded.', artifact ? { artifactId: artifact.id } : undefined)
+    return pass(
+      Boolean(artifact),
+      artifact ? undefined : 'Expected artifact was not recorded.',
+      artifact ? { artifactId: artifact.id } : undefined
+    )
   }
 
   if (scorer.kind === 'json_field_equals') {
-    const source = outputTarget(context, scorer.target?.startsWith('outputs.') ? scorer.target : undefined)
-    const actual = jsonField(source, scorer.target?.startsWith('outputs.') ? undefined : scorer.target)
-    return pass(canonicalJson(actual) === canonicalJson(scorer.expected), 'JSON field comparison completed.', { actual })
+    const source = outputTarget(
+      context,
+      scorer.target?.startsWith('outputs.') ? scorer.target : undefined
+    )
+    const actual = jsonField(
+      source,
+      scorer.target?.startsWith('outputs.') ? undefined : scorer.target
+    )
+    return pass(
+      canonicalJson(actual) === canonicalJson(scorer.expected),
+      'JSON field comparison completed.',
+      { actual }
+    )
   }
 
   return pass(false, `Unsupported scorer kind: ${(scorer as BenchmarkScorerDefinition).kind}`)
@@ -419,10 +465,13 @@ export async function runBenchmarkEvaluators(
   }
 }
 
-export function createBenchmarkRunManifest(input: CreateBenchmarkRunManifestInput): BenchmarkRunManifest {
+export function createBenchmarkRunManifest(
+  input: CreateBenchmarkRunManifestInput
+): BenchmarkRunManifest {
   const createdAt = input.createdAt || new Date().toISOString()
   const provider = input.provider || input.task.provider
-  const workspacePath = input.workspacePath || input.task.workspacePath || input.environment.workspacePath
+  const workspacePath =
+    input.workspacePath || input.task.workspacePath || input.environment.workspacePath
   const taskManifestSha256 = sha256CanonicalJson(input.task)
   const environmentManifestSha256 = sha256CanonicalJson(input.environment)
   const promptSha256 = sha256Bytes(input.task.prompt)

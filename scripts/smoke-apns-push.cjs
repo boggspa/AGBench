@@ -108,7 +108,11 @@ if (!privateKeyPem.includes('BEGIN PRIVATE KEY')) {
 
 // ---------- JWT signing (ES256) ----------
 function base64url(buf) {
-  return Buffer.from(buf).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
+  return Buffer.from(buf)
+    .toString('base64')
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
 }
 
 function derEcdsaToConcat(der, sizePerInt) {
@@ -174,9 +178,8 @@ function buildSilentPayload() {
 
 function pushOnce(jwt, kind) {
   return new Promise((resolve) => {
-    const authority = ENV === 'production'
-      ? 'https://api.push.apple.com'
-      : 'https://api.sandbox.push.apple.com'
+    const authority =
+      ENV === 'production' ? 'https://api.push.apple.com' : 'https://api.sandbox.push.apple.com'
     const client = http2.connect(authority)
     const payload = kind === 'silent' ? buildSilentPayload() : buildApprovalPayload()
     const body = Buffer.from(JSON.stringify(payload), 'utf-8')
@@ -185,7 +188,11 @@ function pushOnce(jwt, kind) {
     const settle = (outcome) => {
       if (resolved) return
       resolved = true
-      try { client.close() } catch { /* ignore */ }
+      try {
+        client.close()
+      } catch {
+        /* ignore */
+      }
       resolve(outcome)
     }
 
@@ -196,7 +203,7 @@ function pushOnce(jwt, kind) {
     const headers = {
       ':method': 'POST',
       ':path': `/3/device/${DEVICE_TOKEN.toLowerCase()}`,
-      'authorization': `bearer ${jwt}`,
+      authorization: `bearer ${jwt}`,
       'apns-topic': BUNDLE_ID,
       'apns-push-type': kind === 'silent' ? 'background' : 'alert',
       'apns-priority': kind === 'silent' ? '5' : '10',
@@ -223,7 +230,9 @@ function pushOnce(jwt, kind) {
         try {
           const parsed = JSON.parse(bodyText)
           if (parsed && typeof parsed.reason === 'string') reason = parsed.reason
-        } catch { /* keep raw bodyText */ }
+        } catch {
+          /* keep raw bodyText */
+        }
         settle({ kind, ok: false, code: 5, apnsId, reason: `:status ${status} — ${reason}` })
       }
     })
@@ -242,7 +251,9 @@ function pushOnce(jwt, kind) {
 // ---------- main ----------
 ;(async () => {
   info(`env=${ENV} bundle=${BUNDLE_ID} keyId=${KEY_ID} teamId=${TEAM_ID}`)
-  info(`device-token=${DEVICE_TOKEN.slice(0, 8)}…${DEVICE_TOKEN.slice(-8)} (${DEVICE_TOKEN.length} chars)`)
+  info(
+    `device-token=${DEVICE_TOKEN.slice(0, 8)}…${DEVICE_TOKEN.slice(-8)} (${DEVICE_TOKEN.length} chars)`
+  )
   info(`push kind=${PUSH_KIND}`)
 
   let jwt

@@ -1,9 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { RunEventReplay } from '../../../main/store/types'
-import {
-  classifyEventsForInspector,
-  type InspectorRow
-} from '../lib/RunEventClassifier'
+import { classifyEventsForInspector, type InspectorRow } from '../lib/RunEventClassifier'
 
 /**
  * RunInspector — Phase K1 Slice 1B.
@@ -185,10 +182,12 @@ export function RunInspector({
 
       {rows.length > 0 && (
         <footer className="run-inspector__keyboard-hints" aria-label="Keyboard shortcuts">
-          <kbd>↑</kbd><kbd>↓</kbd>
+          <kbd>↑</kbd>
+          <kbd>↓</kbd>
           <span>navigate</span>
           <span className="run-inspector__keyboard-hints-sep">·</span>
-          <kbd>Home</kbd><kbd>End</kbd>
+          <kbd>Home</kbd>
+          <kbd>End</kbd>
           <span>jump</span>
           <span className="run-inspector__keyboard-hints-sep">·</span>
           <kbd>↵</kbd>
@@ -349,7 +348,11 @@ function RowChips({
     )
   }
 
-  if ((row.kind === 'approval_request' || row.kind === 'diff') && row.paths && row.paths.length > 0) {
+  if (
+    (row.kind === 'approval_request' || row.kind === 'diff') &&
+    row.paths &&
+    row.paths.length > 0
+  ) {
     return (
       <div className="run-inspector__row-chips">
         {row.paths.slice(0, 3).map((p) => (
@@ -489,7 +492,7 @@ function describeRow(row: InspectorRow): { glyph: string; label: string; summary
         summary:
           row.length !== undefined
             ? `${row.length.toLocaleString()} chars`
-            : row.raw.summary ?? ''
+            : (row.raw.summary ?? '')
       }
     case 'lifecycle':
       return { glyph: '·', label: 'Lifecycle', summary: row.raw.summary ?? row.raw.phase }
@@ -567,9 +570,5 @@ function Pill({
   kind: 'ok' | 'warn' | 'idle' | 'info'
   children: React.ReactNode
 }): React.JSX.Element {
-  return (
-    <span className={`run-inspector__pill run-inspector__pill--${kind}`}>
-      {children}
-    </span>
-  )
+  return <span className={`run-inspector__pill run-inspector__pill--${kind}`}>{children}</span>
 }

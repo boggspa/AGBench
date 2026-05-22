@@ -2,10 +2,10 @@ import type { ProviderId } from '../../../main/store/types'
 
 const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   // Gemini
-  'pro': 1_048_576,
-  'flash': 1_048_576,
+  pro: 1_048_576,
+  flash: 1_048_576,
   'flash-lite': 200_000,
-  'auto': 1_048_576,
+  auto: 1_048_576,
   'cli-default': 1_048_576,
   // Codex
   'gpt-5.5': 400_000,
@@ -18,10 +18,10 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   'claude-sonnet-4-6': 200_000,
   'claude-haiku-4-5': 200_000,
   'claude-opus-4-6': 200_000,
-  'default': 200_000,
-  'sonnet': 200_000,
-  'opus': 200_000,
-  'haiku': 200_000,
+  default: 200_000,
+  sonnet: 200_000,
+  opus: 200_000,
+  haiku: 200_000,
   // Kimi
   'kimi-k2.6': 256_000
 }
@@ -38,7 +38,11 @@ export function resolveContextWindow(
   modelId: string | undefined,
   statsTotalTokenLimit?: number
 ): number {
-  if (typeof statsTotalTokenLimit === 'number' && Number.isFinite(statsTotalTokenLimit) && statsTotalTokenLimit > 0) {
+  if (
+    typeof statsTotalTokenLimit === 'number' &&
+    Number.isFinite(statsTotalTokenLimit) &&
+    statsTotalTokenLimit > 0
+  ) {
     return statsTotalTokenLimit
   }
   if (modelId && CONTEXT_WINDOWS_BY_MODEL[modelId]) {

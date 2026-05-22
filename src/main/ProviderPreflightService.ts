@@ -6,7 +6,11 @@ import type {
 } from './store/types'
 
 export type ProviderPreflightState = 'ready' | 'repairable' | 'blocked'
-export type ProviderPreflightRepairAction = 'install_gemini_bridge' | 'configure_provider' | 'login_provider' | 'none'
+export type ProviderPreflightRepairAction =
+  | 'install_gemini_bridge'
+  | 'configure_provider'
+  | 'login_provider'
+  | 'none'
 
 export interface ProviderPreflightInput {
   provider: ProviderId
@@ -34,7 +38,9 @@ function warning(
   return { id, severity, title, message }
 }
 
-function providerSetupRepairAction(contract: ProviderCapabilityContract): ProviderPreflightRepairAction {
+function providerSetupRepairAction(
+  contract: ProviderCapabilityContract
+): ProviderPreflightRepairAction {
   const authState = contract.availability.authState || ''
   if (/missing|expired|login|required/i.test(authState)) return 'login_provider'
   return 'configure_provider'
@@ -91,7 +97,9 @@ export class ProviderPreflightService {
       }
     }
 
-    const delegatedTools = Object.values(contract.tools).filter((tool) => !tool.enforcedByAgentBench)
+    const delegatedTools = Object.values(contract.tools).filter(
+      (tool) => !tool.enforcedByAgentBench
+    )
     if (delegatedTools.length > 0) {
       chips.unshift(
         warning(

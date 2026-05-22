@@ -124,9 +124,23 @@ const formatPeakHour = (hour: number): string => {
 
 const inferProviderFromModelName = (model: string): ProviderId => {
   const normalized = model.toLowerCase()
-  if (normalized.includes('claude') || normalized.includes('opus') || normalized.includes('sonnet') || normalized.includes('haiku')) return 'claude'
-  if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2')) return 'kimi'
-  if (normalized.includes('codex') || normalized.includes('gpt') || normalized.includes('o3') || normalized.includes('o4') || normalized.includes('o5')) return 'codex'
+  if (
+    normalized.includes('claude') ||
+    normalized.includes('opus') ||
+    normalized.includes('sonnet') ||
+    normalized.includes('haiku')
+  )
+    return 'claude'
+  if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2'))
+    return 'kimi'
+  if (
+    normalized.includes('codex') ||
+    normalized.includes('gpt') ||
+    normalized.includes('o3') ||
+    normalized.includes('o4') ||
+    normalized.includes('o5')
+  )
+    return 'codex'
   return 'gemini'
 }
 
@@ -150,8 +164,8 @@ export const buildWelcomeUsageDashboardData = (
 ): WelcomeUsageDashboardData => {
   const cutoff = getWelcomeUsageRangeCutoff(range, now)
   const runRecords = records
-    .filter(record => record.usageKind !== 'reset_hint')
-    .filter(record => record.timestamp >= cutoff)
+    .filter((record) => record.usageKind !== 'reset_hint')
+    .filter((record) => record.timestamp >= cutoff)
   const messageEvents = chats.flatMap((chat) =>
     (chat.messages || [])
       .map((message) => {
@@ -161,7 +175,7 @@ export const buildWelcomeUsageDashboardData = (
           timestamp
         }
       })
-      .filter(event => Number.isFinite(event.timestamp) && event.timestamp >= cutoff)
+      .filter((event) => Number.isFinite(event.timestamp) && event.timestamp >= cutoff)
   )
 
   const activeDayKeys = new Set<string>()
@@ -175,7 +189,10 @@ export const buildWelcomeUsageDashboardData = (
    * usage records here so the dense 30×24 welcome heatmap can render
    * provider-coloured intensity without re-scanning records in the component.
    */
-  const hourBuckets = new Map<number, { totalTokens: number; providerTotals: Record<ProviderId, number> }>()
+  const hourBuckets = new Map<
+    number,
+    { totalTokens: number; providerTotals: Record<ProviderId, number> }
+  >()
 
   for (const event of messageEvents) {
     activeDayKeys.add(dayKeyFromTimestamp(event.timestamp))
@@ -185,7 +202,10 @@ export const buildWelcomeUsageDashboardData = (
   for (const record of runRecords) {
     const provider = record.provider || inferProviderFromModelName(record.model || '')
     const model = record.model || 'unknown'
-    const totalTokens = Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0))
+    const totalTokens = Math.max(
+      0,
+      Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)
+    )
     const inputTokens = Math.max(0, Number(record.inputTokens || 0))
     const outputTokens = Math.max(0, Number(record.outputTokens || 0))
     const dayKey = dayKeyFromTimestamp(record.timestamp)
@@ -199,7 +219,10 @@ export const buildWelcomeUsageDashboardData = (
     dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
 
     const hourStart = startOfLocalHour(record.timestamp)
-    const bucket = hourBuckets.get(hourStart) || { totalTokens: 0, providerTotals: emptyProviderTotals() }
+    const bucket = hourBuckets.get(hourStart) || {
+      totalTokens: 0,
+      providerTotals: emptyProviderTotals()
+    }
     // Use raw token count when present; otherwise count the run as a single
     // unit so the cell still shows activity even for usage records that lack
     // explicit token totals (mirrors the existing hourlyTotals heuristic).
@@ -228,17 +251,22 @@ export const buildWelcomeUsageDashboardData = (
     modelMap.set(modelId, existing)
   }
 
-  const totalTokens = runRecords.reduce((sum, record) => sum + Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)), 0)
+  const totalTokens = runRecords.reduce(
+    (sum, record) =>
+      sum +
+      Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)),
+    0
+  )
   const modelBreakdown = Array.from(modelMap.values())
     .sort((a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs)
-    .map(model => ({
+    .map((model) => ({
       ...model,
       percent: totalTokens > 0 ? (model.totalTokens / totalTokens) * 100 : 0
     }))
 
   const todayStart = startOfLocalDay(now)
   const activeDayStarts = Array.from(activeDayKeys)
-    .map(key => new Date(`${key}T00:00:00`).getTime())
+    .map((key) => new Date(`${key}T00:00:00`).getTime())
     .filter(Number.isFinite)
     .sort((a, b) => a - b)
   const activeStartSet = new Set(activeDayStarts)
@@ -249,17 +277,22 @@ export const buildWelcomeUsageDashboardData = (
     }
     return count
   }
-  const currentStreak = countStreakEndingAt(todayStart) || countStreakEndingAt(todayStart - 24 * 60 * 60 * 1000)
+  const currentStreak =
+    countStreakEndingAt(todayStart) || countStreakEndingAt(todayStart - 24 * 60 * 60 * 1000)
   let longestStreak = 0
   let runningStreak = 0
   let previousDay = -1
   for (const day of activeDayStarts) {
-    runningStreak = previousDay > 0 && day - previousDay === 24 * 60 * 60 * 1000 ? runningStreak + 1 : 1
+    runningStreak =
+      previousDay > 0 && day - previousDay === 24 * 60 * 60 * 1000 ? runningStreak + 1 : 1
     longestStreak = Math.max(longestStreak, runningStreak)
     previousDay = day
   }
 
-  const peakHour = hourlyTotals.reduce((best, value, hour) => value > hourlyTotals[best] ? hour : best, 0)
+  const peakHour = hourlyTotals.reduce(
+    (best, value, hour) => (value > hourlyTotals[best] ? hour : best),
+    0
+  )
   const heatmapDayCount = getWelcomeUsageHeatmapDayCount(range)
   const heatmapStart = todayStart - (heatmapDayCount - 1) * 24 * 60 * 60 * 1000
   const maxDayValue = Math.max(1, ...Array.from(dailyTotals.values()))
@@ -290,27 +323,33 @@ export const buildWelcomeUsageDashboardData = (
     const bucket = hourBuckets.get(cellStart)
     if (bucket && bucket.totalTokens > maxHourlyValue) maxHourlyValue = bucket.totalTokens
   }
-  const hourlyHeatmap: WelcomeUsageHourCell[] = Array.from({ length: hourlyHeatmapTotalCells }, (_, index) => {
-    const cellStart = hourlyHeatmapStart + index * oneHour
-    const cellDate = new Date(cellStart)
-    const dayKey = dayKeyFromTimestamp(cellStart)
-    const hour = cellDate.getHours()
-    const bucket = hourBuckets.get(cellStart)
-    const total = bucket?.totalTokens || 0
-    const providerTotals = bucket ? { ...bucket.providerTotals } : emptyProviderTotals()
-    const level = total <= 0 ? 0 : maxHourlyValue > 0
-      ? Math.max(1, Math.min(4, Math.ceil((total / maxHourlyValue) * 4)))
-      : 1
-    return {
-      dayKey,
-      hour,
-      label: formatHourLabel(dayKey, hour),
-      totalTokens: total,
-      providerTotals,
-      level,
-      isCurrentHour: cellStart === nowHourStart
+  const hourlyHeatmap: WelcomeUsageHourCell[] = Array.from(
+    { length: hourlyHeatmapTotalCells },
+    (_, index) => {
+      const cellStart = hourlyHeatmapStart + index * oneHour
+      const cellDate = new Date(cellStart)
+      const dayKey = dayKeyFromTimestamp(cellStart)
+      const hour = cellDate.getHours()
+      const bucket = hourBuckets.get(cellStart)
+      const total = bucket?.totalTokens || 0
+      const providerTotals = bucket ? { ...bucket.providerTotals } : emptyProviderTotals()
+      const level =
+        total <= 0
+          ? 0
+          : maxHourlyValue > 0
+            ? Math.max(1, Math.min(4, Math.ceil((total / maxHourlyValue) * 4)))
+            : 1
+      return {
+        dayKey,
+        hour,
+        label: formatHourLabel(dayKey, hour),
+        totalTokens: total,
+        providerTotals,
+        level,
+        isCurrentHour: cellStart === nowHourStart
+      }
     }
-  })
+  )
 
   const chartDayCount = range === '7d' ? 7 : 6
   const activeChartDays = Array.from(dailyTotals.keys()).sort().slice(-chartDayCount)
@@ -318,13 +357,14 @@ export const buildWelcomeUsageDashboardData = (
     const timestamp = todayStart - (chartDayCount - 1 - index) * 24 * 60 * 60 * 1000
     return dayKeyFromTimestamp(timestamp)
   })
-  const chartDayKeys = activeChartDays.length >= Math.min(2, chartDayCount) ? activeChartDays : fallbackChartDays
-  const chartDays = chartDayKeys.map(dayKey => ({
+  const chartDayKeys =
+    activeChartDays.length >= Math.min(2, chartDayCount) ? activeChartDays : fallbackChartDays
+  const chartDays = chartDayKeys.map((dayKey) => ({
     dayKey,
     label: formatUsageDateLabel(dayKey),
     total: dailyTotals.get(dayKey) || 0
   }))
-  const maxChartTotal = Math.max(1, ...chartDays.map(day => day.total))
+  const maxChartTotal = Math.max(1, ...chartDays.map((day) => day.total))
   const favoriteModel = modelBreakdown[0]?.label || 'n/a'
   const hasActivity = runRecords.length > 0 || messageEvents.length > 0
 

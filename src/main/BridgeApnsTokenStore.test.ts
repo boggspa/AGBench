@@ -70,7 +70,7 @@ describe('BridgeApnsTokenStore', () => {
       expect(() => store.upsert('pair-1', '', 'production')).toThrow(/deviceToken is required/)
     })
 
-    it("rejects invalid env", () => {
+    it('rejects invalid env', () => {
       const store = new BridgeApnsTokenStore()
       expect(() => store.upsert('pair-1', 'tok', 'staging' as never)).toThrow(/env must be/)
     })

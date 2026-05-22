@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { computeInlineStats, inlineStatsForActivity } from './ActivityInlineStats';
-import type { ToolActivity } from '../../../main/store/types';
+import { describe, it, expect } from 'vitest'
+import { computeInlineStats, inlineStatsForActivity } from './ActivityInlineStats'
+import type { ToolActivity } from '../../../main/store/types'
 
 describe('ActivityInlineStats', () => {
   describe('computeInlineStats', () => {
@@ -17,13 +17,13 @@ describe('ActivityInlineStats', () => {
           source: 'codex_changes',
           confidence: 'exact'
         }
-      });
+      })
 
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(46);
-      expect(result.deletions).toBe(23);
-      expect(result.confidence).toBe('exact');
-    });
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(46)
+      expect(result.deletions).toBe(23)
+      expect(result.confidence).toBe('exact')
+    })
 
     it('renders no odometer when there is no diff summary nor inferable stats', () => {
       // Search-only or shell-only tool calls have nothing to count — the
@@ -32,10 +32,10 @@ describe('ActivityInlineStats', () => {
         toolName: 'run_shell_command',
         status: 'success',
         parameters: { command: 'echo hi' }
-      });
+      })
 
-      expect(result.visible).toBe(false);
-    });
+      expect(result.visible).toBe(false)
+    })
 
     it('suppresses the odometer for running activities with no concrete stats', () => {
       // Pending edits would otherwise show `+0 -0` while waiting for the
@@ -45,10 +45,10 @@ describe('ActivityInlineStats', () => {
         toolName: 'edit_file',
         status: 'running',
         parameters: { path: 'foo.ts' }
-      });
+      })
 
-      expect(result.visible).toBe(false);
-    });
+      expect(result.visible).toBe(false)
+    })
 
     it('shows estimated stats for a running edit when the parameters carry old/new strings', () => {
       // Once the tool_use event has shipped the inputs, we can estimate the
@@ -62,12 +62,12 @@ describe('ActivityInlineStats', () => {
           old_string: 'one\ntwo\nthree',
           new_string: 'alpha\nbeta'
         }
-      });
+      })
 
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(2);
-      expect(result.deletions).toBe(3);
-    });
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(2)
+      expect(result.deletions).toBe(3)
+    })
 
     it('handles Claude MultiEdit edits[] arrays that estimateLineChanges ignores', () => {
       // MultiEdit packs many edits into one tool call — historically the
@@ -83,12 +83,12 @@ describe('ActivityInlineStats', () => {
             { old_string: 'x', new_string: 'y\nz' }
           ]
         }
-      });
+      })
 
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(3 + 2);
-      expect(result.deletions).toBe(2 + 1);
-    });
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(3 + 2)
+      expect(result.deletions).toBe(2 + 1)
+    })
 
     it('treats Claude Write content as +N -0 additions', () => {
       // Write is a wholesale file write — Claude does not emit old_string,
@@ -100,12 +100,12 @@ describe('ActivityInlineStats', () => {
           file_path: 'foo.ts',
           content: 'line one\nline two\nline three'
         }
-      });
+      })
 
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(3);
-      expect(result.deletions).toBe(0);
-    });
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(3)
+      expect(result.deletions).toBe(0)
+    })
 
     it('forwards `~` estimated confidence so the row can surface the marker', () => {
       const result = computeInlineStats({
@@ -118,10 +118,10 @@ describe('ActivityInlineStats', () => {
           source: 'string_replace',
           confidence: 'estimated'
         }
-      });
+      })
 
-      expect(result.confidence).toBe('estimated');
-    });
+      expect(result.confidence).toBe('estimated')
+    })
 
     it('keeps an "exact 0/0" diff summary visible (e.g. delete-and-recreate noop)', () => {
       // Non-running activities with a real 0/0 are still meaningful — they
@@ -137,13 +137,13 @@ describe('ActivityInlineStats', () => {
           source: 'codex_changes',
           confidence: 'exact'
         }
-      });
+      })
 
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(0);
-      expect(result.deletions).toBe(0);
-    });
-  });
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(0)
+      expect(result.deletions).toBe(0)
+    })
+  })
 
   describe('inlineStatsForActivity', () => {
     it('reads diffSummary, parameters, and status off a ToolActivity record', () => {
@@ -160,12 +160,12 @@ describe('ActivityInlineStats', () => {
           source: 'codex_changes',
           confidence: 'exact'
         }
-      };
-      const result = inlineStatsForActivity(activity);
-      expect(result.visible).toBe(true);
-      expect(result.additions).toBe(12);
-      expect(result.deletions).toBe(5);
-    });
+      }
+      const result = inlineStatsForActivity(activity)
+      expect(result.visible).toBe(true)
+      expect(result.additions).toBe(12)
+      expect(result.deletions).toBe(5)
+    })
 
     it('returns invisible for a running activity with no parameters yet', () => {
       const activity: ToolActivity = {
@@ -174,8 +174,8 @@ describe('ActivityInlineStats', () => {
         displayName: 'Editing…',
         category: 'unknown',
         status: 'running'
-      };
-      expect(inlineStatsForActivity(activity).visible).toBe(false);
-    });
-  });
-});
+      }
+      expect(inlineStatsForActivity(activity).visible).toBe(false)
+    })
+  })
+})

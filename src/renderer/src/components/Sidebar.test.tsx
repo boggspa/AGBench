@@ -1,10 +1,10 @@
-import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types';
-import { Sidebar } from './Sidebar';
+import { renderToStaticMarkup } from 'react-dom/server'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import type { ChatRecord, WorkspaceRecord } from '../../../main/store/types'
+import { Sidebar } from './Sidebar'
 
-const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids';
-const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids';
+const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
+const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
 
 function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   return {
@@ -15,7 +15,7 @@ function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecor
     createdAt: 1,
     pinned: false,
     ...overrides
-  };
+  }
 }
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
@@ -33,27 +33,27 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
     messages: [],
     runs: [],
     ...overrides
-  };
+  }
 }
 
 function stubSidebarStorage(values: Record<string, string>) {
-  const store = new Map(Object.entries(values));
+  const store = new Map(Object.entries(values))
   vi.stubGlobal('localStorage', {
     getItem: vi.fn((key: string) => store.get(key) ?? null),
     setItem: vi.fn((key: string, value: string) => {
-      store.set(key, value);
+      store.set(key, value)
     }),
     removeItem: vi.fn((key: string) => {
-      store.delete(key);
+      store.delete(key)
     }),
     clear: vi.fn(() => {
-      store.clear();
+      store.clear()
     })
-  });
+  })
 }
 
 function renderSidebar(chats: ChatRecord[]) {
-  const workspace = makeWorkspace();
+  const workspace = makeWorkspace()
   return renderToStaticMarkup(
     <Sidebar
       workspaces={[workspace]}
@@ -71,18 +71,18 @@ function renderSidebar(chats: ChatRecord[]) {
       onSelectChat={() => {}}
       onOpenSettings={() => {}}
     />
-  );
+  )
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-});
+  vi.unstubAllGlobals()
+})
 
 describe('Sidebar sub-thread collapse', () => {
   it('renders sub-thread children expanded by default', () => {
     stubSidebarStorage({
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1'])
-    });
+    })
 
     const html = renderSidebar([
       makeChat(),
@@ -94,17 +94,17 @@ describe('Sidebar sub-thread collapse', () => {
         createdAt: 2,
         updatedAt: 2
       })
-    ]);
+    ])
 
-    expect(html).toContain('aria-expanded="true"');
-    expect(html).toContain('sidebar-chat-children');
-  });
+    expect(html).toContain('aria-expanded="true"')
+    expect(html).toContain('sidebar-chat-children')
+  })
 
   it('hides sub-thread children when the parent is persisted as collapsed', () => {
     stubSidebarStorage({
       [EXPANDED_WORKSPACES_STORAGE_KEY]: JSON.stringify(['ws-1']),
       [COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY]: JSON.stringify(['parent-1'])
-    });
+    })
 
     const html = renderSidebar([
       makeChat(),
@@ -116,9 +116,9 @@ describe('Sidebar sub-thread collapse', () => {
         createdAt: 2,
         updatedAt: 2
       })
-    ]);
+    ])
 
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain('sidebar-chat-children');
-  });
-});
+    expect(html).toContain('aria-expanded="false"')
+    expect(html).not.toContain('sidebar-chat-children')
+  })
+})

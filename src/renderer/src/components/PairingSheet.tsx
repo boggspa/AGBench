@@ -166,8 +166,8 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
               Pair with iPhone / iPad
             </h2>
             <p className="pairing-sheet__subtitle">
-              Open the GUIGemini app on your iOS device and scan this QR. The next
-              screen will ask you to verify a 6-digit code.
+              Open the GUIGemini app on your iOS device and scan this QR. The next screen will ask
+              you to verify a 6-digit code.
             </p>
           </div>
           <button
@@ -228,16 +228,14 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
                 />
               )}
               <div className="pairing-sheet__hint">
-                Point the iOS camera here. <strong>Click the QR to maximise</strong>
-                {' '}if the camera can't read it at this size. Pair expires in a
-                few minutes — tap Refresh if scanning fails.
+                Point the iOS camera here. <strong>Click the QR to maximise</strong> if the camera
+                can't read it at this size. Pair expires in a few minutes — tap Refresh if scanning
+                fails.
               </div>
             </div>
 
             <div className="pairing-sheet__fallback-pane">
-              <div className="pairing-sheet__fallback-label">
-                Or paste JSON into iOS
-              </div>
+              <div className="pairing-sheet__fallback-label">Or paste JSON into iOS</div>
               <textarea
                 className="pairing-sheet__json"
                 readOnly
@@ -264,8 +262,8 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
 
         <footer className="pairing-sheet__footer">
           <span className="pairing-sheet__footer-hint">
-            After the iOS device confirms, you'll see a 6-digit verification code
-            here — make sure it matches before tapping confirm on iOS.
+            After the iOS device confirms, you'll see a 6-digit verification code here — make sure
+            it matches before tapping confirm on iOS.
           </span>
         </footer>
       </div>

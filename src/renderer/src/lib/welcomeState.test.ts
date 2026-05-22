@@ -31,9 +31,7 @@ describe('hasConversationContent', () => {
   })
 
   it('returns false for system-only messages', () => {
-    expect(
-      hasConversationContent([{ role: 'system' }, { role: 'system' }])
-    ).toBe(false)
+    expect(hasConversationContent([{ role: 'system' }, { role: 'system' }])).toBe(false)
   })
 
   it('detects content in the last position of a long list', () => {

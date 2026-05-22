@@ -149,9 +149,15 @@ export function ApnsConfigPanel(): React.JSX.Element {
     try {
       const result = await window.api.testApnsPush()
       if (!result.ok) {
-        setError(result.error || `Test push failed (delivered=${result.delivered ?? 0}, failed=${result.failed ?? 0}).`)
+        setError(
+          result.error ||
+            `Test push failed (delivered=${result.delivered ?? 0}, failed=${result.failed ?? 0}).`
+        )
       } else {
-        setInfo(`Test push delivered to ${result.delivered ?? 0} device(s).` + (result.failed ? ` ${result.failed} failed.` : ''))
+        setInfo(
+          `Test push delivered to ${result.delivered ?? 0} device(s).` +
+            (result.failed ? ` ${result.failed} failed.` : '')
+        )
       }
       await refresh()
     } catch (err) {
@@ -169,9 +175,9 @@ export function ApnsConfigPanel(): React.JSX.Element {
 
   const canSave = Boolean(
     keyIdDraft.trim() &&
-      teamIdDraft.trim() &&
-      // Either we already have a stored key, OR the user just picked a new one.
-      (status?.configured || selectedPath)
+    teamIdDraft.trim() &&
+    // Either we already have a stored key, OR the user just picked a new one.
+    (status?.configured || selectedPath)
   )
 
   return (
@@ -203,10 +209,7 @@ export function ApnsConfigPanel(): React.JSX.Element {
                 : 'Unavailable — cannot save key securely'
             }
           />
-          <Field
-            label="Registered devices"
-            value={String(status?.registeredDeviceCount ?? 0)}
-          />
+          <Field label="Registered devices" value={String(status?.registeredDeviceCount ?? 0)} />
           {status?.configuredAt && (
             <Field label="Last saved" value={new Date(status.configuredAt).toLocaleString()} />
           )}

@@ -19,10 +19,17 @@ interface RunAggregate {
 
 export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX.Element {
   const provider = run.provider || fallbackProvider || 'gemini'
-  const [aggregate, setAggregate] = useState<RunAggregate>({ approvalCount: 0, eventFileCount: null })
+  const [aggregate, setAggregate] = useState<RunAggregate>({
+    approvalCount: 0,
+    eventFileCount: null
+  })
   const [, setNowTick] = useState(0)
 
-  const isActive = !run.endedAt && run.status !== 'failed' && run.status !== 'cancelled' && run.status !== 'success'
+  const isActive =
+    !run.endedAt &&
+    run.status !== 'failed' &&
+    run.status !== 'cancelled' &&
+    run.status !== 'success'
   const fileCount = useMemo(() => {
     const diffCount = countRunDiffFiles(run)
     if (diffCount !== null) return diffCount
@@ -42,7 +49,10 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
       }
     }
     void refresh()
-    if (!isActive) return () => { cancelled = true }
+    if (!isActive)
+      return () => {
+        cancelled = true
+      }
     const intervalId = window.setInterval(() => void refresh(), 2000)
     return () => {
       cancelled = true
@@ -69,9 +79,13 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
     <div className="run-card" data-provider={provider}>
       <div className="run-card-main">
         <div className="run-card-title-row">
-          <span className={`run-card-provider provider-${provider}`}>{getProviderLabel(provider)}</span>
+          <span className={`run-card-provider provider-${provider}`}>
+            {getProviderLabel(provider)}
+          </span>
           <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
-          <span className="run-card-id" title={run.runId}>#{shortRunId(run.runId)}</span>
+          <span className="run-card-id" title={run.runId}>
+            #{shortRunId(run.runId)}
+          </span>
         </div>
         <div className="run-card-meta">
           <span>{duration}</span>
@@ -81,7 +95,8 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
             </span>
           )}
           <span className="run-card-meta-count">
-            <DigitOdometer value={aggregate.approvalCount} /> approval{aggregate.approvalCount === 1 ? '' : 's'}
+            <DigitOdometer value={aggregate.approvalCount} /> approval
+            {aggregate.approvalCount === 1 ? '' : 's'}
           </span>
         </div>
       </div>
@@ -110,7 +125,7 @@ function buildRunAggregate(replay: RunEventReplay): RunAggregate {
 
   return {
     approvalCount,
-    eventFileCount: files.size > 0 ? files.size : editEventCount > 0 ? editEventCount : null,
+    eventFileCount: files.size > 0 ? files.size : editEventCount > 0 ? editEventCount : null
   }
 }
 
@@ -120,16 +135,20 @@ function countRunDiffFiles(run: ChatRun): number | null {
   const files = [
     ...(diff.createdFiles || []),
     ...(diff.modifiedFiles || []),
-    ...(diff.deletedFiles || []),
+    ...(diff.deletedFiles || [])
   ].filter((file) => file && !file.isNoise)
   return files.length
 }
 
-function getRunStatus(run: ChatRun): { label: string; tone: 'success' | 'warning' | 'danger' | 'muted' } {
+function getRunStatus(run: ChatRun): {
+  label: string
+  tone: 'success' | 'warning' | 'danger' | 'muted'
+} {
   if (run.cancelled || run.status === 'cancelled') return { label: 'Cancelled', tone: 'muted' }
   if (run.status === 'failed') return { label: 'Failed', tone: 'danger' }
   if (!run.endedAt) return { label: 'Running', tone: 'warning' }
-  if (run.status === 'success' || run.status === 'completed') return { label: 'Done', tone: 'success' }
+  if (run.status === 'success' || run.status === 'completed')
+    return { label: 'Done', tone: 'success' }
   if (run.status === 'success_with_warnings') return { label: 'Warnings', tone: 'warning' }
   return { label: run.status || 'Complete', tone: 'muted' }
 }

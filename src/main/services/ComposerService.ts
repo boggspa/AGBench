@@ -113,12 +113,13 @@ export class ComposerService {
         ? normalizeComposerExternalPathGrants(input.externalPathGrants || [])
         : []
     const finalPrompt = `${basePrompt}${attachmentPromptAppendix(imagePaths)}${provider === 'codex' ? externalPathGrantPromptAppendix(externalPathGrants) : ''}`
-    const geminiAuthProfileId = provider === 'gemini'
-      ? optionalStringOrNull(input.geminiAuthProfileId) ||
-        metadataString(chat, 'geminiAuthProfileId') ||
-        optionalStringOrNull(settings.defaultGeminiAuthProfileId) ||
-        null
-      : null
+    const geminiAuthProfileId =
+      provider === 'gemini'
+        ? optionalStringOrNull(input.geminiAuthProfileId) ||
+          metadataString(chat, 'geminiAuthProfileId') ||
+          optionalStringOrNull(settings.defaultGeminiAuthProfileId) ||
+          null
+        : null
 
     const resumeDecision = resolveResumeDecision(
       provider,
@@ -149,9 +150,8 @@ export class ComposerService {
       ...buildProviderMetadataPatch(composed, codexHandoffsApplied),
       ...(provider === 'gemini' ? { geminiAuthProfileId } : {})
     }
-    const providerMetadataPatch = Object.keys(providerMetadataPatchData).length > 0
-      ? providerMetadataPatchData
-      : undefined
+    const providerMetadataPatch =
+      Object.keys(providerMetadataPatchData).length > 0 ? providerMetadataPatchData : undefined
     const payload: ComposerRunPayload = {
       provider,
       scope,
@@ -278,7 +278,13 @@ function resolveResumeDecision(
   if (provider !== 'gemini') {
     return { sessionId: normalizeProviderSessionId(chat.linkedProviderSessionId) }
   }
-  return resolveGeminiResumeForRun(chat, requestedModel, approvalMode, worktree, geminiAuthProfileId)
+  return resolveGeminiResumeForRun(
+    chat,
+    requestedModel,
+    approvalMode,
+    worktree,
+    geminiAuthProfileId
+  )
 }
 
 function normalizeProviderSessionId(value?: string | null): string | undefined {
@@ -435,13 +441,13 @@ function resolveGeminiResumeForRun(
     return { sessionId }
   }
 
-  const previousAuthProfileId = typeof lastRun.geminiAuthProfileId === 'string'
-    ? lastRun.geminiAuthProfileId
-    : null
+  const previousAuthProfileId =
+    typeof lastRun.geminiAuthProfileId === 'string' ? lastRun.geminiAuthProfileId : null
   const nextAuthProfileId = geminiAuthProfileId || null
   if (previousAuthProfileId !== nextAuthProfileId) {
     return {
-      skippedReason: 'Starting a fresh Gemini session because the selected Gemini auth profile changed.'
+      skippedReason:
+        'Starting a fresh Gemini session because the selected Gemini auth profile changed.'
     }
   }
 

@@ -17,7 +17,12 @@ import { AppStore } from './store'
 export interface RunRepositoryOptions {
   providerLabel: (provider: RunSession['provider']) => string
   emitRunQueueChanged: () => void
-  emitRunEventsChanged: (record: { runId: string; chatId?: string; workspaceId?: string; sequence: number }) => void
+  emitRunEventsChanged: (record: {
+    runId: string
+    chatId?: string
+    workspaceId?: string
+    sequence: number
+  }) => void
 }
 
 export interface RunTransitionInput {
@@ -46,11 +51,13 @@ export class RunRepository {
     if (!session) return
     const status = this.mapRunSessionStatusToQueueStatus(session.status)
     const existing = AppStore.getRunQueueJob(session.runId)
-    const processLike = session.process as unknown as {
-      pid?: unknown
-      spawnfile?: unknown
-      spawnargs?: unknown
-    } | undefined
+    const processLike = session.process as unknown as
+      | {
+          pid?: unknown
+          spawnfile?: unknown
+          spawnargs?: unknown
+        }
+      | undefined
     const processPid = typeof processLike?.pid === 'number' ? processLike.pid : undefined
     const processCommand = Array.isArray(processLike?.spawnargs)
       ? processLike.spawnargs.filter((part): part is string => typeof part === 'string').join(' ')
@@ -65,7 +72,9 @@ export class RunRepository {
       providerRunId: session.providerRunId,
       processPid,
       processCommand,
-      processStartedAt: processPid ? existing?.processStartedAt || new Date(session.startedAt).toISOString() : undefined,
+      processStartedAt: processPid
+        ? existing?.processStartedAt || new Date(session.startedAt).toISOString()
+        : undefined,
       status
     }
 
@@ -131,9 +140,9 @@ export class RunRepository {
     const candidate = input.runId
       ? AppStore.getRunQueueJob(input.runId)
       : AppStore.getRunQueueJobs({
-        provider: input.provider,
-        statuses: ['queued']
-      })[0]
+          provider: input.provider,
+          statuses: ['queued']
+        })[0]
     if (!candidate || candidate.status !== 'queued') {
       return null
     }

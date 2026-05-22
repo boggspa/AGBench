@@ -198,10 +198,7 @@ export function sortRunQueueJobs(jobs: RunQueueJob[]): RunQueueJob[] {
  * runnable (queue empty, or every queued job is blocked by the caller's
  * dispatch predicate).
  */
-export function findNextRunnableQueueIndex<T>(
-  jobs: T[],
-  canDispatch: (job: T) => boolean
-): number {
+export function findNextRunnableQueueIndex<T>(jobs: T[], canDispatch: (job: T) => boolean): number {
   if (!jobs || jobs.length === 0) return -1
   return jobs.findIndex((job) => canDispatch(job))
 }

@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // Surface to console so it shows up in DevTools / log capture.
-    // eslint-disable-next-line no-console
+
     console.error('[ErrorBoundary] caught render-time error', error, info)
   }
 
@@ -54,8 +54,7 @@ export class ErrorBoundary extends Component<Props, State> {
           alignItems: 'center',
           justifyContent: 'center',
           padding: '32px',
-          fontFamily:
-            'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
           color: '#e7e7ea',
           background: '#1e1e1e',
           textAlign: 'center'

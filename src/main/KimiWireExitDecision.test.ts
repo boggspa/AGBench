@@ -35,7 +35,7 @@ describe('decideKimiWireClose', () => {
     expect(decision.resolveWire).toBe(true)
   })
 
-  it('still emits exit when state.completed is set and exit was already emitted (idempotence is the caller\'s job)', () => {
+  it("still emits exit when state.completed is set and exit was already emitted (idempotence is the caller's job)", () => {
     // The decision tree is intentionally naive: it tells the caller
     // "emit exit". The caller (`emitKimiExit`) flips `exitSent` on the
     // first call and turns subsequent ones into no-ops. That separation

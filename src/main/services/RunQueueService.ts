@@ -98,8 +98,8 @@ export class RunQueueService {
     const candidate = runId
       ? this.deps.appStore.getRunQueueJob(runId)
       : this.deps.appStore
-        .getRunQueueJobs({ provider, statuses: ['queued'] })
-        .find((job) => this.deps.canLeaseJob(job))
+          .getRunQueueJobs({ provider, statuses: ['queued'] })
+          .find((job) => this.deps.canLeaseJob(job))
     if (!candidate || candidate.status !== 'queued') {
       return null
     }

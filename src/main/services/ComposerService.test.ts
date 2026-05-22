@@ -265,7 +265,10 @@ describe('ComposerService', () => {
   })
 
   it('omits the Kimi delegation preamble for global-scope runs (no workspace)', () => {
-    const payload = compose({ provider: 'kimi', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
+    const payload = compose(
+      { provider: 'kimi', scope: 'global', workspacePath: undefined, workspaceId: undefined },
+      {}
+    )
     expect(payload.prompt).not.toContain('AGBench MCP server')
     expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
@@ -429,7 +432,10 @@ describe('ComposerService', () => {
   })
 
   it('omits the Claude delegation preamble for global-scope runs (no workspace)', () => {
-    const payload = compose({ provider: 'claude', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
+    const payload = compose(
+      { provider: 'claude', scope: 'global', workspacePath: undefined, workspaceId: undefined },
+      {}
+    )
     expect(payload.prompt).not.toContain('AGBench MCP server')
     expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')

@@ -12,16 +12,18 @@ describe('findNextRunnableQueueIndex', () => {
     // busy axis they want (per-chat, per-provider, per-workspace).
     expect(
       findNextRunnableQueueIndex(
-        [{ id: 'a', ready: false }, { id: 'b', ready: true }, { id: 'c', ready: true }],
+        [
+          { id: 'a', ready: false },
+          { id: 'b', ready: true },
+          { id: 'c', ready: true }
+        ],
         (job) => job.ready
       )
     ).toBe(1)
   })
 
   it('returns -1 when every job is blocked', () => {
-    expect(
-      findNextRunnableQueueIndex([{ id: 'a' }, { id: 'b' }], () => false)
-    ).toBe(-1)
+    expect(findNextRunnableQueueIndex([{ id: 'a' }, { id: 'b' }], () => false)).toBe(-1)
   })
 
   it('per-chat busy: parallel chats on same provider can both dispatch', () => {

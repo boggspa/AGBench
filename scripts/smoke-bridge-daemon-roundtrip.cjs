@@ -251,7 +251,12 @@ proc.stderr.on('data', (chunk) => {
 })
 
 proc.on('exit', (code, signal) => {
-  const incomplete = !(helloSeen && tailnetEndpointSeen && inboundEchoHandled && fireRequestResponseSeen)
+  const incomplete = !(
+    helloSeen &&
+    tailnetEndpointSeen &&
+    inboundEchoHandled &&
+    fireRequestResponseSeen
+  )
   if (incomplete) {
     fail(`daemon exited early (code=${code} signal=${signal})`)
   }

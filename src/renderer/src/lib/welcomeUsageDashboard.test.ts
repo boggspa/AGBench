@@ -6,7 +6,7 @@ import {
   HEATMAP_DAY_COUNT,
   HEATMAP_HOUR_COUNT,
   buildWelcomeUsageDashboardData,
-  mixProviderColors,
+  mixProviderColors
 } from './welcomeUsageDashboard'
 
 const baseRecord = (overrides: Partial<UsageRecord>): UsageRecord => ({
@@ -22,7 +22,7 @@ const baseRecord = (overrides: Partial<UsageRecord>): UsageRecord => ({
   totalTokens: 300,
   durationMs: 1000,
   usageKind: 'run',
-  ...overrides,
+  ...overrides
 })
 
 describe('buildWelcomeUsageDashboardData hourly grid', () => {
@@ -35,7 +35,9 @@ describe('buildWelcomeUsageDashboardData hourly grid', () => {
     expect(last.hour).toBe(14)
     // Cells are chronological; the first is the oldest.
     const first = data.hourlyHeatmap[0]
-    const expectedStart = new Date(2026, 4, 15, 14).getTime() - (HEATMAP_DAY_COUNT * HEATMAP_HOUR_COUNT - 1) * 60 * 60 * 1000
+    const expectedStart =
+      new Date(2026, 4, 15, 14).getTime() -
+      (HEATMAP_DAY_COUNT * HEATMAP_HOUR_COUNT - 1) * 60 * 60 * 1000
     const firstDate = new Date(expectedStart)
     expect(first.hour).toBe(firstDate.getHours())
   })
@@ -45,10 +47,12 @@ describe('buildWelcomeUsageDashboardData hourly grid', () => {
     const sameHour = new Date(2026, 4, 15, 12, 25).getTime()
     const records: UsageRecord[] = [
       baseRecord({ id: 'a', timestamp: sameHour, provider: 'codex', totalTokens: 200 }),
-      baseRecord({ id: 'b', timestamp: sameHour + 60_000, provider: 'gemini', totalTokens: 400 }),
+      baseRecord({ id: 'b', timestamp: sameHour + 60_000, provider: 'gemini', totalTokens: 400 })
     ]
     const data = buildWelcomeUsageDashboardData(records, [], 'all', now)
-    const hourCell = data.hourlyHeatmap.find((cell) => cell.hour === 12 && cell.dayKey === '2026-05-15')
+    const hourCell = data.hourlyHeatmap.find(
+      (cell) => cell.hour === 12 && cell.dayKey === '2026-05-15'
+    )
     expect(hourCell).toBeDefined()
     expect(hourCell!.totalTokens).toBe(600)
     expect(hourCell!.providerTotals.codex).toBe(200)
@@ -63,11 +67,19 @@ describe('buildWelcomeUsageDashboardData hourly grid', () => {
     const now = new Date(2026, 4, 15, 14, 0).getTime()
     const records: UsageRecord[] = [
       baseRecord({ id: 'low', timestamp: new Date(2026, 4, 15, 10, 0).getTime(), totalTokens: 10 }),
-      baseRecord({ id: 'high', timestamp: new Date(2026, 4, 15, 11, 0).getTime(), totalTokens: 4000 }),
+      baseRecord({
+        id: 'high',
+        timestamp: new Date(2026, 4, 15, 11, 0).getTime(),
+        totalTokens: 4000
+      })
     ]
     const data = buildWelcomeUsageDashboardData(records, [], 'all', now)
-    const lowCell = data.hourlyHeatmap.find((cell) => cell.hour === 10 && cell.dayKey === '2026-05-15')
-    const highCell = data.hourlyHeatmap.find((cell) => cell.hour === 11 && cell.dayKey === '2026-05-15')
+    const lowCell = data.hourlyHeatmap.find(
+      (cell) => cell.hour === 10 && cell.dayKey === '2026-05-15'
+    )
+    const highCell = data.hourlyHeatmap.find(
+      (cell) => cell.hour === 11 && cell.dayKey === '2026-05-15'
+    )
     expect(lowCell!.level).toBe(1)
     expect(highCell!.level).toBe(4)
   })
@@ -80,7 +92,7 @@ describe('buildWelcomeUsageDashboardData hourly grid', () => {
       totalTokens: 0,
       inputTokens: 0,
       outputTokens: 0,
-      provider: 'claude',
+      provider: 'claude'
     })
     const data = buildWelcomeUsageDashboardData([record], [], 'all', now)
     const cell = data.hourlyHeatmap.find((c) => c.hour === 9 && c.dayKey === '2026-05-15')
@@ -94,7 +106,7 @@ describe('mixProviderColors', () => {
     gemini: '#2563EB',
     codex: '#6366F1',
     claude: '#D97706',
-    kimi: '#84A33B',
+    kimi: '#84A33B'
   } as const
 
   it('returns empty string when no provider has weight', () => {

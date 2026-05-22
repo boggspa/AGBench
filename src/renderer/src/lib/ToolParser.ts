@@ -1,7 +1,13 @@
-import { DiffFileStatus, ToolActivity, ToolActivityStatus, ToolDiffFileSummary, ToolDiffSummary } from '../../../main/store/types';
+import {
+  DiffFileStatus,
+  ToolActivity,
+  ToolActivityStatus,
+  ToolDiffFileSummary,
+  ToolDiffSummary
+} from '../../../main/store/types'
 
 export function extractToolName(event: any): string {
-  if (!event || typeof event !== 'object') return 'unknown';
+  if (!event || typeof event !== 'object') return 'unknown'
   return (
     event.tool_name ||
     event.toolName ||
@@ -9,11 +15,11 @@ export function extractToolName(event: any): string {
     event.function?.name ||
     event.tool ||
     'unknown'
-  );
+  )
 }
 
 export function extractToolId(event: any): string {
-  if (!event || typeof event !== 'object') return `unknown-${Date.now()}`;
+  if (!event || typeof event !== 'object') return `unknown-${Date.now()}`
   return (
     event.tool_id ||
     event.toolId ||
@@ -21,11 +27,11 @@ export function extractToolId(event: any): string {
     event.call_id ||
     event.tool_call_id ||
     `unknown-${Date.now()}`
-  );
+  )
 }
 
 export function extractParentToolCallId(event: any): string | undefined {
-  if (!event || typeof event !== 'object') return undefined;
+  if (!event || typeof event !== 'object') return undefined
   const candidates = [
     event.parent_tool_use_id,
     event.parentToolUseId,
@@ -36,17 +42,17 @@ export function extractParentToolCallId(event: any): string | undefined {
     event.params?.parent_tool_use_id,
     event.params?.parentToolUseId,
     event.message?.parent_tool_use_id
-  ];
+  ]
   for (const candidate of candidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
-      return candidate.trim();
+      return candidate.trim()
     }
   }
-  return undefined;
+  return undefined
 }
 
 export function extractParameters(event: any): Record<string, unknown> {
-  if (!event || typeof event !== 'object') return {};
+  if (!event || typeof event !== 'object') return {}
   return (
     event.parameters ||
     event.params ||
@@ -55,38 +61,38 @@ export function extractParameters(event: any): Record<string, unknown> {
     event.input ||
     event.arguments ||
     {}
-  );
+  )
 }
 
 export function extractResultOutput(resultEvent: any): string {
-  if (!resultEvent || typeof resultEvent !== 'object') return '';
-  const evt = resultEvent;
-  if (typeof evt.output === 'string') return evt.output;
-  if (typeof evt.result === 'string') return evt.result;
-  if (typeof evt.content === 'string') return evt.content;
-  if (typeof evt.summary === 'string') return evt.summary;
-  if (typeof evt.message === 'string') return evt.message;
-  if (typeof evt.text === 'string') return evt.text;
+  if (!resultEvent || typeof resultEvent !== 'object') return ''
+  const evt = resultEvent
+  if (typeof evt.output === 'string') return evt.output
+  if (typeof evt.result === 'string') return evt.result
+  if (typeof evt.content === 'string') return evt.content
+  if (typeof evt.summary === 'string') return evt.summary
+  if (typeof evt.message === 'string') return evt.message
+  if (typeof evt.text === 'string') return evt.text
   if (evt.result && typeof evt.result === 'object') {
-    if (typeof evt.result.output === 'string') return evt.result.output;
-    if (typeof evt.result.summary === 'string') return evt.result.summary;
-    if (typeof evt.result.message === 'string') return evt.result.message;
-    return JSON.stringify(evt.result);
+    if (typeof evt.result.output === 'string') return evt.result.output
+    if (typeof evt.result.summary === 'string') return evt.result.summary
+    if (typeof evt.result.message === 'string') return evt.result.message
+    return JSON.stringify(evt.result)
   }
   if (evt.output && typeof evt.output === 'object') {
-    return JSON.stringify(evt.output);
+    return JSON.stringify(evt.output)
   }
-  return '';
+  return ''
 }
 
 export function extractStatus(resultEvent: any): ToolActivityStatus {
-  if (!resultEvent || typeof resultEvent !== 'object') return 'success';
-  if (resultEvent.error || resultEvent.status === 'error') return 'error';
-  if (resultEvent.status === 'warning') return 'warning';
-  return 'success';
+  if (!resultEvent || typeof resultEvent !== 'object') return 'success'
+  if (resultEvent.error || resultEvent.status === 'error') return 'error'
+  if (resultEvent.status === 'warning') return 'warning'
+  return 'success'
 }
 
-export type ToolCategory = 'task' | 'read' | 'write' | 'search' | 'shell' | 'unknown';
+export type ToolCategory = 'task' | 'read' | 'write' | 'search' | 'shell' | 'unknown'
 
 const WRITE_LIKE_TOOL_NAMES = new Set([
   'replace',
@@ -102,131 +108,187 @@ const WRITE_LIKE_TOOL_NAMES = new Set([
   'str_replace',
   'str_replace_editor',
   'strreplaceeditor'
-]);
+])
 
 export function isWriteLikeToolName(toolName: string): boolean {
-  const name = (toolName || '').toLowerCase();
-  if (!name) return false;
-  if (WRITE_LIKE_TOOL_NAMES.has(name)) return true;
-  if (name.endsWith('__write_file')) return true;
-  if (name.endsWith('__replace')) return true;
-  if (name.endsWith('__create_file')) return true;
-  if (name.endsWith('__edit_file')) return true;
-  if (name.endsWith('__delete_file')) return true;
-  if (name.endsWith('__edit')) return true;
-  if (name.endsWith('__write')) return true;
-  if (name.endsWith('__apply_patch')) return true;
-  return false;
+  const name = (toolName || '').toLowerCase()
+  if (!name) return false
+  if (WRITE_LIKE_TOOL_NAMES.has(name)) return true
+  if (name.endsWith('__write_file')) return true
+  if (name.endsWith('__replace')) return true
+  if (name.endsWith('__create_file')) return true
+  if (name.endsWith('__edit_file')) return true
+  if (name.endsWith('__delete_file')) return true
+  if (name.endsWith('__edit')) return true
+  if (name.endsWith('__write')) return true
+  if (name.endsWith('__apply_patch')) return true
+  return false
 }
 
 export function getToolCategory(toolName: string): ToolCategory {
-  const name = (toolName || '').toLowerCase();
-  if (['update_topic', 'invoke_agent', 'summary', 'intent', 'progress', 'tool_progress', 'codex_reasoning', 'codex_plan', 'kimi_thinking'].includes(name)) return 'task';
-  if (name === 'read_file' || name === 'list_directory') return 'read';
-  if (isWriteLikeToolName(name)) return 'write';
-  if (['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(name)) return 'search';
-  if (name === 'run_shell_command' || name === 'shell') return 'shell';
-  return 'unknown';
+  const name = (toolName || '').toLowerCase()
+  if (
+    [
+      'update_topic',
+      'invoke_agent',
+      'summary',
+      'intent',
+      'progress',
+      'tool_progress',
+      'codex_reasoning',
+      'codex_plan',
+      'kimi_thinking'
+    ].includes(name)
+  )
+    return 'task'
+  if (name === 'read_file' || name === 'list_directory') return 'read'
+  if (isWriteLikeToolName(name)) return 'write'
+  if (
+    ['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(
+      name
+    )
+  )
+    return 'search'
+  if (name === 'run_shell_command' || name === 'shell') return 'shell'
+  return 'unknown'
 }
 
 export function getToolDisplayName(toolName: string, parameters?: Record<string, unknown>): string {
-  const category = getToolCategory(toolName);
-  const params = parameters || {};
-  const filePath = (params.file_path as string) || (params.path as string) || '';
+  const category = getToolCategory(toolName)
+  const params = parameters || {}
+  const filePath = (params.file_path as string) || (params.path as string) || ''
 
   switch (category) {
     case 'task':
-      if (toolName.toLowerCase() === 'codex_reasoning') return (params.title as string) || 'Thinking note';
-      if (toolName.toLowerCase() === 'kimi_thinking') return (params.title as string) || 'Kimi thinking';
-      if (toolName.toLowerCase() === 'codex_plan') return 'Plan update';
-      if (toolName.toLowerCase() === 'invoke_agent') return (params.title as string) || 'Delegated task';
-      if (toolName.toLowerCase() === 'summary') return (params.title as string) || 'Summary';
-      if (toolName.toLowerCase() === 'intent') return (params.title as string) || 'Intent';
-      return (params.title as string) || 'Task update';
+      if (toolName.toLowerCase() === 'codex_reasoning')
+        return (params.title as string) || 'Thinking note'
+      if (toolName.toLowerCase() === 'kimi_thinking')
+        return (params.title as string) || 'Kimi thinking'
+      if (toolName.toLowerCase() === 'codex_plan') return 'Plan update'
+      if (toolName.toLowerCase() === 'invoke_agent')
+        return (params.title as string) || 'Delegated task'
+      if (toolName.toLowerCase() === 'summary') return (params.title as string) || 'Summary'
+      if (toolName.toLowerCase() === 'intent') return (params.title as string) || 'Intent'
+      return (params.title as string) || 'Task update'
     case 'read':
-      if (toolName.toLowerCase() === 'list_directory') return filePath ? `Listed ${filePath}` : 'Listed directory';
-      return filePath ? `Read ${filePath}` : 'Read file';
+      if (toolName.toLowerCase() === 'list_directory')
+        return filePath ? `Listed ${filePath}` : 'Listed directory'
+      return filePath ? `Read ${filePath}` : 'Read file'
     case 'write': {
-      const name = toolName.toLowerCase();
-      if (name === 'replace' || name.endsWith('__replace') || name === 'edit' || name === 'edit_file' || name.endsWith('__edit_file') || name === 'multiedit' || name === 'notebookedit' || name === 'apply_patch' || name.endsWith('__apply_patch') || name.includes('str_replace')) {
-        return filePath ? `Edited ${filePath}` : 'Edited file';
+      const name = toolName.toLowerCase()
+      if (
+        name === 'replace' ||
+        name.endsWith('__replace') ||
+        name === 'edit' ||
+        name === 'edit_file' ||
+        name.endsWith('__edit_file') ||
+        name === 'multiedit' ||
+        name === 'notebookedit' ||
+        name === 'apply_patch' ||
+        name.endsWith('__apply_patch') ||
+        name.includes('str_replace')
+      ) {
+        return filePath ? `Edited ${filePath}` : 'Edited file'
       }
       if (name === 'create_file' || name.endsWith('__create_file')) {
-        return filePath ? `Created ${filePath}` : 'Created file';
+        return filePath ? `Created ${filePath}` : 'Created file'
       }
       if (name === 'delete_file' || name.endsWith('__delete_file')) {
-        return filePath ? `Deleted ${filePath}` : 'Deleted file';
+        return filePath ? `Deleted ${filePath}` : 'Deleted file'
       }
-      return filePath ? `Wrote ${filePath}` : 'Wrote file';
+      return filePath ? `Wrote ${filePath}` : 'Wrote file'
     }
     case 'search': {
-      const query = (params.query as string) || (params.search_query as string) || (params.pattern as string) || '';
+      const query =
+        (params.query as string) ||
+        (params.search_query as string) ||
+        (params.pattern as string) ||
+        ''
       if (toolName.toLowerCase().includes('web_search')) {
-        return query ? `Searched web for ${query}` : 'Searched web';
+        return query ? `Searched web for ${query}` : 'Searched web'
       }
-      const searchPath = (params.path as string) || (params.dir as string) || '';
-      return query ? `Searched for ${query}` : searchPath ? `Searched ${searchPath}` : 'Searched project';
+      const searchPath = (params.path as string) || (params.dir as string) || ''
+      return query
+        ? `Searched for ${query}`
+        : searchPath
+          ? `Searched ${searchPath}`
+          : 'Searched project'
     }
     case 'shell':
-      return 'Shell command';
+      return 'Shell command'
     default:
-      return toolName && toolName !== 'unknown' ? `Used ${toolName}` : 'Used unknown';
+      return toolName && toolName !== 'unknown' ? `Used ${toolName}` : 'Used unknown'
   }
 }
 
-export function estimateLineChanges(parameters?: Record<string, unknown>): { additions?: number; deletions?: number } {
-  if (!parameters) return {};
-  const oldString = parameters.old_string as string | undefined;
-  const newString = parameters.new_string as string | undefined;
+export function estimateLineChanges(parameters?: Record<string, unknown>): {
+  additions?: number
+  deletions?: number
+} {
+  if (!parameters) return {}
+  const oldString = parameters.old_string as string | undefined
+  const newString = parameters.new_string as string | undefined
   if (typeof oldString === 'string' && typeof newString === 'string') {
-    const oldLines = oldString.split('\n').length;
-    const newLines = newString.split('\n').length;
-    return { additions: newLines, deletions: oldLines };
+    const oldLines = oldString.split('\n').length
+    const newLines = newString.split('\n').length
+    return { additions: newLines, deletions: oldLines }
   }
-  const content = parameters.content as string | undefined;
+  const content = parameters.content as string | undefined
   if (typeof content === 'string') {
-    return { additions: content.split('\n').length, deletions: 0 };
+    return { additions: content.split('\n').length, deletions: 0 }
   }
-  return {};
+  return {}
 }
 
 function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : '';
+  return typeof value === 'string' ? value : ''
 }
 
 function numberValue(value: unknown): number | undefined {
-  const numeric = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
-  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : undefined;
+  const numeric =
+    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN
+  return Number.isFinite(numeric) ? Math.max(0, Math.trunc(numeric)) : undefined
 }
 
 function normalizeStatus(value: unknown): ToolDiffFileSummary['status'] {
-  const status = String(value || '').toLowerCase();
-  if (status === 'add' || status === 'create' || status === 'created' || status === 'new') return 'created';
-  if (status === 'delete' || status === 'deleted' || status === 'remove' || status === 'removed') return 'deleted';
-  if (status === 'rename' || status === 'renamed') return 'renamed';
-  if (status === 'modify' || status === 'modified' || status === 'edit' || status === 'update') return 'modified';
-  return status ? (status as DiffFileStatus | 'updated' | 'unknown') : 'unknown';
+  const status = String(value || '').toLowerCase()
+  if (status === 'add' || status === 'create' || status === 'created' || status === 'new')
+    return 'created'
+  if (status === 'delete' || status === 'deleted' || status === 'remove' || status === 'removed')
+    return 'deleted'
+  if (status === 'rename' || status === 'renamed') return 'renamed'
+  if (status === 'modify' || status === 'modified' || status === 'edit' || status === 'update')
+    return 'modified'
+  return status ? (status as DiffFileStatus | 'updated' | 'unknown') : 'unknown'
 }
 
 function getPathFromRecord(record: Record<string, unknown>): string | undefined {
-  const path = stringValue(record.path) ||
+  const path =
+    stringValue(record.path) ||
     stringValue(record.filePath) ||
     stringValue(record.file_path) ||
     stringValue(record.target) ||
     stringValue(record.target_file) ||
-    stringValue(record.target_file_path);
-  return path.trim() || undefined;
+    stringValue(record.target_file_path)
+  return path.trim() || undefined
 }
 
-function summarizeFiles(files: ToolDiffFileSummary[], source: ToolDiffSummary['source'], confidence: ToolDiffSummary['confidence']): ToolDiffSummary | undefined {
-  if (files.length === 0) return undefined;
-  let hasStats = false;
-  const totals = files.reduce<{ additions: number; deletions: number }>((acc, file) => {
-    if (file.additions !== undefined || file.deletions !== undefined) hasStats = true;
-    acc.additions += file.additions || 0;
-    acc.deletions += file.deletions || 0;
-    return acc;
-  }, { additions: 0, deletions: 0 });
+function summarizeFiles(
+  files: ToolDiffFileSummary[],
+  source: ToolDiffSummary['source'],
+  confidence: ToolDiffSummary['confidence']
+): ToolDiffSummary | undefined {
+  if (files.length === 0) return undefined
+  let hasStats = false
+  const totals = files.reduce<{ additions: number; deletions: number }>(
+    (acc, file) => {
+      if (file.additions !== undefined || file.deletions !== undefined) hasStats = true
+      acc.additions += file.additions || 0
+      acc.deletions += file.deletions || 0
+      return acc
+    },
+    { additions: 0, deletions: 0 }
+  )
 
   return {
     additions: hasStats ? totals.additions : undefined,
@@ -234,88 +296,101 @@ function summarizeFiles(files: ToolDiffFileSummary[], source: ToolDiffSummary['s
     files,
     source,
     confidence: hasStats ? confidence : 'unknown'
-  };
+  }
 }
 
 function parseChanges(value: unknown): ToolDiffSummary | undefined {
-  if (!Array.isArray(value)) return undefined;
+  if (!Array.isArray(value)) return undefined
   const files = value
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .filter((item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === 'object' && !Array.isArray(item))
+    )
     .map((item) => ({
       path: getPathFromRecord(item),
       status: normalizeStatus(item.kind || item.type || item.operation || item.status),
       additions: numberValue(item.additions ?? item.added ?? item.linesAdded ?? item.insertions),
       deletions: numberValue(item.deletions ?? item.deleted ?? item.linesDeleted ?? item.removals)
-    }));
+    }))
 
-  return summarizeFiles(files, 'codex_changes', 'exact');
+  return summarizeFiles(files, 'codex_changes', 'exact')
 }
 
 export function parseUnifiedDiffSummary(diffText: string): ToolDiffSummary | undefined {
-  if (!diffText.trim()) return undefined;
+  if (!diffText.trim()) return undefined
 
-  const files: ToolDiffFileSummary[] = [];
-  let current: ToolDiffFileSummary | null = null;
+  const files: ToolDiffFileSummary[] = []
+  let current: ToolDiffFileSummary | null = null
 
   const commitCurrent = () => {
     if (current) {
-      files.push(current);
-      current = null;
+      files.push(current)
+      current = null
     }
-  };
+  }
 
   for (const line of diffText.split('\n')) {
-    const diffHeader = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+    const diffHeader = line.match(/^diff --git a\/(.+?) b\/(.+)$/)
     if (diffHeader) {
-      commitCurrent();
+      commitCurrent()
       current = {
         path: diffHeader[2] || diffHeader[1],
         status: 'modified',
         additions: 0,
         deletions: 0
-      };
-      continue;
+      }
+      continue
     }
 
     if (!current) {
-      current = { additions: 0, deletions: 0, status: 'unknown' };
+      current = { additions: 0, deletions: 0, status: 'unknown' }
     }
 
-    if (line.startsWith('+++ b/')) current.path = line.slice(6);
-    if (line.startsWith('new file mode')) current.status = 'created';
-    if (line.startsWith('deleted file mode')) current.status = 'deleted';
-    if (line.startsWith('+') && !line.startsWith('+++')) current.additions = (current.additions || 0) + 1;
-    if (line.startsWith('-') && !line.startsWith('---')) current.deletions = (current.deletions || 0) + 1;
+    if (line.startsWith('+++ b/')) current.path = line.slice(6)
+    if (line.startsWith('new file mode')) current.status = 'created'
+    if (line.startsWith('deleted file mode')) current.status = 'deleted'
+    if (line.startsWith('+') && !line.startsWith('+++'))
+      current.additions = (current.additions || 0) + 1
+    if (line.startsWith('-') && !line.startsWith('---'))
+      current.deletions = (current.deletions || 0) + 1
   }
 
-  commitCurrent();
-  const usefulFiles = files.filter((file) => file.path || file.additions || file.deletions);
-  return summarizeFiles(usefulFiles, 'patch_preview', 'exact');
+  commitCurrent()
+  const usefulFiles = files.filter((file) => file.path || file.additions || file.deletions)
+  return summarizeFiles(usefulFiles, 'patch_preview', 'exact')
 }
 
 function getPatchPreview(parameters?: Record<string, unknown>, resultText?: string): string {
-  if (!parameters) return resultText || '';
-  return stringValue(parameters.patchPreview) ||
+  if (!parameters) return resultText || ''
+  return (
+    stringValue(parameters.patchPreview) ||
     stringValue(parameters.patch_preview) ||
     stringValue(parameters.patch) ||
     stringValue(parameters.diff) ||
     stringValue(parameters.unifiedDiff) ||
     stringValue(parameters.unified_diff) ||
     resultText ||
-    '';
+    ''
+  )
 }
 
-export function deriveToolDiffSummary(toolName: string, parameters?: Record<string, unknown>, resultText?: string): ToolDiffSummary | undefined {
-  const category = getToolCategory(toolName);
-  const changesSummary = parseChanges(parameters?.changes);
-  if (changesSummary?.confidence === 'exact' && ((changesSummary.additions || 0) > 0 || (changesSummary.deletions || 0) > 0)) {
-    return changesSummary;
+export function deriveToolDiffSummary(
+  toolName: string,
+  parameters?: Record<string, unknown>,
+  resultText?: string
+): ToolDiffSummary | undefined {
+  const category = getToolCategory(toolName)
+  const changesSummary = parseChanges(parameters?.changes)
+  if (
+    changesSummary?.confidence === 'exact' &&
+    ((changesSummary.additions || 0) > 0 || (changesSummary.deletions || 0) > 0)
+  ) {
+    return changesSummary
   }
 
-  const patchPreview = getPatchPreview(parameters, resultText);
-  const patchSummary = parseUnifiedDiffSummary(patchPreview);
+  const patchPreview = getPatchPreview(parameters, resultText)
+  const patchSummary = parseUnifiedDiffSummary(patchPreview)
   if (patchSummary) {
-    const path = parameters ? getPathFromRecord(parameters) : undefined;
+    const path = parameters ? getPathFromRecord(parameters) : undefined
     if (path) {
       return {
         ...patchSummary,
@@ -323,38 +398,50 @@ export function deriveToolDiffSummary(toolName: string, parameters?: Record<stri
           ...file,
           path: file.path || path
         }))
-      };
+      }
     }
-    return patchSummary;
+    return patchSummary
   }
 
-  if (changesSummary) return changesSummary;
+  if (changesSummary) return changesSummary
 
-  const replacement = estimateLineChanges(parameters);
+  const replacement = estimateLineChanges(parameters)
   if (replacement.additions !== undefined || replacement.deletions !== undefined) {
-    const path = parameters ? getPathFromRecord(parameters) : undefined;
-    const source = typeof parameters?.old_string === 'string' && typeof parameters?.new_string === 'string'
-      ? 'string_replace'
-      : 'content';
+    const path = parameters ? getPathFromRecord(parameters) : undefined
+    const source =
+      typeof parameters?.old_string === 'string' && typeof parameters?.new_string === 'string'
+        ? 'string_replace'
+        : 'content'
     return {
       additions: replacement.additions || 0,
       deletions: replacement.deletions || 0,
-      files: [{ path, status: category === 'write' && toolName.toLowerCase() === 'create_file' ? 'created' : 'modified', additions: replacement.additions || 0, deletions: replacement.deletions || 0 }],
+      files: [
+        {
+          path,
+          status:
+            category === 'write' && toolName.toLowerCase() === 'create_file'
+              ? 'created'
+              : 'modified',
+          additions: replacement.additions || 0,
+          deletions: replacement.deletions || 0
+        }
+      ],
       source,
-      confidence: source === 'content' && toolName.toLowerCase() !== 'edit_file' ? 'exact' : 'estimated'
-    };
+      confidence:
+        source === 'content' && toolName.toLowerCase() !== 'edit_file' ? 'exact' : 'estimated'
+    }
   }
 
-  return undefined;
+  return undefined
 }
 
 export function createToolActivity(toolUseEvent: any): ToolActivity {
-  const toolName = extractToolName(toolUseEvent);
-  const parameters = extractParameters(toolUseEvent);
-  const category = getToolCategory(toolName);
-  const displayName = getToolDisplayName(toolName, parameters);
-  const filePath = (parameters.file_path as string) || (parameters.path as string) || undefined;
-  const parentToolCallId = extractParentToolCallId(toolUseEvent);
+  const toolName = extractToolName(toolUseEvent)
+  const parameters = extractParameters(toolUseEvent)
+  const category = getToolCategory(toolName)
+  const displayName = getToolDisplayName(toolName, parameters)
+  const filePath = (parameters.file_path as string) || (parameters.path as string) || undefined
+  const parentToolCallId = extractParentToolCallId(toolUseEvent)
 
   return {
     id: extractToolId(toolUseEvent),
@@ -370,39 +457,42 @@ export function createToolActivity(toolUseEvent: any): ToolActivity {
     parentToolCallId,
     // Legacy fields
     operationCategory: category as any,
-    affectedFilePath: filePath,
-  };
+    affectedFilePath: filePath
+  }
 }
 
 export function pairToolResult(activity: ToolActivity, toolResultEvent: any): ToolActivity {
-  const resultOutput = extractResultOutput(toolResultEvent);
-  const status = extractStatus(toolResultEvent);
-  const endedAt = new Date().toISOString();
-  const durationMs =
-    activity.startedAt
-      ? new Date(endedAt).getTime() - new Date(activity.startedAt).getTime()
-      : undefined;
+  const resultOutput = extractResultOutput(toolResultEvent)
+  const status = extractStatus(toolResultEvent)
+  const endedAt = new Date().toISOString()
+  const durationMs = activity.startedAt
+    ? new Date(endedAt).getTime() - new Date(activity.startedAt).getTime()
+    : undefined
 
   return {
     ...activity,
     status,
     endedAt,
     durationMs,
-    diffSummary: deriveToolDiffSummary(activity.toolName, activity.parameters, resultOutput) || activity.diffSummary,
+    diffSummary:
+      deriveToolDiffSummary(activity.toolName, activity.parameters, resultOutput) ||
+      activity.diffSummary,
     resultSummary: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : ''),
     outputPreview: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : ''),
     rawResultEvent: toolResultEvent,
     // Legacy
-    outputSummary: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : ''),
-  };
+    outputSummary: resultOutput.substring(0, 500) + (resultOutput.length > 500 ? '...' : '')
+  }
 }
 
 export function isToolUseEvent(event: any): boolean {
-  if (!event || typeof event !== 'object') return false;
-  return event.type === 'tool_use' || event.type === 'tool_call';
+  if (!event || typeof event !== 'object') return false
+  return event.type === 'tool_use' || event.type === 'tool_call'
 }
 
 export function isToolResultEvent(event: any): boolean {
-  if (!event || typeof event !== 'object') return false;
-  return event.type === 'tool_result' || event.type === 'tool_output' || event.type === 'tool_response';
+  if (!event || typeof event !== 'object') return false
+  return (
+    event.type === 'tool_result' || event.type === 'tool_output' || event.type === 'tool_response'
+  )
 }

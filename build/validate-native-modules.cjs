@@ -16,7 +16,9 @@ async function validateNativeModules(context) {
   })
 
   if (nodePtyBindings.length === 0) {
-    throw new Error(`Compatible node-pty native binding for ${platform}-${arch} was not packaged under ${unpackedDir}.`)
+    throw new Error(
+      `Compatible node-pty native binding for ${platform}-${arch} was not packaged under ${unpackedDir}.`
+    )
   }
 
   console.log(`Validated node-pty native binding: ${nodePtyBindings[0]}`)
@@ -29,11 +31,15 @@ async function validateNativeModules(context) {
   if (platform === 'darwin') {
     const daemonPath = path.join(resourcesDir, 'bridge', 'GuiGeminiBridgeDaemon')
     if (!fs.existsSync(daemonPath)) {
-      throw new Error(`GuiGeminiBridgeDaemon was not packaged at ${daemonPath}. Did \`npm run prebuild:bridge-daemon\` run before electron-builder?`)
+      throw new Error(
+        `GuiGeminiBridgeDaemon was not packaged at ${daemonPath}. Did \`npm run prebuild:bridge-daemon\` run before electron-builder?`
+      )
     }
     const stat = fs.statSync(daemonPath)
     if (!stat.isFile() || stat.size === 0) {
-      throw new Error(`GuiGeminiBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`)
+      throw new Error(
+        `GuiGeminiBridgeDaemon at ${daemonPath} is not a non-empty file (size=${stat.size}).`
+      )
     }
     console.log(`Validated GuiGeminiBridgeDaemon: ${daemonPath} (${stat.size} bytes)`)
   }
@@ -95,7 +101,9 @@ function resolveResourcesDir(context) {
 
   if (context.electronPlatformName === 'darwin') {
     const candidates = [
-      productFilename ? path.join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources') : '',
+      productFilename
+        ? path.join(appOutDir, `${productFilename}.app`, 'Contents', 'Resources')
+        : '',
       ...findDirectories(appOutDir, (candidate) => candidate.endsWith('.app'), 2).map((appPath) =>
         path.join(appPath, 'Contents', 'Resources')
       )

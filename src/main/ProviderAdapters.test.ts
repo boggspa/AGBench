@@ -56,8 +56,9 @@ describe('ProviderAdapters', () => {
       }
     })
     expect(
-      ['gemini', 'codex', 'claude', 'kimi'].map((provider) =>
-        defaultProviderDescriptor(provider as 'gemini' | 'codex' | 'claude' | 'kimi').runChannel
+      ['gemini', 'codex', 'claude', 'kimi'].map(
+        (provider) =>
+          defaultProviderDescriptor(provider as 'gemini' | 'codex' | 'claude' | 'kimi').runChannel
       )
     ).toEqual(['run-agent', 'run-agent', 'run-agent', 'run-agent'])
   })
@@ -93,7 +94,12 @@ describe('defaultProviderDescriptor capabilities', () => {
   // renderer consume to decide what to render. Pinning them as tests
   // means any change is reviewable; silently flipping (e.g. removing
   // image support from Gemini) requires touching this file.
-  const allProviders: Array<'gemini' | 'codex' | 'claude' | 'kimi'> = ['gemini', 'codex', 'claude', 'kimi']
+  const allProviders: Array<'gemini' | 'codex' | 'claude' | 'kimi'> = [
+    'gemini',
+    'codex',
+    'claude',
+    'kimi'
+  ]
 
   for (const provider of allProviders) {
     it(`${provider} declares a non-empty approvalModes list`, () => {

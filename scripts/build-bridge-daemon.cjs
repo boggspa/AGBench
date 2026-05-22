@@ -21,7 +21,9 @@ const REPO_ROOT = join(__dirname, '..')
 const PACKAGE_PATH = join(REPO_ROOT, 'swift', 'GuiGeminiBridge')
 
 if (process.platform !== 'darwin') {
-  console.log(`[build-bridge-daemon] Skipping — daemon is macOS-only (platform=${process.platform})`)
+  console.log(
+    `[build-bridge-daemon] Skipping — daemon is macOS-only (platform=${process.platform})`
+  )
   process.exit(0)
 }
 
@@ -31,11 +33,9 @@ if (!existsSync(join(PACKAGE_PATH, 'Package.swift'))) {
 }
 
 console.log('[build-bridge-daemon] swift build -c release …')
-const result = spawnSync(
-  'swift',
-  ['build', '-c', 'release', '--package-path', PACKAGE_PATH],
-  { stdio: 'inherit' }
-)
+const result = spawnSync('swift', ['build', '-c', 'release', '--package-path', PACKAGE_PATH], {
+  stdio: 'inherit'
+})
 
 if (result.status !== 0) {
   console.error(`[build-bridge-daemon] swift build exited with code ${result.status}`)

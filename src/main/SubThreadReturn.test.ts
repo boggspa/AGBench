@@ -171,9 +171,7 @@ describe('Phase F2 — sub-thread return decision', () => {
         delegationPrompt: 'Run the build',
         returnResultToParent: true
       },
-      messages: [
-        { id: 'm1', role: 'user', content: 'Run it', timestamp: new Date().toISOString() }
-      ]
+      messages: [{ id: 'm1', role: 'user', content: 'Run it', timestamp: new Date().toISOString() }]
     })
     const decision = decideSubThreadReturn(chat)
     expect(decision.shouldPropagate).toBe(false)
@@ -253,7 +251,12 @@ describe('Phase F2 — sub-thread return decision', () => {
         returnResultToParent: true
       },
       messages: [
-        { id: 'm1', role: 'assistant', content: 'Running build', timestamp: '2026-01-01T00:00:00Z' },
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: 'Running build',
+          timestamp: '2026-01-01T00:00:00Z'
+        },
         { id: 'm2', role: 'tool', content: '{"output":"..."}', timestamp: '2026-01-01T00:00:01Z' },
         { id: 'm3', role: 'system', content: 'note', timestamp: '2026-01-01T00:00:02Z' },
         { id: 'm4', role: 'error', content: 'transient', timestamp: '2026-01-01T00:00:03Z' }

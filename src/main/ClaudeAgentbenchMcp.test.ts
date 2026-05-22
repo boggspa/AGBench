@@ -121,9 +121,7 @@ describe('buildClaudeAgentbenchAllowedToolNames', () => {
   })
 
   it('always includes delegate_to_subthread (the headline Phase I tool)', () => {
-    expect(buildClaudeAgentbenchAllowedToolNames()).toContain(
-      'mcp__AGBench__delegate_to_subthread'
-    )
+    expect(buildClaudeAgentbenchAllowedToolNames()).toContain('mcp__AGBench__delegate_to_subthread')
     expect(buildClaudeAgentbenchAllowedToolNames()).toContain('delegate_to_subthread')
   })
 })

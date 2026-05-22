@@ -5,7 +5,9 @@ const path = require('node:path')
 
 const repoRoot = process.cwd()
 const searchArg = process.argv[2]
-const searchRoots = searchArg ? [path.resolve(repoRoot, searchArg)] : ['dist', 'dist-debug'].map((dir) => path.join(repoRoot, dir))
+const searchRoots = searchArg
+  ? [path.resolve(repoRoot, searchArg)]
+  : ['dist', 'dist-debug'].map((dir) => path.join(repoRoot, dir))
 
 assertFile(path.join(repoRoot, 'out/main/index.js'), 'main bundle')
 assertFile(path.join(repoRoot, 'out/preload/index.js'), 'preload bundle')
@@ -34,7 +36,9 @@ const nativeBindings = findFiles(unpackedDir, (filePath) => {
 })
 
 if (nativeBindings.length === 0) {
-  fail(`Compatible node-pty native binding for ${packageTarget.platform}-${packageTarget.arch} was not found in ${unpackedDir}.`)
+  fail(
+    `Compatible node-pty native binding for ${packageTarget.platform}-${packageTarget.arch} was not found in ${unpackedDir}.`
+  )
 }
 
 console.log(`packaged Electron smoke ok: ${path.relative(repoRoot, packageRoot) || packageRoot}`)
@@ -64,7 +68,10 @@ function findPackagedApp(roots) {
 
 function isPackagedRoot(candidate) {
   if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) return false
-  if (candidate.endsWith('.app') && fs.existsSync(path.join(candidate, 'Contents/Resources/app.asar'))) {
+  if (
+    candidate.endsWith('.app') &&
+    fs.existsSync(path.join(candidate, 'Contents/Resources/app.asar'))
+  ) {
     return true
   }
   return fs.existsSync(path.join(candidate, 'resources/app.asar'))
@@ -79,14 +86,28 @@ function resolveResourcesDir(packageRoot) {
 
 function inferPackageTarget(packageRoot) {
   const normalized = packageRoot.split(path.sep).join('/')
-  if (packageRoot.endsWith('.app') || normalized.includes('/mac') || normalized.includes('darwin')) {
+  if (
+    packageRoot.endsWith('.app') ||
+    normalized.includes('/mac') ||
+    normalized.includes('darwin')
+  ) {
     return { platform: 'darwin', arch: normalized.includes('arm64') ? 'arm64' : process.arch }
   }
   if (normalized.includes('win-unpacked') || normalized.includes('/win')) {
-    return { platform: 'win32', arch: normalized.includes('arm64') ? 'arm64' : normalized.includes('ia32') ? 'ia32' : 'x64' }
+    return {
+      platform: 'win32',
+      arch: normalized.includes('arm64') ? 'arm64' : normalized.includes('ia32') ? 'ia32' : 'x64'
+    }
   }
   if (normalized.includes('linux')) {
-    return { platform: 'linux', arch: normalized.includes('arm64') ? 'arm64' : normalized.includes('armv7l') ? 'armv7l' : 'x64' }
+    return {
+      platform: 'linux',
+      arch: normalized.includes('arm64')
+        ? 'arm64'
+        : normalized.includes('armv7l')
+          ? 'armv7l'
+          : 'x64'
+    }
   }
   return { platform: process.platform, arch: process.arch }
 }

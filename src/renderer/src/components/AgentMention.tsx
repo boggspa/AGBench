@@ -32,12 +32,13 @@ export function AgentMention({ agentId, children }: AgentMentionProps) {
   const chat = useContext(AgentIdentityContext)
   const identity = findIdentity(chat, agentId)
 
-  const displayName = identity?.name
-    || (typeof children === 'string'
-        ? children.replace(/^@+/, '')
-        : Array.isArray(children) && typeof children[0] === 'string'
-          ? (children[0] as string).replace(/^@+/, '')
-          : agentId.slice(0, 8))
+  const displayName =
+    identity?.name ||
+    (typeof children === 'string'
+      ? children.replace(/^@+/, '')
+      : Array.isArray(children) && typeof children[0] === 'string'
+        ? (children[0] as string).replace(/^@+/, '')
+        : agentId.slice(0, 8))
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()

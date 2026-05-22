@@ -172,10 +172,7 @@ export function AgentMentionMenu({
                   style={color ? { background: color } : undefined}
                   aria-hidden
                 />
-                <span
-                  className="agent-mention-menu-name"
-                  style={color ? { color } : undefined}
-                >
+                <span className="agent-mention-menu-name" style={color ? { color } : undefined}>
                   {name}
                 </span>
                 {role && <span className="agent-mention-menu-role">({role})</span>}

@@ -14,10 +14,7 @@
  * caller decides — per-chat busy, per-workspace busy, scheduled-task
  * windowing, etc. — without further signature churn.
  */
-export function findNextRunnableQueueIndex<T>(
-  jobs: T[],
-  canDispatch: (job: T) => boolean
-): number {
+export function findNextRunnableQueueIndex<T>(jobs: T[], canDispatch: (job: T) => boolean): number {
   if (!jobs || jobs.length === 0) return -1
   return jobs.findIndex((job) => canDispatch(job))
 }

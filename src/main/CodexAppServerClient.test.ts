@@ -10,7 +10,13 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     return {
       enabled: true,
       bridgeBinaryPath: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
-      bridgeArgs: ['--agentbench-gemini-mcp-bridge', '--socket', '/tmp/agentbench.sock', '--token', 'deadbeef'],
+      bridgeArgs: [
+        '--agentbench-gemini-mcp-bridge',
+        '--socket',
+        '/tmp/agentbench.sock',
+        '--token',
+        'deadbeef'
+      ],
       parentProvider: 'codex',
       ...overrides
     }
@@ -27,9 +33,13 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     const args = buildCodexAgentbenchMcpArgs(makeConfig())
     expect(args).toHaveLength(6)
     expect(args[0]).toBe('-c')
-    expect(args[1]).toBe('mcp_servers.AGBench.command="/Applications/AgentBench.app/Contents/MacOS/AgentBench"')
+    expect(args[1]).toBe(
+      'mcp_servers.AGBench.command="/Applications/AgentBench.app/Contents/MacOS/AgentBench"'
+    )
     expect(args[2]).toBe('-c')
-    expect(args[3]).toBe('mcp_servers.AGBench.args=["--agentbench-gemini-mcp-bridge", "--socket", "/tmp/agentbench.sock", "--token", "deadbeef"]')
+    expect(args[3]).toBe(
+      'mcp_servers.AGBench.args=["--agentbench-gemini-mcp-bridge", "--socket", "/tmp/agentbench.sock", "--token", "deadbeef"]'
+    )
     expect(args[4]).toBe('-c')
     expect(args[5]).toBe('mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "codex" }')
   })
@@ -39,10 +49,12 @@ describe('buildCodexAgentbenchMcpArgs', () => {
     // ship Windows builds yet but the escape codepath should be
     // resilient if process.execPath ever returns one. Quotes must be
     // backslash-escaped or the TOML basic-string parser blows up.
-    const args = buildCodexAgentbenchMcpArgs(makeConfig({
-      bridgeBinaryPath: 'C:\\AgentBench\\bench"executable"',
-      bridgeArgs: ['weird\\path', 'has "quote"']
-    }))
+    const args = buildCodexAgentbenchMcpArgs(
+      makeConfig({
+        bridgeBinaryPath: 'C:\\AgentBench\\bench"executable"',
+        bridgeArgs: ['weird\\path', 'has "quote"']
+      })
+    )
     expect(args[1]).toBe('mcp_servers.AGBench.command="C:\\\\AgentBench\\\\bench\\"executable\\""')
     expect(args[3]).toBe('mcp_servers.AGBench.args=["weird\\\\path", "has \\"quote\\""]')
   })

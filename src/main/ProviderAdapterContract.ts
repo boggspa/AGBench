@@ -57,10 +57,7 @@ import type {
 
 import { describe, expect, it } from 'vitest'
 
-export interface ProviderAdapterContractOptions<
-  TPayload = unknown,
-  TEvent = unknown
-> {
+export interface ProviderAdapterContractOptions<TPayload = unknown, TEvent = unknown> {
   /** Human-readable name for test-suite output (e.g. "GeminiAdapter"). */
   name: string
   /** Factory returning a fresh adapter per test. Each test gets its own
@@ -68,7 +65,12 @@ export interface ProviderAdapterContractOptions<
   factory: () => ProviderAdapter<TPayload, TEvent> | Promise<ProviderAdapter<TPayload, TEvent>>
 }
 
-const KNOWN_PROVIDER_IDS: ReadonlySet<string> = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+const KNOWN_PROVIDER_IDS: ReadonlySet<string> = new Set<ProviderId>([
+  'gemini',
+  'codex',
+  'claude',
+  'kimi'
+])
 
 /** Run the generic conformance battery against an adapter factory.
  * Drops a describe block named `<name> — ProviderAdapter contract` with
@@ -106,10 +108,9 @@ export function runProviderAdapterContractTests<TPayload = unknown, TEvent = unk
       expect(adapter.features).not.toBeNull()
       // All declared features should be booleans (no leaky undefineds).
       for (const [key, value] of Object.entries(adapter.features)) {
-        expect(
-          typeof value,
-          `Feature "${key}" must be boolean (got ${typeof value})`
-        ).toBe('boolean')
+        expect(typeof value, `Feature "${key}" must be boolean (got ${typeof value})`).toBe(
+          'boolean'
+        )
       }
     })
 
@@ -257,7 +258,7 @@ export function makeFakeProviderAdapter(
     },
     async getCapabilityContract(): Promise<ProviderCapabilityContract> {
       return {
-        provider,
+        provider
         // Minimal valid shape; production providers populate richer fields.
         // The contract battery only checks `provider` here — provider-
         // specific tests assert richer expectations.

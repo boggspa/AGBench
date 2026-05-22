@@ -73,14 +73,23 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
   const daemonSwitchDisabled = loading || savingDaemon || Boolean(lan?.envOverride)
   const daemonSwitchChecked = lan?.envOverride
     ? lan.effectiveEnabled
-    : lan?.settingEnabled ?? true
-  const daemonHelper = lan?.envOverride === 'force-on'
-    ? 'Enabled by AGBENCH_BRIDGE_DAEMON.'
-    : lan?.envOverride === 'force-off'
-      ? 'Disabled by environment override.'
-      : 'Runs on launch and accepts iOS pairing/control requests.'
-  const daemonPillLabel = lan?.running ? 'Running' : lan?.effectiveEnabled && !lan?.lastError ? 'Starting' : 'Stopped'
-  const daemonPillKind = lan?.running ? 'ok' : lan?.effectiveEnabled && !lan?.lastError ? 'warn' : 'idle'
+    : (lan?.settingEnabled ?? true)
+  const daemonHelper =
+    lan?.envOverride === 'force-on'
+      ? 'Enabled by AGBENCH_BRIDGE_DAEMON.'
+      : lan?.envOverride === 'force-off'
+        ? 'Disabled by environment override.'
+        : 'Runs on launch and accepts iOS pairing/control requests.'
+  const daemonPillLabel = lan?.running
+    ? 'Running'
+    : lan?.effectiveEnabled && !lan?.lastError
+      ? 'Starting'
+      : 'Stopped'
+  const daemonPillKind = lan?.running
+    ? 'ok'
+    : lan?.effectiveEnabled && !lan?.lastError
+      ? 'warn'
+      : 'idle'
 
   const setDaemonEnabled = async (enabled: boolean): Promise<void> => {
     try {
@@ -110,10 +119,7 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
       <section className="bridge-networking-section">
         <header className="bridge-networking-section-header">
           <span className="bridge-networking-section-title">Bridge daemon</span>
-          <StatusPill
-            kind={daemonPillKind}
-            label={daemonPillLabel}
-          />
+          <StatusPill kind={daemonPillKind} label={daemonPillLabel} />
         </header>
         <label className="settings-service-row settings-fx-toggle">
           <span>
@@ -128,9 +134,7 @@ export function BridgeNetworkingPanel(): React.JSX.Element {
           />
         </label>
         {lan?.lastError && (
-          <div className="settings-hint bridge-networking-reason">
-            {lan.lastError}
-          </div>
+          <div className="settings-hint bridge-networking-reason">{lan.lastError}</div>
         )}
       </section>
 

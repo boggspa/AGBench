@@ -87,9 +87,11 @@ describe('makeBridgeRunEventSink', () => {
   it('extracts appChatId from payload as top-level threadId hint', () => {
     const notify = vi.fn()
     const sink = makeBridgeRunEventSink({ notifier: { notify } })
-    sink.handle(sampleEvent({
-      payload: { text: 'hello', appRunId: 'run-1', appChatId: 'chat-42' }
-    }))
+    sink.handle(
+      sampleEvent({
+        payload: { text: 'hello', appRunId: 'run-1', appChatId: 'chat-42' }
+      })
+    )
     const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
     expect(forwardedShape.threadId).toBe('chat-42')
     // The original payload field is preserved too.
@@ -99,14 +101,16 @@ describe('makeBridgeRunEventSink', () => {
   it('extracts explicit threadId from synthetic approval events', () => {
     const notify = vi.fn()
     const sink = makeBridgeRunEventSink({ notifier: { notify } })
-    sink.handle(sampleEvent({
-      payload: {
-        type: 'approval_pending',
-        approvalId: 'approval-1',
-        appRunId: 'run-1',
-        threadId: 'chat-approval'
-      }
-    }))
+    sink.handle(
+      sampleEvent({
+        payload: {
+          type: 'approval_pending',
+          approvalId: 'approval-1',
+          appRunId: 'run-1',
+          threadId: 'chat-approval'
+        }
+      })
+    )
     const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
     expect(forwardedShape.threadId).toBe('chat-approval')
   })
@@ -115,14 +119,16 @@ describe('makeBridgeRunEventSink', () => {
     const notify = vi.fn()
     const sink = makeBridgeRunEventSink({ notifier: { notify } })
     // Some agent-compat events wrap the routed payload under `data`.
-    sink.handle(sampleEvent({
-      payload: {
-        provider: 'gemini',
-        data: '{"type":"text","content":"hi"}\n',
-        appRunId: 'run-1',
-        appChatId: 'chat-99'
-      }
-    }))
+    sink.handle(
+      sampleEvent({
+        payload: {
+          provider: 'gemini',
+          data: '{"type":"text","content":"hi"}\n',
+          appRunId: 'run-1',
+          appChatId: 'chat-99'
+        }
+      })
+    )
     const forwardedShape = notify.mock.calls[0][1] as Record<string, unknown>
     expect(forwardedShape.threadId).toBe('chat-99')
   })
@@ -175,9 +181,7 @@ describe('makeBridgeRunEventSink', () => {
       sink.handle(sampleEvent({ channel }))
     }
     expect(notify).toHaveBeenCalledTimes(channels.length)
-    const forwardedChannels = notify.mock.calls.map(
-      (c) => (c[1] as { channel: string }).channel
-    )
+    const forwardedChannels = notify.mock.calls.map((c) => (c[1] as { channel: string }).channel)
     expect(forwardedChannels).toEqual(channels)
   })
 })

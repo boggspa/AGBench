@@ -133,7 +133,7 @@ describe('BridgeActionRouter', () => {
 
     it('emits a single warning log when constructed in permissive mode', () => {
       const log = vi.fn()
-      // eslint-disable-next-line no-new
+
       new BridgeActionRouter({ permissiveDev: true, log })
       expect(log).toHaveBeenCalledTimes(1)
       expect(log.mock.calls[0][0]).toMatch(/permissive-dev mode is ON/i)
@@ -141,7 +141,7 @@ describe('BridgeActionRouter', () => {
 
     it('does not warn when permissive mode is off', () => {
       const log = vi.fn()
-      // eslint-disable-next-line no-new
+
       new BridgeActionRouter({ permissiveDev: false, log })
       expect(log).not.toHaveBeenCalled()
     })

@@ -1,4 +1,9 @@
-import type { ChatRecord, ChatRun, RunRecoveryRecord, RunQueueJobStatus } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  ChatRun,
+  RunRecoveryRecord,
+  RunQueueJobStatus
+} from '../../../main/store/types'
 
 /**
  * Boot-time bridge between `run-queue.json` recovery records and the
@@ -52,7 +57,10 @@ export function applyRecoveryRecordsToChatRuns(
       // If multiple records target the same run, prefer the latest
       // `recoveredAt`. Older records are stale by definition.
       const existing = recordByRunId.get(record.runId)
-      if (!existing || new Date(record.recoveredAt).getTime() > new Date(existing.recoveredAt).getTime()) {
+      if (
+        !existing ||
+        new Date(record.recoveredAt).getTime() > new Date(existing.recoveredAt).getTime()
+      ) {
         recordByRunId.set(record.runId, record)
       }
     }

@@ -401,10 +401,11 @@ function wasAutoDeniedByTimeout(record: ApprovalLedgerRecord): boolean {
 function formatOutcome(record: ApprovalLedgerRecord): string {
   if (record.status === 'pending') return 'Pending'
   if (wasAutoDeniedByTimeout(record)) {
-    const timeoutMs = typeof record.metadata?.timeoutMs === 'number'
-      ? record.metadata.timeoutMs
-      : undefined
-    return timeoutMs ? `Auto-denied · ${Math.round(timeoutMs / 1000)}s timeout` : 'Auto-denied · timeout'
+    const timeoutMs =
+      typeof record.metadata?.timeoutMs === 'number' ? record.metadata.timeoutMs : undefined
+    return timeoutMs
+      ? `Auto-denied · ${Math.round(timeoutMs / 1000)}s timeout`
+      : 'Auto-denied · timeout'
   }
   if (record.decision === 'autoAllow') return 'Auto-allowed'
   if (record.decision === 'autoDeny') return 'Auto-denied'

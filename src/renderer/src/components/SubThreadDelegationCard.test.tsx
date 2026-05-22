@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { resolveDelegationStatus, isSubThreadDelegationMessage } from './SubThreadDelegationCard';
-import type { ChatMessage, ChatRecord } from '../../../main/store/types';
+import { describe, expect, it } from 'vitest'
+import { resolveDelegationStatus, isSubThreadDelegationMessage } from './SubThreadDelegationCard'
+import type { ChatMessage, ChatRecord } from '../../../main/store/types'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
@@ -16,7 +16,7 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
     messages: [],
     runs: [],
     ...overrides
-  };
+  }
 }
 
 describe('isSubThreadDelegationMessage', () => {
@@ -27,9 +27,9 @@ describe('isSubThreadDelegationMessage', () => {
       content: '↪ Delegated to Kimi sub-thread.',
       timestamp: 't',
       metadata: { kind: 'subThreadDelegation', subThreadId: 'sub-1' }
-    };
-    expect(isSubThreadDelegationMessage(msg)).toBe(true);
-  });
+    }
+    expect(isSubThreadDelegationMessage(msg)).toBe(true)
+  })
 
   it('rejects messages with a different kind', () => {
     const msg: ChatMessage = {
@@ -38,31 +38,31 @@ describe('isSubThreadDelegationMessage', () => {
       content: '↩ Result',
       timestamp: 't',
       metadata: { kind: 'subThreadReturn' }
-    };
-    expect(isSubThreadDelegationMessage(msg)).toBe(false);
-  });
-});
+    }
+    expect(isSubThreadDelegationMessage(msg)).toBe(false)
+  })
+})
 
 describe('resolveDelegationStatus', () => {
   it('returns running when chat is in the live running set', () => {
-    const chat = makeChat();
-    const status = resolveDelegationStatus(chat, new Set(['sub-1']));
-    expect(status.kind).toBe('running');
-  });
+    const chat = makeChat()
+    const status = resolveDelegationStatus(chat, new Set(['sub-1']))
+    expect(status.kind).toBe('running')
+  })
 
   it('returns created when chat has no runs yet (just-spawned)', () => {
-    const chat = makeChat({ runs: [] });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('created');
-  });
+    const chat = makeChat({ runs: [] })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('created')
+  })
 
   it('returns completed when the last run ended successfully', () => {
     const chat = makeChat({
       runs: [{ runId: 'r', startedAt: 't', endedAt: 't+1', status: 'success' }]
-    });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('completed');
-  });
+    })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('completed')
+  })
 
   it('returns returned when a successful run was propagated to the parent', () => {
     const chat = makeChat({
@@ -81,10 +81,10 @@ describe('resolveDelegationStatus', () => {
           status: 'success'
         }
       ]
-    });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('returned');
-  });
+    })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('returned')
+  })
 
   it('returns completed when the latest successful run is newer than a prior return', () => {
     const chat = makeChat({
@@ -103,29 +103,29 @@ describe('resolveDelegationStatus', () => {
           status: 'success'
         }
       ]
-    });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('completed');
-  });
+    })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('completed')
+  })
 
   it('returns failed when the last run failed', () => {
     const chat = makeChat({
       runs: [{ runId: 'r', startedAt: 't', endedAt: 't+1', status: 'failed' }]
-    });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('failed');
-  });
+    })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('failed')
+  })
 
   it('returns cancelled when the last run was cancelled', () => {
     const chat = makeChat({
       runs: [{ runId: 'r', startedAt: 't', endedAt: 't+1', status: 'cancelled' }]
-    });
-    const status = resolveDelegationStatus(chat, new Set());
-    expect(status.kind).toBe('cancelled');
-  });
+    })
+    const status = resolveDelegationStatus(chat, new Set())
+    expect(status.kind).toBe('cancelled')
+  })
 
   it('returns unknown when no chat record is available', () => {
-    const status = resolveDelegationStatus(undefined, new Set());
-    expect(status.kind).toBe('unknown');
-  });
-});
+    const status = resolveDelegationStatus(undefined, new Set())
+    expect(status.kind).toBe('unknown')
+  })
+})

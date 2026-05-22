@@ -22,9 +22,21 @@ import type { ChatRecord, ProviderId } from '../../../main/store/types'
  */
 
 const PROVIDER_OPTIONS: Array<{ value: ProviderId; label: string; helper: string }> = [
-  { value: 'gemini', label: 'Gemini', helper: 'Long-context reasoning, image inputs, project-aware planning.' },
-  { value: 'codex', label: 'Codex', helper: 'Fast-twitch CLI work, shell commands, sandboxed execution.' },
-  { value: 'claude', label: 'Claude', helper: 'Deep reasoning, tool use, careful code edits with strong safety.' },
+  {
+    value: 'gemini',
+    label: 'Gemini',
+    helper: 'Long-context reasoning, image inputs, project-aware planning.'
+  },
+  {
+    value: 'codex',
+    label: 'Codex',
+    helper: 'Fast-twitch CLI work, shell commands, sandboxed execution.'
+  },
+  {
+    value: 'claude',
+    label: 'Claude',
+    helper: 'Deep reasoning, tool use, careful code edits with strong safety.'
+  },
   { value: 'kimi', label: 'Kimi', helper: 'Wire-protocol-driven runs, structured tool calls.' }
 ]
 
@@ -62,7 +74,7 @@ export function SubThreadCreator({
       return
     }
     if (parentChat.parentChatId) {
-      setError('Sub-threads can\'t themselves be delegated from (v1: max depth 1).')
+      setError("Sub-threads can't themselves be delegated from (v1: max depth 1).")
       return
     }
     setSubmitting(true)
@@ -105,17 +117,14 @@ export function SubThreadCreator({
         </header>
 
         <p className="sub-thread-creator-hint">
-          Spawn a context-isolated sub-thread under
-          {' '}<strong>{parentChat.title}</strong>{' '}
-          to hand off part of the work to a different provider. The
-          sub-thread inherits the parent's workspace.
+          Spawn a context-isolated sub-thread under <strong>{parentChat.title}</strong> to hand off
+          part of the work to a different provider. The sub-thread inherits the parent's workspace.
         </p>
 
         {isParentItselfSubThread && (
           <div className="sub-thread-creator-error">
-            This chat is itself a sub-thread. Delegation depth is limited
-            to 1 level in v1 — return to the parent thread to spawn
-            another sibling.
+            This chat is itself a sub-thread. Delegation depth is limited to 1 level in v1 — return
+            to the parent thread to spawn another sibling.
           </div>
         )}
 
@@ -164,9 +173,8 @@ export function SubThreadCreator({
             <span>
               <strong>Return result to parent on completion.</strong>
               <span className="sub-thread-creator-helper">
-                Records intent. v1 lets you navigate back manually; v2 will
-                auto-append the sub-thread's final assistant message to the
-                parent transcript.
+                Records intent. v1 lets you navigate back manually; v2 will auto-append the
+                sub-thread's final assistant message to the parent transcript.
               </span>
             </span>
           </label>
@@ -175,12 +183,7 @@ export function SubThreadCreator({
         {error && <div className="sub-thread-creator-error">{error}</div>}
 
         <footer className="sub-thread-creator-footer">
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={onCancel}
-            disabled={submitting}
-          >
+          <button type="button" className="btn btn-ghost" onClick={onCancel} disabled={submitting}>
             Cancel
           </button>
           <button
@@ -189,7 +192,9 @@ export function SubThreadCreator({
             onClick={() => void submit()}
             disabled={submitting || isParentItselfSubThread}
           >
-            {submitting ? 'Creating…' : `Spawn ${PROVIDER_OPTIONS.find((o) => o.value === provider)?.label} sub-thread`}
+            {submitting
+              ? 'Creating…'
+              : `Spawn ${PROVIDER_OPTIONS.find((o) => o.value === provider)?.label} sub-thread`}
           </button>
         </footer>
       </div>

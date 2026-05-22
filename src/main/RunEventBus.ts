@@ -92,7 +92,7 @@ class RunEventBus {
       } catch (err) {
         // Use bare console here — the bus is a foundational module and
         // shouldn't take a dependency on app-level logging utilities.
-        // eslint-disable-next-line no-console
+
         console.error(`[RunEventBus] sink "${sink.id}" threw on channel "${stamped.channel}":`, err)
       }
     }
@@ -150,7 +150,7 @@ export function makeDebugLoggerSink(): RunEventSink {
       } else {
         summary = String(event.payload).slice(0, 60)
       }
-      // eslint-disable-next-line no-console
+
       console.log(
         `[RunEventBus] ${event.channel} provider=${event.provider} at=${event.publishedAt} keys=${summary}`
       )

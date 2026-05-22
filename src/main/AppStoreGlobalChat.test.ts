@@ -30,12 +30,14 @@ describe('AppStore global chats', () => {
       title: 'Planning',
       workspaceId: 'forged-workspace',
       workspacePath: '/tmp/forged-workspace',
-      messages: [{
-        id: 'message-1',
-        role: 'user',
-        content: 'Search and plan.',
-        timestamp: '2026-05-08T00:00:00.000Z'
-      }]
+      messages: [
+        {
+          id: 'message-1',
+          role: 'user',
+          content: 'Search and plan.',
+          timestamp: '2026-05-08T00:00:00.000Z'
+        }
+      ]
     } as ChatRecord)
 
     const loaded = AppStore.getChat(chat.appChatId)

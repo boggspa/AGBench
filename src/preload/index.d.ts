@@ -1,4 +1,45 @@
-import { AppSettings, WorkspaceRecord, ChatRecord, UsageRecord, TrustStatusResult, WorkspaceFileEntry, WorkspaceFileReadResult, GeminiSessionListResult, GeminiWorktreeLaunchOption, ProviderId, ChatScope, ExternalPathGrant, ScheduledTask, GeminiMcpBridgeStatus, ProviderApiKeyStatus, GeminiAuthStatus, GeminiAuthProfileSummary, GeminiOAuthLoginStatus, ProviderCapabilityContract, ProviderAdapterDescriptor, RunQueueJob, RunQueueJobFilter, RunEventFilter, RunEventRecord, RunEventReplay, ApprovalLedgerFilter, ApprovalLedgerRecord, RunRecoveryFilter, RunRecoveryRecord, WorkspaceChangeFilter, WorkspaceChangeSet, ProductCrashFilter, ProductCrashInput, ProductCrashRecord, ProductDiagnosticsExportResult, ProductOperationsStatus, RuntimeProfile, HandoffCard, HandoffCardFilter, AgenticServiceId } from '../main/store/types'
+import {
+  AppSettings,
+  WorkspaceRecord,
+  ChatRecord,
+  UsageRecord,
+  TrustStatusResult,
+  WorkspaceFileEntry,
+  WorkspaceFileReadResult,
+  GeminiSessionListResult,
+  GeminiWorktreeLaunchOption,
+  ProviderId,
+  ChatScope,
+  ExternalPathGrant,
+  ScheduledTask,
+  GeminiMcpBridgeStatus,
+  ProviderApiKeyStatus,
+  GeminiAuthStatus,
+  GeminiAuthProfileSummary,
+  GeminiOAuthLoginStatus,
+  ProviderCapabilityContract,
+  ProviderAdapterDescriptor,
+  RunQueueJob,
+  RunQueueJobFilter,
+  RunEventFilter,
+  RunEventRecord,
+  RunEventReplay,
+  ApprovalLedgerFilter,
+  ApprovalLedgerRecord,
+  RunRecoveryFilter,
+  RunRecoveryRecord,
+  WorkspaceChangeFilter,
+  WorkspaceChangeSet,
+  ProductCrashFilter,
+  ProductCrashInput,
+  ProductCrashRecord,
+  ProductDiagnosticsExportResult,
+  ProductOperationsStatus,
+  RuntimeProfile,
+  HandoffCard,
+  HandoffCardFilter,
+  AgenticServiceId
+} from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
 
@@ -33,7 +74,18 @@ interface GeminiCapabilitiesState {
   sections: Record<GeminiCapabilityKind, GeminiCapabilitySection>
 }
 
-type HostWeatherKind = 'clear' | 'partly_cloudy' | 'cloudy' | 'overcast' | 'rain' | 'heavy_rain' | 'snow' | 'mist' | 'fog' | 'storm' | 'unknown'
+type HostWeatherKind =
+  | 'clear'
+  | 'partly_cloudy'
+  | 'cloudy'
+  | 'overcast'
+  | 'rain'
+  | 'heavy_rain'
+  | 'snow'
+  | 'mist'
+  | 'fog'
+  | 'storm'
+  | 'unknown'
 
 interface HostWeatherState {
   kind: HostWeatherKind
@@ -46,7 +98,12 @@ interface HostWeatherState {
   error?: string
 }
 
-type AgentApprovalAction = 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel'
+type AgentApprovalAction =
+  | 'accept'
+  | 'acceptForSession'
+  | 'acceptForWorkspace'
+  | 'decline'
+  | 'cancel'
 
 interface AgentRunPayload {
   provider: ProviderId
@@ -65,11 +122,11 @@ interface AgentRunPayload {
   providerSessionId?: string | null
   externalPathGrants?: ExternalPathGrant[]
   sessionTrust?: boolean
-	  geminiWorktree?: GeminiWorktreeLaunchOption
-	  runtimeProfileId?: string
-	  geminiAuthProfileId?: string | null
-	  handoffSourceRunId?: string
-	}
+  geminiWorktree?: GeminiWorktreeLaunchOption
+  runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
+  handoffSourceRunId?: string
+}
 
 interface ComposerImageAttachment {
   id?: string
@@ -135,14 +192,16 @@ interface AgentRunRoute {
   appChatId?: string
 }
 
-type GeminiStreamPayload = string | {
-  provider?: ProviderId
-  appRunId?: string
-  appChatId?: string
-  data?: string
-  error?: string
-  code?: number | null
-}
+type GeminiStreamPayload =
+  | string
+  | {
+      provider?: ProviderId
+      appRunId?: string
+      appChatId?: string
+      data?: string
+      error?: string
+      code?: number | null
+    }
 
 interface AgentApprovalRequest {
   id: string
@@ -163,21 +222,54 @@ declare global {
       getRuntimeVersions: () => NodeJS.ProcessVersions
       selectWorkspace: () => Promise<WorkspaceRecord | null>
       selectImageFiles: () => Promise<string[]>
-      selectExternalPathGrant: (access?: 'read' | 'write', provider?: string) => Promise<ExternalPathGrant | null>
-      runGemini: (workspace: string, prompt: string, model: string, approvalMode: string, sessionTrust?: boolean, imagePaths?: string[], resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption, route?: AgentRunRoute | null) => Promise<void>
+      selectExternalPathGrant: (
+        access?: 'read' | 'write',
+        provider?: string
+      ) => Promise<ExternalPathGrant | null>
+      runGemini: (
+        workspace: string,
+        prompt: string,
+        model: string,
+        approvalMode: string,
+        sessionTrust?: boolean,
+        imagePaths?: string[],
+        resumeSessionId?: string | null,
+        worktree?: GeminiWorktreeLaunchOption,
+        route?: AgentRunRoute | null
+      ) => Promise<void>
       cancelGemini: (runId?: string) => Promise<void>
       composeRun: (input: ComposerRunInput) => Promise<ComposerRunPayload>
       runAgent: (payload: AgentRunPayload) => Promise<void>
       cancelAgentRun: (provider?: ProviderId, runId?: string) => Promise<void>
       getAgentStatus: (provider: ProviderId) => Promise<any>
-      getProviderCapabilities: (provider: ProviderId, workspace?: string, approvalMode?: string) => Promise<ProviderCapabilityContract>
+      getProviderCapabilities: (
+        provider: ProviderId,
+        workspace?: string,
+        approvalMode?: string
+      ) => Promise<ProviderCapabilityContract>
       getProviderAdapters: () => Promise<ProviderAdapterDescriptor[]>
-      getAgentModels: (provider: ProviderId) => Promise<Array<{ id: string, label?: string, description?: string, isDefault?: boolean, supportedReasoningEfforts?: Array<{ reasoningEffort: string, description?: string }>, defaultReasoningEffort?: string | null, additionalSpeedTiers?: string[] }>>
+      getAgentModels: (provider: ProviderId) => Promise<
+        Array<{
+          id: string
+          label?: string
+          description?: string
+          isDefault?: boolean
+          supportedReasoningEfforts?: Array<{ reasoningEffort: string; description?: string }>
+          defaultReasoningEffort?: string | null
+          additionalSpeedTiers?: string[]
+        }>
+      >
       getAgentRateLimits: (provider: ProviderId) => Promise<any>
       importCodexUsageCredential: (filePath?: string) => Promise<any>
       clearCodexUsageCredential: () => Promise<boolean>
       getCodexUsageSnapshot: () => Promise<any>
-      createGithubPr: (payload: { workspacePath?: string; title?: string; body?: string; draft?: boolean; openInBrowser?: boolean }) => Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>
+      createGithubPr: (payload: {
+        workspacePath?: string
+        title?: string
+        body?: string
+        draft?: boolean
+        openInBrowser?: boolean
+      }) => Promise<{ ok: boolean; url?: string; error?: string; stderr?: string }>
       getClaudeAuthStatus: () => Promise<ProviderApiKeyStatus>
       storeClaudeApiKey: (key: string) => Promise<void>
       clearClaudeApiKey: () => Promise<void>
@@ -187,25 +279,61 @@ declare global {
       clearKimiApiKey: () => Promise<void>
       getGeminiAuthStatus: () => Promise<GeminiAuthStatus>
       listGeminiAuthProfiles: () => Promise<GeminiAuthProfileSummary[]>
-      saveGeminiAuthProfile: (profile: { id?: string; label?: string; kind: 'api-key' | 'vertex-ai' | 'google-oauth'; apiKey?: string; vertexProject?: string; vertexLocation?: string; makeDefault?: boolean }) => Promise<GeminiAuthProfileSummary>
+      saveGeminiAuthProfile: (profile: {
+        id?: string
+        label?: string
+        kind: 'api-key' | 'vertex-ai' | 'google-oauth'
+        apiKey?: string
+        vertexProject?: string
+        vertexLocation?: string
+        makeDefault?: boolean
+      }) => Promise<GeminiAuthProfileSummary>
       deleteGeminiAuthProfile: (profileId: string) => Promise<boolean>
-      setDefaultGeminiAuthProfile: (profileId: string | null) => Promise<GeminiAuthProfileSummary | null>
-      startGeminiOAuthLogin: (input?: { id?: string; profileId?: string; label?: string; makeDefault?: boolean }) => Promise<GeminiOAuthLoginStatus>
-      getGeminiOAuthLoginStatus: (profileId?: string | null) => Promise<GeminiOAuthLoginStatus | null>
+      setDefaultGeminiAuthProfile: (
+        profileId: string | null
+      ) => Promise<GeminiAuthProfileSummary | null>
+      startGeminiOAuthLogin: (input?: {
+        id?: string
+        profileId?: string
+        label?: string
+        makeDefault?: boolean
+      }) => Promise<GeminiOAuthLoginStatus>
+      getGeminiOAuthLoginStatus: (
+        profileId?: string | null
+      ) => Promise<GeminiOAuthLoginStatus | null>
       cancelGeminiOAuthLogin: (profileId?: string | null) => Promise<GeminiOAuthLoginStatus | null>
       getAgentMcpStatus: (provider: ProviderId) => Promise<any>
       listAgentThreads: (provider: ProviderId, params?: any) => Promise<any>
       forkAgentThread: (provider: ProviderId, threadId: string, params?: any) => Promise<any>
-      rollbackAgentThread: (provider: ProviderId, threadId: string, numTurns?: number) => Promise<any>
+      rollbackAgentThread: (
+        provider: ProviderId,
+        threadId: string,
+        numTurns?: number
+      ) => Promise<any>
       startAgentReview: (provider: ProviderId, threadId: string, params?: any) => Promise<any>
       respondAgentApproval: (requestId: string, action: AgentApprovalAction) => Promise<boolean>
       writeGeminiInput: (data: string) => Promise<boolean>
-      getDiff: (workspace: string) => Promise<{ type: 'not_repo' | 'no_changes' | 'changes' | 'error', text?: string, statusText?: string, diffText?: string, summaries?: any[] }>
+      getDiff: (workspace: string) => Promise<{
+        type: 'not_repo' | 'no_changes' | 'changes' | 'error'
+        text?: string
+        statusText?: string
+        diffText?: string
+        summaries?: any[]
+      }>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
       readWorkspaceFile: (workspace: string, path: string) => Promise<WorkspaceFileReadResult>
-      writeWorkspaceFile: (workspace: string, path: string, content: string) => Promise<WorkspaceFileReadResult>
+      writeWorkspaceFile: (
+        workspace: string,
+        path: string,
+        content: string
+      ) => Promise<WorkspaceFileReadResult>
       captureSnapshot: (workspace: string) => Promise<any>
-      computeRunDiff: (runId: string, preSnapshot: any, postSnapshot: any, changeContext?: any) => Promise<any>
+      computeRunDiff: (
+        runId: string,
+        preSnapshot: any,
+        postSnapshot: any,
+        changeContext?: any
+      ) => Promise<any>
       getWorkspaceChangeSets: (filter?: WorkspaceChangeFilter) => Promise<WorkspaceChangeSet[]>
       getGeminiVersion: () => Promise<string>
       getGeminiCapabilities: (workspace?: string) => Promise<GeminiCapabilitiesState>
@@ -215,19 +343,32 @@ declare global {
       runApprovedHostCommand: (requestId: string) => Promise<boolean>
       listGeminiSessions: () => Promise<GeminiSessionListResult>
       getHostWeather: () => Promise<HostWeatherState>
-      setAppearanceMode: (payload: { mode?: string; reduceTransparency?: boolean } | string) => Promise<boolean>
+      setAppearanceMode: (
+        payload: { mode?: string; reduceTransparency?: boolean } | string
+      ) => Promise<boolean>
 
       checkTrust: (workspacePath: string) => Promise<TrustStatusResult>
 
       agenticYoloGet: () => Promise<{ enabled: boolean; enabledAt: string | null }>
       agenticYoloSet: (enabled: boolean) => Promise<{ enabled: boolean; enabledAt: string | null }>
-      onAgenticYoloState: (handler: (state: { enabled: boolean; enabledAt: string | null }) => void) => () => void
+      onAgenticYoloState: (
+        handler: (state: { enabled: boolean; enabledAt: string | null }) => void
+      ) => () => void
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>
       ptyResize: (cols: number, rows: number, sessionId?: string) => Promise<void>
-      startGeminiSession: (workspace: string, model?: string, approvalMode?: string, sessionTrust?: boolean, cols?: number, rows?: number, resumeSessionId?: string | null, worktree?: GeminiWorktreeLaunchOption) => Promise<void>
+      startGeminiSession: (
+        workspace: string,
+        model?: string,
+        approvalMode?: string,
+        sessionTrust?: boolean,
+        cols?: number,
+        rows?: number,
+        resumeSessionId?: string | null,
+        worktree?: GeminiWorktreeLaunchOption
+      ) => Promise<void>
       stopGeminiSession: () => Promise<void>
       writeGeminiSession: (data: string) => Promise<void>
       resizeGeminiSession: (cols: number, rows: number) => Promise<void>
@@ -317,7 +458,7 @@ declare global {
       // as raw JSON for the "Paste JSON instead" fallback on iOS.
       bridgeBeginPairing: (displayName?: string) => Promise<{
         ok: boolean
-        bootstrap?: unknown  // PairingBootstrapPayload shape; consumer passes through to QR/JSON
+        bootstrap?: unknown // PairingBootstrapPayload shape; consumer passes through to QR/JSON
         error?: string
       }>
 
@@ -361,17 +502,33 @@ declare global {
 
       getSettings: () => Promise<AppSettings>
       updateSettings: (partial: Partial<AppSettings>) => Promise<void>
-      upsertAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: AgenticServiceId) => Promise<AppSettings>
-      removeAgenticWorkspaceGrant: (provider: ProviderId, workspacePath: string, service: AgenticServiceId) => Promise<AppSettings>
+      upsertAgenticWorkspaceGrant: (
+        provider: ProviderId,
+        workspacePath: string,
+        service: AgenticServiceId
+      ) => Promise<AppSettings>
+      removeAgenticWorkspaceGrant: (
+        provider: ProviderId,
+        workspacePath: string,
+        service: AgenticServiceId
+      ) => Promise<AppSettings>
       getRuntimeProfiles: (provider?: ProviderId) => Promise<RuntimeProfile[]>
-      saveRuntimeProfile: (profile: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>) => Promise<RuntimeProfile>
+      saveRuntimeProfile: (
+        profile: Partial<RuntimeProfile> & Pick<RuntimeProfile, 'name' | 'provider'>
+      ) => Promise<RuntimeProfile>
       deleteRuntimeProfile: (id: string) => Promise<void>
       getHandoffCards: (filter?: HandoffCardFilter) => Promise<HandoffCard[]>
-      saveHandoffCard: (card: Partial<HandoffCard> & Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>) => Promise<HandoffCard>
+      saveHandoffCard: (
+        card: Partial<HandoffCard> &
+          Pick<HandoffCard, 'sourceChatId' | 'sourceProvider' | 'summary' | 'finalPrompt'>
+      ) => Promise<HandoffCard>
       updateHandoffCard: (id: string, partial: Partial<HandoffCard>) => Promise<HandoffCard | null>
       deleteHandoffCard: (id: string) => Promise<void>
       getWorkspaces: () => Promise<WorkspaceRecord[]>
-      addOrUpdateWorkspace: (path: string, partial?: Partial<WorkspaceRecord>) => Promise<WorkspaceRecord>
+      addOrUpdateWorkspace: (
+        path: string,
+        partial?: Partial<WorkspaceRecord>
+      ) => Promise<WorkspaceRecord>
       removeWorkspace: (id: string) => Promise<void>
       clearWorkspaces: () => Promise<void>
       getChats: (workspaceId?: string) => Promise<ChatRecord[]>
@@ -393,13 +550,29 @@ declare global {
       recordUsage: (usage: Omit<UsageRecord, 'id' | 'timestamp'>) => Promise<void>
       getUsage: (workspaceId?: string, chatId?: string) => Promise<UsageRecord[]>
       getScheduledTasks: (workspaceId?: string) => Promise<ScheduledTask[]>
-      saveScheduledTask: (task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> & Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>) => Promise<ScheduledTask>
-      updateScheduledTask: (id: string, partial: Partial<ScheduledTask>) => Promise<ScheduledTask | null>
+      saveScheduledTask: (
+        task: Omit<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'> &
+          Partial<Pick<ScheduledTask, 'id' | 'createdAt' | 'updatedAt' | 'status'>>
+      ) => Promise<ScheduledTask>
+      updateScheduledTask: (
+        id: string,
+        partial: Partial<ScheduledTask>
+      ) => Promise<ScheduledTask | null>
       deleteScheduledTask: (id: string) => Promise<void>
       getRunQueueJobs: (filter?: RunQueueJobFilter) => Promise<RunQueueJob[]>
-      requestRunQueueJob: (job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'>) => Promise<RunQueueJob>
-      leaseRunQueueJob: (request?: { runId?: string, provider?: ProviderId, statusReason?: string }) => Promise<RunQueueJob | null>
-      transitionRunQueueJob: (runIdOrId: string, status: RunQueueJob['status'], partial?: Pick<Partial<RunQueueJob>, 'statusReason' | 'lastError'>) => Promise<RunQueueJob | null>
+      requestRunQueueJob: (
+        job: Partial<RunQueueJob> & Pick<RunQueueJob, 'runId' | 'provider' | 'source'>
+      ) => Promise<RunQueueJob>
+      leaseRunQueueJob: (request?: {
+        runId?: string
+        provider?: ProviderId
+        statusReason?: string
+      }) => Promise<RunQueueJob | null>
+      transitionRunQueueJob: (
+        runIdOrId: string,
+        status: RunQueueJob['status'],
+        partial?: Pick<Partial<RunQueueJob>, 'statusReason' | 'lastError'>
+      ) => Promise<RunQueueJob | null>
       getRunRecoveryRecords: (filter?: RunRecoveryFilter) => Promise<RunRecoveryRecord[]>
       getRunEvents: (filter?: RunEventFilter) => Promise<RunEventRecord[]>
       getRunEventReplay: (runId: string) => Promise<RunEventReplay>
@@ -413,11 +586,39 @@ declare global {
       onGeminiOutput: (callback: (data: GeminiStreamPayload) => void) => void
       onGeminiError: (callback: (error: GeminiStreamPayload) => void) => void
       onGeminiExit: (callback: (code: GeminiStreamPayload | number | null) => void) => void
-      onAgentOutput: (callback: (payload: { provider: ProviderId, data: string, appRunId?: string, appChatId?: string }) => void) => void
-      onAgentError: (callback: (payload: { provider: ProviderId, error: string, appRunId?: string, appChatId?: string }) => void) => void
-      onAgentExit: (callback: (payload: { provider: ProviderId, code: number | null, appRunId?: string, appChatId?: string }) => void) => void
+      onAgentOutput: (
+        callback: (payload: {
+          provider: ProviderId
+          data: string
+          appRunId?: string
+          appChatId?: string
+        }) => void
+      ) => void
+      onAgentError: (
+        callback: (payload: {
+          provider: ProviderId
+          error: string
+          appRunId?: string
+          appChatId?: string
+        }) => void
+      ) => void
+      onAgentExit: (
+        callback: (payload: {
+          provider: ProviderId
+          code: number | null
+          appRunId?: string
+          appChatId?: string
+        }) => void
+      ) => void
       onRunQueueChanged: (callback: (jobs: RunQueueJob[]) => void) => void
-      onRunEventsChanged: (callback: (payload: { runId: string, chatId?: string, workspaceId?: string, sequence: number }) => void) => void
+      onRunEventsChanged: (
+        callback: (payload: {
+          runId: string
+          chatId?: string
+          workspaceId?: string
+          sequence: number
+        }) => void
+      ) => void
       onAgentApprovalRequest: (callback: (payload: AgentApprovalRequest) => void) => void
       onAgentApprovalTimeout: (
         callback: (payload: {

@@ -105,7 +105,10 @@ if (!SKIP_BUILD) {
 if (DO_NOTARIZE) {
   step('notarize:preflight', {
     cmd: 'sh',
-    args: ['-c', 'security find-identity -v -p codesigning | head -5 && [ -n "$CSC_NAME" ] && [ -n "$APPLE_KEYCHAIN_PROFILE" ]'],
+    args: [
+      '-c',
+      'security find-identity -v -p codesigning | head -5 && [ -n "$CSC_NAME" ] && [ -n "$APPLE_KEYCHAIN_PROFILE" ]'
+    ],
     required: true,
     skipOn: process.platform !== 'darwin'
   })
@@ -114,7 +117,9 @@ if (DO_NOTARIZE) {
 const results = []
 
 console.log(`[validate-release] starting (${steps.length} steps)`)
-console.log(`[validate-release] platform=${process.platform} skipBuild=${SKIP_BUILD} notarize=${DO_NOTARIZE}\n`)
+console.log(
+  `[validate-release] platform=${process.platform} skipBuild=${SKIP_BUILD} notarize=${DO_NOTARIZE}\n`
+)
 
 for (const stepSpec of steps) {
   if (stepSpec.skipOn) {
@@ -152,10 +157,19 @@ for (const stepSpec of steps) {
 console.log('\n── Summary ──')
 const padName = Math.max(...results.map((r) => r.name.length))
 for (const r of results) {
-  const icon = r.status === 'passed' ? '✓' : r.status === 'skipped' ? '⊘' : r.status === 'failed-advisory' ? '~' : '✗'
+  const icon =
+    r.status === 'passed'
+      ? '✓'
+      : r.status === 'skipped'
+        ? '⊘'
+        : r.status === 'failed-advisory'
+          ? '~'
+          : '✗'
   const duration = r.durationMs ? `(${formatDuration(r.durationMs)})` : ''
   const reason = r.reason ? ` — ${r.reason}` : ''
-  console.log(`  ${icon} ${r.name.padEnd(padName)}  ${r.status}${duration ? ' ' + duration : ''}${reason}`)
+  console.log(
+    `  ${icon} ${r.name.padEnd(padName)}  ${r.status}${duration ? ' ' + duration : ''}${reason}`
+  )
 }
 
 const hardFailures = results.filter((r) => r.status === 'failed')
@@ -165,7 +179,9 @@ if (hardFailures.length > 0) {
 }
 const advisoryFailures = results.filter((r) => r.status === 'failed-advisory')
 if (advisoryFailures.length > 0) {
-  console.warn(`\n[validate-release] All required steps passed. ${advisoryFailures.length} advisory step(s) failed (lint, etc.) — review before release but not blocking.`)
+  console.warn(
+    `\n[validate-release] All required steps passed. ${advisoryFailures.length} advisory step(s) failed (lint, etc.) — review before release but not blocking.`
+  )
 } else {
   console.log('\n[validate-release] all steps passed.')
 }
@@ -173,7 +189,9 @@ if (advisoryFailures.length > 0) {
 const buildArtifactExists = existsSync(join(REPO_ROOT, 'dist'))
 if (!SKIP_BUILD && process.platform === 'darwin' && buildArtifactExists) {
   console.log('[validate-release] build artifacts present in dist/. Next step:')
-  console.log(`  CSC_NAME=$CSC_NAME APPLE_KEYCHAIN_PROFILE=$APPLE_KEYCHAIN_PROFILE npm run build:mac:notarized`)
+  console.log(
+    `  CSC_NAME=$CSC_NAME APPLE_KEYCHAIN_PROFILE=$APPLE_KEYCHAIN_PROFILE npm run build:mac:notarized`
+  )
 }
 
 process.exit(0)

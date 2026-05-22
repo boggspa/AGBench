@@ -56,9 +56,7 @@ const CONVERSATION_ROLES: ReadonlyArray<ChatMessage['role']> = [
  * System bookkeeping messages alone do not promote a chat out of the
  * welcome surface.
  */
-export function hasConversationContent(
-  messages: ReadonlyArray<WelcomeMessageLike>
-): boolean {
+export function hasConversationContent(messages: ReadonlyArray<WelcomeMessageLike>): boolean {
   for (const message of messages) {
     if (CONVERSATION_ROLES.indexOf(message.role) !== -1) {
       return true
