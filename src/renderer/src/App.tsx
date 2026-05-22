@@ -3217,6 +3217,17 @@ const KIMI_DEFAULT_MODELS = [
   { id: 'kimi-k2.6', label: 'Kimi K2.6', description: 'Kimi Code CLI model', isDefault: true }
 ] satisfies CodexModelOption[]
 const KIMI_DEFAULT_MODEL = KIMI_DEFAULT_MODELS[0].id
+// Single source of truth for Gemini's composer model list. Mirrors the
+// claude/kimi constants above so `getProviderModelOptions` returns the
+// same `CodexModelOption[]` shape for every provider and the composer's
+// `<option>` rendering no longer needs a Gemini-only inline branch.
+const GEMINI_DEFAULT_MODELS = [
+  { id: 'cli-default', label: 'CLI Default', isDefault: true },
+  { id: 'auto', label: 'Auto' },
+  { id: 'pro', label: 'Pro' },
+  { id: 'flash', label: 'Flash' },
+  { id: 'flash-lite', label: 'Flash Lite' }
+] satisfies CodexModelOption[]
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
   'default',
@@ -5083,6 +5094,7 @@ function App(): React.JSX.Element {
     if (provider === 'codex') return codexModels
     if (provider === 'claude') return agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
     if (provider === 'kimi') return KIMI_DEFAULT_MODELS
+    if (provider === 'gemini') return GEMINI_DEFAULT_MODELS
     return []
   }
 
@@ -13028,25 +13040,12 @@ function App(): React.JSX.Element {
                         }}
                         disabled={isCurrentComposerLocked}
                       >
-                        {currentProvider === 'gemini' ? (
-                          <>
-                            <option value="cli-default">CLI Default</option>
-                            <option value="auto">Auto</option>
-                            <option value="pro">Pro</option>
-                            <option value="flash">Flash</option>
-                            <option value="flash-lite">Flash Lite</option>
-                            <option value="custom">Custom…</option>
-                          </>
-                        ) : (
-                          <>
-                            {currentProviderModelOptions.map((model) => (
-                              <option key={model.id} value={model.id}>
-                                {model.label || model.id}
-                              </option>
-                            ))}
-                            {currentProvider !== 'kimi' && <option value="custom">Custom…</option>}
-                          </>
-                        )}
+                        {currentProviderModelOptions.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.label || model.id}
+                          </option>
+                        ))}
+                        {currentProvider !== 'kimi' && <option value="custom">Custom…</option>}
                       </select>
                       {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
                         <span className="composer-inline-custom-model">
