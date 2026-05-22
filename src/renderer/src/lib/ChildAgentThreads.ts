@@ -20,7 +20,10 @@ const TASK_TOOL_NAMES = new Set([
 ])
 
 function isTaskActivity(activity: ToolActivity): boolean {
-  if (activity.category === 'task') return true
+  // The 'task' category in ToolParser also covers intent / progress markers
+  // (update_topic, summary, progress, codex_reasoning, codex_plan,
+  // kimi_thinking, etc.) — those are NOT sub-agent spawns and shouldn't be
+  // promoted into ChildAgentThread cards. Trust the explicit name list only.
   const name = (activity.toolName || '').toLowerCase().trim()
   return TASK_TOOL_NAMES.has(name)
 }
