@@ -2366,6 +2366,31 @@ const geminiCrossProviderWarningsFired = new Set<string>()
  * invoke_agent call AND the user's prompt expressed cross-provider intent,
  * emits a single `provider_warning` event with the redirect hint so the
  * renderer surfaces a chip without blocking the run. */
+/** Strip the composer's runtime-note + conversation-context wrappers from
+ * a payload.prompt so we get just the user-typed segment. The full composed
+ * prompt prepends an AGBench runtime note that mentions Kimi / Codex / Claude
+ * / invoke_agent as delegation examples — feeding that into the
+ * cross-provider intent detector false-positives on every run. */
+function extractUserPromptFromComposed(composedPrompt: string): string {
+  if (!composedPrompt) return ''
+  // When there's prior conversation context the composer marks the current
+  // turn with `Current user request:\n`. Take everything after the LAST
+  // such marker (later turns are always more relevant than earlier ones).
+  const requestMarker = 'Current user request:\n'
+  const markerIdx = composedPrompt.lastIndexOf(requestMarker)
+  if (markerIdx !== -1) {
+    return composedPrompt.slice(markerIdx + requestMarker.length).trim()
+  }
+  // First-turn runs have no marker. The runtime note always ends with a
+  // double newline before the user prompt, so the last blank line splits
+  // note from user text in the common case.
+  const lastDoubleNL = composedPrompt.lastIndexOf('\n\n')
+  if (lastDoubleNL !== -1) {
+    return composedPrompt.slice(lastDoubleNL + 2).trim()
+  }
+  return composedPrompt.trim()
+}
+
 function maybeEmitGeminiCrossProviderWarning(
   sender: Electron.WebContents,
   route: AgentRunRoute,
@@ -2377,7 +2402,7 @@ function maybeEmitGeminiCrossProviderWarning(
   if (geminiCrossProviderWarningsFired.has(runId)) return
 
   const detection = detectCrossProviderDelegationMisuse({
-    userPrompt,
+    userPrompt: extractUserPromptFromComposed(userPrompt),
     stdoutChunk
   })
   if (!detection.shouldWarn) return
