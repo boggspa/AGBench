@@ -14079,10 +14079,10 @@ input:disabled, select:disabled, textarea:disabled {
   max-width: 170px;
 }
 
-[data-interface-style="codex"] .composer-picker-label[data-composer-control="provider"],
-[data-interface-style="claude"] .composer-picker-label[data-composer-control="provider"] {
-  display: none !important;
-}
+/* Parity: provider picker stays visible across all themed shells so the
+ * user can switch providers without leaving the inline composer. Previous
+ * codex/claude rules hid it for "feels native" reasons, but theme is now
+ * pure cosmetics — the control set is invariant. */
 
 [data-interface-style="codex"] .composer-picker-command,
 [data-interface-style="claude"] .composer-picker-command {
