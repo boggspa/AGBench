@@ -13986,18 +13986,11 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-interface-style="codex"] .composer-area,
 [data-interface-style="claude"] .composer-area {
-  width: min(850px, calc(100% - 48px));
-  left: 50%;
-  transform: translateX(-50%);
+  /* Parity: themed shells inherit AGBench native width — color/border/typography
+   * differences still convey the codex / claude feel, but the composer footprint
+   * matches the rest of the app so users don't see the bar reflow when they
+   * switch themes. */
   padding-bottom: 18px;
-}
-
-[data-interface-style="codex"] .composer-area {
-  width: min(820px, calc(100% - 52px));
-}
-
-[data-interface-style="claude"] .composer-area {
-  width: min(880px, calc(100% - 52px));
 }
 
 [data-interface-style="codex"] .composer-above-bar,
@@ -14134,11 +14127,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 @media (max-width: 980px) {
-  [data-interface-style="codex"] .composer-area,
-  [data-interface-style="claude"] .composer-area {
-    width: calc(100% - 24px);
-  }
-
+  /* Composer-area width is now inherited from the default .composer-area
+   * rule; we keep the narrow-viewport status-row tweaks because those are
+   * about chip overflow, not bubble width. */
   [data-interface-style="codex"] .provider-shell-status-row,
   [data-interface-style="claude"] .provider-shell-status-row {
     gap: 4px;
