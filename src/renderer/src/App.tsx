@@ -51,6 +51,16 @@ import {
 import { getLiveToolFileDiffSummaries, liveSummariesAreFuzzy } from './lib/LiveFileDiffSummary'
 import { parseGeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
+import type {
+  CommandPaletteGroup,
+  CommandPaletteItem,
+  CommandPaletteSource
+} from './lib/ComposerSlashCommands'
+import {
+  GEMINI_PALETTE_CORE as COMMAND_PALETTE_CORE,
+  CODEX_PALETTE_CORE as CODEX_COMMAND_PALETTE_CORE,
+  CLI_PROVIDER_PALETTE_CORE as CLI_PROVIDER_COMMAND_PALETTE_CORE
+} from './lib/ComposerSlashCommands'
 import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
@@ -1226,30 +1236,14 @@ type PersistentSessionStatus =
   | 'exited'
   | 'unavailable'
   | 'error'
-type CommandPaletteSource = 'core' | 'workspace' | 'global'
-type CommandPaletteGroup = 'Core' | 'Discovery' | 'Memory' | 'Inspectors' | 'Custom'
-
-// Composer-unification (Phase J1): palette items can carry an optional
-// `action` identifier for items that should trigger a renderer-side
-// state change instead of sending a slash command through the bridge.
-// Used by the Gemini-only quick toggles that moved into the palette
-// (persistent session, checkpoints, GEMINI.md inspector, /restore).
-type CommandPaletteAction =
-  | 'restore-checkpoint'
-  | 'toggle-memory-inspector'
-  | 'toggle-persistent-session'
-  | 'toggle-checkpoints'
-
-type CommandPaletteItem = {
-  id: string
-  command: string
-  label: string
-  description: string
-  group: CommandPaletteGroup
-  source: CommandPaletteSource
-  sourcePath?: string
-  action?: CommandPaletteAction
-}
+// Composer-unification (Phase J1 → slash-picker): the legacy
+// CommandPaletteItem / Action / Group / Source types and the per-provider
+// CORE constants live in src/renderer/src/lib/ComposerSlashCommands.ts
+// so the Cmd-K palette AND the new slash picker consume the same data
+// without drift. Imported here to keep their historical names in scope
+// for the rest of App.tsx.
+//
+// Imports below the const block — see top-of-file `import` group.
 
 type GeminiMemoryFile = {
   id: string
@@ -1275,204 +1269,12 @@ const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
 const FX_BURST_DURATION_MS = 1150
 const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
 const RUN_WRITE_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file']
-const COMMAND_PALETTE_CORE: CommandPaletteItem[] = [
-  {
-    id: 'core-help',
-    command: '/help',
-    label: 'Help',
-    description: 'Show Gemini CLI slash command help.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'core-stats',
-    command: '/stats',
-    label: 'Stats',
-    description: 'Show current Gemini session usage and stats.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'core-commands-list',
-    command: '/commands list',
-    label: 'List commands',
-    description: 'Ask Gemini CLI to list built-in and custom commands.',
-    group: 'Discovery',
-    source: 'core'
-  },
-  {
-    id: 'core-commands-reload',
-    command: '/commands reload',
-    label: 'Reload commands',
-    description: 'Reload Gemini CLI custom command definitions.',
-    group: 'Discovery',
-    source: 'core'
-  },
-  {
-    id: 'core-memory-list',
-    command: '/memory list',
-    label: 'List memory',
-    description: 'Ask Gemini CLI which memory files are loaded.',
-    group: 'Memory',
-    source: 'core'
-  },
-  {
-    id: 'core-memory-show',
-    command: '/memory show',
-    label: 'Show memory',
-    description: 'Ask Gemini CLI to print active memory contents.',
-    group: 'Memory',
-    source: 'core'
-  },
-  {
-    id: 'core-memory-refresh',
-    command: '/memory refresh',
-    label: 'Refresh memory',
-    description: 'Reload memory from GEMINI.md files without editing them.',
-    group: 'Memory',
-    source: 'core'
-  },
-  {
-    id: 'core-mcp',
-    command: '/mcp',
-    label: 'MCP',
-    description: 'Open Gemini CLI MCP server status.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'core-extensions',
-    command: '/extensions',
-    label: 'Extensions',
-    description: 'Open Gemini CLI extension status.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'core-hooks',
-    command: '/hooks',
-    label: 'Hooks',
-    description: 'Open Gemini CLI hook status.',
-    group: 'Inspectors',
-    source: 'core'
-  }
-]
-const CODEX_COMMAND_PALETTE_CORE: CommandPaletteItem[] = [
-  {
-    id: 'codex-status',
-    command: '/status',
-    label: 'Status',
-    description: 'Show Codex auth, sandbox, approval policy, and rate-limit state.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'codex-model',
-    command: '/model',
-    label: 'Model',
-    description: 'Show Codex model, reasoning effort, and speed tier options.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'codex-fast',
-    command: '/fast',
-    label: 'Fast mode',
-    description: 'Toggle Codex Fast mode when the selected model supports it.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'codex-diff',
-    command: '/diff',
-    label: 'Diff',
-    description: 'Open Diff Studio for current workspace changes.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'codex-mcp',
-    command: '/mcp',
-    label: 'MCP',
-    description: 'Show Codex MCP server and tool status.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'codex-review',
-    command: '/review',
-    label: 'Review diff',
-    description: 'Prepare a read-only review of current workspace changes.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'codex-resume',
-    command: '/resume',
-    label: 'Resume thread',
-    description: 'Open the Codex thread browser to link a persisted thread.',
-    group: 'Discovery',
-    source: 'core'
-  },
-  {
-    id: 'codex-fork',
-    command: '/fork',
-    label: 'Fork thread',
-    description: 'Fork the linked Codex thread and link this chat to the fork.',
-    group: 'Discovery',
-    source: 'core'
-  },
-  {
-    id: 'codex-permissions',
-    command: '/permissions',
-    label: 'Permissions',
-    description: 'Show Codex sandbox and approval controls.',
-    group: 'Core',
-    source: 'core'
-  }
-]
-const CLI_PROVIDER_COMMAND_PALETTE_CORE: CommandPaletteItem[] = [
-  {
-    id: 'cli-provider-status',
-    command: '/status',
-    label: 'Status',
-    description: 'Show provider binary, auth, and setup state.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'cli-provider-model',
-    command: '/model',
-    label: 'Model',
-    description: 'Show model and provider capability state.',
-    group: 'Core',
-    source: 'core'
-  },
-  {
-    id: 'cli-provider-diff',
-    command: '/diff',
-    label: 'Diff',
-    description: 'Open Diff Studio for current workspace changes.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'cli-provider-review',
-    command: '/review',
-    label: 'Review diff',
-    description: 'Prepare a read-only review of current workspace changes.',
-    group: 'Inspectors',
-    source: 'core'
-  },
-  {
-    id: 'cli-provider-permissions',
-    command: '/permissions',
-    label: 'Permissions',
-    description: 'Show provider permission and approval mode controls.',
-    group: 'Core',
-    source: 'core'
-  }
-]
+// Per-provider palette CORE constants moved to
+// src/renderer/src/lib/ComposerSlashCommands.ts. Imported under the
+// historical names (COMMAND_PALETTE_CORE / CODEX_COMMAND_PALETTE_CORE /
+// CLI_PROVIDER_COMMAND_PALETTE_CORE) via the top-of-file import block,
+// so existing usages downstream remain unchanged.
+
 type WelcomeHeadingCopy = {
   beforeWorkspace: string
   workspaceName: string
