@@ -6060,12 +6060,14 @@ button.diff-file-row {
   flex-direction: column;
   gap: 1px;
   margin: 6px 0;
-  /* Phase L4 slice 2 — widen left padding so each row can host
-   * a status-dot in the new left gutter. The dot sits at left:10px
-   * (centred), giving ~14px breathing room before the row content
-   * starts. The `::before` rail repositions to run through the
-   * dot centres so dots read as stations on the same vertical line. */
-  padding: 0 2px 0 24px;
+  /* Phase L4 slice 4 follow-up — gutter padding tightened from
+   * 24px to 16px so the status dot sits just to the left of the
+   * provider-coloured border instead of being separated from it
+   * by a wide gap. The `::before` rail is dropped (see below); the
+   * provider border itself is the unifying vertical line for each
+   * row, and the dots are status punctuation in the narrow gutter
+   * immediately to its left. */
+  padding: 0 2px 0 16px;
   align-items: stretch;
   position: relative;
 }
@@ -6145,26 +6147,17 @@ button.diff-file-row {
   text-overflow: ellipsis;
 }
 
+/* Phase L4 slice 4 follow-up — the legacy `::before` rail is gone.
+ * It used to run as a 1px hairline through the gutter, but it
+ * sat at `left:10px` while the per-row provider border sat at
+ * `left:24px` — visible as two parallel lines that didn't relate
+ * to each other. The provider border now does the rail job per
+ * row (adjacent rows share provider colour → border forms a
+ * contiguous stripe), and the status dots sit in the narrow
+ * gutter immediately to its left. One vertical column, no
+ * competing line. */
 .activity-timeline::before {
-  content: '';
-  position: absolute;
-  /* Phase L4 slice 2 — rail repositions to run through the dot
-   * centres (left:10px) so dots look like stations along it. The
-   * stops at top/bottom give the rail a faded entry / exit so it
-   * doesn't crash into the message above / below. */
-  left: 10px;
-  top: 14px;
-  bottom: 14px;
-  width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    var(--sidebar-border) 10%,
-    var(--sidebar-border) 90%,
-    transparent
-  );
-  pointer-events: none;
-  z-index: 0;
+  display: none;
 }
 
 /* Phase L4 slice 2 — gutter status dot. Each activity-row positions
@@ -6178,11 +6171,13 @@ button.diff-file-row {
   /* Anchor at the top of the row, vertically centred on the first
    * line of text (~14px = body-text half-height + 7px row padding). */
   top: 14px;
-  /* `left` is set relative to the row, NOT the timeline — the dot
-   * sits at the start of the row's coordinate space (before its
-   * own padding), and the row sits flush inside the timeline's
-   * 24px left padding, so the dot ends up at timeline-left:10px. */
-  left: -14px;
+  /* `left` is relative to the row's coordinate space (the row sits
+   * at timeline-left:16px after the slice-4 follow-up). With dot
+   * width 7px and left:-12px, the dot spans timeline-left:1px to
+   * 8px — leaves ~6px clear before the provider border at row-
+   * left:0 (timeline-left:16px). The dot reads as a status marker
+   * tucked into the gutter, just left of the provider stripe. */
+  left: -12px;
   width: 7px;
   height: 7px;
   border-radius: 50%;
