@@ -286,12 +286,18 @@ export class BridgeDaemonClient {
    * - Resolves with `result` when the daemon responds, rejects with
    *   `BridgeDaemonError` (carrying `code`) when the daemon returns an error.
    * - Rejects with a plain `Error` on timeout (default 10s, configurable via
-   *   `BridgeDaemonClientOptions.requestTimeoutMs`).
+   *   `BridgeDaemonClientOptions.requestTimeoutMs` for the client, or
+   *   per-call via `options.timeoutMs` for methods like the attached-window
+   *   picker that legitimately block on user gesture).
    *
    * Phase C1 supported methods: `bridge.ping`, `bridge.status`,
    * `bridge.getProductConfiguration`. Additional methods land in later phases.
    */
-  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  async request<T = unknown>(
+    method: string,
+    params?: unknown,
+    options?: { timeoutMs?: number }
+  ): Promise<T> {
     if (!this.proc || !this.proc.stdin || this.proc.stdin.destroyed) {
       throw new Error(`BridgeDaemonClient.request("${method}"): daemon is not running`)
     }
@@ -302,16 +308,16 @@ export class BridgeDaemonClient {
       method,
       ...(params !== undefined ? { params } : {})
     }
+    const timeoutMs =
+      typeof options?.timeoutMs === 'number' && options.timeoutMs > 0
+        ? options.timeoutMs
+        : this.requestTimeoutMs
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
         if (this.pending.delete(id)) {
-          reject(
-            new Error(
-              `BridgeDaemonClient.request("${method}"): timeout after ${this.requestTimeoutMs}ms`
-            )
-          )
+          reject(new Error(`BridgeDaemonClient.request("${method}"): timeout after ${timeoutMs}ms`))
         }
-      }, this.requestTimeoutMs)
+      }, timeoutMs)
       timer.unref?.()
 
       this.pending.set(id, {
