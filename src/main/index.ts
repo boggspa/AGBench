@@ -289,6 +289,13 @@ const MAX_SCHEDULE_TIMER_DELAY_MS = 2_147_000_000
 // Codex / Gemini / Claude / Kimi configurations and existing usage
 // records continue to work without a migration step.
 const GEMINI_MCP_SERVER_NAME = 'AGBench'
+// All "is the bridge installed?" lookups lowercase the haystack (gemini mcp
+// list output), so they need the needle pre-lowered. Without this, the
+// rename from 'agentbench' → 'AGBench' silently broke installation
+// detection — the lowercased haystack never contains the mixed-case
+// constant, every check returns false, and the renderer shows
+// "Gemini bridge blocked" even when the bridge is live + connected.
+const GEMINI_MCP_SERVER_NAME_LOWER = GEMINI_MCP_SERVER_NAME.toLowerCase()
 const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const GEMINI_MCP_SOCKET_ARG = '--socket'
 const GEMINI_MCP_TOKEN_ARG = '--token'
@@ -10437,7 +10444,7 @@ async function repairKnownStaleGeminiMcpBridgeConfigs(cwd?: string): Promise<voi
 }
 
 function hasStaleGeminiMcpBridgeRegistration(raw: string, socketPath: string): boolean {
-  if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME)) {
+  if (!raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME_LOWER)) {
     return false
   }
   if (/\/Applications\/AgentBench\.app\//i.test(raw)) {
@@ -13884,12 +13891,14 @@ async function getGeminiMcpBridgeStatus(
       .filter(Boolean)
       .join('\n')
       .toLowerCase()
-      .includes(GEMINI_MCP_SERVER_NAME)
+      .includes(GEMINI_MCP_SERVER_NAME_LOWER)
   ) {
     const debugResult = await runGeminiCapabilityCommand(['mcp', 'list', '--debug'], options.cwd)
     if (
       debugResult.exitCode === 0 &&
-      `${debugResult.stdout}\n${debugResult.stderr}`.toLowerCase().includes(GEMINI_MCP_SERVER_NAME)
+      `${debugResult.stdout}\n${debugResult.stderr}`
+        .toLowerCase()
+        .includes(GEMINI_MCP_SERVER_NAME_LOWER)
     ) {
       section = {
         kind: 'mcp',
@@ -13909,9 +13918,9 @@ async function getGeminiMcpBridgeStatus(
   const staleRegistration = hasStaleGeminiMcpBridgeRegistration(raw, socketPath)
   const bridgeItem = section.items.find((item) => {
     const haystack = `${item.id} ${item.name} ${item.detail || ''} ${item.raw || ''}`.toLowerCase()
-    return haystack.includes(GEMINI_MCP_SERVER_NAME)
+    return haystack.includes(GEMINI_MCP_SERVER_NAME_LOWER)
   })
-  const installed = Boolean(bridgeItem || raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME))
+  const installed = Boolean(bridgeItem || raw.toLowerCase().includes(GEMINI_MCP_SERVER_NAME_LOWER))
   const disabled = Boolean(
     bridgeItem &&
     /disabled|inactive|off/i.test(`${bridgeItem.status || ''} ${bridgeItem.raw || ''}`)
