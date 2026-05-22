@@ -12796,6 +12796,44 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #ffffff 22%, transparent);
 }
 
+/* Claude shell satellite: native Claude Code renders branch / diff /
+ * commit info as free-floating chips above the composer, not inside
+ * a contained rect. Strip the above-bar container chrome and let the
+ * immediate children style themselves as subtle pills. */
+[data-composer-style="claude"] .composer-above-bar.style-unified,
+[data-composer-style="claude"] .composer-above-bar {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  padding: 0 4px;
+  margin: 0 0 8px;
+}
+[data-composer-style="claude"] .composer-above-bar::before {
+  display: none;
+}
+[data-composer-style="claude"] .composer-above-bar-branch,
+[data-composer-style="claude"] .composer-above-bar-files,
+[data-composer-style="claude"] .composer-above-bar-stats,
+[data-composer-style="claude"] .composer-above-bar-summary {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, #1f1f1f 86%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 7%, transparent);
+  color: color-mix(in srgb, #ffffff 72%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+}
+[data-composer-style="claude"] .composer-above-bar-stats {
+  /* Diff +/- badge sits between branch chip and the Create-PR action;
+   * a touch denser background reads more like Claude Code's badge. */
+  background: color-mix(in srgb, #1a1a1a 92%, transparent);
+}
+[data-composer-style="claude"] .composer-above-bar-action {
+  /* The Create-PR / Commit-changes equivalent — keep it as a discrete
+   * pill aligned to the far right, no shared container with the chips. */
+  background: color-mix(in srgb, #1f1f1f 92%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+}
+
 /* ============================================================
  * Composer style: neutral color override
  * Codex / Claude styles drop provider-tinted radial gradients
