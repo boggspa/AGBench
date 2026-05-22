@@ -201,11 +201,15 @@ function writeJson<T>(filePath: string, data: T) {
     if (fd !== null) {
       try {
         fs.closeSync(fd)
-      } catch {}
+      } catch {
+        // Best effort: preserve the original write failure.
+      }
     }
     try {
       if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath)
-    } catch {}
+    } catch {
+      // Best effort: stale temp files are safer than masking the original failure.
+    }
   }
 }
 

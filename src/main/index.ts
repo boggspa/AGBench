@@ -5041,7 +5041,6 @@ async function readClaudeKeychainCredential(): Promise<ClaudeOAuthCredential | n
   if (process.platform !== 'darwin') return null
   return new Promise((resolve) => {
     try {
-      const { spawn } = require('child_process') as typeof import('child_process')
       const proc = spawn('security', [
         'find-generic-password',
         '-s',
@@ -9580,7 +9579,7 @@ function isAppearanceMode(value: unknown): value is AppearanceMode {
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+  return value.replace(new RegExp(String.raw`\u001b\[[0-?]*[ -/]*[@-~]`, 'g'), '')
 }
 
 function appendLimitedOutput(
@@ -9783,12 +9782,10 @@ async function runGeminiCapabilityCommand(
     let truncated = false
     let timedOut = false
     let finished = false
-    let timeout: ReturnType<typeof setTimeout> | undefined
-
     const finish = (exitCode: number | null, error?: string): void => {
       if (finished) return
       finished = true
-      if (timeout) clearTimeout(timeout)
+      clearTimeout(timeout)
       resolve({
         args,
         stdout,
@@ -9813,7 +9810,7 @@ async function runGeminiCapabilityCommand(
       return
     }
 
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       timedOut = true
       proc.kill()
     }, GEMINI_CAPABILITY_TIMEOUT_MS)
@@ -9961,12 +9958,10 @@ function runHostWeatherCommand(): Promise<{ stdout: string; error?: string }> {
     let stderr = ''
     let finished = false
     let timedOut = false
-    let timeout: ReturnType<typeof setTimeout> | undefined
-
     const finish = (error?: string): void => {
       if (finished) return
       finished = true
-      if (timeout) clearTimeout(timeout)
+      clearTimeout(timeout)
       resolve({ stdout, error })
     }
 
@@ -9974,11 +9969,11 @@ function runHostWeatherCommand(): Promise<{ stdout: string; error?: string }> {
     try {
       proc = spawn(command, args, { shell: false })
     } catch (error) {
-      finish(error instanceof Error ? error.message : String(error))
+      resolve({ stdout, error: error instanceof Error ? error.message : String(error) })
       return
     }
 
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       timedOut = true
       proc.kill('SIGTERM')
       finish('weather command timed out')
@@ -12596,7 +12591,9 @@ async function startGeminiMcpBroker(): Promise<void> {
       }
       try {
         server.close()
-      } catch {}
+      } catch {
+        // Best effort: preserve the original broker startup error.
+      }
       throw error
     }
   })().finally(() => {
@@ -13568,7 +13565,9 @@ async function selfTestGeminiMcpBridgeProcess(
       clearTimeout(timeout)
       try {
         proc.stdin?.end()
-      } catch {}
+      } catch {
+        // Best effort: the bridge process may have already closed stdin.
+      }
       if (!proc.killed) {
         proc.kill()
       }
@@ -14242,7 +14241,7 @@ function normalizeGeminiResumeTarget(value?: string | null): string | null {
 
 function sanitizeGeminiSessionLine(line: string): string {
   return stripAnsi(line)
-    .replace(/[\u0000-\u001F\u007F]/g, '')
+    .replace(new RegExp(String.raw`[\u0000-\u001F\u007F]`, 'g'), '')
     .trim()
     .slice(0, MAX_GEMINI_SESSION_LINE_LENGTH)
 }
@@ -14267,7 +14266,7 @@ function collectGeminiSessionRawLines(...outputs: string[]): string[] {
 
 function parseGeminiSessionJson(stdout: string): GeminiSessionSummary[] {
   const trimmed = stdout.trim()
-  if (!trimmed || !/^[\[{]/.test(trimmed)) {
+  if (!trimmed || !/^[{[]/.test(trimmed)) {
     return []
   }
 
@@ -14336,20 +14335,16 @@ async function listGeminiSessions(): Promise<GeminiSessionListResult> {
     let stdout = ''
     let stderr = ''
     let settled = false
-    let timeout: ReturnType<typeof setTimeout> | undefined
-
     const finish = (result: GeminiSessionListResult): void => {
       if (settled) {
         return
       }
       settled = true
-      if (timeout) {
-        clearTimeout(timeout)
-      }
+      clearTimeout(timeout)
       resolve(result)
     }
 
-    timeout = setTimeout(() => {
+    const timeout = setTimeout(() => {
       proc.kill()
       finish({
         ok: false,
@@ -15855,12 +15850,8 @@ if (isGeminiMcpBridgeProcess) {
           env: createCliEnv({ FORCE_COLOR: '0', NO_COLOR: '1' }, geminiBinaryPath)
         })
         let stdout = ''
-        let stderr = ''
         proc.stdout?.on('data', (data) => {
           stdout += data.toString()
-        })
-        proc.stderr?.on('data', (data) => {
-          stderr += data.toString()
         })
         proc.on('close', (code) => {
           if (code !== 0 || !stdout.trim()) resolve('unknown')

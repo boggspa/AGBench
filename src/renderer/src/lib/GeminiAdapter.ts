@@ -63,7 +63,7 @@ export class GeminiStreamAdapter {
       const parsed = JSON.parse(line)
       this.normalizeEvent(parsed)
       this.onEvent({ type: 'raw_event', data: parsed })
-    } catch (e) {
+    } catch {
       this.onEvent({ type: 'malformed_json', text: line })
     }
   }

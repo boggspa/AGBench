@@ -78,12 +78,16 @@ function teardown() {
   clearTimeout(timer)
   try {
     proc.stdin.end()
-  } catch {}
+  } catch {
+    // Best effort: the daemon may have already closed stdin.
+  }
   setTimeout(() => {
     if (!proc.killed) {
       try {
         proc.kill('SIGTERM')
-      } catch {}
+      } catch {
+        // Best effort: process teardown should not mask smoke-test outcome.
+      }
     }
   }, 250).unref?.()
 }
