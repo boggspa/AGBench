@@ -6,7 +6,12 @@ import {
   ToolActivity,
   ToolDiffSummary
 } from '../../../main/store/types'
-import { deriveToolDiffSummary, isWriteLikeToolName } from '../lib/ToolParser'
+import {
+  deriveToolDiffSummary,
+  isWriteLikeToolName,
+  prettyPrintJson,
+  unwrapMcpEnvelope
+} from '../lib/ToolParser'
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads'
 import { hasExpandableDetail } from '../lib/ActivityRenderMode'
 import { inlineStatsForActivity } from '../lib/ActivityInlineStats'
@@ -66,12 +71,48 @@ function getStringParam(parameters: Record<string, unknown>, keys: string[]): st
   return undefined
 }
 
-function truncateText(value: string, maxLength = 420): string {
+interface TruncateOptions {
+  maxLength?: number
+  /** Soft cap for line count. When the content exceeds this many
+   * newlines AND `maxLength` characters, the truncation footer
+   * reports both numbers. Defaults to 60 — generous for command
+   * output, tight enough to keep the DOM bounded. */
+  maxLines?: number
+  /** Optional footer message used when truncation actually fires.
+   * Receives the dropped-character count and dropped-line count;
+   * default produces something like
+   * `\n[+1240 chars · 60 lines hidden — open raw events for full output]`. */
+  footer?: (droppedChars: number, droppedLines: number) => string
+}
+
+function defaultTruncationFooter(droppedChars: number, droppedLines: number): string {
+  const lineFragment = droppedLines > 0 ? ` · ${droppedLines.toLocaleString()} lines hidden` : ''
+  return `\n\n[+${droppedChars.toLocaleString()} chars${lineFragment} — open raw events for full output]`
+}
+
+function truncateText(value: string, optionsOrMaxLength: number | TruncateOptions = 420): string {
+  const opts: TruncateOptions =
+    typeof optionsOrMaxLength === 'number' ? { maxLength: optionsOrMaxLength } : optionsOrMaxLength
+  const maxLength = opts.maxLength ?? 420
+  const maxLines = opts.maxLines ?? Infinity
+  const footerFn = opts.footer ?? defaultTruncationFooter
   const normalized = value.trim()
-  if (normalized.length <= maxLength) {
+  const lines = normalized.split('\n')
+  const charsOverflow = normalized.length > maxLength
+  const linesOverflow = lines.length > maxLines
+  if (!charsOverflow && !linesOverflow) {
     return normalized
   }
-  return `${normalized.slice(0, maxLength)}...`
+  // Find the largest prefix that respects both bounds.
+  let charsKept = Math.min(normalized.length, maxLength)
+  if (linesOverflow) {
+    const linesKept = lines.slice(0, maxLines).join('\n').length
+    charsKept = Math.min(charsKept, linesKept)
+  }
+  const prefix = normalized.slice(0, charsKept)
+  const droppedChars = normalized.length - charsKept
+  const droppedLines = lines.length - prefix.split('\n').length
+  return `${prefix}${footerFn(droppedChars, Math.max(0, droppedLines))}`
 }
 
 function cleanProgressText(value: unknown): string | undefined {
@@ -143,7 +184,15 @@ function buildSanitizedDetail(
     if (resultText) {
       previews.push({
         label: activity.status === 'error' ? 'Error output' : 'Output',
-        content: truncateText(resultText, 1000),
+        // Phase L5 slice 1 — bump shell-output limit from 1000 chars
+        // to 6000 chars / 60 lines, with the structured footer
+        // pointing at the raw-events drawer for full content. A
+        // single chatty `git log` output used to either be brutally
+        // cut at 1000 chars (lost lots of context) or, prior to the
+        // truncation in place, dump 50kb into the DOM. The new
+        // bound gives the user useful context without blowing up
+        // the activity panel.
+        content: truncateText(resultText, { maxLength: 6000, maxLines: 60 }),
         terminal: true
       })
     }
@@ -168,7 +217,8 @@ function buildSanitizedDetail(
     if (resultText) {
       previews.push({
         label: toolName === 'codex_reasoning' ? 'Thoughts' : 'Update',
-        content: truncateText(resultText, 1000),
+        // Phase L5 slice 1 — same bump as shell output.
+        content: truncateText(resultText, { maxLength: 6000, maxLines: 60 }),
         tone: 'neutral'
       })
     }
@@ -830,13 +880,23 @@ function getDiffToneClass(line: string, tone: SanitizedDetail['previews'][number
 }
 
 function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][number] }) {
+  // Phase L5 slice 1 — clean output content before rendering:
+  //   1. Unwrap MCP envelopes so we never render
+  //      `{"content":[{"type":"text","text":"..."}]}` literally
+  //      — covers legacy transcripts persisted before the upstream
+  //      unwrap in `extractResultOutput` landed.
+  //   2. Pretty-print one-liner JSON blobs so structured tool
+  //      results (e.g. `git_status` JSON output) read as indented
+  //      key/value pairs instead of one giant horizontal line.
+  const cleanedContent = prettyPrintJson(unwrapMcpEnvelope(preview.content))
+
   if (preview.terminal) {
-    return <pre className="activity-output-terminal">{preview.content}</pre>
+    return <pre className="activity-output-terminal">{cleanedContent}</pre>
   }
 
   return (
     <pre className="activity-output-clean activity-output-diff">
-      {preview.content.split('\n').map((line, index) => (
+      {cleanedContent.split('\n').map((line, index) => (
         <span
           key={`${index}-${line}`}
           className={`activity-diff-line ${getDiffToneClass(line, preview.tone || 'neutral')}`}
@@ -996,6 +1056,41 @@ export function ActivityStack({
       .filter((activity): activity is ToolActivity => Boolean(activity))
   }
 
+  // Phase L5 slice 3 — lifted expansion state. The set of ids that
+  // are currently open. Single-open mode (default + always in
+  // compactDensity) auto-collapses other rows when one expands;
+  // ⌘/Shift click opts into multi-open. The TurnReceiptCard's
+  // master toggle expands/collapses ALL expandable rows at once.
+  const [expandedIds, setExpandedIds] = useExpandedIdsState()
+  const allowMultiOpen = !compactDensity
+  const toggleExpand = (id: string, modKey: boolean): void => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      if (modKey && allowMultiOpen) {
+        if (next.has(id)) next.delete(id)
+        else next.add(id)
+      } else {
+        // Single-open: clicking a row collapses everything else and
+        // toggles this one. Clicking the only-open row closes it.
+        const wasOpen = next.has(id)
+        next.clear()
+        if (!wasOpen) next.add(id)
+      }
+      return next
+    })
+  }
+  const handleExpandAll = (): void => {
+    const all = new Set<string>()
+    for (const activity of topLevelActivities) {
+      all.add(activity.id)
+    }
+    setExpandedIds(all)
+  }
+  const handleCollapseAll = (): void => {
+    setExpandedIds(new Set())
+  }
+  const expandedCount = expandedIds.size
+
   return (
     <div className="activity-timeline">
       {childThreads.length >= 2 && <ChildAgentSpawnBlock threads={childThreads} />}
@@ -1020,6 +1115,8 @@ export function ActivityStack({
             childActivities={thread ? resolveThreadActivities(thread) : undefined}
             provider={provider}
             forceCompact={compactDensity}
+            isExpanded={expandedIds.has(item.activity.id)}
+            onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
           />
         )
       })}
@@ -1027,10 +1124,28 @@ export function ActivityStack({
        * tool group has ≥2 activities and nothing is still running.
        * Pure derived render — no message, no history-replay concern.
        * Slice 6 forwards `compactDensity` so the tape collapses to a
-       * one-line summary in compact mode. */}
-      <TurnReceiptCard activities={topLevelActivities} compact={compactDensity} />
+       * one-line summary in compact mode.
+       * Phase L5 slice 3 — also forwards the expand/collapse-all
+       * handlers + current expanded count so the tape can host the
+       * master toggle button. */}
+      <TurnReceiptCard
+        activities={topLevelActivities}
+        compact={compactDensity}
+        expandedCount={expandedCount}
+        expandableCount={topLevelActivities.length}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
+      />
     </div>
   )
+}
+
+/** Local hook wrapper so callers see a familiar `useState`-shaped
+ * tuple. Centralised so future extensions (persistence across
+ * remounts, keyboard-shortcut binding, etc.) live in one place. */
+function useExpandedIdsState(): [Set<string>, (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void] {
+  const [ids, setIds] = useState<Set<string>>(() => new Set())
+  return [ids, setIds]
 }
 
 function ActivityDiffFiles({
@@ -1043,21 +1158,43 @@ function ActivityDiffFiles({
   const files = diffSummary?.files || []
   if (files.length === 0) return null
 
+  // Phase L5 slice 2 — drop entries that have no resolvable file path.
+  // Pre-fix, these would render as "Unknown file" cards with
+  // `UNKNOWN +0 -1` chrome — visually intrusive AND uninformative
+  // because we already know SOMETHING was changed, we just can't
+  // attribute it to a file. Filter them out here; if EVERY file is
+  // unnamed (rare — implies a malformed diff payload or a tool that
+  // emits diff stats without paths), surface a compact placeholder
+  // so the user knows a diff was reported even though the file
+  // attribution was lost.
+  const namedFiles = files.filter((file) => Boolean(file.path && file.path.trim()))
+  if (namedFiles.length === 0) {
+    return (
+      <div className="activity-file-change-cards">
+        <div className="activity-file-change-card activity-file-change-card-placeholder">
+          <span className="activity-file-change-path activity-file-change-path-placeholder">
+            diff present · file paths not reported
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="activity-file-change-cards">
-      {files.slice(0, 8).map((file, index) => {
+      {namedFiles.slice(0, 8).map((file, index) => {
         const fullPath = file.path || ''
         const displayPath = displayPathRelativeToWorkspace(fullPath, workspacePath) || fullPath
         return (
-          <div key={`${file.path || 'unknown'}-${index}`} className="activity-file-change-card">
+          <div key={`${file.path}-${index}`} className="activity-file-change-card">
             <FileTypeIcon
               path={fullPath}
               size={14}
               className="activity-file-type-icon"
               workspacePath={workspacePath}
             />
-            <span className="activity-file-change-path" title={fullPath || 'Unknown file'}>
-              {displayPath || 'Unknown file'}
+            <span className="activity-file-change-path" title={fullPath}>
+              {displayPath || fullPath}
             </span>
             <span className={`activity-file-change-status status-${file.status || 'unknown'}`}>
               {file.status || 'changed'}
@@ -1075,8 +1212,8 @@ function ActivityDiffFiles({
           </div>
         )
       })}
-      {files.length > 8 && (
-        <div className="activity-file-change-overflow">+{files.length - 8} more files</div>
+      {namedFiles.length > 8 && (
+        <div className="activity-file-change-overflow">+{namedFiles.length - 8} more files</div>
       )}
     </div>
   )
@@ -1230,7 +1367,9 @@ function ActivityRow({
   forceCompact = false,
   childThread,
   childActivities,
-  provider
+  provider,
+  isExpanded,
+  onToggleExpand
 }: {
   activity: ToolActivity
   workspacePath?: string
@@ -1245,8 +1384,23 @@ function ActivityRow({
    * here when the runtime-execution provider differs from the
    * outer chat. */
   provider?: ProviderId
+  /** Phase L5 slice 3 — expansion state lifted to ActivityStack so
+   * the parent can coordinate single-open mode + master toggle.
+   * Optional: if undefined, the row falls back to local state for
+   * backward compatibility with any caller that doesn't yet pass
+   * these (e.g. ChildAgentThreadCard internal rows). */
+  isExpanded?: boolean
+  onToggleExpand?: (modKey: boolean) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  // Phase L5 slice 3 — when the parent passes `isExpanded` +
+  // `onToggleExpand`, use them (the parent coordinates single-open
+  // mode + the master toggle). Otherwise fall back to local state
+  // so internal call sites that don't yet plumb the props through
+  // (child-agent threads, compact-group expanded view) keep working
+  // without changes. `setLocalExpanded` is consumed below in
+  // `toggleExpanded`'s fallback branch.
+  const [localExpanded, setLocalExpanded] = useState(false)
+  const expanded = isExpanded ?? localExpanded
   // Phase L3 slice 4 — stamp animation on status transition. When a
   // tool finishes (running → success/warning/error), we briefly mount
   // a `.activity-status-stamping` class on the status icon so the
@@ -1343,9 +1497,19 @@ function ActivityRow({
   const canExpand = hasExpandableDetail(activity, renderInputs)
   const showInlinePulse = activity.status === 'running' || activity.status === 'pending'
 
-  const toggleExpanded = () => {
+  // Phase L5 slice 3 — toggle path forwards the click's mod-key
+  // state so the parent's single-open coordinator can distinguish
+  // "regular click → close everything else, open just this row"
+  // from "⌘/Shift click → add this row to the expanded set without
+  // collapsing the others". The keyboard variant always uses
+  // regular-mode (no plausible UX for "Shift+Enter" mod-expand).
+  const toggleExpanded = (modKey: boolean) => {
     if (!canExpand) return
-    setExpanded((current) => !current)
+    if (onToggleExpand) {
+      onToggleExpand(modKey)
+    } else {
+      setLocalExpanded((current) => !current)
+    }
   }
 
   return (
@@ -1358,13 +1522,17 @@ function ActivityRow({
         role={canExpand ? 'button' : undefined}
         tabIndex={canExpand ? 0 : -1}
         aria-expanded={canExpand ? expanded : undefined}
-        onClick={canExpand ? toggleExpanded : undefined}
+        onClick={
+          canExpand
+            ? (event) => toggleExpanded(event.metaKey || event.shiftKey)
+            : undefined
+        }
         onKeyDown={
           canExpand
             ? (event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  toggleExpanded()
+                  toggleExpanded(event.metaKey || event.shiftKey)
                 }
               }
             : undefined

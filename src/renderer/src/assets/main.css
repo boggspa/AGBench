@@ -6147,6 +6147,37 @@ button.diff-file-row {
   text-overflow: ellipsis;
 }
 
+/* Phase L5 slice 3 — master expand/collapse-all toggle. Lives at
+ * the end of the receipt body so it hugs the summary line. Subtle
+ * by default (matches the receipt's muted personality), more
+ * present on hover so the affordance is discoverable. */
+.turn-receipt-toggle {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+.turn-receipt-toggle:hover {
+  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
+  border-color: color-mix(in srgb, var(--sidebar-border) 100%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+.turn-receipt-toggle:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+[data-reduce-motion="true"] .turn-receipt-toggle {
+  transition: none;
+}
+
 /* Phase L4 slice 4 follow-up — the legacy `::before` rail is gone.
  * It used to run as a 1px hairline through the gutter, but it
  * sat at `left:10px` while the per-row provider border sat at
@@ -6519,6 +6550,19 @@ button.diff-file-row {
   border: 1px solid color-mix(in srgb, var(--sidebar-border) 70%, transparent);
   font-size: 14px;
   color: color-mix(in srgb, var(--text-primary) 82%, transparent);
+  /* Phase L5 slice 2 — bound the panel to the conversation column.
+   * Without this constraint the detail panel stretched to whatever
+   * flex space its parent offered, which on narrow viewports could
+   * push wide output past the message column's right edge. Inner
+   * `.activity-output-terminal` / `.activity-output-clean` keep
+   * their `overflow-x: auto` so super-wide single lines get a
+   * scrollbar INSIDE this bounded panel rather than blowing it
+   * out. `min-width: 0` is the standard flex-child shrink fix —
+   * without it a child with intrinsic minimum content width
+   * (a long line of code) prevents the panel from shrinking. */
+  max-width: min(var(--content-max-width, 780px), 100%);
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .activity-row-inline:hover {
@@ -6727,9 +6771,19 @@ button.diff-file-row {
   display: contents;
 }
 
+/* Phase L5 slice 2 — de-emphasised section labels. The detail panel's
+ * "Working directory" / "Command" / "Output" headers were heavier
+ * than the content they introduced, fighting for attention with
+ * the actual command output. Drop to 11px uppercase with letter-
+ * spacing + tertiary text colour; the labels become subtle hint
+ * chrome and the content becomes the visual focus. */
 .activity-detail-label {
-  color: var(--text-muted);
+  color: var(--text-tertiary);
   white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 500;
 }
 
 .activity-detail-value {
@@ -6742,8 +6796,11 @@ button.diff-file-row {
 
 .activity-detail-section-title {
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 2px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
 }
 
 .activity-detail pre {
@@ -11525,6 +11582,19 @@ input:disabled, select:disabled, textarea:disabled {
   background: rgb(255 255 255 / 0.032);
 }
 
+/* Phase L5 slice 2 — placeholder card shown when EVERY diff entry
+ * has no resolvable file path (rare; malformed diff payload or a
+ * tool reporting stats without attribution). One-column layout
+ * + muted styling so the user knows a diff WAS reported but the
+ * file names didn't make it through, rather than fronting an
+ * intrusive "Unknown file UNKNOWN +0 -1" card. */
+.activity-file-change-card-placeholder {
+  grid-template-columns: 1fr;
+  border-style: dashed;
+  background: transparent;
+  opacity: 0.7;
+}
+
 .activity-file-change-path {
   min-width: 0;
   overflow: hidden;
@@ -11533,6 +11603,12 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.activity-file-change-path-placeholder {
+  font-family: inherit;
+  font-style: italic;
+  color: var(--text-tertiary);
 }
 
 .activity-file-change-status {

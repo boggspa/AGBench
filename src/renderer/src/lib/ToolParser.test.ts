@@ -14,7 +14,9 @@ import {
   createToolActivity,
   pairToolResult,
   isToolUseEvent,
-  isToolResultEvent
+  isToolResultEvent,
+  unwrapMcpEnvelope,
+  prettyPrintJson
 } from './ToolParser'
 
 describe('ToolParser', () => {
@@ -321,6 +323,121 @@ describe('ToolParser', () => {
       expect(
         deriveToolDiffSummary('run_shell_command', { command: 'sed -i s/a/b/g a.ts' })
       ).toBeUndefined()
+    })
+  })
+
+  describe('unwrapMcpEnvelope', () => {
+    it('returns the empty / non-string input untouched (no-op)', () => {
+      expect(unwrapMcpEnvelope('')).toBe('')
+      expect(unwrapMcpEnvelope(null)).toBe('')
+      expect(unwrapMcpEnvelope(undefined)).toBe('')
+    })
+
+    it('passes through plain (non-JSON) strings', () => {
+      expect(unwrapMcpEnvelope('Exit code: 0\nstdout: hello')).toBe('Exit code: 0\nstdout: hello')
+      expect(unwrapMcpEnvelope('  not JSON either  ')).toBe('  not JSON either  ')
+    })
+
+    it('unwraps a single-text MCP envelope', () => {
+      const envelope = '{"content":[{"type":"text","text":"Exit code: 0\\nstdout:\\ntotal 22552\\n"}]}'
+      expect(unwrapMcpEnvelope(envelope)).toBe('Exit code: 0\nstdout:\ntotal 22552\n')
+    })
+
+    it('concatenates multiple text parts in order', () => {
+      const envelope = JSON.stringify({
+        content: [
+          { type: 'text', text: 'first chunk\n' },
+          { type: 'text', text: 'second chunk' }
+        ]
+      })
+      expect(unwrapMcpEnvelope(envelope)).toBe('first chunk\nsecond chunk')
+    })
+
+    it('skips non-text parts (image / resource_link) but keeps text', () => {
+      const envelope = JSON.stringify({
+        content: [
+          { type: 'text', text: 'hello\n' },
+          { type: 'image', data: '<base64>', mimeType: 'image/png' },
+          { type: 'text', text: 'world' }
+        ]
+      })
+      expect(unwrapMcpEnvelope(envelope)).toBe('hello\nworld')
+    })
+
+    it('passes through valid JSON that is not an MCP envelope', () => {
+      const json = '{"status":"ok","count":42}'
+      expect(unwrapMcpEnvelope(json)).toBe(json)
+    })
+
+    it('passes through malformed JSON without throwing', () => {
+      const broken = '{"content":[{"type":"text"'
+      expect(unwrapMcpEnvelope(broken)).toBe(broken)
+    })
+
+    it('passes through arrays at top level (not envelope-shaped)', () => {
+      const arr = '[{"type":"text","text":"loose"}]'
+      expect(unwrapMcpEnvelope(arr)).toBe(arr)
+    })
+  })
+
+  describe('prettyPrintJson', () => {
+    it('returns empty / non-string input untouched', () => {
+      expect(prettyPrintJson('')).toBe('')
+      expect(prettyPrintJson(null)).toBe('')
+      expect(prettyPrintJson(undefined)).toBe('')
+    })
+
+    it('passes through plain non-JSON strings', () => {
+      expect(prettyPrintJson('hello world')).toBe('hello world')
+      expect(prettyPrintJson('Exit code: 0')).toBe('Exit code: 0')
+    })
+
+    it('pretty-prints one-liner JSON objects with 2-space indent', () => {
+      const out = prettyPrintJson('{"a":1,"b":[2,3]}')
+      expect(out).toBe('{\n  "a": 1,\n  "b": [\n    2,\n    3\n  ]\n}')
+    })
+
+    it('leaves already-pretty JSON untouched', () => {
+      const pretty = '{\n  "a": 1\n}'
+      expect(prettyPrintJson(pretty)).toBe(pretty)
+    })
+
+    it('passes through malformed JSON gracefully', () => {
+      expect(prettyPrintJson('{"a":')).toBe('{"a":')
+    })
+  })
+
+  describe('extractResultOutput — Phase L5 MCP envelope integration', () => {
+    it('unwraps an MCP envelope passed as evt.result (object form)', () => {
+      const out = extractResultOutput({
+        result: { content: [{ type: 'text', text: 'unwrapped from result' }] }
+      })
+      expect(out).toBe('unwrapped from result')
+    })
+
+    it('unwraps an MCP envelope passed as evt.output (object form)', () => {
+      const out = extractResultOutput({
+        output: { content: [{ type: 'text', text: 'unwrapped from output' }] }
+      })
+      expect(out).toBe('unwrapped from output')
+    })
+
+    it('unwraps when the whole event IS the envelope', () => {
+      const out = extractResultOutput({
+        content: [{ type: 'text', text: 'whole event is the envelope' }]
+      })
+      expect(out).toBe('whole event is the envelope')
+    })
+
+    it('unwraps an MCP envelope passed as a stringified evt.output', () => {
+      const out = extractResultOutput({
+        output: '{"content":[{"type":"text","text":"stringified envelope"}]}'
+      })
+      expect(out).toBe('stringified envelope')
+    })
+
+    it('passes plain string output through unchanged (no false-positive unwrap)', () => {
+      expect(extractResultOutput({ output: 'plain stdout' })).toBe('plain stdout')
     })
   })
 

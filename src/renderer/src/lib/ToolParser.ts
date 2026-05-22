@@ -64,17 +64,134 @@ export function extractParameters(event: any): Record<string, unknown> {
   )
 }
 
+/**
+ * MCP tool results come back wrapped in the standard
+ * `{ content: [{ type: 'text', text: string }, ...] }` envelope.
+ * The agent itself unwraps this before reasoning — but the AGBench
+ * renderer was dumping the raw JSON straight into `<pre>` blocks,
+ * showing `{"content":[{"type":"text","text":"Exit code: 0\n..."}]}`
+ * where it should have shown plain command output.
+ *
+ * `isMcpEnvelopeObject` + `extractMcpEnvelopeText` work at the object
+ * level (when the raw tool result is still a parsed JS object); the
+ * exported `unwrapMcpEnvelope` works at the string level (when the
+ * result has already been stringified — typically by an earlier
+ * `JSON.stringify` fallback in this same function).
+ *
+ * Phase L5 slice 1.
+ */
+function isMcpEnvelopeObject(value: unknown): value is {
+  content: Array<{ type: 'text'; text: string } | { type: string; [k: string]: unknown }>
+} {
+  if (!value || typeof value !== 'object') return false
+  const obj = value as Record<string, unknown>
+  if (!Array.isArray(obj.content)) return false
+  // At least one text-shaped part. We tolerate other part types
+  // (image, resource_link, etc.) mixed in — they're skipped during
+  // text extraction below rather than rejecting the whole envelope.
+  return obj.content.some(
+    (item) =>
+      item !== null &&
+      typeof item === 'object' &&
+      (item as Record<string, unknown>).type === 'text' &&
+      typeof (item as Record<string, unknown>).text === 'string'
+  )
+}
+
+function extractMcpEnvelopeText(value: { content: unknown[] }): string {
+  return value.content
+    .filter(
+      (item): item is { type: 'text'; text: string } =>
+        item !== null &&
+        typeof item === 'object' &&
+        (item as Record<string, unknown>).type === 'text' &&
+        typeof (item as Record<string, unknown>).text === 'string'
+    )
+    .map((item) => item.text)
+    .join('')
+}
+
+/**
+ * Detect strings that JSON-parse to an MCP `{content:[{type:'text',
+ * text}]}` envelope and return the concatenated `text` fields.
+ * Pass-through for plain strings, non-JSON, malformed JSON, and JSON
+ * that doesn't fit the envelope shape.
+ *
+ * Wired in two places (Phase L5 slice 1):
+ *   - upstream in `extractResultOutput` so fresh tool calls produce a
+ *     clean `resultSummary` from the start.
+ *   - renderer-side in `ActivityPreview` so legacy transcripts already
+ *     persisted with envelope-shaped strings render cleanly on next
+ *     view.
+ */
+export function unwrapMcpEnvelope(raw: string | null | undefined): string {
+  if (typeof raw !== 'string') return ''
+  if (!raw) return raw
+  const trimmed = raw.trim()
+  // Quick reject: not even JSON-shaped. The vast majority of
+  // outputs (plain command stdout, file contents, etc.) hit this
+  // path and pay near-zero cost.
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return raw
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (isMcpEnvelopeObject(parsed)) {
+      return extractMcpEnvelopeText(parsed)
+    }
+    // Valid JSON but not an MCP envelope — leave the original
+    // string intact. `prettyPrintJson` is a separate concern.
+    return raw
+  } catch {
+    return raw
+  }
+}
+
+/**
+ * Re-indent JSON-shaped strings with 2-space indentation when they
+ * come in as one-liner blobs. Skip already-formatted content (any
+ * line that starts with whitespace followed by `"` / `[` / `{` is
+ * a strong signal that the JSON is already pretty-printed).
+ *
+ * Phase L5 slice 1 — used by `ActivityPreview` to make structured
+ * tool outputs (post-MCP-unwrap fallback, or genuinely-JSON-shaped
+ * results like `git status --porcelain=v2 --json`) readable in
+ * the expansion panel rather than rendering as a single 10kb line.
+ */
+export function prettyPrintJson(raw: string | null | undefined): string {
+  if (typeof raw !== 'string') return ''
+  if (!raw) return raw
+  const trimmed = raw.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return raw
+  // Heuristic skip: any newline followed by indentation + a JSON
+  // structural character means it's already pretty-printed.
+  if (/\n[ \t]+["[{]/.test(trimmed)) return raw
+  try {
+    return JSON.stringify(JSON.parse(trimmed), null, 2)
+  } catch {
+    return raw
+  }
+}
+
 export function extractResultOutput(resultEvent: any): string {
   if (!resultEvent || typeof resultEvent !== 'object') return ''
   const evt = resultEvent
-  if (typeof evt.output === 'string') return evt.output
-  if (typeof evt.result === 'string') return evt.result
-  if (typeof evt.content === 'string') return evt.content
+  // Phase L5 slice 1 — check raw OBJECT shapes for the MCP envelope
+  // BEFORE falling through to string extraction. If `evt.result`
+  // or `evt.output` is the envelope object itself, we extract the
+  // text directly instead of stringifying it and re-parsing later.
+  if (isMcpEnvelopeObject(evt.result)) return extractMcpEnvelopeText(evt.result)
+  if (isMcpEnvelopeObject(evt.output)) return extractMcpEnvelopeText(evt.output)
+  if (isMcpEnvelopeObject(evt)) return extractMcpEnvelopeText(evt)
+  // String fallback paths — each goes through `unwrapMcpEnvelope`
+  // so a value already serialised as `{"content":[...]}` gets
+  // unwrapped before we ship it back to the renderer.
+  if (typeof evt.output === 'string') return unwrapMcpEnvelope(evt.output)
+  if (typeof evt.result === 'string') return unwrapMcpEnvelope(evt.result)
+  if (typeof evt.content === 'string') return unwrapMcpEnvelope(evt.content)
   if (typeof evt.summary === 'string') return evt.summary
   if (typeof evt.message === 'string') return evt.message
   if (typeof evt.text === 'string') return evt.text
   if (evt.result && typeof evt.result === 'object') {
-    if (typeof evt.result.output === 'string') return evt.result.output
+    if (typeof evt.result.output === 'string') return unwrapMcpEnvelope(evt.result.output)
     if (typeof evt.result.summary === 'string') return evt.result.summary
     if (typeof evt.result.message === 'string') return evt.result.message
     return JSON.stringify(evt.result)

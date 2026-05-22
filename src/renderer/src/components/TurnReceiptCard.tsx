@@ -31,6 +31,17 @@ interface TurnReceiptCardProps {
    * single inline line (no per-family breakdown). Slice 6 sets this
    * from `settings.compactDensity`. */
   compact?: boolean
+  /** Phase L5 slice 3 — master expand/collapse-all toggle. The
+   * receipt tape is the natural home for this affordance: it
+   * already summarises the activity stack and sits at the foot
+   * of it, so a small toggle button hugging the summary lets the
+   * user open/close the whole stack with one click. When
+   * `expandedCount === expandableCount` (everything open) the
+   * button shows "Collapse all"; otherwise "Expand all". */
+  expandedCount?: number
+  expandableCount?: number
+  onExpandAll?: () => void
+  onCollapseAll?: () => void
 }
 
 export interface FamilyTally {
@@ -146,10 +157,26 @@ export function buildTurnReceiptSummary(
 
 export function TurnReceiptCard({
   activities,
-  compact = false
+  compact = false,
+  expandedCount = 0,
+  expandableCount = 0,
+  onExpandAll,
+  onCollapseAll
 }: TurnReceiptCardProps): ReactElement | null {
   const { visible, summary: summaryLine } = buildTurnReceiptSummary(activities, compact)
   if (!visible) return null
+
+  // Phase L5 slice 3 — master toggle visibility. We only show the
+  // button when:
+  //   - parent provided the handlers (back-compat: receipts inside
+  //     `ChildAgentThreadCard` etc. don't pass them and stay
+  //     toggle-less)
+  //   - there are ≥2 expandable rows (single-row stacks don't need
+  //     a master toggle; the row's own chevron is enough)
+  const canToggle = Boolean(onExpandAll && onCollapseAll) && expandableCount >= 2
+  const allOpen = canToggle && expandedCount >= expandableCount
+  const buttonLabel = allOpen ? 'Collapse all' : 'Expand all'
+  const buttonHandler = allOpen ? onCollapseAll : onExpandAll
 
   return (
     <div className="turn-receipt-card" role="note" aria-label="Turn summary">
@@ -157,6 +184,16 @@ export function TurnReceiptCard({
       <div className="turn-receipt-body">
         <span className="turn-receipt-label">Turn</span>
         <span className="turn-receipt-summary">{summaryLine}</span>
+        {canToggle && (
+          <button
+            type="button"
+            className="turn-receipt-toggle"
+            onClick={buttonHandler}
+            aria-label={buttonLabel}
+          >
+            {buttonLabel}
+          </button>
+        )}
       </div>
       <div className="turn-receipt-perf turn-receipt-perf-bot" aria-hidden />
     </div>
