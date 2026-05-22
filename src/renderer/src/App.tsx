@@ -10425,6 +10425,109 @@ function App(): React.JSX.Element {
     void handleBridgeCommand(item.command)
   }
 
+  /**
+   * Strip the slash token (`/<query>`) the user typed to open the picker
+   * from the composer prompt, leaving the caret at the position where
+   * the slash used to be. Used after a slash-command dispatches so the
+   * picker's trigger character doesn't end up sent to the provider.
+   */
+  const consumeSlashTokenFromPrompt = (): void => {
+    const anchor = slashAnchorIndexRef.current
+    if (anchor === null) return
+    const tokenLength = 1 + slashQuery.length // `/` + query chars
+    const before = prompt.slice(0, anchor)
+    const after = prompt.slice(anchor + tokenLength)
+    const next = `${before}${after}`
+    setPrompt(next)
+    requestAnimationFrame(() => {
+      const ta = composerTextareaRef.current
+      if (!ta) return
+      ta.focus()
+      ta.setSelectionRange(before.length, before.length)
+    })
+  }
+
+  /**
+   * Slash-picker dispatch — discriminated by command `kind`. Reuses the
+   * existing handlePaletteCommand for palette-passthrough kinds so the
+   * dispatch shape doesn't fork. Strips the slash trigger token from
+   * the prompt in every branch so the literal `/whatever` characters
+   * never reach the provider.
+   *
+   * Kinds covered in L4: palette-passthrough, gemini-pty. The remaining
+   * kinds (action, prompt-template, insert) land in L5+.
+   */
+  const handleComposerSlash = (command: ComposerSlashCommand): void => {
+    setSlashMenuOpen(false)
+    setSlashQuery('')
+    const dispatch = () => {
+      switch (command.kind) {
+        case 'palette-passthrough':
+          handlePaletteCommand(command.paletteItem)
+          return
+        case 'gemini-pty':
+          // PTY pass-through — only viable on Gemini (Codex/Claude/Kimi
+          // run-process invocations don't surface a live CLI). Bridge
+          // command failure (no persistent session) surfaces via the
+          // existing raw-events logging that handleBridgeCommand owns.
+          void handleBridgeCommand(command.command)
+          return
+        case 'action':
+          void command.run()
+          return
+        case 'prompt-template':
+          // Insert the template at the slash position; caller can keep
+          // typing to fill in template-specific arguments.
+          // eslint-disable-next-line no-case-declarations
+          {
+            const anchor = slashAnchorIndexRef.current ?? 0
+            const tokenLength = 1 + slashQuery.length
+            const before = prompt.slice(0, anchor)
+            const after = prompt.slice(anchor + tokenLength)
+            const next = `${before}${command.template}${after}`
+            setPrompt(next)
+            const caretBase = before.length + (command.cursorOffset ?? command.template.length)
+            requestAnimationFrame(() => {
+              const ta = composerTextareaRef.current
+              if (!ta) return
+              ta.focus()
+              ta.setSelectionRange(caretBase, caretBase)
+            })
+            slashAnchorIndexRef.current = null
+          }
+          return
+        case 'insert':
+          // eslint-disable-next-line no-case-declarations
+          {
+            const anchor = slashAnchorIndexRef.current ?? 0
+            const tokenLength = 1 + slashQuery.length
+            const before = prompt.slice(0, anchor)
+            const after = prompt.slice(anchor + tokenLength)
+            const next = `${before}${command.insertText}${after}`
+            setPrompt(next)
+            const caretBase = before.length + command.insertText.length
+            requestAnimationFrame(() => {
+              const ta = composerTextareaRef.current
+              if (!ta) return
+              ta.focus()
+              ta.setSelectionRange(caretBase, caretBase)
+            })
+            slashAnchorIndexRef.current = null
+          }
+          return
+      }
+    }
+    // For dispatch kinds that consume the token themselves (insert /
+    // template), skip the generic strip. For everything else (palette-
+    // passthrough / gemini-pty / action), strip the slash token first
+    // so the next user prompt starts clean.
+    if (command.kind !== 'insert' && command.kind !== 'prompt-template') {
+      consumeSlashTokenFromPrompt()
+    }
+    slashAnchorIndexRef.current = null
+    dispatch()
+  }
+
   const handleRestoreCheckpoint = async () => {
     const confirmed = window.confirm(
       'Open Gemini /restore in the persistent session? This only opens Gemini CLI restore selection; restore is not executed by GUIGemini.'
@@ -12394,15 +12497,7 @@ function App(): React.JSX.Element {
                   setSlashQuery('')
                   slashAnchorIndexRef.current = null
                 }}
-                onPick={(_command) => {
-                  // L3 wires only the activation contract — dispatch lands
-                  // in L4. For now, picking just dismisses the popover
-                  // without modifying the prompt so the L3 slice can be
-                  // verified in isolation.
-                  setSlashMenuOpen(false)
-                  setSlashQuery('')
-                  slashAnchorIndexRef.current = null
-                }}
+                onPick={(command) => handleComposerSlash(command)}
               />
               <AgentMentionMenu
                 chat={currentChat || undefined}
