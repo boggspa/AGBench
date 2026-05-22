@@ -168,7 +168,7 @@ actor EndpointBoundQUICBridgeServer {
             // pair id so the handler has SOMETHING to key on; a future
             // refactor can plumb the real device id through the QUIC
             // session metadata if/when we need per-controller routing.
-            let controllerDeviceID = DeviceID(rawValue: "device-\(pairID.rawValue)")
+            let controllerDeviceID = DeviceID("device-\(pairID.rawValue)")
             let semanticAck = await handlers.onActionRecord(payloadData, pairID, controllerDeviceID)
             try? await session.sendInbound(BridgeInboundEnvelope(
                 correlationID: envelope.envelopeID,
