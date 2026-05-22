@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'child_process'
-import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync } from 'fs'
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, symlinkSync } from 'fs'
 import { tmpdir } from 'os'
 import * as path from 'path'
 import { describe, expect, it } from 'vitest'
@@ -42,6 +42,15 @@ describe('BenchmarkPrimitives', () => {
         sha256: sha256Bytes('hello benchmark\n')
       })
       await expect(pinWorkspaceFiles(workspace, ['../outside.txt'])).rejects.toThrow(/escapes/)
+      const outside = mkdtempSync(path.join(tmpdir(), 'agentbench-benchmark-outside-'))
+      try {
+        symlinkSync(outside, path.join(workspace, 'linked-outside'), 'dir')
+        await expect(pinWorkspaceFiles(workspace, ['linked-outside/secret.txt'])).rejects.toThrow(
+          /escapes/
+        )
+      } finally {
+        rmSync(outside, { recursive: true, force: true })
+      }
     } finally {
       rmSync(workspace, { recursive: true, force: true })
     }

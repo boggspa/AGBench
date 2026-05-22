@@ -1,4 +1,5 @@
 import type { ChatRecord, ProviderId, WorkspaceRecord } from './store/types'
+import type { AllowlistDecision, PrepareStartTurnEvaluation } from './RemoteWorkspaceAllowlist'
 
 /**
  * BridgeBroadcaster — pushes workspace + thread summaries from the
@@ -82,9 +83,14 @@ export interface BridgeBroadcasterDaemon {
   notify(method: string, params?: unknown): void
 }
 
+export interface BridgeBroadcasterAllowlist {
+  evaluate(check: PrepareStartTurnEvaluation): AllowlistDecision
+}
+
 export interface BridgeBroadcasterOptions {
   daemon: BridgeBroadcasterDaemon
   appStore: BridgeBroadcasterAppStore
+  allowlist?: BridgeBroadcasterAllowlist
   log?: (line: string) => void
   /** Throttle: at most one broadcast per method-name within this window.
    * Per-id updates throttle separately (method + ":" + id). Default 1000ms. */
@@ -228,6 +234,7 @@ function msToIsoOrUndefined(ms: number | undefined): string | undefined {
 export class BridgeBroadcaster {
   private readonly daemon: BridgeBroadcasterDaemon
   private readonly appStore: BridgeBroadcasterAppStore
+  private readonly allowlist?: BridgeBroadcasterAllowlist
   private readonly log?: (line: string) => void
   private readonly throttleMs: number
   private readonly now: () => number
@@ -239,6 +246,7 @@ export class BridgeBroadcaster {
   constructor(options: BridgeBroadcasterOptions) {
     this.daemon = options.daemon
     this.appStore = options.appStore
+    this.allowlist = options.allowlist
     this.log = options.log
     this.throttleMs = options.throttleMs ?? 1000
     this.now = options.now ?? Date.now
@@ -258,7 +266,10 @@ export class BridgeBroadcaster {
       this.logErr(`failed to load workspaces/chats for ${method}`, err)
       return
     }
-    const summaries = workspaces.map((ws) => workspaceRecordToSummary(ws, chats))
+    const visibleWorkspaces = this.visibleWorkspaces(workspaces)
+    const visibleWorkspaceIds = new Set(visibleWorkspaces.map((ws) => ws.id))
+    const visibleChats = this.visibleChats(chats, visibleWorkspaceIds)
+    const summaries = visibleWorkspaces.map((ws) => workspaceRecordToSummary(ws, visibleChats))
     this.sendNotify(method, { workspaces: summaries })
   }
 
@@ -274,7 +285,8 @@ export class BridgeBroadcaster {
       this.logErr(`failed to load chats for ${method}`, err)
       return
     }
-    const threads = chats.map(chatRecordToSummary)
+    const visibleWorkspaceIds = this.visibleWorkspaceIdsFromChats(chats)
+    const threads = this.visibleChats(chats, visibleWorkspaceIds).map(chatRecordToSummary)
     this.sendNotify(method, { threads })
   }
 
@@ -299,6 +311,10 @@ export class BridgeBroadcaster {
       this.log?.(`[BridgeBroadcaster] ${method} skipped — workspace ${workspaceId} not found`)
       return
     }
+    if (!this.isWorkspaceVisible(workspace.id)) {
+      this.log?.(`[BridgeBroadcaster] ${method} skipped — workspace ${workspaceId} not allowed`)
+      return
+    }
     const summary = workspaceRecordToSummary(workspace, chats)
     this.sendNotify(method, { workspace: summary })
   }
@@ -317,6 +333,10 @@ export class BridgeBroadcaster {
     }
     if (!chat) {
       this.log?.(`[BridgeBroadcaster] ${method} skipped — chat ${chatId} not found`)
+      return
+    }
+    if (!this.isChatVisible(chat)) {
+      this.log?.(`[BridgeBroadcaster] ${method} skipped — chat ${chatId} not allowed`)
       return
     }
     const summary = chatRecordToSummary(chat)
@@ -348,6 +368,43 @@ export class BridgeBroadcaster {
     }
     this.lastEmitMs.set(throttleKey, now)
     return true
+  }
+
+  private visibleWorkspaces(workspaces: WorkspaceRecord[]): WorkspaceRecord[] {
+    if (!this.allowlist) return workspaces
+    return workspaces.filter((workspace) => this.isWorkspaceVisible(workspace.id))
+  }
+
+  private visibleWorkspaceIdsFromChats(chats: ChatRecord[]): Set<string> {
+    if (!this.allowlist) {
+      return new Set(
+        chats
+          .map((chat) => chat.workspaceId)
+          .filter((workspaceId): workspaceId is string => Boolean(workspaceId))
+      )
+    }
+    return new Set(
+      chats
+        .map((chat) => chat.workspaceId)
+        .filter((workspaceId): workspaceId is string => Boolean(workspaceId))
+        .filter((workspaceId) => this.isWorkspaceVisible(workspaceId))
+    )
+  }
+
+  private visibleChats(chats: ChatRecord[], visibleWorkspaceIds: Set<string>): ChatRecord[] {
+    if (!this.allowlist) return chats
+    return chats.filter((chat) =>
+      Boolean(chat.workspaceId && visibleWorkspaceIds.has(chat.workspaceId))
+    )
+  }
+
+  private isChatVisible(chat: ChatRecord): boolean {
+    if (!this.allowlist) return true
+    return Boolean(chat.workspaceId && this.isWorkspaceVisible(chat.workspaceId))
+  }
+
+  private isWorkspaceVisible(workspaceId: string): boolean {
+    return this.allowlist?.evaluate({ workspaceId }).allowed ?? true
   }
 
   private sendNotify(method: string, params: unknown): void {

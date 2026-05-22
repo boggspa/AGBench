@@ -55,6 +55,7 @@ const sample = {
   } satisfies BridgeRegisterApnsTokenAction,
   setYoloMode: {
     kind: 'setYoloMode',
+    workspaceId: 'ws-1',
     enabled: true
   } satisfies BridgeSetYoloModeAction,
   togglePinChat: {

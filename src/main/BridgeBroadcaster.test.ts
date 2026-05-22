@@ -6,6 +6,7 @@ import {
   workspaceRecordToSummary,
   type BridgeBroadcasterAppStore
 } from './BridgeBroadcaster'
+import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import type { ChatRecord, WorkspaceRecord } from './store/types'
 
 /** Build a stub AppStore that returns the supplied fixtures. The
@@ -52,6 +53,20 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
     runs: [],
     ...overrides
   }
+}
+
+function makeAllowlist(workspaceIds: string[]): RemoteWorkspaceAllowlist {
+  const allowlist = new RemoteWorkspaceAllowlist({ now: () => 1000 })
+  for (const workspaceId of workspaceIds) {
+    allowlist.upsert({
+      workspaceId,
+      path: `/tmp/projects/${workspaceId}`,
+      mode: 'read-write',
+      allowedProviders: ['gemini', 'codex', 'claude', 'kimi'],
+      allowedApprovalModes: ['default', 'plan']
+    })
+  }
+  return allowlist
 }
 
 describe('workspaceRecordToSummary', () => {
@@ -388,6 +403,65 @@ describe('BridgeBroadcaster', () => {
       BRIDGE_BROADCAST_METHODS.workspaceList,
       BRIDGE_BROADCAST_METHODS.threadList
     ])
+  })
+
+  it('filters workspace and thread lists through the remote allowlist', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [
+        makeWorkspace({ id: 'ws-visible' }),
+        makeWorkspace({ id: 'ws-hidden', path: '/tmp/projects/hidden' })
+      ],
+      [
+        makeChat({ appChatId: 'chat-visible', workspaceId: 'ws-visible' }),
+        makeChat({ appChatId: 'chat-hidden', workspaceId: 'ws-hidden' }),
+        makeChat({ appChatId: 'chat-global', scope: 'global', workspaceId: undefined })
+      ]
+    )
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      allowlist: makeAllowlist(['ws-visible']),
+      now: () => 1000
+    })
+
+    broadcaster.broadcastWorkspaceList()
+    broadcaster.broadcastThreadList()
+
+    expect(notify).toHaveBeenNthCalledWith(1, BRIDGE_BROADCAST_METHODS.workspaceList, {
+      workspaces: [
+        expect.objectContaining({
+          workspaceId: 'ws-visible'
+        })
+      ]
+    })
+    expect(notify).toHaveBeenNthCalledWith(2, BRIDGE_BROADCAST_METHODS.threadList, {
+      threads: [
+        expect.objectContaining({
+          chatId: 'chat-visible',
+          workspaceId: 'ws-visible'
+        })
+      ]
+    })
+  })
+
+  it('skips single update broadcasts for disallowed workspaces and chats', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore(
+      [makeWorkspace({ id: 'ws-hidden' })],
+      [makeChat({ appChatId: 'chat-hidden', workspaceId: 'ws-hidden' })]
+    )
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      allowlist: makeAllowlist(['ws-visible']),
+      now: () => 1000
+    })
+
+    broadcaster.broadcastWorkspaceUpdated('ws-hidden')
+    broadcaster.broadcastThreadUpdated('chat-hidden')
+
+    expect(notify).not.toHaveBeenCalled()
   })
 
   it('swallows notify errors and clears the throttle so the next attempt can retry', () => {

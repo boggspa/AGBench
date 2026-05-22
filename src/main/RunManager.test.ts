@@ -88,22 +88,12 @@ describe('RunManager', () => {
     expect(manager.resolve('gemini')).toBe(manager.get('run-1'))
   })
 
-  it('picks the most-recently-updated session as tiebreaker when multiple are active', () => {
-    // Pre-Codex-refactor: multiple active same-provider sessions was
-    // structurally impossible, so resolve() returned undefined.
-    // Post per-chat run lanes (codex 5ee9c36 / ab6817e): it's a normal
-    // state — and returning undefined breaks every MCP tool call from
-    // the provider's bridge subprocess. New behaviour: tiebreaker on
-    // updatedAt so calls keep working when no route is supplied.
+  it('does not guess when multiple active provider sessions need an explicit route', () => {
     const manager = new RunManager()
     manager.create({ runId: 'run-1', provider: 'codex', appChatId: 'chat-1', status: 'running' })
-    // Inject a tiny gap so updatedAt differs deterministically across
-    // create() calls (Date.now() may collide within the same ms in CI).
-    const run1 = manager.get('run-1')!
-    Object.assign(run1, { updatedAt: run1.updatedAt - 1 })
     manager.create({ runId: 'run-2', provider: 'codex', appChatId: 'chat-2', status: 'running' })
 
-    expect(manager.resolve('codex')?.runId).toBe('run-2')
+    expect(manager.resolve('codex')).toBeUndefined()
     expect(manager.resolve('codex', { appChatId: 'chat-2' })?.runId).toBe('run-2')
     expect(manager.resolve('codex', { appChatId: 'chat-1' })?.runId).toBe('run-1')
   })

@@ -608,12 +608,13 @@ describe('BridgeActionRouter', () => {
       expect(result.accepted).toBe(true)
     })
 
-    it('setYoloMode bypasses workspace allowlist and dispatches to the executor', async () => {
+    it('setYoloMode requires a workspace allowlist entry before dispatch', async () => {
       const { executor, calls } = makeStubExecutor()
-      const router = new BridgeActionRouter({ executor })
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
       const wire = Buffer.from(
         JSON.stringify({
           kind: 'setYoloMode',
+          workspaceId: 'ws-allowed',
           enabled: true
         }),
         'utf-8'
@@ -626,6 +627,25 @@ describe('BridgeActionRouter', () => {
       expect(result.message).toBe('setYoloMode done')
       expect(calls).toHaveLength(1)
       expect(calls[0].method).toBe('executeSetYoloMode')
+    })
+
+    it('setYoloMode is denied without a workspace allowlist entry', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
+      const wire = Buffer.from(
+        JSON.stringify({
+          kind: 'setYoloMode',
+          workspaceId: 'ws-not-listed',
+          enabled: true
+        }),
+        'utf-8'
+      ).toString('base64')
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.message).toMatch(/not on the remote allowlist/i)
+      expect(calls).toHaveLength(0)
     })
 
     it('dispatches togglePinChat to executor.executeTogglePinChat', async () => {

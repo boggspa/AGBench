@@ -5881,6 +5881,9 @@ function runCliProviderProcess(
         FORCE_COLOR: '0',
         NO_COLOR: '1',
         AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
+        AGENTBENCH_PARENT_PROVIDER: provider,
+        AGENTBENCH_RUN_ID: route.appRunId || '',
+        AGENTBENCH_CHAT_ID: route.appChatId || '',
         ...(options.extraEnv || {})
       },
       command
@@ -6005,12 +6008,14 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
  * identical config (the bridge binary path, socket path, and broker
  * token are all module-scoped already).
  */
-function claudeAgentbenchMcpInput(): ClaudeAgentbenchMcpInput {
+function claudeAgentbenchMcpInput(route?: AgentRunRoute | null): ClaudeAgentbenchMcpInput {
   const enabled = Boolean(AppStore.getSettings().geminiMcpBridgeEnabled)
   return {
     enabled,
     bridgeBinaryPath: process.execPath,
-    bridgeArgs: agentbenchMcpBridgeArgs()
+    bridgeArgs: agentbenchMcpBridgeArgs(),
+    ...(route?.appRunId ? { appRunId: route.appRunId } : {}),
+    ...(route?.appChatId ? { appChatId: route.appChatId } : {})
   }
 }
 
@@ -6282,18 +6287,20 @@ async function tryRunClaudeSdk(
   // had ever logged a `tools/call` (vs. Gemini-parented bridges which
   // accounted for every tool call in the log). Mirroring the CLI's
   // pre-approval list closes the gap.
-  const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput())
+  const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput(route))
   const claudeSdkAllowedTools = claudeSdkMcpServers ? buildClaudeAgentbenchAllowedToolNames() : null
   // Belt-and-braces env stamp on the SDK process: in addition to the
-  // per-server env block in the MCP config, set AGENTBENCH_PARENT_PROVIDER
-  // on the Claude CLI process itself. Some platforms / SDK code paths
-  // strip the MCP env block when re-spawning the bridge, so the value
-  // should also be inheritable from the parent. When the SDK env option
-  // is set, it REPLACES process.env entirely — so we splat process.env
-  // first to preserve the user's PATH etc.
+  // per-server env block in the MCP config, set provider/run/chat route
+  // stamps on the Claude CLI process itself. Some platforms / SDK code
+  // paths strip the MCP env block when re-spawning the bridge, so the
+  // values should also be inheritable from the parent. When the SDK env
+  // option is set, it REPLACES process.env entirely — so we splat
+  // process.env first to preserve the user's PATH etc.
   const claudeSdkEnv: Record<string, string | undefined> = {
     ...(process.env as Record<string, string | undefined>),
     AGENTBENCH_PARENT_PROVIDER: 'claude',
+    AGENTBENCH_RUN_ID: route.appRunId || '',
+    AGENTBENCH_CHAT_ID: route.appChatId || '',
     ...(claudeApiKey ? { ANTHROPIC_API_KEY: claudeApiKey } : {})
   }
   const stream = query({
@@ -6406,7 +6413,7 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   // <path>` pointing at a JSON file. Write a per-run config under the
   // OS temp dir, extend the argv with `--mcp-config` + `--allowedTools`,
   // and clean up the temp file when the run exits.
-  const mcpInput = claudeAgentbenchMcpInput()
+  const mcpInput = claudeAgentbenchMcpInput(route)
   let mcpConfigPath: string | null = null
   let args = baseArgs
   if (mcpInput.enabled) {
@@ -6441,12 +6448,14 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   }
   const claudeKey = getStoredClaudeApiKey()
   // Belt-and-braces env stamp: some platforms strip env on subprocess
-  // spawn, so set AGENTBENCH_PARENT_PROVIDER on the Claude CLI process
-  // env in addition to the per-server env block in the MCP config.
+  // spawn, so set provider/run/chat route stamps on the Claude CLI
+  // process env in addition to the per-server env block in the MCP config.
   // The bridge subprocess, started by the CLI's MCP host, then inherits
   // it regardless of how the host propagates env.
   const claudeProcessExtraEnv: Record<string, string> = {
     AGENTBENCH_PARENT_PROVIDER: 'claude',
+    AGENTBENCH_RUN_ID: route.appRunId || '',
+    AGENTBENCH_CHAT_ID: route.appChatId || '',
     ...(claudeKey ? { ANTHROPIC_API_KEY: claudeKey } : {})
   }
   runCliProviderProcess(event, 'claude', resolved.binaryPath, args, payload, {
@@ -7175,18 +7184,8 @@ function getActiveCodexRunState(): CodexRunState | null {
   const managedStates = activeCodexSessions
     .map((session) => getCodexStateFromSession(session))
     .filter((state): state is CodexRunState => Boolean(state))
-  // Same tiebreaker as RunManager.resolve — multiple active Codex
-  // sessions per chat are legitimate (per-chat run lanes). Picking the
-  // most-recently-updated session keeps MCP tool calls from breaking
-  // when the bridge subprocess has no route metadata to disambiguate.
   if (managedStates.length > 1) {
-    return (
-      [...managedStates].sort((a, b) => {
-        const aRun = a.appRunId ? (runManager.get(a.appRunId)?.updatedAt ?? 0) : 0
-        const bRun = b.appRunId ? (runManager.get(b.appRunId)?.updatedAt ?? 0) : 0
-        return bRun - aRun
-      })[0] ?? null
-    )
+    return null
   }
   const managed = managedStates[0]
   if (managed) return managed
@@ -7251,8 +7250,9 @@ function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext |
  *    provider-specific (CodexRunState etc.), but every session has a
  *    `sender`, `workspacePath`, `appChatId`, `runId` at the top level.
  *
- * Returns null when no active run for that provider exists — the MCP
- * tool call then errors back to the agent with a clear message.
+ * Returns null when no active run exists, or when multiple active runs
+ * exist and the bridge did not provide an appRunId/appChatId. In the
+ * latter case we fail closed rather than guessing a run.
  */
 function getAgentToolContext(
   parentProvider: ProviderId,
@@ -9241,6 +9241,24 @@ function geminiApiProviderDeps() {
       }
       const result = await executeGeminiMcpTool(toolName, args, route, 'gemini')
       return { text: result.text, isError: result.isError }
+    },
+    prepareToolContext: (
+      sender: Electron.WebContents,
+      runPayload: AgentRunPayload,
+      route: AgentRunRoute,
+      sessionId: string
+    ) => {
+      installGeminiToolContextForRun(
+        sender,
+        runPayload.scope === 'global' ? globalRunCwd() : runPayload.workspace || globalRunCwd(),
+        route,
+        runPayload.scope,
+        Boolean(runPayload.sessionTrust),
+        {
+          runPayload,
+          providerSessionId: sessionId
+        }
+      )
     },
     getChat: (chatId: string) => AppStore.getChat(chatId),
     saveChatLinkedSessionId: (chatId: string, sessionId: string) => {
@@ -12007,11 +12025,17 @@ async function executeGeminiMcpTool(
 ): Promise<McpToolExecutionResult> {
   const context = getAgentToolContext(parentProvider, route)
   if (!context) {
+    const hasExplicitRoute = Boolean(route?.appRunId || route?.appChatId)
+    const activeCount = runManager.getActiveByProvider(parentProvider).length
+    const error =
+      !hasExplicitRoute && activeCount > 1
+        ? `AGBench received an unrouted ${providerLabel(parentProvider)} MCP tool call while ${activeCount} ${providerLabel(parentProvider)} runs are active. Tool execution was blocked to avoid applying it to the wrong run.`
+        : `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`
     return {
       ...mcpStructuredJsonResult({
         ok: false,
         tool: toolName,
-        error: `AGBench has no active ${providerLabel(parentProvider)} workspace context for this MCP tool call.`
+        error
       }),
       isError: true
     }
@@ -14181,6 +14205,22 @@ async function prepareGeminiMcpBridgeForRun(
     }
   }
 
+  return installGeminiToolContextForRun(sender, resolvedCwd, routed, scope, sessionTrust, options)
+}
+
+function installGeminiToolContextForRun(
+  sender: Electron.WebContents,
+  cwd: string,
+  route?: AgentRunRoute | null,
+  scope: ChatScope = 'workspace',
+  sessionTrust: boolean = false,
+  options: {
+    runPayload?: AgentRunPayload
+    providerSessionId?: string | null
+  } = {}
+): AgentRunRoute {
+  const routed = routeWithRunId('gemini', route)
+  const resolvedCwd = resolve(cwd)
   activeGeminiToolContext = {
     sender,
     scope,
@@ -14190,6 +14230,7 @@ async function prepareGeminiMcpBridgeForRun(
     sessionTrust: Boolean(options.runPayload?.sessionTrust ?? sessionTrust),
     externalPathGrants: options.runPayload?.externalPathGrants,
     runtimeProfileId: options.runPayload?.runtimeProfileId,
+    providerSessionId: options.providerSessionId ?? options.runPayload?.providerSessionId,
     ...routed
   }
   registerRunSession(
@@ -14309,7 +14350,13 @@ function resolveWorkspaceChild(workspace: string, filePath: string): string {
   const workspaceRoot = resolve(workspace)
   const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
   const rel = relative(workspaceRoot, targetPath)
-  if (rel === '' || rel.startsWith('..') || rel.includes(`..${sep}`) || isAbsolute(rel)) {
+  if (
+    rel === '' ||
+    rel === '..' ||
+    rel.startsWith(`..${sep}`) ||
+    isAbsolute(rel) ||
+    !isPathInsideWorkspace(workspaceRoot, targetPath)
+  ) {
     throw new Error('Path is outside the workspace.')
   }
   return targetPath
@@ -15489,6 +15536,7 @@ if (isGeminiMcpBridgeProcess) {
       bridgeBroadcaster = new BridgeBroadcaster({
         daemon: { notify: (m, p) => daemon.notify(m, p) },
         appStore: AppStore,
+        allowlist: bridgeAllowlist,
         log: (line) => {
           console.log(line)
         }

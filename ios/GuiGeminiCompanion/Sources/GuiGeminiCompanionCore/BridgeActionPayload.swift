@@ -81,13 +81,10 @@ public enum BridgeActionPayload: Sendable, Equatable {
         env: ApnsEnv
     )
     /// Toggle the desktop's session-scope "YOLO" (auto-approve every
-    /// guarded tool) flag. When `enabled == true` the desktop must flip
-    /// `sessionYoloState.enabled` and bypass all subsequent approval
-    /// prompts for the session; setting back to `false` restores the
-    /// normal approval flow. The user wants this surfaced on iOS for
-    /// unattended overnight runs so the iPhone can flip YOLO without
-    /// returning to the Mac.
-    case setYoloMode(enabled: Bool)
+    /// guarded tool) flag. The workspace id gates this escalation through
+    /// the desktop's remote allowlist even though the resulting desktop
+    /// flag is currently session-wide.
+    case setYoloMode(workspaceId: String, enabled: Bool)
     /// Toggle a pinned-chat flag in the desktop's AppStore. Pinned chats
     /// sort to the top of the sidebar and survive the workspace
     /// truncation cap.
@@ -165,9 +162,10 @@ public enum BridgeActionPayload: Sendable, Equatable {
                 "deviceToken": deviceToken,
                 "env": env.rawValue
             ]
-        case .setYoloMode(let enabled):
+        case .setYoloMode(let workspaceId, let enabled):
             return [
                 "kind": "setYoloMode",
+                "workspaceId": workspaceId,
                 "enabled": enabled
             ]
         case .togglePinChat(let workspaceId, let appChatId, let pinned):

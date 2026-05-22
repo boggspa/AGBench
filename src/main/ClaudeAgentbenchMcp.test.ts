@@ -47,6 +47,19 @@ describe('buildClaudeAgentbenchMcpServers', () => {
     })
   })
 
+  it('adds run and chat route stamps when provided', () => {
+    const servers = buildClaudeAgentbenchMcpServers({
+      ...fixture,
+      appRunId: 'run-1',
+      appChatId: 'chat-1'
+    })
+    expect(servers?.AGBench.env).toEqual({
+      AGENTBENCH_PARENT_PROVIDER: 'claude',
+      AGENTBENCH_RUN_ID: 'run-1',
+      AGENTBENCH_CHAT_ID: 'chat-1'
+    })
+  })
+
   it('uses the AGBench server name (matches Gemini/Codex bridge registrations)', () => {
     const servers = buildClaudeAgentbenchMcpServers(fixture)!
     expect(Object.keys(servers)).toEqual([CLAUDE_AGENTBENCH_SERVER_NAME])

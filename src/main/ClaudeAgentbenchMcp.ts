@@ -6,8 +6,9 @@
 //  - SDK path: the Anthropic Agent SDK accepts an `mcpServers` map on
 //    the `query({...})` Options object. Each entry is a McpStdioServerConfig
 //    of `{ type, command, args, env }`. The bridge subprocess inherits
-//    AGENTBENCH_PARENT_PROVIDER from the `env` block, then stamps every
-//    broker request with `parentProvider: 'claude'`.
+//    AGENTBENCH_PARENT_PROVIDER plus any per-run route stamps from the
+//    `env` block, then stamps every broker request with provider/run/chat
+//    metadata when available.
 //  - CLI path: Claude Code 2.1.x exposes `--mcp-config <configs...>`
 //    which accepts JSON file paths whose `mcpServers` map matches the
 //    SDK shape. We write the file under `os.tmpdir()` (or app temp) per
@@ -45,6 +46,9 @@ export interface ClaudeAgentbenchMcpInput {
   bridgeBinaryPath: string
   /** argv passed to the bridge subprocess (already includes flag literals). */
   bridgeArgs: string[]
+  /** Optional AGBench route stamps for per-run MCP subprocesses. */
+  appRunId?: string
+  appChatId?: string
 }
 
 /**
@@ -69,9 +73,10 @@ export interface ClaudeAgentbenchMcpServers {
  * (SDK path) or written into the `--mcp-config` JSON file (CLI path).
  * Returns null when disabled so the caller can omit the option entirely.
  *
- * The `AGENTBENCH_PARENT_PROVIDER=claude` env stamp lives on the MCP
- * server entry's `env` block: the bridge subprocess inherits it and
- * the broker uses it to route approvals + audit events to Claude.
+ * The env stamp lives on the MCP server entry's `env` block: the bridge
+ * subprocess inherits provider plus run/chat metadata and the broker uses
+ * it to route approvals + audit events to the exact Claude run when
+ * available.
  */
 export function buildClaudeAgentbenchMcpServers(
   input: ClaudeAgentbenchMcpInput
@@ -82,8 +87,16 @@ export function buildClaudeAgentbenchMcpServers(
       type: 'stdio',
       command: input.bridgeBinaryPath,
       args: [...input.bridgeArgs],
-      env: { AGENTBENCH_PARENT_PROVIDER: 'claude' }
+      env: buildClaudeAgentbenchMcpEnv(input)
     }
+  }
+}
+
+function buildClaudeAgentbenchMcpEnv(input: ClaudeAgentbenchMcpInput): Record<string, string> {
+  return {
+    AGENTBENCH_PARENT_PROVIDER: 'claude',
+    ...(input.appRunId ? { AGENTBENCH_RUN_ID: input.appRunId } : {}),
+    ...(input.appChatId ? { AGENTBENCH_CHAT_ID: input.appChatId } : {})
   }
 }
 

@@ -222,6 +222,17 @@ export interface GeminiApiProviderDeps {
     args: unknown,
     route: AgentRunRoute | null
   ) => Promise<GeminiApiMcpExecutionResult>
+  /** Phase M1: install the host-side tool context for API-runtime
+   * function calls. The API path does not spawn the Gemini CLI MCP
+   * bridge, but it still routes model function calls through the same
+   * host executor, so `index.ts` must register sender/cwd/run metadata
+   * before the first possible tool call. */
+  prepareToolContext?: (
+    sender: Electron.WebContents,
+    payload: AgentRunPayload,
+    route: AgentRunRoute,
+    sessionId: string
+  ) => Promise<void> | void
   /** Phase M1 Step 5: chat-history accessor for multi-turn replay. The
    *  API path is stateless per request, so to give the model the same
    *  multi-turn awareness the CLI gets via `--resume`, we read the
@@ -659,6 +670,21 @@ export async function tryRunGeminiApi(
     deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
     deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
     return true
+  }
+
+  if (deps.prepareToolContext) {
+    try {
+      await deps.prepareToolContext(event.sender, payload, normalizedRoute, sessionId)
+      if (normalizedRoute.appRunId) {
+        deps.runManager.attachAbortController(normalizedRoute.appRunId, controller)
+      }
+    } catch (error) {
+      const message = `Failed to prepare Gemini API tool context: ${error instanceof Error ? error.message : String(error)}`
+      deps.sendAgentCompatError(event.sender, 'gemini', message, normalizedRoute)
+      deps.sendAgentCompatExit(event.sender, 'gemini', 1, normalizedRoute)
+      deps.runManager.finish(normalizedRoute.appRunId, 'failed' as RunSessionStatus)
+      return true
+    }
   }
 
   // Phase M1 Step 5: multi-turn history replay.

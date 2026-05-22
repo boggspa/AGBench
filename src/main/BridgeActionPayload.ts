@@ -118,6 +118,9 @@ export interface BridgeCancelRunAction {
 
 export interface BridgeSetYoloModeAction {
   kind: 'setYoloMode'
+  /** Used to gate this process-wide escalation through the remote
+   * workspace allowlist. */
+  workspaceId: string
   enabled: boolean
 }
 
@@ -241,11 +244,11 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
       return payload.workspaceId
     case 'registerApnsToken':
-    case 'setYoloMode':
     case 'unknown':
       return null
   }
@@ -262,11 +265,11 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
     case 'questionReject':
     case 'composerPrompt':
     case 'cancelRun':
+    case 'setYoloMode':
     case 'togglePinChat':
     case 'togglePinWorkspace':
       return true
     case 'registerApnsToken':
-    case 'setYoloMode':
       return false
     case 'unknown':
       // Unknown variants are rejected upstream; the gating question
@@ -438,7 +441,7 @@ function isCancelRun(v: Record<string, unknown>): boolean {
 }
 
 function isSetYoloMode(v: Record<string, unknown>): boolean {
-  return typeof v.enabled === 'boolean'
+  return typeof v.workspaceId === 'string' && typeof v.enabled === 'boolean'
 }
 
 function isTogglePinChat(v: Record<string, unknown>): boolean {

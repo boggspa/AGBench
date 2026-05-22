@@ -170,8 +170,12 @@ final class AppState {
     /// for any approval already in flight when the toggle flips.
     func setYoloMode(enabled: Bool) async {
         guard let client = bridgeClient else { return }
+        guard let workspaceId = workspaceIdForYoloToggle() else {
+            lastPushMessage = "Select an allowlisted workspace before toggling YOLO mode"
+            return
+        }
         do {
-            let ack = try await client.sendAction(.setYoloMode(enabled: enabled))
+            let ack = try await client.sendAction(.setYoloMode(workspaceId: workspaceId, enabled: enabled))
             if ack?.accepted == true {
                 yoloModeEnabled = enabled
             } else {
@@ -182,6 +186,18 @@ final class AppState {
             os_log("setYoloMode send failed: %{public}@", log: log, type: .error, error.localizedDescription)
             lastPushMessage = "YOLO mode update failed: \(error.localizedDescription)"
         }
+    }
+
+    private func workspaceIdForYoloToggle() -> String? {
+        if let composerWorkspace = composerViewModel?.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+           !composerWorkspace.isEmpty {
+            return composerWorkspace
+        }
+        if let approvalWorkspace = approvalViewModel?.pending.first?.workspaceId.trimmingCharacters(in: .whitespacesAndNewlines),
+           !approvalWorkspace.isEmpty {
+            return approvalWorkspace
+        }
+        return sidebarStore.workspaces.first?.id
     }
 
     // MARK: - APNs

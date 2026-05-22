@@ -122,8 +122,9 @@ final class BridgeActionPayloadTests: XCTestCase {
     }
 
     func testSetYoloModeEncoding() throws {
-        let dict = parse(try BridgeActionPayload.setYoloMode(enabled: true).encode())
+        let dict = parse(try BridgeActionPayload.setYoloMode(workspaceId: "ws-1", enabled: true).encode())
         XCTAssertEqual(dict["kind"] as? String, "setYoloMode")
+        XCTAssertEqual(dict["workspaceId"] as? String, "ws-1")
         XCTAssertEqual(dict["enabled"] as? Bool, true)
     }
 

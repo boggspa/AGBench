@@ -146,10 +146,20 @@ describe('decodeBridgeActionPayload', () => {
     it('decodes setYoloMode', () => {
       const wire = encode({
         kind: 'setYoloMode',
+        workspaceId: 'ws-1',
         enabled: true
       })
       const { payload } = decodeBridgeActionPayload(wire)
-      expect(payload).toEqual({ kind: 'setYoloMode', enabled: true })
+      expect(payload).toEqual({ kind: 'setYoloMode', workspaceId: 'ws-1', enabled: true })
+    })
+
+    it('rejects workspace-less setYoloMode payloads', () => {
+      const wire = encode({
+        kind: 'setYoloMode',
+        enabled: true
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('unknown')
     })
 
     it('decodes togglePinChat', () => {
@@ -425,6 +435,10 @@ describe('workspaceIdFromPayload', () => {
         expected: 'ws-e'
       },
       {
+        payload: { kind: 'setYoloMode', workspaceId: 'ws-yolo', enabled: true },
+        expected: 'ws-yolo'
+      },
+      {
         payload: { kind: 'togglePinChat', workspaceId: 'ws-f', appChatId: 'chat-1', pinned: true },
         expected: 'ws-f'
       },
@@ -452,10 +466,6 @@ describe('workspaceIdFromPayload', () => {
       })
     ).toBeNull()
   })
-
-  it('returns null for setYoloMode (session-level, not workspace-bound)', () => {
-    expect(workspaceIdFromPayload({ kind: 'setYoloMode', enabled: true })).toBeNull()
-  })
 })
 
 describe('payloadRequiresWorkspaceGating', () => {
@@ -472,6 +482,7 @@ describe('payloadRequiresWorkspaceGating', () => {
       { kind: 'questionReject', workspaceId: 'w', threadId: 't', promptId: 'p' },
       { kind: 'composerPrompt', workspaceId: 'w', threadId: 't', provider: 'gemini', text: 'x' },
       { kind: 'cancelRun', workspaceId: 'w', threadId: 't', provider: 'gemini', runId: 'r' },
+      { kind: 'setYoloMode', workspaceId: 'w', enabled: false },
       { kind: 'togglePinChat', workspaceId: 'w', appChatId: 'chat', pinned: true },
       { kind: 'togglePinWorkspace', workspaceId: 'w', pinned: true }
     ]
@@ -489,10 +500,6 @@ describe('payloadRequiresWorkspaceGating', () => {
         env: 'production'
       })
     ).toBe(false)
-  })
-
-  it('returns false for setYoloMode (session action)', () => {
-    expect(payloadRequiresWorkspaceGating({ kind: 'setYoloMode', enabled: false })).toBe(false)
   })
 
   it('returns true defensively for unknown variants', () => {
@@ -538,7 +545,7 @@ describe('payloadIsMutating', () => {
   })
 
   it('classifies session and pin controls as mutating', () => {
-    expect(payloadIsMutating({ kind: 'setYoloMode', enabled: true })).toBe(true)
+    expect(payloadIsMutating({ kind: 'setYoloMode', workspaceId: 'w', enabled: true })).toBe(true)
     expect(
       payloadIsMutating({
         kind: 'togglePinChat',

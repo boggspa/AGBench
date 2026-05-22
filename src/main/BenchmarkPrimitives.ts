@@ -14,6 +14,7 @@ import type {
   BenchmarkTaskManifest,
   ProviderId
 } from './store/types'
+import { isPathInsideWorkspace } from './AgenticPolicy'
 
 export interface CaptureBenchmarkEnvironmentOptions {
   workspacePath?: string
@@ -135,7 +136,13 @@ function resolveWorkspaceChild(workspacePath: string, relativePath: string): str
   const workspaceRoot = path.resolve(workspacePath)
   const resolved = path.resolve(workspaceRoot, relativePath)
   const rel = path.relative(workspaceRoot, resolved)
-  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+  if (
+    rel === '' ||
+    rel === '..' ||
+    rel.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(rel) ||
+    !isPathInsideWorkspace(workspaceRoot, resolved)
+  ) {
     throw new Error(`Benchmark path escapes the workspace: ${relativePath}`)
   }
   return resolved

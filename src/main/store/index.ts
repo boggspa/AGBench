@@ -917,7 +917,7 @@ export class AppStore {
       cachedSequence !== undefined ? cachedSequence + 1 : nextRunEventSequence(existingEvents)
     const previousHash = cachedHash || lastRunEventHash(existingEvents)
     const settings = this.getSettings()
-    const artifacts = appendRunStreamArtifact(input, sequence)
+    const artifacts = settings.storeRawEvents ? appendRunStreamArtifact(input, sequence) : undefined
     const record = createRunEventRecord(input, sequence, {
       storeRawPayload: settings.storeRawEvents,
       previousHash,

@@ -46,6 +46,12 @@ function makeDeps(overrides: {
     args: unknown,
     route: AgentRunRoute | null
   ) => Promise<{ text: string; isError?: boolean }>
+  prepareToolContext?: (
+    sender: Electron.WebContents,
+    payload: AgentRunPayload,
+    route: AgentRunRoute,
+    sessionId: string
+  ) => Promise<void> | void
   // Phase M1 Step 5 deps (optional — defaults to no chat / no save so
   // existing tests that don't care about history get a clean single-turn
   // request).
@@ -70,6 +76,11 @@ function makeDeps(overrides: {
   exits: SendExitCall[]
   finishes: Array<{ runId: string | undefined; status: string }>
   toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }>
+  toolContextPreparations: Array<{
+    payload: AgentRunPayload
+    route: AgentRunRoute
+    sessionId: string
+  }>
   sessionSaves: Array<{ chatId: string; sessionId: string }>
   usageRecords: Array<Omit<UsageRecord, 'id' | 'timestamp'>>
   migrationNotices: Array<{ chatId: string; message: ChatMessage }>
@@ -79,6 +90,11 @@ function makeDeps(overrides: {
   const exits: SendExitCall[] = []
   const finishes: Array<{ runId: string | undefined; status: string }> = []
   const toolCalls: Array<{ toolName: string; args: unknown; route: AgentRunRoute | null }> = []
+  const toolContextPreparations: Array<{
+    payload: AgentRunPayload
+    route: AgentRunRoute
+    sessionId: string
+  }> = []
   const sessionSaves: Array<{ chatId: string; sessionId: string }> = []
   const usageRecords: Array<Omit<UsageRecord, 'id' | 'timestamp'>> = []
   const migrationNotices: Array<{ chatId: string; message: ChatMessage }> = []
@@ -149,6 +165,12 @@ function makeDeps(overrides: {
       // that exercise the tool-calling loop will override this.
       return { text: '', isError: false }
     },
+    prepareToolContext: overrides.prepareToolContext
+      ? (sender, payload, route, sessionId) => {
+          toolContextPreparations.push({ payload, route, sessionId })
+          return overrides.prepareToolContext!(sender, payload, route, sessionId)
+        }
+      : undefined,
     getChat: overrides.getChat,
     saveChatLinkedSessionId: overrides.saveChatLinkedSessionId
       ? (chatId, sessionId) => {
@@ -184,6 +206,7 @@ function makeDeps(overrides: {
     exits,
     finishes,
     toolCalls,
+    toolContextPreparations,
     sessionSaves,
     usageRecords,
     migrationNotices
@@ -575,6 +598,37 @@ describe('GeminiApiProvider (Phase M1 Step 3 — function calling)', () => {
       .filter((line) => line.payload.type === 'content')
       .map((line) => line.payload.text)
     expect(texts).toEqual(['Got it.'])
+  })
+
+  it('prepares the host tool context before dispatching API function calls', async () => {
+    const order: string[] = []
+    const { loader } = scriptedSdk([
+      [{ functionCalls: [{ name: 'read_file', args: { path: 'README.md' } }] }],
+      [{ text: 'done' }]
+    ])
+    const { deps, toolContextPreparations, toolCalls } = makeDeps({
+      profiles: [makeApiKeyProfile()],
+      defaultProfileId: 'profile-1',
+      loadSdk: loader,
+      mcpTools: [makeMcpTool('read_file')],
+      prepareToolContext: () => {
+        order.push('prepare')
+      },
+      executeMcpTool: async () => {
+        order.push('tool')
+        return { text: 'file contents', isError: false }
+      }
+    })
+
+    await tryRunGeminiApi(stubEvent, basePayload, baseRoute, deps)
+
+    expect(order).toEqual(['prepare', 'tool'])
+    expect(toolContextPreparations).toHaveLength(1)
+    expect(toolContextPreparations[0]).toMatchObject({
+      route: baseRoute,
+      sessionId: 'api://chat-1'
+    })
+    expect(toolCalls).toHaveLength(1)
   })
 
   it('handles multi-round tool use (two distinct tools, each fed back)', async () => {
