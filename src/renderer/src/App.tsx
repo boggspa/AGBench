@@ -3614,7 +3614,13 @@ const buildRateLimitWindow = (
     limitLabel: `${Math.round(remainingPercent)}% remaining`,
     resetAt: primary.resetsAt ? new Date(primary.resetsAt * 1000).toISOString() : undefined,
     trackingOnly: true,
-    usedPercent: remainingPercent
+    // Honest names: usedPercent = USED, remainingPercent = REMAINING.
+    // (Earlier this code stored `remainingPercent` in `usedPercent`
+    // because the bar visualised "available capacity"; the L6
+    // follow-up flips the bar to fill with USAGE and updates the
+    // naming to match.)
+    usedPercent,
+    remainingPercent
   }
 }
 
@@ -3643,6 +3649,7 @@ const buildCodexUsageWindows = (
               Number(windowEntry.remainingPercent ?? 100 - Number(windowEntry.usedPercent || 0))
             )
           )
+          const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
           return {
             id: `codex-account-${windowEntry.id || index}`,
             label,
@@ -3651,7 +3658,9 @@ const buildCodexUsageWindows = (
             limitLabel: windowEntry.limitLabel || `${Math.round(remainingPercent)}% remaining`,
             resetAt: windowEntry.resetAt,
             trackingOnly: false,
-            usedPercent: remainingPercent
+            // Honest names: usedPercent = USED, remainingPercent = REMAINING.
+            usedPercent,
+            remainingPercent
           }
         })
         .filter(
@@ -6283,9 +6292,13 @@ function App(): React.JSX.Element {
       const label = String(windowEntry?.label || '').trim()
       const limitLabel = String(windowEntry?.limitLabel || '').trim()
       if (!label || !limitLabel) return null
+      // Compute REMAINING honestly from whichever raw percent the
+      // upstream IPC provided. (Some sources expose `remainingPercent`
+      // directly; others expose `usedPercent` and we derive remaining
+      // as the complement.)
       const rawRemainingPercent = Number(windowEntry?.remainingPercent)
       const rawUsedPercent = Number(windowEntry?.usedPercent)
-      const displayPercent =
+      const remainingPercentRaw =
         provider === 'claude'
           ? Number.isFinite(rawRemainingPercent)
             ? rawRemainingPercent
@@ -6295,10 +6308,13 @@ function App(): React.JSX.Element {
           : Number.isFinite(rawRemainingPercent)
             ? rawRemainingPercent
             : Number.isFinite(rawUsedPercent)
-              ? rawUsedPercent
+              ? 100 - rawUsedPercent
               : undefined
-      const clampedPercent = Number.isFinite(displayPercent)
-        ? Math.max(0, Math.min(100, displayPercent as number))
+      const remainingPercent = Number.isFinite(remainingPercentRaw)
+        ? Math.max(0, Math.min(100, remainingPercentRaw as number))
+        : undefined
+      const usedPercent = Number.isFinite(remainingPercent)
+        ? Math.max(0, Math.min(100, 100 - (remainingPercent as number)))
         : undefined
       return {
         id: String(windowEntry?.id || fallbackId),
@@ -6308,8 +6324,9 @@ function App(): React.JSX.Element {
         limitLabel,
         resetAt: typeof windowEntry?.resetAt === 'string' ? windowEntry.resetAt : undefined,
         trackingOnly: false,
-        usedPercent: clampedPercent,
-        remainingPercent: clampedPercent
+        // Honest names: usedPercent = USED, remainingPercent = REMAINING.
+        usedPercent,
+        remainingPercent
       }
     }
 

@@ -1,5 +1,5 @@
 /*
- * QuotaProgressBar — Phase L6 slice 2.
+ * QuotaProgressBar — Phase L6 slice 2 (+ follow-up).
  *
  * Per-window progress bar with a provider-colored fill that warms
  * through amber → red as the fill approaches the limit. Visual
@@ -7,19 +7,30 @@
  * (`Shared/Views/QuotaCardView.swift:880-959`):
  *
  *   - Bar fill width === `fraction` (0..1).
- *   - Fill background is a left-to-right linear gradient with three
- *     stops: accent at 0, amber starting at `0.6 / fraction`, red
- *     at `0.9 / fraction`. When the fraction is below the warning
- *     thresholds those stops clamp to 1.0 (off the end of the fill),
- *     so the bar stays accent-coloured. As the fill grows past 60%
- *     of the limit the amber stop slides into view; past 90% the
- *     red stop appears. The fill therefore WARMS as it lengthens,
- *     rather than abruptly switching colour at a threshold.
+ *   - The gradient stops are positioned in ABSOLUTE TRACK
+ *     coordinates (not relative to the fill width):
+ *       0%   accent
+ *       60%  accent     (hold)
+ *       90%  amber  (#F59E0B)
+ *       100% red    (#DC2626)
+ *     The fill div is `fraction` of the track wide and shows only
+ *     the leftmost `fraction` of that gradient. This means:
  *
- * Pure presentational component. `pace` and the heatmap are wired
- * by slices 3 + 5.
+ *       fraction ≤ 0.60 → bar is purely accent.
+ *       0.60 < f ≤ 0.90 → bar starts accent, transitions toward
+ *                          amber across the 60-90% band of the
+ *                          track. Amber only fully arrives once
+ *                          the bar passes 90% of the track.
+ *       0.90 < f ≤ 1.00 → red mixes in across the last 10%.
+ *
+ *     Implementation note: we stretch the gradient over the full
+ *     track by setting `backgroundSize: (100 / fraction)%` on the
+ *     fill div. The fill div's own `width: fraction*100%` then
+ *     clips the gradient to the correct slice.
+ *
+ * Pure presentational component. `pace` is wired in slice 3.
  */
-import type { ReactElement } from 'react'
+import type { ReactElement, CSSProperties } from 'react'
 import { paceColorHex, paceShouldSurface, type QuotaPace } from '../lib/QuotaPace'
 
 interface QuotaProgressBarProps {
@@ -45,21 +56,42 @@ interface QuotaProgressBarProps {
 }
 
 /**
- * Build the per-bar gradient. Stops are POSITIONS WITHIN THE FILL
- * (not within the track), so they only become visible when the
- * fill is wide enough to expose them. See file-level comment.
+ * Build the per-bar gradient style. Stops are positioned in
+ * ABSOLUTE TRACK COORDINATES, not relative to the fill, so the
+ * warning band lives at the same x-position regardless of how
+ * full the bar is.
+ *
+ * Trick: we stretch the gradient over the full track by setting
+ * `backgroundSize: (100 / fraction)%` on the fill div, which is
+ * itself `fraction * 100%` wide. The fill div therefore shows
+ * only the leftmost `fraction` of the gradient.
+ *   fraction = 0.50 → backgroundSize 200% → fill shows the
+ *                     first 50% of the gradient (= pure accent).
+ *   fraction = 0.80 → backgroundSize 125% → fill shows 0-80%
+ *                     of the gradient: accent through 60%, then
+ *                     accent→amber to 80%. Red never appears.
+ *   fraction = 0.95 → backgroundSize ~105% → fill shows 0-95%
+ *                     of the gradient: accent / amber / amber→red.
  */
-function buildProgressGradient(fraction: number, accent: string): string {
-  if (fraction <= 0) return 'transparent'
-  const orangeStart = Math.min(1, 0.6 / fraction)
-  const redStart = Math.min(1, 0.9 / fraction)
-  return [
-    'linear-gradient(90deg, ',
-    `${accent} 0%, `,
-    `var(--quota-warning-color, #F59E0B) ${(orangeStart * 100).toFixed(2)}%, `,
-    `var(--quota-danger-color, #DC2626) ${(redStart * 100).toFixed(2)}%`,
-    ')'
-  ].join('')
+function buildProgressGradient(
+  fraction: number,
+  accent: string
+): Pick<CSSProperties, 'background' | 'backgroundSize' | 'backgroundRepeat'> {
+  if (fraction <= 0) {
+    return { background: 'transparent', backgroundSize: 'auto', backgroundRepeat: 'no-repeat' }
+  }
+  return {
+    background: [
+      'linear-gradient(90deg, ',
+      `${accent} 0%, `,
+      `${accent} 60%, `,
+      'var(--quota-warning-color, #F59E0B) 90%, ',
+      'var(--quota-danger-color, #DC2626) 100%',
+      ')'
+    ].join(''),
+    backgroundSize: `${(100 / fraction).toFixed(2)}% 100%`,
+    backgroundRepeat: 'no-repeat'
+  }
 }
 
 export function QuotaProgressBar({
@@ -77,7 +109,10 @@ export function QuotaProgressBar({
   // an empty bar (no fill div).
   const renderFraction = clampedFraction > 0 && clampedFraction < 0.03 ? 0.03 : clampedFraction
   const widthPercent = renderFraction * 100
-  const fillGradient = buildProgressGradient(clampedFraction, accent)
+  // Drive the gradient off `renderFraction` so the absolute-track
+  // stop positions stay correctly anchored even when we expand a
+  // tiny fraction to the 3% visual floor.
+  const fillStyle = buildProgressGradient(renderFraction, accent)
   const surfacePace = pace !== null && paceShouldSurface(pace)
 
   return (
@@ -95,7 +130,7 @@ export function QuotaProgressBar({
           className="quota-progress-fill"
           style={{
             width: `${widthPercent.toFixed(2)}%`,
-            background: fillGradient
+            ...fillStyle
           }}
         />
       )}

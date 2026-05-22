@@ -61,11 +61,11 @@ function ProviderLabel({
 }
 
 /**
- * Derive the [0, 1] fill fraction the QuotaProgressBar expects from
- * the aggregator's `usedPercent` / `remainingPercent` fields. The
- * aggregator may populate either depending on how the source provider
- * reports quota — we prefer USED, derive USED from REMAINING when only
- * remaining is present.
+ * Derive the [0, 1] USED fraction the QuotaProgressBar expects from
+ * the aggregator's percent fields. As of the Phase L6 follow-up,
+ * `UsageWindowAggregate.usedPercent` is HONEST — actually USED
+ * percent — and `remainingPercent` is its complement. We prefer
+ * `usedPercent` when set, derive from `remainingPercent` otherwise.
  */
 function fillFractionForWindow(window: UsageWindowAggregate): number {
   if (Number.isFinite(window.usedPercent)) {

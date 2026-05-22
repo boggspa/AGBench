@@ -1,5 +1,5 @@
 /*
- * ProviderLogoTile — Phase L6 slice 4.
+ * ProviderLogoTile — Phase L6 slice 4 (+ follow-up).
  *
  * Renders a provider's app logo inside a tinted rounded-rect
  * container, matching another-project's `ProviderBrandIconView`
@@ -8,18 +8,23 @@
  * logo PNG (typically dark glyph on transparent) reads cleanly
  * across both light and dark themes.
  *
- * Asset coverage today (slice 4):
- *   - Codex / Claude / Gemini  → PNG logos copied from
- *     another-project's `Assets.xcassets`.
- *   - Kimi  → no bundled logo; falls back to AGBench's existing
- *     inline-SVG `ProviderBadgeIcon`. another-project has the same
- *     fallback (SF symbol) so this is a deliberate parity choice
- *     rather than a missing asset.
+ * Asset coverage:
+ *   - Codex   → extracted from `/Applications/Codex.app`'s icns
+ *               (the real Codex app icon, NOT another-project's
+ *               `ProviderCodexLogo.imageset` — that asset is the
+ *               OpenAI spiral, byte-identical with the ChatGPT
+ *               imageset, and was reading as "ChatGPT logo" in
+ *               our card).
+ *   - Claude  → from another-project's `Assets.xcassets`.
+ *   - Gemini  → from another-project's `Assets.xcassets`.
+ *   - Kimi    → extracted from `/Applications/Kimi.app`'s icns.
+ *               another-project falls back to an SF symbol here;
+ *               we have a real PNG so we wire it directly.
  *
  * The component is purely visual — no state, no IPC. The
  * provider→logo mapping is a static map kept here so future
- * additions (Kimi logo if one becomes available, ChatGPT/Windsurf
- * if AGBench ever drives them) are a one-line edit.
+ * additions (ChatGPT/Windsurf if AGBench ever drives them) are
+ * a one-line edit.
  */
 import type { ReactElement } from 'react'
 import type { ProviderId } from '../../../main/store/types'
@@ -28,11 +33,13 @@ import { ProviderBadgeIcon } from './Sidebar'
 import claudeLogo from '../assets/provider-logos/claude.png'
 import codexLogo from '../assets/provider-logos/codex.png'
 import geminiLogo from '../assets/provider-logos/gemini.png'
+import kimiLogo from '../assets/provider-logos/kimi.png'
 
 const PROVIDER_LOGO_SOURCES: Partial<Record<ProviderId, string>> = {
   claude: claudeLogo,
   codex: codexLogo,
-  gemini: geminiLogo
+  gemini: geminiLogo,
+  kimi: kimiLogo
 }
 
 interface ProviderLogoTileProps {
