@@ -2351,31 +2351,321 @@ button.sidebar-item {
   gap: 4px;
 }
 
-.model-usage-window-row,
+/* Phase L6 slice 2 — Model Usage Card window-row layout. Mirrors the
+ * compact another-project card: bold label on the left, reset
+ * timestamp in the middle, percentage chip on the right, the
+ * provider-coloured progress bar underneath, the limit-label
+ * underneath that. Tight vertical spacing — 4px between elements. */
+.model-usage-window-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.model-usage-window-label {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.model-usage-window-reset {
+  color: var(--text-tertiary);
+  flex: 1;
+}
+
+.model-usage-window-percent {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
 .model-usage-window-meta {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   font-size: 10px;
   color: var(--text-tertiary);
 }
 
-.model-usage-window-row span:first-child {
+/* Phase L6 slice 2 — the new QuotaProgressBar component. Track is
+ * a hairline rounded pill; fill is a provider-coloured gradient
+ * that warms through amber → red as utilisation rises (the stops
+ * are computed per-bar in `QuotaProgressBar.tsx`). The legacy
+ * `.model-usage-meter-fill.model-usage-window-fill` rule is
+ * retired — bars now go through the new component. */
+.quota-progress-bar {
+  position: relative;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  overflow: hidden;
+}
+
+.quota-progress-bar-emphasised {
+  height: 8px;
+  border-radius: 4px;
+}
+
+.quota-progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 0%;
+  border-radius: inherit;
+  transition: width 280ms ease;
+}
+
+/* Phase L6 slice 3 — pace tick. Small vertical marker on the bar
+ * at `expectedFraction`. Colour-coded green for ahead, orange for
+ * behind (set per-tick via inline style from `paceColorHex`).
+ * Hidden by the parent component when the window is on-track
+ * (within ±2% tolerance) so the marker only catches the eye when
+ * there's something worth flagging. */
+.quota-pace-tick {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  border-radius: 1px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  box-shadow: 0 0 4px -1px currentColor;
+}
+[data-reduce-motion="true"] .quota-progress-fill {
+  transition: none;
+}
+
+/* Phase L6 slice 2 — tier badge pill (Pro / Max x5 / Moderato /
+ * Google Account etc.). Picks up the provider colour from the
+ * surrounding `.provider-{id}` class so each provider's badge
+ * reads in its own brand colour. */
+.model-usage-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--text-secondary);
-  font-weight: 650;
+  background: color-mix(in srgb, currentColor 14%, transparent);
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  line-height: 1.25;
+}
+.model-usage-item.provider-gemini .model-usage-tier-badge { color: var(--provider-gemini-color); }
+.model-usage-item.provider-codex  .model-usage-tier-badge { color: var(--provider-codex-color); }
+.model-usage-item.provider-claude .model-usage-tier-badge { color: var(--provider-claude-color); }
+.model-usage-item.provider-kimi   .model-usage-tier-badge { color: var(--provider-kimi-color); }
+
+.model-usage-provider-name {
+  color: var(--text-primary);
 }
 
-.model-usage-window-row span:last-child,
-.model-usage-window-meta span:last-child {
-  text-align: right;
+/* Phase L6 slice 4 — provider logo tile. Tinted rounded-rect
+ * container with the provider's accent at low opacity behind the
+ * raster logo (or inline-SVG fallback for Kimi). Matches the
+ * another-project `ProviderBrandIconView` shape so AGBench's
+ * Model Usage Card reads as a sister to that app's compact card. */
+.provider-logo-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: color-mix(in srgb, var(--provider-gemini-color) 14%, transparent);
+  overflow: hidden;
+}
+.provider-logo-tile.provider-gemini { background: color-mix(in srgb, var(--provider-gemini-color) 14%, transparent); }
+.provider-logo-tile.provider-codex  { background: color-mix(in srgb, var(--provider-codex-color) 14%, transparent); }
+.provider-logo-tile.provider-claude { background: color-mix(in srgb, var(--provider-claude-color) 14%, transparent); }
+.provider-logo-tile.provider-kimi   { background: color-mix(in srgb, var(--provider-kimi-color) 14%, transparent); }
+
+.provider-logo-tile-image {
+  width: 80%;
+  height: 80%;
+  object-fit: contain;
+  display: block;
+}
+.provider-logo-tile .sidebar-provider-icon {
+  /* When the SVG-icon fallback (Kimi) renders inside the tile,
+   * size it to fit and inherit the provider colour via
+   * currentColor so it visually matches the raster logos
+   * (dark glyph on tinted background). */
+  width: 70%;
+  height: 70%;
+}
+.provider-logo-tile.provider-kimi .sidebar-provider-icon { color: var(--provider-kimi-color); }
+
+/* Phase L6 slice 5 — Activity heatmap. 30×12 grid of small rounded
+ * squares; each cell coloured by the dominant provider in that
+ * 2-hour bucket and faded by event intensity. Header carries
+ * 24h / 7D / 30D total chips. Sits at the foot of the Model Usage
+ * Card, distinct from the bars above via the muted "Activity"
+ * label + smaller font weight. */
+.usage-heatmap {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.usage-heatmap-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.usage-heatmap-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-right: auto;
+}
+.usage-heatmap-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-tertiary);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+.usage-heatmap-chip strong {
+  color: var(--text-secondary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.usage-heatmap-grid-wrapper {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  gap: 6px;
+  align-items: stretch;
+}
+.usage-heatmap-time-labels {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  font-size: 8px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--text-tertiary) 70%, transparent);
+  font-variant-numeric: tabular-nums;
+  padding: 1px 0;
+  line-height: 1;
+}
+.usage-heatmap-grid {
+  display: grid;
+  gap: 2px;
+  /* Use auto-rows so cells stay square within the row's height. */
+  grid-auto-rows: 1fr;
+  /* Browser quirk: declared height anchors the grid's row math so
+   * `1fr` rows don't collapse. */
+  aspect-ratio: 30 / 12;
+  width: 100%;
+}
+.usage-heatmap-cell {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  transition: opacity 180ms ease;
+  /* When cells have no events they inherit the background from
+   * this rule; when they have a provider colour the inline style
+   * overrides background + opacity. */
+}
+[data-reduce-motion="true"] .usage-heatmap-cell {
+  transition: none;
 }
 
-.model-usage-window-track {
-  height: 4px;
+/* Phase L6 slice 6 — glass chrome polish on the Model Usage Card.
+ * The card sits inside the sidebar (`.app-sidebar`) which already
+ * inherits the appearance-mode treatment, but the card itself
+ * deserves its own subtle frosted-glass surface so it reads as a
+ * distinct unit rather than blending into the sidebar wash.
+ *
+ * Three states keyed off `:root[data-appearance="…"]`:
+ *
+ *   solid       — flat panel with a hairline border. No blur.
+ *   soft_glass  — translucent + 12px backdrop blur. Faint accent
+ *                 rim from the dominant provider colour. Matches
+ *                 the another-project compact-card aesthetic.
+ *   native_glass — transparent surface; macOS vibrancy handles the
+ *                 blur. Just an accent rim + inset highlight, no
+ *                 CSS blur layer.
+ *
+ * Each appearance is intentionally subtle — the card content
+ * (logos, bars, heatmap) is the focus; the chrome stays
+ * understated. */
+.model-usage-summary {
+  position: relative;
+  border-radius: var(--radius-md, 10px);
+  padding: 12px 12px 14px;
+  margin: 8px 0;
+  box-sizing: border-box;
+}
+[data-appearance="solid"] .model-usage-summary {
+  background: color-mix(in srgb, var(--app-bg-elevated) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 80%, transparent);
+}
+[data-appearance="soft_glass"] .model-usage-summary {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 4px 18px -8px rgba(0, 0, 0, 0.25);
+}
+[data-appearance="native_glass"] .model-usage-summary {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
 }
 
-.model-usage-meter-fill.model-usage-window-fill {
-  background: linear-gradient(90deg, rgba(62, 217, 150, 0.9), rgba(94, 126, 255, 0.82));
+/* Phase L3 theme-skin compatibility — the same 5-archetype mapping
+ * we use for tool-call cards (paper / slate / glass / neon / playful)
+ * applies here too. Each archetype's subtle background + border
+ * tweaks layer on top of the appearance-mode treatment above. */
+[data-theme="cyber"] .model-usage-summary,
+[data-theme="rainbow"] .model-usage-summary {
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent) inset,
+    0 0 18px -8px color-mix(in srgb, var(--accent) 36%, transparent);
+}
+[data-theme="nebula"] .model-usage-summary,
+[data-theme="candy"] .model-usage-summary {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 4px 22px -8px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+/* Subtle accent line on the card's top edge — picks up whichever
+ * provider colour is "loudest" in the sidebar context. Without a
+ * runtime cue we default to the AGBench accent; future work could
+ * tint this based on the provider with the highest current
+ * utilisation. */
+.model-usage-summary::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 50%, transparent),
+    transparent
+  );
+  pointer-events: none;
+  border-radius: inherit;
 }
 
 .sidebar-provider-label {

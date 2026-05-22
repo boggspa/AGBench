@@ -49,6 +49,16 @@
   --provider-claude-color: #D97706;
   --provider-kimi-color: #84A33B;
 
+  /* Phase L6 slice 2 — Quota warning palette. Drives the
+   * progressive bar gradient on the Model Usage Card: the fill
+   * starts at its provider accent and warms through amber (`60%`
+   * threshold) to red (`90%` threshold) as utilisation rises.
+   * Per-theme overrides (in the [data-theme="…"] blocks below) can
+   * tune the exact hues, but the defaults match another-project
+   * so AGBench's card reads as a sibling. */
+  --quota-warning-color: #F59E0B;
+  --quota-danger-color: #DC2626;
+
   /* Accents */
   --accent: #5a8cff;
   --accent-hover: #3a72f0;

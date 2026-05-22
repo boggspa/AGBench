@@ -10,6 +10,7 @@ import {
 import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/store/types'
 import { selectRecentChats } from '../lib/recentChatsList'
 import { ActiveRunsSection } from './ActiveRunsSection'
+import { ModelUsageCard } from './ModelUsageCard'
 
 const ageTickListeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -234,14 +235,19 @@ function PinSymbolIcon({ filled = false }: { filled?: boolean }) {
   )
 }
 
-function getProviderName(provider?: ProviderId) {
+// Phase L6 slice 1 — exported for `ModelUsageCard` provider headers.
+export function getProviderName(provider?: ProviderId) {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   return 'Gemini'
 }
 
-function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
+// Phase L6 slice 1 — exported so `ModelUsageCard` can reuse the
+// same inlined-SVG provider iconography as the sidebar. The full
+// logo-asset upgrade lives in slice 4; this stays as the fallback
+// when bundled raster assets are unavailable.
+export function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
   const providerKey = provider || 'gemini'
 
   return (
@@ -846,34 +852,10 @@ export function Sidebar({
     onNewChat(ws.id, ws.path)
   }
 
-  const formatResetShort = (entry: { resetAt?: string; resetText?: string }) => {
-    if (entry.resetAt) {
-      const parsed = new Date(entry.resetAt)
-      if (!Number.isNaN(parsed.getTime())) {
-        const now = new Date()
-        const sameDay =
-          parsed.getFullYear() === now.getFullYear() &&
-          parsed.getMonth() === now.getMonth() &&
-          parsed.getDate() === now.getDate()
-        const sameYear = parsed.getFullYear() === now.getFullYear()
-
-        if (sameDay) {
-          return parsed.toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false
-          })
-        }
-
-        const dateOptions: Intl.DateTimeFormatOptions = sameYear
-          ? { day: 'numeric', month: 'short' }
-          : { day: 'numeric', month: 'short', year: 'numeric' }
-
-        return parsed.toLocaleDateString('en-GB', dateOptions)
-      }
-    }
-    return entry.resetText
-  }
+  // Phase L6 slice 1 — `formatResetShort` extracted to
+  // `lib/UsageFormat.ts`; the Model Usage card now lives in its
+  // own `ModelUsageCard` component. Sidebar no longer needs to
+  // reference either directly.
 
   return (
     <div className="app-sidebar">
@@ -1541,68 +1523,12 @@ export function Sidebar({
           </div>
         )}
 
-        {usageSummary.length > 0 && (
-          <div className="run-summary model-usage-summary">
-            <div className="run-summary-title">Model Usage</div>
-            <div className="model-usage-list">
-              {(() => {
-                const providerOrder: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
-                const orderedEntries = [...usageSummary].sort((a, b) => {
-                  const aIdx = providerOrder.indexOf(a.provider)
-                  const bIdx = providerOrder.indexOf(b.provider)
-                  return (aIdx === -1 ? 99 : aIdx) - (bIdx === -1 ? 99 : bIdx)
-                })
-                return orderedEntries
-                  .filter(
-                    (entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
-                  )
-                  .map((entry) => (
-                    <div
-                      key={`${entry.provider}-${entry.model}`}
-                      className={`model-usage-item provider-${entry.provider} quota-only`}
-                    >
-                      <div className="model-usage-provider-heading">
-                        <SidebarProviderLabel provider={entry.provider} />
-                      </div>
-                      <div className="model-usage-window-list">
-                        {entry.windows!.map((windowEntry) => {
-                          const meterPercent =
-                            windowEntry.remainingPercent ?? windowEntry.usedPercent
-                          const windowPercent = Number.isFinite(meterPercent)
-                            ? Math.max(3, Math.min(100, meterPercent as number))
-                            : 0
-                          const windowReset = formatResetShort({ resetAt: windowEntry.resetAt })
-                          const title = `${windowEntry.label}: ${windowEntry.limitLabel}${windowReset ? ` · resets ${windowReset}` : ''}`
-                          return (
-                            <div
-                              key={`${entry.provider}-${windowEntry.id}`}
-                              className="model-usage-window"
-                              title={title}
-                            >
-                              <div className="model-usage-window-row">
-                                <span>{windowEntry.label}</span>
-                                <span>{windowEntry.limitLabel}</span>
-                              </div>
-                              <div className="model-usage-meter-track model-usage-window-track">
-                                <div
-                                  className="model-usage-meter-fill model-usage-window-fill"
-                                  style={{ width: `${windowPercent}%` }}
-                                />
-                              </div>
-                              <div className="model-usage-window-meta">
-                                <span>Usage limit</span>
-                                {windowReset && <span>resets {windowReset}</span>}
-                              </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))
-              })()}
-            </div>
-          </div>
-        )}
+        {/* Phase L6 slice 1 — Model Usage card extracted to its own
+         * component. Phase L6 slices 2-6 will rebuild this card's
+         * visual identity to match the another-project compact card
+         * (provider logos + warning gradient + pace tick + heatmap)
+         * inside the new component, leaving Sidebar untouched. */}
+        <ModelUsageCard usageSummary={usageSummary} />
       </div>
 
       {/* Footer */}
