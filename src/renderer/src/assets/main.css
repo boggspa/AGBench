@@ -14042,26 +14042,19 @@ input:disabled, select:disabled, textarea:disabled {
   margin-top: 7px;
 }
 
+/* Parity: claude shell keeps its palette but drops the split-box shape
+ * (forced 118px textarea + top-only / bottom-only corner radii on the
+ * textarea & control footer that mimicked Claude Code's two stacked
+ * rectangles). Shape now matches every other theme; the claude feel reads
+ * via colors, fonts, and the accent run-button tint defined below. */
+
 [data-interface-style="claude"] .composer-textarea {
-  min-height: 118px !important;
-  border-radius: 12px 12px 0 0 !important;
   background: #151515 !important;
   border-color: color-mix(in srgb, #ffffff 10%, transparent) !important;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.3) !important;
 }
 
 [data-interface-style="claude"] .composer-control-footer {
-  margin-top: -1px !important;
-  border-radius: 0 0 12px 12px;
   background: #111111 !important;
-  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
-  border-top: 0;
-  padding: 0 10px 8px !important;
-}
-
-[data-interface-style="claude"] .composer-inline-pickers {
-  min-height: 42px;
-  padding: 8px 0 0 !important;
 }
 
 [data-interface-style="claude"] .composer-claude-footer {
