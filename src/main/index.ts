@@ -21,7 +21,7 @@ import os from 'os'
 import { fileURLToPath, pathToFileURL } from 'url'
 import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
-import { BridgeDaemonClient } from './BridgeDaemonClient'
+import { BridgeDaemonClient, BridgeDaemonError } from './BridgeDaemonClient'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
@@ -351,6 +351,28 @@ let approvalService: ApprovalService | null = null
 // the newly-created sub-thread without going through the renderer.
 // Stays null until whenReady; the consumer null-checks.
 let runCoordinatorRef: RunCoordinator | null = null
+
+// Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
+// IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
+// which lives outside that block — can reach the `attachedWindow.*` JSON-RPC
+// methods. Stays null when the daemon is disabled or hasn't spawned yet;
+// the `attached_window_*` MCP tools null-check and return a clear error.
+let bridgeDaemonRef: BridgeDaemonClient | null = null
+// Mirror of the most recent picker selection, kept on the main side so the
+// renderer can show a status pill and the AI can call `attached_window_status`
+// without re-hopping into the daemon. Cleared on detach / daemon exit.
+type AttachedWindowSnapshot = {
+  handleID: string
+  windowMeta: {
+    windowID: number
+    title: string
+    bundleID: string
+    applicationName: string
+    pid: number
+  }
+  attachedAt: string
+}
+let attachedWindowSnapshot: AttachedWindowSnapshot | null = null
 
 interface BackgroundSubThreadTranscriptState {
   runId: string
@@ -2952,6 +2974,23 @@ function previewForGeminiMcpTool(
           subThreadId: args.subThreadId || args.id,
           reason: args.reason
         }
+      }
+    }
+  }
+
+  if (toolName === 'attached_window_capture') {
+    const meta = attachedWindowSnapshot?.windowMeta
+    const label = meta
+      ? `${meta.applicationName || meta.bundleID || 'window'}: ${meta.title || '(untitled)'}`
+      : 'no window attached'
+    return {
+      title: 'Capture attached window',
+      body: label,
+      service: 'mcpTools' as AgenticServiceId,
+      preview: {
+        kind: 'tool',
+        toolName,
+        params: { windowMeta: meta || null, args }
       }
     }
   }
@@ -10457,7 +10496,11 @@ const MAX_MCP_TEXT_CHARS = 200_000
 const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'approval_status',
   'provider_auth_status',
-  'browser_console'
+  'browser_console',
+  // attached_window_status carries no pixel data and no window enumeration —
+  // only the title/bundle the user already sees in the renderer pill.
+  // Capture stays gated; status is a read of state the user already shared.
+  'attached_window_status'
 ])
 
 function mcpJson(value: unknown): string {
@@ -11444,6 +11487,109 @@ function mcpBrowserConsoleResult(args: Record<string, any>): McpToolExecutionRes
   })
 }
 
+type AttachedWindowDaemonCaptureResult = {
+  ok?: boolean
+  pngBase64?: string
+  byteLength?: number
+  width?: number
+  height?: number
+  windowMeta?: AttachedWindowSnapshot['windowMeta']
+  capturedAt?: string
+  ocr?: { text?: string; blocks?: unknown[] }
+  ocrError?: string
+}
+
+async function executeAttachedWindowCapture(
+  args: Record<string, any>
+): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'attached_window_capture',
+      error:
+        'No window is attached. Ask the user to click "Attach app" so they can pick a window with the macOS system picker.'
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'attached_window_capture',
+      error: 'AGBench bridge daemon is not running. Enable it in Settings → Bridge Networking.'
+    })
+  }
+  const includeOcr = args.include_ocr !== false && args.includeOCR !== false
+  const rawMaxDim = Number(args.max_dimension_px ?? args.maxDimensionPx)
+  const maxDimensionPx = Number.isFinite(rawMaxDim) && rawMaxDim > 0 ? Math.trunc(rawMaxDim) : 1600
+  let result: AttachedWindowDaemonCaptureResult
+  try {
+    result = (await bridgeDaemonRef.request(
+      'attachedWindow.capture',
+      {
+        handleID: snapshot.handleID,
+        includeOCR: includeOcr,
+        maxDimensionPx
+      },
+      { timeoutMs: 30_000 }
+    )) as AttachedWindowDaemonCaptureResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    // Daemon error code -32001 (bridgeUnavailable) is what the Swift side
+    // throws when the window has gone away — drop our snapshot so the
+    // renderer pill clears and the AI sees the next status call as detached.
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      attachedWindowSnapshot = null
+      mainWindow?.webContents.send('attached-window-changed', null)
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'attached_window_capture',
+      error: message
+    })
+  }
+  const pngBase64 = typeof result.pngBase64 === 'string' ? result.pngBase64 : ''
+  if (!pngBase64) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'attached_window_capture',
+      error: 'Bridge daemon returned no PNG payload.'
+    })
+  }
+  return mcpStructuredJsonResult(
+    {
+      ok: true,
+      tool: 'attached_window_capture',
+      mimeType: 'image/png',
+      byteLength: result.byteLength ?? 0,
+      width: result.width ?? 0,
+      height: result.height ?? 0,
+      windowMeta: result.windowMeta ?? snapshot.windowMeta,
+      capturedAt: result.capturedAt ?? new Date().toISOString(),
+      ocrText: result.ocr?.text ?? null,
+      ocrBlocks: result.ocr?.blocks ?? null,
+      ocrError: result.ocrError ?? null
+    },
+    [{ type: 'image', mimeType: 'image/png', data: pngBase64 }]
+  )
+}
+
+function executeAttachedWindowStatus(): McpToolExecutionResult {
+  if (!attachedWindowSnapshot) {
+    return mcpStructuredJsonResult({
+      ok: true,
+      tool: 'attached_window_status',
+      attached: false
+    })
+  }
+  return mcpStructuredJsonResult({
+    ok: true,
+    tool: 'attached_window_status',
+    attached: true,
+    windowMeta: attachedWindowSnapshot.windowMeta,
+    attachedAt: attachedWindowSnapshot.attachedAt
+  })
+}
+
 async function executeBrowserTool(
   toolName: AGBenchMcpToolName,
   args: Record<string, any>,
@@ -12033,6 +12179,10 @@ async function executeGeminiMcpTool(
       toolName === 'browser_console'
     ) {
       text = mcpJson(await executeBrowserTool(toolName, args, context))
+    } else if (toolName === 'attached_window_capture') {
+      text = mcpJson(await executeAttachedWindowCapture(args))
+    } else if (toolName === 'attached_window_status') {
+      text = mcpJson(executeAttachedWindowStatus())
     } else if (toolName === 'approval_status') {
       text = mcpJson(executeApprovalStatus(context, args, parentProvider))
     } else if (toolName === 'provider_auth_status') {
@@ -13025,6 +13175,47 @@ function mcpToolDefinitions() {
         properties: {
           path: { type: 'string', description: 'Optional workspace-relative output path.' }
         }
+      }
+    },
+    {
+      name: 'attached_window_capture',
+      description:
+        "Capture one frame of the macOS window the user attached via the AGBench picker. Returns a PNG (as an image content block) plus optional local Vision OCR. Fails fast with a structured error when no window is attached — never enumerates windows the user hasn't picked. The user must click the Attach button (or use the hotkey) first; you cannot initiate the pick.",
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          include_ocr: {
+            type: 'boolean',
+            description:
+              'Run local Vision OCR on the captured frame and return text + bounding boxes. Default true.'
+          },
+          max_dimension_px: {
+            type: 'number',
+            description:
+              'Cap the longer side of the returned image to this many pixels (preserves aspect ratio). Default 1600.'
+          }
+        }
+      }
+    },
+    {
+      name: 'attached_window_status',
+      description:
+        'Return whether a user-picked window is currently attached, and if so just its title/bundle/application name. Carries no pixel data and no enumeration of other windows; safe to poll. Auto-approved (no modal); the user already chose to share this metadata when they picked the window.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
       }
     },
     {
@@ -15228,6 +15419,14 @@ if (isGeminiMcpBridgeProcess) {
             bridgeDaemon = null
             bridgeBroadcaster = null
           }
+          if (bridgeDaemonRef === daemon) {
+            bridgeDaemonRef = null
+            // Daemon owned the picker state; once it's gone the handle is
+            // worthless. Clear the snapshot so the renderer pill drops and
+            // the AI's next status call returns `{ attached: false }`.
+            attachedWindowSnapshot = null
+            mainWindow?.webContents.send('attached-window-changed', null)
+          }
           if (wasActiveDaemon && !bridgeDaemonStartPromise) {
             bridgeDaemonLastError = `Bridge daemon exited with code ${code ?? 'unknown'}`
           }
@@ -15271,6 +15470,7 @@ if (isGeminiMcpBridgeProcess) {
         onRequest: (method, params) => bridgeActionRouter.route(method, params)
       })
       bridgeDaemon = daemon
+      bridgeDaemonRef = daemon
       // Phase E-late: instantiate the workspace/thread summary
       // broadcaster alongside the daemon. The broadcaster only emits
       // when the daemon is up; on `stopBridgeDaemon` we clear the ref so
@@ -15303,6 +15503,10 @@ if (isGeminiMcpBridgeProcess) {
             bridgeDaemon = null
             bridgeBroadcaster = null
           }
+          if (bridgeDaemonRef === daemon) {
+            bridgeDaemonRef = null
+            attachedWindowSnapshot = null
+          }
         })
         .finally(() => {
           if (bridgeDaemonStartPromise === startPromise) bridgeDaemonStartPromise = null
@@ -15317,6 +15521,11 @@ if (isGeminiMcpBridgeProcess) {
       bridgeDaemon = null
       bridgeBroadcaster = null
       bridgeDaemonStartPromise = null
+      if (bridgeDaemonRef === daemon) {
+        bridgeDaemonRef = null
+        attachedWindowSnapshot = null
+        mainWindow?.webContents.send('attached-window-changed', null)
+      }
       daemon?.dispose()
     }
 
@@ -15552,6 +15761,69 @@ if (isGeminiMcpBridgeProcess) {
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) }
       }
+    })
+
+    // Attached-window picker (Appshots-equivalent). The renderer invokes
+    // `attach-window:pick` when the user clicks the Attach button; main
+    // forwards to the bridge daemon's `attachedWindow.requestPick`, which
+    // presents `SCContentSharingPicker`. We use a generous timeout because
+    // the picker blocks on a user gesture — the default 10s would fire
+    // long before most users finish picking.
+    ipcMain.handle('attach-window:pick', async () => {
+      if (!bridgeDaemon?.status().running) {
+        return {
+          ok: false,
+          error: 'Bridge daemon is not running. Enable it in Settings → Bridge Networking.'
+        }
+      }
+      try {
+        const result = (await bridgeDaemon.request(
+          'attachedWindow.requestPick',
+          {},
+          { timeoutMs: 120_000 }
+        )) as {
+          ok?: boolean
+          cancelled?: boolean
+          handleID?: string
+          windowMeta?: AttachedWindowSnapshot['windowMeta']
+        }
+        if (result?.cancelled) {
+          return { ok: false, cancelled: true }
+        }
+        if (!result?.ok || !result.handleID || !result.windowMeta) {
+          return { ok: false, error: 'Picker returned an unexpected payload.' }
+        }
+        attachedWindowSnapshot = {
+          handleID: result.handleID,
+          windowMeta: result.windowMeta,
+          attachedAt: new Date().toISOString()
+        }
+        mainWindow?.webContents.send('attached-window-changed', attachedWindowSnapshot)
+        return { ok: true, snapshot: attachedWindowSnapshot }
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) }
+      }
+    })
+
+    ipcMain.handle('attach-window:detach', async () => {
+      const snapshot = attachedWindowSnapshot
+      attachedWindowSnapshot = null
+      mainWindow?.webContents.send('attached-window-changed', null)
+      if (snapshot && bridgeDaemon?.status().running) {
+        try {
+          await bridgeDaemon.request('attachedWindow.detach', { handleID: snapshot.handleID })
+        } catch (err) {
+          // Daemon-side failure is non-fatal — main has already cleared its
+          // snapshot, so subsequent capture calls fail fast on the renderer
+          // side. Log so we notice if the daemon's handle table is leaking.
+          console.error('[attach-window:detach] daemon detach failed:', err)
+        }
+      }
+      return { ok: true }
+    })
+
+    ipcMain.handle('attach-window:status', () => {
+      return { snapshot: attachedWindowSnapshot }
     })
 
     // Settings

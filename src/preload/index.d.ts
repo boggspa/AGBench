@@ -452,6 +452,57 @@ declare global {
       }>
       bridgeFinalizePairing: (sessionID: string, userConfirmed: boolean) => Promise<unknown>
       onBridgePairingResponseReceived: (callback: (params: unknown) => void) => () => void
+
+      // Attached-window picker. The renderer triggers `attachWindowPick`
+      // (button or hotkey), main forwards to the bridge daemon which
+      // presents the macOS system picker. Status events fire on
+      // pick/detach and on daemon exit so the renderer can keep its
+      // status pill in sync.
+      attachWindowPick: () => Promise<{
+        ok: boolean
+        cancelled?: boolean
+        error?: string
+        snapshot?: {
+          handleID: string
+          windowMeta: {
+            windowID: number
+            title: string
+            bundleID: string
+            applicationName: string
+            pid: number
+          }
+          attachedAt: string
+        }
+      }>
+      attachWindowDetach: () => Promise<{ ok: boolean }>
+      attachWindowStatus: () => Promise<{
+        snapshot: {
+          handleID: string
+          windowMeta: {
+            windowID: number
+            title: string
+            bundleID: string
+            applicationName: string
+            pid: number
+          }
+          attachedAt: string
+        } | null
+      }>
+      onAttachedWindowChanged: (
+        callback: (
+          snapshot: {
+            handleID: string
+            windowMeta: {
+              windowID: number
+              title: string
+              bundleID: string
+              applicationName: string
+              pid: number
+            }
+            attachedAt: string
+          } | null
+        ) => void
+      ) => () => void
       // Begins a daemon-side pairing session. Returns the bootstrap
       // payload (PairingBootstrapPayload from the Swift daemon) so the
       // renderer can encode it as a QR for the iOS app, or surface it

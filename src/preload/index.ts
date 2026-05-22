@@ -237,6 +237,63 @@ const api = {
   bridgeBeginPairing: (displayName?: string) =>
     ipcRenderer.invoke('bridge-begin-pairing', displayName),
 
+  // Attached-window picker. `pick` opens the macOS system picker via the
+  // Swift bridge daemon and stores the resulting handle on the main side.
+  // The AI never sees window enumeration — it can only act on a window
+  // the user has explicitly picked.
+  attachWindowPick: () =>
+    ipcRenderer.invoke('attach-window:pick') as Promise<{
+      ok: boolean
+      cancelled?: boolean
+      error?: string
+      snapshot?: {
+        handleID: string
+        windowMeta: {
+          windowID: number
+          title: string
+          bundleID: string
+          applicationName: string
+          pid: number
+        }
+        attachedAt: string
+      }
+    }>,
+  attachWindowDetach: () => ipcRenderer.invoke('attach-window:detach') as Promise<{ ok: boolean }>,
+  attachWindowStatus: () =>
+    ipcRenderer.invoke('attach-window:status') as Promise<{
+      snapshot: {
+        handleID: string
+        windowMeta: {
+          windowID: number
+          title: string
+          bundleID: string
+          applicationName: string
+          pid: number
+        }
+        attachedAt: string
+      } | null
+    }>,
+  onAttachedWindowChanged: (
+    callback: (
+      snapshot: {
+        handleID: string
+        windowMeta: {
+          windowID: number
+          title: string
+          bundleID: string
+          applicationName: string
+          pid: number
+        }
+        attachedAt: string
+      } | null
+    ) => void
+  ) => {
+    const listener = (_event: Electron.IpcRendererEvent, snapshot: unknown) =>
+      callback(snapshot as never)
+    ipcRenderer.on('attached-window-changed', listener)
+    return () => ipcRenderer.removeListener('attached-window-changed', listener)
+  },
+
   // Phase E1: APNs production wiring. The renderer Settings panel uses
   // these to configure the iOS bridge push gateway. The decrypted .p8
   // PEM never crosses this boundary; only the encrypted blob lives in

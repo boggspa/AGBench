@@ -20,6 +20,8 @@ export const AGENTBENCH_MCP_TOOLS = [
   'browser_click',
   'browser_screenshot',
   'browser_console',
+  'attached_window_capture',
+  'attached_window_status',
   'approval_status',
   'provider_auth_status',
   'run_timeline',
