@@ -173,6 +173,13 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'bridge-allowlist-clear': [],
   'bridge-finalize-pairing': ['nonEmptyString', 'boolean'],
   'bridge-begin-pairing': ['optionalString'],
+  // Attached-window picker — all three handlers are no-arg; pick reads
+  // the daemon's response, detach/status read main-side state. The
+  // daemon-side validation (handleID format etc.) lives in the Swift
+  // dispatcher's Decodable params.
+  'attach-window:pick': [],
+  'attach-window:detach': [],
+  'attach-window:status': [],
   // Phase E1: APNs production wiring — Settings panel uses these to configure
   // the iOS bridge push gateway. All handlers live in main; safeStorage handles
   // .p8 encryption at-rest; renderer never sees the decrypted PEM.
