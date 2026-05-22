@@ -201,6 +201,26 @@ export const buildWelcomeUsageDashboardData = (
       .filter((event) => Number.isFinite(event.timestamp) && event.timestamp >= cutoff)
   )
 
+  // Welcome L5 — streaks stay all-time. Current/longest-streak are
+  // lifetime metrics; computing them off the range-filtered day set
+  // would collapse the user's actual streak (e.g. 24h window → max
+  // longest-streak is 1 day, no matter the actual usage history).
+  // Build a separate "lifetime" active-day set from the unfiltered
+  // records + chats so the streak computation always sees the full
+  // calendar of activity even when the rest of the dashboard is
+  // showing 24h / 7d / 30d.
+  const lifetimeActiveDayKeys = new Set<string>()
+  for (const record of records) {
+    if (record.usageKind === 'reset_hint') continue
+    lifetimeActiveDayKeys.add(dayKeyFromTimestamp(record.timestamp))
+  }
+  for (const chat of chats) {
+    for (const message of chat.messages || []) {
+      const ts = new Date(message.timestamp || '').getTime()
+      if (Number.isFinite(ts)) lifetimeActiveDayKeys.add(dayKeyFromTimestamp(ts))
+    }
+  }
+
   const activeDayKeys = new Set<string>()
   const sessionIds = new Set<string>()
   const providerIds = new Set<ProviderId>()
@@ -296,14 +316,18 @@ export const buildWelcomeUsageDashboardData = (
     }))
 
   const todayStart = startOfLocalDay(now)
-  const activeDayStarts = Array.from(activeDayKeys)
+  // Welcome L5 — streaks read from the LIFETIME day set so 24h / 7d /
+  // 30d views still show the user's real all-time current + longest
+  // streak. (`activeDayKeys` above is range-filtered and drives the
+  // sessions/messages/active-days/peak-hour stats below.)
+  const lifetimeDayStarts = Array.from(lifetimeActiveDayKeys)
     .map((key) => new Date(`${key}T00:00:00`).getTime())
     .filter(Number.isFinite)
     .sort((a, b) => a - b)
-  const activeStartSet = new Set(activeDayStarts)
+  const lifetimeStartSet = new Set(lifetimeDayStarts)
   const countStreakEndingAt = (start: number): number => {
     let count = 0
-    for (let cursor = start; activeStartSet.has(cursor); cursor -= 24 * 60 * 60 * 1000) {
+    for (let cursor = start; lifetimeStartSet.has(cursor); cursor -= 24 * 60 * 60 * 1000) {
       count += 1
     }
     return count
@@ -313,7 +337,7 @@ export const buildWelcomeUsageDashboardData = (
   let longestStreak = 0
   let runningStreak = 0
   let previousDay = -1
-  for (const day of activeDayStarts) {
+  for (const day of lifetimeDayStarts) {
     runningStreak =
       previousDay > 0 && day - previousDay === 24 * 60 * 60 * 1000 ? runningStreak + 1 : 1
     longestStreak = Math.max(longestStreak, runningStreak)

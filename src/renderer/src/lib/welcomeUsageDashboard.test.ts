@@ -198,6 +198,122 @@ describe('buildWelcomeUsageDashboardData model breakdown — range scoping (Welc
   })
 })
 
+describe('buildWelcomeUsageDashboardData headline stats — range scoping (Welcome L5)', () => {
+  // Anchor "now" so cutoff math is deterministic.
+  const NOW = new Date(2026, 4, 22, 12, 0).getTime() // 2026-05-22 12:00 local
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('range-scopes sessions / messages / activeDays / peakHour / favoriteModel', () => {
+    // Two windows of activity: a big burst 60 days ago (a 5-day streak,
+    // 3 sessions, codex-dominant) and a single tiny entry today
+    // (gemini). A 24h window should only see today's activity.
+    const records: UsageRecord[] = [
+      ...Array.from({ length: 5 }, (_, i) =>
+        baseRecord({
+          id: `burst-${i}`,
+          timestamp: NOW - (60 - i) * DAY + 14 * 60 * 60 * 1000,
+          provider: 'codex',
+          model: 'gpt-5-codex',
+          chatId: `burst-chat-${i % 3}`, // 3 distinct sessions in burst
+          totalTokens: 100_000
+        })
+      ),
+      baseRecord({
+        id: 'today',
+        timestamp: NOW - 30 * 60_000, // 30 min ago
+        provider: 'gemini',
+        model: 'gemini-3-flash-preview',
+        chatId: 'recent-chat',
+        totalTokens: 1_000
+      })
+    ]
+
+    const all = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    expect(all.sessions).toBe(4) // 3 burst chats + 1 recent
+    expect(all.activeDays).toBe(6) // 5-day burst + today
+    expect(all.favoriteModel).toBe('gpt-5-codex')
+
+    const day = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    expect(day.sessions).toBe(1) // just the recent-chat
+    expect(day.activeDays).toBe(1) // just today
+    expect(day.favoriteModel).toBe('gemini-3-flash-preview') // burst dropped
+  })
+
+  it('keeps current + longest streak ON THE LIFETIME calendar regardless of range', () => {
+    // Records span: a 5-day streak 30+ days ago, a 2-day streak today/yesterday.
+    // Lifetime longest streak = 5. Current streak = 2.
+    // A 24h range view must STILL show longestStreak=5, currentStreak=2 —
+    // not collapse them to whatever the 24h slice contains.
+    const burstStart = NOW - 30 * DAY
+    const records: UsageRecord[] = [
+      ...Array.from({ length: 5 }, (_, i) =>
+        baseRecord({
+          id: `burst-${i}`,
+          timestamp: burstStart - (4 - i) * DAY + 10 * 60 * 60 * 1000,
+          provider: 'gemini',
+          totalTokens: 1_000
+        })
+      ),
+      baseRecord({
+        // Yesterday at 09:00 — 27 hours before NOW (May 22 12:00), so
+        // outside the 24h cutoff but inside the 7d cutoff.
+        id: 'yesterday',
+        timestamp: new Date(2026, 4, 21, 9, 0).getTime(),
+        provider: 'gemini',
+        totalTokens: 500
+      }),
+      baseRecord({
+        id: 'today',
+        timestamp: NOW - 30 * 60_000,
+        provider: 'gemini',
+        totalTokens: 500
+      })
+    ]
+
+    const all = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    expect(all.currentStreak).toBe(2)
+    expect(all.longestStreak).toBe(5)
+
+    const day = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    // Sessions / activeDays narrow but streaks stay lifetime.
+    expect(day.activeDays).toBe(1) // only today in-window
+    expect(day.currentStreak).toBe(2)
+    expect(day.longestStreak).toBe(5)
+
+    const week = buildWelcomeUsageDashboardData(records, [], '7d', NOW)
+    expect(week.activeDays).toBe(2) // today + yesterday
+    expect(week.currentStreak).toBe(2)
+    expect(week.longestStreak).toBe(5)
+  })
+
+  it('peakHour reflects the selected range (not lifetime)', () => {
+    // Two records at different hours; the 24h view should pick the
+    // recent one's hour, all-time picks whichever has more tokens.
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old-3am',
+        timestamp: new Date(2026, 3, 22, 3, 0).getTime(), // 30 days ago at 03:00
+        provider: 'codex',
+        totalTokens: 500_000
+      }),
+      baseRecord({
+        id: 'recent-noon',
+        timestamp: NOW - 30 * 60_000, // 11:30 same day
+        provider: 'gemini',
+        totalTokens: 1_000
+      })
+    ]
+    const all = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    // Lifetime: the 500k-token 03:00 burst dominates the hour totals
+    // (formatter renders as "3 AM").
+    expect(all.peakHour).toBe('3 AM')
+    const day = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    // 24h: only the 11:30 record survives the cutoff — peak hour
+    // shifts to the noon-ish bucket and definitely isn't 3 AM.
+    expect(day.peakHour).not.toBe('3 AM')
+  })
+})
+
 describe('mixProviderColors', () => {
   const palette = {
     gemini: '#2563EB',
