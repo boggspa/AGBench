@@ -394,20 +394,33 @@ function ChatAgeLabel({ timestamp }: { timestamp: number }): ReactNode {
 
   useEffect(() => {
     if (!Number.isFinite(timestamp)) {
-      setLabel((prev) => (prev === '' ? prev : ''))
-      return
+      let cancelled = false
+      queueMicrotask(() => {
+        if (!cancelled) setLabel((prev) => (prev === '' ? prev : ''))
+      })
+      return () => {
+        cancelled = true
+      }
     }
     const compute = () => formatChatAge(timestamp, Date.now())
-    setLabel((prev) => {
-      const next = compute()
-      return prev === next ? prev : next
-    })
-    return subscribeAgeTick(() => {
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
       setLabel((prev) => {
         const next = compute()
         return prev === next ? prev : next
       })
     })
+    const unsubscribe = subscribeAgeTick(() => {
+      setLabel((prev) => {
+        const next = compute()
+        return prev === next ? prev : next
+      })
+    })
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
   }, [timestamp])
 
   if (!label) return null
@@ -669,18 +682,25 @@ export function Sidebar({
 
   useEffect(() => {
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id))
-    setExpandedWorkspaceIds((prev) => {
-      const next = new Set<string>()
-      for (const workspaceId of prev) {
-        if (workspaceIds.has(workspaceId)) {
-          next.add(workspaceId)
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setExpandedWorkspaceIds((prev) => {
+        const next = new Set<string>()
+        for (const workspaceId of prev) {
+          if (workspaceIds.has(workspaceId)) {
+            next.add(workspaceId)
+          }
         }
-      }
-      if (next.size === prev.size) {
-        return prev
-      }
-      return next
+        if (next.size === prev.size) {
+          return prev
+        }
+        return next
+      })
     })
+    return () => {
+      cancelled = true
+    }
   }, [workspaces])
 
   useEffect(() => {
@@ -697,18 +717,25 @@ export function Sidebar({
   useEffect(() => {
     if (chats.length === 0) return
     const parentIds = new Set(subThreadsByParentId.keys())
-    setCollapsedSubThreadParentIds((prev) => {
-      const next = new Set<string>()
-      for (const parentId of prev) {
-        if (parentIds.has(parentId)) {
-          next.add(parentId)
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setCollapsedSubThreadParentIds((prev) => {
+        const next = new Set<string>()
+        for (const parentId of prev) {
+          if (parentIds.has(parentId)) {
+            next.add(parentId)
+          }
         }
-      }
-      if (next.size === prev.size) {
-        return prev
-      }
-      return next
+        if (next.size === prev.size) {
+          return prev
+        }
+        return next
+      })
     })
+    return () => {
+      cancelled = true
+    }
   }, [chats.length, subThreadsByParentId])
 
   useEffect(() => {
@@ -752,28 +779,32 @@ export function Sidebar({
       workspaceIdsToExpand.add(chat.workspaceId)
     }
     if (workspaceIdsToExpand.size > 0) {
-      setExpandedWorkspaceIds((prev) => {
-        let changed = false
-        const next = new Set(prev)
-        for (const id of workspaceIdsToExpand) {
-          if (!next.has(id)) {
-            next.add(id)
-            changed = true
+      queueMicrotask(() => {
+        setExpandedWorkspaceIds((prev) => {
+          let changed = false
+          const next = new Set(prev)
+          for (const id of workspaceIdsToExpand) {
+            if (!next.has(id)) {
+              next.add(id)
+              changed = true
+            }
           }
-        }
-        return changed ? next : prev
+          return changed ? next : prev
+        })
       })
     }
     if (parentChatIdsToExpand.size > 0) {
-      setCollapsedSubThreadParentIds((prev) => {
-        let changed = false
-        const next = new Set(prev)
-        for (const id of parentChatIdsToExpand) {
-          if (next.delete(id)) {
-            changed = true
+      queueMicrotask(() => {
+        setCollapsedSubThreadParentIds((prev) => {
+          let changed = false
+          const next = new Set(prev)
+          for (const id of parentChatIdsToExpand) {
+            if (next.delete(id)) {
+              changed = true
+            }
           }
-        }
-        return changed ? next : prev
+          return changed ? next : prev
+        })
       })
     }
   }, [chats])

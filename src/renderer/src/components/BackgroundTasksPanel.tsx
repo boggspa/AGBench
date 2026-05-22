@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { ChatRecord, ChildAgentThread, ProviderId } from '../../../main/store/types'
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
 
@@ -20,11 +20,22 @@ interface BackgroundTasksPanelProps {
  * the transcript itself and via @-mention chips.
  */
 export function BackgroundTasksPanel({ chat, provider }: BackgroundTasksPanelProps) {
+  const [now, setNow] = useState(0)
   const liveThreads = useMemo<ChildAgentThread[]>(() => {
     if (!chat || !provider) return []
     const all = deriveChildAgentThreads(provider, chat.appChatId, chat.messages || [], chat)
     return all.filter((thread) => thread.state === 'running' || thread.state === 'queued')
   }, [chat, provider])
+
+  useEffect(() => {
+    const updateNow = (): void => setNow(Date.now())
+    const timeoutId = window.setTimeout(updateNow, 0)
+    const intervalId = window.setInterval(updateNow, 1000)
+    return () => {
+      window.clearTimeout(timeoutId)
+      window.clearInterval(intervalId)
+    }
+  }, [])
 
   const scrollToAgent = (agentId: string) => {
     if (typeof document === 'undefined') return
@@ -49,7 +60,12 @@ export function BackgroundTasksPanel({ chat, provider }: BackgroundTasksPanelPro
       ) : (
         <ul className="background-tasks-panel-list">
           {liveThreads.map((thread) => (
-            <BackgroundTaskRow key={thread.id} thread={thread} onActivate={scrollToAgent} />
+            <BackgroundTaskRow
+              key={thread.id}
+              thread={thread}
+              now={now}
+              onActivate={scrollToAgent}
+            />
           ))}
         </ul>
       )}
@@ -59,9 +75,11 @@ export function BackgroundTasksPanel({ chat, provider }: BackgroundTasksPanelPro
 
 function BackgroundTaskRow({
   thread,
+  now,
   onActivate
 }: {
   thread: ChildAgentThread
+  now: number
   onActivate: (agentId: string) => void
 }) {
   const identity = thread.identity
@@ -70,7 +88,7 @@ function BackgroundTaskRow({
   const color = identity?.color
   const startedAt = thread.startedAt ? new Date(thread.startedAt) : null
   const elapsed = startedAt
-    ? Math.max(0, Math.floor((Date.now() - startedAt.getTime()) / 1000))
+    ? Math.max(0, Math.floor(((now || startedAt.getTime()) - startedAt.getTime()) / 1000))
     : null
   const elapsedLabel =
     elapsed === null

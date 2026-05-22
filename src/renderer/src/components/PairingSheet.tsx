@@ -97,7 +97,13 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
   }, [])
 
   useEffect(() => {
-    void refresh(displayName)
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) void refresh(displayName)
+    })
+    return () => {
+      cancelled = true
+    }
     // Intentional: only fire on mount + on explicit "Refresh" clicks
     // — displayName changes shouldn't auto-refresh until the user
     // commits via the form.
@@ -229,8 +235,8 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
               )}
               <div className="pairing-sheet__hint">
                 Point the iOS camera here. <strong>Click the QR to maximise</strong> if the camera
-                can't read it at this size. Pair expires in a few minutes — tap Refresh if scanning
-                fails.
+                can&apos;t read it at this size. Pair expires in a few minutes — tap Refresh if
+                scanning fails.
               </div>
             </div>
 
@@ -253,7 +259,7 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
                   {copied ? 'Copied' : 'Copy JSON'}
                 </button>
                 <div className="pairing-sheet__hint pairing-sheet__hint--inline">
-                  iOS app → "Paste JSON instead" if the camera path doesn't work.
+                  iOS app → &quot;Paste JSON instead&quot; if the camera path doesn&apos;t work.
                 </div>
               </div>
             </div>
@@ -262,8 +268,8 @@ export function PairingSheet({ onClose }: PairingSheetProps): JSX.Element {
 
         <footer className="pairing-sheet__footer">
           <span className="pairing-sheet__footer-hint">
-            After the iOS device confirms, you'll see a 6-digit verification code here — make sure
-            it matches before tapping confirm on iOS.
+            After the iOS device confirms, you&apos;ll see a 6-digit verification code here — make
+            sure it matches before tapping confirm on iOS.
           </span>
         </footer>
       </div>

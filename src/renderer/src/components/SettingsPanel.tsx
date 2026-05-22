@@ -1170,8 +1170,9 @@ export function SettingsPanel({
                       Sub-thread delegation
                       <small>
                         Whether agents on this workspace can delegate to sub-threads on other
-                        providers. Default 'ask' prompts you before each delegation; 'Always allow'
-                        lets agents spawn without prompting (use only for trusted workflows).
+                        providers. Default &apos;ask&apos; prompts you before each delegation;
+                        &apos;Always allow&apos; lets agents spawn without prompting (use only for
+                        trusted workflows).
                       </small>
                     </span>
                     <select

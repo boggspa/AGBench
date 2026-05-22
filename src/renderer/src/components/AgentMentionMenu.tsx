@@ -67,22 +67,35 @@ export function AgentMentionMenu({
 
   // Recompute popover position when the anchor moves / when opening.
   useEffect(() => {
-    if (!open) {
-      setPosition(null)
-      return
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      if (!open) {
+        setPosition(null)
+        return
+      }
+      const anchor = anchorRef.current
+      if (!anchor) return
+      const rect = anchor.getBoundingClientRect()
+      // Anchor the popover ABOVE the textarea (Codex's composer popover also
+      // floats above so it doesn't shove the input down). Right-align to the
+      // textarea's left edge so a wide menu doesn't fall off-screen.
+      setPosition({ left: rect.left + 8, top: rect.top - 8 })
+    })
+    return () => {
+      cancelled = true
     }
-    const anchor = anchorRef.current
-    if (!anchor) return
-    const rect = anchor.getBoundingClientRect()
-    // Anchor the popover ABOVE the textarea (Codex's composer popover also
-    // floats above so it doesn't shove the input down). Right-align to the
-    // textarea's left edge so a wide menu doesn't fall off-screen.
-    setPosition({ left: rect.left + 8, top: rect.top - 8 })
   }, [open, anchorRef, query])
 
   // Reset highlight when filtered list changes.
   useEffect(() => {
-    setHighlight(0)
+    let cancelled = false
+    queueMicrotask(() => {
+      if (!cancelled) setHighlight(0)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [filtered])
 
   // Listen for the keyboard events bubbling up from the textarea.

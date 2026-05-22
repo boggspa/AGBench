@@ -1,4 +1,4 @@
-import { AgentIdentityContext } from './AgentMention'
+import { AgentIdentityContext } from './AgentIdentityContext'
 import { StableMarkdownBlock } from './StableMarkdownBlock'
 import { splitMarkdownIntoBlocks } from '../lib/MarkdownBlockSplit'
 import type { ChatRecord } from '../../../main/store/types'

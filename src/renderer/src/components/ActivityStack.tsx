@@ -74,7 +74,7 @@ function cleanProgressText(value: unknown): string | undefined {
     .replace(/^[\s#>*![\]A-Z:_-]*(Topic|Summary|Intent|Strategic intent)\s*:\s*/gim, '')
     .replace(/\*\*(Topic|Summary|Intent|Strategic intent)\s*:\*\*/gim, '')
     .replace(/\[!STRATEGY\]/gi, '')
-    .replace(/[📂📁]/g, '')
+    .replace(/[📂📁]/gu, '')
     .replace(/\*\*/g, '')
     .replace(/^#+\s*/gm, '')
     .replace(/^>\s?/gm, '')
@@ -1147,6 +1147,7 @@ function ActivityRow({
   childThread?: ChildAgentThread
   childActivities?: ToolActivity[]
 }) {
+  const [expanded, setExpanded] = useState(false)
   const progressNote = getProgressNote(activity)
   if (progressNote && !forceCompact) {
     return (
@@ -1162,8 +1163,6 @@ function ActivityRow({
       </>
     )
   }
-
-  const [expanded, setExpanded] = useState(false)
 
   const isUnknown = activity.toolName === 'unknown' || !activity.toolName
   const showDebugWarning = Boolean(isUnknown && (activity.rawUseEvent || activity.rawResultEvent))

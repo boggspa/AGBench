@@ -118,7 +118,8 @@ export function SubThreadCreator({
 
         <p className="sub-thread-creator-hint">
           Spawn a context-isolated sub-thread under <strong>{parentChat.title}</strong> to hand off
-          part of the work to a different provider. The sub-thread inherits the parent's workspace.
+          part of the work to a different provider. The sub-thread inherits the parent&apos;s
+          workspace.
         </p>
 
         {isParentItselfSubThread && (
@@ -174,7 +175,7 @@ export function SubThreadCreator({
               <strong>Return result to parent on completion.</strong>
               <span className="sub-thread-creator-helper">
                 Records intent. v1 lets you navigate back manually; v2 will auto-append the
-                sub-thread's final assistant message to the parent transcript.
+                sub-thread&apos;s final assistant message to the parent transcript.
               </span>
             </span>
           </label>

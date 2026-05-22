@@ -1,13 +1,6 @@
-import { createContext, useContext, type ReactNode } from 'react'
-import type { ChatRecord } from '../../../main/store/types'
+import { useContext, type ReactNode } from 'react'
+import { AgentIdentityContext } from './AgentIdentityContext'
 import { findIdentity } from '../lib/agentIdentity'
-
-/**
- * Context that provides the current chat to nested markdown renderers so
- * `<AgentMention>` can look up colored identities by agent id without prop
- * drilling through ReactMarkdown.
- */
-export const AgentIdentityContext = createContext<ChatRecord | undefined>(undefined)
 
 interface AgentMentionProps {
   agentId: string

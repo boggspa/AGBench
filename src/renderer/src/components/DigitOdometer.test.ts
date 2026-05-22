@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { digitSlotsForValue } from './DigitOdometer'
+import { digitSlotsForValue } from './DigitOdometerModel'
 
 describe('digitSlotsForValue', () => {
   it('returns a single zero slot for value 0', () => {

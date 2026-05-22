@@ -1,4 +1,4 @@
-import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import type { CSSProperties } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
@@ -64,12 +64,11 @@ import { MarkdownMessage } from './components/MarkdownMessage'
 import { RunCard } from './components/RunCard'
 import { RunInspector } from './components/RunInspector'
 import { PairingSheet } from './components/PairingSheet'
-import { SubThreadReturnCard, isSubThreadReturnMessage } from './components/SubThreadReturnCard'
+import { SubThreadReturnCard } from './components/SubThreadReturnCard'
+import { isSubThreadReturnMessage } from './components/SubThreadReturnCardModel'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
-import {
-  SubThreadDelegationCard,
-  isSubThreadDelegationMessage
-} from './components/SubThreadDelegationCard'
+import { SubThreadDelegationCard } from './components/SubThreadDelegationCard'
+import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCardModel'
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
@@ -2111,7 +2110,7 @@ const collectDroppedAttachmentPaths = (dataTransfer?: DataTransfer | null): stri
     .map((line) => {
       try {
         return sanitizeImagePath(decodeURIComponent(line.replace(/^file:\/\//, '')))
-      } catch (error) {
+      } catch {
         return sanitizeImagePath(line.replace(/^file:\/\//, ''))
       }
     })
@@ -2138,7 +2137,7 @@ const parsePlanModeChoice = (text: string): { question: string; options: string[
 
   const optionMatch = (value: string): string | null => {
     const trimmed = value.trim()
-    const match = trimmed.match(/^(?:[-*+•]?\s*)?(?:\(?([A-Za-z]|\d+)\)?[\.\)])\s+(.+)$/)
+    const match = trimmed.match(/^(?:[-*+•]?\s*)?(?:\(?([A-Za-z]|\d+)\)?[.)])\s+(.+)$/)
     if (!match) return null
     return match[2]?.trim()
   }
@@ -3259,6 +3258,7 @@ const EMPTY_PERMISSION_STATE: ComposerPermissionState = {
   source: null
 }
 const EMPTY_CHAT_MESSAGES: ChatMessage[] = []
+const EMPTY_IMAGE_ATTACHMENTS: ImageAttachment[] = []
 
 function CockpitPanel({
   lanes,
@@ -3852,7 +3852,10 @@ const TranscriptPanel = memo(
     onOpenSubThread,
     onInspectRun
   }: TranscriptPanelProps) {
-    const visibleMessages = isWelcomeChat ? [] : messages
+    const visibleMessages = useMemo(
+      () => (isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages),
+      [isWelcomeChat, messages]
+    )
     const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
@@ -4564,15 +4567,22 @@ function App(): React.JSX.Element {
       ? showGhostCompanion && !showSkyVisualFx
       : showGhostCompanion
     : false
-  const codexExternalPathGrants =
-    currentProvider === 'codex' && !isCurrentGlobalChat
-      ? normalizeExternalPathGrants(currentChat?.providerMetadata?.codexExternalPathGrants)
-      : []
+  const codexExternalPathGrants = useMemo(
+    () =>
+      currentProvider === 'codex' && !isCurrentGlobalChat
+        ? normalizeExternalPathGrants(currentChat?.providerMetadata?.codexExternalPathGrants)
+        : [],
+    [currentChat?.providerMetadata?.codexExternalPathGrants, currentProvider, isCurrentGlobalChat]
+  )
   const currentComposerChatId = currentChat?.appChatId || null
   const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
-  const imageAttachments = currentComposerChatId
-    ? imageAttachmentsByChatId[currentComposerChatId] || []
-    : []
+  const imageAttachments = useMemo(
+    () =>
+      currentComposerChatId
+        ? imageAttachmentsByChatId[currentComposerChatId] || EMPTY_IMAGE_ATTACHMENTS
+        : EMPTY_IMAGE_ATTACHMENTS,
+    [currentComposerChatId, imageAttachmentsByChatId]
+  )
   const currentChatMediaRefs = useMemo(
     () => collectChatMediaRefs(currentChat, imageAttachments, codexExternalPathGrants),
     [currentChat, imageAttachments, codexExternalPathGrants]
@@ -5343,9 +5353,11 @@ function App(): React.JSX.Element {
     })
   }
 
+  const loadInitialDataRef = useRef<(() => Promise<void>) | null>(null)
+
   // Initialize
   useEffect(() => {
-    loadInitialData().catch((err) => {
+    loadInitialDataRef.current?.().catch((err) => {
       // Defensive: unhandled rejection here would silently leave the
       // sidebar empty until the user manually performs an action that
       // re-fetches workspaces. Surface the failure so we have a chance
@@ -5554,6 +5566,7 @@ function App(): React.JSX.Element {
       }
     }
   }
+  loadInitialDataRef.current = loadInitialData
 
   const handleSettingsChange = (next: SettingsPanelUpdate) => {
     const nextChatContextTurns =
@@ -6527,64 +6540,66 @@ function App(): React.JSX.Element {
     setChatPromptDraft(subThread.appChatId, delegationPrompt)
   }
 
-  const refreshCommandDiscovery = async (
-    workspacePath: string | undefined = currentWorkspace?.path
-  ) => {
-    const discoveryApi = window.api as any
-    if (!workspacePath || typeof discoveryApi.discoverGeminiCommands !== 'function') {
-      setDiscoveredCommands([])
-      setCommandDiscoveryStatus(
-        'Static Gemini commands loaded. Custom command discovery is unavailable.'
-      )
-      return
-    }
+  const refreshCommandDiscovery = useCallback(
+    async (workspacePath: string | undefined = currentWorkspace?.path) => {
+      const discoveryApi = window.api as any
+      if (!workspacePath || typeof discoveryApi.discoverGeminiCommands !== 'function') {
+        setDiscoveredCommands([])
+        setCommandDiscoveryStatus(
+          'Static Gemini commands loaded. Custom command discovery is unavailable.'
+        )
+        return
+      }
 
-    setCommandDiscoveryStatus('Discovering custom Gemini commands...')
-    try {
-      const commands = normalizeDiscoveredCommandItems(
-        await discoveryApi.discoverGeminiCommands(workspacePath)
-      )
-      setDiscoveredCommands(commands)
-      setCommandDiscoveryStatus(
-        commands.length > 0
-          ? `Discovered ${commands.length} custom command${commands.length === 1 ? '' : 's'}.`
-          : 'Static Gemini commands loaded. No custom command files found.'
-      )
-    } catch (error) {
-      setDiscoveredCommands([])
-      setCommandDiscoveryStatus(
-        `Static Gemini commands loaded. Discovery failed: ${redactLog(String(error))}`
-      )
-    }
-  }
+      setCommandDiscoveryStatus('Discovering custom Gemini commands...')
+      try {
+        const commands = normalizeDiscoveredCommandItems(
+          await discoveryApi.discoverGeminiCommands(workspacePath)
+        )
+        setDiscoveredCommands(commands)
+        setCommandDiscoveryStatus(
+          commands.length > 0
+            ? `Discovered ${commands.length} custom command${commands.length === 1 ? '' : 's'}.`
+            : 'Static Gemini commands loaded. No custom command files found.'
+        )
+      } catch (error) {
+        setDiscoveredCommands([])
+        setCommandDiscoveryStatus(
+          `Static Gemini commands loaded. Discovery failed: ${redactLog(String(error))}`
+        )
+      }
+    },
+    [currentWorkspace?.path]
+  )
 
-  const refreshGeminiMemory = async (
-    workspacePath: string | undefined = currentWorkspace?.path
-  ) => {
-    const memoryApi = window.api as any
-    if (!workspacePath || typeof memoryApi.discoverGeminiMemory !== 'function') {
-      setGeminiMemoryFiles([])
-      setGeminiMemoryStatus('GEMINI.md discovery is unavailable.')
-      return
-    }
+  const refreshGeminiMemory = useCallback(
+    async (workspacePath: string | undefined = currentWorkspace?.path) => {
+      const memoryApi = window.api as any
+      if (!workspacePath || typeof memoryApi.discoverGeminiMemory !== 'function') {
+        setGeminiMemoryFiles([])
+        setGeminiMemoryStatus('GEMINI.md discovery is unavailable.')
+        return
+      }
 
-    setGeminiMemoryStatus('Inspecting GEMINI.md files...')
-    try {
-      const memoryFiles = await memoryApi.discoverGeminiMemory(workspacePath)
-      const normalized = Array.isArray(memoryFiles)
-        ? memoryFiles.filter((item) => item?.path && item?.displayPath)
-        : []
-      setGeminiMemoryFiles(normalized)
-      setGeminiMemoryStatus(
-        normalized.length > 0
-          ? `Found ${normalized.length} GEMINI.md file${normalized.length === 1 ? '' : 's'}.`
-          : 'No workspace or global GEMINI.md files found.'
-      )
-    } catch (error) {
-      setGeminiMemoryFiles([])
-      setGeminiMemoryStatus(`GEMINI.md inspection failed: ${redactLog(String(error))}`)
-    }
-  }
+      setGeminiMemoryStatus('Inspecting GEMINI.md files...')
+      try {
+        const memoryFiles = await memoryApi.discoverGeminiMemory(workspacePath)
+        const normalized = Array.isArray(memoryFiles)
+          ? memoryFiles.filter((item) => item?.path && item?.displayPath)
+          : []
+        setGeminiMemoryFiles(normalized)
+        setGeminiMemoryStatus(
+          normalized.length > 0
+            ? `Found ${normalized.length} GEMINI.md file${normalized.length === 1 ? '' : 's'}.`
+            : 'No workspace or global GEMINI.md files found.'
+        )
+      } catch (error) {
+        setGeminiMemoryFiles([])
+        setGeminiMemoryStatus(`GEMINI.md inspection failed: ${redactLog(String(error))}`)
+      }
+    },
+    [currentWorkspace?.path]
+  )
 
   const clearImagePermissions = () => {
     setPermissionRequestPaths([])
@@ -7370,7 +7385,7 @@ function App(): React.JSX.Element {
 
     void refreshCommandDiscovery(currentWorkspace.path)
     void refreshGeminiMemory(currentWorkspace.path)
-  }, [currentWorkspace?.path])
+  }, [currentWorkspace?.path, refreshCommandDiscovery, refreshGeminiMemory])
 
   // ----- Raw Events auto-follow scrolling -------------------------------
   // Mirrors the transcript auto-follow design (see the long block above
@@ -7643,19 +7658,64 @@ function App(): React.JSX.Element {
     return true
   }
 
+  const refreshDiff = async () => {
+    if (currentWorkspace) {
+      const worktree =
+        currentProvider === 'gemini' ? resolveGeminiWorktreeConfig(currentWorkspace) : undefined
+      if (isGeminiWorktreeDiffUnavailable(worktree)) {
+        setDiff(createWorktreeDiffUnavailable())
+        setRunDiff(null)
+        setDiffView('workspace')
+        setDiffRefreshStatus('Diff disabled: worktree path unknown.')
+        return
+      }
+
+      const diffObj = await window.api.getDiff(getDiffWorkspacePath(currentWorkspace, worktree))
+      setDiff(diffObj)
+    }
+  }
+
+  const appEventHandlersRef = useRef({
+    appendThreadRawLog,
+    clearActiveRunContext,
+    getRunFileDiffSummaries,
+    handleGeminiCapacityExhaustion,
+    refreshDiff,
+    refreshUsageSummary,
+    resolveActiveRunContext,
+    setPendingAgentApprovalByChatId,
+    setPendingAgentApprovalForChat,
+    showAttachmentPermissionRequest,
+    triggerFxBurst
+  })
+  appEventHandlersRef.current = {
+    appendThreadRawLog,
+    clearActiveRunContext,
+    getRunFileDiffSummaries,
+    handleGeminiCapacityExhaustion,
+    refreshDiff,
+    refreshUsageSummary,
+    resolveActiveRunContext,
+    setPendingAgentApprovalByChatId,
+    setPendingAgentApprovalForChat,
+    showAttachmentPermissionRequest,
+    triggerFxBurst
+  }
+
   // IPC Listeners
   useEffect(() => {
     const handleProviderOutput = (fallbackProvider: ProviderId, payload: unknown) => {
+      const handlers = appEventHandlersRef.current
       const provider = getRouteProvider(payload, fallbackProvider)
       const text = extractStreamText(payload, 'data')
       if (!text) return
-      const context = resolveActiveRunContext(
+      const context = handlers.resolveActiveRunContext(
         provider,
         getRouteRunId(payload),
         getRouteChatId(payload)
       )
       if (context) {
-        handleGeminiCapacityExhaustion(
+        handlers.handleGeminiCapacityExhaustion(
           provider,
           context,
           text,
@@ -7664,7 +7724,7 @@ function App(): React.JSX.Element {
         )
         context.adapter.appendChunk(text)
       } else {
-        appendThreadRawLog(getRouteChatId(payload) || currentChatIdRef.current, {
+        handlers.appendThreadRawLog(getRouteChatId(payload) || currentChatIdRef.current, {
           type: 'stdout',
           content: text
         })
@@ -7672,10 +7732,11 @@ function App(): React.JSX.Element {
     }
 
     const handleProviderError = (fallbackProvider: ProviderId, payload: unknown) => {
+      const handlers = appEventHandlersRef.current
       const provider = getRouteProvider(payload, fallbackProvider)
       const error = extractStreamText(payload, 'error')
       if (!error) return
-      const context = resolveActiveRunContext(
+      const context = handlers.resolveActiveRunContext(
         provider,
         getRouteRunId(payload),
         getRouteChatId(payload)
@@ -7691,15 +7752,21 @@ function App(): React.JSX.Element {
         permissionRequest &&
         (category === 'permission_or_approval_required' || category === 'untrusted_workspace')
       ) {
-        showAttachmentPermissionRequest({
+        handlers.showAttachmentPermissionRequest({
           ...permissionRequest,
           message: redactLog(permissionRequest.message)
         })
-        triggerFxBurst('warning')
+        handlers.triggerFxBurst('warning')
       }
 
       if (provider === 'gemini' && context && category === 'model_capacity_exhausted') {
-        handleGeminiCapacityExhaustion(provider, context, error, errorRunChatId, isVisibleErrorRun)
+        handlers.handleGeminiCapacityExhaustion(
+          provider,
+          context,
+          error,
+          errorRunChatId,
+          isVisibleErrorRun
+        )
       }
       if (
         provider === 'gemini' &&
@@ -7707,15 +7774,16 @@ function App(): React.JSX.Element {
         category !== 'model_capacity_exhausted' &&
         redacted.toLowerCase().includes('warning')
       ) {
-        triggerFxBurst('warning')
+        handlers.triggerFxBurst('warning')
       }
 
-      appendThreadRawLog(errorRunChatId, { type: 'stderr', content: redacted })
+      handlers.appendThreadRawLog(errorRunChatId, { type: 'stderr', content: redacted })
     }
 
     const handleProviderExit = (fallbackProvider: ProviderId, payload: unknown) => {
+      const handlers = appEventHandlersRef.current
       const provider = getRouteProvider(payload, fallbackProvider)
-      const context = resolveActiveRunContext(
+      const context = handlers.resolveActiveRunContext(
         provider,
         getRouteRunId(payload),
         getRouteChatId(payload)
@@ -7763,9 +7831,9 @@ function App(): React.JSX.Element {
           scheduledTaskId: completedScheduledTaskId
         }
       })
-      triggerFxBurst('run-complete')
+      handlers.triggerFxBurst('run-complete')
       if (context.warnings.length > 0) {
-        triggerFxBurst('run-summary')
+        handlers.triggerFxBurst('run-summary')
       }
       if (isVisibleCompletedRun()) {
         setIsThinking(false)
@@ -7898,7 +7966,7 @@ function App(): React.JSX.Element {
                   ...runDiffResult.deletedFiles
                 ]
                 if (isVisibleCompletedRun()) {
-                  setRunDiff(getRunFileDiffSummaries(allRunChanges))
+                  setRunDiff(handlers.getRunFileDiffSummaries(allRunChanges))
                   setDiffView('this_run')
                 }
               })
@@ -7914,7 +7982,7 @@ function App(): React.JSX.Element {
       }
 
       if (isVisibleCompletedRun() && !completedRunDiffUnavailable) {
-        refreshDiff().then(() => {
+        handlers.refreshDiff().then(() => {
           if (hasToolCalls || exitCode === 0) {
             setDiffRefreshStatus('Diff refreshed after run.')
           }
@@ -7930,7 +7998,7 @@ function App(): React.JSX.Element {
       if (completedRunChatId) {
         recentlyCompletedChatIdsRef.current.set(completedRunChatId, Date.now())
       }
-      clearActiveRunContext(context)
+      handlers.clearActiveRunContext(context)
 
       if (completedScheduledTaskId) {
         void window.api
@@ -7947,7 +8015,7 @@ function App(): React.JSX.Element {
       }
 
       if (currentWorkspaceIdRef.current) {
-        void refreshUsageSummary(currentWorkspaceIdRef.current)
+        void handlers.refreshUsageSummary(currentWorkspaceIdRef.current)
       }
     }
 
@@ -7978,14 +8046,15 @@ function App(): React.JSX.Element {
 
     if (typeof window.api.onAgentApprovalRequest === 'function') {
       window.api.onAgentApprovalRequest((request) => {
-        const context = resolveActiveRunContext(
+        const handlers = appEventHandlersRef.current
+        const context = handlers.resolveActiveRunContext(
           request.provider,
           request.appRunId,
           request.appChatId
         )
         const targetChatId = context?.chatId || request.appChatId || currentChatIdRef.current
-        setPendingAgentApprovalForChat(targetChatId, request)
-        appendThreadRawLog(targetChatId, {
+        handlers.setPendingAgentApprovalForChat(targetChatId, request)
+        handlers.appendThreadRawLog(targetChatId, {
           type: 'info',
           content: `${getProviderLabel(request.provider)} approval requested: ${request.title}\n${request.body}`
         })
@@ -7994,20 +8063,21 @@ function App(): React.JSX.Element {
 
     if (typeof window.api.onAgentApprovalTimeout === 'function') {
       window.api.onAgentApprovalTimeout((timeout) => {
+        const handlers = appEventHandlersRef.current
         // Find which chat held this approval, clear it, and surface a
         // visible "auto-denied" note. The main process has already
         // dispatched action='decline' through the same processAgentApprovalResponse
         // path the renderer would use — this is just the UI tidy-up.
         // Raw-log uses `stderr` (red-toned in the existing UI) rather
         // than introducing a new `error` kind to the union.
-        setPendingAgentApprovalByChatId((prev) => {
+        handlers.setPendingAgentApprovalByChatId((prev) => {
           let matched = false
           const next: Record<string, AgentApprovalRequest | null> = {}
           for (const [chatId, request] of Object.entries(prev)) {
             if (request && request.id === timeout.approvalId) {
               matched = true
               next[chatId] = null
-              appendThreadRawLog(chatId, {
+              handlers.appendThreadRawLog(chatId, {
                 type: 'stderr',
                 content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout). Run will need manual intervention if it stalled.`
               })
@@ -8020,7 +8090,7 @@ function App(): React.JSX.Element {
           if (!matched) {
             const fallbackChatId = currentChatIdRef.current
             if (fallbackChatId) {
-              appendThreadRawLog(fallbackChatId, {
+              handlers.appendThreadRawLog(fallbackChatId, {
                 type: 'stderr',
                 content: `Approval ${timeout.approvalId} auto-denied after ${(timeout.appliedMs / 1000).toFixed(0)}s (timeout).`
               })
@@ -8180,23 +8250,6 @@ function App(): React.JSX.Element {
       yoloUnsubscribe?.()
     }
   }, [])
-
-  const refreshDiff = async () => {
-    if (currentWorkspace) {
-      const worktree =
-        currentProvider === 'gemini' ? resolveGeminiWorktreeConfig(currentWorkspace) : undefined
-      if (isGeminiWorktreeDiffUnavailable(worktree)) {
-        setDiff(createWorktreeDiffUnavailable())
-        setRunDiff(null)
-        setDiffView('workspace')
-        setDiffRefreshStatus('Diff disabled: worktree path unknown.')
-        return
-      }
-
-      const diffObj = await window.api.getDiff(getDiffWorkspacePath(currentWorkspace, worktree))
-      setDiff(diffObj)
-    }
-  }
 
   const currentGeminiWorktree =
     currentProvider === 'gemini' ? resolveGeminiWorktreeConfig(currentWorkspace) : undefined
@@ -8919,7 +8972,7 @@ function App(): React.JSX.Element {
       preSnapshotRef.current = preSnapshot
 
       const isVisibleRunChat = () => currentChatIdRef.current === runChatId
-      let runContext: ActiveRunContext
+      const runContext = {} as ActiveRunContext
       const durableKindForAdapterEvent = (event: NormalizedEvent): RunEventInput['kind'] => {
         if (event.type === 'tool_event') return 'tool'
         if (event.type === 'assistant_message_complete') return 'final_message'
@@ -9345,7 +9398,7 @@ function App(): React.JSX.Element {
           return updated
         })
       })
-      runContext = {
+      Object.assign(runContext, {
         runId: currentRunId,
         chatId: runChatId,
         provider: runProvider,
@@ -9363,7 +9416,7 @@ function App(): React.JSX.Element {
         startedAt: runStartedAt,
         diffUnavailable: runDiffUnavailable,
         scheduledTaskId: request.scheduledTaskId || null
-      }
+      })
       activeRunsRef.current.set(currentRunId, runContext)
       adapterRef.current = adapter
       syncRunningState()
@@ -9445,6 +9498,9 @@ function App(): React.JSX.Element {
       }
     }
   }
+
+  const executeRunRef = useRef(executeRun)
+  executeRunRef.current = executeRun
 
   const handleReviewCurrentDiff = async () => {
     if (!currentWorkspace || !currentChat || isPreparingDiffReview) {
@@ -10106,6 +10162,9 @@ function App(): React.JSX.Element {
     }
   }
 
+  const dispatchScheduledTaskRef = useRef(dispatchScheduledTask)
+  dispatchScheduledTaskRef.current = dispatchScheduledTask
+
   useEffect(() => {
     if (!workspacesHydrated) {
       return
@@ -10118,7 +10177,7 @@ function App(): React.JSX.Element {
     const nextTask = dueScheduledTasks[nextIndex]
     const remainingTasks = dueScheduledTasks.filter((_, index) => index !== nextIndex)
     setDueScheduledTasks(remainingTasks)
-    void dispatchScheduledTask(nextTask)
+    void dispatchScheduledTaskRef.current(nextTask)
   }, [dueScheduledTasks, runningChatIds, workspacesHydrated, workspaces])
 
   const appendBridgeFallback = (commandText: string, reason: string) => {
@@ -10736,13 +10795,13 @@ function App(): React.JSX.Element {
           setQueuedRuns((prev) => [nextRun, ...prev])
           return
         }
-        appendThreadRawLog(nextRun.chatRecord?.appChatId, {
+        appEventHandlersRef.current.appendThreadRawLog(nextRun.chatRecord?.appChatId, {
           type: 'info',
           content: `Starting queued ${getProviderLabel(nextRun.provider)} run. ${remainingRuns.length} queued task${remainingRuns.length === 1 ? '' : 's'} remain.`
         })
-        void executeRun({ ...nextRun, appRunId: leased.runId })
+        void executeRunRef.current({ ...nextRun, appRunId: leased.runId })
       })
-  }, [queuedRuns, runningChatIds, currentWorkspace, currentChat, executeRun])
+  }, [queuedRuns, runningChatIds, currentWorkspace, currentChat])
 
   useEffect(() => {
     try {
@@ -10931,8 +10990,26 @@ function App(): React.JSX.Element {
     }
   }
 
+  const keyboardActionsRef = useRef({
+    clearImagePermissions,
+    handleRun,
+    rememberCurrentChatComposerSelection,
+    setCommandPaletteQuery,
+    setIsCommandPaletteOpen,
+    syncPersistentModelSelection
+  })
+  keyboardActionsRef.current = {
+    clearImagePermissions,
+    handleRun,
+    rememberCurrentChatComposerSelection,
+    setCommandPaletteQuery,
+    setIsCommandPaletteOpen,
+    syncPersistentModelSelection
+  }
+
   useEffect(() => {
     const handleAppKeyDown = (event: KeyboardEvent) => {
+      const keyboardActions = keyboardActionsRef.current
       const target = event.target as HTMLElement | null
       const tagName = target?.tagName?.toLowerCase()
       const isEditableTarget = Boolean(
@@ -10946,8 +11023,8 @@ function App(): React.JSX.Element {
       if (event.key === 'Escape') {
         if (isCommandPaletteOpen) {
           event.preventDefault()
-          setIsCommandPaletteOpen(false)
-          setCommandPaletteQuery('')
+          keyboardActions.setIsCommandPaletteOpen(false)
+          keyboardActions.setCommandPaletteQuery('')
           return
         }
         if (showSettings) {
@@ -10957,19 +11034,19 @@ function App(): React.JSX.Element {
         }
         if (permissionRequestPaths.length > 0) {
           event.preventDefault()
-          clearImagePermissions()
+          keyboardActions.clearImagePermissions()
           return
         }
         if (selectedModelType === 'custom') {
           event.preventDefault()
           setCustomModel('')
           setSelectedModelType(lastNonCustomModelType)
-          rememberCurrentChatComposerSelection({
+          keyboardActions.rememberCurrentChatComposerSelection({
             customModel: '',
             selectedModelType: lastNonCustomModelType
           })
           if (currentProvider === 'gemini') {
-            syncPersistentModelSelection(lastNonCustomModelType)
+            keyboardActions.syncPersistentModelSelection(lastNonCustomModelType)
           }
           return
         }
@@ -10977,7 +11054,7 @@ function App(): React.JSX.Element {
 
       if (hasModifier && event.key === 'Enter') {
         event.preventDefault()
-        handleRun()
+        keyboardActions.handleRun()
         return
       }
 
@@ -10988,7 +11065,7 @@ function App(): React.JSX.Element {
       const shortcutKey = event.key.toLowerCase()
       if (shortcutKey === 'k') {
         event.preventDefault()
-        setIsCommandPaletteOpen(true)
+        keyboardActions.setIsCommandPaletteOpen(true)
         return
       }
 
@@ -11022,15 +11099,12 @@ function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', handleAppKeyDown)
   }, [
     appearance,
-    clearImagePermissions,
     currentProvider,
-    handleRun,
     isCommandPaletteOpen,
     lastNonCustomModelType,
     permissionRequestPaths.length,
     selectedModelType,
-    showSettings,
-    syncPersistentModelSelection
+    showSettings
   ])
 
   const isOldVersion = geminiVersion !== 'unknown' && geminiVersion < '0.39.1'
@@ -11148,7 +11222,7 @@ function App(): React.JSX.Element {
       deletions,
       filesChanged: files.length
     }
-  }, [currentChat?.messages, currentRun?.runId, runDiff])
+  }, [currentChat, currentRun?.runId, runDiff])
   const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
@@ -11291,10 +11365,7 @@ function App(): React.JSX.Element {
         ? 'Tool permission requested'
         : 'Attachment access requested'
   const currentRunDiff = currentRun?.runDiff
-  const exactFileChangeSummaries = useMemo(
-    () => getRunFileDiffSummaries(runDiff || currentRunDiff || null),
-    [currentRunDiff, runDiff]
-  )
+  const exactFileChangeSummaries = getRunFileDiffSummaries(runDiff || currentRunDiff || null)
   const liveToolFileChangeSummaries = useMemo(
     () =>
       getLiveToolFileDiffSummaries(

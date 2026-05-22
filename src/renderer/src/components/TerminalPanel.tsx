@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import '@xterm/xterm/css/xterm.css'
@@ -12,12 +12,12 @@ export function TerminalPanel({ workspacePath, onClose }: TerminalPanelProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const term = useRef<Terminal | null>(null)
   const fitAddon = useRef<FitAddon | null>(null)
-  const sessionId = useRef(`setup-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  const sessionId = useId().replace(/:/g, '')
 
   useEffect(() => {
     if (!terminalRef.current) return
     let disposed = false
-    const ptySessionId = sessionId.current
+    const ptySessionId = `setup-${sessionId}`
 
     term.current = new Terminal({
       cursorBlink: true,
@@ -67,7 +67,7 @@ export function TerminalPanel({ workspacePath, onClose }: TerminalPanelProps) {
       term.current?.dispose()
       window.removeEventListener('resize', handleResize)
     }
-  }, [workspacePath])
+  }, [sessionId, workspacePath])
 
   return (
     <div className="terminal-panel">

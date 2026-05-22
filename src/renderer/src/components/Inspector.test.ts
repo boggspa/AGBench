@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildDelegationTree } from './Inspector'
+import { buildDelegationTree } from '../lib/DelegationTree'
 import type { ChatRecord } from '../../../main/store/types'
 
 function makeChat(overrides: Partial<ChatRecord> & Pick<ChatRecord, 'appChatId'>): ChatRecord {

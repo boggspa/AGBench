@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { resolveDelegationStatus, isSubThreadDelegationMessage } from './SubThreadDelegationCard'
+import {
+  resolveDelegationStatus,
+  isSubThreadDelegationMessage
+} from './SubThreadDelegationCardModel'
 import type { ChatMessage, ChatRecord } from '../../../main/store/types'
 
 function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {

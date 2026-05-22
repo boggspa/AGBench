@@ -16,6 +16,7 @@ import {
   providerDelegationChips,
   summarizeDelegationActivity
 } from '../lib/DelegationAudit'
+import { buildDelegationTree, type DelegationTimelineNode } from '../lib/DelegationTree'
 
 type InspectorTab =
   | 'diff'
@@ -219,31 +220,39 @@ function useGeminiCapabilities(workspacePath?: string) {
 
   useEffect(() => {
     if (!workspacePath) {
-      setCapabilities(null)
-      setError(null)
-      return
+      let cancelled = false
+      queueMicrotask(() => {
+        if (cancelled) return
+        setCapabilities(null)
+        setError(null)
+      })
+      return () => {
+        cancelled = true
+      }
     }
 
     let cancelled = false
-    setIsLoading(true)
-    setError(null)
-    window.api
-      .getGeminiCapabilities(workspacePath)
-      .then((nextCapabilities) => {
-        if (!cancelled) setCapabilities(nextCapabilities)
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : String(err))
-      })
-      .finally(() => {
-        if (!cancelled) setIsLoading(false)
-      })
+    queueMicrotask(() => {
+      if (cancelled) return
+      setIsLoading(true)
+      setError(null)
+      window.api
+        .getGeminiCapabilities(workspacePath)
+        .then((nextCapabilities) => {
+          if (!cancelled) setCapabilities(nextCapabilities)
+        })
+        .catch((err) => {
+          if (!cancelled) setError(err instanceof Error ? err.message : String(err))
+        })
+        .finally(() => {
+          if (!cancelled) setIsLoading(false)
+        })
+    })
 
     return () => {
       cancelled = true
     }
   }, [workspacePath])
-
   return { capabilities, isLoading, error, refreshCapabilities }
 }
 
@@ -536,51 +545,6 @@ function DelegationTab(props: InspectorProps) {
       )}
     </div>
   )
-}
-
-/** Phase I3.3 — node in the rendered delegation tree. */
-interface DelegationTimelineNode {
-  chat: ChatRecord
-  children: DelegationTimelineNode[]
-  isCurrent: boolean
-}
-
-/** Pure helper: given a chat list + a focus chat id, return the root of
- * its delegation tree (walks up parentChatId, then collects descendants). */
-export function buildDelegationTree(
-  chats: ChatRecord[],
-  focusChatId?: string
-): DelegationTimelineNode | null {
-  if (!chats.length) return null
-  const byId = new Map(chats.map((chat) => [chat.appChatId, chat]))
-  const childrenByParent = new Map<string, ChatRecord[]>()
-  for (const chat of chats) {
-    if (!chat.parentChatId) continue
-    const bucket = childrenByParent.get(chat.parentChatId)
-    if (bucket) bucket.push(chat)
-    else childrenByParent.set(chat.parentChatId, [chat])
-  }
-  for (const bucket of childrenByParent.values()) {
-    bucket.sort((a, b) => a.createdAt - b.createdAt)
-  }
-
-  let rootChat: ChatRecord | undefined = focusChatId ? byId.get(focusChatId) : undefined
-  if (!rootChat) return null
-  while (rootChat.parentChatId) {
-    const parent: ChatRecord | undefined = byId.get(rootChat.parentChatId)
-    if (!parent) break
-    rootChat = parent
-  }
-
-  const build = (chat: ChatRecord): DelegationTimelineNode => {
-    const kids = (childrenByParent.get(chat.appChatId) ?? []).map(build)
-    return {
-      chat,
-      children: kids,
-      isCurrent: chat.appChatId === focusChatId
-    }
-  }
-  return build(rootChat)
 }
 
 function timelineNodeStatus(
@@ -975,6 +939,11 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
 }
 
 function CapabilitiesTab(props: InspectorProps) {
+  const { currentWorkspace } = props
+  const workspacePath = props.provider === 'gemini' ? currentWorkspace?.path : undefined
+  const { capabilities, isLoading, error, refreshCapabilities } =
+    useGeminiCapabilities(workspacePath)
+
   if (props.provider === 'codex') {
     return (
       <div className="safety-panel">
@@ -1195,11 +1164,6 @@ function CapabilitiesTab(props: InspectorProps) {
       </div>
     )
   }
-
-  const { currentWorkspace } = props
-  const workspacePath = currentWorkspace?.path
-  const { capabilities, isLoading, error, refreshCapabilities } =
-    useGeminiCapabilities(workspacePath)
 
   return (
     <div className="safety-panel">
@@ -1816,7 +1780,7 @@ function SafetyTab({
           style={{ width: '100%' }}
           onClick={() => navigator.clipboard.writeText('/permissions trust')}
         >
-          Copy '/permissions trust'
+          Copy /permissions trust
         </button>
       </div>
 

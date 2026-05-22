@@ -1,11 +1,8 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { ChatMessage } from '../../../main/store/types'
-import {
-  isSubThreadReturnMessage,
-  SubThreadReturnCard,
-  subThreadReturnBody
-} from './SubThreadReturnCard'
+import { isSubThreadReturnMessage, subThreadReturnBody } from './SubThreadReturnCardModel'
+import { SubThreadReturnCard } from './SubThreadReturnCard'
 
 function subThreadMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
   return {

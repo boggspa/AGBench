@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { keymap, EditorView } from '@codemirror/view'
 import type { Extension } from '@codemirror/state'
@@ -168,7 +168,7 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
     [selectedPath]
   )
 
-  const refreshFiles = async () => {
+  const refreshFiles = useCallback(async () => {
     if (!workspacePath) {
       setFiles([])
       return
@@ -185,15 +185,22 @@ export function FileEditorPanel({ workspacePath, width }: FileEditorPanelProps) 
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [workspacePath])
 
   useEffect(() => {
-    setSelectedPath('')
-    setContent('')
-    setSavedContent('')
-    setPendingOpenEntry(null)
-    void refreshFiles()
-  }, [workspacePath])
+    let cancelled = false
+    queueMicrotask(() => {
+      if (cancelled) return
+      setSelectedPath('')
+      setContent('')
+      setSavedContent('')
+      setPendingOpenEntry(null)
+      void refreshFiles()
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [refreshFiles])
 
   const openFile = async (entry: WorkspaceFileEntry) => {
     if (!workspacePath || entry.isDirectory) return
