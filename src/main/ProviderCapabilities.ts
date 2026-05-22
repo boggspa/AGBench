@@ -185,7 +185,7 @@ function geminiMcpCapability(
     available,
     enabled,
     installed,
-    serverName: status?.serverName || 'agentbench',
+    serverName: status?.serverName || 'AGBench',
     tools: available ? [...AGENTBENCH_GEMINI_MCP_TOOLS] : [],
     message:
       status?.message ||
@@ -228,13 +228,13 @@ function cliAgentbenchMcpCapability(
     available,
     enabled,
     installed: available,
-    serverName: typeof record.serverName === 'string' ? record.serverName : 'agentbench',
+    serverName: typeof record.serverName === 'string' ? record.serverName : 'AGBench',
     tools: available ? tools : [],
     message:
       typeof record.message === 'string'
         ? record.message
         : available
-          ? `AGBench registers the agentbench MCP bridge for ${providerLabel(provider)} runs.`
+          ? `AGBench registers the AGBench MCP bridge for ${providerLabel(provider)} runs.`
           : `AGBench MCP bridge is not available for ${providerLabel(provider)}.`
   }
 }

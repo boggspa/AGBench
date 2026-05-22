@@ -31,9 +31,11 @@ export const KIMI_AGENTBENCH_TOOL_NAMES = AGENTBENCH_MCP_TOOLS
 /**
  * Server name used as the registration key in `~/.kimi/mcp.json`.
  * Matches the Gemini / Codex / Claude bridge name so the broker's
- * server-side identity is consistent across providers.
+ * server-side identity is consistent across providers. Mixed-case
+ * `AGBench` matches the product display name and is what Kimi shows
+ * in its tool list as the namespace prefix (`AGBench__<tool>`).
  */
-export const KIMI_AGENTBENCH_SERVER_NAME = 'agentbench'
+export const KIMI_AGENTBENCH_SERVER_NAME = 'AGBench'
 
 export interface KimiMcpBridgeAddArgsInput {
   /** Absolute path of the AGBench binary that hosts the MCP bridge. */

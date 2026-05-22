@@ -31,7 +31,7 @@ describe('ProviderCapabilities', () => {
         enabled: false,
         installed: false,
         available: false,
-        serverName: 'agentbench',
+        serverName: 'AGBench',
         message: 'Bridge disabled'
       }
     })
@@ -52,7 +52,7 @@ describe('ProviderCapabilities', () => {
         enabled: true,
         installed: true,
         available: true,
-        serverName: 'agentbench'
+        serverName: 'AGBench'
       }
     })
 

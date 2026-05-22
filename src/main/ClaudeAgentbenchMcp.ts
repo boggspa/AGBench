@@ -32,7 +32,12 @@ export const CLAUDE_AGENTBENCH_TOOL_NAMES = AGENTBENCH_MCP_TOOLS
  * namespaced form and the bare tool names so the agent sees them
  * pre-approved regardless of which form the SDK / CLI exposes.
  */
-export const CLAUDE_AGENTBENCH_SERVER_NAME = 'agentbench'
+// MCP server registration name passed to `@anthropic-ai/claude-agent-sdk`
+// (`options.mcpServers = { AGBench: { ... } }`) and to the Claude CLI
+// via `--mcp-config`. Tools appear in the Claude agent's tool list as
+// `mcp__AGBench__delegate_to_subthread`. Mixed-case matches the
+// product display name; the SDK accepts any string as a server key.
+export const CLAUDE_AGENTBENCH_SERVER_NAME = 'AGBench'
 
 export interface ClaudeAgentbenchMcpInput {
   enabled: boolean

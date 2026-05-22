@@ -217,7 +217,7 @@ pairing time.
 
 ## MCP
 
-AGBench exposes a bundled MCP server (`agentbench`) that gives the
+AGBench exposes a bundled MCP server (`AGBench`) that gives the
 agent access to these tools when running in Gemini-CLI bridge mode:
 
 - `run_shell_command` — workspace-scoped shell with approval gate.
@@ -336,10 +336,10 @@ agent access to these tools when running in Gemini-CLI bridge mode:
       `model: 'cli-default'`. Future revs may expose the full
       composer surface as additional tool args.
     - **Phase I2: Codex agents now have access to the same MCP tool
-      surface.** AGBench registers the `agentbench` MCP server with
+      surface.** AGBench registers the `AGBench` MCP server with
       Codex CLI's `app-server` at spawn time via `-c
-      mcp_servers.agentbench.*` config overrides, so Codex agents see
-      `agentbench__delegate_to_subthread` (and the other 5 AGBench
+      mcp_servers.AGBench.*` config overrides, so Codex agents see
+      `AGBench__delegate_to_subthread` (and the other 5 AGBench
       tools) in their tool list without any user setup. The bridge
       subprocess stamps `parentProvider='codex'` on every broker
       request (via `AGENTBENCH_PARENT_PROVIDER` env), so the approval

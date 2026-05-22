@@ -308,13 +308,13 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
     const geminiWriteToolPreamble = [
       'AGBench runtime note: this Gemini workspace run is write-capable.',
       `Use the AGBench MCP tools directly for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control. Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
-      `Complete agentbench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
-      'If Gemini exposes MCP-qualified names, use the `agentbench__<tool>` form, e.g. agentbench__workspace_search, agentbench__apply_patch, agentbench__git_status, agentbench__run_task, and agentbench__delegate_to_subthread.',
+      `Complete AGBench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
+      'If Gemini exposes MCP-qualified names, use the `AGBench__<tool>` form, e.g. AGBench__workspace_search, AGBench__apply_patch, AGBench__git_status, AGBench__run_task, and AGBench__delegate_to_subthread.',
       'Do not delegate file-modification work to invoke_agent or generalist agents; delegated agents may not inherit AGBench write tools.',
-      'For CROSS-PROVIDER delegation (e.g. asking Kimi or Codex to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use your built-in invoke_agent / generalist agent for cross-provider work, those run inside your own process and cannot reach other AGBench providers.',
-      "Spawn example: agentbench__delegate_to_subthread({ provider: 'kimi', prompt: 'Generate 9 song data tables...', returnResult: true }).",
+      'For CROSS-PROVIDER delegation (e.g. asking Kimi or Codex to handle a sub-task), call AGBench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use your built-in invoke_agent / generalist agent for cross-provider work, those run inside your own process and cannot reach other AGBench providers.',
+      "Spawn example: AGBench__delegate_to_subthread({ provider: 'kimi', prompt: 'Generate 9 song data tables...', returnResult: true }).",
       'IMPORTANT — RECALL: when following up on a sub-thread you already spawned (status checks, additional turns, multi-step back-and-forth with the same delegated agent), pass the id you got back in the first tool_result as `subThreadId` on the next call. Without it, a fresh sub-thread spawns with zero memory of prior turns and the sub-agent will answer as if seeing your prompt for the first time.',
-      "Recall example: agentbench__delegate_to_subthread({ provider: 'kimi', prompt: 'Did you finish the task I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
+      "Recall example: AGBench__delegate_to_subthread({ provider: 'kimi', prompt: 'Did you finish the task I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
       'If any of those tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${geminiWriteToolPreamble}\n\n${contextualPrompt}`
@@ -322,7 +322,7 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
 
   // (4) Phase I3 (Claude initiator): Claude workspace runs (non-global)
   // outside plan mode get a parallel preamble pointing the agent at the
-  // agentbench MCP server registered by the SDK / CLI layer. Without it
+  // AGBench MCP server registered by the SDK / CLI layer. Without it
   // Claude tends to reach for its own Task tool for sub-agent work,
   // which stays inside Claude's process and cannot reach other AGBench
   // providers.
@@ -333,24 +333,24 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // when resuming.
   if (provider === 'claude' && !isGlobalRun && approvalMode !== 'plan' && !resumeSessionId) {
     const claudeDelegationPreamble = [
-      'AGBench runtime note: this Claude workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
+      'AGBench runtime note: this Claude workspace run has access to the AGBench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
       `Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
-      `Complete agentbench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
-      'Claude may expose tools as `mcp__agentbench__<tool>`; examples: mcp__agentbench__workspace_search, mcp__agentbench__apply_patch, mcp__agentbench__git_status, mcp__agentbench__run_task, and mcp__agentbench__delegate_to_subthread.',
-      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Kimi, or Codex to handle a sub-task), call mcp__agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Claude's built-in Task tool for cross-provider work, that runs inside Claude's process and cannot reach other AGBench providers.",
-      "Spawn example: mcp__agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Analyze this codebase...', returnResult: true }).",
+      `Complete AGBench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
+      'Claude may expose tools as `mcp__AGBench__<tool>`; examples: mcp__AGBench__workspace_search, mcp__AGBench__apply_patch, mcp__AGBench__git_status, mcp__AGBench__run_task, and mcp__AGBench__delegate_to_subthread.',
+      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Kimi, or Codex to handle a sub-task), call mcp__AGBench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Claude's built-in Task tool for cross-provider work, that runs inside Claude's process and cannot reach other AGBench providers.",
+      "Spawn example: mcp__AGBench__delegate_to_subthread({ provider: 'gemini', prompt: 'Analyze this codebase...', returnResult: true }).",
       'IMPORTANT — RECALL: when following up on a sub-thread you already spawned (status checks, additional turns, multi-step back-and-forth with the same delegated agent), pass the id you got back in the first tool_result as `subThreadId` on the next call. Without it, a fresh sub-thread spawns with zero memory of prior turns and the sub-agent will answer as if seeing your prompt for the first time.',
-      "Recall example: mcp__agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Did you finish the analysis I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
-      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+      "Recall example: mcp__AGBench__delegate_to_subthread({ provider: 'gemini', prompt: 'Did you finish the analysis I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
+      'If the AGBench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${claudeDelegationPreamble}\n\n${contextualPrompt}`
   }
 
   // (5) Phase I4 (Kimi initiator): Kimi workspace runs (non-global)
   // outside plan mode get the same delegation preamble — register the
-  // agentbench MCP tool list and forbid built-in generalist-agent paths
+  // AGBench MCP tool list and forbid built-in generalist-agent paths
   // for cross-provider work. Kimi's MCP host inherits the tools from
-  // `~/.kimi/mcp.json` (installed by `kimi mcp add agentbench …`).
+  // `~/.kimi/mcp.json` (installed by `kimi mcp add AGBench …`).
   //
   // Tier 1 EXCEPTION: Kimi's Wire-protocol `--resume` restores only the
   // session token, NOT message history (see the conversation-context
@@ -362,23 +362,23 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // Kimi API where a real system-prompt slot exists.
   if (provider === 'kimi' && !isGlobalRun && approvalMode !== 'plan') {
     const kimiDelegationPreamble = [
-      'AGBench runtime note: this Kimi workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
+      'AGBench runtime note: this Kimi workspace run has access to the AGBench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
       `Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
-      `Complete agentbench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
-      'Kimi may expose tools as `agentbench__<tool>`; examples: agentbench__workspace_search, agentbench__apply_patch, agentbench__git_status, agentbench__run_task, and agentbench__delegate_to_subthread.',
-      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Codex to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use any built-in generalist-agent path for cross-provider work, those run inside Kimi's process and cannot reach other AGBench providers.",
-      "Spawn example: agentbench__delegate_to_subthread({ provider: 'claude', prompt: 'Review this design doc...', returnResult: true }).",
+      `Complete AGBench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
+      'Kimi may expose tools as `AGBench__<tool>`; examples: AGBench__workspace_search, AGBench__apply_patch, AGBench__git_status, AGBench__run_task, and AGBench__delegate_to_subthread.',
+      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Codex to handle a sub-task), call AGBench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use any built-in generalist-agent path for cross-provider work, those run inside Kimi's process and cannot reach other AGBench providers.",
+      "Spawn example: AGBench__delegate_to_subthread({ provider: 'claude', prompt: 'Review this design doc...', returnResult: true }).",
       'IMPORTANT — RECALL: when following up on a sub-thread you already spawned (status checks, additional turns, multi-step back-and-forth with the same delegated agent), pass the id you got back in the first tool_result as `subThreadId` on the next call. Without it, a fresh sub-thread spawns with zero memory of prior turns and the sub-agent will answer as if seeing your prompt for the first time.',
-      "Recall example: agentbench__delegate_to_subthread({ provider: 'claude', prompt: 'Did you finish the review I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
-      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+      "Recall example: AGBench__delegate_to_subthread({ provider: 'claude', prompt: 'Did you finish the review I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
+      'If the AGBench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${kimiDelegationPreamble}\n\n${contextualPrompt}`
   }
 
   // (6) Phase I2 (Codex initiator): Codex workspace runs (non-global)
   // outside plan mode get a parallel preamble pointing the agent at the
-  // agentbench MCP server that the Codex CLI registers at spawn via
-  // `-c mcp_servers.agentbench.*` (see `CodexAppServerClient.ts`).
+  // AGBench MCP server that the Codex CLI registers at spawn via
+  // `-c mcp_servers.AGBench.*` (see `CodexAppServerClient.ts`).
   //
   // Without this note Codex agents silently never invoke the MCP tools:
   // empirically, the bridge subprocess gets spawned by Codex CLI on
@@ -400,16 +400,16 @@ export function composeRunPrompt(input: ComposeRunPromptInput): ComposeRunPrompt
   // restores the full thread state. Skip the preamble on resume.
   if (provider === 'codex' && !isGlobalRun && approvalMode !== 'plan' && !resumeSessionId) {
     const codexDelegationPreamble = [
-      'AGBench runtime note: this Codex workspace run has access to the agentbench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
+      'AGBench runtime note: this Codex workspace run has access to the AGBench MCP server for workspace reads/search, edits, git, tasks/tests, browser checks, diagnostics, auth/status, handoffs, and sub-thread control.',
       `Tool groups: ${AGENTBENCH_MCP_TOOL_GROUPS}`,
-      `Complete agentbench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
-      'Codex may expose tools as `agentbench__<tool>` or as the bare tool name depending on CLI version; examples: agentbench__workspace_search, agentbench__apply_patch, agentbench__git_status, agentbench__run_task, and agentbench__delegate_to_subthread.',
-      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Kimi to handle a sub-task), call agentbench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Codex's built-in invoke / generalist-agent path for cross-provider work, those run inside Codex's process and cannot reach other AGBench providers.",
+      `Complete AGBench tool list: ${AGENTBENCH_MCP_TOOL_LIST}.`,
+      'Codex may expose tools as `AGBench__<tool>` or as the bare tool name depending on CLI version; examples: AGBench__workspace_search, AGBench__apply_patch, AGBench__git_status, AGBench__run_task, and AGBench__delegate_to_subthread.',
+      "For CROSS-PROVIDER delegation (e.g. asking Gemini, Claude, or Kimi to handle a sub-task), call AGBench__delegate_to_subthread({ provider, prompt, returnResult }) — NEVER use Codex's built-in invoke / generalist-agent path for cross-provider work, those run inside Codex's process and cannot reach other AGBench providers.",
       'The tool may also surface as the plain `delegate_to_subthread` name depending on Codex CLI version; either form invokes the same AGBench MCP entrypoint.',
-      "Spawn example: agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Audit this codebase for unused exports...', returnResult: true }).",
+      "Spawn example: AGBench__delegate_to_subthread({ provider: 'gemini', prompt: 'Audit this codebase for unused exports...', returnResult: true }).",
       'IMPORTANT — RECALL: when following up on a sub-thread you already spawned (status checks, additional turns, multi-step back-and-forth with the same delegated agent), pass the id you got back in the first tool_result as `subThreadId` on the next call. Without it, a fresh sub-thread spawns with zero memory of prior turns and the sub-agent will answer as if seeing your prompt for the first time.',
-      "Recall example: agentbench__delegate_to_subthread({ provider: 'gemini', prompt: 'Did you finish the audit I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
-      'If the agentbench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
+      "Recall example: AGBench__delegate_to_subthread({ provider: 'gemini', prompt: 'Did you finish the audit I asked earlier? Report status.', subThreadId: '<id-from-prior-result>', returnResult: true }).",
+      'If the AGBench MCP tools are unavailable, stop and report the exact missing tool names instead of pasting full replacement files for manual application.'
     ].join('\n')
     contextualPrompt = `${codexDelegationPreamble}\n\n${contextualPrompt}`
   }

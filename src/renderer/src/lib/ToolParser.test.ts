@@ -144,7 +144,7 @@ describe('ToolParser', () => {
       expect(getToolCategory('Edit')).toBe('write');
       expect(getToolCategory('MultiEdit')).toBe('write');
       expect(getToolCategory('str_replace')).toBe('write');
-      expect(getToolCategory('agentbench__write_file')).toBe('write');
+      expect(getToolCategory('AGBench__write_file')).toBe('write');
     });
     it('maps create_file to write', () => {
       expect(getToolCategory('create_file')).toBe('write');
@@ -163,8 +163,8 @@ describe('ToolParser', () => {
   describe('isWriteLikeToolName', () => {
     it('recognizes unqualified and MCP-qualified write tools', () => {
       expect(isWriteLikeToolName('apply_patch')).toBe(true);
-      expect(isWriteLikeToolName('mcp__agentbench__replace')).toBe(true);
-      expect(isWriteLikeToolName('agentbench__write_file')).toBe(true);
+      expect(isWriteLikeToolName('mcp__AGBench__replace')).toBe(true);
+      expect(isWriteLikeToolName('AGBench__write_file')).toBe(true);
       expect(isWriteLikeToolName('run_shell_command')).toBe(false);
     });
   });

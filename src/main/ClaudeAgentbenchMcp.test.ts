@@ -9,7 +9,7 @@ import {
 } from './ClaudeAgentbenchMcp'
 
 // Phase I3 (Claude initiator): the Claude SDK + CLI fallback gain the
-// same agentbench MCP server that Gemini/Codex already use. Pin the
+// same AGBench MCP server that Gemini/Codex already use. Pin the
 // exact `mcpServers` shape (SDK path) and CLI argv extension so a
 // regression in the broker / parent-provider routing trips immediately.
 describe('buildClaudeAgentbenchMcpServers', () => {
@@ -29,10 +29,10 @@ describe('buildClaudeAgentbenchMcpServers', () => {
     expect(buildClaudeAgentbenchMcpServers({ ...fixture, enabled: false })).toBeNull()
   })
 
-  it('emits a single agentbench stdio entry with the parentProvider env stamp', () => {
+  it('emits a single AGBench stdio entry with the parentProvider env stamp', () => {
     const servers = buildClaudeAgentbenchMcpServers(fixture)
     expect(servers).toEqual({
-      agentbench: {
+      AGBench: {
         type: 'stdio',
         command: '/Applications/AgentBench.app/Contents/MacOS/AgentBench',
         args: [
@@ -47,17 +47,17 @@ describe('buildClaudeAgentbenchMcpServers', () => {
     })
   })
 
-  it('uses the agentbench server name (matches Gemini/Codex bridge registrations)', () => {
+  it('uses the AGBench server name (matches Gemini/Codex bridge registrations)', () => {
     const servers = buildClaudeAgentbenchMcpServers(fixture)!
     expect(Object.keys(servers)).toEqual([CLAUDE_AGENTBENCH_SERVER_NAME])
-    expect(CLAUDE_AGENTBENCH_SERVER_NAME).toBe('agentbench')
+    expect(CLAUDE_AGENTBENCH_SERVER_NAME).toBe('AGBench')
   })
 
   it('copies bridgeArgs by value so caller mutations cannot drift the SDK config', () => {
     const args = [...fixture.bridgeArgs]
     const servers = buildClaudeAgentbenchMcpServers({ ...fixture, bridgeArgs: args })!
     args.push('--mutated-after-build')
-    expect(servers.agentbench.args).not.toContain('--mutated-after-build')
+    expect(servers.AGBench.args).not.toContain('--mutated-after-build')
   })
 })
 
@@ -76,7 +76,7 @@ describe('buildClaudeAgentbenchMcpConfigJson', () => {
     })
     expect(config).toEqual({
       mcpServers: {
-        agentbench: {
+        AGBench: {
           type: 'stdio',
           command: '/opt/agentbench/bin/AgentBench',
           args: [
@@ -100,10 +100,10 @@ describe('buildClaudeAgentbenchMcpConfigJson', () => {
 })
 
 describe('buildClaudeAgentbenchAllowedToolNames', () => {
-  it('emits both mcp__agentbench__<tool> and bare <tool> names for every AGBench MCP tool', () => {
+  it('emits both mcp__AGBench__<tool> and bare <tool> names for every AGBench MCP tool', () => {
     const names = buildClaudeAgentbenchAllowedToolNames()
     for (const tool of CLAUDE_AGENTBENCH_TOOL_NAMES) {
-      expect(names).toContain(`mcp__agentbench__${tool}`)
+      expect(names).toContain(`mcp__AGBench__${tool}`)
       expect(names).toContain(tool)
     }
     // Each tool is emitted in both namespaced and bare form.
@@ -122,7 +122,7 @@ describe('buildClaudeAgentbenchAllowedToolNames', () => {
 
   it('always includes delegate_to_subthread (the headline Phase I tool)', () => {
     expect(buildClaudeAgentbenchAllowedToolNames()).toContain(
-      'mcp__agentbench__delegate_to_subthread'
+      'mcp__AGBench__delegate_to_subthread'
     )
     expect(buildClaudeAgentbenchAllowedToolNames()).toContain('delegate_to_subthread')
   })

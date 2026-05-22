@@ -6,7 +6,7 @@ import {
   redactKimiMcpBridgeAddArgs
 } from './KimiMcpBridge'
 
-// Phase I4 (Kimi initiator): the Kimi CLI gains the same agentbench
+// Phase I4 (Kimi initiator): the Kimi CLI gains the same AGBench
 // MCP server that Gemini / Codex / Claude already have. Pin the exact
 // argv shape passed to `kimi mcp add` so a regression in the broker /
 // parent-provider routing trips immediately.
@@ -29,7 +29,7 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     expect(args).toEqual([
       'mcp',
       'add',
-      'agentbench',
+      'AGBench',
       '--transport',
       'stdio',
       '--env',
@@ -44,13 +44,13 @@ describe('buildKimiMcpBridgeAddArgs', () => {
     ])
   })
 
-  it("uses 'agentbench' as the server name (matches Gemini / Codex / Claude registrations)", () => {
+  it("uses 'AGBench' as the server name (matches Gemini / Codex / Claude registrations)", () => {
     const args = buildKimiMcpBridgeAddArgs(fixture)
     // Name is the third positional after `mcp add`.
     expect(args[0]).toBe('mcp')
     expect(args[1]).toBe('add')
     expect(args[2]).toBe(KIMI_AGENTBENCH_SERVER_NAME)
-    expect(KIMI_AGENTBENCH_SERVER_NAME).toBe('agentbench')
+    expect(KIMI_AGENTBENCH_SERVER_NAME).toBe('AGBench')
   })
 
   it("declares stdio transport explicitly via `--transport stdio`", () => {

@@ -280,7 +280,15 @@ const GEMINI_CAPABILITY_COMMANDS = {
 const GEMINI_CAPABILITY_TIMEOUT_MS = 8_000
 const MAX_CAPABILITY_OUTPUT_CHARS = 200_000
 const MAX_SCHEDULE_TIMER_DELAY_MS = 2_147_000_000
-const GEMINI_MCP_SERVER_NAME = 'agentbench'
+// MCP server registration name advertised to every provider's MCP client.
+// This becomes the namespace prefix the agent sees in its tool list:
+// `AGBench__delegate_to_subthread`, `mcp__AGBench__git_status`, etc.
+// Mixed-case to match the product display name. The CLI flag, socket
+// file, persisted-state sentinels, and env var (`AGENTBENCH_PARENT_PROVIDER`)
+// intentionally retain their legacy `agentbench` form so installed
+// Codex / Gemini / Claude / Kimi configurations and existing usage
+// records continue to work without a migration step.
+const GEMINI_MCP_SERVER_NAME = 'AGBench'
 const GEMINI_MCP_BRIDGE_ARG = '--agentbench-gemini-mcp-bridge'
 const GEMINI_MCP_SOCKET_ARG = '--socket'
 const GEMINI_MCP_TOKEN_ARG = '--token'
@@ -310,7 +318,7 @@ function bridgeArgsMatchCurrentLaunch(args: string[], socketPath: string): boole
   return expected.length === args.length && expected.every((arg, index) => args[index] === arg)
 }
 
-// Phase I4 (Kimi initiator): the Kimi CLI registers the agentbench MCP
+// Phase I4 (Kimi initiator): the Kimi CLI registers the AGBench MCP
 // server via `kimi mcp add` (config at `~/.kimi/mcp.json`). Each AGBench
 // launch generates a fresh `geminiMcpBrokerToken`, so we track whether
 // the on-disk Kimi registration matches the current token to avoid
@@ -5907,7 +5915,7 @@ async function loadOptionalClaudeSdk(): Promise<any | null> {
 }
 
 /**
- * Phase I3 (Claude initiator): assemble the input the agentbench MCP
+ * Phase I3 (Claude initiator): assemble the input the AGBench MCP
  * helpers need — current `geminiMcpBridgeEnabled` toggle + the same
  * bridge argv Gemini/Codex use. Centralised so SDK and CLI paths build
  * identical config (the bridge binary path, socket path, and broker
@@ -6174,7 +6182,7 @@ async function tryRunClaudeSdk(
     payload.claudeReasoningEffort && payload.claudeReasoningEffort !== 'off'
       ? (CLAUDE_THINKING_BUDGET[payload.claudeReasoningEffort] ?? null)
       : null
-  // Phase I3 (Claude initiator): register the agentbench MCP server so
+  // Phase I3 (Claude initiator): register the AGBench MCP server so
   // the Claude agent sees delegate_to_subthread etc. in its tool list.
   // Gated on the same `geminiMcpBridgeEnabled` toggle Gemini/Codex use
   // so the user can disable cross-provider MCP from one place.
@@ -6572,7 +6580,7 @@ async function runKimiWireProvider(
   args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
 
-  // Phase I4 (Kimi initiator): register the agentbench MCP server with
+  // Phase I4 (Kimi initiator): register the AGBench MCP server with
   // Kimi before spawn (idempotent: only re-runs `kimi mcp add` if the
   // broker token rotated since the last registration). Failure is
   // surfaced as a non-fatal warning chip; the Kimi run still launches
@@ -6958,7 +6966,7 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
   if (payload.providerSessionId) args.push('--resume', payload.providerSessionId)
   // Phase I4 (Kimi initiator): the print-mode fallback also gets the
-  // agentbench MCP registration so a plan-mode read-only Kimi run can
+  // AGBench MCP registration so a plan-mode read-only Kimi run can
   // still call delegate_to_subthread when the user explicitly asks
   // for cross-provider work. (Wire mode already ran prepare; if that
   // returned without setting the installed-flag — e.g. broker failure —
@@ -7140,9 +7148,9 @@ function getGeminiToolContext(route?: AgentRunRoute | null): GeminiToolContext |
 }
 
 /**
- * Phase I2: provider-aware MCP tool context resolver. The agentbench
+ * Phase I2: provider-aware MCP tool context resolver. The AGBench
  * MCP server is shared across Gemini / Codex / Claude / Kimi (each CLI
- * registers it via `-c mcp_servers.agentbench.*`), and the bridge
+ * registers it via `-c mcp_servers.AGBench.*`), and the bridge
  * subprocess stamps `parentProvider` on every broker request based on
  * the `AGENTBENCH_PARENT_PROVIDER` env var. This helper consumes that
  * stamp and returns the right run-context for the parent provider:
@@ -9326,9 +9334,9 @@ async function runGeminiProvider(
       AGENTBENCH_CHAT_ID: route.appChatId || '',
       AGENTBENCH_RUNTIME_PROFILE_ID: payload.runtimeProfileId || '',
       // Phase I2: every CLI spawn now carries the parent provider so
-      // the agentbench MCP bridge subprocess (inherited via env) stamps
+      // the AGBench MCP bridge subprocess (inherited via env) stamps
       // broker requests with the right routing key. Codex's persistent
-      // app-server sets this via `-c mcp_servers.agentbench.env` in
+      // app-server sets this via `-c mcp_servers.AGBench.env` in
       // CodexAppServerClient.
       AGENTBENCH_PARENT_PROVIDER: 'gemini',
       // Recent Gemini CLI versions tightened the headless trust check:
@@ -12102,7 +12110,7 @@ async function executeGeminiMcpTool(
         // (could be Gemini, Codex, Claude or Kimi), so cross-provider
         // delegation chains are traceable. Source stays
         // 'mcp:delegate_to_subthread' since the tool lives on the
-        // shared agentbench MCP server across all CLIs.
+        // shared AGBench MCP server across all CLIs.
         //
         // Phase J2: same event kind for spawn AND recall to avoid
         // adding a new RunEventKind (which would ripple through the
@@ -12302,7 +12310,7 @@ async function executeGeminiMcpTool(
   }
 }
 
-// Phase I2: providers that can drive the shared agentbench MCP bridge.
+// Phase I2: providers that can drive the shared AGBench MCP bridge.
 // The bridge subprocess stamps `parentProvider` from
 // AGENTBENCH_PARENT_PROVIDER env; if it's missing or unrecognised we
 // fall back to 'gemini' to preserve pre-I2 broker behaviour.
@@ -13131,7 +13139,7 @@ function handleMcpJsonRpcMessage(
     // every broker request so AGBench main can route tool execution +
     // approvals to the correct provider. Codex's persistent app-server
     // spawns the bridge once with AGENTBENCH_PARENT_PROVIDER=codex (set
-    // via -c mcp_servers.agentbench.env), so the same bridge binary
+    // via -c mcp_servers.AGBench.env), so the same bridge binary
     // serves all four providers' MCP needs without code duplication.
     bridgeLog(`tools/call name=${name} id=${id} args=${JSON.stringify(args).slice(0, 200)}`)
     brokerRequest(socketPath, {
@@ -13457,7 +13465,7 @@ async function selfTestGeminiMcpBridgeProcess(
         params: {
           protocolVersion: '2024-11-05',
           capabilities: {},
-          clientInfo: { name: 'agentbench-self-test', version: app.getVersion() || '1.0.0' }
+          clientInfo: { name: 'AGBench-self-test', version: app.getVersion() || '1.0.0' }
         }
       })}\n`
     )
@@ -13793,11 +13801,11 @@ async function prepareGeminiMcpBridgeForRun(
 // ============================================================================
 // Phase I4 (Kimi initiator): mirror the Gemini install / repair / prepare
 // helpers for Kimi so a Kimi agent can call delegate_to_subthread on other
-// providers via the agentbench MCP server. The bridge subprocess and broker
+// providers via the AGBench MCP server. The bridge subprocess and broker
 // are shared with Gemini / Codex / Claude — only the registration plumbing
 // is provider-specific. Kimi CLI 1.43.0 syntax:
 //
-//   kimi mcp add agentbench --transport stdio \
+//   kimi mcp add AGBench --transport stdio \
 //     --env AGENTBENCH_PARENT_PROVIDER=kimi \
 //     -- <bridgeBinaryPath> <bridgeArgs...>
 //
@@ -13881,7 +13889,7 @@ async function prepareKimiMcpBridgeForRun(sender: Electron.WebContents): Promise
       provider: 'kimi',
       severity: 'warning',
       title: 'Kimi MCP bridge registration failed',
-      message: `AGBench could not register the agentbench MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
+      message: `AGBench could not register the AGBench MCP server with Kimi: ${message}. Cross-provider delegation tools will not be available for this run.`
     })
   }
 }
@@ -14203,9 +14211,9 @@ function appendGeminiCliSessionArgs(
 
   // Sandbox vs. AGBench MCP bridge: Gemini CLI's `--sandbox` flag wraps
   // the agent in macOS `sandbox-exec` with a seatbelt profile that
-  // restricts subprocess spawning. That blocks the agentbench MCP
+  // restricts subprocess spawning. That blocks the AGBench MCP
   // bridge from launching at session init, leaving Gemini-CLI with a
-  // dead transport and every `agentbench__*` tool call returning
+  // dead transport and every `AGBench__*` tool call returning
   // "Not connected" to the agent (the user reproduced this with
   // delegate_to_subthread on 2026-05-16). Skip sandboxing when the MCP
   // bridge is enabled — AGBench's broker-level approval gates already

@@ -124,7 +124,7 @@ describe('ProductOperations', () => {
       enabled: true,
       installed: true,
       available: false,
-      serverName: 'agentbench',
+      serverName: 'AGBench',
       message: 'Installed but disabled.'
     })
 
@@ -214,7 +214,7 @@ describe('ProductOperations', () => {
         enabled: false,
         installed: false,
         available: false,
-        serverName: 'agentbench'
+        serverName: 'AGBench'
       },
       packageJson: { scripts: {} },
       builderConfigText: '',

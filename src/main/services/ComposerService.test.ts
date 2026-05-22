@@ -163,7 +163,7 @@ describe('ComposerService', () => {
     // built-in invoke_agent when the user asks for "delegate to Kimi".
     const payload = compose({ provider: 'gemini' }, {})
     expect(payload.prompt).toContain('delegate_to_subthread')
-    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'kimi'")
     expect(payload.prompt).toContain('NEVER use your built-in invoke_agent')
@@ -244,12 +244,12 @@ describe('ComposerService', () => {
   })
 
   it('teaches Kimi about cross-provider delegate_to_subthread (Phase I4)', () => {
-    // The runtime note must point Kimi at agentbench__delegate_to_subthread
+    // The runtime note must point Kimi at AGBench__delegate_to_subthread
     // so it doesn't reach for a built-in generalist agent when asked to
     // delegate to Gemini / Codex / Claude.
     const payload = compose({ provider: 'kimi' }, {})
-    expect(payload.prompt).toContain('agentbench MCP server')
-    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('AGBench MCP server')
+    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'claude'")
     expect(payload.prompt).toContain('NEVER use any built-in generalist-agent path')
@@ -259,15 +259,15 @@ describe('ComposerService', () => {
 
   it('omits the Kimi delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'kimi' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
   it('omits the Kimi delegation preamble for global-scope runs (no workspace)', () => {
     const payload = compose({ provider: 'kimi', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -286,7 +286,7 @@ describe('ComposerService', () => {
   })
 
   it('teaches Codex about cross-provider delegate_to_subthread (Phase I2 prompt-level fix)', () => {
-    // Empirical bug: Codex CLI registered the agentbench MCP server
+    // Empirical bug: Codex CLI registered the AGBench MCP server
     // correctly (~/Library/Logs/AGBench/bridge-subprocess.log shows
     // 100+ codex-parented bridge spawns) but the Codex agent itself
     // never invoked a single tool — zero tools/call entries from any
@@ -295,8 +295,8 @@ describe('ComposerService', () => {
     // calling delegate_to_subthread; Codex was the only provider
     // missing the preamble.
     const payload = compose({ provider: 'codex' }, {})
-    expect(payload.prompt).toContain('agentbench MCP server')
-    expect(payload.prompt).toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('AGBench MCP server')
+    expect(payload.prompt).toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Codex's built-in invoke")
@@ -309,8 +309,8 @@ describe('ComposerService', () => {
 
   it('omits the Codex delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'codex' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -319,8 +319,8 @@ describe('ComposerService', () => {
       { provider: 'codex', scope: 'global', workspacePath: undefined, workspaceId: undefined },
       {}
     )
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
@@ -392,7 +392,7 @@ describe('ComposerService', () => {
       { selectedModelType: 'claude-sonnet-4-6', claudeReasoningEffort: 'medium' }
     )
     // Phase I3 (Claude initiator): workspace Claude runs outside plan
-    // mode get a delegation preamble pointing at the agentbench MCP
+    // mode get a delegation preamble pointing at the AGBench MCP
     // server. The user request is preserved verbatim after it.
     //
     // Tier 1 (turn-1 only): when a Claude session is being resumed via
@@ -401,19 +401,19 @@ describe('ComposerService', () => {
     // per turn. The user prompt is still preserved; the preamble text
     // must NOT be present on resume turns.
     expect(payload.prompt).toContain('Do the thing')
-    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
-    expect(payload.prompt).not.toContain('agentbench MCP server')
+    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
     expect(payload.providerSessionId).toBe('claude-thread-1')
     expect(payload.claudeReasoningEffort).toBe('medium')
   })
 
   it('teaches Claude about cross-provider delegate_to_subthread (Phase I3)', () => {
-    // The runtime note must point Claude at mcp__agentbench__delegate_to_subthread
+    // The runtime note must point Claude at mcp__AGBench__delegate_to_subthread
     // so it doesn't reach for its built-in Task tool when asked to
     // delegate to Gemini / Codex / Kimi.
     const payload = compose({ provider: 'claude' }, {})
-    expect(payload.prompt).toContain('agentbench MCP server')
-    expect(payload.prompt).toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).toContain('AGBench MCP server')
+    expect(payload.prompt).toContain('mcp__AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('CROSS-PROVIDER delegation')
     expect(payload.prompt).toContain("provider: 'gemini'")
     expect(payload.prompt).toContain("NEVER use Claude's built-in Task tool")
@@ -423,15 +423,15 @@ describe('ComposerService', () => {
 
   it('omits the Claude delegation preamble in plan mode (read-only sessions)', () => {
     const payload = compose({ provider: 'claude' }, { approvalMode: 'plan' })
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 
   it('omits the Claude delegation preamble for global-scope runs (no workspace)', () => {
     const payload = compose({ provider: 'claude', scope: 'global', workspacePath: undefined, workspaceId: undefined }, {})
-    expect(payload.prompt).not.toContain('agentbench MCP server')
-    expect(payload.prompt).not.toContain('mcp__agentbench__delegate_to_subthread')
+    expect(payload.prompt).not.toContain('AGBench MCP server')
+    expect(payload.prompt).not.toContain('mcp__AGBench__delegate_to_subthread')
     expect(payload.prompt).toContain('Do the thing')
   })
 

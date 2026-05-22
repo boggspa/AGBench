@@ -3196,7 +3196,7 @@ button.sidebar-item {
 }
 
 /* Phase I3.2 — inline delegation card rendered in the parent transcript
- * when a sub-thread is spawned via agentbench__delegate_to_subthread. */
+ * when a sub-thread is spawned via AGBench__delegate_to_subthread. */
 .subthread-delegation-card {
   width: min(100%, 860px);
   display: flex;

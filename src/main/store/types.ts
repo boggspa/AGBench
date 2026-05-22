@@ -100,7 +100,7 @@ export interface GeminiMcpBridgeStatus {
   enabled: boolean;
   installed: boolean;
   available: boolean;
-  serverName: 'agentbench';
+  serverName: 'AGBench';
   command?: string[];
   socketPath?: string;
   message?: string;

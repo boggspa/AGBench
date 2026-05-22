@@ -249,7 +249,7 @@ describe('PermissionService', () => {
     })
 
     // Phase I3 (Claude initiator): with Claude now able to spawn cross-
-    // provider sub-threads via the agentbench MCP server, the gate must
+    // provider sub-threads via the AGBench MCP server, the gate must
     // route through 'provider: claude' on every broker request. Pin the
     // ask + grant + provider-scope semantics for the Claude path so the
     // approval modal and workspace-grant logic stay symmetric with
@@ -295,7 +295,7 @@ describe('PermissionService', () => {
     })
 
     // Phase I4 (Kimi initiator): with Kimi now able to spawn cross-
-    // provider sub-threads via `kimi mcp add agentbench`, the gate must
+    // provider sub-threads via `kimi mcp add AGBench`, the gate must
     // route through 'provider: kimi' on every broker request. Pin the
     // ask + grant + provider-scope semantics for the Kimi path so the
     // approval modal and workspace-grant logic stay symmetric with

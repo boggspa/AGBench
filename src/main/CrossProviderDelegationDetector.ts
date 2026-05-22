@@ -1,7 +1,7 @@
 /**
  * Phase I3.x — Detect-and-redirect heuristic for cross-provider delegation.
  *
- * Background: AGBench exposes `agentbench__delegate_to_subthread` so a Gemini
+ * Background: AGBench exposes `AGBench__delegate_to_subthread` so a Gemini
  * (or Codex / Claude / Kimi) run can hand work off to a different provider.
  * Empirically Gemini still prefers its built-in `invoke_agent` even when the
  * user explicitly asked for "delegate to Kimi". Those built-in agents run
@@ -134,6 +134,6 @@ export function crossProviderDelegationWarningMessage(): string {
   return (
     'This delegation used Gemini\'s internal agents (no AGBench sub-thread spawned). ' +
     'For cross-provider delegation to Kimi/Codex/Claude, the agent should call ' +
-    'agentbench__delegate_to_subthread instead.'
+    'AGBench__delegate_to_subthread instead.'
   )
 }

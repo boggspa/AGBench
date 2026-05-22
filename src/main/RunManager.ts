@@ -170,7 +170,7 @@ export class RunManager<TState = unknown> {
     // because the bridge has no route metadata to disambiguate. Real
     // observed trigger: three concurrent Codex `init` events with the
     // same session_id but different appRunIds → resolver bails → every
-    // subsequent agentbench__* tool call errors out, even though the
+    // subsequent AGBench__* tool call errors out, even though the
     // sessions themselves are running fine.
     //
     // Tiebreaker: pick the most-recently-updated active session. This

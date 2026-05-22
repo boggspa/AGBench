@@ -24,16 +24,16 @@ export interface CodexApprovalResponse {
  * the CLI's `-c mcp_servers.<name>.*` config-override syntax at spawn
  * time. The bridge subprocess inherits AGENTBENCH_PARENT_PROVIDER
  * from the Codex CLI's env (via either process env inheritance OR
- * the explicit `mcp_servers.agentbench.env` config) so it can stamp
+ * the explicit `mcp_servers.AGBench.env` config) so it can stamp
  * every broker request with `parentProvider='codex'`. AGBench main
  * then routes the approval modal + audit event to Codex specifically
  * — Gemini's workspace grants don't auto-allow Codex delegation.
  *
  * Callers populate this via `setMcpConfig` before `ensureStarted`.
  * Leaving it null (or `enabled=false`) preserves the pre-I2
- * behaviour: Codex spawns without the agentbench MCP server, so the
+ * behaviour: Codex spawns without the AGBench MCP server, so the
  * Codex agent can't call `delegate_to_subthread` — useful when the
- * user has the agentbench MCP bridge toggle disabled.
+ * user has the AGBench MCP bridge toggle disabled.
  */
 export interface CodexMcpAgentbenchConfig {
   enabled: boolean
@@ -84,9 +84,15 @@ function tomlEscapeString(value: string): string {
 }
 
 /**
- * Build the `-c mcp_servers.agentbench.*` CLI argument list for
- * Codex CLI. Exported so the I2 tests can pin the exact shape of
- * the inline MCP config (TOML escaping + arg order matter).
+ * Build the `-c mcp_servers.AGBench.*` CLI argument list for Codex
+ * CLI. Exported so the I2 tests can pin the exact shape of the
+ * inline MCP config (TOML escaping + arg order matter). The
+ * mixed-case `AGBench` server key matches the registration name
+ * the agent sees in its tool list (`AGBench__delegate_to_subthread`);
+ * TOML keys are case-sensitive so the casing here must match the
+ * `GEMINI_MCP_SERVER_NAME` constant in `index.ts`. The env var stays
+ * `AGENTBENCH_PARENT_PROVIDER` to avoid changing the IPC contract
+ * between the spawned bridge subprocess and main.
  */
 export function buildCodexAgentbenchMcpArgs(config: CodexMcpAgentbenchConfig): string[] {
   if (!config.enabled) return []
@@ -94,9 +100,9 @@ export function buildCodexAgentbenchMcpArgs(config: CodexMcpAgentbenchConfig): s
   const args = config.bridgeArgs.map((arg) => `"${tomlEscapeString(arg)}"`).join(', ')
   const parentProvider = tomlEscapeString(config.parentProvider)
   return [
-    '-c', `mcp_servers.agentbench.command="${command}"`,
-    '-c', `mcp_servers.agentbench.args=[${args}]`,
-    '-c', `mcp_servers.agentbench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
+    '-c', `mcp_servers.AGBench.command="${command}"`,
+    '-c', `mcp_servers.AGBench.args=[${args}]`,
+    '-c', `mcp_servers.AGBench.env={ AGENTBENCH_PARENT_PROVIDER = "${parentProvider}" }`
   ]
 }
 
@@ -124,7 +130,7 @@ export class CodexAppServerClient {
   }
 
   /**
-   * Phase I2: configure the agentbench MCP server that Codex CLI
+   * Phase I2: configure the AGBench MCP server that Codex CLI
    * registers at spawn. Must be called BEFORE `ensureStarted` —
    * once Codex's app-server is running we don't restart it just to
    * pick up new MCP config (Codex would lose its in-flight threads).
@@ -199,11 +205,11 @@ export class CodexAppServerClient {
   }
 
   private async start(appVersion: string): Promise<void> {
-    // Phase I2: prepend `-c mcp_servers.agentbench.*` config flags so
+    // Phase I2: prepend `-c mcp_servers.AGBench.*` config flags so
     // the Codex CLI registers the AGBench MCP bridge as an MCP server
     // for the whole app-server lifetime. The bridge subprocess
     // inherits AGENTBENCH_PARENT_PROVIDER='codex' from the env map AND
-    // from the inline `mcp_servers.agentbench.env` override (belt &
+    // from the inline `mcp_servers.AGBench.env` override (belt &
     // braces — Codex CLI strips inherited env from MCP subprocesses
     // on some platforms, so we set it both ways).
     const mcpArgs = buildCodexAgentbenchMcpArgs(this.mcpConfig ?? { enabled: false, bridgeBinaryPath: '', bridgeArgs: [], parentProvider: 'codex' })
