@@ -1,6 +1,7 @@
 import Foundation
 @preconcurrency import Network
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// PairingChannelListener — Mac-side TCP listener for the iOS pairing

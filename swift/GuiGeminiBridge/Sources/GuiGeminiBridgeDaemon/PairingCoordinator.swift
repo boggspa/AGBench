@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// Orchestrates the pairing handshake on the daemon side.

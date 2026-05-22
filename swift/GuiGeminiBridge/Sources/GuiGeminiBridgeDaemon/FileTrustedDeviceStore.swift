@@ -1,5 +1,6 @@
 import Foundation
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// File-backed `TrustedDeviceStore` implementation.

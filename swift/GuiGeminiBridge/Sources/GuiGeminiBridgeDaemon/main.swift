@@ -7,6 +7,7 @@ import AppKit
 // strict-mode complaints to warnings without papering over real races.
 @preconcurrency import ScreenCaptureKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 import BridgeLANTransport
 

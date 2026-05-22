@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// Persistence wrapper for `PairingDerivedKeys`.

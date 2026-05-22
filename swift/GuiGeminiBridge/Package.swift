@@ -42,6 +42,7 @@ let package = Package(
             name: "GuiGeminiBridgeDaemon",
             dependencies: [
                 .product(name: "BridgeCore", package: "CodexBridge"),
+                .product(name: "BridgeCryptoPrimitives", package: "CodexBridge"),
                 .product(name: "BridgeCryptoPairing", package: "CodexBridge"),
                 .product(name: "BridgeLANTransport", package: "CodexBridge"),
                 .product(name: "WorkspaceSecurity", package: "CodexBridge"),

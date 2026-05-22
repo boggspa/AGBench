@@ -1,6 +1,7 @@
 import Foundation
 import Network
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 import BridgeLANTransport
 
