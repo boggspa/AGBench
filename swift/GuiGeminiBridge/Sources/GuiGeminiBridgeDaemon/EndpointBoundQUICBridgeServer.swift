@@ -249,6 +249,27 @@ actor EndpointBoundQUICBridgeServer {
                 correlationID: envelope.envelopeID,
                 session: session
             )
+        // CodexBridge dependency added these payloads for its Mac → iOS
+        // attachment-upload feature. AGBench doesn't accept inbound
+        // attachment uploads on the direct LAN listener today, so we
+        // explicitly reject with a structured error rather than silently
+        // dropping (matches the `previewFrame` pattern above).
+        case .attachmentUploadChunk:
+            await sendStructuredError(
+                code: "unsupportedDirectAttachment",
+                message: "Direct attachment upload chunks are not supported by this server.",
+                unsupportedPayloadTag: "attachmentUploadChunk",
+                correlationID: envelope.envelopeID,
+                session: session
+            )
+        case .attachmentUploadAck:
+            await sendStructuredError(
+                code: "unsupportedDirectAttachment",
+                message: "Direct attachment upload acks are not supported by this server.",
+                unsupportedPayloadTag: "attachmentUploadAck",
+                correlationID: envelope.envelopeID,
+                session: session
+            )
         }
     }
 
@@ -349,6 +370,13 @@ actor EndpointBoundQUICBridgeServer {
         case .previewInputEvent:
             return .actions
         case .previewSessionControl:
+            return .control
+        // Attachment-upload payloads — bulk file data is closest to
+        // .events on the multi-stream split; acks are control-shaped.
+        // `dispatch()` rejects both as unsupported.
+        case .attachmentUploadChunk:
+            return .events
+        case .attachmentUploadAck:
             return .control
         }
     }
