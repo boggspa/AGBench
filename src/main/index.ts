@@ -4793,6 +4793,7 @@ function normalizeGeminiQuotaSnapshot(payload: any): any {
     const remainingFraction = Number(bucket?.remainingFraction)
     if (!modelId || !Number.isFinite(remainingFraction)) return []
     const remainingPercent = Math.max(0, Math.min(100, remainingFraction * 100))
+    const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
     return [
       {
         id: `gemini-${modelId || index}`,
@@ -4802,7 +4803,11 @@ function normalizeGeminiQuotaSnapshot(payload: any): any {
         limitLabel: `${Math.round(remainingPercent)}% remaining`,
         resetAt: parseGeminiQuotaReset(bucket?.resetTime),
         trackingOnly: false,
-        usedPercent: remainingPercent,
+        // Bar fills with USED capacity to match Codex / Claude / Kimi (the
+        // earlier shape mistakenly stored remaining-% under usedPercent, so
+        // Gemini's bar visualised the inverse of every other provider's).
+        usedPercent,
+        remainingPercent,
         sourceModelId: modelId
       }
     ]
