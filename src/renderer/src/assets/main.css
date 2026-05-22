@@ -14012,10 +14012,10 @@ input:disabled, select:disabled, textarea:disabled {
     color-mix(in srgb, var(--content-bg) 60%, transparent);
 }
 
-[data-interface-style="codex"] .transcript-inner,
-[data-interface-style="claude"] .transcript-inner {
-  max-width: min(860px, calc(100vw - var(--sidebar-width, 260px) - var(--inspector-width, 380px) - 96px));
-}
+/* Parity: transcript inherits the composer's max-width across themed shells
+ * so the chat bubbles and the composer line up at the same column edges.
+ * Previous override hardcoded 860px which left the chat narrower than the
+ * 980px composer after the width-equalization slice. */
 
 [data-interface-style="codex"] .message-group,
 [data-interface-style="claude"] .message-group {
