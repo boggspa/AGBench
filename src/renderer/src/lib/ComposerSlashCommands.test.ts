@@ -123,6 +123,62 @@ describe('ComposerSlashCommands', () => {
     })
   })
 
+  describe('capability gating', () => {
+    const minimalCapabilities = (overrides: Partial<{ mcpAvailable: boolean }>) => ({
+      provider: 'codex' as const,
+      label: 'Codex',
+      refreshedAt: '2026-05-23T00:00:00.000Z',
+      availability: {
+        state: 'available' as const,
+        binaryPath: '/usr/bin/codex',
+        message: ''
+      },
+      tools: {} as Record<string, never>,
+      approvals: {
+        currentMode: 'default' as const,
+        allowedModes: ['default' as const],
+        source: 'agentbench' as const,
+        message: ''
+      },
+      mcp: {
+        enabled: true,
+        installed: true,
+        available: overrides.mcpAvailable ?? true,
+        delegated: false,
+        serverName: 'codex-mcp',
+        source: 'agentbench' as const,
+        message: ''
+      },
+      warnings: []
+    })
+
+    it('keeps /mcp when capabilities.mcp.available is true', () => {
+      const result = buildComposerSlashCommandRegistry({
+        provider: 'codex',
+        paletteItems: CODEX_PALETTE_CORE,
+        capabilities: minimalCapabilities({ mcpAvailable: true }) as any
+      })
+      expect(result.some((entry) => entry.command === '/mcp')).toBe(true)
+    })
+
+    it('hides /mcp when capabilities.mcp.available is false', () => {
+      const result = buildComposerSlashCommandRegistry({
+        provider: 'codex',
+        paletteItems: CODEX_PALETTE_CORE,
+        capabilities: minimalCapabilities({ mcpAvailable: false }) as any
+      })
+      expect(result.some((entry) => entry.command === '/mcp')).toBe(false)
+    })
+
+    it('leaves all entries visible when no capability snapshot is supplied', () => {
+      const result = buildComposerSlashCommandRegistry({
+        provider: 'codex',
+        paletteItems: CODEX_PALETTE_CORE
+      })
+      expect(result.some((entry) => entry.command === '/mcp')).toBe(true)
+    })
+  })
+
   describe('group ordering', () => {
     it('matches the Cmd-K palette group order (Core → Discovery → Memory → Inspectors → Custom)', () => {
       expect(COMPOSER_SLASH_GROUP_ORDER).toEqual([

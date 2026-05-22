@@ -11891,17 +11891,55 @@ function App(): React.JSX.Element {
           }
         ])
       }
+    },
+    /* Prompt-template seams. Drop a canned prompt at the slash position
+     * and leave the caret where the user is most likely to start
+     * typing extra context. Future skill-discovery (~/.claude/skills,
+     * gemini /commands list) feeds the same channel — each discovered
+     * skill becomes a prompt-template entry whose template comes from
+     * the skill's frontmatter. Group=Custom so they sort below the
+     * provider-native palette. */
+    {
+      kind: 'prompt-template',
+      id: 'agbench-template-explain',
+      command: '/explain',
+      label: 'Explain',
+      description: 'Insert an explain-this-code template.',
+      group: 'Custom',
+      template:
+        'Explain what this code does, why it’s structured this way, and any non-obvious edge cases:\n\n'
+    },
+    {
+      kind: 'prompt-template',
+      id: 'agbench-template-test',
+      command: '/test',
+      label: 'Test',
+      description: 'Insert a write-tests template.',
+      group: 'Custom',
+      template:
+        'Write tests that cover the happy path and the most likely failure modes. Match the existing test style for this file:\n\n'
+    },
+    {
+      kind: 'prompt-template',
+      id: 'agbench-template-review-diff',
+      command: '/review-diff',
+      label: 'Review diff',
+      description: 'Insert a review-the-current-diff template.',
+      group: 'Custom',
+      template:
+        'Review the unstaged changes in this workspace. Flag anything that looks risky, inconsistent with surrounding code, or under-tested.\n\n'
     }
   ]
 
   // Slash-picker registry: per-provider palette items wrapped as
   // palette-passthrough ComposerSlashCommands, plus the cross-provider
-  // AGBench actions above. L6 layer will gate entries on
-  // ProviderCapabilityContract.
+  // AGBench actions and prompt templates. `capabilities` gates entries
+  // the provider can't service (e.g. `/mcp` hides when MCP is offline).
   const composerSlashCommands: ComposerSlashCommand[] = buildComposerSlashCommandRegistry({
     provider: currentProvider,
     paletteItems: commandPaletteItems,
-    extraCommands: composerSlashExtraCommands
+    extraCommands: composerSlashExtraCommands,
+    capabilities: currentProviderCapabilities
   })
   const commandPaletteSearch = commandPaletteQuery.trim().toLowerCase()
   const visibleCommandPaletteItems = commandPaletteSearch

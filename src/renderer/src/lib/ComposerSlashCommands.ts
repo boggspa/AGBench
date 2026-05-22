@@ -1,4 +1,4 @@
-import type { ProviderId } from '../../../main/store/types'
+import type { ProviderCapabilityContract, ProviderId } from '../../../main/store/types'
 
 /**
  * ComposerSlashCommands — single source of truth for the chat composer's
@@ -347,9 +347,30 @@ export interface ComposerSlashRegistryInput {
   paletteItems: CommandPaletteItem[]
   /** Additional slash commands that don't map cleanly to legacy palette
    * items — `action`, `prompt-template`, `gemini-pty`, `insert`. The
-   * builder concatenates these after the palette-passthrough block.
-   * L4+ layers populate this. */
+   * builder concatenates these after the palette-passthrough block. */
   extraCommands?: ComposerSlashCommand[]
+  /** Provider capability snapshot for the current chat scope. When
+   * supplied, the builder hides entries the provider can't service:
+   *   - `/mcp` is hidden when `capabilities.mcp.available === false`
+   * Callers in tests can omit this and get the unfiltered registry. */
+  capabilities?: ProviderCapabilityContract | null
+}
+
+/** Inspect a slash command's `command` string to decide whether to
+ * gate it on a capability flag. Pure helper so the gating logic stays
+ * testable. Returns true when the entry should be kept. */
+function passesCapabilityGate(
+  command: ComposerSlashCommand,
+  capabilities: ProviderCapabilityContract | null | undefined
+): boolean {
+  if (!capabilities) return true
+  // `/mcp` is meaningless when the provider's MCP surface is offline.
+  // Codex's app-server returns a contract; if its mcp section reports
+  // unavailable the entry just confuses the user.
+  if (command.command === '/mcp' && capabilities.mcp?.available === false) {
+    return false
+  }
+  return true
 }
 
 /**
@@ -361,7 +382,8 @@ export function buildComposerSlashCommandRegistry(
   input: ComposerSlashRegistryInput
 ): ComposerSlashCommand[] {
   const wrapped = input.paletteItems.map(wrapPaletteItemAsSlashCommand)
-  return [...wrapped, ...(input.extraCommands ?? [])]
+  const combined = [...wrapped, ...(input.extraCommands ?? [])]
+  return combined.filter((command) => passesCapabilityGate(command, input.capabilities))
 }
 
 /** Filter a registry by user-typed query against label / description /
