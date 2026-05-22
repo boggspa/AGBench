@@ -1,4 +1,11 @@
 import Foundation
+import AppKit
+// ScreenCaptureKit predates Swift 6 strict concurrency — `SCContentFilter`
+// isn't `Sendable` in the SDK, but the filter we pass between the picker
+// and the capture pipeline is only ever used in a fire-once, single-task
+// flow (no cross-thread mutation), so `@preconcurrency` downgrades the
+// strict-mode complaints to warnings without papering over real races.
+@preconcurrency import ScreenCaptureKit
 import BridgeCore
 import BridgeCryptoPairing
 import BridgeLANTransport
@@ -338,6 +345,29 @@ func decodeParams<T: Decodable>(_ params: Any, as type: T.Type) throws -> T {
 /// request is in flight at a time (single-threaded readLine loop) so there's
 /// no contention risk.
 func runBlocking<T: Sendable>(_ operation: @Sendable @escaping () async throws -> T) throws -> T {
+    let semaphore = DispatchSemaphore(value: 0)
+    var result: Result<T, Error>!
+    Task.detached {
+        do {
+            let value = try await operation()
+            result = .success(value)
+        } catch {
+            result = .failure(error)
+        }
+        semaphore.signal()
+    }
+    semaphore.wait()
+    return try result.get()
+}
+
+/// Variant of `runBlocking` for work that must run on the main actor — used
+/// by the `attachedWindow.requestPick` handler because `SCContentSharingPicker`
+/// must be presented from the main thread. The handler runs on the daemon's
+/// concurrent handler queue (off main), so we hop onto the main actor via a
+/// Task isolated to it; the main runloop (`NSApp.run()`) services it.
+func runBlockingOnMain<T: Sendable>(
+    _ operation: @MainActor @Sendable @escaping () async throws -> T
+) throws -> T {
     let semaphore = DispatchSemaphore(value: 0)
     var result: Result<T, Error>!
     Task.detached {
@@ -795,6 +825,191 @@ dispatcher.register("bridge.testFireRequest") { rawParams in
     ]
 }
 
+// MARK: - Attached window RPCs (Appshots-equivalent)
+
+// In-memory handle table for windows the user has attached via the macOS
+// system picker. Never persisted — dropped on daemon exit so a stale handle
+// can never be used after restart. The AI side only ever sees the opaque
+// handle string returned by `attachedWindow.requestPick`; window enumeration
+// is contained within this daemon process.
+let attachedWindowStore = AttachedWindowStore()
+
+/// `attachedWindow.requestPick` — presents the macOS `SCContentSharingPicker`
+/// on the main actor and waits for the user to either pick a single window or
+/// cancel. Returns `{ handleID, windowMeta }` on success or
+/// `{ cancelled: true }` if the user dismissed the picker. The picker IS the
+/// security boundary: Apple's UI decides which windows the user can see and
+/// pick, and the resulting filter is the implicit grant.
+///
+/// Picker delivers `(meta, filter)`; we store the filter in the handle table
+/// so subsequent captures can call `SCScreenshotManager` directly without
+/// re-enumerating windows. The meta returned to the caller is for the
+/// renderer pill — pixels themselves require a separate `attachedWindow.capture`.
+dispatcher.register("attachedWindow.requestPick") { _ in
+    let picked: (meta: AttachedWindowMeta, filter: SCContentFilter)
+    do {
+        picked = try runBlockingOnMain { @MainActor @Sendable in
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<(meta: AttachedWindowMeta, filter: SCContentFilter), Error>) in
+                let picker = AttachedWindowPicker()
+                // Hold the picker alive until the observer callback fires.
+                // Captured in the closure; the closure clears the reference
+                // exactly once, in `finish()`, before the continuation fires.
+                var strongPicker: AttachedWindowPicker? = picker
+                picker.pick { result in
+                    switch result {
+                    case .success(let value):
+                        continuation.resume(returning: value)
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                    strongPicker = nil
+                    _ = strongPicker
+                }
+            }
+        }
+    } catch let err as AttachedWindowError {
+        if case .cancelled = err {
+            return ["cancelled": true]
+        }
+        throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: err.localizedDescription)
+    } catch {
+        throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: error.localizedDescription)
+    }
+    let entry = try runBlocking { @Sendable [attachedWindowStore, picked] in
+        await attachedWindowStore.attach(meta: picked.meta, filter: picked.filter)
+    }
+    return [
+        "ok": true,
+        "handleID": entry.handleID,
+        "windowMeta": entry.meta.toJSONObject()
+    ]
+}
+
+struct AttachedWindowCaptureParams: Decodable {
+    let handleID: String
+    let includeOCR: Bool?
+    let maxDimensionPx: Int?
+}
+
+/// `attachedWindow.capture` — captures one frame of the previously attached
+/// window via `SCScreenshotManager`, optionally runs local Vision OCR, and
+/// returns base64 PNG bytes plus structured OCR. No streaming; one call =
+/// one frame. The Electron side gates each call through its existing
+/// approval flow before forwarding here.
+dispatcher.register("attachedWindow.capture") { params in
+    let parsed: AttachedWindowCaptureParams
+    do {
+        parsed = try decodeParams(params, as: AttachedWindowCaptureParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid capture params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try runBlocking { @Sendable [attachedWindowStore, handleID = parsed.handleID] in
+        await attachedWindowStore.entry(handleID: handleID)
+    }
+    guard let entry else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidRequest,
+            message: "Attached window handle not found (already detached or never attached)."
+        )
+    }
+    let maxDim = parsed.maxDimensionPx ?? 1600
+    let frame: CapturedWindowFrame
+    do {
+        frame = try runBlocking { @Sendable [filter = entry.filter, maxDim] in
+            try await AttachedWindowCapture.captureWindow(
+                filter: filter,
+                maxDimensionPx: maxDim
+            )
+        }
+    } catch let err as AttachedWindowError {
+        if case .windowGone = err {
+            // Self-heal: drop the dead handle so the renderer's status pill
+            // clears on its next poll. The error code lets the Electron side
+            // surface a clean "window closed, please re-attach" message.
+            _ = try? runBlocking { @Sendable [attachedWindowStore, handleID = entry.handleID] in
+                await attachedWindowStore.detach(handleID: handleID)
+            }
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.bridgeUnavailable,
+                message: err.localizedDescription
+            )
+        }
+        throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: err.localizedDescription)
+    } catch {
+        throw JSONRPCError(code: JSONRPCErrorCode.internalError, message: error.localizedDescription)
+    }
+
+    var response: [String: Any] = [
+        "ok": true,
+        "pngBase64": frame.pngData.base64EncodedString(),
+        "byteLength": frame.pngData.count,
+        "width": frame.width,
+        "height": frame.height,
+        "windowMeta": entry.meta.toJSONObject(),
+        "capturedAt": ISO8601DateFormatter().string(from: Date())
+    ]
+    if parsed.includeOCR ?? true {
+        do {
+            let ocr = try runBlocking { @Sendable [pngData = frame.pngData] in
+                try await AttachedWindowOCR.recognize(pngData: pngData)
+            }
+            response["ocr"] = ocr.toJSONObject()
+        } catch {
+            // OCR failure isn't fatal — return the image without text. Surfaces
+            // the underlying error inline so the user can spot why text is
+            // missing from a capture without losing the frame entirely.
+            response["ocrError"] = error.localizedDescription
+        }
+    }
+    return response
+}
+
+struct AttachedWindowDetachParams: Decodable {
+    let handleID: String
+}
+
+/// `attachedWindow.detach` — releases the picker grant for a handle.
+/// Subsequent capture calls against that handle return a not-found error.
+/// Safe to call for unknown handles (returns `{ detached: false }`).
+dispatcher.register("attachedWindow.detach") { params in
+    let parsed: AttachedWindowDetachParams
+    do {
+        parsed = try decodeParams(params, as: AttachedWindowDetachParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid detach params: \(error.localizedDescription)"
+        )
+    }
+    let detached = try runBlocking { @Sendable [attachedWindowStore, handleID = parsed.handleID] in
+        await attachedWindowStore.detach(handleID: handleID)
+    }
+    return ["ok": true, "detached": detached]
+}
+
+/// `attachedWindow.status` — lightweight status check. Returns whether any
+/// window is currently attached and, if so, just the title/bundle metadata
+/// the user already sees in the renderer pill. Used by the `attached_window_status`
+/// MCP tool, which is auto-allowed (no approval) precisely because this
+/// payload contains no enumeration and no pixel data.
+dispatcher.register("attachedWindow.status") { _ in
+    let current = try runBlocking { @Sendable [attachedWindowStore] in
+        await attachedWindowStore.current()
+    }
+    guard let current else {
+        return ["attached": false] as [String: Any]
+    }
+    return [
+        "attached": true,
+        "handleID": current.handleID,
+        "windowMeta": current.meta.toJSONObject(),
+        "attachedAt": ISO8601DateFormatter().string(from: current.createdAt)
+    ]
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same
@@ -924,47 +1139,71 @@ Task.detached { @Sendable [pairingChannelListener, pairingCoordinator, bridgeNot
 //   3. Inbound notification (`{method, params}` with no id) — dispatched
 //      and the dispatcher returns nil.
 //
-// CRITICAL: handler dispatch MUST happen off this thread. Some handlers
-// (e.g. `bridge.testFireRequest`) call `runBlocking` to await a
+// CRITICAL: handler dispatch MUST happen off the reader thread. Some
+// handlers (e.g. `bridge.testFireRequest`) call `runBlocking` to await a
 // `BridgeRequester.request(...)` — but the response that unblocks them
-// arrives on stdin, which is THIS thread's job to read. Running the handler
-// inline would deadlock the daemon. Fan out to a concurrent dispatch queue
-// so the read loop stays free to deliver responses to `handleResponseLine`.
+// arrives on stdin, which is the reader's job to consume. Running the
+// handler inline would deadlock the daemon. Fan out to a concurrent
+// dispatch queue so the read loop stays free to deliver responses to
+// `handleResponseLine`.
 //
 // Concurrency model:
-//   - Read loop (this thread): one stdin line at a time, classify, dispatch.
+//   - Main thread: hosts NSApplication's run loop. `attachedWindow.requestPick`
+//     drives `SCContentSharingPicker` here, which requires a main-actor
+//     execution context. Other handlers don't touch main.
+//   - Reader thread: a dedicated serial queue blocks on `readLine`, parses
+//     one line at a time, fans out via `handlerQueue`. Lives off-main so
+//     `readLine`'s blocking syscall never starves the runloop.
 //   - Handler queue (concurrent): N handlers in flight; each safe because
 //     they own their state (actors / @unchecked Sendable wrappers).
 //   - Stdout writer: serial queue inside `BridgeStdoutWriter` keeps line
 //     framing intact across all writers.
 //
-// Outstanding outbound requests are canceled in shutdown so awaiting tasks
-// see a structured error instead of hanging on their timeout.
+// On stdin EOF the reader thread terminates NSApplication, which returns
+// from `NSApp.run()` and runs the post-loop shutdown.
 let handlerQueue = DispatchQueue(
     label: "com.example.AGBench.daemon.handler",
     attributes: .concurrent
 )
+let stdinReaderQueue = DispatchQueue(label: "com.example.AGBench.daemon.stdin-reader")
 
-while let line = readLine(strippingNewline: false) {
-    if bridgeRequester.handleResponseLine(line) {
-        continue
-    }
-    handlerQueue.async {
-        if let response = dispatcher.handleLine(line) {
-            stdoutWriter.writeLine(response)
+stdinReaderQueue.async {
+    while let line = readLine(strippingNewline: false) {
+        if bridgeRequester.handleResponseLine(line) {
+            continue
         }
+        handlerQueue.async {
+            if let response = dispatcher.handleLine(line) {
+                stdoutWriter.writeLine(response)
+            }
+        }
+    }
+    // stdin closed → parent terminated → tear down on the main thread so
+    // NSApplication's runloop can exit cleanly. The post-NSApp.run() code
+    // below performs the actual drain/flush sequence.
+    DispatchQueue.main.async {
+        NSApplication.shared.terminate(nil)
     }
 }
 
-// stdin closed → parent terminated → exit cleanly. Before we go:
-//   1. Drain the handler queue so any in-flight handlers finish.
+// Background-only daemon. `.accessory` keeps the process out of the Dock
+// and Cmd+Tab list; it still has the window-server connection it needs to
+// host `SCContentSharingPicker` on demand. Set before `NSApp.run()` so the
+// policy is in effect for the first picker presentation.
+NSApplication.shared.setActivationPolicy(.accessory)
+
+// Hand the main thread to AppKit. The picker UI, when called, drives off
+// this runloop; everything else runs on the reader/handler queues above.
+// `terminate(nil)` from the reader thread is how this returns.
+NSApplication.shared.run()
+
+// NSApp.run() returned (terminate or unexpected exit). Drain in the same
+// order the prior in-place loop did:
+//   1. Wait for in-flight handlers so a ping issued right before EOF isn't
+//      silently dropped.
 //   2. Cancel pending outbound requests so awaiters see a structured error.
 //   3. Flush the stdout writer so the last batch of responses /
 //      notifications actually reaches the parent before the pipe closes.
-// Without (1) a ping issued right before EOF would be silently dropped.
-// Without (3) the response from such a ping can race process tear-down,
-// which both loses output and occasionally trips a DispatchQueue runtime
-// trap when work is queued during process exit.
 handlerQueue.sync(flags: .barrier) {}
 bridgeRequester.shutdown()
 stdoutWriter.flush()
