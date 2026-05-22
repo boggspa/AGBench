@@ -6060,7 +6060,12 @@ button.diff-file-row {
   flex-direction: column;
   gap: 1px;
   margin: 6px 0;
-  padding: 0 2px;
+  /* Phase L4 slice 2 — widen left padding so each row can host
+   * a status-dot in the new left gutter. The dot sits at left:10px
+   * (centred), giving ~14px breathing room before the row content
+   * starts. The `::before` rail repositions to run through the
+   * dot centres so dots read as stations on the same vertical line. */
+  padding: 0 2px 0 24px;
   align-items: stretch;
   position: relative;
 }
@@ -6076,42 +6081,48 @@ button.diff-file-row {
  * not a piece of content competing with the assistant's message
  * above it.
  */
+/* Phase L4 slice 1 — proportional sizing bump. When tool rows grow
+ * to body-text scale, the receipt at the foot of each turn was
+ * dwarfed (11px label / 9px caps in a 16.6px context). Grow to 14px
+ * body / 10px caps so the receipt anchors the bottom of the stack
+ * without overpowering it. Perforation height and side max-width
+ * scale up too. */
 .turn-receipt-card {
   position: relative;
-  margin-top: 4px;
+  margin-top: 6px;
   padding: 0;
   align-self: flex-end;
   display: flex;
   flex-direction: column;
   background: color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
-  border-radius: 3px;
-  font-size: var(--font-size-xs, 11px);
+  border-radius: 4px;
+  font-size: 14px;
   color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  max-width: 360px;
+  max-width: 460px;
 }
 
 .turn-receipt-perf {
-  height: 5px;
+  height: 6px;
   background:
-    radial-gradient(circle at 3px 2px, var(--app-bg) 1.6px, transparent 1.8px) 0 0 / 6px 5px,
+    radial-gradient(circle at 4px 3px, var(--app-bg) 2px, transparent 2.2px) 0 0 / 8px 6px,
     color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
 }
 
 .turn-receipt-perf-top {
-  border-top-left-radius: 3px;
-  border-top-right-radius: 3px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
 }
 
 .turn-receipt-perf-bot {
-  border-bottom-left-radius: 3px;
-  border-bottom-right-radius: 3px;
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
 }
 
 .turn-receipt-body {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px;
+  gap: 10px;
+  padding: 6px 14px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -6119,12 +6130,12 @@ button.diff-file-row {
 
 .turn-receipt-label {
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
-  padding: 1px 5px;
-  border-radius: 2px;
+  padding: 2px 7px;
+  border-radius: 3px;
   background: color-mix(in srgb, var(--text-primary, white) 6%, transparent);
 }
 
@@ -6137,19 +6148,83 @@ button.diff-file-row {
 .activity-timeline::before {
   content: '';
   position: absolute;
-  left: 19px;
-  top: 12px;
-  bottom: 12px;
+  /* Phase L4 slice 2 — rail repositions to run through the dot
+   * centres (left:10px) so dots look like stations along it. The
+   * stops at top/bottom give the rail a faded entry / exit so it
+   * doesn't crash into the message above / below. */
+  left: 10px;
+  top: 14px;
+  bottom: 14px;
   width: 1px;
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--sidebar-border) 12%,
-    var(--sidebar-border) 88%,
+    var(--sidebar-border) 10%,
+    var(--sidebar-border) 90%,
     transparent
   );
   pointer-events: none;
   z-index: 0;
+}
+
+/* Phase L4 slice 2 — gutter status dot. Each activity-row positions
+ * its dot via absolute coordinates into the timeline's left gutter
+ * (the 24px padding-left carved above). Color flows from the row's
+ * `data-status` attribute, which we already set in Phase L3. The
+ * `activity-stamp-land` animation (Phase L3 slice 4) is reused on
+ * the dot when a tool transitions running → done. */
+.activity-gutter-dot {
+  position: absolute;
+  /* Anchor at the top of the row, vertically centred on the first
+   * line of text (~14px = body-text half-height + 7px row padding). */
+  top: 14px;
+  /* `left` is set relative to the row, NOT the timeline — the dot
+   * sits at the start of the row's coordinate space (before its
+   * own padding), and the row sits flush inside the timeline's
+   * 24px left padding, so the dot ends up at timeline-left:10px. */
+  left: -14px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  opacity: 0.55;
+  z-index: 1;
+  flex-shrink: 0;
+  transform-origin: center;
+}
+.activity-row[data-status="success"]  .activity-gutter-dot { background: var(--tool-success); opacity: 1; }
+.activity-row[data-status="warning"]  .activity-gutter-dot { background: var(--tool-warning); opacity: 1; }
+.activity-row[data-status="error"]    .activity-gutter-dot { background: var(--tool-error);   opacity: 1; }
+.activity-row[data-status="running"]  .activity-gutter-dot {
+  background: var(--tool-running);
+  opacity: 1;
+  animation: activity-dot-pulse 0.9s ease-in-out infinite alternate;
+}
+.activity-row[data-status="pending"]  .activity-gutter-dot {
+  background: var(--text-tertiary);
+  opacity: 0.4;
+}
+@keyframes activity-dot-pulse {
+  from { transform: scale(0.85); opacity: 0.55; }
+  to   { transform: scale(1.05); opacity: 1; }
+}
+/* Reduce-motion: hold the dot at its final color/size without
+ * the running pulse. Matches the existing pattern for stamp +
+ * border-pulse animations. */
+[data-reduce-motion="true"] .activity-gutter-dot {
+  animation: none;
+}
+
+/* Aggregate-status dot for compact-group headers. Same visuals;
+ * the data-status attribute is set on the parent .activity-compact-
+ * group from a small derive helper in ActivityStack. */
+.activity-compact-group[data-status="success"]  .activity-gutter-dot { background: var(--tool-success); opacity: 1; }
+.activity-compact-group[data-status="warning"]  .activity-gutter-dot { background: var(--tool-warning); opacity: 1; }
+.activity-compact-group[data-status="error"]    .activity-gutter-dot { background: var(--tool-error);   opacity: 1; }
+.activity-compact-group[data-status="running"]  .activity-gutter-dot {
+  background: var(--tool-running);
+  opacity: 1;
+  animation: activity-dot-pulse 0.9s ease-in-out infinite alternate;
 }
 
 @keyframes activity-spin {
@@ -6251,43 +6326,42 @@ button.diff-file-row {
 }
 
 .activity-row {
+  /* Phase L4 slice 4 — collapsed to a single inline-friendly base.
+   * `position: relative` anchors the absolute-positioned
+   * `.activity-gutter-dot` to each row (slice 2). The 2px
+   * `border-left` is the provider/category/status stripe (rules
+   * below). No background / outer border / radius — rows are
+   * transparent so they sit naturally in the transcript flow at
+   * body-text scale (Phase L4 grammar). */
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: var(--space-sm);
   width: 100%;
   padding: var(--space-sm) var(--space-lg);
-  border-radius: var(--radius-md);
-  background: var(--app-bg-elevated);
-  border: 1px solid var(--sidebar-border);
+  padding-left: 8px;
+  border: 0;
+  border-left: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
   cursor: pointer;
   transition: background 0.1s ease;
 }
+.activity-row[data-category="write"]  { border-left-color: var(--accent); }
+.activity-row[data-category="shell"]  { border-left-color: var(--warning); }
+.activity-row[data-category="task"]   { border-left-color: var(--accent); }
 
-.activity-row-card {
-  border-left: 2px solid var(--sidebar-border);
-}
-.activity-row-card[data-category="write"]  { border-left-color: var(--accent); }
-.activity-row-card[data-category="shell"]  { border-left-color: var(--warning); }
-.activity-row-card[data-category="task"]   { border-left-color: var(--accent); }
+/* Provider color overrides category when known. The cascade order
+ * matters: category rules above, provider rules here, status rules
+ * below — so a running/error tool still wins on the most-urgent
+ * signal (border-color flips to running pulse or danger red). */
+.activity-row[data-provider="gemini"] { border-left-color: var(--provider-gemini-color); }
+.activity-row[data-provider="codex"]  { border-left-color: var(--provider-codex-color); }
+.activity-row[data-provider="claude"] { border-left-color: var(--provider-claude-color); }
+.activity-row[data-provider="kimi"]   { border-left-color: var(--provider-kimi-color); }
 
-/* Phase L3 — provider-coloured left border (slice 2). The chat-context
- * provider drives the stripe color so a long transcript visually
- * clusters by which CLI/runtime owns the work. Inner rows inside a
- * `ChildAgentThreadCard` pass `thread.provider` instead so cross-
- * provider sub-thread cards show the runtime-execution color.
- *
- * Placed AFTER the category rules so provider color wins on same
- * specificity, and BEFORE the status rules so status (running / error)
- * still takes precedence — running pulse + error red are urgent signals
- * the user must not miss to a brand color. Provider tokens are defined
- * in `styles/theme.css` (--provider-{id}-color). */
-.activity-row-card[data-provider="gemini"] { border-left-color: var(--provider-gemini-color); }
-.activity-row-card[data-provider="codex"]  { border-left-color: var(--provider-codex-color); }
-.activity-row-card[data-provider="claude"] { border-left-color: var(--provider-claude-color); }
-.activity-row-card[data-provider="kimi"]   { border-left-color: var(--provider-kimi-color); }
-
-.activity-row-card[data-status="error"]    { border-left-color: var(--danger); }
-.activity-row-card[data-status="running"]  {
+.activity-row[data-status="error"]    { border-left-color: var(--danger); }
+.activity-row[data-status="running"]  {
   border-left-color: var(--accent);
   animation: activity-border-pulse 0.9s ease-in-out infinite alternate;
 }
@@ -6297,7 +6371,7 @@ button.diff-file-row {
  * The 21 AGBench themes (see `ThemeAppearance` in `store/types.ts`)
  * collapse to 5 skin archetypes that flow from the active `data-theme`
  * attribute (set on `<html>` by `useAppearance`). Each skin is a
- * lightweight visual layer on top of the base `.activity-row-card`
+ * lightweight visual layer on top of the base `.activity-row-inline .activity-detail`
  * structure — backgrounds, borders, shadows. Structure stays
  * identical across themes so the card's footprint doesn't shift when
  * the user switches themes.
@@ -6318,11 +6392,11 @@ button.diff-file-row {
  * top edge that hints at a ruled notebook page without going full
  * texture. Works against light/warm themes where a deeper shadow
  * reads as physical depth. */
-[data-theme="light"] .activity-row-card,
-[data-theme="system"] .activity-row-card,
-[data-theme="citrus"] .activity-row-card,
-[data-theme="yellow"] .activity-row-card,
-[data-theme="orange"] .activity-row-card {
+[data-theme="light"] .activity-row-inline .activity-detail,
+[data-theme="system"] .activity-row-inline .activity-detail,
+[data-theme="citrus"] .activity-row-inline .activity-detail,
+[data-theme="yellow"] .activity-row-inline .activity-detail,
+[data-theme="orange"] .activity-row-inline .activity-detail {
   background: color-mix(in srgb, var(--app-bg-elevated) 92%, #fff8eb 8%);
   box-shadow:
     0 1px 0 color-mix(in srgb, var(--sidebar-border) 60%, transparent) inset,
@@ -6332,9 +6406,9 @@ button.diff-file-row {
 
 /* slate — chalkboard family: slight inset shadow at the top edge
  * suggesting chalk dust, subtle outer shadow grounds the card. */
-[data-theme="dark"] .activity-row-card,
-[data-theme="midnight"] .activity-row-card,
-[data-theme="graphite"] .activity-row-card {
+[data-theme="dark"] .activity-row-inline .activity-detail,
+[data-theme="midnight"] .activity-row-inline .activity-detail,
+[data-theme="graphite"] .activity-row-inline .activity-detail {
   background: color-mix(in srgb, var(--app-bg-elevated) 88%, #0a0a10 12%);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.04) inset,
@@ -6346,15 +6420,15 @@ button.diff-file-row {
  * the existing `subthread-delegation-card` (which uses a stronger
  * frosted-glass treatment). Both can coexist in a single transcript;
  * the slight contrast tells them apart. */
-[data-theme="blue"] .activity-row-card,
-[data-theme="purple"] .activity-row-card,
-[data-theme="pink"] .activity-row-card,
-[data-theme="red"] .activity-row-card,
-[data-theme="green"] .activity-row-card,
-[data-theme="ocean"] .activity-row-card,
-[data-theme="sunset"] .activity-row-card,
-[data-theme="forest"] .activity-row-card,
-[data-theme="twilight"] .activity-row-card {
+[data-theme="blue"] .activity-row-inline .activity-detail,
+[data-theme="purple"] .activity-row-inline .activity-detail,
+[data-theme="pink"] .activity-row-inline .activity-detail,
+[data-theme="red"] .activity-row-inline .activity-detail,
+[data-theme="green"] .activity-row-inline .activity-detail,
+[data-theme="ocean"] .activity-row-inline .activity-detail,
+[data-theme="sunset"] .activity-row-inline .activity-detail,
+[data-theme="forest"] .activity-row-inline .activity-detail,
+[data-theme="twilight"] .activity-row-inline .activity-detail {
   background: color-mix(in srgb, var(--app-bg-elevated) 78%, transparent);
   backdrop-filter: saturate(120%) blur(6px);
   -webkit-backdrop-filter: saturate(120%) blur(6px);
@@ -6366,8 +6440,8 @@ button.diff-file-row {
 /* neon — thin outer glow that hints at the cyber/rainbow aesthetic
  * without changing the card's fill. The provider-coloured left
  * border becomes the dominant accent. */
-[data-theme="cyber"] .activity-row-card,
-[data-theme="rainbow"] .activity-row-card {
+[data-theme="cyber"] .activity-row-inline .activity-detail,
+[data-theme="rainbow"] .activity-row-inline .activity-detail {
   background: color-mix(in srgb, var(--app-bg-elevated) 94%, transparent);
   box-shadow:
     0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent) inset,
@@ -6377,8 +6451,8 @@ button.diff-file-row {
 /* playful — brighter, looser. Slight outer shadow combined with a
  * warm-tinted background pull keeps it cheerful without going full
  * theme-park. */
-[data-theme="nebula"] .activity-row-card,
-[data-theme="candy"] .activity-row-card {
+[data-theme="nebula"] .activity-row-inline .activity-detail,
+[data-theme="candy"] .activity-row-inline .activity-detail {
   background: color-mix(in srgb, var(--app-bg-elevated) 90%, color-mix(in srgb, var(--accent) 18%, transparent) 10%);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.08) inset,
@@ -6386,14 +6460,67 @@ button.diff-file-row {
 }
 
 .activity-row-inline {
-  align-items: center;
-  gap: 6px;
-  padding: 1px 0;
-  border: 0;
+  /* Phase L4 slice 3 — flex-direction column so the optional
+   * expansion panel can sit BELOW the inline-row line (instead of
+   * fighting for horizontal space inside the row). The header line
+   * itself stays a horizontal flex via .activity-body. */
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  /* Phase L4 slice 1 — open up vertical breathing room so body-text-
+   * sized rows aren't crammed against each other; min-height grows
+   * to accommodate the 14px-icon + 16.6px-text baseline.
+   * Slice 4 keeps padding-left from the provider-border rule above
+   * (10px). Vertical padding 3px gives the rows a touch of air. */
+  padding-top: 3px;
+  padding-right: 0;
+  padding-bottom: 3px;
   border-radius: 0;
   background: transparent;
-  color: color-mix(in srgb, var(--text-primary) 68%, transparent);
-  min-height: 22px;
+  color: color-mix(in srgb, var(--text-primary) 88%, transparent);
+  min-height: 28px;
+}
+
+/* Phase L4 slice 3 — expansion chevron at the end of an expandable
+ * inline row. Subtle by default, fully present on hover so the
+ * affordance is discoverable but doesn't crowd the row content. */
+.activity-expand-chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-tertiary);
+  opacity: 0.55;
+  transition: transform 180ms ease, opacity 140ms ease;
+}
+.activity-row-inline:hover .activity-expand-chevron,
+.activity-row-inline.expanded .activity-expand-chevron {
+  opacity: 0.9;
+}
+.activity-expand-chevron[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+[data-reduce-motion="true"] .activity-expand-chevron {
+  transition: none;
+}
+
+/* Phase L4 slice 3 — expansion detail panel. Indented to align with
+ * the inline label content (not the gutter dot). Subtle background
+ * + rounded corner so it visually belongs to its parent row. The
+ * detail rows / diff cards / previews inside reuse their existing
+ * styling from the legacy card mode. */
+.activity-row-inline .activity-detail {
+  margin: 4px 0 6px 22px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm, 6px);
+  background: color-mix(in srgb, var(--app-bg-elevated) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 70%, transparent);
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text-primary) 82%, transparent);
 }
 
 .activity-row-inline:hover {
@@ -6420,14 +6547,20 @@ button.diff-file-row {
   gap: 6px;
 }
 
+/* Phase L4 slice 1 — sizing parity with message body text. Tool rows
+ * previously rendered at 14px (inline) / 16.6px (card), making the
+ * inline form feel like sidebar metadata rather than part of the
+ * transcript. Bumping inline to var(--font-size-sm) (16.6px) and
+ * brightening the label color brings tool rows into the natural
+ * reading flow at the same scale as agent messages. */
 .activity-row-inline .activity-label {
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
-  font-size: 14px;
-  line-height: 1.35;
+  color: color-mix(in srgb, var(--text-primary) 88%, transparent);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
 }
 
 .activity-row-inline .activity-label-main {
-  gap: 5px;
+  gap: 7px;
 }
 
 .activity-row-inline .activity-label-main strong,
@@ -11539,11 +11672,14 @@ input:disabled, select:disabled, textarea:disabled {
 
 .activity-compact-group-header {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) auto auto;
-  gap: 8px;
+  /* Phase L4 slice 1 — icon column widens (14px → 20px) to host
+   * the body-text-sized icon set; row padding opens up for the
+   * larger title and meta type. */
+  grid-template-columns: 20px minmax(0, 1fr) auto auto;
+  gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 4px 0;
+  padding: 6px 0;
   border: 0;
   background: transparent;
   color: inherit;
@@ -11583,13 +11719,17 @@ input:disabled, select:disabled, textarea:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
+  /* Phase L4 slice 1 — match the body-text scale of inline tool
+   * rows so grouped + individual rows read as one coherent block. */
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  color: color-mix(in srgb, var(--text-primary) 86%, transparent);
 }
 
 .activity-compact-group-duration,
 .activity-compact-group-caret {
   color: var(--text-tertiary);
-  font-size: 0.7rem;
+  font-size: 13px;
 }
 
 .activity-compact-group-caret {
@@ -13724,7 +13864,7 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #ffffff 60%, transparent);
 }
 
-[data-interface-style="gemini"] .activity-row-card:hover {
+[data-interface-style="gemini"] .activity-row-inline .activity-detail:hover {
   background: color-mix(in srgb, #5a8cff 6%, transparent);
 }
 
@@ -13803,7 +13943,7 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #ffffff 60%, transparent);
 }
 
-[data-interface-style="kimi"] .activity-row-card:hover {
+[data-interface-style="kimi"] .activity-row-inline .activity-detail:hover {
   background: color-mix(in srgb, #ffffff 5%, transparent);
 }
 

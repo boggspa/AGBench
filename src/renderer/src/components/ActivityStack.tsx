@@ -8,7 +8,7 @@ import {
 } from '../../../main/store/types'
 import { deriveToolDiffSummary, isWriteLikeToolName } from '../lib/ToolParser'
 import { deriveChildAgentThreadsFromActivities } from '../lib/ChildAgentThreads'
-import { hasExpandableDetail, shouldRenderAsCard } from '../lib/ActivityRenderMode'
+import { hasExpandableDetail } from '../lib/ActivityRenderMode'
 import { inlineStatsForActivity } from '../lib/ActivityInlineStats'
 import { displayPathRelativeToWorkspace } from '../lib/ActivityPathDisplay'
 import { FileTypeIcon } from './FileTypeIcon'
@@ -645,8 +645,26 @@ function ActivityCompactGroup({
   const visibleFamilies = distinctFamilies.slice(0, 4)
   const overflowFamilyCount = distinctFamilies.length - visibleFamilies.length
 
+  // Phase L4 slice 2 — aggregate status for the gutter dot. Worst-
+  // case wins: any error → error, then warning, then running,
+  // then pending, otherwise success. Mirrors how a CI dashboard
+  // would surface a group's worst result without hiding it
+  // behind successes.
+  const aggregateStatus: ToolActivity['status'] = (() => {
+    if (activities.some((a) => a.status === 'error')) return 'error'
+    if (activities.some((a) => a.status === 'warning')) return 'warning'
+    if (activities.some((a) => a.status === 'running')) return 'running'
+    if (activities.some((a) => a.status === 'pending')) return 'pending'
+    return 'success'
+  })()
+
   return (
-    <div className={`activity-compact-group ${expanded ? 'expanded' : 'collapsed'}`}>
+    <div
+      className={`activity-compact-group ${expanded ? 'expanded' : 'collapsed'}`}
+      data-status={aggregateStatus}
+      style={{ position: 'relative' }}
+    >
+      <span className="activity-gutter-dot" aria-hidden />
       <button
         className="activity-compact-group-header"
         type="button"
@@ -665,7 +683,9 @@ function ActivityCompactGroup({
               <ToolFamilyIcon
                 key={family}
                 family={family as Parameters<typeof ToolFamilyIcon>[0]['family']}
-                size={12}
+                /* Phase L4 slice 1 — compact-group icon array grows
+                 * to 15px to match the body-text title beside it. */
+                size={15}
                 className="activity-compact-group-icon"
               />
             ))}
@@ -1311,14 +1331,16 @@ function ActivityRow({
     diffFileCount,
     shouldShowRawEvent
   }
-  // Content-light activities (no persistent body, no diff, no debug payload)
-  // collapse to a slim inline chip even when the user toggles expansion —
-  // otherwise we'd render an empty rectangular card around a one-line label.
-  const renderAsCard = shouldRenderAsCard(renderInputs)
-  const isInlineActivity = !renderAsCard
+  // Phase L4 slice 3 — all rows render in the inline body-text form by
+  // default (Codex / Claude grammar). Heavy-content tools still have
+  // their detail panel, but it lives BEHIND the expansion toggle —
+  // collapsed by default, opens on click when `canExpand` is true.
+  // The legacy `shouldRenderAsCard` decision used to auto-expand
+  // content-heavy rows; we now defer that to the user's click so the
+  // transcript reads as a uniform vertical list at one text scale.
+  const isInlineActivity = true
   const canExpand = hasExpandableDetail(activity, renderInputs)
-  const showInlinePulse =
-    isInlineActivity && (activity.status === 'running' || activity.status === 'pending')
+  const showInlinePulse = activity.status === 'running' || activity.status === 'pending'
 
   const toggleExpanded = () => {
     if (!canExpand) return
@@ -1328,7 +1350,7 @@ function ActivityRow({
   return (
     <>
       <div
-        className={`activity-row ${isInlineActivity ? 'activity-row-inline' : 'activity-row-card'} ${expanded ? 'expanded' : 'collapsed'}${!canExpand ? ' no-expand' : ''}${showInlinePulse ? ' is-pulsing' : ''}`}
+        className={`activity-row activity-row-inline ${expanded ? 'expanded' : 'collapsed'}${!canExpand ? ' no-expand' : ''}${showInlinePulse ? ' is-pulsing' : ''}`}
         data-category={activity.category || 'unknown'}
         data-status={activity.status}
         data-provider={provider || 'unknown'}
@@ -1347,9 +1369,18 @@ function ActivityRow({
             : undefined
         }
       >
-        <span className={justCompleted ? 'activity-status-stamping' : undefined}>
-          <ActivityStatusIcon status={activity.status} />
-        </span>
+        {/* Phase L4 slice 2 — gutter status dot. Replaces the inline
+         * ActivityStatusIcon: the dot lives in the timeline's left
+         * gutter (via absolute positioning + the row's
+         * `position: relative`) so the row content reads as one
+         * uninterrupted body-text line. Color flows from the row's
+         * `data-status` attribute (already present); the
+         * `activity-status-stamping` class keeps the existing
+         * stamp-on-completion animation from Phase L3 slice 4. */}
+        <span
+          className={`activity-gutter-dot${justCompleted ? ' activity-status-stamping' : ''}`}
+          aria-hidden
+        />
         <div className="activity-body">
           <div className="activity-header">
             <div className="activity-label">
@@ -1375,6 +1406,10 @@ function ActivityRow({
                     return family ? (
                       <ToolFamilyIcon
                         family={family}
+                        /* Phase L4 slice 1 — card-form icon grows to
+                         * 16px to match the body-text scale of the
+                         * label beside it. */
+                        size={16}
                         className="activity-category-icon"
                       />
                     ) : (
@@ -1394,7 +1429,11 @@ function ActivityRow({
                     return inlineFamily ? (
                       <ToolFamilyIcon
                         family={inlineFamily}
-                        size={11}
+                        /* Phase L4 slice 1 — inline icons grow from
+                         * 11px to 14px so they're actually visible
+                         * at body-text scale (the surrounding label
+                         * is now ~16.6px). */
+                        size={14}
                         className={`activity-inline-icon category-${activity.category || 'unknown'}`}
                       />
                     ) : (
@@ -1425,6 +1464,20 @@ function ActivityRow({
                     )}
                   </span>
                 )}
+                {/* Phase L4 slice 3 — expansion chevron at the end of
+                 * the inline row, shown only when the row carries
+                 * substantive detail worth expanding. Rotates 90°
+                 * when open so the user has a clear affordance for
+                 * "click to inspect / collapse". */}
+                {canExpand && (
+                  <span
+                    className="activity-expand-chevron"
+                    data-expanded={expanded ? 'true' : 'false'}
+                    aria-hidden
+                  >
+                    ›
+                  </span>
+                )}
               </span>
             </div>
           </div>
@@ -1437,7 +1490,7 @@ function ActivityRow({
             </div>
           )}
 
-          {renderAsCard && (
+          {expanded && (
             <div className="activity-detail">
               {showDebugWarning && (
                 <div style={{ color: 'var(--warning)' }}>Tool event missing name</div>
