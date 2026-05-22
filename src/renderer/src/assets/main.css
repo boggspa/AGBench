@@ -6169,7 +6169,9 @@ button.diff-file-row {
 .activity-gutter-dot {
   position: absolute;
   /* Anchor at the top of the row, vertically centred on the first
-   * line of text (~14px = body-text half-height + 7px row padding). */
+   * line of content. With 1.5×-bumped icons (21px tall) + row
+   * padding-top 4px, the icon's vertical centre lands at ~14.5px;
+   * top:14px keeps the dot aligned with the icon's middle. */
   top: 14px;
   /* `left` is relative to the row's coordinate space (the row sits
    * at timeline-left:16px after the slice-4 follow-up). With dot
@@ -6463,17 +6465,18 @@ button.diff-file-row {
   align-items: stretch;
   gap: 4px;
   /* Phase L4 slice 1 — open up vertical breathing room so body-text-
-   * sized rows aren't crammed against each other; min-height grows
-   * to accommodate the 14px-icon + 16.6px-text baseline.
+   * sized rows aren't crammed against each other.
    * Slice 4 keeps padding-left from the provider-border rule above
-   * (10px). Vertical padding 3px gives the rows a touch of air. */
-  padding-top: 3px;
+   * (10px). Vertical padding 4px gives the 1.5×-bumped icons (21px)
+   * room to breathe inside the row; min-height grows to 32px so the
+   * row's total height comfortably exceeds the icon. */
+  padding-top: 4px;
   padding-right: 0;
-  padding-bottom: 3px;
+  padding-bottom: 4px;
   border-radius: 0;
   background: transparent;
   color: color-mix(in srgb, var(--text-primary) 88%, transparent);
-  min-height: 28px;
+  min-height: 32px;
 }
 
 /* Phase L4 slice 3 — expansion chevron at the end of an expandable

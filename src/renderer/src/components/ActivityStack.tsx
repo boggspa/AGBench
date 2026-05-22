@@ -684,8 +684,9 @@ function ActivityCompactGroup({
                 key={family}
                 family={family as Parameters<typeof ToolFamilyIcon>[0]['family']}
                 /* Phase L4 slice 1 — compact-group icon array grows
-                 * to 15px to match the body-text title beside it. */
-                size={15}
+                 * to 15px to match the body-text title beside it.
+                 * Slice 4 follow-up — 1.5× bump (15 → 22px). */
+                size={22}
                 className="activity-compact-group-icon"
               />
             ))}
@@ -1408,8 +1409,9 @@ function ActivityRow({
                         family={family}
                         /* Phase L4 slice 1 — card-form icon grows to
                          * 16px to match the body-text scale of the
-                         * label beside it. */
-                        size={16}
+                         * label beside it.
+                         * Slice 4 follow-up — 1.5× bump (16 → 24px). */
+                        size={24}
                         className="activity-category-icon"
                       />
                     ) : (
@@ -1432,8 +1434,12 @@ function ActivityRow({
                         /* Phase L4 slice 1 — inline icons grow from
                          * 11px to 14px so they're actually visible
                          * at body-text scale (the surrounding label
-                         * is now ~16.6px). */
-                        size={14}
+                         * is now ~16.6px).
+                         * Slice 4 follow-up — 1.5× bump (14 → 21px)
+                         * for scannability in long transcripts. Icons
+                         * now lead the row visually rather than
+                         * competing with body text. */
+                        size={21}
                         className={`activity-inline-icon category-${activity.category || 'unknown'}`}
                       />
                     ) : (
