@@ -58,9 +58,22 @@ interface UsageHeatmapProps {
    * heatmap to re-query. Defaults to a stable timestamp so the
    * heatmap only loads once on mount when omitted. */
   refreshKey?: number
+  /** Render the "Activity" title + 24h / 7D / 30D total chips. The
+   * sidebar Model Usage card surfaces them inline; embeds in the
+   * welcome dashboard (where total-tokens already lives in the
+   * headline stat grid above) hide the header to avoid duplication.
+   * Defaults to true. */
+  showHeader?: boolean
+  /** Class name appended to the root `<div>` — lets callers retune
+   * sizing without forking the component. */
+  className?: string
 }
 
-export function UsageHeatmap({ refreshKey = 0 }: UsageHeatmapProps) {
+export function UsageHeatmap({
+  refreshKey = 0,
+  showHeader = true,
+  className
+}: UsageHeatmapProps) {
   const [records, setRecords] = useState<UsageRecord[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -92,19 +105,24 @@ export function UsageHeatmap({ refreshKey = 0 }: UsageHeatmapProps) {
   const grid: HeatmapGrid = useMemo(() => buildHeatmapGrid(records), [records])
 
   return (
-    <div className="usage-heatmap" aria-label="Usage activity heatmap">
-      <div className="usage-heatmap-header">
-        <span className="usage-heatmap-title">Activity</span>
-        <span className="usage-heatmap-chip">
-          24h <strong>{formatTokenCount(grid.totals.last24h)}</strong>
-        </span>
-        <span className="usage-heatmap-chip">
-          7D <strong>{formatTokenCount(grid.totals.last7d)}</strong>
-        </span>
-        <span className="usage-heatmap-chip">
-          30D <strong>{formatTokenCount(grid.totals.last30d)}</strong>
-        </span>
-      </div>
+    <div
+      className={`usage-heatmap${className ? ` ${className}` : ''}`}
+      aria-label="Usage activity heatmap"
+    >
+      {showHeader && (
+        <div className="usage-heatmap-header">
+          <span className="usage-heatmap-title">Activity</span>
+          <span className="usage-heatmap-chip">
+            24h <strong>{formatTokenCount(grid.totals.last24h)}</strong>
+          </span>
+          <span className="usage-heatmap-chip">
+            7D <strong>{formatTokenCount(grid.totals.last7d)}</strong>
+          </span>
+          <span className="usage-heatmap-chip">
+            30D <strong>{formatTokenCount(grid.totals.last30d)}</strong>
+          </span>
+        </div>
+      )}
       <div className="usage-heatmap-grid-wrapper" aria-busy={loading}>
         <div className="usage-heatmap-time-labels" aria-hidden>
           {TIME_LABELS.map((label) => (

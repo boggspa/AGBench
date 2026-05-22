@@ -2580,6 +2580,24 @@ button.sidebar-item {
   transition: none;
 }
 
+/* `usage-heatmap--welcome` modifier — the welcome dashboard hosts the
+ * same heatmap as the sidebar but in a much wider container. Give the
+ * grid more vertical room so cells read clearly, and add a top margin
+ * to breathe away from the headline stat grid above. */
+.usage-heatmap--welcome {
+  margin-top: 16px;
+}
+.usage-heatmap--welcome .usage-heatmap-grid {
+  /* Squarer cells when the container is wide — keep the 30-col layout
+   * but let the grid use up to ~200px of vertical space instead of the
+   * sidebar's compact ~110px. */
+  aspect-ratio: auto;
+  height: clamp(140px, 22vh, 220px);
+}
+.usage-heatmap--welcome .usage-heatmap-grid-wrapper {
+  margin-top: 4px;
+}
+
 /* Phase L6 slice 6 — glass chrome polish on the Model Usage Card.
  * The card sits inside the sidebar (`.app-sidebar`) which already
  * inherits the appearance-mode treatment, but the card itself

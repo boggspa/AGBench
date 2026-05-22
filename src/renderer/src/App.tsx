@@ -64,6 +64,7 @@ import {
   buildComposerSlashCommandRegistry
 } from './lib/ComposerSlashCommands'
 import { ComposerSlashMenu } from './components/ComposerSlashMenu'
+import { UsageHeatmap } from './components/UsageHeatmap'
 import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
@@ -123,13 +124,9 @@ import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
 import {
-  HEATMAP_DAY_COUNT,
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
-  mixProviderColors,
-  type WelcomeUsageDayCell,
   type WelcomeUsageDashboardData,
-  type WelcomeUsageHourCell,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
 
@@ -1673,97 +1670,10 @@ const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
 
 const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
-/**
- * Provider palette used by the dense activity grid. Kept in TS so we can mix
- * colours at runtime via {@link mixProviderColors}. The matching CSS variables
- * live in main.css under :root for consistency with the rest of the UI.
- */
-const PROVIDER_GRID_COLORS: Record<ProviderId, string> = {
-  gemini: '#2563EB',
-  codex: '#756AF4',
-  claude: '#D97706',
-  kimi: '#84A33B'
-}
-
-const HEATMAP_LEVEL_OPACITY: Record<number, number> = {
-  0: 0,
-  1: 0.38,
-  2: 0.58,
-  3: 0.78,
-  4: 1
-}
-
-/**
- * Renders a contribution-style activity grid: weekdays run vertically and weeks
- * advance horizontally. Daily intensity comes from the daily heatmap while the
- * fill color still uses provider totals folded up from the hourly buckets.
- */
-function ActivityContributionGrid({
-  days,
-  hourlyCells
-}: {
-  days: WelcomeUsageDayCell[]
-  hourlyCells: WelcomeUsageHourCell[]
-}) {
-  const firstDay = days[0]
-  const firstDate = firstDay ? new Date(`${firstDay.dayKey}T00:00:00`) : null
-  const firstWeekday = firstDate && Number.isFinite(firstDate.getTime()) ? firstDate.getDay() : 0
-  const weekCount = Math.max(1, Math.ceil((firstWeekday + days.length) / 7))
-  const dailyProviderTotals = useMemo(() => {
-    const totals = new Map<string, Record<ProviderId, number>>()
-    for (const cell of hourlyCells) {
-      if (cell.totalTokens <= 0) continue
-      const existing = totals.get(cell.dayKey) || { gemini: 0, codex: 0, claude: 0, kimi: 0 }
-      existing.gemini += cell.providerTotals.gemini || 0
-      existing.codex += cell.providerTotals.codex || 0
-      existing.claude += cell.providerTotals.claude || 0
-      existing.kimi += cell.providerTotals.kimi || 0
-      totals.set(cell.dayKey, existing)
-    }
-    return totals
-  }, [hourlyCells])
-
-  return (
-    <div
-      className="welcome-usage-activity-grid"
-      role="img"
-      aria-label={`Daily activity contribution grid for the last ${days.length || HEATMAP_DAY_COUNT} days`}
-      style={{
-        gridTemplateColumns: `repeat(${weekCount}, var(--activity-cell-size))`,
-        gridTemplateRows: 'repeat(7, var(--activity-cell-size))'
-      }}
-    >
-      {days.map((day, index) => {
-        const slot = firstWeekday + index
-        const providerTotals = dailyProviderTotals.get(day.dayKey)
-        const mixedColor = providerTotals
-          ? mixProviderColors(providerTotals, PROVIDER_GRID_COLORS)
-          : ''
-        const color =
-          day.level > 0 ? mixedColor || 'var(--activity-heatmap-color, var(--accent))' : ''
-        const opacity = HEATMAP_LEVEL_OPACITY[day.level] ?? 0
-        const style: CSSProperties = color
-          ? {
-              backgroundColor: color,
-              opacity,
-              gridColumn: Math.floor(slot / 7) + 1,
-              gridRow: (slot % 7) + 1
-            }
-          : { gridColumn: Math.floor(slot / 7) + 1, gridRow: (slot % 7) + 1 }
-        const tokenSummary =
-          day.value > 0 ? `${formatCompactUsageNumber(day.value)} tokens` : 'no activity'
-        return (
-          <span
-            key={day.dayKey}
-            className={`welcome-usage-day-cell level-${day.level} ${day.isToday ? 'today' : ''}`}
-            style={style}
-            title={`${day.label} - ${tokenSummary}`}
-          />
-        )
-      })}
-    </div>
-  )
-}
+// `ActivityContributionGrid` retired in Welcome L1 — the welcome
+// dashboard now hosts the sidebar's UsageHeatmap (logarithmic
+// intensity, 2-hour buckets, dominant-provider coloring) so a single
+// renderer powers both surfaces. The linear-scaled day-grid is gone.
 
 function WelcomeUsageDashboard({
   data,
@@ -1813,7 +1723,11 @@ function WelcomeUsageDashboard({
               </div>
             ))}
           </div>
-          <ActivityContributionGrid days={data.heatmap} hourlyCells={data.hourlyHeatmap} />
+          {/* Welcome dashboard now shares the sidebar's UsageHeatmap so
+              the rich logarithmic intensity + dominant-provider colours
+              show up here too. Header chips are suppressed because the
+              headline stat grid above already surfaces the totals. */}
+          <UsageHeatmap showHeader={false} className="usage-heatmap--welcome" />
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
       ) : (
