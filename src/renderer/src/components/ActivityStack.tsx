@@ -624,6 +624,27 @@ function ActivityCompactGroup({
     .filter((value): value is string => Boolean(value))
     .slice(0, 6)
 
+  // Phase L3 slice 7 — intelligent group iconography. Compute the
+  // distinct tool families present in this group; show ONE icon if
+  // they all map to the same family, otherwise show an array of up
+  // to 4 family icons (with a "+N" indicator for overflow). When no
+  // tool maps to a family at all, fall back to the legacy category
+  // icon so heterogeneous unknown-tool groups still render something.
+  const distinctFamilies = (() => {
+    const seen = new Set<string>()
+    const order: string[] = []
+    for (const activity of activities) {
+      const family = toolNameToFamily(activity.toolName)
+      if (family && !seen.has(family)) {
+        seen.add(family)
+        order.push(family)
+      }
+    }
+    return order
+  })()
+  const visibleFamilies = distinctFamilies.slice(0, 4)
+  const overflowFamilyCount = distinctFamilies.length - visibleFamilies.length
+
   return (
     <div className={`activity-compact-group ${expanded ? 'expanded' : 'collapsed'}`}>
       <button
@@ -631,7 +652,28 @@ function ActivityCompactGroup({
         type="button"
         onClick={() => setExpanded((current) => !current)}
       >
-        <ToolCategoryIcon category={primaryCategory} />
+        {distinctFamilies.length === 0 ? (
+          <ToolCategoryIcon category={primaryCategory} />
+        ) : visibleFamilies.length === 1 ? (
+          <ToolFamilyIcon
+            family={visibleFamilies[0] as Parameters<typeof ToolFamilyIcon>[0]['family']}
+            className="activity-category-icon"
+          />
+        ) : (
+          <span className="activity-compact-group-icons" aria-hidden>
+            {visibleFamilies.map((family) => (
+              <ToolFamilyIcon
+                key={family}
+                family={family as Parameters<typeof ToolFamilyIcon>[0]['family']}
+                size={12}
+                className="activity-compact-group-icon"
+              />
+            ))}
+            {overflowFamilyCount > 0 && (
+              <span className="activity-compact-group-icon-overflow">+{overflowFamilyCount}</span>
+            )}
+          </span>
+        )}
         <span className="activity-compact-group-title">{label}</span>
         <span className="activity-compact-group-meta">
           {durationMs !== undefined && (
@@ -1339,11 +1381,28 @@ function ActivityRow({
                       <ToolCategoryIcon category={activity.category} />
                     )
                   })()}
-                {isInlineActivity && (
-                  <span
-                    className={`activity-category-pip category-${activity.category || 'unknown'}`}
-                  />
-                )}
+                {isInlineActivity &&
+                  (() => {
+                    // Phase L3 slice 7 — inline-row icon. Use the
+                    // hand-drawn tool-family icon at a small size and
+                    // tint it via the same `category-{X}` color the
+                    // legacy pip carried (the class drives the
+                    // currentColor inheritance). Fall back to the
+                    // legacy pip when the tool name doesn't map to
+                    // any family — keeps unknown tools visible.
+                    const inlineFamily = toolNameToFamily(activity.toolName)
+                    return inlineFamily ? (
+                      <ToolFamilyIcon
+                        family={inlineFamily}
+                        size={11}
+                        className={`activity-inline-icon category-${activity.category || 'unknown'}`}
+                      />
+                    ) : (
+                      <span
+                        className={`activity-category-pip category-${activity.category || 'unknown'}`}
+                      />
+                    )
+                  })()}
                 {isInlineActivity ? (
                   getInlineActivityTitle(activity, activityFilePath)
                 ) : (

@@ -6208,6 +6208,48 @@ button.diff-file-row {
 .activity-category-pip.category-search { background: var(--info); opacity: 0.55; }
 .activity-category-pip.category-task   { background: var(--accent); opacity: 0.7; }
 
+/* Phase L3 slice 7 — inline-row tool-family icon. Replaces the
+ * colored pip with the hand-drawn icon while preserving the
+ * category-color signal via `currentColor`. Sized small to keep
+ * the row chip lightweight; opacity matches the legacy pip so
+ * inline rows stay visually quieter than the expanded card.
+ *
+ * Color mapping mirrors `.activity-category-pip` — same accent /
+ * warning / info language so the user's existing color training
+ * carries over after the icon swap. */
+.activity-inline-icon {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  opacity: 0.7;
+}
+.activity-inline-icon.category-write  { color: var(--accent); opacity: 0.85; }
+.activity-inline-icon.category-shell  { color: var(--warning); opacity: 0.85; }
+.activity-inline-icon.category-search { color: var(--info); opacity: 0.75; }
+.activity-inline-icon.category-task   { color: var(--accent); opacity: 0.85; }
+.activity-inline-icon.category-read   { color: var(--text-secondary); opacity: 0.75; }
+
+/* Compact-group icon array. When a group contains tools from
+ * multiple families, we render them side-by-side in a small row
+ * (a la Codex's "Edited X, ran Y" status lines). Single-family
+ * groups still render a single icon via the standard
+ * `.activity-category-icon` class. */
+.activity-compact-group-icons {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.activity-compact-group-icon {
+  opacity: 0.85;
+}
+.activity-compact-group-icon-overflow {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  padding: 0 2px;
+  letter-spacing: 0.02em;
+}
+
 .activity-row {
   display: flex;
   align-items: flex-start;
