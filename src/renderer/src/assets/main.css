@@ -12797,16 +12797,23 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Claude shell satellite: native Claude Code renders branch / diff /
- * commit info as free-floating chips above the composer, not inside
- * a contained rect. Strip the above-bar container chrome and let the
- * immediate children style themselves as subtle pills. */
+ * commit info as free-floating chips above the composer. Three things
+ * make a chip cluster *read* as a rect vs as satellites:
+ *   1. A shared container background (covered by stripping above-bar chrome).
+ *   2. Chips with backgrounds dark enough to visually merge with their
+ *      neighbours into one continuous dark band.
+ *   3. Tight gaps + drop shadows that smear the chips together.
+ * So we strip the container, push chip backgrounds toward transparent
+ * with just a hairline outline, widen the gap, and zero out any shadow
+ * the chips inherit from their default styling. */
 [data-composer-style="claude"] .composer-above-bar.style-unified,
 [data-composer-style="claude"] .composer-above-bar {
   background: transparent;
   border-color: transparent;
   box-shadow: none;
   padding: 0 4px;
-  margin: 0 0 8px;
+  margin: 0 0 10px;
+  gap: 10px;
 }
 [data-composer-style="claude"] .composer-above-bar::before {
   display: none;
@@ -12815,23 +12822,38 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] .composer-above-bar-files,
 [data-composer-style="claude"] .composer-above-bar-stats,
 [data-composer-style="claude"] .composer-above-bar-summary {
-  padding: 4px 10px;
+  padding: 3px 10px;
   border-radius: 999px;
-  background: color-mix(in srgb, #1f1f1f 86%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 7%, transparent);
-  color: color-mix(in srgb, #ffffff 72%, transparent);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  color: color-mix(in srgb, #ffffff 64%, transparent);
   font-size: calc(var(--font-size-xs) + 1px);
-}
-[data-composer-style="claude"] .composer-above-bar-stats {
-  /* Diff +/- badge sits between branch chip and the Create-PR action;
-   * a touch denser background reads more like Claude Code's badge. */
-  background: color-mix(in srgb, #1a1a1a 92%, transparent);
+  box-shadow: none;
 }
 [data-composer-style="claude"] .composer-above-bar-action {
-  /* The Create-PR / Commit-changes equivalent — keep it as a discrete
-   * pill aligned to the far right, no shared container with the chips. */
-  background: color-mix(in srgb, #1f1f1f 92%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  /* Create-PR / Commit-changes pill: same hairline outline as the chips
+   * so it reads as part of the same satellite row rather than a button
+   * pinned to a tray. */
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  box-shadow: none;
+  color: color-mix(in srgb, #ffffff 84%, transparent);
+}
+/* The cross-provider WorkspaceAccessControls pills (External path,
+ * Tool grants, Worktree…) live INSIDE .composer-above-bar in the
+ * active-chat layout. They have their own dark fill from the shared
+ * styles — override in claude shell so they match the surrounding
+ * satellite chips instead of forming a darker sub-band. */
+[data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill {
+  background: transparent;
+  border-color: color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: none;
+  color: color-mix(in srgb, #ffffff 64%, transparent);
+}
+[data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 5%, transparent);
+  border-color: color-mix(in srgb, #ffffff 20%, transparent);
+  color: #ffffff;
 }
 
 /* ============================================================
