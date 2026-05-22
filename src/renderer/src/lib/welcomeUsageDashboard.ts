@@ -280,6 +280,14 @@ export const buildWelcomeUsageDashboardData = (
       Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)),
     0
   )
+  // Welcome L4 — model breakdown is range-scoped, not lifetime.
+  // `modelMap` is built from `runRecords` which is already filtered by
+  // the `range` cutoff (line above this comment block in the source).
+  // Both the numerator (model.totalTokens) and the denominator
+  // (totalTokens) come from the same filtered set, so `percent`
+  // describes the model's share of activity inside the selected
+  // window. When the window has no activity, the breakdown is `[]`
+  // rather than a list of 0%-models — see the L4 unit tests.
   const modelBreakdown = Array.from(modelMap.values())
     .sort((a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs)
     .map((model) => ({
