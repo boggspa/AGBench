@@ -54,13 +54,16 @@ import type { GeminiPermissionRequest } from './lib/GeminiPermissionParser'
 import type {
   CommandPaletteGroup,
   CommandPaletteItem,
-  CommandPaletteSource
+  CommandPaletteSource,
+  ComposerSlashCommand
 } from './lib/ComposerSlashCommands'
 import {
   GEMINI_PALETTE_CORE as COMMAND_PALETTE_CORE,
   CODEX_PALETTE_CORE as CODEX_COMMAND_PALETTE_CORE,
-  CLI_PROVIDER_PALETTE_CORE as CLI_PROVIDER_COMMAND_PALETTE_CORE
+  CLI_PROVIDER_PALETTE_CORE as CLI_PROVIDER_COMMAND_PALETTE_CORE,
+  buildComposerSlashCommandRegistry
 } from './lib/ComposerSlashCommands'
+import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
@@ -4360,6 +4363,13 @@ function App(): React.JSX.Element {
   const [mentionQuery, setMentionQuery] = useState('')
   // Caret position of the `@` that opened the menu (so we know what to replace).
   const mentionAnchorIndexRef = useRef<number | null>(null)
+  // Slash-command picker state. Same shape as the mention menu — visibility
+  // flag, current filter substring (what comes after the leading `/`), and
+  // an anchor index pointing at the `/` we'll later replace on pick.
+  // Mutually exclusive with mentionMenuOpen — only one popover at a time.
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false)
+  const [slashQuery, setSlashQuery] = useState('')
+  const slashAnchorIndexRef = useRef<number | null>(null)
   const adapterRef = useRef<GeminiStreamAdapter | null>(null)
   const activeRunsRef = useRef<Map<string, ActiveRunContext>>(new Map())
   // Phase K1 — short-window completion memory. The 07d6811 stream-safe
@@ -11678,6 +11688,15 @@ function App(): React.JSX.Element {
       : currentProvider === 'claude' || currentProvider === 'kimi'
         ? CLI_PROVIDER_COMMAND_PALETTE_CORE
         : [...geminiQuickToggleItems, ...mergeCommandPaletteItems(discoveredCommands)]
+  // Slash-picker registry: same per-provider palette items the Cmd-K
+  // palette consumes, wrapped as palette-passthrough ComposerSlashCommands
+  // so the new picker's dispatch routes back through handlePaletteCommand.
+  // L4+ layers will extend `extraCommands` with action / prompt-template /
+  // gemini-pty entries that don't fit the legacy palette shape.
+  const composerSlashCommands: ComposerSlashCommand[] = buildComposerSlashCommandRegistry({
+    provider: currentProvider,
+    paletteItems: commandPaletteItems
+  })
   const commandPaletteSearch = commandPaletteQuery.trim().toLowerCase()
   const visibleCommandPaletteItems = commandPaletteSearch
     ? commandPaletteItems.filter((item) =>
@@ -12295,20 +12314,46 @@ function App(): React.JSX.Element {
                 onChange={(e) => {
                   const nextValue = e.target.value
                   setPrompt(nextValue)
-                  // @-mention trigger detection. Scan back from the caret to
-                  // find an unclosed `@<query>` token (no whitespace between).
-                  // If found, open the popover; otherwise close it.
+                  // Composer popover coordinator: scan the text before the
+                  // caret for a leading `/<query>` token (start-of-line or
+                  // after whitespace), then for an `@<query>` mention token.
+                  // Whichever matches wins; the other is force-closed. Only
+                  // one popover open at a time.
                   const caret = e.target.selectionStart ?? nextValue.length
                   const before = nextValue.slice(0, caret)
-                  const atMatch = before.match(/@([\w-]*)$/)
-                  if (atMatch) {
+                  const slashMatch = before.match(/(?:^|\s)\/([\w-]*)$/)
+                  const atMatch = !slashMatch ? before.match(/@([\w-]*)$/) : null
+                  if (slashMatch) {
+                    // The `/` itself sits at `caret - slashQueryLen - 1`.
+                    const queryLen = slashMatch[1].length
+                    slashAnchorIndexRef.current = caret - queryLen - 1
+                    setSlashQuery(slashMatch[1] || '')
+                    setSlashMenuOpen(true)
+                    if (mentionMenuOpen) {
+                      setMentionMenuOpen(false)
+                      setMentionQuery('')
+                      mentionAnchorIndexRef.current = null
+                    }
+                  } else if (atMatch) {
                     mentionAnchorIndexRef.current = caret - atMatch[0].length
                     setMentionQuery(atMatch[1] || '')
                     setMentionMenuOpen(true)
-                  } else if (mentionMenuOpen) {
-                    setMentionMenuOpen(false)
-                    setMentionQuery('')
-                    mentionAnchorIndexRef.current = null
+                    if (slashMenuOpen) {
+                      setSlashMenuOpen(false)
+                      setSlashQuery('')
+                      slashAnchorIndexRef.current = null
+                    }
+                  } else {
+                    if (mentionMenuOpen) {
+                      setMentionMenuOpen(false)
+                      setMentionQuery('')
+                      mentionAnchorIndexRef.current = null
+                    }
+                    if (slashMenuOpen) {
+                      setSlashMenuOpen(false)
+                      setSlashQuery('')
+                      slashAnchorIndexRef.current = null
+                    }
                   }
                 }}
                 placeholder={
@@ -12337,6 +12382,26 @@ function App(): React.JSX.Element {
                     triggerSendConfirmation()
                     handleRun()
                   }
+                }}
+              />
+              <ComposerSlashMenu
+                open={slashMenuOpen}
+                anchorRef={composerTextareaRef}
+                query={slashQuery}
+                commands={composerSlashCommands}
+                onDismiss={() => {
+                  setSlashMenuOpen(false)
+                  setSlashQuery('')
+                  slashAnchorIndexRef.current = null
+                }}
+                onPick={(_command) => {
+                  // L3 wires only the activation contract — dispatch lands
+                  // in L4. For now, picking just dismisses the popover
+                  // without modifying the prompt so the L3 slice can be
+                  // verified in isolation.
+                  setSlashMenuOpen(false)
+                  setSlashQuery('')
+                  slashAnchorIndexRef.current = null
                 }}
               />
               <AgentMentionMenu
