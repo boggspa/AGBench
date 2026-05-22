@@ -351,6 +351,9 @@ const api = {
   getSubThreads: (parentChatId: string) => ipcRenderer.invoke('get-sub-threads', parentChatId),
   saveChat: (chat: any) => ipcRenderer.invoke('save-chat', chat),
   deleteChat: (chatId: string) => ipcRenderer.invoke('delete-chat', chatId),
+  /** Slash-picker `/clear` — wipes the chat's messages + runs while
+   * leaving the record (and its provider session id) intact. */
+  truncateChat: (chatId: string) => ipcRenderer.invoke('truncate-chat', chatId),
   clearChats: (workspaceId?: string) => ipcRenderer.invoke('clear-chats', workspaceId),
   recordUsage: (usage: any) => ipcRenderer.invoke('record-usage', usage),
   getUsage: (workspaceId?: string, chatId?: string) =>

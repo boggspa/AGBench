@@ -597,6 +597,7 @@ declare global {
       getSubThreads: (parentChatId: string) => Promise<ChatRecord[]>
       saveChat: (chat: ChatRecord) => Promise<void>
       deleteChat: (chatId: string) => Promise<void>
+      truncateChat: (chatId: string) => Promise<ChatRecord | null>
       clearChats: (workspaceId?: string) => Promise<void>
       recordUsage: (usage: Omit<UsageRecord, 'id' | 'timestamp'>) => Promise<void>
       getUsage: (workspaceId?: string, chatId?: string) => Promise<UsageRecord[]>

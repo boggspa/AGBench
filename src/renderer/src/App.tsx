@@ -11791,14 +11791,117 @@ function App(): React.JSX.Element {
       : currentProvider === 'claude' || currentProvider === 'kimi'
         ? CLI_PROVIDER_COMMAND_PALETTE_CORE
         : [...geminiQuickToggleItems, ...mergeCommandPaletteItems(discoveredCommands)]
-  // Slash-picker registry: same per-provider palette items the Cmd-K
-  // palette consumes, wrapped as palette-passthrough ComposerSlashCommands
-  // so the new picker's dispatch routes back through handlePaletteCommand.
-  // L4+ layers will extend `extraCommands` with action / prompt-template /
-  // gemini-pty entries that don't fit the legacy palette shape.
+  /**
+   * Cross-provider AGBench actions promoted to first-class slash entries.
+   * These don't have a CommandPaletteItem analog because they fire
+   * renderer-side handlers directly — the slash picker is their only
+   * surface today. Listed in the Custom group below the per-provider
+   * palette-passthrough block.
+   */
+  const composerSlashExtraCommands: ComposerSlashCommand[] = [
+    {
+      kind: 'action',
+      id: 'agbench-clear',
+      command: '/clear',
+      label: 'Clear conversation',
+      description: 'Wipe this chat’s transcript + draft. Keeps the provider session id.',
+      group: 'Custom',
+      run: () => {
+        const chat = currentChat
+        if (!chat) return
+        const confirmed = window.confirm(
+          `Clear the conversation in "${chat.title}"?\n\n` +
+            'This wipes the chat transcript and your composer draft. ' +
+            'The chat record and provider session id stay intact so the ' +
+            'next prompt continues with the same provider context.'
+        )
+        if (!confirmed) return
+        setPrompt('')
+        // Optimistic local clear, then persist via the IPC. We refresh
+        // the chat list right after so the new (empty) transcript is the
+        // source of truth across the renderer.
+        const truncated: ChatRecord = {
+          ...chat,
+          messages: [],
+          runs: [],
+          updatedAt: Date.now()
+        }
+        chatByIdRef.current.set(chat.appChatId, truncated)
+        setCurrentChat(truncated)
+        setChats((prev) =>
+          prev.map((entry) => (entry.appChatId === chat.appChatId ? truncated : entry))
+        )
+        void window.api.truncateChat(chat.appChatId).catch((err) => {
+          console.error('[slash:/clear] truncateChat failed', err)
+        })
+      }
+    },
+    {
+      kind: 'action',
+      id: 'agbench-attach',
+      command: '/attach',
+      label: 'Attach an app window',
+      description: 'Open the macOS picker so the AI can see what’s on screen.',
+      group: 'Custom',
+      run: () => {
+        void handleAttachWindow()
+      }
+    },
+    {
+      kind: 'action',
+      id: 'agbench-help',
+      command: '/help',
+      label: 'Open Help',
+      description: 'Open the Settings panel — docs, shortcuts, and policy info.',
+      group: 'Custom',
+      run: () => {
+        setShowSettings(true)
+      }
+    },
+    {
+      kind: 'action',
+      id: 'agbench-feedback',
+      command: '/feedback',
+      label: 'Send feedback',
+      description: 'Open the Settings panel and jump to the feedback section.',
+      group: 'Custom',
+      run: () => {
+        setShowSettings(true)
+      }
+    },
+    {
+      kind: 'action',
+      id: 'agbench-compact',
+      command: '/compact',
+      label: 'Compact context',
+      description: 'Summarise the current chat to shrink prompt size on the next turn.',
+      group: 'Custom',
+      run: () => {
+        // Context compaction lives on the main side at the
+        // PromptComposition layer and runs automatically per turn — the
+        // slash entry doesn’t have a direct surface today. Log a
+        // friendly note so the user understands the picker fired
+        // correctly but the manual compact handle is still pending.
+        setRawLogs((prev) => [
+          ...prev,
+          {
+            type: 'info',
+            content:
+              'Slash /compact: AGBench already runs compact-context per turn (see PromptComposition.ts). A manual on-demand recompact entry will land in a follow-up slice.'
+          }
+        ])
+      }
+    }
+  ]
+
+  // Slash-picker registry: per-provider palette items wrapped as
+  // palette-passthrough ComposerSlashCommands, plus the cross-provider
+  // AGBench actions above. L6 layer will gate entries on
+  // ProviderCapabilityContract.
   const composerSlashCommands: ComposerSlashCommand[] = buildComposerSlashCommandRegistry({
     provider: currentProvider,
-    paletteItems: commandPaletteItems
+    paletteItems: commandPaletteItems,
+    extraCommands: composerSlashExtraCommands
   })
   const commandPaletteSearch = commandPaletteQuery.trim().toLowerCase()
   const visibleCommandPaletteItems = commandPaletteSearch

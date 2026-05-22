@@ -16057,6 +16057,25 @@ if (isGeminiMcpBridgeProcess) {
       chatService.deleteChat(chatId)
       broadcastThreadList()
     })
+    /**
+     * Slash-picker `/clear`: wipe the chat's message + run history while
+     * keeping the chat record so the user stays anchored to the same
+     * provider session id, workspace, settings. Mirrors what a "Reset
+     * conversation" affordance does in native Claude / Codex apps.
+     */
+    ipcMain.handle('truncate-chat', (_, chatId: string) => {
+      const existing = chatService.getChat(chatId)
+      if (!existing) return null
+      const truncated: ChatRecord = {
+        ...existing,
+        messages: [],
+        runs: [],
+        updatedAt: Date.now()
+      }
+      chatService.saveChat(truncated)
+      broadcastThreadUpdate(chatId)
+      return truncated
+    })
     ipcMain.handle('clear-chats', (_, workspaceId?: string) => {
       chatService.clearChats(workspaceId)
       broadcastThreadList()

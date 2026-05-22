@@ -180,6 +180,9 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'attach-window:pick': [],
   'attach-window:detach': [],
   'attach-window:status': [],
+  /* Slash-picker `/clear` — non-destructive of the chat record, only of
+   * its message + run history. Mirrors deleteChat's arg shape. */
+  'truncate-chat': ['chatId'],
   // Phase E1: APNs production wiring — Settings panel uses these to configure
   // the iOS bridge push gateway. All handlers live in main; safeStorage handles
   // .p8 encryption at-rest; renderer never sees the decrypted PEM.
