@@ -32,10 +32,27 @@ describe('resolveSubThreadRecall', () => {
 
   it('returns spawn when subThreadId is not provided', () => {
     const lookup = makeLookup([])
-    expect(resolveSubThreadRecall({ parentChatId: parent, targetProvider: 'kimi' }, lookup)).toEqual({ mode: 'spawn' })
-    expect(resolveSubThreadRecall({ subThreadId: '', parentChatId: parent, targetProvider: 'kimi' }, lookup)).toEqual({ mode: 'spawn' })
-    expect(resolveSubThreadRecall({ subThreadId: '   ', parentChatId: parent, targetProvider: 'kimi' }, lookup)).toEqual({ mode: 'spawn' })
-    expect(resolveSubThreadRecall({ subThreadId: null, parentChatId: parent, targetProvider: 'kimi' }, lookup)).toEqual({ mode: 'spawn' })
+    expect(
+      resolveSubThreadRecall({ parentChatId: parent, targetProvider: 'kimi' }, lookup)
+    ).toEqual({ mode: 'spawn' })
+    expect(
+      resolveSubThreadRecall(
+        { subThreadId: '', parentChatId: parent, targetProvider: 'kimi' },
+        lookup
+      )
+    ).toEqual({ mode: 'spawn' })
+    expect(
+      resolveSubThreadRecall(
+        { subThreadId: '   ', parentChatId: parent, targetProvider: 'kimi' },
+        lookup
+      )
+    ).toEqual({ mode: 'spawn' })
+    expect(
+      resolveSubThreadRecall(
+        { subThreadId: null, parentChatId: parent, targetProvider: 'kimi' },
+        lookup
+      )
+    ).toEqual({ mode: 'spawn' })
   })
 
   it('resolves recall when the sub-thread matches parent + provider', () => {
@@ -45,26 +62,87 @@ describe('resolveSubThreadRecall', () => {
       provider: 'kimi',
       linkedProviderSessionId: 'kimi-session-99'
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'sub-1', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
-    expect(result).toEqual({ mode: 'recall', chat: sub })
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-1', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
+    expect(result).toEqual({ mode: 'recall', chat: sub, resumeSessionId: 'kimi-session-99' })
   })
 
-  it('warns when the matched sub-thread has no linked provider session id yet', () => {
+  it('errors when the matched sub-thread has no linked provider session id yet', () => {
     const sub = makeChat({
       appChatId: 'sub-2',
       parentChatId: parent,
       provider: 'kimi'
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'sub-2', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-2', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
+    expect(result.mode).toBe('error')
+    if (result.mode === 'error') {
+      expect(result.message).toMatch(/does not have a resumable/i)
+    }
+  })
+
+  it('uses linkedGeminiSessionId for Gemini sub-thread recall', () => {
+    const sub = makeChat({
+      appChatId: 'sub-gemini',
+      parentChatId: parent,
+      provider: 'gemini',
+      linkedGeminiSessionId: 'gemini-session-1'
+    })
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-gemini', parentChatId: parent, targetProvider: 'gemini' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('recall')
     if (result.mode === 'recall') {
-      expect(result.warning).toBeTypeOf('string')
-      expect(result.warning).toMatch(/linked provider session id/i)
+      expect(result.resumeSessionId).toBe('gemini-session-1')
+    }
+  })
+
+  it('falls back to linkedProviderSessionId for Gemini API-backed sub-thread recall', () => {
+    const sub = makeChat({
+      appChatId: 'sub-gemini-api',
+      parentChatId: parent,
+      provider: 'gemini',
+      linkedProviderSessionId: 'api://sub-gemini-api'
+    })
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-gemini-api', parentChatId: parent, targetProvider: 'gemini' },
+      makeLookup([sub])
+    )
+    expect(result.mode).toBe('recall')
+    if (result.mode === 'recall') {
+      expect(result.resumeSessionId).toBe('api://sub-gemini-api')
+    }
+  })
+
+  it('rejects recall while the sub-thread has an active run', () => {
+    const sub = makeChat({
+      appChatId: 'sub-running',
+      parentChatId: parent,
+      provider: 'kimi',
+      linkedProviderSessionId: 'kimi-session-99',
+      runs: [{ runId: 'run-1', provider: 'kimi', startedAt: 't', status: 'running' }]
+    })
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-running', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
+    expect(result.mode).toBe('error')
+    if (result.mode === 'error') {
+      expect(result.message).toMatch(/still running/i)
+      expect(result.message).toMatch(/rejected in v1/i)
     }
   })
 
   it('errors when subThreadId does not match any chat', () => {
-    const result = resolveSubThreadRecall({ subThreadId: 'ghost', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'ghost', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([])
+    )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
       expect(result.message).toMatch(/does not match any AGBench chat record/i)
@@ -77,7 +155,10 @@ describe('resolveSubThreadRecall', () => {
       parentChatId: 'someone-else',
       provider: 'kimi'
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'sub-3', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-3', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
       expect(result.message).toMatch(/belongs to a different parent chat/i)
@@ -89,7 +170,10 @@ describe('resolveSubThreadRecall', () => {
       appChatId: 'orphan',
       provider: 'kimi'
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'orphan', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'orphan', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
       expect(result.message).toMatch(/no parent/i)
@@ -102,7 +186,10 @@ describe('resolveSubThreadRecall', () => {
       parentChatId: parent,
       provider: 'codex'
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'sub-4', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-4', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
       expect(result.message).toMatch(/runs codex/i)
@@ -117,7 +204,10 @@ describe('resolveSubThreadRecall', () => {
       provider: 'kimi',
       archived: true
     })
-    const result = resolveSubThreadRecall({ subThreadId: 'sub-5', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: 'sub-5', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('error')
     if (result.mode === 'error') {
       expect(result.message).toMatch(/archived/i)
@@ -131,10 +221,14 @@ describe('resolveSubThreadRecall', () => {
       provider: 'kimi',
       linkedProviderSessionId: 'session-x'
     })
-    const result = resolveSubThreadRecall({ subThreadId: '  sub-6  ', parentChatId: parent, targetProvider: 'kimi' }, makeLookup([sub]))
+    const result = resolveSubThreadRecall(
+      { subThreadId: '  sub-6  ', parentChatId: parent, targetProvider: 'kimi' },
+      makeLookup([sub])
+    )
     expect(result.mode).toBe('recall')
     if (result.mode === 'recall') {
       expect(result.chat.appChatId).toBe('sub-6')
+      expect(result.resumeSessionId).toBe('session-x')
     }
   })
 })

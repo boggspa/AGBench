@@ -711,8 +711,8 @@ export interface ChatMessage {
   /** Phase F2: structured metadata for synthetic messages. The most
    * common case is a sub-thread result-return entry: the parent
    * transcript shows "↩ Result from <Provider>" with the sub-thread's
-   * final assistant message inlined; metadata lets the renderer
-   * detect and treat it differently from a regular system message
+   * final assistant message inlined as untrusted tool output; metadata lets the renderer
+   * detect and treat it differently from a regular tool activity
    * (link back to the sub-thread, distinct visual treatment, etc.). */
   metadata?: {
     kind?: 'subThreadReturn' | 'subThreadDelegation' | string;
@@ -828,7 +828,7 @@ export interface ChatRecord {
      * NOT auto-propagate yet (manual navigation only); F2 will wire
      * the back-propagation. */
     returnResultToParent: boolean;
-    /** Set when the result has actually been propagated (F2+). */
+    /** Last time a sub-thread assistant result was returned to the parent (F2+). */
     resultReturnedAt?: number;
     /** Populated when the agent-driven dispatch that should have
      * started this sub-thread's first run failed before the adapter

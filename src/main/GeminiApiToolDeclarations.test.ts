@@ -437,9 +437,12 @@ const MCP_TOOL_DEFINITIONS_SNAPSHOT: Array<{
       type: 'object',
       properties: {
         subThreadId: { type: 'string' },
+        depth: { type: 'string', enum: ['summary', 'final-only', 'full', 'events-only'] },
         includeRuns: { type: 'boolean' },
         includeMessages: { type: 'boolean' },
-        messageLimit: { type: 'number' }
+        includeEvents: { type: 'boolean' },
+        messageLimit: { type: 'number' },
+        eventLimit: { type: 'number' }
       },
       required: ['subThreadId']
     }

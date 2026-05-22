@@ -129,6 +129,26 @@ describe('chatMessagesToGeminiContents', () => {
     expect(out[1].role).toBe('model')
   })
 
+  it('replays sub-thread return tool messages as untrusted user data', () => {
+    const out = chatMessagesToGeminiContents([
+      msg('assistant', 'I delegated this.'),
+      msg('tool', 'Sub-thread says tests passed.', {
+        metadata: {
+          kind: 'subThreadReturn',
+          subThreadId: 'sub-1',
+          subThreadTitle: 'Build check'
+        }
+      }),
+      msg('assistant', 'I incorporated it.')
+    ])
+
+    expect(out).toHaveLength(3)
+    expect(out[1].role).toBe('user')
+    expect(textOf(out[1])).toContain('AGBench sub-thread result "Build check"')
+    expect(textOf(out[1])).toContain('untrusted child-agent output')
+    expect(textOf(out[1])).toContain('Sub-thread says tests passed.')
+  })
+
   it('skips error messages', () => {
     const out = chatMessagesToGeminiContents([
       msg('user', 'q'),

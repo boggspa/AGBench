@@ -12,15 +12,11 @@
  *  - `{ mode: 'spawn' }` — no `subThreadId` was supplied; the caller
  *    should spawn a fresh sub-thread as before.
  *
- *  - `{ mode: 'recall', chat }` — the supplied id resolves to a chat
- *    that's a sub-thread of the calling parent, on the same target
- *    provider, and not archived. The caller dispatches a new turn
- *    against that chat. If `chat.linkedProviderSessionId` is set,
- *    the dispatch should inject it as `providerSessionId` so the
- *    target provider's native session resumes. If it's not set yet
- *    (the chat's first turn is still in flight or never completed),
- *    the recall still targets the same chat for transcript
- *    continuity but the provider runtime starts a fresh session.
+ *  - `{ mode: 'recall', chat, resumeSessionId }` — the supplied id
+ *    resolves to a chat that's a sub-thread of the calling parent, on
+ *    the same target provider, not archived, and has a linked provider
+ *    session to resume. The caller dispatches a new turn against that
+ *    chat and injects `resumeSessionId` as `providerSessionId`.
  *
  *  - `{ mode: 'error', message }` — the supplied id was missing /
  *    wrong parent / wrong provider / archived. The caller returns
@@ -42,10 +38,28 @@ export interface SubThreadRecallRequest {
 
 export type SubThreadRecallResolution =
   | { mode: 'spawn' }
-  | { mode: 'recall'; chat: ChatRecord; warning?: string }
+  | { mode: 'recall'; chat: ChatRecord; resumeSessionId: string }
   | { mode: 'error'; message: string }
 
 export type SubThreadRecallChatLookup = (chatId: string) => ChatRecord | undefined
+
+function isActiveRunStatus(status: unknown): boolean {
+  return (
+    status === 'running' ||
+    status === 'queued' ||
+    status === 'starting' ||
+    status === 'active' ||
+    status === 'paused'
+  )
+}
+
+export function getSubThreadResumeSessionId(chat: ChatRecord): string | undefined {
+  const value =
+    chat.provider === 'gemini'
+      ? chat.linkedGeminiSessionId || chat.linkedProviderSessionId
+      : chat.linkedProviderSessionId
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
 
 export function resolveSubThreadRecall(
   request: SubThreadRecallRequest,
@@ -91,10 +105,26 @@ export function resolveSubThreadRecall(
         `Recall requires the provider to match the existing sub-thread.`
     }
   }
-  const warning = chat.linkedProviderSessionId
-    ? undefined
-    : `Sub-thread "${requestedId}" does not yet have a linked provider session id ` +
-      `(first turn may not have completed). The recall targets the same AGBench chat so ` +
-      `the transcript continues, but the ${chat.provider} runtime starts a fresh session for this turn.`
-  return { mode: 'recall', chat, warning }
+  const latestRun = [...(chat.runs || [])].reverse()[0]
+  if (isActiveRunStatus(latestRun?.status)) {
+    return {
+      mode: 'error',
+      message:
+        `delegate_to_subthread: sub-thread "${requestedId}" is still ${latestRun?.status}. ` +
+        `Recall while a sub-thread is running is rejected in v1 to avoid task inversions. ` +
+        `Wait for it to complete, inspect lifecycle with list_subthreads/read_subthread_result, then retry.`
+    }
+  }
+  const resumeSessionId = getSubThreadResumeSessionId(chat)
+  if (!resumeSessionId) {
+    return {
+      mode: 'error',
+      message:
+        `delegate_to_subthread: sub-thread "${requestedId}" does not have a resumable ` +
+        `${chat.provider || request.targetProvider} provider session yet. ` +
+        `Recall is deterministic: wait for the current turn to complete and check ` +
+        `list_subthreads/read_subthread_result, or omit subThreadId to spawn a fresh sub-thread.`
+    }
+  }
+  return { mode: 'recall', chat, resumeSessionId }
 }

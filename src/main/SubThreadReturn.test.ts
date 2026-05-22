@@ -36,12 +36,18 @@ function decideSubThreadReturn(subThread: ChatRecord): SubThreadReturnDecision {
   if (!subThread.delegationContext?.returnResultToParent) {
     return { shouldPropagate: false, reason: 'returnResultToParent=false' }
   }
-  if (subThread.delegationContext.resultReturnedAt) {
-    return { shouldPropagate: false, reason: 'already propagated' }
-  }
   const lastAssistant = [...subThread.messages].reverse().find((m) => m.role === 'assistant')
   if (!lastAssistant || !lastAssistant.content.trim()) {
     return { shouldPropagate: false, reason: 'no assistant message' }
+  }
+  if (subThread.delegationContext.resultReturnedAt) {
+    const assistantTimestamp = Date.parse(lastAssistant.timestamp)
+    if (
+      !Number.isFinite(assistantTimestamp) ||
+      assistantTimestamp <= subThread.delegationContext.resultReturnedAt
+    ) {
+      return { shouldPropagate: false, reason: 'already propagated' }
+    }
   }
   return {
     shouldPropagate: true,
@@ -100,24 +106,60 @@ describe('Phase F2 — sub-thread return decision', () => {
     const chat = makeChat({
       parentChatId: 'parent-1',
       delegationContext: {
-        createdAt: Date.now() - 60_000,
+        createdAt: Date.parse('2026-01-01T00:00:00Z'),
         parentProvider: 'claude',
         delegationPrompt: 'Run the build',
         returnResultToParent: true,
-        resultReturnedAt: Date.now() - 30_000
+        resultReturnedAt: Date.parse('2026-01-01T00:00:30Z')
       },
       messages: [
         {
           id: 'm1',
           role: 'assistant',
           content: 'Build succeeded',
-          timestamp: new Date().toISOString()
+          timestamp: '2026-01-01T00:00:10Z'
         }
       ]
     })
     const decision = decideSubThreadReturn(chat)
     expect(decision.shouldPropagate).toBe(false)
     expect(decision.reason).toBe('already propagated')
+  })
+
+  it('propagates a later recall result after an earlier result was returned', () => {
+    const chat = makeChat({
+      parentChatId: 'parent-1',
+      delegationContext: {
+        createdAt: Date.parse('2026-01-01T00:00:00Z'),
+        parentProvider: 'claude',
+        delegationPrompt: 'Run the build',
+        returnResultToParent: true,
+        resultReturnedAt: Date.parse('2026-01-01T00:00:30Z')
+      },
+      messages: [
+        {
+          id: 'm1',
+          role: 'assistant',
+          content: 'Build succeeded',
+          timestamp: '2026-01-01T00:00:10Z'
+        },
+        {
+          id: 'm2',
+          role: 'user',
+          content: 'Show the second failure',
+          timestamp: '2026-01-01T00:00:40Z'
+        },
+        {
+          id: 'm3',
+          role: 'assistant',
+          content: 'Second failure details.',
+          timestamp: '2026-01-01T00:00:50Z'
+        }
+      ]
+    })
+    const decision = decideSubThreadReturn(chat)
+    expect(decision.shouldPropagate).toBe(true)
+    expect(decision.lastAssistantContent).toBe('Second failure details.')
   })
 
   it('refuses propagation when no assistant message exists', () => {
