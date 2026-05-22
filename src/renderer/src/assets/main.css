@@ -4963,6 +4963,48 @@ button.sidebar-item {
   cursor: not-allowed;
 }
 
+.composer-attached-window-pill {
+  margin: 0;
+  padding: 0 var(--space-sm);
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 22%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent);
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1;
+  max-width: 240px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.composer-attached-window-pill:hover {
+  border-color: color-mix(in srgb, var(--text-primary) 38%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+}
+
+.composer-attached-window-pill-app {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.composer-attached-window-pill-title {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.composer-attached-window-pill-x {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin-left: 2px;
+}
+
 .composer-permission-card {
   margin: 0 var(--space-md) 0;
   border-radius: var(--radius-sm);

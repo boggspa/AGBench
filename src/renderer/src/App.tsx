@@ -4408,6 +4408,19 @@ function App(): React.JSX.Element {
     message?: string
   }>({ status: 'idle' })
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
+  type AttachedWindowSnapshot = {
+    handleID: string
+    windowMeta: {
+      windowID: number
+      title: string
+      bundleID: string
+      applicationName: string
+      pid: number
+    }
+    attachedAt: string
+  }
+  const [attachedWindow, setAttachedWindow] = useState<AttachedWindowSnapshot | null>(null)
+  const [isAttachingWindow, setIsAttachingWindow] = useState(false)
   const [pendingPlanChoiceByChatId, setPendingPlanChoiceForChat] =
     usePerChatState<PlanChoiceState | null>(null)
   const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
@@ -4772,6 +4785,20 @@ function App(): React.JSX.Element {
       clearFxBurst()
     }
   }, [isFxEnabled, fxBurstClass])
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.attachWindowStatus().then(({ snapshot }) => {
+      if (!cancelled) setAttachedWindow(snapshot)
+    })
+    const unsubscribe = window.api.onAttachedWindowChanged((snapshot) => {
+      setAttachedWindow(snapshot)
+    })
+    return () => {
+      cancelled = true
+      unsubscribe?.()
+    }
+  }, [])
 
   const triggerSendConfirmation = () => {
     if (!currentChat || (!isCurrentGlobalChat && !currentWorkspace) || !prompt.trim()) return
@@ -6663,6 +6690,40 @@ function App(): React.JSX.Element {
           content: `Attachment limit reached (${MAX_IMAGE_ATTACHMENTS}); oldest files were removed.`
         }
       ])
+    }
+  }
+
+  const handleAttachWindow = async () => {
+    if (isAttachingWindow) return
+    setIsAttachingWindow(true)
+    try {
+      const result = await window.api.attachWindowPick()
+      if (result.cancelled) return
+      if (!result.ok) {
+        setRawLogs((prev) => [
+          ...prev,
+          {
+            type: 'info',
+            content: `Attach window failed: ${result.error || 'unknown error'}`
+          }
+        ])
+        return
+      }
+      if (result.snapshot) {
+        setAttachedWindow(result.snapshot)
+      }
+    } finally {
+      setIsAttachingWindow(false)
+    }
+  }
+
+  const handleDetachWindow = async () => {
+    setAttachedWindow(null)
+    try {
+      await window.api.attachWindowDetach()
+    } catch {
+      // Optimistic clear — main has already received the request, daemon
+      // detach is best-effort.
     }
   }
 
@@ -12836,6 +12897,42 @@ function App(): React.JSX.Element {
                     >
                       <PlusSymbolIcon />
                     </button>
+                    {attachedWindow ? (
+                      <button
+                        className="composer-attached-window-pill"
+                        type="button"
+                        title={`Detach ${attachedWindow.windowMeta.applicationName || 'window'}: ${attachedWindow.windowMeta.title || '(untitled)'}`}
+                        aria-label="Detach attached window"
+                        onClick={handleDetachWindow}
+                        data-composer-control="attached-window"
+                      >
+                        <span className="composer-attached-window-pill-app">
+                          {attachedWindow.windowMeta.applicationName ||
+                            attachedWindow.windowMeta.bundleID ||
+                            'window'}
+                        </span>
+                        {attachedWindow.windowMeta.title && (
+                          <span className="composer-attached-window-pill-title">
+                            {attachedWindow.windowMeta.title}
+                          </span>
+                        )}
+                        <span className="composer-attached-window-pill-x" aria-hidden="true">
+                          ×
+                        </span>
+                      </button>
+                    ) : (
+                      <button
+                        className="composer-image-picker-btn"
+                        type="button"
+                        title="Attach a running app (pick a window via the macOS picker)"
+                        aria-label="Attach a running app"
+                        onClick={handleAttachWindow}
+                        disabled={isCurrentComposerLocked || isAttachingWindow}
+                        data-composer-control="attach-window"
+                      >
+                        {isAttachingWindow ? '…' : '⌘'}
+                      </button>
+                    )}
                     <label
                       className="composer-picker-label"
                       title="Provider"
