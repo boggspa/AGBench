@@ -11,6 +11,7 @@ import type { WorkspaceRecord, ChatRecord, ProviderId } from '../../../main/stor
 import { selectRecentChats } from '../lib/recentChatsList'
 import { ActiveRunsSection } from './ActiveRunsSection'
 import { ModelUsageCard } from './ModelUsageCard'
+import { SidebarOverflowMenu, type SidebarOverflowMenuItem } from './SidebarOverflowMenu'
 
 const ageTickListeners = new Set<() => void>()
 if (typeof window !== 'undefined') {
@@ -76,6 +77,14 @@ interface SidebarProps {
   /** Toggle the `pinned` flag on a workspace. Optional for the same
    * reason as `onTogglePinChat`. */
   onTogglePinWorkspace?: (workspaceId: string) => void
+  /** Toggle the `archived` flag on a chat. Hides the chat from the main
+   * sidebar lists; existing filters already drop archived chats so the
+   * caller just needs to persist the flag. */
+  onToggleArchiveChat?: (chatId: string, nextArchived: boolean) => void
+  /** Permanently delete a chat (and its sub-threads, depending on caller
+   * semantics). Surfaced from the overflow menu under a separate
+   * destructive group so the user has to choose it deliberately. */
+  onDeleteChat?: (chatId: string) => void
   /** Phase K1 follow-up: when provided, clicking a row in the pinned
    * "Active runs" sidebar section navigates to the chat AND opens
    * the Run Inspector for that runId. */
@@ -539,6 +548,8 @@ export function Sidebar({
   onCreateSubThread,
   onTogglePinChat,
   onTogglePinWorkspace,
+  onToggleArchiveChat,
+  onDeleteChat,
   onInspectRun,
   onShowPairingSheet
 }: SidebarProps) {
@@ -815,6 +826,85 @@ export function Sidebar({
     }
   }, [chats])
 
+  /**
+   * Build the items rendered inside a chat tile's overflow menu.
+   * Keeps the action set consistent across the four sites that render
+   * chat tiles (global chats, pinned, recents, workspace-expanded chats,
+   * sub-thread children). Items collapse to an empty array when the
+   * caller hasn't wired the corresponding handler — the trigger still
+   * renders so layout stays stable.
+   */
+  const buildChatMenuItems = (chat: ChatRecord): SidebarOverflowMenuItem[] => {
+    const items: SidebarOverflowMenuItem[] = []
+    if (onTogglePinChat) {
+      items.push({
+        id: 'pin',
+        label: chat.pinned ? 'Unpin' : 'Pin',
+        group: 'primary',
+        onSelect: () => onTogglePinChat(chat.appChatId)
+      })
+    }
+    if (onToggleArchiveChat) {
+      items.push({
+        id: 'archive',
+        label: chat.archived ? 'Unarchive' : 'Archive',
+        group: 'primary',
+        onSelect: () => onToggleArchiveChat(chat.appChatId, !chat.archived)
+      })
+    }
+    if (onDeleteChat) {
+      items.push({
+        id: 'delete',
+        label: 'Delete',
+        group: 'destructive',
+        danger: true,
+        onSelect: () => onDeleteChat(chat.appChatId)
+      })
+    }
+    return items
+  }
+
+  /**
+   * Workspace tile overflow items. Wraps the existing pin / new-chat /
+   * remove handlers so the tile's primary affordance set lives in one
+   * menu. Existing inline icon buttons stay for now — the menu is
+   * additive in this slice.
+   */
+  const buildWorkspaceMenuItems = (ws: WorkspaceRecord): SidebarOverflowMenuItem[] => {
+    const items: SidebarOverflowMenuItem[] = []
+    if (onTogglePinWorkspace) {
+      items.push({
+        id: 'pin',
+        label: ws.pinned ? 'Unpin' : 'Pin',
+        group: 'primary',
+        onSelect: () => onTogglePinWorkspace(ws.id)
+      })
+    }
+    items.push({
+      id: 'new-chat',
+      label: 'New chat',
+      group: 'primary',
+      onSelect: () => onNewChat(ws.id, ws.path)
+    })
+    items.push({
+      id: 'remove',
+      label: 'Remove workspace',
+      group: 'destructive',
+      danger: true,
+      onSelect: () => {
+        // Synthesize a stub event for the existing onRemoveWorkspace signature
+        // (it expects a MouseEvent to support stopPropagation). The menu has
+        // already swallowed the click, so the stub is a no-op for the caller.
+        const stubEvent = {
+          preventDefault: () => {},
+          stopPropagation: () => {}
+        } as unknown as MouseEvent<HTMLButtonElement>
+        onRemoveWorkspace(ws.id, stubEvent)
+      }
+    })
+    return items
+  }
+
   const toggleWorkspaceExpanded = (event: MouseEvent<HTMLButtonElement>, workspaceId: string) => {
     event.preventDefault()
     event.stopPropagation()
@@ -1002,6 +1092,10 @@ export function Sidebar({
                       <PinSymbolIcon filled />
                     </span>
                   )}
+                  <SidebarOverflowMenu
+                    triggerLabel="Chat actions"
+                    items={buildChatMenuItems(chat)}
+                  />
                 </div>
               ))}
             </div>
@@ -1056,6 +1150,10 @@ export function Sidebar({
                         <PinSymbolIcon />
                       </span>
                     )}
+                    <SidebarOverflowMenu
+                      triggerLabel="Chat actions"
+                      items={buildChatMenuItems(chat)}
+                    />
                   </div>
                 )
               })}
@@ -1190,6 +1288,10 @@ export function Sidebar({
                         ×
                       </button>
                     )}
+                    <SidebarOverflowMenu
+                      triggerLabel="Workspace actions"
+                      items={buildWorkspaceMenuItems(ws)}
+                    />
                   </div>
                   {visibleChats.length > 0 && expanded ? (
                     <div className="sidebar-chat-list">
@@ -1340,6 +1442,10 @@ export function Sidebar({
                                     ↪
                                   </span>
                                 )}
+                                <SidebarOverflowMenu
+                                  triggerLabel="Chat actions"
+                                  items={buildChatMenuItems(chat)}
+                                />
                               </button>
                               {subThreads.length > 0 && subThreadsExpanded && (
                                 <div className="sidebar-chat-children">
@@ -1391,6 +1497,10 @@ export function Sidebar({
                                             </span>
                                           )}
                                         </span>
+                                        <SidebarOverflowMenu
+                                          triggerLabel="Sub-thread actions"
+                                          items={buildChatMenuItems(subChat)}
+                                        />
                                       </button>
                                     )
                                   })}
@@ -1484,6 +1594,10 @@ export function Sidebar({
                         <PinSymbolIcon filled={!!chat.pinned} />
                       </span>
                     )}
+                    <SidebarOverflowMenu
+                      triggerLabel="Chat actions"
+                      items={buildChatMenuItems(chat)}
+                    />
                   </button>
                 )
               })}

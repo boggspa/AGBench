@@ -7631,6 +7631,111 @@ button.diff-file-row {
   background: transparent;
 }
 
+/* ============================================================
+ * Sidebar tile overflow menu (… ⇒ popover with chat/workspace
+ * actions). Trigger sits inline with other sidebar-item-actions;
+ * popover floats below the trigger, positioned relative to the
+ * .sidebar-overflow-menu wrapper.
+ * ============================================================ */
+.sidebar-overflow-menu {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.sidebar-overflow-trigger {
+  /* Trigger hides at rest and fades in on tile hover, matching the
+   * surrounding pin/close icons. The wrap stays sized so layout
+   * doesn't jump when the icon shows. */
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+.sidebar-item:hover .sidebar-overflow-trigger,
+.sidebar-item:focus-within .sidebar-overflow-trigger,
+.sidebar-overflow-menu.is-open .sidebar-overflow-trigger {
+  opacity: 1;
+}
+
+.sidebar-overflow-menu-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 168px;
+  padding: 4px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #181818 96%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.sidebar-overflow-menu-item-wrap {
+  display: contents;
+}
+
+.sidebar-overflow-menu-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: color-mix(in srgb, #ffffff 86%, transparent);
+  font-size: var(--font-size-xs);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  outline: none;
+}
+.sidebar-overflow-menu-item:hover:not(:disabled),
+.sidebar-overflow-menu-item.is-focused:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: #ffffff;
+}
+.sidebar-overflow-menu-item:disabled {
+  color: color-mix(in srgb, #ffffff 28%, transparent);
+  cursor: default;
+}
+.sidebar-overflow-menu-item.is-danger {
+  color: color-mix(in srgb, #ff7a7a 88%, transparent);
+}
+.sidebar-overflow-menu-item.is-danger:hover:not(:disabled),
+.sidebar-overflow-menu-item.is-danger.is-focused:not(:disabled) {
+  background: color-mix(in srgb, #ff5f5f 14%, transparent);
+  color: #ffaeae;
+}
+
+.sidebar-overflow-menu-item-icon {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: inherit;
+}
+.sidebar-overflow-menu-item-icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.sidebar-overflow-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-overflow-menu-divider {
+  height: 1px;
+  margin: 4px 6px;
+  background: color-mix(in srgb, #ffffff 7%, transparent);
+}
+
 .btn-danger { background: var(--danger); }
 
 .btn-sm { padding: 3px 8px; font-size: var(--font-size-xs); }

@@ -6484,6 +6484,42 @@ function App(): React.JSX.Element {
     }))
   }
 
+  /**
+   * Archive / unarchive a chat. Existing sidebar filters already drop
+   * archived chats from the visible lists; flipping the flag and saving
+   * is enough to hide / restore the tile. Persisted via the same chat
+   * save pipeline `handleTogglePinChat` uses so optimistic state and
+   * remote state stay in sync.
+   */
+  const handleToggleArchiveChat = (chatId: string, nextArchived: boolean) => {
+    updateChatById(chatId, (source) => ({
+      ...source,
+      archived: nextArchived
+    }))
+  }
+
+  /**
+   * Permanently delete a chat. Uses the existing `deleteChat` IPC; the
+   * main store cascades sub-thread deletion. Drop the chat from our
+   * local list immediately for snappy feedback, then refresh from
+   * source-of-truth (if the IPC fails the next refresh restores it).
+   */
+  const handleDeleteChat = async (chatId: string) => {
+    if (!chatId) return
+    setChats((prev) => prev.filter((chat) => chat.appChatId !== chatId))
+    chatByIdRef.current.delete(chatId)
+    if (currentChat?.appChatId === chatId) {
+      setCurrentChat(null)
+    }
+    try {
+      await window.api.deleteChat(chatId)
+    } catch (err) {
+      console.error('[deleteChat] failed', err)
+      // Best-effort: if delete failed, the next chat refresh on focus or
+      // navigation will restore the chat from store.
+    }
+  }
+
   const handleTogglePinWorkspace = async (workspaceId: string) => {
     const workspace = workspaces.find((item) => item.id === workspaceId)
     if (!workspace) return
@@ -11911,6 +11947,8 @@ function App(): React.JSX.Element {
               onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
               onTogglePinChat={handleTogglePinChat}
               onTogglePinWorkspace={handleTogglePinWorkspace}
+              onToggleArchiveChat={handleToggleArchiveChat}
+              onDeleteChat={handleDeleteChat}
               onInspectRun={(runId, chatId) => {
                 // Navigate to the chat first (handleSelectChat fires via
                 // ActiveRunsSection.onSelectChat above), then open the
