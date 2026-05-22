@@ -1,7 +1,12 @@
 import type { ChatRecord, ProviderId, UsageRecord } from '../../../main/store/types'
 
 export type WelcomeUsageTab = 'overview' | 'models'
-export type WelcomeUsageRange = 'all' | '30d' | '7d'
+/**
+ * Time-window discriminator for the welcome dashboard. `24h` was added in
+ * Welcome L3 alongside the range-toggle UI; `all` is the historical
+ * fallback (lifetime aggregate).
+ */
+export type WelcomeUsageRange = 'all' | '30d' | '7d' | '24h'
 
 export const HEATMAP_DAY_COUNT = 30
 export const HEATMAP_HOUR_COUNT = 24
@@ -145,15 +150,33 @@ const inferProviderFromModelName = (model: string): ProviderId => {
 }
 
 const getWelcomeUsageRangeCutoff = (range: WelcomeUsageRange, now: number): number => {
+  if (range === '24h') return now - 24 * 60 * 60 * 1000
   if (range === '7d') return now - 7 * 24 * 60 * 60 * 1000
   if (range === '30d') return now - 30 * 24 * 60 * 60 * 1000
   return 0
 }
 
 const getWelcomeUsageHeatmapDayCount = (range: WelcomeUsageRange): number => {
+  if (range === '24h') return 2
   if (range === '7d') return 7
   if (range === '30d') return 30
   return 84
+}
+
+/**
+ * Number of bars in the Models-tab chart. Welcome L3 widens this from the
+ * historical fixed 6-day default so the bars normalise against the
+ * caller-selected range — empty windows now mean genuine inactivity in the
+ * chosen period instead of "your spike was outside the visible 6 days".
+ * 24h falls back to 2 columns (yesterday + today) because a single bar
+ * looks broken; for finer-grain 24h work, Welcome L6 will add hour-of-day
+ * bucketing as a separate render path.
+ */
+const getWelcomeUsageChartDayCount = (range: WelcomeUsageRange): number => {
+  if (range === '24h') return 2
+  if (range === '7d') return 7
+  if (range === '30d') return 30
+  return 30
 }
 
 export const buildWelcomeUsageDashboardData = (
@@ -351,14 +374,23 @@ export const buildWelcomeUsageDashboardData = (
     }
   )
 
-  const chartDayCount = range === '7d' ? 7 : 6
+  // Welcome L3: chart day count now follows the selected range so bars
+  // normalise against the active window (not a hardcoded 6 days). For
+  // ranges with explicit cutoffs (24h / 7d / 30d) we anchor the chart on
+  // today and walk backwards, filling empty days as zero. `all` keeps the
+  // historical "active-days-only" behaviour but widens the cap to 30 so
+  // a busy week doesn't get cropped to 6 columns.
+  const chartDayCount = getWelcomeUsageChartDayCount(range)
+  const consecutiveChartDays = Array.from({ length: chartDayCount }, (_, index) =>
+    dayKeyFromTimestamp(todayStart - (chartDayCount - 1 - index) * 24 * 60 * 60 * 1000)
+  )
   const activeChartDays = Array.from(dailyTotals.keys()).sort().slice(-chartDayCount)
-  const fallbackChartDays = Array.from({ length: chartDayCount }, (_, index) => {
-    const timestamp = todayStart - (chartDayCount - 1 - index) * 24 * 60 * 60 * 1000
-    return dayKeyFromTimestamp(timestamp)
-  })
   const chartDayKeys =
-    activeChartDays.length >= Math.min(2, chartDayCount) ? activeChartDays : fallbackChartDays
+    range === 'all'
+      ? activeChartDays.length >= Math.min(2, chartDayCount)
+        ? activeChartDays
+        : consecutiveChartDays
+      : consecutiveChartDays
   const chartDays = chartDayKeys.map((dayKey) => ({
     dayKey,
     label: formatUsageDateLabel(dayKey),

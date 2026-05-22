@@ -127,6 +127,7 @@ import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
   type WelcomeUsageDashboardData,
+  type WelcomeUsageRange,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
 
@@ -1669,14 +1670,11 @@ const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
 ]
 
 /**
- * Time-window toggle for the welcome dashboard. L2 surfaces the
- * control + per-chat state; L3-L5 wire each consumer (model bars,
- * percentages, headline stats) to actually filter by the selected
- * window. `'all'` is the historical default — every welcome render
- * before this slice showed the lifetime aggregate.
+ * Time-window toggle for the welcome dashboard. The actual
+ * `WelcomeUsageRange` type lives in
+ * `./lib/welcomeUsageDashboard.ts` so the builder and the
+ * App.tsx control share one source of truth.
  */
-export type WelcomeUsageRange = '24h' | '7d' | '30d' | 'all'
-
 const WELCOME_USAGE_RANGES: Array<{ value: WelcomeUsageRange; label: string; aria: string }> = [
   { value: '24h', label: '24h', aria: 'Last 24 hours' },
   { value: '7d', label: '7D', aria: 'Last 7 days' },
@@ -11455,9 +11453,13 @@ function App(): React.JSX.Element {
       }),
     [currentChat, transcriptMessages, isCurrentChatRunning, showFallbackUX]
   )
+  // Welcome L3: builder now respects the toggle from L2. Bars,
+  // headline totals, and per-model breakdowns all re-aggregate when
+  // the user flips between 24h / 7D / 30D / All instead of staring at
+  // a hardcoded `'all'` lifetime aggregate.
   const welcomeUsageDashboardData = useMemo(
-    () => buildWelcomeUsageDashboardData(usageRecords, chats, 'all'),
-    [usageRecords, chats]
+    () => buildWelcomeUsageDashboardData(usageRecords, chats, welcomeUsageRange),
+    [usageRecords, chats, welcomeUsageRange]
   )
   const shouldShowWelcomeUsageDashboard = isWelcomeChat && welcomeUsageDashboardData.hasActivity
   const runCompleteDurationText =
