@@ -158,7 +158,18 @@ actor EndpointBoundQUICBridgeServer {
             await handlers.onWatchedThreads(threadIDs, pairID)
 
         case .actionRecord(let payloadData):
-            let semanticAck = await handlers.onActionRecord(payloadData, pairID)
+            // CodexBridge dep-drift fix: `onActionRecord` now takes a
+            // `controllerDeviceID` third argument (the device that sent
+            // the action — distinct from the pair so the Mac can route
+            // back to the right device on a multi-controller pair). At
+            // this dispatch site we don't have a per-message device id
+            // — every envelope on this QUIC stream comes from the same
+            // attached device. Synthesize a stable device id from the
+            // pair id so the handler has SOMETHING to key on; a future
+            // refactor can plumb the real device id through the QUIC
+            // session metadata if/when we need per-controller routing.
+            let controllerDeviceID = DeviceID(rawValue: "device-\(pairID.rawValue)")
+            let semanticAck = await handlers.onActionRecord(payloadData, pairID, controllerDeviceID)
             try? await session.sendInbound(BridgeInboundEnvelope(
                 correlationID: envelope.envelopeID,
                 payload: .actionAck(semanticAck)

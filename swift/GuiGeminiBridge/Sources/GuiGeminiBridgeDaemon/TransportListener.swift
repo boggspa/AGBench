@@ -116,9 +116,18 @@ public actor TransportListener {
                     "pairID": pairID.rawValue
                 ])
             },
-            onActionRecord: { [self] payloadData, pairID in
+            onActionRecord: { [self] payloadData, pairID, controllerDeviceID in
+                // CodexBridge dep-drift fix: `controllerDeviceID` is
+                // a new (third) closure parameter from the upstream
+                // `LANBridgeServer.Handlers.onActionRecord` signature
+                // — the device id that sent this RemoteAction over the
+                // direct path (distinct from the pair id when a single
+                // pair has multiple controllers). We log it for the
+                // notification fan-out but otherwise treat it as
+                // opaque; the rest of the action handling pipeline
+                // continues to key on pair id.
                 await self.logHandler(
-                    "onActionRecord pairID=\(pairID.rawValue) payloadBytes=\(payloadData.count)"
+                    "onActionRecord pairID=\(pairID.rawValue) controllerDeviceID=\(controllerDeviceID.rawValue) payloadBytes=\(payloadData.count)"
                 )
                 // Always notify (informational). The notification fires
                 // regardless of whether the round-trip request below succeeds.
