@@ -1668,6 +1668,22 @@ const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
   { value: 'models', label: 'Models' }
 ]
 
+/**
+ * Time-window toggle for the welcome dashboard. L2 surfaces the
+ * control + per-chat state; L3-L5 wire each consumer (model bars,
+ * percentages, headline stats) to actually filter by the selected
+ * window. `'all'` is the historical default — every welcome render
+ * before this slice showed the lifetime aggregate.
+ */
+export type WelcomeUsageRange = '24h' | '7d' | '30d' | 'all'
+
+const WELCOME_USAGE_RANGES: Array<{ value: WelcomeUsageRange; label: string; aria: string }> = [
+  { value: '24h', label: '24h', aria: 'Last 24 hours' },
+  { value: '7d', label: '7D', aria: 'Last 7 days' },
+  { value: '30d', label: '30D', aria: 'Last 30 days' },
+  { value: 'all', label: 'All', aria: 'All recorded activity' }
+]
+
 const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
 // `ActivityContributionGrid` retired in Welcome L1 — the welcome
@@ -1678,11 +1694,15 @@ const providerModelColorClass = (provider: ProviderId): string => `provider-${pr
 function WelcomeUsageDashboard({
   data,
   tab,
-  onTabChange
+  onTabChange,
+  range,
+  onRangeChange
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
+  range: WelcomeUsageRange
+  onRangeChange: (range: WelcomeUsageRange) => void
 }) {
   const topModels = data.modelBreakdown.slice(0, 4)
   const statItems = [
@@ -1706,6 +1726,21 @@ function WelcomeUsageDashboard({
               type="button"
               className={`welcome-usage-tab ${tab === option.value ? 'active' : ''}`}
               onClick={() => onTabChange(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+        <div className="welcome-usage-range" role="tablist" aria-label="Usage range">
+          {WELCOME_USAGE_RANGES.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={`welcome-usage-range-btn ${range === option.value ? 'active' : ''}`}
+              onClick={() => onRangeChange(option.value)}
+              aria-label={option.aria}
+              aria-pressed={range === option.value}
+              title={option.aria}
             >
               {option.label}
             </button>
@@ -4130,6 +4165,11 @@ function App(): React.JSX.Element {
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
   const [welcomeUsageTab, setWelcomeUsageTab] = useState<WelcomeUsageTab>('overview')
+  // Welcome L2 — time-window toggle. Default `30d` matches the
+  // sidebar's UsageHeatmap window. `all` reproduces the historical
+  // welcome behaviour (lifetime aggregate). L3-L5 wire this to the
+  // model bars, percentages, and headline stats respectively.
+  const [welcomeUsageRange, setWelcomeUsageRange] = useState<WelcomeUsageRange>('30d')
   const saveChatTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const lastUsageWindowsByProviderRef = useRef<Record<ProviderId, UsageWindowAggregate[]>>({
     gemini: [],
@@ -12261,6 +12301,8 @@ function App(): React.JSX.Element {
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}
                 onTabChange={setWelcomeUsageTab}
+                range={welcomeUsageRange}
+                onRangeChange={setWelcomeUsageRange}
               />
             </div>
           )}
