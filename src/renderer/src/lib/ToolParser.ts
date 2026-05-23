@@ -244,6 +244,7 @@ export function isWriteLikeToolName(toolName: string): boolean {
 
 export function getToolCategory(toolName: string): ToolCategory {
   const name = (toolName || '').toLowerCase()
+  const unqualifiedName = stripToolNamespace(name)
   if (
     [
       'update_topic',
@@ -258,7 +259,7 @@ export function getToolCategory(toolName: string): ToolCategory {
     ].includes(name)
   )
     return 'task'
-  if (name === 'read_file' || name === 'list_directory') return 'read'
+  if (unqualifiedName === 'read_file' || unqualifiedName === 'list_directory') return 'read'
   if (isWriteLikeToolName(name)) return 'write'
   if (
     ['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(
@@ -266,14 +267,31 @@ export function getToolCategory(toolName: string): ToolCategory {
     )
   )
     return 'search'
-  if (name === 'run_shell_command' || name === 'shell') return 'shell'
+  if (unqualifiedName === 'run_shell_command' || unqualifiedName === 'shell') return 'shell'
   return 'unknown'
+}
+
+function stripToolNamespace(toolName: string): string {
+  if (toolName.startsWith('mcp__')) {
+    const index = toolName.indexOf('__', 5)
+    return index > 5 ? toolName.slice(index + 2) : toolName
+  }
+  if (toolName.startsWith('agbench__')) return toolName.slice('agbench__'.length)
+  if (toolName.startsWith('agentbench__')) return toolName.slice('agentbench__'.length)
+  return toolName
 }
 
 export function getToolDisplayName(toolName: string, parameters?: Record<string, unknown>): string {
   const category = getToolCategory(toolName)
+  const unqualifiedName = stripToolNamespace((toolName || '').toLowerCase())
   const params = parameters || {}
   const filePath = (params.file_path as string) || (params.path as string) || ''
+
+  if (unqualifiedName === 'creative_app_status') return 'Creative app status'
+  if (unqualifiedName === 'creative_app_capabilities') return 'Creative app capabilities'
+  if (unqualifiedName === 'creative_project_snapshot') {
+    return filePath ? `Creative project snapshot ${filePath}` : 'Creative project snapshot'
+  }
 
   switch (category) {
     case 'task':

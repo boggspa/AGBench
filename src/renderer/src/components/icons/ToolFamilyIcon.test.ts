@@ -85,6 +85,9 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('raw_provider_events')).toBe('diagnostic')
     expect(toolNameToFamily('switch_auth_profile')).toBe('diagnostic')
     expect(toolNameToFamily('agent_delegation_role')).toBe('diagnostic')
+    expect(toolNameToFamily('creative_app_status')).toBe('diagnostic')
+    expect(toolNameToFamily('creative_app_capabilities')).toBe('diagnostic')
+    expect(toolNameToFamily('creative_project_snapshot')).toBe('diagnostic')
   })
 
   it('maps codex_reasoning / codex_plan to their dedicated families', () => {
@@ -103,6 +106,7 @@ describe('toolNameToFamily', () => {
 
   it('strips MCP namespace prefixes before matching', () => {
     expect(toolNameToFamily('mcp__AGBench__delegate_to_subthread')).toBe('delegate')
+    expect(toolNameToFamily('mcp__AGBench__creative_app_status')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__server__write_file')).toBe('edit')
     expect(toolNameToFamily('AGBench__git_status')).toBe('git')
     expect(toolNameToFamily('agentbench__read_file')).toBe('file')

@@ -198,6 +198,15 @@ describe('ToolParser', () => {
     it('shows Shell command', () => {
       expect(getToolDisplayName('run_shell_command', {})).toBe('Shell command')
     })
+    it('shows creative tool names instead of raw identifiers', () => {
+      expect(getToolDisplayName('creative_app_status', {})).toBe('Creative app status')
+      expect(getToolDisplayName('AGBench__creative_app_capabilities', {})).toBe(
+        'Creative app capabilities'
+      )
+      expect(
+        getToolDisplayName('mcp__AGBench__creative_project_snapshot', { path: 'edit.fcpxml' })
+      ).toBe('Creative project snapshot edit.fcpxml')
+    })
     it('shows Used <toolName> for unknown', () => {
       expect(getToolDisplayName('magic_tool', {})).toBe('Used magic_tool')
     })
@@ -339,7 +348,8 @@ describe('ToolParser', () => {
     })
 
     it('unwraps a single-text MCP envelope', () => {
-      const envelope = '{"content":[{"type":"text","text":"Exit code: 0\\nstdout:\\ntotal 22552\\n"}]}'
+      const envelope =
+        '{"content":[{"type":"text","text":"Exit code: 0\\nstdout:\\ntotal 22552\\n"}]}'
       expect(unwrapMcpEnvelope(envelope)).toBe('Exit code: 0\nstdout:\ntotal 22552\n')
     })
 

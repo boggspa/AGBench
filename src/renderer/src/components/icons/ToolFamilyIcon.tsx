@@ -103,6 +103,9 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
     case 'raw_provider_events':
     case 'switch_auth_profile':
     case 'agent_delegation_role':
+    case 'creative_app_status':
+    case 'creative_app_capabilities':
+    case 'creative_project_snapshot':
       return 'diagnostic'
     case 'mcp_tool':
     case 'dynamic_tool':

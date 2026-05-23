@@ -787,6 +787,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
     contract.tools.shellCommands,
     contract.tools.fileChanges,
     contract.tools.mcpTools,
+    contract.tools.creativeApps,
     contract.tools.networkAccess
   ]
   const enforcedCount = tools.filter((tool) => tool.enforcedByAgentBench).length
@@ -800,8 +801,8 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
           margin: '0 0 var(--space-md) 0'
         }}
       >
-        Shared AGBench view of shell, file, MCP, approval, and unavailable-tool behavior for this
-        provider.
+        Shared AGBench view of shell, file, MCP, creative app, approval, and unavailable-tool
+        behavior for this provider.
       </p>
       <div className="safety-row">
         <span>Availability</span>

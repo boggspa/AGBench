@@ -1240,7 +1240,8 @@ export function SettingsPanel({
                     Active provider contract: {providerCapabilities.label} shell is{' '}
                     {providerCapabilities.tools.shellCommands.state}, files are{' '}
                     {providerCapabilities.tools.fileChanges.state}, MCP is{' '}
-                    {providerCapabilities.mcp.state};{' '}
+                    {providerCapabilities.mcp.state}, creative apps are{' '}
+                    {providerCapabilities.tools.creativeApps.state};{' '}
                     {
                       Object.values(providerCapabilities.tools).filter(
                         (tool) => tool.enforcedByAgentBench
