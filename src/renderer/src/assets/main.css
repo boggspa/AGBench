@@ -14308,6 +14308,25 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.24);
 }
 
+/* Pair the Claude top row (branch/Detached, External path, Tool grants,
+ * Worktree, Create PR) with the textarea bubble below it: re-use the
+ * bubble's exact palette so the two stack as a matched composer header +
+ * body. Earlier rules at line 12984 (composer-style="claude") set this
+ * row to satellite-style with no container chrome; the interface-style
+ * rule directly above (line 14302) tried #111111 but it blends with the
+ * dark page background and the chips inside read as floating instead of
+ * contained. Override with the same #151515 fill + white-mix-9% hairline
+ * border + 14px radius + 0 4px 20px drop shadow that
+ * .composer-textarea now carries (see line ~14346), placed after the
+ * interface-style rule so the !importants win on source order. */
+[data-composer-style="claude"] .composer-above-bar {
+  background: #151515 !important;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32) !important;
+  padding: 8px 14px !important;
+}
+
 [data-interface-style="codex"] .composer-surface {
   background: color-mix(in srgb, #1d1d1d 94%, #756af4 6%) !important;
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
