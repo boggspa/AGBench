@@ -707,8 +707,10 @@ button.sidebar-item {
 }
 
 .sidebar-workspace-group:not(:last-child) {
-  padding-bottom: 6px;
-  border-bottom: 1px solid color-mix(in srgb, var(--sidebar-border) 56%, transparent);
+  /* Flattened sidebar: no divider line between workspace groups —
+   * matches the gap-only separation used by Pinned/Recents lists. */
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
 .sidebar-tree-toggle {
@@ -11138,21 +11140,16 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .app-sidebar .sidebar-workspace-group {
-  border: 1px solid transparent;
-  border-radius: 10px;
+  /* Flat-on-sidebar look — matches Pinned/Recents.
+   * Tile chrome (border, padding, hover background) intentionally removed
+   * so workspaces blend into the sidebar background like pinned/recent rows.
+   * Indentation for nested chats is preserved via .sidebar-chat-list. */
+  border: 0;
   background: transparent;
-  padding: 2px;
-  transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.app-sidebar .sidebar-workspace-group:hover,
-.app-sidebar .sidebar-workspace-group:focus-within {
-  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
-  border-color: color-mix(in srgb, var(--sidebar-border) 26%, transparent);
+  padding: 0;
 }
 
 .app-sidebar .sidebar-workspace-group:not(:last-child) {
-  border-bottom-color: color-mix(in srgb, var(--sidebar-border) 42%, transparent);
   margin-bottom: 0;
 }
 
@@ -12857,14 +12854,15 @@ input:disabled, select:disabled, textarea:disabled {
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar :is(
   .sidebar-masthead,
   .sidebar-search-field,
-  .sidebar-workspace-item,
-  .sidebar-chat-item,
-  .sidebar-global-chat-item,
   .sidebar-empty-state,
   .run-summary,
   .model-usage-summary,
   .sidebar-footer .btn
 ) {
+  /* Glass-mode tile chrome — intentionally excludes
+   * .sidebar-workspace-item, .sidebar-chat-item, and
+   * .sidebar-global-chat-item so workspace/thread/sub-thread rows render
+   * flat-on-sidebar (matching Pinned/Recents) in native glass mode. */
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02)),
     var(--sidebar-glass-fill-elevated);
