@@ -4321,6 +4321,29 @@ button.sidebar-item {
   gap: 10px;
   margin-top: 4px;
   min-width: 0;
+  /* Welcome L8 — cap the list height so a user with a long history
+   * doesn't push the dashboard down into the composer below. The
+   * cap is viewport-relative with a fallback px ceiling so it
+   * stays sensible on tall + short windows alike. */
+  max-height: clamp(220px, 36vh, 360px);
+  overflow-y: auto;
+  /* Quiet scrollbar — matches the rest of the dashboard's lean look. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-tertiary) 38%, transparent) transparent;
+  padding-right: 4px; /* room for the scrollbar so the last meter isn't clipped */
+}
+.welcome-usage-model-meters::-webkit-scrollbar {
+  width: 6px;
+}
+.welcome-usage-model-meters::-webkit-scrollbar-track {
+  background: transparent;
+}
+.welcome-usage-model-meters::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-tertiary) 32%, transparent);
+  border-radius: 999px;
+}
+.welcome-usage-model-meters::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-tertiary) 52%, transparent);
 }
 
 .welcome-usage-model-meter {
