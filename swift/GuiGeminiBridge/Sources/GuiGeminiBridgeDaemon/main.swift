@@ -1106,6 +1106,23 @@ dispatcher.register("creative.runBlenderPython") { params in
     )
 }
 
+// `creative.dispatchMIDI` — send a single MIDI event through the
+// daemon's virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI
+// listener) can route this source as an input. Phase K6.
+//
+// Params: `{ eventType: string, ...event-specific params }`. See
+// CreativeMIDITransport.buildEventBytes for the per-event shape.
+dispatcher.register("creative.dispatchMIDI") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let eventType = dict["eventType"] as? String, !eventType.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.dispatchMIDI expects { eventType: string }"
+        )
+    }
+    return try CreativeMIDITransport.dispatchEvent(eventType: eventType, params: dict)
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same

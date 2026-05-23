@@ -44,6 +44,12 @@ export const AGENTBENCH_MCP_TOOLS = [
   // --background --python in a per-invocation sandbox tempdir. Same
   // class-cache pattern as K4.
   'creative_blender_python',
+  // Phase K6 — send a single MIDI event through the daemon's virtual
+  // "AGBench" Core MIDI source. Logic Pro (or any MIDI receiver) can
+  // route this source as an input. MIDI events to a virtual port have
+  // no destructive surface, so the tool is gated by an
+  // approval-once-per-event-type cache rather than a per-call modal.
+  'creative_midi_dispatch',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

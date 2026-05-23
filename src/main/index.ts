@@ -12165,6 +12165,64 @@ async function executeCreativeBlenderPython(args: Record<string, any>): Promise<
   }
 }
 
+/**
+ * Phase K6 — MIDI dispatch via the daemon's virtual Core MIDI source.
+ *
+ * Events go through the same approval-class cache (gated on
+ * `midi:<eventType>`) so the first `cc` (say) requires user approval
+ * but subsequent CCs can be auto-approved for the session. This matches
+ * the typical MIDI workflow where the agent runs a sequence of related
+ * messages (a chord = multiple note_ons) and the user doesn't want to
+ * approve each one.
+ *
+ * Allowed eventTypes: note_on, note_off, cc, program_change,
+ * transport_play, transport_stop. Each has a different param shape;
+ * the Swift transport validates ranges, the gate guards intent.
+ */
+async function executeCreativeMidiDispatch(args: Record<string, any>): Promise<unknown> {
+  const gate = creativeApprovalGateRef
+  const daemon = bridgeDaemonRef
+  if (!gate) {
+    throw new Error('Creative-action approval gate is not yet wired up (main process not ready).')
+  }
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; creative_midi_dispatch cannot dispatch.')
+  }
+  const eventType = typeof args.eventType === 'string' ? args.eventType : ''
+  if (!eventType) {
+    throw new Error('creative_midi_dispatch requires { eventType: string }')
+  }
+  const className = `midi:${eventType}`
+  const preview = JSON.stringify(args, null, 2)
+  const decision = await gate.requestApproval(className, {
+    title: `Dispatch MIDI ${eventType}`,
+    description:
+      'AGBench will send a MIDI event through its virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI listener) can route this source as an input. No destructive disk surface — but you should confirm the agent intends this dispatch.',
+    targetBundleId: 'com.apple.logic10',
+    payloadPreview: preview
+  })
+  if (!decision.approved) {
+    return {
+      ok: false,
+      refused: true,
+      reason: decision.reason,
+      className
+    }
+  }
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'creative.dispatchMIDI',
+    args,
+    { timeoutMs: 2_000 }
+  )
+  return {
+    ok: true,
+    dispatched: true,
+    className,
+    rememberedForSession: decision.rememberForSession,
+    daemonResult: dispatchResult
+  }
+}
+
 async function executeCreativeTimelineDiff(
   args: Record<string, any>,
   context: GeminiToolContext
@@ -12837,6 +12895,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeAppleScriptDispatch(args))
     } else if (toolName === 'creative_blender_python') {
       text = mcpJson(await executeCreativeBlenderPython(args))
+    } else if (toolName === 'creative_midi_dispatch') {
+      text = mcpJson(await executeCreativeMidiDispatch(args))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -14137,6 +14197,40 @@ function mcpToolDefinitions() {
           }
         },
         required: ['ir']
+      }
+    },
+    {
+      name: 'creative_midi_dispatch',
+      description:
+        'Send a MIDI event through AGBench\'s virtual "AGBench" Core MIDI source. Logic Pro (or any MIDI receiver) can route this source as input. Supported eventTypes: note_on, note_off, cc, program_change, transport_play, transport_stop. Requires user approval; approval is cacheable per eventType for the session.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          eventType: {
+            type: 'string',
+            description:
+              'One of: note_on, note_off, cc, program_change, transport_play, transport_stop'
+          },
+          channel: {
+            type: 'integer',
+            description: 'MIDI channel 0-15 (required for note_on/off, cc, program_change)'
+          },
+          note: { type: 'integer', description: 'Note number 0-127 (note_on, note_off)' },
+          velocity: {
+            type: 'integer',
+            description: 'Velocity 0-127 (note_on; often 0 for note_off)'
+          },
+          controller: { type: 'integer', description: 'CC controller number 0-127 (cc)' },
+          value: { type: 'integer', description: 'CC value 0-127 (cc)' },
+          program: { type: 'integer', description: 'Program number 0-127 (program_change)' }
+        },
+        required: ['eventType']
       }
     },
     {
