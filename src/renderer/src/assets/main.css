@@ -14343,6 +14343,42 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #ffffff 10%, transparent) !important;
 }
 
+/* Move the visible bubble chrome (rounded rect, border, drop shadow,
+ * tinted backdrop) OFF .composer-surface — which contains BOTH the
+ * textarea + footer — and onto .composer-textarea alone, so only the
+ * upper composer reads as a contained translucent bubble and the
+ * footer chip row below floats free on the page background.
+ *
+ * - .composer-surface (+ :focus-within) loses background, border,
+ *   box-shadow, and the [data-prompt-surface="liquid_glass"] backdrop
+ *   blur, plus the ::before edge vignette.
+ * - .composer-textarea picks up border-radius / border / drop shadow,
+ *   reusing the #151515 fill the [data-interface-style="claude"] rule
+ *   directly above (line 14341) already declares.
+ *
+ * No !important on the textarea promotion so the focus-within rule at
+ * line 13471 (which lights up the textarea border/box-shadow on focus
+ * via higher specificity) still wins during focus and the bubble glows
+ * when the user clicks in. */
+[data-composer-style="claude"] .composer-surface,
+[data-composer-style="claude"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="claude"] .composer-surface::before {
+  display: none !important;
+}
+[data-composer-style="claude"] .composer-textarea {
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
+  padding: 18px 14px;
+  margin-bottom: 8px;
+}
+
 /* The footer chrome (.composer-control-footer + inline pickers) is the
  * "satellite chip row" — it must stay transparent so the chips read as
  * floating on the page background. The composer-style="claude" block
