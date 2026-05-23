@@ -1191,7 +1191,13 @@ describe('CreativeAppAdapters', () => {
       expect(writer.text).toContain('<text-style-def')
       expect(writer.text).toContain('font="Helvetica"')
       expect(writer.text).toContain('fontSize="72"')
-      expect(writer.text).toContain('<param name="Position" value="0 -200"/>')
+      // K11 — Position now emits with the canonical Apple-internal
+      // key alongside the value, not the bare K8.1 form. The other
+      // three required Basic Title params (Flatten, Alignment,
+      // disableDRT) also injected automatically.
+      expect(writer.text).toContain(
+        '<param name="Position" key="9999/999166631/999166633/1/100/101" value="0 -200"/>'
+      )
     })
 
     it('does not overwrite explicit canonical title fields when flat fields are also present', () => {
@@ -1225,6 +1231,266 @@ describe('CreativeAppAdapters', () => {
       })
       expect(writer.text).toContain('canonical-text')
       expect(writer.text).not.toContain('flat-text')
+    })
+
+    // K11 — Canonical Basic Title params injection.
+    it('K11: auto-injects the four canonical Basic Title params when a title has text content', () => {
+      // The Codex probe 2.1 / 3.1 misses were exactly this: text was
+      // emitted but the four required params weren't, so FCP created
+      // a title element that bound to nothing. After K11 the writer
+      // synthesises Position/Flatten/Alignment/disableDRT with the
+      // Apple-internal keys harvested from a real FCP export.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            effects: [
+              {
+                id: 'r3',
+                name: 'Basic Title',
+                uid: '.../Titles.localized/Bumper:Opener.localized/Basic Title.localized/Basic Title.moti'
+              }
+            ]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'Hello',
+                    ref: 'r3',
+                    offset: '0s',
+                    duration: '1s',
+                    lane: '1',
+                    markers: [],
+                    captions: [],
+                    text: 'Hello world',
+                    font: 'Helvetica',
+                    fontSize: '72',
+                    alignment: 'center'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      // All four required params present with the canonical Apple
+      // keys. Each key is the dotted-decimal Motion template
+      // identifier — these are the exact strings FCP looks up.
+      expect(writer.text).toContain(
+        '<param name="Position" key="9999/999166631/999166633/1/100/101" value="0 0"/>'
+      )
+      expect(writer.text).toContain(
+        '<param name="Flatten" key="9999/999166631/999166633/2/351" value="1"/>'
+      )
+      expect(writer.text).toContain(
+        '<param name="Alignment" key="9999/999166631/999166633/2/354/999169573/401" value="1 (Center)"/>'
+      )
+      expect(writer.text).toContain('<param name="disableDRT" key="3733" value="1"/>')
+    })
+
+    it('K11: maps flat alignment token to the param value', () => {
+      const makeTitle = (alignment: string) =>
+        serializeFcpxmlTimelineIr({
+          ir: {
+            projects: [
+              {
+                name: 'p',
+                sequence: {
+                  spine: [
+                    {
+                      index: 0,
+                      type: 'title',
+                      name: 't',
+                      duration: '1s',
+                      markers: [],
+                      captions: [],
+                      text: 'x',
+                      font: 'Helvetica',
+                      alignment
+                    }
+                  ],
+                  markers: []
+                }
+              }
+            ]
+          }
+        }).text
+
+      expect(makeTitle('left')).toContain('value="0 (Left)"')
+      expect(makeTitle('center')).toContain('value="1 (Center)"')
+      expect(makeTitle('right')).toContain('value="2 (Right)"')
+      // Unknown → center default.
+      expect(makeTitle('weird')).toContain('value="1 (Center)"')
+    })
+
+    it('K11: respects an agent-supplied position over the default centre', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 't',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'lower third',
+                    font: 'Helvetica',
+                    position: '0 -400'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain(
+        '<param name="Position" key="9999/999166631/999166633/1/100/101" value="0 -400"/>'
+      )
+    })
+
+    it('K11: fills fontFace="Regular" and fontColor="1 1 1 1" defaults on text-style-defs', () => {
+      // FCP refuses to render titles whose text-style lacks an
+      // explicit color. The agent rarely thinks to set it; K11 fills
+      // the default white on emission.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 't',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'x',
+                    font: 'Helvetica',
+                    fontSize: '72'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('fontFace="Regular"')
+      expect(writer.text).toContain('fontColor="1 1 1 1"')
+    })
+
+    it('K11: respects an agent-supplied fontColor over the default white', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 't',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'red text',
+                    font: 'Helvetica',
+                    fontColor: '1 0 0 1'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('fontColor="1 0 0 1"')
+      expect(writer.text).not.toContain('fontColor="1 1 1 1"')
+    })
+
+    it('K11: leaves agent-supplied titleParams alone (advanced templates pass through)', () => {
+      // If the agent has done their homework and built a full custom
+      // Motion template param set, don't second-guess them. K11's
+      // injection only kicks in when titleParams is empty.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'custom',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    textRuns: [{ text: 'expert title', styleRef: 'ts1' }],
+                    textStyleDefs: [{ id: 'ts1', font: 'Custom', fontSize: '24' }],
+                    titleParams: [
+                      { name: 'CustomParam', key: 'expert/key/path', value: 'expert-value' }
+                    ]
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      // Their custom param is emitted; the K11 defaults are NOT
+      // injected because they declared their own.
+      expect(writer.text).toContain('<param name="CustomParam" key="expert/key/path"')
+      expect(writer.text).not.toContain('Position" key="9999/')
+      expect(writer.text).not.toContain('Flatten" key="9999/')
+    })
+
+    it('K11: bare title element (no text content) passes through unmodified', () => {
+      // The rare advanced case: agent emits an empty <title/> that
+      // references a custom Motion template via uid. Don't inject
+      // Basic Title params — they don't apply.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'bare',
+                    duration: '1s',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).not.toContain('Position" key="9999/')
+      // Self-closing <title/> (or open+close pair) is fine; just no params.
+      expect(writer.text).toMatch(/<title[^>]+name="bare"[^>]*\/?>/)
     })
 
     it('leaves non-title items untouched even when flat title fields are accidentally present', () => {

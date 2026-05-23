@@ -1187,6 +1187,137 @@ function splitAssetClipRole(role: string | undefined): {
  *     agent's explicit shape)
  *   - no flat fields are present
  */
+/**
+ * K11 — Apple's canonical Basic Title parameters.
+ *
+ * Extracted from a real FCP-authored FCPXML export. The four params
+ * below are what FCP's importer requires before it'll materialize a
+ * `<title ref="(Basic Title effect)">` element into a visible title.
+ * Pre-K11 emission carried the right effect UID + the right text /
+ * style structure but omitted these params; FCP created the element
+ * in the project but bound it to nothing, resulting in "title clip
+ * exists in the timeline but renders nothing" — what the Codex probe
+ * was hitting on rows 2.1 and 3.1.
+ *
+ * The `key` values are Apple-internal parameter identifiers
+ * (dotted-decimal path through the Basic Title Motion template's
+ * param tree). They are stable across FCP releases for the Basic
+ * Title template specifically; if Apple ever rev's the template the
+ * keys would change and we'd need a new template fingerprint here.
+ */
+const BASIC_TITLE_PARAMS = {
+  position: {
+    name: 'Position',
+    key: '9999/999166631/999166633/1/100/101',
+    defaultValue: '0 0' // centered
+  },
+  flatten: {
+    name: 'Flatten',
+    key: '9999/999166631/999166633/2/351',
+    defaultValue: '1'
+  },
+  alignment: {
+    name: 'Alignment',
+    key: '9999/999166631/999166633/2/354/999169573/401',
+    defaultValue: '1 (Center)' // Left = "0 (Left)", Right = "2 (Right)"
+  },
+  disableDRT: {
+    name: 'disableDRT',
+    key: '3733',
+    defaultValue: '1'
+  }
+} as const
+
+/**
+ * Map a friendly alignment token (left/center/right) to FCP's
+ * dotted-decimal Alignment param value. Unknown tokens default to
+ * center because that's what 99% of titles use.
+ */
+function mapAlignmentToBasicTitleParam(alignment: string | undefined): string {
+  switch ((alignment || '').toLowerCase()) {
+    case 'left':
+      return '0 (Left)'
+    case 'right':
+      return '2 (Right)'
+    case 'center':
+    case 'centered':
+    default:
+      return '1 (Center)'
+  }
+}
+
+/**
+ * K11 — Auto-inject canonical Basic Title params + style defaults
+ * when a title item has text content but doesn't carry the four
+ * required params. Lets agents author titles in the natural "text +
+ * font + size + alignment + position" shape and still get a title
+ * FCP actually renders.
+ *
+ * Strategy:
+ *  - If the agent supplied any `titleParams`, respect them — they
+ *    might be authoring an advanced Motion title we don't recognise.
+ *  - Otherwise: synthesise the four canonical params. Position comes
+ *    from `item.position` (flat shape) when supplied; Alignment from
+ *    `item.alignment` when supplied; Flatten + disableDRT use the
+ *    template defaults.
+ *  - Also fill in `fontFace="Regular"` and `fontColor="1 1 1 1"` on
+ *    text-style-defs that lack them — FCP refuses to render titles
+ *    whose styles have no explicit color.
+ */
+function injectBasicTitleTemplate(item: FcpxmlTimelineItemIr): FcpxmlTimelineItemIr {
+  if (item.type !== 'title') return item
+  // Only inject when there's actual text content. Bare `<title/>`
+  // items (the rare advanced case where the agent has done its own
+  // homework) pass through unmodified.
+  const hasTextContent =
+    (item.textRuns && item.textRuns.length > 0) ||
+    (item.textStyleDefs && item.textStyleDefs.length > 0)
+  if (!hasTextContent) return item
+
+  const result: FcpxmlTimelineItemIr = { ...item }
+
+  // Title params — only inject when the agent hasn't supplied any.
+  // Mixed shapes (some canonical, some flat) get the flat values
+  // promoted INTO the canonical set.
+  if (!item.titleParams || item.titleParams.length === 0) {
+    result.titleParams = [
+      {
+        name: BASIC_TITLE_PARAMS.position.name,
+        key: BASIC_TITLE_PARAMS.position.key,
+        value: item.position || BASIC_TITLE_PARAMS.position.defaultValue
+      },
+      {
+        name: BASIC_TITLE_PARAMS.flatten.name,
+        key: BASIC_TITLE_PARAMS.flatten.key,
+        value: BASIC_TITLE_PARAMS.flatten.defaultValue
+      },
+      {
+        name: BASIC_TITLE_PARAMS.alignment.name,
+        key: BASIC_TITLE_PARAMS.alignment.key,
+        value: mapAlignmentToBasicTitleParam(item.alignment)
+      },
+      {
+        name: BASIC_TITLE_PARAMS.disableDRT.name,
+        key: BASIC_TITLE_PARAMS.disableDRT.key,
+        value: BASIC_TITLE_PARAMS.disableDRT.defaultValue
+      }
+    ]
+  }
+
+  // Text-style-defs: fill required defaults. White text on every
+  // style def that lacks a color (the most common omission); Regular
+  // fontFace when missing. Keep agent-supplied values intact.
+  if (item.textStyleDefs && item.textStyleDefs.length > 0) {
+    result.textStyleDefs = item.textStyleDefs.map((def) => ({
+      ...def,
+      fontFace: def.fontFace || 'Regular',
+      fontColor: def.fontColor || '1 1 1 1'
+    }))
+  }
+
+  return result
+}
+
 function coerceTitleFlatFields(item: FcpxmlTimelineItemIr): FcpxmlTimelineItemIr {
   if (item.type !== 'title') return item
   if (
@@ -1224,9 +1355,12 @@ function coerceTitleFlatFields(item: FcpxmlTimelineItemIr): FcpxmlTimelineItemIr
       }
     ]
   }
-  if (item.position) {
-    promoted.titleParams = [{ name: 'Position', value: item.position }]
-  }
+  // Phase K11 — Position is intentionally NOT promoted to titleParams
+  // here. `injectBasicTitleTemplate` owns Position emission (reading
+  // `item.position` itself) so the canonical Apple-internal `key` is
+  // attached. Promoting Position here would create a partial
+  // titleParams that injectBasicTitleTemplate treats as "agent
+  // supplied — leave alone" and the canonical key would be lost.
   return promoted
 }
 
@@ -1430,10 +1564,13 @@ export function serializeFcpxmlTimelineIr(
             // K8.1 — Coerce title flat fields (text/font/fontSize/
             // alignment/position) into the canonical textRuns +
             // textStyleDefs + titleParams shape so agents who don't
-            // know the K8 canonical IR succeed anyway. No-op for
-            // non-title items and for titles that already use the
-            // canonical fields.
-            const item = coerceTitleFlatFields(rawItem)
+            // know the K8 canonical IR succeed anyway.
+            // K11 — Then inject the four canonical Basic Title params
+            // (Position/Flatten/Alignment/disableDRT with their
+            // Apple-internal keys) + fontFace/fontColor defaults so
+            // FCP actually renders the title instead of creating a
+            // bound-to-nothing element.
+            const item = injectBasicTitleTemplate(coerceTitleFlatFields(rawItem))
             timelineItemCount += 1
             markerCount += item.markers.length + item.captions.length
             if (!item.duration) {
