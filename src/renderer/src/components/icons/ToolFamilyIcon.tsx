@@ -108,6 +108,7 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
     case 'creative_project_snapshot':
     case 'creative_timeline_validate':
     case 'creative_timeline_ir':
+    case 'creative_timeline_diff':
       return 'diagnostic'
     case 'mcp_tool':
     case 'dynamic_tool':

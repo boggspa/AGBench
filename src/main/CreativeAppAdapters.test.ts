@@ -3,6 +3,7 @@ import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
   buildCreativeProjectSnapshot,
+  buildFcpxmlTimelineDiffPlan,
   buildFcpxmlTimelineIr,
   isCreativeAppId,
   validateFcpxml
@@ -184,5 +185,79 @@ describe('CreativeAppAdapters', () => {
     expect(result.projects[0].sequence?.spine[0].markers[0].value).toBe('Intro')
     expect(result.projects[0].sequence?.spine[0].captions).toHaveLength(1)
     expect(result.projects[0].sequence?.spine[1].refName).toBe('Basic Title')
+  })
+
+  it('builds a read-only FCPXML diff plan with sidecar payload', () => {
+    const beforeText = `
+      <fcpxml version="1.14">
+        <resources>
+          <format id="fmt1" width="1920" height="1080" />
+          <asset id="r1" name="Interview" uid="abc" src="file:///interview.mov" duration="10s" />
+          <asset id="r2" name="B-roll" uid="def" src="file:///broll.mov" duration="4s" />
+          <effect id="title1" name="Basic Title" uid=".../Titles.localized/Basic Title" />
+        </resources>
+        <library>
+          <event name="Day 1">
+            <project name="Assembly">
+              <sequence format="fmt1" duration="10s">
+                <spine>
+                  <asset-clip name="Interview clip" ref="r1" offset="0s" duration="10s" />
+                  <title name="Lower third" ref="title1" offset="3s" duration="2s" />
+                </spine>
+              </sequence>
+            </project>
+          </event>
+        </library>
+      </fcpxml>
+    `
+    const afterText = `
+      <fcpxml version="1.14">
+        <resources>
+          <format id="fmt1" width="1920" height="1080" />
+          <asset id="r1" name="Interview" uid="abc" src="file:///interview.mov" duration="10s" />
+          <asset id="r2" name="B-roll" uid="def" src="file:///broll.mov" duration="4s" />
+          <effect id="title1" name="Basic Title" uid=".../Titles.localized/Basic Title" />
+        </resources>
+        <library>
+          <event name="Day 1">
+            <project name="Assembly">
+              <sequence format="fmt1" duration="12s">
+                <spine>
+                  <asset-clip name="Interview clip" ref="r1" offset="0s" duration="8s" />
+                  <title name="Lower third" ref="title1" offset="3s" duration="3s" />
+                  <asset-clip name="B-roll cutaway" ref="r2" offset="8s" duration="4s" />
+                </spine>
+              </sequence>
+            </project>
+          </event>
+        </library>
+      </fcpxml>
+    `
+
+    const result = buildFcpxmlTimelineDiffPlan({
+      beforePath: 'original.fcpxml',
+      beforeText,
+      afterPath: 'draft.fcpxml',
+      afterText,
+      now: '2026-05-23T10:00:00.000Z'
+    })
+
+    expect(result.diff).toBe('fcpxml-timeline-diff-v1')
+    expect(result.summary.addedItemCount).toBe(1)
+    expect(result.summary.changedItemCount).toBe(2)
+    expect(result.projects[0].fields).toContain('sequence.duration')
+    expect(result.projects[0].addedItems[0].refName).toBe('B-roll')
+    expect(result.projects[0].changedItems[0].fields).toContain('duration')
+    expect(result.affectedResources.assets.map((asset) => asset.name)).toEqual([
+      'B-roll',
+      'Interview'
+    ])
+    expect(result.affectedResources.effects[0].name).toBe('Basic Title')
+    expect(result.sidecar.recommendedPath).toBe('draft.fcpxml.agbench-timeline-diff.json')
+    expect(result.sidecar.document).toMatchObject({
+      schema: 'agbench-fcpxml-diff-plan-v1',
+      beforePath: 'original.fcpxml',
+      afterPath: 'draft.fcpxml'
+    })
   })
 })

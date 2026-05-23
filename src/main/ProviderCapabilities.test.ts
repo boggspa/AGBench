@@ -64,7 +64,8 @@ describe('ProviderCapabilities', () => {
       'creative_app_capabilities',
       'creative_project_snapshot',
       'creative_timeline_validate',
-      'creative_timeline_ir'
+      'creative_timeline_ir',
+      'creative_timeline_diff'
     ])
     expect(contract.mcp.tools).toContain('list_directory')
     expect(contract.approvals.inAppApprovals).toBe(true)

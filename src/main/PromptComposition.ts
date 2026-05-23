@@ -40,7 +40,7 @@ const AGENTBENCH_MCP_TOOL_GROUPS =
   'git tools: git_status, git_diff, git_stage, git_commit; ' +
   'task/test tools: run_task, test_result_summary; ' +
   'sub-thread tools: delegate_to_subthread, list_subthreads, read_subthread_result, cancel_subthread; ' +
-  'creative app tools: creative_app_status, creative_app_capabilities, creative_project_snapshot, creative_timeline_validate, creative_timeline_ir; ' +
+  'creative app tools: creative_app_status, creative_app_capabilities, creative_project_snapshot, creative_timeline_validate, creative_timeline_ir, creative_timeline_diff; ' +
   'browser tools: browser_open, browser_click, browser_screenshot, browser_console; ' +
   'diagnostic/status tools: approval_status, provider_auth_status, run_timeline, raw_provider_events, create_handoff_card, switch_auth_profile, agent_delegation_role.'
 

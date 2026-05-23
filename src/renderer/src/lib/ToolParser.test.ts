@@ -212,6 +212,12 @@ describe('ToolParser', () => {
       expect(getToolDisplayName('creative_timeline_ir', { path: 'edit.fcpxml' })).toBe(
         'Timeline IR edit.fcpxml'
       )
+      expect(
+        getToolDisplayName('creative_timeline_diff', {
+          beforePath: 'original.fcpxml',
+          afterPath: 'draft.fcpxml'
+        })
+      ).toBe('Timeline diff original.fcpxml -> draft.fcpxml')
     })
     it('shows Used <toolName> for unknown', () => {
       expect(getToolDisplayName('magic_tool', {})).toBe('Used magic_tool')

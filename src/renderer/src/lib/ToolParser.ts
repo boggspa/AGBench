@@ -286,6 +286,16 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
   const unqualifiedName = stripToolNamespace((toolName || '').toLowerCase())
   const params = parameters || {}
   const filePath = (params.file_path as string) || (params.path as string) || ''
+  const beforePath =
+    (params.before_path as string) ||
+    (params.beforePath as string) ||
+    (params.basePath as string) ||
+    ''
+  const afterPath =
+    (params.after_path as string) ||
+    (params.afterPath as string) ||
+    (params.draftPath as string) ||
+    ''
 
   if (unqualifiedName === 'creative_app_status') return 'Creative app status'
   if (unqualifiedName === 'creative_app_capabilities') return 'Creative app capabilities'
@@ -297,6 +307,9 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
   }
   if (unqualifiedName === 'creative_timeline_ir') {
     return filePath ? `Timeline IR ${filePath}` : 'Timeline IR'
+  }
+  if (unqualifiedName === 'creative_timeline_diff') {
+    return beforePath && afterPath ? `Timeline diff ${beforePath} -> ${afterPath}` : 'Timeline diff'
   }
 
   switch (category) {

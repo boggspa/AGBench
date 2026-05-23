@@ -147,6 +147,7 @@ import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
   buildCreativeProjectSnapshot,
+  buildFcpxmlTimelineDiffPlan,
   buildFcpxmlTimelineIr,
   isCreativeAppId,
   validateFcpxml,
@@ -11750,21 +11751,11 @@ async function executeCreativeTimelineValidate(
   context: GeminiToolContext
 ): Promise<unknown> {
   const rawPath = requireNonEmptyString(args.path || args.file_path || args.timelinePath, 'path')
-  const targetPath = resolveGeminiMcpScopedPath(context, rawPath)
-  const stat = await fs.stat(targetPath)
-  if (!stat.isFile()) {
-    throw new Error('creative_timeline_validate requires a workspace FCPXML file path.')
-  }
-  const extension = extname(targetPath).toLowerCase()
-  const buffer = await readFilePrefixBytes(targetPath, stat.size)
-  const text = buffer.toString('utf8')
-  if (extension !== '.fcpxml' && !text.toLowerCase().includes('<fcpxml')) {
-    throw new Error('creative_timeline_validate currently supports FCPXML documents only.')
-  }
+  const fcpxml = await readCreativeTimelineFcpxml(rawPath, context, 'creative_timeline_validate')
   return validateFcpxml({
-    path: formatScopedPath(context, targetPath),
-    text,
-    truncated: stat.size > buffer.byteLength
+    path: fcpxml.path,
+    text: fcpxml.text,
+    truncated: fcpxml.truncated
   })
 }
 
@@ -11773,22 +11764,59 @@ async function executeCreativeTimelineIr(
   context: GeminiToolContext
 ): Promise<unknown> {
   const rawPath = requireNonEmptyString(args.path || args.file_path || args.timelinePath, 'path')
+  const fcpxml = await readCreativeTimelineFcpxml(rawPath, context, 'creative_timeline_ir')
+  return buildFcpxmlTimelineIr({
+    path: fcpxml.path,
+    text: fcpxml.text,
+    truncated: fcpxml.truncated
+  })
+}
+
+async function executeCreativeTimelineDiff(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const beforeRawPath = requireNonEmptyString(
+    args.beforePath || args.before_path || args.basePath || args.base_path,
+    'beforePath'
+  )
+  const afterRawPath = requireNonEmptyString(
+    args.afterPath || args.after_path || args.draftPath || args.draft_path,
+    'afterPath'
+  )
+  const before = await readCreativeTimelineFcpxml(beforeRawPath, context, 'creative_timeline_diff')
+  const after = await readCreativeTimelineFcpxml(afterRawPath, context, 'creative_timeline_diff')
+  return buildFcpxmlTimelineDiffPlan({
+    beforePath: before.path,
+    beforeText: before.text,
+    beforeTruncated: before.truncated,
+    afterPath: after.path,
+    afterText: after.text,
+    afterTruncated: after.truncated
+  })
+}
+
+async function readCreativeTimelineFcpxml(
+  rawPath: string,
+  context: GeminiToolContext,
+  toolName: string
+): Promise<{ path: string; text: string; truncated: boolean }> {
   const targetPath = resolveGeminiMcpScopedPath(context, rawPath)
   const stat = await fs.stat(targetPath)
   if (!stat.isFile()) {
-    throw new Error('creative_timeline_ir requires a workspace FCPXML file path.')
+    throw new Error(`${toolName} requires a workspace FCPXML file path.`)
   }
   const extension = extname(targetPath).toLowerCase()
   const buffer = await readFilePrefixBytes(targetPath, stat.size)
   const text = buffer.toString('utf8')
   if (extension !== '.fcpxml' && !text.toLowerCase().includes('<fcpxml')) {
-    throw new Error('creative_timeline_ir currently supports FCPXML documents only.')
+    throw new Error(`${toolName} currently supports FCPXML documents only.`)
   }
-  return buildFcpxmlTimelineIr({
+  return {
     path: formatScopedPath(context, targetPath),
     text,
     truncated: stat.size > buffer.byteLength
-  })
+  }
 }
 
 async function executeBrowserTool(
@@ -12408,6 +12436,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeTimelineValidate(args, context))
     } else if (toolName === 'creative_timeline_ir') {
       text = mcpJson(await executeCreativeTimelineIr(args, context))
+    } else if (toolName === 'creative_timeline_diff') {
+      text = mcpJson(await executeCreativeTimelineDiff(args, context))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13656,6 +13686,31 @@ function mcpToolDefinitions() {
           }
         },
         required: ['path']
+      }
+    },
+    {
+      name: 'creative_timeline_diff',
+      description:
+        'Compare an original FCPXML and a drafted FCPXML into a read-only timeline diff plan, affected-resource summary, and JSON sidecar payload. Does not import or mutate Final Cut Pro projects.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          beforePath: {
+            type: 'string',
+            description: 'Workspace-relative path to the original FCPXML document.'
+          },
+          afterPath: {
+            type: 'string',
+            description: 'Workspace-relative path to the drafted FCPXML document.'
+          }
+        },
+        required: ['beforePath', 'afterPath']
       }
     },
     {

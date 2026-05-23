@@ -53,7 +53,8 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
           'creative_app_capabilities',
           'creative_project_snapshot',
           'creative_timeline_validate',
-          'creative_timeline_ir'
+          'creative_timeline_ir',
+          'creative_timeline_diff'
         ]
       },
       networkAccess: {

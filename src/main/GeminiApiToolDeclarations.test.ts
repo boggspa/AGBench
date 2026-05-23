@@ -279,7 +279,7 @@ describe('buildGeminiFunctionDeclarations', () => {
  * world — too heavy for a unit test. The shape below mirrors the
  * literal so the round-trip test exercises every AGBench MCP tool.
  *
- * The list is intentionally exhaustive (37 entries). Each entry is the
+ * The list is intentionally exhaustive (38 entries). Each entry is the
  * minimal subset of fields the converter touches: `name`, optional
  * `description`, optional `inputSchema`. We do NOT need the
  * `annotations` block, so it's omitted to keep this snapshot compact.
@@ -629,6 +629,14 @@ const MCP_TOOL_DEFINITIONS_SNAPSHOT: Array<{
       type: 'object',
       properties: { path: { type: 'string' } },
       required: ['path']
+    }
+  },
+  {
+    name: 'creative_timeline_diff',
+    inputSchema: {
+      type: 'object',
+      properties: { beforePath: { type: 'string' }, afterPath: { type: 'string' } },
+      required: ['beforePath', 'afterPath']
     }
   },
   {

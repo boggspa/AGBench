@@ -90,6 +90,7 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('creative_project_snapshot')).toBe('diagnostic')
     expect(toolNameToFamily('creative_timeline_validate')).toBe('diagnostic')
     expect(toolNameToFamily('creative_timeline_ir')).toBe('diagnostic')
+    expect(toolNameToFamily('creative_timeline_diff')).toBe('diagnostic')
   })
 
   it('maps codex_reasoning / codex_plan to their dedicated families', () => {
@@ -111,6 +112,7 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('mcp__AGBench__creative_app_status')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__AGBench__creative_timeline_validate')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__AGBench__creative_timeline_ir')).toBe('diagnostic')
+    expect(toolNameToFamily('mcp__AGBench__creative_timeline_diff')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__server__write_file')).toBe('edit')
     expect(toolNameToFamily('AGBench__git_status')).toBe('git')
     expect(toolNameToFamily('agentbench__read_file')).toBe('file')

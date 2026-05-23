@@ -243,6 +243,79 @@ export interface FcpxmlTimelineIr {
   warnings: string[]
 }
 
+export interface FcpxmlTimelineDiffInput {
+  beforePath: string
+  beforeText: string
+  afterPath: string
+  afterText: string
+  beforeTruncated?: boolean
+  afterTruncated?: boolean
+  now?: string
+}
+
+export interface FcpxmlTimelineDiffItemSummary {
+  index: number
+  type: string
+  name?: string
+  ref?: string
+  refName?: string
+  offset?: string
+  start?: string
+  duration?: string
+  lane?: string
+  role?: string
+  format?: string
+  markerCount: number
+  captionCount: number
+}
+
+export interface FcpxmlTimelineChangedItemIr {
+  index: number
+  fields: string[]
+  before: FcpxmlTimelineDiffItemSummary
+  after: FcpxmlTimelineDiffItemSummary
+}
+
+export interface FcpxmlTimelineProjectDiffIr {
+  index: number
+  fields: string[]
+  beforeName?: string
+  afterName?: string
+  eventName?: string
+  addedItems: FcpxmlTimelineDiffItemSummary[]
+  removedItems: FcpxmlTimelineDiffItemSummary[]
+  changedItems: FcpxmlTimelineChangedItemIr[]
+}
+
+export interface FcpxmlTimelineAffectedResourceIr {
+  id: string
+  name?: string
+  uid?: string
+}
+
+export interface FcpxmlTimelineDiffPlan {
+  ok: true
+  generatedAt: string
+  appId: 'final-cut-pro'
+  kind: 'fcpxml'
+  readOnly: true
+  diff: 'fcpxml-timeline-diff-v1'
+  beforePath: string
+  afterPath: string
+  summary: Record<string, number | string | boolean>
+  affectedResources: {
+    assets: FcpxmlTimelineAffectedResourceIr[]
+    effects: FcpxmlTimelineAffectedResourceIr[]
+  }
+  projects: FcpxmlTimelineProjectDiffIr[]
+  sidecar: {
+    schema: 'agbench-fcpxml-diff-plan-v1'
+    recommendedPath: string
+    document: Record<string, unknown>
+  }
+  warnings: string[]
+}
+
 export interface CreativeAppProbeInput {
   appId?: CreativeAppId
   attachedWindow?: CreativeAttachedWindowMeta | null
@@ -283,6 +356,16 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         readOnly: true,
         requiresApproval: false,
         summary: 'Parse FCPXML into a compact timeline IR for diffing, draft plans, and preview UX.'
+      },
+      {
+        id: 'fcpxml-diff-plan',
+        label: 'FCPXML diff plan',
+        riskTier: 'observe',
+        transports: ['exchange-file'],
+        readOnly: true,
+        requiresApproval: false,
+        summary:
+          'Compare original and drafted FCPXML files into an approval-ready diff plan and JSON sidecar payload.'
       },
       {
         id: 'fcpxml-lightweight-validate',
@@ -681,6 +764,82 @@ export function buildFcpxmlTimelineIr(input: FcpxmlTimelineIrInput): FcpxmlTimel
       timelineItemCount: clipCount,
       markerCount,
       truncated: Boolean(input.truncated)
+    },
+    warnings
+  }
+}
+
+export function buildFcpxmlTimelineDiffPlan(
+  input: FcpxmlTimelineDiffInput
+): FcpxmlTimelineDiffPlan {
+  const generatedAt = input.now || new Date().toISOString()
+  const before = buildFcpxmlTimelineIr({
+    path: input.beforePath,
+    text: input.beforeText,
+    truncated: input.beforeTruncated,
+    now: generatedAt
+  })
+  const after = buildFcpxmlTimelineIr({
+    path: input.afterPath,
+    text: input.afterText,
+    truncated: input.afterTruncated,
+    now: generatedAt
+  })
+  const projects = diffTimelineProjects(before, after)
+  const affectedResources = collectAffectedResources(before, after, projects)
+  const addedItemCount = projects.reduce((count, project) => count + project.addedItems.length, 0)
+  const removedItemCount = projects.reduce(
+    (count, project) => count + project.removedItems.length,
+    0
+  )
+  const changedItemCount = projects.reduce(
+    (count, project) => count + project.changedItems.length,
+    0
+  )
+  const warnings = [
+    ...before.warnings.map((warning) => `Before: ${warning}`),
+    ...after.warnings.map((warning) => `After: ${warning}`)
+  ]
+  const summary: Record<string, number | string | boolean> = {
+    projectCountBefore: before.projects.length,
+    projectCountAfter: after.projects.length,
+    addedItemCount,
+    removedItemCount,
+    changedItemCount,
+    affectedAssetCount: affectedResources.assets.length,
+    affectedEffectCount: affectedResources.effects.length,
+    beforeTruncated: Boolean(input.beforeTruncated),
+    afterTruncated: Boolean(input.afterTruncated)
+  }
+  const sidecarDocument = {
+    schema: 'agbench-fcpxml-diff-plan-v1',
+    generatedAt,
+    appId: 'final-cut-pro',
+    kind: 'fcpxml',
+    beforePath: input.beforePath,
+    afterPath: input.afterPath,
+    summary,
+    affectedResources,
+    projects,
+    warnings
+  }
+
+  return {
+    ok: true,
+    generatedAt,
+    appId: 'final-cut-pro',
+    kind: 'fcpxml',
+    readOnly: true,
+    diff: 'fcpxml-timeline-diff-v1',
+    beforePath: input.beforePath,
+    afterPath: input.afterPath,
+    summary,
+    affectedResources,
+    projects,
+    sidecar: {
+      schema: 'agbench-fcpxml-diff-plan-v1',
+      recommendedPath: recommendedTimelineSidecarPath(input.afterPath),
+      document: sidecarDocument
     },
     warnings
   }
@@ -1127,6 +1286,184 @@ function markerToIr(node: XmlNode, type: FcpxmlTimelineMarkerIr['type']): Fcpxml
     note: node.attrs.note,
     role: node.attrs.role
   }
+}
+
+const TIMELINE_DIFF_FIELDS: Array<keyof FcpxmlTimelineDiffItemSummary> = [
+  'type',
+  'name',
+  'ref',
+  'refName',
+  'offset',
+  'start',
+  'duration',
+  'lane',
+  'role',
+  'format',
+  'markerCount',
+  'captionCount'
+]
+
+function diffTimelineProjects(
+  before: FcpxmlTimelineIr,
+  after: FcpxmlTimelineIr
+): FcpxmlTimelineProjectDiffIr[] {
+  const count = Math.max(before.projects.length, after.projects.length)
+  const projects: FcpxmlTimelineProjectDiffIr[] = []
+  for (let index = 0; index < count; index++) {
+    const beforeProject = before.projects[index]
+    const afterProject = after.projects[index]
+    const projectDiff = diffTimelineProject(index, beforeProject, afterProject)
+    if (
+      projectDiff.fields.length > 0 ||
+      projectDiff.addedItems.length > 0 ||
+      projectDiff.removedItems.length > 0 ||
+      projectDiff.changedItems.length > 0
+    ) {
+      projects.push(projectDiff)
+    }
+  }
+  return projects
+}
+
+function diffTimelineProject(
+  index: number,
+  beforeProject: FcpxmlProjectIr | undefined,
+  afterProject: FcpxmlProjectIr | undefined
+): FcpxmlTimelineProjectDiffIr {
+  const beforeItems = beforeProject?.sequence?.spine || []
+  const afterItems = afterProject?.sequence?.spine || []
+  const count = Math.max(beforeItems.length, afterItems.length)
+  const addedItems: FcpxmlTimelineDiffItemSummary[] = []
+  const removedItems: FcpxmlTimelineDiffItemSummary[] = []
+  const changedItems: FcpxmlTimelineChangedItemIr[] = []
+
+  for (let itemIndex = 0; itemIndex < count; itemIndex++) {
+    const beforeItem = beforeItems[itemIndex]
+    const afterItem = afterItems[itemIndex]
+    if (!beforeItem && afterItem) {
+      addedItems.push(summarizeTimelineItem(afterItem))
+      continue
+    }
+    if (beforeItem && !afterItem) {
+      removedItems.push(summarizeTimelineItem(beforeItem))
+      continue
+    }
+    if (!beforeItem || !afterItem) continue
+    const beforeSummary = summarizeTimelineItem(beforeItem)
+    const afterSummary = summarizeTimelineItem(afterItem)
+    const fields = changedTimelineFields(beforeSummary, afterSummary)
+    if (fields.length > 0) {
+      changedItems.push({
+        index: itemIndex,
+        fields,
+        before: beforeSummary,
+        after: afterSummary
+      })
+    }
+  }
+
+  return {
+    index,
+    fields: changedProjectFields(beforeProject, afterProject),
+    beforeName: beforeProject?.name,
+    afterName: afterProject?.name,
+    eventName: afterProject?.eventName || beforeProject?.eventName,
+    addedItems,
+    removedItems,
+    changedItems
+  }
+}
+
+function changedProjectFields(
+  beforeProject: FcpxmlProjectIr | undefined,
+  afterProject: FcpxmlProjectIr | undefined
+): string[] {
+  const beforeSequence = beforeProject?.sequence
+  const afterSequence = afterProject?.sequence
+  const pairs: Array<[string, string | undefined, string | undefined]> = [
+    ['project.name', beforeProject?.name, afterProject?.name],
+    ['event.name', beforeProject?.eventName, afterProject?.eventName],
+    ['sequence.duration', beforeSequence?.duration, afterSequence?.duration],
+    ['sequence.format', beforeSequence?.format, afterSequence?.format],
+    ['sequence.tcStart', beforeSequence?.tcStart, afterSequence?.tcStart],
+    ['sequence.tcFormat', beforeSequence?.tcFormat, afterSequence?.tcFormat]
+  ]
+  return pairs.filter(([, before, after]) => before !== after).map(([field]) => field)
+}
+
+function summarizeTimelineItem(item: FcpxmlTimelineItemIr): FcpxmlTimelineDiffItemSummary {
+  return {
+    index: item.index,
+    type: item.type,
+    name: item.name,
+    ref: item.ref,
+    refName: item.refName,
+    offset: item.offset,
+    start: item.start,
+    duration: item.duration,
+    lane: item.lane,
+    role: item.role,
+    format: item.format,
+    markerCount: item.markers.length,
+    captionCount: item.captions.length
+  }
+}
+
+function changedTimelineFields(
+  before: FcpxmlTimelineDiffItemSummary,
+  after: FcpxmlTimelineDiffItemSummary
+): string[] {
+  return TIMELINE_DIFF_FIELDS.filter((field) => before[field] !== after[field]).map(String)
+}
+
+function collectAffectedResources(
+  before: FcpxmlTimelineIr,
+  after: FcpxmlTimelineIr,
+  projects: FcpxmlTimelineProjectDiffIr[]
+): FcpxmlTimelineDiffPlan['affectedResources'] {
+  const assetsById = new Map<string, FcpxmlTimelineAffectedResourceIr>()
+  const effectsById = new Map<string, FcpxmlTimelineAffectedResourceIr>()
+  for (const ir of [before, after]) {
+    for (const asset of ir.resources.assets) {
+      assetsById.set(asset.id, { id: asset.id, name: asset.name, uid: asset.uid })
+    }
+    for (const effect of ir.resources.effects) {
+      effectsById.set(effect.id, { id: effect.id, name: effect.name, uid: effect.uid })
+    }
+  }
+
+  const affectedAssetIds = new Set<string>()
+  const affectedEffectIds = new Set<string>()
+  for (const project of projects) {
+    const summaries = [
+      ...project.addedItems,
+      ...project.removedItems,
+      ...project.changedItems.flatMap((item) => [item.before, item.after])
+    ]
+    for (const summary of summaries) {
+      if (!summary.ref) continue
+      if (assetsById.has(summary.ref)) affectedAssetIds.add(summary.ref)
+      if (effectsById.has(summary.ref)) affectedEffectIds.add(summary.ref)
+    }
+  }
+
+  return {
+    assets: affectedResourceList(affectedAssetIds, assetsById),
+    effects: affectedResourceList(affectedEffectIds, effectsById)
+  }
+}
+
+function affectedResourceList(
+  ids: Set<string>,
+  resourcesById: Map<string, FcpxmlTimelineAffectedResourceIr>
+): FcpxmlTimelineAffectedResourceIr[] {
+  return [...ids]
+    .map((id) => resourcesById.get(id) || { id })
+    .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id))
+}
+
+function recommendedTimelineSidecarPath(path: string): string {
+  return `${path}.agbench-timeline-diff.json`
 }
 
 function readUint16BE(bytes: Uint8Array, offset: number): number | undefined {
