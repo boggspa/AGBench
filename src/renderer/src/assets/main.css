@@ -4308,86 +4308,91 @@ button.sidebar-item {
   font-size: var(--font-size-xs);
 }
 
-.welcome-usage-chart {
-  display: grid;
-  grid-template-columns: 56px 1fr;
-  gap: 12px;
-  min-height: 184px;
-}
-
-.welcome-usage-y-axis {
-  display: grid;
-  grid-template-rows: repeat(5, 1fr);
-  align-items: end;
-  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
-  font-size: var(--font-size-xs);
-  text-align: right;
-  padding-bottom: 21px;
-}
-
-.welcome-usage-bars {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(42px, 1fr);
-  gap: 18px;
-  align-items: end;
-  min-width: 0;
-}
-
-.welcome-usage-bar-column {
-  min-width: 0;
-  display: grid;
-  grid-template-rows: 1fr auto;
-  gap: 6px;
-  align-items: end;
-  height: 100%;
-}
-
-.welcome-usage-bar-track {
-  min-height: 148px;
+/* Welcome L7 — per-model meters replace the per-day stacked bar
+ * chart. Each model row stretches to the dashboard's available
+ * width and shows a horizontal meter whose fill is proportional to
+ * that model's share of the 30-day window. The container scrolls
+ * if there are more models than fit vertically, but rows never
+ * overflow horizontally because the meter track is always 100% of
+ * the row width. */
+.welcome-usage-model-meters {
   display: flex;
-  flex-direction: column-reverse;
-  justify-content: flex-start;
-  overflow: hidden;
-  border-radius: 3px 3px 0 0;
-  border: 1px solid color-mix(in srgb, var(--panel-border) 46%, transparent);
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 8%, transparent), transparent),
-    color-mix(in srgb, var(--panel-bg) 18%, transparent);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 12%, transparent);
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+  min-width: 0;
 }
 
-.welcome-usage-bar-segment {
-  display: block;
-  min-height: 0;
-  background:
-    linear-gradient(180deg, color-mix(in srgb, currentColor 76%, var(--text-primary) 24%), color-mix(in srgb, currentColor 72%, transparent));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 24%, transparent);
+.welcome-usage-model-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 38%, transparent);
 }
 
-.welcome-usage-bar-label {
-  color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
-  font-size: var(--font-size-xs);
-  text-align: center;
-  white-space: nowrap;
-}
-
-.welcome-usage-model-list {
-  display: grid;
-  gap: 5px;
-  margin-top: 12px;
-}
-
-.welcome-usage-model-row {
+.welcome-usage-model-meter-header {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
-  gap: 8px;
   align-items: center;
-  color: color-mix(in srgb, var(--text-primary) 88%, transparent);
+  gap: 8px;
   font-size: var(--font-size-sm);
-  padding: 4px 6px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 90%, transparent);
+}
+
+.welcome-usage-model-meter-track {
+  position: relative;
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  overflow: hidden;
+}
+
+.welcome-usage-model-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  /* `currentColor` is the provider's brand colour (set by the
+   * .provider-gemini / .provider-codex / etc. class lower in the
+   * file). A tiny gradient + inset highlight keeps the meter from
+   * looking flat against the deep-dark dashboard background. */
+  background:
+    linear-gradient(
+      90deg,
+      color-mix(in srgb, currentColor 92%, var(--text-primary) 8%),
+      color-mix(in srgb, currentColor 70%, transparent)
+    );
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 22%, transparent);
+  transition: width 220ms ease;
+}
+
+.welcome-usage-model-percent {
+  min-width: 52px;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+/* Legacy per-day chart selectors kept as no-ops in case the user has
+ * the dashboard mid-render during the swap; the JSX no longer mounts
+ * any of these classes. They can be deleted once the dust settles. */
+.welcome-usage-chart,
+.welcome-usage-y-axis,
+.welcome-usage-bars,
+.welcome-usage-bar-column,
+.welcome-usage-bar-track,
+.welcome-usage-bar-segment,
+.welcome-usage-bar-label,
+.welcome-usage-model-list,
+.welcome-usage-model-row {
+  /* Belt-and-braces — these were the per-day chart's selectors. The
+   * meter pass deleted the JSX that mounted them; leaving the
+   * selectors here as empty rulesets means a stray cached state
+   * (HMR mid-update, etc.) can't accidentally render a partial old
+   * layout while the new one mounts. */
+  display: none;
 }
 
 .welcome-usage-model-dot {

@@ -1691,7 +1691,9 @@ function WelcomeUsageDashboard({
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
 }) {
-  const topModels = data.modelBreakdown.slice(0, 4)
+  // The per-day chart's top-4 model slice was replaced in L7 by the
+  // per-model meters, which show every model with non-zero in-window
+  // tokens (not just the top 4). No `topModels` indirection needed.
   const statItems = [
     { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
     { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
@@ -1750,57 +1752,62 @@ function WelcomeUsageDashboard({
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
       ) : (
-        <>
-          <div className="welcome-usage-chart" aria-label="Model usage by day">
-            <div className="welcome-usage-y-axis">
-              {[1, 0.75, 0.5, 0.25, 0].map((fraction) => (
-                <span key={fraction}>
-                  {formatCompactUsageNumber(data.maxChartTotal * fraction)}
-                </span>
-              ))}
-            </div>
-            <div className="welcome-usage-bars">
-              {data.chartDays.map((day) => (
-                <div key={day.dayKey} className="welcome-usage-bar-column">
-                  <div className="welcome-usage-bar-track">
-                    {topModels.map((model) => {
-                      const value = model.dailyTotals.get(day.dayKey) || 0
-                      if (value <= 0) return null
-                      return (
-                        <span
-                          key={model.id}
-                          className={`welcome-usage-bar-segment ${providerModelColorClass(model.provider)}`}
-                          style={{ height: `${Math.max(4, (value / data.maxChartTotal) * 100)}%` }}
-                          title={`${model.label} · ${day.label} · ${formatCompactUsageNumber(value)} tokens`}
-                        />
-                      )
-                    })}
+        /* Welcome L7 — per-model meters replace the per-day stacked
+         * bar chart. Each model gets a row with a horizontal meter
+         * whose fill is proportional to that model's share of the
+         * 30-day window. Bars stretch to fill the dashboard width so
+         * the layout doesn't overshoot regardless of how many models
+         * the user has run. The bar's filled length encodes the
+         * share; the right-hand numeric stack carries the exact %
+         * and in/out token counts. */
+        <div className="welcome-usage-model-meters">
+          {data.modelBreakdown.length > 0 ? (
+            data.modelBreakdown.map((model) => {
+              const percent = Math.max(0, Math.min(100, model.percent))
+              const fillWidth = `${Math.max(2, percent)}%`
+              return (
+                <div
+                  key={model.id}
+                  className={`welcome-usage-model-meter ${providerModelColorClass(model.provider)}`}
+                >
+                  <div className="welcome-usage-model-meter-header">
+                    <span
+                      className={`welcome-usage-model-dot ${providerModelColorClass(model.provider)}`}
+                      aria-hidden
+                    />
+                    <span className="welcome-usage-model-name" title={model.label}>
+                      {model.label}
+                    </span>
+                    <span className="welcome-usage-model-tokens">
+                      {formatCompactUsageNumber(model.inputTokens)} in ·{' '}
+                      {formatCompactUsageNumber(model.outputTokens)} out
+                    </span>
+                    <strong className="welcome-usage-model-percent">
+                      {percent >= 10 ? percent.toFixed(1) : percent.toFixed(1)}%
+                    </strong>
                   </div>
-                  <span className="welcome-usage-bar-label">{day.label}</span>
+                  <div
+                    className="welcome-usage-model-meter-track"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={percent}
+                    aria-label={`${model.label} accounts for ${percent.toFixed(1)}% of 30-day usage`}
+                  >
+                    <span
+                      className={`welcome-usage-model-meter-fill ${providerModelColorClass(model.provider)}`}
+                      style={{ width: fillWidth }}
+                    />
+                  </div>
                 </div>
-              ))}
+              )
+            })
+          ) : (
+            <div className="welcome-usage-empty">
+              No model-level usage tracked in the last 30 days.
             </div>
-          </div>
-          <div className="welcome-usage-model-list">
-            {topModels.length > 0 ? (
-              topModels.map((model) => (
-                <div key={model.id} className="welcome-usage-model-row">
-                  <span
-                    className={`welcome-usage-model-dot ${providerModelColorClass(model.provider)}`}
-                  />
-                  <span className="welcome-usage-model-name">{model.label}</span>
-                  <span className="welcome-usage-model-tokens">
-                    {formatCompactUsageNumber(model.inputTokens)} in ·{' '}
-                    {formatCompactUsageNumber(model.outputTokens)} out
-                  </span>
-                  <strong>{model.percent.toFixed(model.percent >= 10 ? 1 : 1)}%</strong>
-                </div>
-              ))
-            ) : (
-              <div className="welcome-usage-empty">No model-level usage has been tracked yet.</div>
-            )}
-          </div>
-        </>
+          )}
+        </div>
       )}
     </section>
   )
