@@ -14343,34 +14343,6 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #ffffff 10%, transparent) !important;
 }
 
-/* Kill the frosted-glass bubble around the textarea under claude shell
- * so the placeholder text + footer chip row float directly on the page
- * background, matching the satellite-chip intent already applied to the
- * footer row. Strips five sources of visible weight:
- *   1. background tint from [data-composer-style="claude"] .composer-surface
- *   2. border-color on the same selector
- *   3. box-shadow drop shadow
- *   4. backdrop-filter blur inherited from [data-prompt-surface="liquid_glass"]
- *   5. ::before vignette gradient that adds an inner edge glow
- * Plus clears the [data-interface-style="claude"] .composer-textarea
- * #151515 background just above (line 14341) so no darker inner rect
- * remains. Placed after that rule so source order wins. */
-[data-composer-style="claude"] .composer-surface,
-[data-composer-style="claude"] .composer-surface:focus-within {
-  background: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
-}
-[data-composer-style="claude"] .composer-surface::before {
-  display: none !important;
-}
-[data-composer-style="claude"] .composer-textarea {
-  background: transparent !important;
-  border-color: transparent !important;
-}
-
 /* The footer chrome (.composer-control-footer + inline pickers) is the
  * "satellite chip row" — it must stay transparent so the chips read as
  * floating on the page background. The composer-style="claude" block
