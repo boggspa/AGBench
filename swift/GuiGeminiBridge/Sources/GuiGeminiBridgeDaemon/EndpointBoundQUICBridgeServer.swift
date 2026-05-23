@@ -221,7 +221,15 @@ actor EndpointBoundQUICBridgeServer {
                 )
                 return
             }
-            let chunk = await onMediaRequest(request, pairID)
+            // CodexBridge `MediaRequestHandler` added a `controllerDeviceID`
+            // third argument (mirrors the same drift already fixed for
+            // `onActionRecord` higher up in this file at commit c2e22ef).
+            // AGBench's QUIC session does not yet propagate iOS-side device
+            // identities through to media handlers, so synthesise a stable
+            // placeholder from the pairID — matches the convention used by
+            // `onActionRecord` and keeps logs round-trippable per pair.
+            let mediaControllerDeviceID = DeviceID("device-\(pairID.rawValue)")
+            let chunk = await onMediaRequest(request, pairID, mediaControllerDeviceID)
             try? await session.sendInbound(BridgeInboundEnvelope(
                 correlationID: envelope.envelopeID,
                 payload: .mediaChunk(chunk)
