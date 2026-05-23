@@ -64,6 +64,7 @@ import {
   buildComposerSlashCommandRegistry
 } from './lib/ComposerSlashCommands'
 import { ComposerSlashMenu } from './components/ComposerSlashMenu'
+import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
 import { UsageHeatmap } from './components/UsageHeatmap'
 import { useAppearance } from './hooks/useAppearance'
 import { Sidebar } from './components/Sidebar'
@@ -13925,6 +13926,24 @@ function App(): React.JSX.Element {
           onCancel={() => setSubThreadCreatorParent(null)}
         />
       )}
+      {/* Phase K3 — creative-action approval modal. Mounts at app root
+        so it overlays any view. Subscribes to main-process broadcasts
+        the first time it mounts; renders the queue of pending
+        approvals (K3 FCP import, K4 AppleScript, K5 Blender). */}
+      <CreativeActionApprovalModal
+        onSubscribe={(handler) => {
+          window.api.onCreativeActionRequest((payload) =>
+            handler(payload as Parameters<typeof handler>[0])
+          )
+          // The preload's `onCreativeActionRequest` doesn't return an
+          // unsubscribe handle (the channel is process-lifetime). Return
+          // a noop — `removeListeners` in preload cleans up at teardown.
+          return () => {}
+        }}
+        onDecide={(requestId, approved, rememberForSession) =>
+          window.api.decideCreativeAction(requestId, approved, rememberForSession)
+        }
+      />
     </div>
   )
 }

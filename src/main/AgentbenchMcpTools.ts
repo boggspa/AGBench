@@ -33,6 +33,9 @@ export const AGENTBENCH_MCP_TOOLS = [
   'creative_timeline_validate',
   'creative_timeline_ir',
   'creative_timeline_diff',
+  // Phase K3 — write IR to .fcpxml + dispatch to FCP via NSWorkspace
+  // (with user approval modal). Mutates state, hence the gate.
+  'creative_timeline_import',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

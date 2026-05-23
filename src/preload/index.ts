@@ -422,6 +422,18 @@ const api = {
   onChatUpdated: (callback: (chat: unknown) => void) => {
     ipcRenderer.on('chat-updated', (_event, chat) => callback(chat))
   },
+  // Phase K3 — creative-app approval flow. Main process broadcasts
+  // pending requests; renderer modal renders + collects decision.
+  onCreativeActionRequest: (callback: (payload: unknown) => void) => {
+    ipcRenderer.on('creative-action:request', (_event, payload) => callback(payload))
+  },
+  decideCreativeAction: (
+    requestId: string,
+    approved: boolean,
+    rememberForSession: boolean
+  ): void => {
+    ipcRenderer.send('creative-action:decide', { requestId, approved, rememberForSession })
+  },
   removeListeners: () => {
     ipcRenderer.removeAllListeners('gemini-output')
     ipcRenderer.removeAllListeners('gemini-error')
@@ -437,6 +449,7 @@ const api = {
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
     ipcRenderer.removeAllListeners('chat-updated')
+    ipcRenderer.removeAllListeners('creative-action:request')
   }
 }
 

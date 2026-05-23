@@ -151,10 +151,13 @@ import {
   buildFcpxmlTimelineIr,
   isCreativeAppId,
   listCreativeAppBundleIds,
+  serializeFcpxmlTimelineIr,
   validateFcpxml,
   type CreativeAppId,
-  type CreativeAttachedWindowMeta
+  type CreativeAttachedWindowMeta,
+  type FcpxmlTimelineIr
 } from './CreativeAppAdapters'
+import { CreativeApprovalGate } from './CreativeApprovalGate'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -378,6 +381,19 @@ let runCoordinatorRef: RunCoordinator | null = null
 // methods. Stays null when the daemon is disabled or hasn't spawned yet;
 // the `attached_window_*` MCP tools null-check and return a clear error.
 let bridgeDaemonRef: BridgeDaemonClient | null = null
+
+/**
+ * Phase K3 — singleton CreativeApprovalGate used by every creative-app
+ * MCP tool that mutates state (creative_timeline_import, plus K4/K5/K6
+ * dispatch tools). Broadcasts requests to whichever BrowserWindow is
+ * focused; the renderer's CreativeActionApprovalModal collects the
+ * decision and ships it back via `creative-action:decide`.
+ *
+ * The gate is constructed lazily inside the whenReady block so it can
+ * close over `mainWindow` for broadcast. Stays null until then; the
+ * MCP tool entries null-check and refuse cleanly.
+ */
+let creativeApprovalGateRef: CreativeApprovalGate | null = null
 // Mirror of the most recent picker selection, kept on the main side so the
 // renderer can show a status pill and the AI can call `attached_window_status`
 // without re-hopping into the daemon. Cleared on detach / daemon exit.
@@ -11824,6 +11840,112 @@ async function executeCreativeTimelineIr(
   })
 }
 
+/**
+ * Phase K3 — write a timeline IR to a workspace-scoped tempfile, gate
+ * on user approval, then dispatch to Final Cut Pro via the daemon's
+ * `creative.openWithApp`. The first transport that actually mutates
+ * state (FCP imports the .fcpxml on receipt).
+ *
+ * Args:
+ *   - `ir` (required): the FCPXML timeline IR object, matching the
+ *     shape returned by `creative_timeline_ir`. The agent typically
+ *     constructs this from scratch (new edit) or reads one via
+ *     `creative_timeline_ir` and mutates it.
+ *   - `bundleId` (optional, default 'com.apple.FinalCut'): target app
+ *     bundle id. Validated against the declared creative-app set.
+ *
+ * Workflow:
+ *   1. Run K2 writer to serialize IR → FCPXML text.
+ *   2. Write to a workspace-scoped tempfile under .agbench/creative-out/.
+ *   3. Call gate.requestApproval('fcp.import-fcpxml', preview).
+ *   4. On approve: daemon.request('creative.openWithApp', ...).
+ *   5. Return summary + dispatch result OR refusal payload.
+ */
+async function executeCreativeTimelineImport(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const gate = creativeApprovalGateRef
+  const daemon = bridgeDaemonRef
+  if (!gate) {
+    throw new Error('Creative-action approval gate is not yet wired up (main process not ready).')
+  }
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; creative_timeline_import cannot dispatch.')
+  }
+  const irArg = args.ir
+  if (!irArg || typeof irArg !== 'object') {
+    throw new Error('creative_timeline_import expects { ir: object } (FCPXML timeline IR).')
+  }
+  const bundleId =
+    typeof args.bundleId === 'string' && args.bundleId.length > 0
+      ? args.bundleId
+      : 'com.apple.FinalCut'
+  // Validate bundle id against declared creative-app set so the agent
+  // can't accidentally NSWorkspace.open() into TextEdit or anything else.
+  if (!listCreativeAppBundleIds().includes(bundleId)) {
+    throw new Error(
+      `bundleId "${bundleId}" is not a recognised creative-app target. Allowed: ${listCreativeAppBundleIds().join(', ')}`
+    )
+  }
+  // K2 — emit FCPXML text from the IR.
+  const writer = serializeFcpxmlTimelineIr({ ir: irArg as FcpxmlTimelineIr })
+  // Write under workspace .agbench/creative-out/ so the file is
+  // discoverable post-import + survives sandbox enforcement. Filename
+  // uses a short timestamp so multiple imports don't clobber each other.
+  const outDir = resolveGeminiMcpScopedPath(context, '.agbench/creative-out')
+  await fs.mkdir(outDir, { recursive: true })
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const filename = `agbench-${timestamp}.fcpxml`
+  const filePath = `${outDir}/${filename}`
+  await fs.writeFile(filePath, writer.text, 'utf8')
+
+  // Build a human-readable preview for the approval modal.
+  const summaryLines = [
+    `Resources: ${writer.summary.assetCount} assets · ${writer.summary.formatCount} formats · ${writer.summary.effectCount} effects`,
+    `Projects: ${writer.summary.projectCount} · Timeline items: ${writer.summary.timelineItemCount} · Markers: ${writer.summary.markerCount}`
+  ]
+  if (writer.warnings.length > 0) {
+    summaryLines.push('', 'Warnings:', ...writer.warnings.map((w) => `  • ${w}`))
+  }
+  const decision = await gate.requestApproval('fcp.import-fcpxml', {
+    title: 'Import draft into Final Cut Pro',
+    description:
+      'AGBench wrote a fresh .fcpxml from your agent and will hand it to Final Cut Pro via NSWorkspace.open(). FCP will import the timeline as a new project under the chosen event.',
+    filePath,
+    targetBundleId: bundleId,
+    payloadPreview: summaryLines.join('\n')
+  })
+
+  if (!decision.approved) {
+    return {
+      ok: false,
+      refused: true,
+      reason: decision.reason,
+      filePath,
+      summary: writer.summary,
+      note: 'User did not approve the import. The .fcpxml file was written but not dispatched.'
+    }
+  }
+
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'creative.openWithApp',
+    { filePath, bundleId },
+    { timeoutMs: 10_000 }
+  )
+
+  return {
+    ok: true,
+    dispatched: true,
+    filePath,
+    bundleId,
+    summary: writer.summary,
+    warnings: writer.warnings,
+    daemonResult: dispatchResult,
+    rememberedForSession: decision.rememberForSession
+  }
+}
+
 async function executeCreativeTimelineDiff(
   args: Record<string, any>,
   context: GeminiToolContext
@@ -12490,6 +12612,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeTimelineIr(args, context))
     } else if (toolName === 'creative_timeline_diff') {
       text = mcpJson(await executeCreativeTimelineDiff(args, context))
+    } else if (toolName === 'creative_timeline_import') {
+      text = mcpJson(await executeCreativeTimelineImport(args, context))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13763,6 +13887,33 @@ function mcpToolDefinitions() {
           }
         },
         required: ['beforePath', 'afterPath']
+      }
+    },
+    {
+      name: 'creative_timeline_import',
+      description:
+        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          ir: {
+            type: 'object',
+            description:
+              'FCPXML timeline IR (shape matches the output of creative_timeline_ir). Caller constructs assets/formats/effects + projects + sequences + spine items.'
+          },
+          bundleId: {
+            type: 'string',
+            description:
+              'Optional target app bundle id. Default com.apple.FinalCut. Must be one of the declared creative-app bundle ids.'
+          }
+        },
+        required: ['ir']
       }
     },
     {
@@ -15555,6 +15706,27 @@ if (isGeminiMcpBridgeProcess) {
   app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.electron')
     registerProductCrashHandlers()
+
+    // Phase K3 — wire the creative-action approval gate to the renderer.
+    // Broadcasts pending requests to the focused window; resolves
+    // decisions from the renderer's IPC channel.
+    creativeApprovalGateRef = new CreativeApprovalGate({
+      broadcastRequest: (request) => {
+        if (!mainWindow || mainWindow.isDestroyed()) {
+          throw new Error('No active window to receive creative-action:request')
+        }
+        mainWindow.webContents.send('creative-action:request', request)
+      }
+    })
+    ipcMain.on(
+      'creative-action:decide',
+      (_event, payload: { requestId: string; approved: boolean; rememberForSession: boolean }) => {
+        creativeApprovalGateRef?.resolveApproval(payload.requestId, {
+          approved: payload.approved,
+          rememberForSession: payload.rememberForSession
+        })
+      }
+    )
 
     // Phase B1: centralize run-event fan-out via the bus. The Electron IPC
     // sink replays today's "send to the originating WebContents" behavior, so

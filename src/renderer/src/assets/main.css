@@ -15534,6 +15534,147 @@ input:disabled, select:disabled, textarea:disabled {
   text-align: center;
 }
 
+/* ── CreativeActionApprovalModal (Phase K3) ─────────────────────────── */
+.creative-approval-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: color-mix(in srgb, #000000 60%, transparent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  backdrop-filter: blur(4px);
+}
+.creative-approval-modal {
+  width: min(640px, 100%);
+  background: var(--panel-elevated-bg);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 14px;
+  padding: 24px 26px;
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 14%, transparent);
+  color: var(--text-primary);
+}
+.creative-approval-modal-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: color-mix(in srgb, var(--accent) 90%, transparent);
+  font-weight: 600;
+  display: block;
+  margin-bottom: 4px;
+}
+.creative-approval-modal-title {
+  font-size: var(--font-size-lg);
+  margin: 0;
+  font-weight: 600;
+}
+.creative-approval-modal-description {
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  font-size: var(--font-size-sm);
+  margin: 14px 0 18px;
+  line-height: 1.5;
+}
+.creative-approval-modal-fields {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0 0 16px;
+}
+.creative-approval-modal-fields dt {
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-tertiary) 92%, transparent);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  align-self: center;
+}
+.creative-approval-modal-fields dd {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  word-break: break-all;
+}
+.creative-approval-modal-fields code {
+  font-family: var(--font-family-mono);
+  font-size: calc(var(--font-size-sm) - 1px);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.creative-approval-modal-preview {
+  margin: 4px 0 18px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.creative-approval-modal-preview summary {
+  cursor: pointer;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  user-select: none;
+}
+.creative-approval-modal-preview pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  background: color-mix(in srgb, #000000 35%, transparent);
+  border-radius: 6px;
+  font-family: var(--font-family-mono);
+  font-size: calc(var(--font-size-xs) + 1px);
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.creative-approval-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.creative-approval-modal-actions button {
+  appearance: none;
+  border: 0;
+  border-radius: 7px;
+  padding: 9px 16px;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 100ms ease;
+}
+.creative-approval-modal-actions button:active {
+  transform: translateY(1px);
+}
+.creative-approval-modal-reject {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+}
+.creative-approval-modal-reject:hover {
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  color: var(--text-primary);
+}
+.creative-approval-modal-approve-once {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--text-primary);
+}
+.creative-approval-modal-approve-once:hover {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.creative-approval-modal-approve-remember {
+  background: var(--accent);
+  color: white;
+}
+.creative-approval-modal-approve-remember:hover {
+  background: color-mix(in srgb, var(--accent) 90%, #ffffff);
+}
+.creative-approval-modal-badge {
+  margin-top: 14px;
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-tertiary) 92%, transparent);
+  text-align: right;
+}
+
 /* ── ApprovalLedgerPanel (Phase E2) ─────────────────────────────────── */
 .approval-ledger-panel {
   display: flex;

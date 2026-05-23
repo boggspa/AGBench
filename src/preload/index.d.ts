@@ -682,6 +682,24 @@ declare global {
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => void
+      onCreativeActionRequest: (
+        callback: (payload: {
+          requestId: string
+          className: string
+          details: {
+            title: string
+            description: string
+            filePath?: string
+            targetBundleId?: string
+            payloadPreview?: string
+          }
+        }) => void
+      ) => void
+      decideCreativeAction: (
+        requestId: string,
+        approved: boolean,
+        rememberForSession: boolean
+      ) => void
       removeListeners: () => void
     }
   }
