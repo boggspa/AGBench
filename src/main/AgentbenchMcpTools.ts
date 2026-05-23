@@ -36,6 +36,10 @@ export const AGENTBENCH_MCP_TOOLS = [
   // Phase K3 — write IR to .fcpxml + dispatch to FCP via NSWorkspace
   // (with user approval modal). Mutates state, hence the gate.
   'creative_timeline_import',
+  // Phase K4 — dispatch a named AppleScript class against FCP or
+  // Logic, with session-class approval cache. Source is constructed
+  // from a curated library; raw-source path exists but never caches.
+  'creative_applescript_dispatch',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

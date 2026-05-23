@@ -158,6 +158,11 @@ import {
   type FcpxmlTimelineIr
 } from './CreativeAppAdapters'
 import { CreativeApprovalGate } from './CreativeApprovalGate'
+import {
+  APPLESCRIPT_CLASSES,
+  findAppleScriptClass,
+  formatAppleScriptClassName
+} from './CreativeAppleScriptClasses'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -11946,6 +11951,117 @@ async function executeCreativeTimelineImport(
   }
 }
 
+/**
+ * Phase K4 — AppleScript dispatch with session-class approval cache.
+ *
+ * Two entry points:
+ *   - Named class: `{ className: 'fcp.open-project', params: {...} }`
+ *     Looks up the class in the curated library, validates params,
+ *     builds the source, gates on `applescript:<className>`. The
+ *     user's "Approve & remember" choice scopes to the className,
+ *     so every subsequent `fcp.open-project` (regardless of which
+ *     project path) skips the modal.
+ *   - Raw script: `{ source: 'tell application "Finder" ...' }`. Always
+ *     gates on `applescript:raw` and intentionally NEVER caches
+ *     (every call prompts). The class name is intentionally the same
+ *     for all raw invocations so an accidental "remember" can't ever
+ *     auto-approve raw source — the gate uses `requestApproval` which
+ *     would cache, BUT the renderer-side modal HIDES the
+ *     "remember for session" button for `applescript:raw` (see modal
+ *     impl) so the user can't accidentally blanket-approve.
+ *
+ * Whichever path: forwards to daemon `creative.runAppleScript` on
+ * approval, returns `{ refused, reason }` on rejection.
+ */
+async function executeCreativeAppleScriptDispatch(
+  args: Record<string, any>
+): Promise<unknown> {
+  const gate = creativeApprovalGateRef
+  const daemon = bridgeDaemonRef
+  if (!gate) {
+    throw new Error('Creative-action approval gate is not yet wired up (main process not ready).')
+  }
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; creative_applescript_dispatch cannot dispatch.')
+  }
+  let source: string
+  let className: string
+  let modalDetails: {
+    title: string
+    description: string
+    targetBundleId?: string
+    payloadPreview: string
+  }
+  if (typeof args.className === 'string' && args.className.length > 0) {
+    // Named-class path.
+    const entry = findAppleScriptClass(args.className)
+    if (!entry) {
+      throw new Error(
+        `Unknown AppleScript class "${args.className}". Allowed: ${APPLESCRIPT_CLASSES.map((c) => c.id).join(', ')}`
+      )
+    }
+    const params: Record<string, string> =
+      args.params && typeof args.params === 'object' ? (args.params as Record<string, string>) : {}
+    // Validate every declared param up-front so the user isn't asked
+    // to approve a script that would have errored at compile/runtime.
+    for (const spec of entry.params) {
+      const raw = params[spec.name]
+      if (raw === undefined || raw === '') {
+        throw new Error(`AppleScript class ${entry.id} requires param "${spec.name}"`)
+      }
+      const validationError = spec.validate?.(raw)
+      if (validationError) {
+        throw new Error(`Invalid ${spec.name} for ${entry.id}: ${validationError}`)
+      }
+    }
+    source = entry.build(params)
+    className = formatAppleScriptClassName(entry.id)
+    modalDetails = {
+      title: entry.label,
+      description: entry.description,
+      targetBundleId: entry.targetBundleId,
+      payloadPreview: source
+    }
+  } else if (typeof args.source === 'string' && args.source.length > 0) {
+    // Raw-script path.
+    source = args.source
+    className = formatAppleScriptClassName('raw')
+    modalDetails = {
+      title: 'Run raw AppleScript',
+      description:
+        'AGBench will execute the AppleScript source below in-process via OSAKit. Raw scripts are NEVER cached on approval — every invocation prompts.',
+      targetBundleId: undefined,
+      payloadPreview: source
+    }
+  } else {
+    throw new Error(
+      'creative_applescript_dispatch requires either { className, params? } or { source }'
+    )
+  }
+  const decision = await gate.requestApproval(className, modalDetails)
+  if (!decision.approved) {
+    return {
+      ok: false,
+      refused: true,
+      reason: decision.reason,
+      className,
+      note: 'User did not approve the AppleScript dispatch.'
+    }
+  }
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'creative.runAppleScript',
+    { source, timeoutMs: 10_000 },
+    { timeoutMs: 12_000 }
+  )
+  return {
+    ok: true,
+    dispatched: true,
+    className,
+    rememberedForSession: decision.rememberForSession,
+    daemonResult: dispatchResult
+  }
+}
+
 async function executeCreativeTimelineDiff(
   args: Record<string, any>,
   context: GeminiToolContext
@@ -12614,6 +12730,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeTimelineDiff(args, context))
     } else if (toolName === 'creative_timeline_import') {
       text = mcpJson(await executeCreativeTimelineImport(args, context))
+    } else if (toolName === 'creative_applescript_dispatch') {
+      text = mcpJson(await executeCreativeAppleScriptDispatch(args))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13914,6 +14032,37 @@ function mcpToolDefinitions() {
           }
         },
         required: ['ir']
+      }
+    },
+    {
+      name: 'creative_applescript_dispatch',
+      description:
+        'Dispatch an AppleScript class against Final Cut Pro or Logic Pro. Two modes: pass { className, params } to invoke a curated named class (fcp.open-project, fcp.set-playhead, fcp.export-current, logic.open-project, logic.set-tempo) or pass { source } for raw AppleScript. REQUIRES USER APPROVAL — a modal will surface with the script source. Named classes can be approved-and-cached for the session; raw scripts always prompt.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          className: {
+            type: 'string',
+            description:
+              'Optional named class id (one of: fcp.open-project, fcp.set-playhead, fcp.export-current, logic.open-project, logic.set-tempo). Mutually exclusive with `source`.'
+          },
+          params: {
+            type: 'object',
+            description:
+              'Param map for the named class. Each class declares its own param spec; see the class library or the approval modal preview for shape.'
+          },
+          source: {
+            type: 'string',
+            description:
+              'Raw AppleScript source. Mutually exclusive with `className`. Always prompts on each invocation; never cached.'
+          }
+        }
       }
     },
     {

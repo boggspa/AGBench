@@ -1060,6 +1060,27 @@ dispatcher.register("creative.openWithApp") { params in
     return try CreativeWorkspaceOpener.openWithApp(filePath: filePath, bundleId: bundleId)
 }
 
+// `creative.runAppleScript` — execute an AppleScript source string in-
+// process via OSAKit, with a default 10s timeout. Phase K4. The Swift
+// side does NOT gate the call; the renderer-side
+// `creative_applescript_dispatch` MCP tool is responsible for class
+// approval before this method is invoked.
+//
+// Params: `{ source: string, timeoutMs?: number }`.
+// Returns: `{ ok, result, durationMs }`. Compile + runtime errors
+// surface as JSON-RPC error responses.
+dispatcher.register("creative.runAppleScript") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let source = dict["source"] as? String, !source.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.runAppleScript expects { source: string }"
+        )
+    }
+    let timeoutMs = (dict["timeoutMs"] as? Int) ?? 10_000
+    return try CreativeAppleScriptRunner.runScript(source: source, timeoutMs: timeoutMs)
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same
