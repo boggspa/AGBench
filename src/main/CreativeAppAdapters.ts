@@ -940,15 +940,27 @@ export function serializeFcpxmlTimelineIr(
     )
   }
   for (const asset of assets) {
-    // The IR carries `mediaRepCount` but no media-rep details. We
-    // drop the stub media-reps on emission — FCP's importer is happy
-    // to resolve `<asset src="...">` without an inner `<media-rep>`
-    // for the file-on-disk case; the media-rep is only required for
-    // proxy-render workflows we don't model in the IR.
-    if (asset.mediaRepCount && asset.mediaRepCount > 0) {
+    // Phase K7 — FCPXML DTD compliance. The DTD declares
+    //   <!ELEMENT asset (media-rep+, metadata?)>
+    // i.e. every asset MUST contain at least one <media-rep>. The DTD
+    // does NOT declare `src` or `role` as attributes of <asset>; both
+    // belong on the inner media-rep (src) or on the asset-clip that
+    // references the asset (role). Earlier K2 emission put src on the
+    // asset element and skipped media-rep entirely — DTD-invalid on
+    // both counts, even though tolerant XML parsers accepted it.
+    //
+    // The IR's `asset.src` is treated as the media-rep `src`. When
+    // missing we synthesise a stub `file://` URL pointing at a
+    // workspace placeholder so the emit still validates structurally
+    // (FCP will surface "media offline" rather than reject the import).
+    const mediaRepSrc =
+      asset.src && asset.src.length > 0
+        ? asset.src
+        : `file:///agbench-placeholder/${encodeURIComponent(asset.id || 'asset')}.mov`
+    if (!asset.src) {
       warnings.push(
-        `Asset "${asset.id}" had ${asset.mediaRepCount} <media-rep> children in the source IR; ` +
-          'they are dropped on emission (the IR captures count only, not the rep details).'
+        `Asset "${asset.id}" had no src; emitted a placeholder media-rep src so the document still validates. ` +
+          'FCP will mark the clip as offline media until you point the asset at a real file.'
       )
     }
     lines.push(
@@ -956,13 +968,24 @@ export function serializeFcpxmlTimelineIr(
         ['id', asset.id],
         ['name', asset.name],
         ['uid', asset.uid],
-        ['src', asset.src],
         ['duration', asset.duration],
         ['start', asset.start],
         ['format', asset.format],
-        ['role', asset.role]
+        // Default hasVideo/hasAudio to "1" so FCP knows to slot the
+        // asset into video tracks — without this, FCP treats it as a
+        // metadata-only asset and the asset-clip ref doesn't resolve
+        // to a usable timeline source.
+        ['hasVideo', '1'],
+        ['hasAudio', '1']
+      ])}>`
+    )
+    lines.push(
+      `${indent}${indent}${indent}<media-rep${emitAttrs([
+        ['kind', 'original-media'],
+        ['src', mediaRepSrc]
       ])}/>`
     )
+    lines.push(`${indent}${indent}</asset>`)
   }
   for (const effect of effects) {
     lines.push(
@@ -996,21 +1019,69 @@ export function serializeFcpxmlTimelineIr(
         lines.push(
           `${indent}${indent}${indent}<project${emitAttrs([['name', project.name]])}>`
         )
-        if (project.sequence) {
-          const seq = project.sequence
-          lines.push(
-            `${indent}${indent}${indent}${indent}<sequence${emitAttrs([
-              ['name', seq.name],
-              ['duration', seq.duration],
-              ['format', seq.format],
-              ['tcStart', seq.tcStart],
-              ['tcFormat', seq.tcFormat]
-            ])}>`
+        // Phase K7 — DTD requires <project> to contain exactly one
+        // <sequence>, and <sequence> requires a `format` IDREF
+        // (%media_attrs;). If the IR omits either, we synthesise the
+        // minimum-valid skeleton so FCP's importer accepts the doc.
+        // The agent gets a warning so it can correct the IR for next
+        // time — silently filling in defaults forever would hide bugs.
+        let seq: FcpxmlSequenceIr | undefined = project.sequence
+        if (!seq) {
+          warnings.push(
+            `Project "${project.name || '(unnamed)'}" had no sequence; emitted an empty sequence so the document validates. ` +
+              'The DTD requires <project> to contain exactly one <sequence>.'
           )
-          lines.push(`${indent}${indent}${indent}${indent}${indent}<spine>`)
+          seq = { spine: [], markers: [] }
+        }
+        // Determine the format ref — sequence.format wins, else the
+        // first declared format in resources, else synthesise an
+        // emergency "AGBench fallback" format declared inline.
+        let sequenceFormatRef = seq.format
+        if (!sequenceFormatRef) {
+          if (formats.length > 0) {
+            sequenceFormatRef = formats[0].id
+            warnings.push(
+              `Sequence in project "${project.name || '(unnamed)'}" had no format ref; defaulted to "${sequenceFormatRef}" (first format in resources).`
+            )
+          } else {
+            // No formats anywhere — the document is missing the
+            // resource that <sequence format=...> would point at.
+            // Rather than emit an unresolved IDREF (which xmllint
+            // catches with a fatal error), surface a writer warning
+            // and skip the format attr. FCP will reject — but at
+            // least the agent sees the warning, not a confusing DTD
+            // error from FCP itself.
+            warnings.push(
+              `Sequence in project "${project.name || '(unnamed)'}" has no format ref and no <format> resources are declared. ` +
+                'The DTD requires <sequence format="..."/> to reference an existing <format>. Add a <format> to resources before importing.'
+            )
+          }
+        }
+        lines.push(
+          `${indent}${indent}${indent}${indent}<sequence${emitAttrs([
+            ['name', seq.name],
+            ['duration', seq.duration],
+            ['format', sequenceFormatRef],
+            ['tcStart', seq.tcStart],
+            ['tcFormat', seq.tcFormat]
+          ])}>`
+        )
+        lines.push(`${indent}${indent}${indent}${indent}${indent}<spine>`)
           for (const item of seq.spine) {
             timelineItemCount += 1
             markerCount += item.markers.length + item.captions.length
+            // Phase K7 — DTD enforces `duration` as #REQUIRED on
+            // <gap>, and downstream FCPXML consumers behave badly
+            // when timeline items have no duration. Surface a
+            // warning rather than silently emitting an invalid item;
+            // we don't throw because the agent might be constructing
+            // an in-progress doc that gets duration filled in later.
+            if (!item.duration) {
+              warnings.push(
+                `Spine item index ${item.index} (${item.type}${item.name ? ` "${item.name}"` : ''}) has no duration. ` +
+                  'FCP will likely reject the import; supply a duration like "5s" or "120/24000s".'
+              )
+            }
             const hasChildren = item.markers.length > 0 || item.captions.length > 0
             const headerAttrs = emitAttrs([
               ['name', item.name],
@@ -1074,7 +1145,6 @@ export function serializeFcpxmlTimelineIr(
             )
           }
           lines.push(`${indent}${indent}${indent}${indent}</sequence>`)
-        }
         lines.push(`${indent}${indent}${indent}</project>`)
       }
       lines.push(`${indent}${indent}</event>`)
@@ -1509,16 +1579,24 @@ function nearestAncestorName(node: XmlNode, ancestorName: string): string | unde
 }
 
 function assetToIr(node: XmlNode): FcpxmlResourceIr {
+  // Phase K7 — the FCPXML 1.13 DTD declares `src` on <media-rep>, not
+  // on <asset>. Older docs (and some non-conformant exporters) put
+  // src directly on <asset>; we read either, preferring the inner
+  // <media-rep src=...> when both are present so we match the spec's
+  // source-of-truth. The IR collapses both into a single `src` field
+  // because consumers don't care which element it came from.
+  const mediaReps = descendants(node, 'media-rep')
+  const firstMediaRepSrc = mediaReps[0]?.attrs.src
   return {
     id: node.attrs.id || '',
     name: node.attrs.name,
     uid: node.attrs.uid,
-    src: node.attrs.src,
+    src: firstMediaRepSrc || node.attrs.src,
     duration: node.attrs.duration,
     start: node.attrs.start,
     format: node.attrs.format,
     role: node.attrs.role,
-    mediaRepCount: descendants(node, 'media-rep').length
+    mediaRepCount: mediaReps.length
   }
 }
 

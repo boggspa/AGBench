@@ -522,15 +522,123 @@ describe('CreativeAppAdapters', () => {
       expect(names).toEqual(['A', 'gap', 'B', 'C'])
     })
 
-    it('warns when an IR asset declares media-rep children (dropped on emission)', () => {
+    it('emits a <media-rep> child for every asset (DTD requires media-rep+)', () => {
+      // Phase K7 — the FCPXML DTD declares
+      //   <!ELEMENT asset (media-rep+, metadata?)>
+      // i.e. every asset MUST carry at least one media-rep. Earlier
+      // emission put src directly on <asset> and emitted no children,
+      // which xmllint rejected as DTD-invalid even though FCP's
+      // tolerant parser accepted it. The new shape moves src into a
+      // nested <media-rep src="..."/> per the spec.
       const writer = serializeFcpxmlTimelineIr({
         ir: {
           resources: {
-            assets: [{ id: 'r1', name: 'Proxy asset', src: 'file:///x.mov', mediaRepCount: 2 }]
+            assets: [{ id: 'r1', name: 'B-roll', src: 'file:///x.mov' }]
           }
         }
       })
-      expect(writer.warnings.some((w) => /media-rep/.test(w))).toBe(true)
+      // The asset element opens (no self-close) and the media-rep
+      // child sits inside it.
+      expect(writer.text).toMatch(/<asset[^/]+id="r1"[^>]*>\s*\n\s*<media-rep[^>]+src="file:\/\/\/x\.mov"\s*\/>\s*\n\s*<\/asset>/)
+      // Round-trip: the IR parser pulls src from the media-rep child.
+      const reparsed = buildFcpxmlTimelineIr({ path: 'mr.fcpxml', text: writer.text })
+      expect(reparsed.resources.assets[0].src).toBe('file:///x.mov')
+      expect(reparsed.resources.assets[0].mediaRepCount).toBe(1)
+    })
+
+    it('synthesises a placeholder media-rep src when the IR asset has none', () => {
+      // K7 — assets without src still need a media-rep child to satisfy
+      // the DTD. We fill a workspace-placeholder URL so the doc remains
+      // structurally valid; FCP shows the clip as offline media until
+      // the asset is pointed at a real file.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: { resources: { assets: [{ id: 'r1', name: 'Pending shoot' }] } }
+      })
+      expect(writer.text).toMatch(/<media-rep[^>]+src="file:\/\/\/agbench-placeholder\//)
+      expect(writer.warnings.some((w) => /no src/.test(w))).toBe(true)
+    })
+
+    it('synthesises an empty sequence + spine when a project has no sequence (DTD: project requires sequence)', () => {
+      // The K3 failure mode that surfaced this whole hardening pass:
+      // FCP rejected the import with "expecting (sequence), got ()"
+      // because our project element was empty. Writer now fills a
+      // minimum-valid sequence so the document loads instead of
+      // failing at the DTD layer.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', name: '1080p' }],
+            assets: []
+          },
+          projects: [{ name: 'project-without-sequence' }]
+        }
+      })
+      expect(writer.text).toMatch(/<sequence[^>]+format="r1"[^>]*>\s*\n\s*<spine\s*>\s*<\/spine>/)
+      expect(writer.warnings.some((w) => /no sequence/.test(w))).toBe(true)
+    })
+
+    it('defaults sequence format ref to the first declared format when the IR omits it', () => {
+      // DTD `%media_attrs;` declares `format` as #REQUIRED on
+      // <sequence>. When the agent supplies a sequence but forgets
+      // the format ref, fall back to the first format in resources
+      // and warn so the agent learns.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [
+              { id: 'r1', name: '1080p' },
+              { id: 'r2', name: '4k' }
+            ]
+          },
+          projects: [
+            { name: 'p', sequence: { spine: [], markers: [] } }
+          ]
+        }
+      })
+      expect(writer.text).toMatch(/<sequence[^>]+format="r1"/)
+      expect(writer.warnings.some((w) => /no format ref/.test(w))).toBe(true)
+    })
+
+    it('surfaces a warning when no <format> resources exist and sequence has no format ref', () => {
+      // Worst case — no formats anywhere. We can't synthesise an
+      // IDREF that points nowhere (xmllint will catch the dangling
+      // ref) so we emit the sequence WITHOUT format attr and surface
+      // a clear warning rather than producing a silently-invalid doc.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {},
+          projects: [{ name: 'p', sequence: { spine: [], markers: [] } }]
+        }
+      })
+      expect(writer.warnings.some((w) => /no <format> resources are declared/.test(w))).toBe(
+        true
+      )
+    })
+
+    it('warns when a spine item is missing duration (DTD #REQUIRED on gap)', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: { formats: [{ id: 'r1', name: '1080p' }] },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                spine: [
+                  {
+                    index: 0,
+                    type: 'gap',
+                    name: 'untimed',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.warnings.some((w) => /no duration/.test(w))).toBe(true)
     })
 
     it('synthesises an event name for projects without one so the doc validates', () => {

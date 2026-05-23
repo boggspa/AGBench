@@ -11880,6 +11880,152 @@ async function executeCreativeTimelineIr(
 }
 
 /**
+ * Phase K7 — DTD preflight outcomes for `creative_timeline_import`.
+ *
+ *   - `valid`: xmllint validated the file against FCP's on-disk DTD.
+ *   - `invalid`: xmllint rejected — the agent's IR has a structural
+ *     bug FCP would also reject. The dispatcher returns this to the
+ *     agent so it can correct without burning a user approval.
+ *   - `skipped`: xmllint or the DTD wasn't available; we proceed
+ *     without preflight on the theory that "no validator" beats
+ *     "blocks all imports". FCP itself still does its own DTD check.
+ */
+interface FcpxmlDtdPreflightResult {
+  status: 'valid' | 'invalid' | 'skipped'
+  dtdPath?: string
+  stderr?: string
+  exitCode?: number
+  /** Friendly reason for skipped status (no xmllint, no DTD, etc). */
+  skipReason?: string
+}
+
+/**
+ * Locate the highest-version FCPXML DTD that's <= the document's
+ * declared version. Returns undefined when Final Cut Pro isn't
+ * installed (no DTD on disk) — caller treats that as a skip, not a
+ * failure.
+ *
+ * Copies the resolved DTD to a tmpdir cache (no-spaces path) on
+ * first use because xmllint passes its `--dtdvalid URL` argument
+ * straight to libxml2 without URL-encoding, and libxml2 can't open
+ * paths with literal spaces (`/Applications/Final Cut Pro.app/...`).
+ * Verified by an end-to-end test: the on-disk DTD validates our
+ * minimum-valid skeleton perfectly — but only via the cache copy.
+ */
+const FCPXML_DTD_CACHE_DIR = `${os.tmpdir()}/agbench-fcpxml-dtds`
+async function locateFcpxmlDtd(fcpxmlVersion: string): Promise<string | undefined> {
+  const dtdDir =
+    '/Applications/Final Cut Pro.app/Contents/Frameworks/Interchange.framework/Versions/A/Resources'
+  if (!fsSync.existsSync(dtdDir)) return undefined
+  let entries: string[] = []
+  try {
+    entries = await fs.readdir(dtdDir)
+  } catch {
+    return undefined
+  }
+  const dtds = entries
+    .map((entry) => {
+      const match = entry.match(/^FCPXMLv(\d+)_(\d+)\.dtd$/)
+      if (!match) return null
+      return { file: entry, major: Number(match[1]), minor: Number(match[2]) }
+    })
+    .filter((entry): entry is { file: string; major: number; minor: number } => entry !== null)
+  if (dtds.length === 0) return undefined
+  const targetParts = fcpxmlVersion.split('.').map(Number)
+  const targetMajor = targetParts[0] ?? 1
+  const targetMinor = targetParts[1] ?? 13
+  const sortable = (d: { major: number; minor: number }) => d.major * 1000 + d.minor
+  const target = targetMajor * 1000 + targetMinor
+  const exact = dtds.find((d) => d.major === targetMajor && d.minor === targetMinor)
+  const lowerOrEqual = dtds.filter((d) => sortable(d) <= target)
+  const choice =
+    exact ||
+    (lowerOrEqual.length > 0
+      ? lowerOrEqual.reduce((acc, d) => (sortable(d) > sortable(acc) ? d : acc))
+      : dtds.reduce((acc, d) => (sortable(d) > sortable(acc) ? d : acc)))
+  const sourcePath = `${dtdDir}/${choice.file}`
+  // Copy into the space-free cache. The DTD is ~30 KB; we recopy on
+  // every miss so a Final Cut Pro update naturally invalidates the
+  // cache. Cache is keyed by basename so multiple DTD versions
+  // coexist if the agent imports against different versions.
+  await fs.mkdir(FCPXML_DTD_CACHE_DIR, { recursive: true })
+  const cachedPath = `${FCPXML_DTD_CACHE_DIR}/${choice.file}`
+  try {
+    await fs.copyFile(sourcePath, cachedPath)
+  } catch (err) {
+    console.warn('[locateFcpxmlDtd] cache copy failed:', (err as Error).message)
+    // Fall through to source path — xmllint will fail with the
+    // space-handling bug but the preflight degrades to `skipped`
+    // rather than blocking the import.
+    return sourcePath
+  }
+  return cachedPath
+}
+
+/**
+ * Run xmllint against the file with FCP's on-disk DTD. Soft-fails
+ * (returns `skipped`) when xmllint or the DTD isn't available.
+ */
+async function runFcpxmlDtdPreflight(input: {
+  filePath: string
+  fcpxmlVersion: string
+}): Promise<FcpxmlDtdPreflightResult> {
+  const dtdPath = await locateFcpxmlDtd(input.fcpxmlVersion)
+  if (!dtdPath) {
+    return {
+      status: 'skipped',
+      skipReason:
+        'No FCPXML DTD found on disk. Install Final Cut Pro to enable DTD preflight (DTDs ship inside FCP.app).'
+    }
+  }
+  // /usr/bin/xmllint ships with macOS. Existence-check before spawn
+  // so we don't error on a clean exit-code-1 from "no such file".
+  if (!fsSync.existsSync('/usr/bin/xmllint')) {
+    return {
+      status: 'skipped',
+      skipReason: 'xmllint not available at /usr/bin/xmllint.'
+    }
+  }
+  return new Promise<FcpxmlDtdPreflightResult>((resolve) => {
+    const child = spawn('/usr/bin/xmllint', ['--noout', '--dtdvalid', dtdPath, input.filePath], {
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let stderr = ''
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString('utf8')
+    })
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ status: 'valid', dtdPath })
+      } else {
+        // xmllint exits 3 on DTD validation failure, 4 on warning,
+        // 1 on missing file. Anything non-zero with stderr content
+        // means "invalid". Empty stderr with non-zero exit is
+        // typically an environment issue — degrade to skipped so
+        // the import isn't blocked by tooling problems.
+        if (stderr.length > 0) {
+          resolve({ status: 'invalid', dtdPath, stderr: stderr.trim(), exitCode: code ?? -1 })
+        } else {
+          resolve({
+            status: 'skipped',
+            dtdPath,
+            exitCode: code ?? -1,
+            skipReason: `xmllint exited ${code} with no diagnostic output.`
+          })
+        }
+      }
+    })
+    child.on('error', (err) => {
+      resolve({
+        status: 'skipped',
+        dtdPath,
+        skipReason: `xmllint spawn failed: ${err.message}`
+      })
+    })
+  })
+}
+
+/**
  * Phase K3 — write a timeline IR to a workspace-scoped tempfile, gate
  * on user approval, then dispatch to Final Cut Pro via the daemon's
  * `creative.openWithApp`. The first transport that actually mutates
@@ -11939,13 +12085,45 @@ async function executeCreativeTimelineImport(
   const filePath = `${outDir}/${filename}`
   await fs.writeFile(filePath, writer.text, 'utf8')
 
+  // Phase K7 — DTD preflight via xmllint. The FCPXML DTDs ship inside
+  // Final Cut Pro itself at
+  //   /Applications/Final Cut Pro.app/Contents/Frameworks/
+  //   Interchange.framework/Versions/A/Resources/FCPXMLv1_*.dtd
+  // We match the emitted document's version → DTD file, then shell to
+  // /usr/bin/xmllint --noout --dtdvalid. If xmllint rejects, return
+  // the error to the agent BEFORE asking the user to approve — saves
+  // the user a useless modal for a doc that FCP would reject anyway,
+  // and gives the agent a concrete diagnostic to correct against.
+  //
+  // Soft-fail if xmllint or the DTD aren't available — preflight is a
+  // belt-and-braces check, not a hard requirement. We still surface
+  // the preflight outcome on the response so the agent can see it.
+  const preflight = await runFcpxmlDtdPreflight({
+    filePath,
+    fcpxmlVersion: typeof irArg.version === 'string' ? irArg.version : '1.13'
+  })
+  if (preflight.status === 'invalid') {
+    return {
+      ok: false,
+      refused: true,
+      reason: 'dtd-invalid',
+      filePath,
+      summary: writer.summary,
+      warnings: writer.warnings,
+      dtdPreflight: preflight,
+      note:
+        'FCPXML DTD validation failed; Final Cut Pro would reject the import. The .fcpxml file was written for inspection but not dispatched.'
+    }
+  }
+
   // Build a human-readable preview for the approval modal.
   const summaryLines = [
     `Resources: ${writer.summary.assetCount} assets · ${writer.summary.formatCount} formats · ${writer.summary.effectCount} effects`,
-    `Projects: ${writer.summary.projectCount} · Timeline items: ${writer.summary.timelineItemCount} · Markers: ${writer.summary.markerCount}`
+    `Projects: ${writer.summary.projectCount} · Timeline items: ${writer.summary.timelineItemCount} · Markers: ${writer.summary.markerCount}`,
+    `DTD preflight: ${preflight.status}${preflight.dtdPath ? ` (${preflight.dtdPath.split('/').pop()})` : ''}`
   ]
   if (writer.warnings.length > 0) {
-    summaryLines.push('', 'Warnings:', ...writer.warnings.map((w) => `  • ${w}`))
+    summaryLines.push('', 'Writer warnings:', ...writer.warnings.map((w) => `  • ${w}`))
   }
   const decision = await gate.requestApproval('fcp.import-fcpxml', {
     title: 'Import draft into Final Cut Pro',
