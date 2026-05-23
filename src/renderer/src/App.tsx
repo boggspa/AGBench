@@ -11417,11 +11417,12 @@ function App(): React.JSX.Element {
   const composerAgentAuraClass = showAgentAuraFx
     ? `fx-agent-aura fx-provider-${currentProvider} fx-status-${runFxStatus} fx-intensity-${advancedFxIntensity}`
     : ''
-  const providerSessionLabel = currentChat?.linkedProviderSessionId
-    ? `${currentProviderLabel} session linked`
-    : currentProvider === 'codex'
-      ? 'New Codex thread'
-      : `New ${currentProviderLabel} session`
+  // Phase K-followup — `providerSessionLabel` ("New Codex thread" /
+  // "{Provider} session linked") removed alongside its only consumer
+  // (the non-interactive pill in the composer top-toggles row). The
+  // session state is still visible via the sidebar tile + active
+  // chat tab. If a future surface needs it, recompute from
+  // `currentChat?.linkedProviderSessionId` + `currentProvider`.
   const currentCodexModelOption = codexModels.find(
     (model) => model.id === selectedComposerModelType
   )
@@ -12043,26 +12044,12 @@ function App(): React.JSX.Element {
   const providerShellClass = providerShellEnabled
     ? `provider-shell provider-shell-${interfaceStyle}`
     : 'provider-shell-default'
-  const providerShellCapabilityChips = providerShellEnabled
-    ? [
-        {
-          id: 'native-session',
-          label: currentProvider === 'gemini' ? 'AGBench bridge' : 'Native session'
-        },
-        { id: 'workspace-write', label: permissionModeLabel },
-        {
-          id: 'approval-policy',
-          label:
-            currentProvider === 'claude'
-              ? 'Provider approvals'
-              : currentProvider === 'gemini'
-                ? 'AGBench approvals'
-                : 'AGBench approvals'
-        },
-        { id: 'audit', label: 'AGBench audit' },
-        ...(usageSummary ? [{ id: 'usage', label: 'Usage metered' }] : [])
-      ]
-    : []
+  // Phase K-followup — `providerShellCapabilityChips` removed
+  // alongside its consumer (the `provider-shell-status-row` chips).
+  // The chips presented as buttons but never carried interaction.
+  // The information lives in: workspace-write mode → runtime profile
+  // picker; provider identity → theme tokens + sidebar tile;
+  // approvals → the approval-ledger panel; usage → welcome dashboard.
 
   return (
     <div className={`app-root ${fxBurstClass} ${appAgentAuraClass} ${providerShellClass}`}>
@@ -12432,19 +12419,20 @@ function App(): React.JSX.Element {
 
           <div className={`composer-area interface-${interfaceStyle}`} ref={composerAreaRef}>
             {shouldShowGhostCompanion && <GhostCompanion />}
-            {providerShellEnabled && (
-              <div
-                className={`provider-shell-status-row style-${interfaceStyle}`}
-                aria-label={`${currentProviderLabel} shell capabilities`}
-              >
-                <span className="provider-shell-status-provider">{currentProviderLabel}</span>
-                {providerShellCapabilityChips.map((chip) => (
-                  <span key={chip.id} className={`provider-shell-status-chip chip-${chip.id}`}>
-                    {chip.label}
-                  </span>
-                ))}
-              </div>
-            )}
+            {/*
+              Phase K-followup — Removed `provider-shell-status-row`.
+              The row presented Native-session / Workspace-write /
+              AGBench-approvals / AGBench-audit / Usage-metered as
+              pill-shaped chips, but none were interactive. The visual
+              language read like clickable buttons; in practice the
+              row was pure decoration that crowded the composer. The
+              still-useful pieces (workspace write mode, provider
+              identity, usage state) are surfaced elsewhere — in the
+              composer's runtime profile picker, in the sidebar's
+              chat-tile metadata, and in the welcome dashboard.
+              providerShellCapabilityChips computation kept for any
+              future use but the row no longer mounts in any shell.
+            */}
             {/*
                 Composer-unification (Phase J1): welcome-state satellite
                 slot for the cross-provider External Path + Worktree
@@ -12617,18 +12605,25 @@ function App(): React.JSX.Element {
                 / above-bar pills via WorkspaceAccessControls. Provider
                 identity is expressed through theme tokens only.
               */}
-              <div className="composer-top-toggles">
-                <span className="composer-picker-command persistent-session-toggle active">
-                  <LinkCircleSymbolIcon />
-                  <span className="composer-control-label-text">{providerSessionLabel}</span>
-                </span>
-                <span className="composer-picker-command persistent-session-toggle">
-                  <PermissionSymbolIcon />
-                  <span className="composer-control-label-text">{permissionModeLabel}</span>
-                </span>
-                {scheduleControls}
-                {runtimeProfileControl}
-              </div>
+              {/*
+                Phase K-followup — Removed the informational "New X
+                thread" + permission-mode chips from the top-toggles
+                row. They were styled identically to the actual
+                interactive controls (composer-picker-command) so the
+                row read as four clickable buttons when really only
+                two were actionable. The thread/session state is
+                already visible in the sidebar's chat tile + active
+                tab indicator; permission mode is set via the
+                runtime-profile picker that stays in this row.
+                Schedule + runtime-profile controls remain — those
+                are genuinely actionable.
+              */}
+              {(scheduleControls || runtimeProfileControl) && (
+                <div className="composer-top-toggles">
+                  {scheduleControls}
+                  {runtimeProfileControl}
+                </div>
+              )}
 
               <textarea
                 className="composer-textarea"
