@@ -12821,7 +12821,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* ============== CLAUDE STYLE ============== */
 [data-composer-style="claude"] .composer-surface {
   border-radius: 14px;
-  padding: 10px 12px 8px;
+  padding: 4px 12px 8px;
   background: color-mix(in srgb, #161616 94%, transparent);
   border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
@@ -12986,7 +12986,7 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: transparent;
   box-shadow: none;
   padding: 0 4px;
-  margin: 0 0 10px;
+  margin: 0 0 4px;
   gap: 10px;
 }
 [data-composer-style="claude"] .composer-above-bar::before {
@@ -14395,7 +14395,6 @@ input:disabled, select:disabled, textarea:disabled {
   border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
   padding: 18px 14px;
-  margin-bottom: 8px;
 }
 
 /* The footer chrome (.composer-control-footer + inline pickers) is the
