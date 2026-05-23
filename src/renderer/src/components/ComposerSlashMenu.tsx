@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   COMPOSER_SLASH_GROUP_ORDER,
   filterComposerSlashCommands,
@@ -161,7 +162,14 @@ export function ComposerSlashMenu({
   // by clicking on grouped entries without losing nav coherence.
   let flatIndex = -1
 
-  return (
+  // Portal into document.body so the popover escapes any transformed
+  // ancestor (notably `.welcome-mode .composer-area` which carries a
+  // `transform: translateY(-18%)` on the new-chat landing). Without
+  // the portal, that transform would trap `position: fixed`, causing
+  // the popover to anchor against the transformed container instead
+  // of the viewport — landing at the wrong vertical offset. Same
+  // escape pattern as `SidebarOverflowMenu`.
+  return createPortal(
     <div
       ref={popoverRef}
       className="composer-slash-menu"
@@ -217,6 +225,7 @@ export function ComposerSlashMenu({
           ))}
         </div>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }

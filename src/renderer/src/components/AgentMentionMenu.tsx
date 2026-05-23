@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ChatRecord, ChildAgentThread, ProviderId } from '../../../main/store/types'
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
 
@@ -143,7 +144,14 @@ export function AgentMentionMenu({
 
   if (!open || !position) return null
 
-  return (
+  // Portal into document.body so the popover escapes any transformed
+  // ancestor (notably `.welcome-mode .composer-area` which carries a
+  // `transform: translateY(-18%)` on the new-chat landing). Without
+  // the portal, that transform would trap `position: fixed`, causing
+  // the popover to anchor against the transformed container instead
+  // of the viewport — landing at the wrong vertical offset. Same
+  // escape pattern as `SidebarOverflowMenu` and `ComposerSlashMenu`.
+  return createPortal(
     <div
       ref={popoverRef}
       className="agent-mention-menu"
@@ -194,6 +202,7 @@ export function AgentMentionMenu({
           })}
         </ul>
       )}
-    </div>
+    </div>,
+    document.body
   )
 }
