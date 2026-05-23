@@ -27,6 +27,8 @@ export const AGENTBENCH_MCP_TOOLS = [
   'run_timeline',
   'raw_provider_events',
   'open_workspace_file',
+  'creative_app_status',
+  'creative_app_capabilities',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

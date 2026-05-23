@@ -126,6 +126,7 @@ export type ProviderCapabilityState =
 export type ProviderCapabilityWarningSeverity = 'info' | 'warning' | 'error'
 export type ProviderToolingCapabilityId =
   | Exclude<AgenticServiceId, 'subThreadDelegation'>
+  | 'creativeApps'
   | 'networkAccess'
 
 export interface ProviderCapabilityWarning {

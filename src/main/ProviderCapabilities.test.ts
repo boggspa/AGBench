@@ -59,6 +59,10 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.shellCommands.state).toBe('gated')
     expect(contract.tools.shellCommands.tools).toEqual(['run_shell_command'])
     expect(contract.tools.fileChanges.tools).toEqual(['write_file', 'replace'])
+    expect(contract.tools.creativeApps.tools).toEqual([
+      'creative_app_status',
+      'creative_app_capabilities'
+    ])
     expect(contract.mcp.tools).toContain('list_directory')
     expect(contract.approvals.inAppApprovals).toBe(true)
   })

@@ -23,6 +23,7 @@ const TOOLING_LABELS: Record<ProviderToolingCapabilityId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
   mcpTools: 'MCP and tool calls',
+  creativeApps: 'Creative app tools',
   networkAccess: 'Network access'
 }
 
@@ -131,6 +132,22 @@ function networkCapability(policy?: AgenticNetworkPolicy): ProviderToolingCapabi
       policy === 'deny'
         ? 'AGBench settings request network blocking where provider transport supports it.'
         : 'Network access is allowed by AGBench settings.'
+  }
+}
+
+function creativeAppsCapability(policy?: AgenticServicePolicy): ProviderToolingCapability {
+  return {
+    id: 'creativeApps',
+    label: TOOLING_LABELS.creativeApps,
+    state: serviceState(policy),
+    source: 'bridge',
+    enforcedByAgentBench: true,
+    enforcement: 'bridge',
+    policy,
+    requiresApproval: serviceRequiresApproval(policy),
+    tools: ['creative_app_status', 'creative_app_capabilities'],
+    details:
+      'AGBench exposes read-only creative app discovery now; future apply/control tools will route through the same approval model.'
   }
 }
 
@@ -472,6 +489,7 @@ export function buildProviderCapabilityContract({
   }
 
   const networkAccess = networkCapability(services.networkAccess)
+  const creativeApps = creativeAppsCapability(services.mcpTools)
   if (networkAccess.state === 'blocked') {
     warnings.push(
       warning(
@@ -506,6 +524,7 @@ export function buildProviderCapabilityContract({
       shellCommands,
       fileChanges,
       mcpTools,
+      creativeApps,
       networkAccess
     },
     approvals: approvalContract(provider, requestedMode, effectiveMode),

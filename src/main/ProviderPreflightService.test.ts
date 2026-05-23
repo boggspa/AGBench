@@ -40,6 +40,16 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         requiresApproval: true,
         tools: []
       },
+      creativeApps: {
+        id: 'creativeApps',
+        label: 'Creative app tools',
+        state: 'available',
+        source: 'bridge',
+        enforcedByAgentBench: true,
+        enforcement: 'bridge',
+        requiresApproval: true,
+        tools: ['creative_app_status', 'creative_app_capabilities']
+      },
       networkAccess: {
         id: 'networkAccess',
         label: 'Network access',

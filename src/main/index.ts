@@ -143,6 +143,13 @@ import {
 } from './ClaudeAgentbenchMcp'
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcpBridge'
 import { tryRunGeminiApi } from './GeminiApiProvider'
+import {
+  buildCreativeAppCapabilitySnapshot,
+  buildCreativeAppStatusSnapshot,
+  isCreativeAppId,
+  type CreativeAppId,
+  type CreativeAttachedWindowMeta
+} from './CreativeAppAdapters'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -10552,6 +10559,8 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'approval_status',
   'provider_auth_status',
   'browser_console',
+  'creative_app_status',
+  'creative_app_capabilities',
   // attached_window_status carries no pixel data and no window enumeration —
   // only the title/bundle the user already sees in the renderer pill.
   // Capture stays gated; status is a read of state the user already shared.
@@ -11645,6 +11654,42 @@ function executeAttachedWindowStatus(): McpToolExecutionResult {
   })
 }
 
+function currentCreativeAttachedWindowMeta(): CreativeAttachedWindowMeta | null {
+  if (!attachedWindowSnapshot) return null
+  return {
+    windowID: attachedWindowSnapshot.windowMeta.windowID,
+    title: attachedWindowSnapshot.windowMeta.title,
+    bundleID: attachedWindowSnapshot.windowMeta.bundleID,
+    applicationName: attachedWindowSnapshot.windowMeta.applicationName,
+    pid: attachedWindowSnapshot.windowMeta.pid
+  }
+}
+
+function creativeAppIdFromArgs(args: Record<string, any>): CreativeAppId | undefined {
+  const value = optionalString(args.appId || args.app || args.id)
+  if (!value) return undefined
+  if (!isCreativeAppId(value)) {
+    throw new Error('creative app id must be one of final-cut-pro, logic-pro, blender.')
+  }
+  return value
+}
+
+function executeCreativeAppStatus(args: Record<string, any>): unknown {
+  return buildCreativeAppStatusSnapshot({
+    appId: creativeAppIdFromArgs(args),
+    attachedWindow: currentCreativeAttachedWindowMeta(),
+    fileExists: fsSync.existsSync
+  })
+}
+
+function executeCreativeAppCapabilities(args: Record<string, any>): unknown {
+  return buildCreativeAppCapabilitySnapshot({
+    appId: creativeAppIdFromArgs(args),
+    attachedWindow: currentCreativeAttachedWindowMeta(),
+    fileExists: fsSync.existsSync
+  })
+}
+
 async function executeBrowserTool(
   toolName: AGBenchMcpToolName,
   args: Record<string, any>,
@@ -12252,6 +12297,10 @@ async function executeGeminiMcpTool(
       text = mcpJson(executeRunTimeline(args, context))
     } else if (toolName === 'raw_provider_events') {
       text = mcpJson(executeRawProviderEvents(args, context))
+    } else if (toolName === 'creative_app_status') {
+      text = mcpJson(executeCreativeAppStatus(args))
+    } else if (toolName === 'creative_app_capabilities') {
+      text = mcpJson(executeCreativeAppCapabilities(args))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13395,6 +13444,48 @@ function mcpToolDefinitions() {
         type: 'object',
         properties: { path: { type: 'string' }, reveal: { type: 'boolean' } },
         required: ['path']
+      }
+    },
+    {
+      name: 'creative_app_status',
+      description:
+        'Return the supported creative app adapters, install hints, attached-window match, transports, risk tiers, and limitations. Read-only discovery; does not enumerate windows beyond the user-attached window.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          appId: {
+            type: 'string',
+            enum: ['final-cut-pro', 'logic-pro', 'blender'],
+            description: 'Optional creative app id to filter.'
+          }
+        }
+      }
+    },
+    {
+      name: 'creative_app_capabilities',
+      description:
+        'Return detailed AGBench creative app adapter capabilities for Final Cut Pro, Logic Pro, and Blender, including safe transports, approval risk tiers, prompts, and known limitations.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          appId: {
+            type: 'string',
+            enum: ['final-cut-pro', 'logic-pro', 'blender'],
+            description: 'Optional creative app id to filter.'
+          }
+        }
       }
     },
     {
