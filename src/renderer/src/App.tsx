@@ -7331,10 +7331,25 @@ function App(): React.JSX.Element {
     const now = Date.now()
     for (const [chatId, liveEntry] of chatByIdRef.current.entries()) {
       let preserve = false
-      for (const ctx of activeRunsRef.current.values()) {
-        if (ctx.chatId === chatId) {
-          preserve = true
-          break
+      // Phase K-followup — H1 garbling fix. activeRunsRef.set() lives
+      // ~520 lines after the initial setChats() in runChat. A delta
+      // arriving in that window triggers this effect with no entry
+      // yet in activeRunsRef, so preserve=false → the live ref
+      // (carrying partial streaming content) gets clobbered by the
+      // React snapshot (which doesn't yet have the streaming content
+      // either). Consequence: tokens that arrived between the
+      // initial setChats and the activeRunsRef.set are lost.
+      // The early-set activeRunChatIdRef closes the gap — it's
+      // populated at line 8845, BEFORE the initial setChats call.
+      if (activeRunChatIdRef.current === chatId) {
+        preserve = true
+      }
+      if (!preserve) {
+        for (const ctx of activeRunsRef.current.values()) {
+          if (ctx.chatId === chatId) {
+            preserve = true
+            break
+          }
         }
       }
       if (!preserve) {
@@ -9083,7 +9098,28 @@ function App(): React.JSX.Element {
             // Handled manually before run
           } else if (event.type === 'assistant_message_delta') {
             if (isVisibleRunChat()) setIsThinking(false)
-            const last = updated.messages[updated.messages.length - 1]
+            // Phase K-followup — H2 garbling fix. Codex interleaves
+            // reasoning + tool-call events between content deltas. The
+            // naive `last = messages[length-1]` would see the tool
+            // message that just got appended and route the next content
+            // delta to the `else` branch, creating a NEW assistant
+            // bubble. Result: one logical assistant turn split across
+            // multiple bubbles with content fragments visually lost.
+            // Scan BACKWARD for the last assistant message, allowing
+            // tool messages to "pass through" without breaking the
+            // merge. Stop on user/system/error (a real conversation
+            // boundary that should end the merge).
+            let lastAssistantIdx = -1
+            for (let i = updated.messages.length - 1; i >= 0; i--) {
+              const candidate = updated.messages[i]
+              if (candidate.role === 'assistant') {
+                lastAssistantIdx = i
+                break
+              }
+              if (candidate.role === 'tool') continue
+              break
+            }
+            const last = lastAssistantIdx >= 0 ? updated.messages[lastAssistantIdx] : null
             // Phase K2 (b) — merge-with-separator. When Codex emits a new
             // `agentMessage` item within the same turn (different `itemId`
             // than the message we're streaming into), the deltas would
@@ -9110,13 +9146,18 @@ function App(): React.JSX.Element {
               const nextMetadata = incomingItemIdStr
                 ? { ...(last.metadata ?? {}), codexItemId: incomingItemIdStr }
                 : last.metadata
+              // Replace the assistant message in-place at its actual
+              // index (may not be `length - 1` when tool messages are
+              // interleaved). Tool messages between this assistant and
+              // the array end stay in place.
               updated.messages = [
-                ...updated.messages.slice(0, -1),
+                ...updated.messages.slice(0, lastAssistantIdx),
                 {
                   ...last,
                   content: last.content + separator + event.content,
                   metadata: nextMetadata
-                }
+                },
+                ...updated.messages.slice(lastAssistantIdx + 1)
               ]
             } else {
               const metadata = incomingItemIdStr ? { codexItemId: incomingItemIdStr } : undefined
