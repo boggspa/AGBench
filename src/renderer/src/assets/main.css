@@ -14343,9 +14343,13 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #ffffff 10%, transparent) !important;
 }
 
-[data-interface-style="claude"] .composer-control-footer {
-  background: #111111 !important;
-}
+/* The footer chrome (.composer-control-footer + inline pickers) is the
+ * "satellite chip row" — it must stay transparent so the chips read as
+ * floating on the page background. The composer-style="claude" block
+ * already forces transparent !important on this selector, but since
+ * data-interface-style and data-composer-style always carry the same
+ * value (see useAppearance.ts), any background declared here would win
+ * by source order and undo that intent. Leave the footer alone. */
 
 [data-interface-style="claude"] .composer-claude-footer {
   min-height: 24px;
