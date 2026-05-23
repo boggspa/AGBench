@@ -5,8 +5,11 @@ import {
   buildCreativeProjectSnapshot,
   buildFcpxmlTimelineDiffPlan,
   buildFcpxmlTimelineIr,
+  canonicalizeFcpxmlTime,
+  getSequenceCanonicalDenominator,
   isCreativeAppId,
   listCreativeAppBundleIds,
+  parseFcpxmlTime,
   serializeFcpxmlTimelineIr,
   validateFcpxml,
   type FcpxmlTimelineIr
@@ -353,13 +356,19 @@ describe('CreativeAppAdapters', () => {
         ir: 'fcpxml-timeline-ir-v1',
         version: '1.13',
         resources: {
+          // Phase K8 — use a 30fps (1/30s frame duration) fixture
+          // so the round-trip test stays focused on structural
+          // fidelity. K8 canonicalization scales 60s → 1800/30s at
+          // 30fps, which the test asserts below. (At 29.97 NDF, 60s
+          // is NOT actually frame-aligned — that's a real-world
+          // edge case the frame-boundary preflight catches.)
           formats: [
             {
               id: 'r1',
-              name: 'FFVideoFormat1080p2997',
+              name: 'FFVideoFormat1080p30',
               width: '1920',
               height: '1080',
-              frameDuration: '1001/30000s'
+              frameDuration: '1/30s'
             }
           ],
           assets: [
@@ -447,7 +456,7 @@ describe('CreativeAppAdapters', () => {
       expect(reparsed.resources.assets.map((asset) => asset.id)).toEqual(['r2'])
       expect(reparsed.resources.assets[0].name).toBe('B-roll')
       expect(reparsed.resources.assets[0].src).toBe('file:///Users/dev/Movies/broll.mov')
-      expect(reparsed.resources.formats[0].frameDuration).toBe('1001/30000s')
+      expect(reparsed.resources.formats[0].frameDuration).toBe('1/30s')
       expect(reparsed.resources.effects[0].name).toBe('Basic Title')
       expect(reparsed.projects).toHaveLength(1)
       const project = reparsed.projects[0]
@@ -457,13 +466,17 @@ describe('CreativeAppAdapters', () => {
       expect(project.sequence?.spine[0].type).toBe('asset-clip')
       expect(project.sequence?.spine[0].name).toBe('Opening shot')
       expect(project.sequence?.spine[0].ref).toBe('r2')
-      expect(project.sequence?.spine[0].duration).toBe('60s')
+      // K8 — writer canonicalized 60s → 1800/30s against the sequence's
+      // format frame duration (1/30s). Mathematically identical, but
+      // FCP doesn't simplify rationals before checking frame alignment,
+      // so the explicit shared denominator silences the warning.
+      expect(project.sequence?.spine[0].duration).toBe('1800/30s')
       expect(project.sequence?.spine[0].markers).toHaveLength(1)
       expect(project.sequence?.spine[0].markers[0].value).toBe('beat drop')
       expect(project.sequence?.spine[0].captions).toHaveLength(1)
       expect(project.sequence?.spine[0].captions[0].value).toBe('Hello world')
       expect(project.sequence?.spine[1].type).toBe('gap')
-      expect(project.sequence?.spine[1].duration).toBe('2s')
+      expect(project.sequence?.spine[1].duration).toBe('60/30s')
       // Sequence-level markers in the parser use recursive `descendants()`
       // so the count is "all marker-like elements in the subtree" — the
       // chapter-marker we put at sequence level plus the marker+caption
@@ -647,6 +660,322 @@ describe('CreativeAppAdapters', () => {
       })
       // The fallback name lives between the <event name="..."> attribute quotes.
       expect(writer.text).toMatch(/<event name="AGBench Drafts">/)
+    })
+  })
+
+  // Phase K8 — time canonicalization (the Codex 5/4s warning fix).
+  describe('parseFcpxmlTime / canonicalizeFcpxmlTime (K8)', () => {
+    it('parses whole-second values', () => {
+      expect(parseFcpxmlTime('5s')).toEqual({ num: 5, den: 1 })
+      expect(parseFcpxmlTime('0s')).toEqual({ num: 0, den: 1 })
+    })
+    it('parses rational time values', () => {
+      expect(parseFcpxmlTime('5/4s')).toEqual({ num: 5, den: 4 })
+      expect(parseFcpxmlTime('1001/30000s')).toEqual({ num: 1001, den: 30000 })
+    })
+    it('returns null for unparseable input', () => {
+      expect(parseFcpxmlTime(undefined)).toBeNull()
+      expect(parseFcpxmlTime('')).toBeNull()
+      expect(parseFcpxmlTime('not a time')).toBeNull()
+      expect(parseFcpxmlTime('5/0s')).toBeNull() // zero denominator
+    })
+
+    it('canonicalizes simple times to a shared denominator', () => {
+      // 5/4s scaled to denom 2400 → factor 600 → 3000/2400s.
+      // This is the literal fix for the warnings we saw in Codex's
+      // 4-segment split: 5/4s rejected, 3000/2400s accepted.
+      expect(canonicalizeFcpxmlTime('5/4s', 2400)).toBe('3000/2400s')
+      expect(canonicalizeFcpxmlTime('1s', 30)).toBe('30/30s')
+      // 0s stays compact even after canonicalization.
+      expect(canonicalizeFcpxmlTime('0s', 2400)).toBe('0s')
+    })
+    it('passes through when the target denom does not evenly divide', () => {
+      // 1/7s can't be expressed cleanly in 2400ths (2400/7 ≈ 342.85),
+      // so writer leaves it alone for the frame-boundary check to flag.
+      expect(canonicalizeFcpxmlTime('1/7s', 2400)).toBe('1/7s')
+    })
+    it('passes through invalid inputs', () => {
+      expect(canonicalizeFcpxmlTime(undefined, 2400)).toBe('')
+      expect(canonicalizeFcpxmlTime('garbage', 2400)).toBe('garbage')
+    })
+
+    it('getSequenceCanonicalDenominator reads frameDuration from the referenced format', () => {
+      expect(
+        getSequenceCanonicalDenominator('r1', [{ id: 'r1', frameDuration: '100/2400s' }])
+      ).toBe(2400)
+      expect(
+        getSequenceCanonicalDenominator('r1', [{ id: 'r1', frameDuration: '1/30s' }])
+      ).toBe(30)
+      // Unknown ref or missing frameDuration → null (writer skips canon).
+      expect(getSequenceCanonicalDenominator('missing', [])).toBeNull()
+      expect(getSequenceCanonicalDenominator('r1', [{ id: 'r1' }])).toBeNull()
+    })
+
+    it('writer canonicalizes spine item times against the sequence format', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', name: '24p', frameDuration: '100/2400s' }],
+            assets: [{ id: 'r2', name: 'clip', src: 'file:///x.mov' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                duration: '5s',
+                format: 'r1',
+                tcStart: '0s',
+                spine: [
+                  // The actual values from Codex's test that tripped
+                  // the warnings — 5/4s segments at 24fps.
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    name: 'A',
+                    ref: 'r2',
+                    offset: '0s',
+                    start: '0s',
+                    duration: '5/4s',
+                    markers: [],
+                    captions: []
+                  },
+                  {
+                    index: 1,
+                    type: 'asset-clip',
+                    name: 'B',
+                    ref: 'r2',
+                    offset: '5/4s',
+                    start: '5/4s',
+                    duration: '5/4s',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      // Both clips should emit with the format's 2400 denominator.
+      expect(writer.text).toContain('duration="3000/2400s"')
+      expect(writer.text).toContain('offset="3000/2400s"')
+      // Whole-second sequence duration also canonicalizes.
+      expect(writer.text).toContain('duration="12000/2400s"')
+      // No remaining /4s simplified forms.
+      expect(writer.text).not.toContain('5/4s')
+    })
+  })
+
+  // Phase K8 — title rich content round-trip.
+  describe('serializeFcpxmlTimelineIr title text/style (K8)', () => {
+    it('emits <text>, <text-style-def>, and <param> children when the title item carries them', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', name: '24p', frameDuration: '1/24s' }],
+            effects: [
+              { id: 'r3', name: 'Basic Title', uid: '.../Basic Title.localized/Basic Title.moti' }
+            ]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                duration: '24/24s',
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'Hello there',
+                    ref: 'r3',
+                    offset: '0s',
+                    duration: '24/24s',
+                    lane: '1',
+                    markers: [],
+                    captions: [],
+                    textRuns: [{ text: 'Hello there General Kenobi', styleRef: 'ts1' }],
+                    textStyleDefs: [
+                      {
+                        id: 'ts1',
+                        font: 'Comic Sans MS',
+                        fontSize: '28',
+                        fontFace: 'Regular',
+                        alignment: 'center'
+                      }
+                    ],
+                    titleParams: [{ name: 'Position', value: '0 0' }]
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('<text>')
+      expect(writer.text).toContain('<text-style ref="ts1">Hello there General Kenobi</text-style>')
+      expect(writer.text).toContain('<text-style-def id="ts1">')
+      expect(writer.text).toContain('font="Comic Sans MS"')
+      expect(writer.text).toContain('fontSize="28"')
+      expect(writer.text).toContain('alignment="center"')
+      expect(writer.text).toContain('<param name="Position" value="0 0"/>')
+    })
+
+    it('round-trips title style defs + params back through the IR parser', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            effects: [{ id: 'r3', name: 'Basic Title' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                duration: '24/24s',
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'Hi',
+                    ref: 'r3',
+                    offset: '0s',
+                    duration: '24/24s',
+                    markers: [],
+                    captions: [],
+                    textRuns: [{ text: 'Hi', styleRef: 'ts1' }],
+                    textStyleDefs: [
+                      { id: 'ts1', font: 'Helvetica', fontSize: '72', alignment: 'center' }
+                    ],
+                    titleParams: [{ name: 'Position', value: '0 -200' }]
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      const reparsed = buildFcpxmlTimelineIr({ path: 'title.fcpxml', text: writer.text })
+      const titleItem = reparsed.projects[0].sequence?.spine[0]
+      expect(titleItem?.type).toBe('title')
+      expect(titleItem?.textStyleDefs).toBeDefined()
+      expect(titleItem?.textStyleDefs?.[0].id).toBe('ts1')
+      expect(titleItem?.textStyleDefs?.[0].font).toBe('Helvetica')
+      expect(titleItem?.textStyleDefs?.[0].fontSize).toBe('72')
+      expect(titleItem?.titleParams?.[0]).toEqual({ name: 'Position', key: undefined, value: '0 -200' })
+    })
+
+    it('non-title items ignore the title-specific fields even when present', () => {
+      // The IR's typed shape allows textRuns on any item, but the
+      // writer only emits the children when type === 'title'. Lets
+      // agents reuse generic IR builders without accidentally
+      // sprinkling text/style children into asset-clip items.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            assets: [{ id: 'r2', src: 'file:///x.mov' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    ref: 'r2',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    // Should be ignored on emit:
+                    textRuns: [{ text: 'should not appear' }],
+                    textStyleDefs: [{ id: 'ts1', font: 'Arial' }]
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).not.toContain('should not appear')
+      expect(writer.text).not.toContain('text-style-def')
+    })
+  })
+
+  // Phase K8 — frame-boundary preflight in validateFcpxml.
+  describe('validateFcpxml frame-boundary preflight (K8)', () => {
+    it('flags spine items that are not on a frame boundary at the sequence rate', () => {
+      // 29.97 NDF (1001/30000s/frame). A 5/4s = 1.25s clip is
+      // (5/4) / (1001/30000) = (5 × 30000) / (4 × 1001) ≈ 37.46 frames,
+      // NOT whole. Validator should surface a warning with the path.
+      const text = `<?xml version="1.0"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.13">
+  <resources>
+    <format id="r1" frameDuration="1001/30000s" width="1920" height="1080"/>
+    <asset id="r2"><media-rep src="file:///x.mov"/></asset>
+  </resources>
+  <library>
+    <event name="e">
+      <project name="p">
+        <sequence format="r1" duration="5/4s">
+          <spine>
+            <asset-clip name="A" ref="r2" offset="0s" duration="5/4s"/>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`
+      const result = validateFcpxml({ path: 'x.fcpxml', text })
+      const frameIssues = result.issues.filter((i) => i.code === 'frame-boundary')
+      expect(frameIssues.length).toBeGreaterThan(0)
+      expect(frameIssues.some((i) => /duration="5\/4s"/.test(i.message))).toBe(true)
+    })
+
+    it('does not flag whole-frame values at the sequence rate', () => {
+      // 24fps (1/24s/frame). 1s = 24 frames exactly.
+      const text = `<?xml version="1.0"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.13">
+  <resources>
+    <format id="r1" frameDuration="1/24s" width="1920" height="1080"/>
+    <asset id="r2"><media-rep src="file:///x.mov"/></asset>
+  </resources>
+  <library>
+    <event name="e">
+      <project name="p">
+        <sequence format="r1" duration="1s">
+          <spine>
+            <asset-clip name="A" ref="r2" offset="0s" duration="1s"/>
+          </spine>
+        </sequence>
+      </project>
+    </event>
+  </library>
+</fcpxml>`
+      const result = validateFcpxml({ path: 'x.fcpxml', text })
+      const frameIssues = result.issues.filter((i) => i.code === 'frame-boundary')
+      expect(frameIssues).toEqual([])
+    })
+
+    it('skips frame-boundary check when sequence has no format ref', () => {
+      const text = `<?xml version="1.0"?>
+<!DOCTYPE fcpxml>
+<fcpxml version="1.13">
+  <library><event name="e"><project name="p">
+    <sequence duration="1s"><spine/></sequence>
+  </project></event></library>
+</fcpxml>`
+      const result = validateFcpxml({ path: 'x.fcpxml', text })
+      expect(result.issues.filter((i) => i.code === 'frame-boundary')).toEqual([])
     })
   })
 })
