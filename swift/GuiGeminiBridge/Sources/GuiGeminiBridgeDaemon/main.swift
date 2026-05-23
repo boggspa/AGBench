@@ -1032,6 +1032,34 @@ dispatcher.register("creative.runningApplications") { params in
     return CreativeAppProbe.runningBundleIds(bundleIds)
 }
 
+// MARK: - Creative-app file dispatch (Phase K3)
+//
+// `creative.openWithApp` — hand a file to a specific app via
+// `NSWorkspace.shared.open(_:withApplicationAt:configuration:)`. The
+// renderer is responsible for gating: scope the path, validate the
+// bundle id against the declared creative-app set, and obtain user
+// approval (Phase K3 approval modal). The Swift side just executes
+// the transport.
+//
+// Params: `{ filePath: string, bundleId: string }`.
+// Returns: `{ ok, bundleId, appURL, filePath, pid }`.
+dispatcher.register("creative.openWithApp") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let filePath = dict["filePath"] as? String, !filePath.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.openWithApp expects { filePath: string }"
+        )
+    }
+    guard let bundleId = dict["bundleId"] as? String, !bundleId.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.openWithApp expects { bundleId: string }"
+        )
+    }
+    return try CreativeWorkspaceOpener.openWithApp(filePath: filePath, bundleId: bundleId)
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same
