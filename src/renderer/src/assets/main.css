@@ -4137,10 +4137,29 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
+/* Welcome L9 — hero row: two big chips (Favorite model + 24H Tkns).
+ * Sits directly above the dense stat row so the user's eye lands on
+ * the most-summarised data first. */
+.welcome-usage-stat-hero {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .welcome-usage-stat-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 5px;
+}
+
+/* Welcome L9 — dense bottom row holds 7 supporting stats. Switch to
+ * 7 columns when the viewport has room, wrap below `min-content`.
+ * `auto-fit` would also work but locks all chips to the widest one;
+ * an explicit 7-up keeps them looking like a row, not a wrap pile. */
+.welcome-usage-stat-grid--dense {
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .welcome-usage-stat {
@@ -4158,6 +4177,41 @@ button.sidebar-item {
   flex-direction: column;
   justify-content: center;
   min-width: 0;
+}
+
+/* Welcome L9 — hero chip styling: bigger headline, brighter rail. */
+.welcome-usage-stat--hero {
+  min-height: 70px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--text-primary) 18%, transparent), color-mix(in srgb, var(--accent) 12%, transparent)),
+    color-mix(in srgb, var(--panel-bg) 22%, transparent);
+  border-color: color-mix(in srgb, var(--panel-border) 52%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 22%, transparent),
+    0 12px 26px color-mix(in srgb, #000000 14%, transparent);
+}
+.welcome-usage-stat--hero strong {
+  margin-top: 4px;
+  font-size: calc(var(--font-size-lg) + 1px);
+  font-weight: 650;
+}
+
+/* Welcome L9 — dense chip styling: tighter, smaller text so the row
+ * of 7 fits cleanly under the hero row. */
+.welcome-usage-stat--dense {
+  min-height: 44px;
+  padding: 5px 7px;
+}
+.welcome-usage-stat--dense span {
+  font-size: calc(var(--font-size-xs) - 1px);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.welcome-usage-stat--dense strong {
+  margin-top: 2px;
+  font-size: calc(var(--font-size-md) - 2px);
 }
 
 .welcome-usage-stat span {

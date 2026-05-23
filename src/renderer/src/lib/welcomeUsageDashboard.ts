@@ -63,6 +63,13 @@ export interface WelcomeUsageDashboardData {
    * the empty state.
    */
   lifetimeHasActivity: boolean
+  /**
+   * Tokens consumed in the last 24 hours, regardless of the range the
+   * rest of the dashboard is computed against. Surfaced as the "24H
+   * Tkns" hero chip on the Overview tab and matches the sidebar
+   * UsageHeatmap's `last24h` total so the two surfaces agree.
+   */
+  tokens24h: number
   sessions: number
   messages: number
   totalTokens: number
@@ -279,6 +286,11 @@ export const buildWelcomeUsageDashboardData = (
   const hourlyTotals = new Array(24).fill(0) as number[]
   const dailyTotals = new Map<string, number>()
   const modelMap = new Map<string, WelcomeUsageModelDatum>()
+  // L9 — running 24h subtotal. Computed against `now` directly, not
+  // the dashboard's selected cutoff, so the hero chip stays meaningful
+  // even when the user views a wider window.
+  const cutoff24h = now - 24 * 60 * 60 * 1000
+  let tokens24h = 0
   /**
    * Hourly buckets keyed by the local-time hour start (ms epoch). We bucket
    * usage records here so the dense 30×24 welcome heatmap can render
@@ -316,6 +328,7 @@ export const buildWelcomeUsageDashboardData = (
     providerIds.add(provider)
     hourlyTotals[hour] += totalTokens || 1
     dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
+    if (record.timestamp >= cutoff24h) tokens24h += totalTokens
 
     const hourStart = startOfLocalHour(record.timestamp)
     const bucket = hourBuckets.get(hourStart) || {
@@ -508,6 +521,7 @@ export const buildWelcomeUsageDashboardData = (
   return {
     hasActivity,
     lifetimeHasActivity,
+    tokens24h,
     sessions: sessionIds.size,
     messages: messageEvents.length || runRecords.length * 2,
     totalTokens,

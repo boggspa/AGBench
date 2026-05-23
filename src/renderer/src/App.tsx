@@ -1691,18 +1691,28 @@ function WelcomeUsageDashboard({
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
 }) {
-  // The per-day chart's top-4 model slice was replaced in L7 by the
-  // per-model meters, which show every model with non-zero in-window
-  // tokens (not just the top 4). No `topModels` indirection needed.
-  const statItems = [
-    { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
-    { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
-    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) },
-    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) },
+  // Welcome L9 — Overview chip rework. Top row hosts two hero chips
+  // (Favorite model + 24H Tkns); bottom row carries the seven denser
+  // stat pills. Hero stats lead with what the user looks at first;
+  // dense pills carry the supporting numbers.
+  const heroStatItems = [
+    {
+      label: 'Favorite model',
+      value: data.favoriteModel,
+      // Long model identifiers (e.g. `gemini-3.1-flash-lite-preview`)
+      // would otherwise wrap awkwardly inside the hero chip.
+      title: data.favoriteModel
+    },
+    { label: '24H Tkns', value: formatCompactUsageNumber(data.tokens24h) }
+  ]
+  const denseStatItems = [
     { label: 'Current streak', value: `${data.currentStreak || 0}d` },
     { label: 'Longest streak', value: `${data.longestStreak || 0}d` },
     { label: 'Peak hour', value: data.peakHour },
-    { label: 'Favorite model', value: data.favoriteModel }
+    { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
+    { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
+    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) },
+    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) }
   ]
 
   return (
@@ -1736,9 +1746,21 @@ function WelcomeUsageDashboard({
         </div>
       ) : tab === 'overview' ? (
         <>
-          <div className="welcome-usage-stat-grid">
-            {statItems.map((item) => (
-              <div key={item.label} className="welcome-usage-stat">
+          <div className="welcome-usage-stat-hero">
+            {heroStatItems.map((item) => (
+              <div
+                key={item.label}
+                className="welcome-usage-stat welcome-usage-stat--hero"
+                title={item.title}
+              >
+                <span>{item.label}</span>
+                <strong>{item.value}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="welcome-usage-stat-grid welcome-usage-stat-grid--dense">
+            {denseStatItems.map((item) => (
+              <div key={item.label} className="welcome-usage-stat welcome-usage-stat--dense">
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
               </div>

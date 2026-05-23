@@ -445,6 +445,61 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
   })
 })
 
+describe('buildWelcomeUsageDashboardData tokens24h (Welcome L9 hero chip)', () => {
+  const NOW = new Date(2026, 4, 22, 12, 0).getTime()
+
+  it('sums tokens only for records within the trailing 24h window', () => {
+    const records: UsageRecord[] = [
+      // Within window: 2h ago.
+      baseRecord({
+        id: 'recent',
+        timestamp: NOW - 2 * 60 * 60_000,
+        provider: 'codex',
+        totalTokens: 1_000
+      }),
+      // Outside window: 25h ago.
+      baseRecord({
+        id: 'stale',
+        timestamp: NOW - 25 * 60 * 60_000,
+        provider: 'codex',
+        totalTokens: 9_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.tokens24h).toBe(1_000)
+  })
+
+  it('is range-independent: same value regardless of dashboard cutoff', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60 * 60_000, // 1h ago
+        provider: 'gemini',
+        totalTokens: 500
+      })
+    ]
+    const day = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    const week = buildWelcomeUsageDashboardData(records, [], '7d', NOW)
+    const all = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    expect(day.tokens24h).toBe(500)
+    expect(week.tokens24h).toBe(500)
+    expect(all.tokens24h).toBe(500)
+  })
+
+  it('is zero when no records fall inside the trailing 24h window', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old',
+        timestamp: NOW - 48 * 60 * 60_000,
+        provider: 'claude',
+        totalTokens: 4_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.tokens24h).toBe(0)
+  })
+})
+
 describe('mixProviderColors', () => {
   const palette = {
     gemini: '#2563EB',
