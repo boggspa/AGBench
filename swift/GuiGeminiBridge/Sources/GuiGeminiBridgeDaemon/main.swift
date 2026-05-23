@@ -1081,6 +1081,31 @@ dispatcher.register("creative.runAppleScript") { params in
     return try CreativeAppleScriptRunner.runScript(source: source, timeoutMs: timeoutMs)
 }
 
+// `creative.runBlenderPython` — execute a Python script inside Blender's
+// `--background --python` mode via Process(). Phase K5. The script runs
+// in a per-invocation sandbox tempdir set as Blender's cwd. The Swift
+// side does NOT gate; the renderer-side `creative_blender_python` MCP
+// tool handles class approval before dispatch.
+//
+// Params: `{ pythonSource: string, inputBlendPath?: string, timeoutMs?: number }`.
+// Returns: `{ ok, exitCode, stdout, stderr, tempDir, durationMs }`.
+dispatcher.register("creative.runBlenderPython") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let pythonSource = dict["pythonSource"] as? String, !pythonSource.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.runBlenderPython expects { pythonSource: string }"
+        )
+    }
+    let inputBlendPath = dict["inputBlendPath"] as? String
+    let timeoutMs = (dict["timeoutMs"] as? Int) ?? 30_000
+    return try CreativeBlenderPythonRunner.runScript(
+        pythonSource: pythonSource,
+        inputBlendPath: inputBlendPath,
+        timeoutMs: timeoutMs
+    )
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same

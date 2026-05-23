@@ -40,6 +40,10 @@ export const AGENTBENCH_MCP_TOOLS = [
   // Logic, with session-class approval cache. Source is constructed
   // from a curated library; raw-source path exists but never caches.
   'creative_applescript_dispatch',
+  // Phase K5 — run a Blender Python script via subprocess Blender
+  // --background --python in a per-invocation sandbox tempdir. Same
+  // class-cache pattern as K4.
+  'creative_blender_python',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

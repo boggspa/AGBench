@@ -163,6 +163,11 @@ import {
   findAppleScriptClass,
   formatAppleScriptClassName
 } from './CreativeAppleScriptClasses'
+import {
+  BLENDER_CLASSES,
+  findBlenderClass,
+  formatBlenderClassName
+} from './CreativeBlenderClasses'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -12062,6 +12067,104 @@ async function executeCreativeAppleScriptDispatch(
   }
 }
 
+/**
+ * Phase K5 — Blender Python dispatch with session-class approval cache.
+ * Same shape as K4 AppleScript dispatcher: named class OR raw script.
+ */
+async function executeCreativeBlenderPython(args: Record<string, any>): Promise<unknown> {
+  const gate = creativeApprovalGateRef
+  const daemon = bridgeDaemonRef
+  if (!gate) {
+    throw new Error('Creative-action approval gate is not yet wired up (main process not ready).')
+  }
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; creative_blender_python cannot dispatch.')
+  }
+  let pythonSource: string
+  let inputBlendPath: string | undefined
+  let className: string
+  let modalDetails: {
+    title: string
+    description: string
+    targetBundleId?: string
+    payloadPreview: string
+  }
+  if (typeof args.className === 'string' && args.className.length > 0) {
+    const entry = findBlenderClass(args.className)
+    if (!entry) {
+      throw new Error(
+        `Unknown Blender class "${args.className}". Allowed: ${BLENDER_CLASSES.map((c) => c.id).join(', ')}`
+      )
+    }
+    const params: Record<string, string> =
+      args.params && typeof args.params === 'object' ? (args.params as Record<string, string>) : {}
+    for (const spec of entry.params) {
+      const raw = params[spec.name]
+      if (raw === undefined || raw === '') {
+        throw new Error(`Blender class ${entry.id} requires param "${spec.name}"`)
+      }
+      const validationError = spec.validate?.(raw)
+      if (validationError) {
+        throw new Error(`Invalid ${spec.name} for ${entry.id}: ${validationError}`)
+      }
+    }
+    pythonSource = entry.build(params)
+    inputBlendPath = entry.resolveInputBlendPath?.(params)
+    className = formatBlenderClassName(entry.id)
+    modalDetails = {
+      title: entry.label,
+      description: entry.description,
+      targetBundleId: entry.targetBundleId,
+      payloadPreview: inputBlendPath
+        ? `# Blender input: ${inputBlendPath}\n${pythonSource}`
+        : pythonSource
+    }
+  } else if (typeof args.pythonSource === 'string' && args.pythonSource.length > 0) {
+    pythonSource = args.pythonSource
+    inputBlendPath = typeof args.inputBlendPath === 'string' ? args.inputBlendPath : undefined
+    className = formatBlenderClassName('run-script')
+    modalDetails = {
+      title: 'Run raw Blender Python',
+      description:
+        'AGBench will execute the Python source below inside `Blender --background --python` in a sandbox tempdir. Raw scripts are NEVER cached on approval — every invocation prompts.',
+      targetBundleId: 'org.blenderfoundation.blender',
+      payloadPreview: inputBlendPath
+        ? `# Blender input: ${inputBlendPath}\n${pythonSource}`
+        : pythonSource
+    }
+  } else {
+    throw new Error(
+      'creative_blender_python requires either { className, params? } or { pythonSource }'
+    )
+  }
+  const decision = await gate.requestApproval(className, modalDetails)
+  if (!decision.approved) {
+    return {
+      ok: false,
+      refused: true,
+      reason: decision.reason,
+      className,
+      note: 'User did not approve the Blender Python dispatch.'
+    }
+  }
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'creative.runBlenderPython',
+    {
+      pythonSource,
+      inputBlendPath,
+      timeoutMs: 30_000
+    },
+    { timeoutMs: 35_000 }
+  )
+  return {
+    ok: true,
+    dispatched: true,
+    className,
+    rememberedForSession: decision.rememberForSession,
+    daemonResult: dispatchResult
+  }
+}
+
 async function executeCreativeTimelineDiff(
   args: Record<string, any>,
   context: GeminiToolContext
@@ -12732,6 +12835,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeTimelineImport(args, context))
     } else if (toolName === 'creative_applescript_dispatch') {
       text = mcpJson(await executeCreativeAppleScriptDispatch(args))
+    } else if (toolName === 'creative_blender_python') {
+      text = mcpJson(await executeCreativeBlenderPython(args))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -14032,6 +14137,39 @@ function mcpToolDefinitions() {
           }
         },
         required: ['ir']
+      }
+    },
+    {
+      name: 'creative_blender_python',
+      description:
+        'Run a Python script inside `Blender --background --python` in a per-invocation sandbox tempdir. Two modes: { className, params } picks a curated class (render-still, import-obj, export-gltf); { pythonSource, inputBlendPath? } runs raw Python. REQUIRES USER APPROVAL — modal shows the Python source. Named classes are cacheable for session; raw always prompts. Default timeout 30s.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          className: {
+            type: 'string',
+            description: 'Optional named class id (render-still, import-obj, export-gltf).'
+          },
+          params: {
+            type: 'object',
+            description: 'Param map for the named class.'
+          },
+          pythonSource: {
+            type: 'string',
+            description: 'Raw Python source. Mutually exclusive with className.'
+          },
+          inputBlendPath: {
+            type: 'string',
+            description:
+              'Optional absolute path to a .blend file Blender should open before running the script.'
+          }
+        }
       }
     },
     {
