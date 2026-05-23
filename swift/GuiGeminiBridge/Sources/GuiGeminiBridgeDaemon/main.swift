@@ -1123,6 +1123,46 @@ dispatcher.register("creative.dispatchMIDI") { params in
     return try CreativeMIDITransport.dispatchEvent(eventType: eventType, params: dict)
 }
 
+// MARK: - Phase L — Editor / IDE transports
+//
+// `editor.openAtPosition` — shell out to an editor's CLI shim with a
+// pre-built positional arg list. The TS-side `EditorAdapters` knows
+// the per-editor positional syntax; Swift just resolves the binary on
+// PATH and runs it.
+//
+// Params: `{ cliCommand: string, args: [string], timeoutMs?: number }`.
+// Returns: `{ ok, exitCode, cliCommand, resolvedPath, durationMs }`.
+dispatcher.register("editor.openAtPosition") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let cliCommand = dict["cliCommand"] as? String, !cliCommand.isEmpty else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "editor.openAtPosition expects { cliCommand: string }"
+        )
+    }
+    let args = (dict["args"] as? [String]) ?? []
+    let timeoutMs = (dict["timeoutMs"] as? Int) ?? 5_000
+    return try EditorPositionalOpener.openAtPosition(
+        cliCommand: cliCommand,
+        args: args,
+        timeoutMs: timeoutMs
+    )
+}
+
+// `workspace.revealInFinder` — open Finder with a specific file
+// selected. Trivial wrapper around NSWorkspace.shared.selectFile.
+// Params: `{ filePath: string }`.
+dispatcher.register("workspace.revealInFinder") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let filePath = dict["filePath"] as? String else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "workspace.revealInFinder expects { filePath: string }"
+        )
+    }
+    return try FinderReveal.reveal(filePath: filePath)
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same

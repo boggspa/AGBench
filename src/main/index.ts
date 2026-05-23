@@ -168,6 +168,15 @@ import {
   findBlenderClass,
   formatBlenderClassName
 } from './CreativeBlenderClasses'
+import {
+  buildEditorPositionalArgs,
+  findEditorById,
+  isEditorId,
+  listEditorAdapters,
+  listEditorBundleIds,
+  type EditorAdapter,
+  type EditorId
+} from './EditorAdapters'
 
 let mainWindow: BrowserWindow | null = null
 let geminiProcess: ChildProcess | null = null
@@ -10596,7 +10605,17 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   // attached_window_status carries no pixel data and no window enumeration —
   // only the title/bundle the user already sees in the renderer pill.
   // Capture stays gated; status is a read of state the user already shared.
-  'attached_window_status'
+  'attached_window_status',
+  // Phase L — Editor / IDE transport tools. Opening a file in the
+  // user's editor of choice is a focus-change, not a state mutation.
+  // No destructive surface beyond the agent's choice of editor (which
+  // we constrain via the EditorAdapters bundle allowlist).
+  'open_in_ide',
+  'open_in_ide_at_position',
+  'reveal_in_finder',
+  'ide_app_status',
+  'ide_app_capabilities',
+  'list_running_ides'
 ])
 
 function mcpJson(value: unknown): string {
@@ -11713,6 +11732,17 @@ const CREATIVE_RUNNING_PROBE_TTL_MS = 3_000
 let creativeRunningProbeCache: { fetchedAt: number; running: Map<string, boolean> } | null = null
 
 async function creativeAppRunningHint(): Promise<(bundleId: string) => boolean> {
+  return bundleIdRunningProbe()
+}
+
+/**
+ * Phase L — unified running-app probe used by both the creative-app
+ * status tools (K1) and the editor / IDE status tools (L5). Same
+ * cache, same daemon RPC. The Swift transport is bundle-id agnostic;
+ * we just hand it the merged list once per cache TTL and let both
+ * callers query the resulting predicate.
+ */
+async function bundleIdRunningProbe(): Promise<(bundleId: string) => boolean> {
   const daemon = bridgeDaemonRef
   if (!daemon) return () => false
   const now = Date.now()
@@ -11723,7 +11753,9 @@ async function creativeAppRunningHint(): Promise<(bundleId: string) => boolean> 
     const cached = creativeRunningProbeCache.running
     return (bundleId) => cached.get(bundleId) === true
   }
-  const bundleIds = listCreativeAppBundleIds()
+  // Phase L — merge editor bundles into the probe so both creative-
+  // and editor-status tools hit the cache (vs racing two probes).
+  const bundleIds = [...listCreativeAppBundleIds(), ...listEditorBundleIds()]
   if (bundleIds.length === 0) return () => false
   try {
     const result = await daemon.request<Record<string, boolean>>(
@@ -11736,10 +11768,7 @@ async function creativeAppRunningHint(): Promise<(bundleId: string) => boolean> 
     creativeRunningProbeCache = { fetchedAt: now, running }
     return (bundleId) => running.get(bundleId) === true
   } catch (err) {
-    // Daemon timeout / channel error — log once and degrade. A noisy
-    // log here would spam on every status call when the daemon is
-    // intentionally disabled, so the message lives at warn level.
-    console.warn('[creativeAppRunningHint] daemon probe failed:', (err as Error).message)
+    console.warn('[bundleIdRunningProbe] daemon probe failed:', (err as Error).message)
     return () => false
   }
 }
@@ -12220,6 +12249,269 @@ async function executeCreativeMidiDispatch(args: Record<string, any>): Promise<u
     className,
     rememberedForSession: decision.rememberForSession,
     daemonResult: dispatchResult
+  }
+}
+
+// MARK: - Phase L — Editor / IDE transport executors
+//
+// All Phase L tools are auto-allowed (no approval gate). Each tool
+// constrains the agent's bundle / editor choice via the EditorAdapters
+// registry, which is the actual security boundary — the agent can't
+// NSWorkspace.open() into Finder / TextEdit / anything outside the
+// curated set.
+
+/**
+ * Resolve the agent's editor argument into a known adapter. Accepts
+ * either an editor id ('vscode', 'cursor', 'zed', etc) or a bundle id
+ * ('com.microsoft.VSCode'). Returns undefined when neither matches,
+ * which the caller surfaces as a clean error to the agent.
+ */
+function resolveEditorArg(arg: unknown): EditorAdapter | undefined {
+  if (typeof arg !== 'string' || arg.length === 0) return undefined
+  if (isEditorId(arg)) return findEditorById(arg as EditorId)
+  // Fall through to bundle id lookup.
+  return listEditorAdapters().find((adapter) => adapter.bundleIds.includes(arg))
+}
+
+/**
+ * Phase L — open a file in the user's editor of choice via the same
+ * `creative.openWithApp` NSWorkspace transport K3 uses. No positional
+ * info; for "go to line N" use `open_in_ide_at_position`.
+ */
+async function executeOpenInIde(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const daemon = bridgeDaemonRef
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; open_in_ide cannot dispatch.')
+  }
+  const rawPath = requireNonEmptyString(args.path || args.file_path, 'path')
+  const filePath = resolveGeminiMcpScopedPath(context, rawPath)
+  // Default editor preference: explicit arg → running editor (first
+  // match) → first installed editor → VS Code as last resort. The
+  // running probe is already cached by `bundleIdRunningProbe` so this
+  // doesn't add a roundtrip.
+  let adapter = resolveEditorArg(args.ide || args.editor)
+  if (!adapter) {
+    const runningHint = await bundleIdRunningProbe()
+    const candidates = listEditorAdapters()
+    adapter =
+      candidates.find((c) => c.bundleIds.some((id) => runningHint(id))) ||
+      candidates.find((c) =>
+        c.commonAppPaths.some((path) => fsSync.existsSync(path))
+      ) ||
+      findEditorById('vscode')
+  }
+  if (!adapter) {
+    throw new Error(
+      'open_in_ide: no editor could be resolved. Pass `ide` explicitly (e.g. "vscode", "cursor", "zed") or install one of the supported editors.'
+    )
+  }
+  const bundleId = adapter.bundleIds[0]
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'creative.openWithApp',
+    { filePath, bundleId },
+    { timeoutMs: 5_000 }
+  )
+  return {
+    ok: true,
+    ide: adapter.id,
+    label: adapter.label,
+    bundleId,
+    filePath,
+    daemonResult: dispatchResult
+  }
+}
+
+/**
+ * Phase L — open a file at a specific line / column via the editor's
+ * CLI shim. Falls back to NSWorkspace.open() when the editor has no
+ * positional support OR no CLI on PATH.
+ */
+async function executeOpenInIdeAtPosition(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const daemon = bridgeDaemonRef
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; open_in_ide_at_position cannot dispatch.')
+  }
+  const rawPath = requireNonEmptyString(args.path || args.file_path, 'path')
+  const filePath = resolveGeminiMcpScopedPath(context, rawPath)
+  const lineRaw = args.line
+  const line =
+    typeof lineRaw === 'number' && Number.isFinite(lineRaw) && lineRaw > 0
+      ? Math.floor(lineRaw)
+      : null
+  if (line === null) {
+    throw new Error('open_in_ide_at_position: `line` must be a positive integer.')
+  }
+  const columnRaw = args.column
+  const column =
+    typeof columnRaw === 'number' && Number.isFinite(columnRaw) && columnRaw > 0
+      ? Math.floor(columnRaw)
+      : undefined
+  let adapter = resolveEditorArg(args.ide || args.editor)
+  if (!adapter) {
+    const runningHint = await bundleIdRunningProbe()
+    const candidates = listEditorAdapters()
+    adapter =
+      candidates.find((c) => c.bundleIds.some((id) => runningHint(id))) ||
+      candidates.find((c) =>
+        c.commonAppPaths.some((path) => fsSync.existsSync(path))
+      ) ||
+      findEditorById('vscode')
+  }
+  if (!adapter) {
+    throw new Error(
+      'open_in_ide_at_position: no editor could be resolved. Pass `ide` explicitly.'
+    )
+  }
+  const positionalArgs = buildEditorPositionalArgs(adapter, filePath, line, column)
+  if (positionalArgs && adapter.cliCommand) {
+    try {
+      const dispatchResult = await daemon.request<Record<string, unknown>>(
+        'editor.openAtPosition',
+        { cliCommand: adapter.cliCommand, args: positionalArgs, timeoutMs: 5_000 },
+        { timeoutMs: 7_000 }
+      )
+      return {
+        ok: true,
+        ide: adapter.id,
+        label: adapter.label,
+        cliCommand: adapter.cliCommand,
+        filePath,
+        line,
+        column: column || 1,
+        positional: true,
+        daemonResult: dispatchResult
+      }
+    } catch (err) {
+      // CLI not on PATH (most common) — fall through to NSWorkspace
+      // open, surfacing the CLI miss as a `cliMissing` flag so the
+      // agent can suggest the user install the shell command.
+      const cliMissing = /not found on PATH/.test((err as Error).message)
+      if (!cliMissing) throw err
+      const fallback = await daemon.request<Record<string, unknown>>(
+        'creative.openWithApp',
+        { filePath, bundleId: adapter.bundleIds[0] },
+        { timeoutMs: 5_000 }
+      )
+      return {
+        ok: true,
+        ide: adapter.id,
+        label: adapter.label,
+        filePath,
+        line,
+        column: column || 1,
+        positional: false,
+        cliMissing: true,
+        cliCommand: adapter.cliCommand,
+        daemonResult: fallback,
+        note: `The ${adapter.cliCommand} CLI is not on PATH; fell back to opening the file without positioning. Install the editor's shell command to enable line/column targeting.`
+      }
+    }
+  }
+  // No positional support for this editor → NSWorkspace open.
+  const fallback = await daemon.request<Record<string, unknown>>(
+    'creative.openWithApp',
+    { filePath, bundleId: adapter.bundleIds[0] },
+    { timeoutMs: 5_000 }
+  )
+  return {
+    ok: true,
+    ide: adapter.id,
+    label: adapter.label,
+    filePath,
+    line,
+    column: column || 1,
+    positional: false,
+    daemonResult: fallback,
+    note: `${adapter.label} has no positional-open CLI surface; opened without line targeting.`
+  }
+}
+
+/**
+ * Phase L — reveal a file in Finder. Trivial wrapper over the new
+ * `workspace.revealInFinder` Swift method.
+ */
+async function executeRevealInFinder(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const daemon = bridgeDaemonRef
+  if (!daemon) {
+    throw new Error('Bridge daemon is not running; reveal_in_finder cannot dispatch.')
+  }
+  const rawPath = requireNonEmptyString(args.path || args.file_path, 'path')
+  const filePath = resolveGeminiMcpScopedPath(context, rawPath)
+  const dispatchResult = await daemon.request<Record<string, unknown>>(
+    'workspace.revealInFinder',
+    { filePath },
+    { timeoutMs: 3_000 }
+  )
+  return { ok: true, filePath, daemonResult: dispatchResult }
+}
+
+/**
+ * Phase L — IDE status snapshot. Returns each known editor with
+ * install + running hints plus its CLI command (so the agent can
+ * suggest the user install the shell command when missing).
+ */
+async function executeIdeAppStatus(): Promise<unknown> {
+  const runningHint = await bundleIdRunningProbe()
+  const adapters = listEditorAdapters()
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    ides: adapters.map((adapter) => ({
+      id: adapter.id,
+      label: adapter.label,
+      bundleIds: adapter.bundleIds,
+      installedHint: adapter.commonAppPaths.some((path) => fsSync.existsSync(path)),
+      runningHint: adapter.bundleIds.some((id) => runningHint(id)),
+      cliCommand: adapter.cliCommand,
+      positionalSyntax: adapter.positionalSyntax
+    }))
+  }
+}
+
+/**
+ * Phase L — richer capabilities snapshot. Same shape as ide_app_status
+ * but with notes + per-editor positional-arg sample so the agent can
+ * pre-flight its handoff. Kept distinct from status so a chatty
+ * "is X running" check stays cheap.
+ */
+async function executeIdeAppCapabilities(): Promise<unknown> {
+  const status = (await executeIdeAppStatus()) as Record<string, any>
+  return {
+    ...status,
+    ides: (status.ides as any[]).map((entry) => {
+      const adapter = findEditorById(entry.id as EditorId)
+      const positionalSample = adapter
+        ? buildEditorPositionalArgs(adapter, '/path/to/file.ts', 42, 5)
+        : null
+      return {
+        ...entry,
+        notes: adapter?.notes,
+        positionalArgsSample: positionalSample
+      }
+    })
+  }
+}
+
+/**
+ * Phase L — convenience: filter ide_app_status to just the running
+ * editors so the agent can hand off to "whatever's open right now"
+ * without inspecting the full list.
+ */
+async function executeListRunningIdes(): Promise<unknown> {
+  const status = (await executeIdeAppStatus()) as Record<string, any>
+  return {
+    ok: true,
+    generatedAt: status.generatedAt,
+    running: (status.ides as any[]).filter((entry) => entry.runningHint)
   }
 }
 
@@ -12897,6 +13189,18 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeBlenderPython(args))
     } else if (toolName === 'creative_midi_dispatch') {
       text = mcpJson(await executeCreativeMidiDispatch(args))
+    } else if (toolName === 'open_in_ide') {
+      text = mcpJson(await executeOpenInIde(args, context))
+    } else if (toolName === 'open_in_ide_at_position') {
+      text = mcpJson(await executeOpenInIdeAtPosition(args, context))
+    } else if (toolName === 'reveal_in_finder') {
+      text = mcpJson(await executeRevealInFinder(args, context))
+    } else if (toolName === 'ide_app_status') {
+      text = mcpJson(await executeIdeAppStatus())
+    } else if (toolName === 'ide_app_capabilities') {
+      text = mcpJson(await executeIdeAppCapabilities())
+    } else if (toolName === 'list_running_ides') {
+      text = mcpJson(await executeListRunningIdes())
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -14198,6 +14502,103 @@ function mcpToolDefinitions() {
         },
         required: ['ir']
       }
+    },
+    {
+      name: 'open_in_ide',
+      description:
+        'Open a file in the user\'s editor of choice via NSWorkspace. Optional `ide` arg picks one of: vscode, vscode-insiders, cursor, zed, sublime-text, xcode, bbedit, nova, textmate, intellij-idea, webstorm, pycharm, goland, clion, rustrover, rider, rubymine, phpstorm, datagrip, android-studio. When omitted, picks the first running editor → first installed → vscode fallback. No approval needed (focus-change only).',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Workspace-relative or absolute path to the file.' },
+          ide: {
+            type: 'string',
+            description: 'Optional editor id (see description) or bundle id.'
+          }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'open_in_ide_at_position',
+      description:
+        'Open a file at a specific line and column via the editor\'s CLI shim (code -g, cursor -g, subl, xed -l, JetBrains --line --column, etc). Falls back to a plain NSWorkspace open when the editor\'s CLI is not on PATH or doesn\'t support positional args (the fallback response includes a cliMissing flag the agent can surface to the user).',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          line: { type: 'integer', description: 'Target line, 1-indexed.' },
+          column: { type: 'integer', description: 'Target column, 1-indexed. Optional.' },
+          ide: { type: 'string', description: 'Optional editor id or bundle id.' }
+        },
+        required: ['path', 'line']
+      }
+    },
+    {
+      name: 'reveal_in_finder',
+      description:
+        'Reveal a file in macOS Finder with the file selected. Wraps NSWorkspace.selectFile.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: true
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'ide_app_status',
+      description:
+        'Snapshot of every recognised editor / IDE with installedHint + runningHint per entry. Cheap; backed by a 3-second cache.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: { type: 'object', properties: {} }
+    },
+    {
+      name: 'ide_app_capabilities',
+      description:
+        'Same shape as ide_app_status plus per-editor notes + a positionalArgsSample showing how `open_in_ide_at_position` would invoke that editor. Useful when the agent wants to preview the CLI command before dispatch.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: { type: 'object', properties: {} }
+    },
+    {
+      name: 'list_running_ides',
+      description:
+        'Return just the editors currently running (filter of ide_app_status). Use when handing off to "whatever\'s open right now".',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: { type: 'object', properties: {} }
     },
     {
       name: 'creative_midi_dispatch',

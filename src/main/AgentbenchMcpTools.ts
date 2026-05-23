@@ -50,6 +50,15 @@ export const AGENTBENCH_MCP_TOOLS = [
   // no destructive surface, so the tool is gated by an
   // approval-once-per-event-type cache rather than a per-call modal.
   'creative_midi_dispatch',
+  // Phase L — Editor / IDE transport tools. Auto-allowed: opening a
+  // file in the user's editor of choice is a focus-change, not a
+  // state mutation.
+  'open_in_ide',
+  'open_in_ide_at_position',
+  'reveal_in_finder',
+  'ide_app_status',
+  'ide_app_capabilities',
+  'list_running_ides',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',
