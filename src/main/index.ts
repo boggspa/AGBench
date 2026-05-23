@@ -542,6 +542,21 @@ installIpcValidation(ipcMain)
 app.commandLine.appendSwitch('enable-gpu-rasterization')
 app.commandLine.appendSwitch('enable-zero-copy')
 
+// Swallow EPIPE on stderr writes. Common cause: the BridgeDaemon
+// subprocess streams chatty stderr lines through `onStderr → console.error`;
+// when electron-vite's dev parent closes its pipe (e.g. during HMR teardown)
+// the next write throws EPIPE and Electron surfaces it as a fatal
+// JavaScript-error popup. Treating EPIPE as silent — we'd rather drop the
+// log line than crash the app. Non-EPIPE errors still propagate.
+process.stderr.on('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return
+  throw err
+})
+process.stdout.on('error', (err) => {
+  if ((err as NodeJS.ErrnoException).code === 'EPIPE') return
+  throw err
+})
+
 type GeminiCapabilityKind = (typeof GEMINI_CAPABILITY_KINDS)[number]
 
 function loadOrCreateExternalGrantSigningSecret(): Buffer {
