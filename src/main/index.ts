@@ -14657,7 +14657,7 @@ function mcpToolDefinitions() {
     {
       name: 'creative_timeline_import',
       description:
-        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval.',
+        'Write a timeline IR to .fcpxml and hand it to Final Cut Pro via NSWorkspace.open. REQUIRES USER APPROVAL — a modal will surface in AGBench asking the user to approve the import before dispatch. Returns { refused, reason } if the user rejects, or { dispatched: true, filePath, daemonResult } on approval. See docs/FCPXML-Reference.md for canonical schema + docs/FCPXML-Capability-Probe.md for tested feature coverage.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -14670,7 +14670,12 @@ function mcpToolDefinitions() {
           ir: {
             type: 'object',
             description:
-              'FCPXML timeline IR (shape matches the output of creative_timeline_ir). Caller constructs assets/formats/effects + projects + sequences + spine items.'
+              'FCPXML timeline IR. Top-level shape: { version?: "1.13", resources?: { formats: [{id, name, frameDuration, width, height, colorSpace?}], assets: [{id, name, src, duration, format?, hasVideo?, hasAudio?}], effects: [{id, name, uid}] }, projects: [{name, eventName?, sequence: { format, duration, tcStart?, tcFormat?, spine: [...] }}] }. Spine items: { index, type, name?, ref?, offset, start?, duration, lane?, format?, markers: [], captions: [] }. For asset-clip items use audioRole/videoRole (the DTD does NOT accept generic `role` on asset-clip). For audio-only assets set hasAudio: "1", hasVideo: "0". For title items pass either the canonical rich shape { textRuns: [{text, styleRef}], textStyleDefs: [{id, font, fontSize, fontFace, fontColor, alignment}], titleParams: [{name, value}] } OR the forgiving flat shape { text, font, fontSize, alignment, position, fontColor } — the writer auto-coerces flat to canonical. Times are rational strings like "5s", "1001/30000s", "3000/2400s"; the writer canonicalises to the format frame-duration denominator on emit.',
+            properties: {
+              version: { type: 'string' },
+              resources: { type: 'object' },
+              projects: { type: 'array' }
+            }
           },
           bundleId: {
             type: 'string',

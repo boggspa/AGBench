@@ -978,4 +978,289 @@ describe('CreativeAppAdapters', () => {
       expect(result.issues.filter((i) => i.code === 'frame-boundary')).toEqual([])
     })
   })
+
+  // Phase K8.1 — writer fidelity hotfixes from the Codex probe.
+  describe('K8.1 writer hotfixes', () => {
+    it('honours hasVideo / hasAudio from the IR for audio-only assets', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/30s' }],
+            assets: [
+              {
+                id: 'r2',
+                name: 'Audio only',
+                src: 'file:///x.wav',
+                hasVideo: '0',
+                hasAudio: '1'
+              }
+            ]
+          }
+        }
+      })
+      // Asset emits hasVideo="0" hasAudio="1" — not the K7 default of 1/1.
+      expect(writer.text).toMatch(/<asset[^>]+hasVideo="0"[^>]+hasAudio="1"/)
+    })
+
+    it('accepts boolean hasVideo / hasAudio as well as string', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            assets: [
+              { id: 'r1', src: 'file:///a.wav', hasVideo: false, hasAudio: true }
+            ]
+          }
+        }
+      })
+      expect(writer.text).toMatch(/<asset[^>]+hasVideo="0"[^>]+hasAudio="1"/)
+    })
+
+    it('defaults hasVideo / hasAudio to "1" when the IR omits them (K7 back-compat)', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            assets: [{ id: 'r1', src: 'file:///a.mov' }]
+          }
+        }
+      })
+      // Both default on, matching pre-K8.1 emission.
+      expect(writer.text).toMatch(/<asset[^>]+hasVideo="1"[^>]+hasAudio="1"/)
+    })
+
+    it('emits audioRole/videoRole on asset-clip when the IR supplies them explicitly', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            assets: [{ id: 'r2', src: 'file:///x.mp4' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                duration: '1s',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    name: 'clip',
+                    ref: 'r2',
+                    offset: '0s',
+                    duration: '1s',
+                    audioRole: 'dialogue',
+                    videoRole: 'video',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('audioRole="dialogue"')
+      expect(writer.text).toContain('videoRole="video"')
+      // Critically — no generic role attribute (DTD-illegal on asset-clip).
+      expect(writer.text).not.toMatch(/<asset-clip[^>]+ role="/)
+    })
+
+    it('infers audioRole / videoRole from a generic role token on asset-clip', () => {
+      // Agent uses the common shorthand `role: 'dialogue'` — writer
+      // splits to audioRole. Same for music / effects. Non-audio
+      // tokens fall through to videoRole.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            assets: [{ id: 'r2', src: 'file:///x.mp4' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    name: 'a',
+                    ref: 'r2',
+                    duration: '1s',
+                    role: 'music',
+                    markers: [],
+                    captions: []
+                  },
+                  {
+                    index: 1,
+                    type: 'asset-clip',
+                    name: 'b',
+                    ref: 'r2',
+                    duration: '1s',
+                    role: 'video',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toMatch(/asset-clip[^>]+audioRole="music"/)
+      expect(writer.text).toMatch(/asset-clip[^>]+videoRole="video"/)
+      // No generic role attribute anywhere on asset-clip elements.
+      expect(writer.text).not.toMatch(/<asset-clip[^>]+ role="/)
+    })
+
+    it('keeps the generic role attribute on non-asset-clip items', () => {
+      // Gap, clip, title items still use `role` per the DTD —
+      // audioRole/videoRole is asset-clip-specific.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'gap',
+                    duration: '1s',
+                    role: 'silence',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toMatch(/<gap[^>]+role="silence"/)
+      expect(writer.text).not.toMatch(/audioRole|videoRole/)
+    })
+
+    it('coerces flat title fields into the canonical textRuns/styleDefs/params shape', () => {
+      // The Codex 2.1 / 3.1 misses: agent passes flat `text`/`font`/
+      // `fontSize` keys, writer (pre-K8.1) emitted a bare title.
+      // Now the writer promotes the flat shape on entry.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            effects: [{ id: 'r3', name: 'Basic Title' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'Hello',
+                    ref: 'r3',
+                    offset: '0s',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'Hello world',
+                    font: 'Helvetica',
+                    fontSize: '72',
+                    alignment: 'center',
+                    position: '0 -200'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('<text>')
+      expect(writer.text).toContain('Hello world')
+      expect(writer.text).toContain('<text-style-def')
+      expect(writer.text).toContain('font="Helvetica"')
+      expect(writer.text).toContain('fontSize="72"')
+      expect(writer.text).toContain('<param name="Position" value="0 -200"/>')
+    })
+
+    it('does not overwrite explicit canonical title fields when flat fields are also present', () => {
+      // If the agent supplies both shapes, the canonical wins. The
+      // flat coercion is a "fill in the gaps" not a "override".
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: { formats: [{ id: 'r1', frameDuration: '1/24s' }] },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'mix',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'flat-text',
+                    textRuns: [{ text: 'canonical-text', styleRef: 'ts1' }]
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).toContain('canonical-text')
+      expect(writer.text).not.toContain('flat-text')
+    })
+
+    it('leaves non-title items untouched even when flat title fields are accidentally present', () => {
+      // Defensive: an agent who copies a title IR into an asset-clip
+      // shouldn't accidentally surface text/font on the clip.
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', frameDuration: '1/24s' }],
+            assets: [{ id: 'r2', src: 'file:///x.mov' }]
+          },
+          projects: [
+            {
+              name: 'p',
+              sequence: {
+                format: 'r1',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    ref: 'r2',
+                    duration: '1s',
+                    markers: [],
+                    captions: [],
+                    text: 'should not appear',
+                    font: 'Arial'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+      expect(writer.text).not.toContain('should not appear')
+      expect(writer.text).not.toContain('font="Arial"')
+    })
+  })
 })

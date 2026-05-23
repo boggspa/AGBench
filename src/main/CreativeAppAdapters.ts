@@ -179,6 +179,15 @@ export interface FcpxmlResourceIr {
   format?: string
   role?: string
   mediaRepCount?: number
+  /**
+   * K8.1 — explicit hasVideo / hasAudio track-presence declarations.
+   * Accepts boolean or '0'/'1' string. When undefined, the writer
+   * defaults BOTH to "1" (back-compat with K7 emission) so existing
+   * IRs that don't specify still work. Set hasVideo: false / '0' for
+   * audio-only assets so FCP slots them onto audio lanes correctly.
+   */
+  hasVideo?: string | boolean
+  hasAudio?: string | boolean
 }
 
 export interface FcpxmlFormatIr {
@@ -271,6 +280,32 @@ export interface FcpxmlTimelineItemIr {
   textRuns?: FcpxmlTextRun[]
   textStyleDefs?: FcpxmlTextStyleDef[]
   titleParams?: FcpxmlTitleParam[]
+  /**
+   * K8.1 — asset-clip-specific role split. The FCPXML DTD declares
+   * `audioRole` and `videoRole` as the valid role attrs on
+   * `<asset-clip>` — the generic `role` attribute is REJECTED by the
+   * DTD on this element type. When emitting an asset-clip, the writer
+   * uses these fields when supplied; falls back to inferring from
+   * `role` when only the generic field is set. For non-asset-clip
+   * items (clip, gap, title, etc.) the generic `role` attr is used.
+   */
+  audioRole?: string
+  videoRole?: string
+  /**
+   * K8.1 — forgiving-input shape for title items. Agents commonly
+   * supply title content as flat keys (text, font, fontSize, etc.)
+   * rather than the canonical textRuns/textStyleDefs/titleParams
+   * nested arrays. When these flat fields are present on a title
+   * item, the writer auto-promotes them to the canonical shape
+   * before emission. Use either shape — both work.
+   */
+  text?: string
+  font?: string
+  fontSize?: string
+  fontFace?: string
+  fontColor?: string
+  alignment?: string
+  position?: string
 }
 
 export interface FcpxmlSequenceIr {
@@ -1097,6 +1132,104 @@ export function getSequenceCanonicalDenominator(
   return parsed.den
 }
 
+/**
+ * K8.1 — Normalise a hasVideo/hasAudio IR value (boolean OR string)
+ * into the literal "0"/"1" the FCPXML attribute expects. Returns
+ * the supplied default when the value is undefined so we stay
+ * back-compat with K7 emission.
+ */
+function normaliseTrackFlag(
+  value: string | boolean | undefined,
+  defaultStr: '0' | '1'
+): '0' | '1' {
+  if (value === undefined) return defaultStr
+  if (typeof value === 'boolean') return value ? '1' : '0'
+  if (value === 'true' || value === '1') return '1'
+  if (value === 'false' || value === '0') return '0'
+  // Unknown values fall back to the default rather than emit garbage.
+  return defaultStr
+}
+
+/**
+ * K8.1 — When an asset-clip carries only a generic `role` value (not
+ * the DTD-correct audioRole/videoRole split), infer which side based
+ * on common role tokens. FCP's built-in roles use these conventions:
+ *   - audio side: dialogue, music, effects, audio, audio*
+ *   - video side: video, titles, effects-video
+ * Returns `{ audioRole, videoRole }` with at most one populated.
+ * Unrecognised role values default to videoRole — matches FCP's
+ * own default when only one role is declared on a video asset.
+ */
+function splitAssetClipRole(role: string | undefined): {
+  audioRole?: string
+  videoRole?: string
+} {
+  if (!role) return {}
+  const lower = role.toLowerCase()
+  const audioTokens = ['dialogue', 'music', 'effects', 'audio']
+  if (audioTokens.some((t) => lower.includes(t)) && lower !== 'effects-video') {
+    return { audioRole: role }
+  }
+  return { videoRole: role }
+}
+
+/**
+ * K8.1 — Coerce a title spine item that uses flat field shorthand
+ * (text/font/fontSize/alignment/position) into the canonical K8 nested
+ * shape (textRuns / textStyleDefs / titleParams). Agents commonly
+ * supply title content this way because it mirrors how titles are
+ * conceptually described in plain English; the canonical shape
+ * matches FCP's actual XML structure. Both work after this coercion.
+ *
+ * Returns the item unchanged if:
+ *   - it's not a title
+ *   - canonical fields are already populated (don't overwrite the
+ *     agent's explicit shape)
+ *   - no flat fields are present
+ */
+function coerceTitleFlatFields(item: FcpxmlTimelineItemIr): FcpxmlTimelineItemIr {
+  if (item.type !== 'title') return item
+  if (
+    (item.textRuns && item.textRuns.length > 0) ||
+    (item.textStyleDefs && item.textStyleDefs.length > 0) ||
+    (item.titleParams && item.titleParams.length > 0)
+  ) {
+    return item
+  }
+  const hasFlat =
+    item.text ||
+    item.font ||
+    item.fontSize ||
+    item.fontFace ||
+    item.fontColor ||
+    item.alignment ||
+    item.position
+  if (!hasFlat) return item
+  // Single generated style def + run. The id is namespaced so it
+  // doesn't collide with agent-authored ones.
+  const styleId = 'agbench-flat-title-style'
+  const promoted: FcpxmlTimelineItemIr = { ...item }
+  if (item.text) {
+    promoted.textRuns = [{ text: item.text, styleRef: styleId }]
+  }
+  if (item.font || item.fontSize || item.fontFace || item.fontColor || item.alignment) {
+    promoted.textStyleDefs = [
+      {
+        id: styleId,
+        font: item.font,
+        fontSize: item.fontSize,
+        fontFace: item.fontFace,
+        fontColor: item.fontColor,
+        alignment: item.alignment
+      }
+    ]
+  }
+  if (item.position) {
+    promoted.titleParams = [{ name: 'Position', value: item.position }]
+  }
+  return promoted
+}
+
 function emitAttrs(pairs: Array<[string, string | undefined]>): string {
   const parts: string[] = []
   for (const [name, value] of pairs) {
@@ -1174,6 +1307,15 @@ export function serializeFcpxmlTimelineIr(
           'FCP will mark the clip as offline media until you point the asset at a real file.'
       )
     }
+    // K8.1 — honor IR-supplied hasVideo/hasAudio when present so
+    // audio-only assets (hasVideo=0) emit correctly. K7 hardcoded
+    // both to "1" to force FCP into video-asset interpretation; that
+    // helped slot non-AV-aware IRs into video tracks but blocked
+    // honest audio-only declarations. Defaults stay "1" when the IR
+    // doesn't specify, preserving the K7 behaviour for callers who
+    // don't think about track presence.
+    const assetHasVideo = normaliseTrackFlag(asset.hasVideo, '1')
+    const assetHasAudio = normaliseTrackFlag(asset.hasAudio, '1')
     lines.push(
       `${indent}${indent}<asset${emitAttrs([
         ['id', asset.id],
@@ -1182,12 +1324,8 @@ export function serializeFcpxmlTimelineIr(
         ['duration', asset.duration],
         ['start', asset.start],
         ['format', asset.format],
-        // Default hasVideo/hasAudio to "1" so FCP knows to slot the
-        // asset into video tracks — without this, FCP treats it as a
-        // metadata-only asset and the asset-clip ref doesn't resolve
-        // to a usable timeline source.
-        ['hasVideo', '1'],
-        ['hasAudio', '1']
+        ['hasVideo', assetHasVideo],
+        ['hasAudio', assetHasAudio]
       ])}>`
     )
     lines.push(
@@ -1288,24 +1426,22 @@ export function serializeFcpxmlTimelineIr(
           ])}>`
         )
         lines.push(`${indent}${indent}${indent}${indent}${indent}<spine>`)
-          for (const item of seq.spine) {
+          for (const rawItem of seq.spine) {
+            // K8.1 — Coerce title flat fields (text/font/fontSize/
+            // alignment/position) into the canonical textRuns +
+            // textStyleDefs + titleParams shape so agents who don't
+            // know the K8 canonical IR succeed anyway. No-op for
+            // non-title items and for titles that already use the
+            // canonical fields.
+            const item = coerceTitleFlatFields(rawItem)
             timelineItemCount += 1
             markerCount += item.markers.length + item.captions.length
-            // Phase K7 — DTD enforces `duration` as #REQUIRED on
-            // <gap>, and downstream FCPXML consumers behave badly
-            // when timeline items have no duration. Surface a
-            // warning rather than silently emitting an invalid item;
-            // we don't throw because the agent might be constructing
-            // an in-progress doc that gets duration filled in later.
             if (!item.duration) {
               warnings.push(
                 `Spine item index ${item.index} (${item.type}${item.name ? ` "${item.name}"` : ''}) has no duration. ` +
                   'FCP will likely reject the import; supply a duration like "5s" or "120/24000s".'
               )
             }
-            // Phase K8 — title items carry rich children (text +
-            // text-style-def + params) when the agent populates them.
-            // Non-title items keep the simpler markers/captions shape.
             const isTitle = item.type === 'title'
             const hasTitleContent =
               isTitle &&
@@ -1314,6 +1450,24 @@ export function serializeFcpxmlTimelineIr(
                 (item.titleParams && item.titleParams.length > 0))
             const hasChildren =
               item.markers.length > 0 || item.captions.length > 0 || hasTitleContent
+            // K8.1 — asset-clip uses audioRole/videoRole per the DTD;
+            // a generic `role` attribute on <asset-clip> is rejected
+            // by the importer (this was the Codex 1.4 miss). Other
+            // spine item types (clip, gap, title, etc.) still use the
+            // generic `role` attribute.
+            const isAssetClip = item.type === 'asset-clip'
+            const splitRoles = isAssetClip
+              ? {
+                  audioRole: item.audioRole ?? splitAssetClipRole(item.role).audioRole,
+                  videoRole: item.videoRole ?? splitAssetClipRole(item.role).videoRole
+                }
+              : null
+            const roleAttrs: Array<[string, string | undefined]> = splitRoles
+              ? [
+                  ['audioRole', splitRoles.audioRole],
+                  ['videoRole', splitRoles.videoRole]
+                ]
+              : [['role', item.role]]
             const headerAttrs = emitAttrs([
               ['name', item.name],
               ['ref', item.ref],
@@ -1321,7 +1475,7 @@ export function serializeFcpxmlTimelineIr(
               ['start', t(item.start)],
               ['duration', t(item.duration)],
               ['lane', item.lane],
-              ['role', item.role],
+              ...roleAttrs,
               ['format', item.format]
             ])
             if (!hasChildren) {
