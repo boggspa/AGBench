@@ -500,6 +500,102 @@ describe('buildWelcomeUsageDashboardData tokens24h (Welcome L9 hero chip)', () =
   })
 })
 
+describe('buildWelcomeUsageDashboardData favoriteProject (Welcome L9 hero chip)', () => {
+  const NOW = new Date(2026, 4, 22, 12, 0).getTime()
+  const workspaces = [
+    { id: 'ws-a', displayName: 'Chill-Q' },
+    { id: 'ws-b', displayName: 'Guitar Cabs' },
+    { id: 'ws-c', displayName: 'GUIGemini' }
+  ]
+
+  it('picks the workspace with the most tokens in-window and resolves its displayName', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a1',
+        timestamp: NOW - 60_000,
+        workspaceId: 'ws-a',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'b1',
+        timestamp: NOW - 90_000,
+        workspaceId: 'ws-b',
+        totalTokens: 9_000
+      }),
+      baseRecord({
+        id: 'c1',
+        timestamp: NOW - 120_000,
+        workspaceId: 'ws-c',
+        totalTokens: 500
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, workspaces)
+    expect(data.favoriteProject).toBe('Guitar Cabs')
+  })
+
+  it('returns "n/a" when no records carry a workspaceId', () => {
+    const records: UsageRecord[] = [
+      // Override the default workspaceId so the record has no workspace.
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60_000,
+        workspaceId: undefined as unknown as string,
+        totalTokens: 1_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, workspaces)
+    expect(data.favoriteProject).toBe('n/a')
+  })
+
+  it('returns "n/a" when the favorite workspaceId is not in the workspaces list', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60_000,
+        workspaceId: 'ws-orphan',
+        totalTokens: 1_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, workspaces)
+    expect(data.favoriteProject).toBe('n/a')
+  })
+
+  it('ignores records outside the dashboard range', () => {
+    const records: UsageRecord[] = [
+      // Stale (40 days ago): would dominate ws-a if range-unaware.
+      baseRecord({
+        id: 'stale',
+        timestamp: NOW - 40 * 24 * 60 * 60_000,
+        workspaceId: 'ws-a',
+        totalTokens: 100_000
+      }),
+      // Recent: small but in-window.
+      baseRecord({
+        id: 'recent',
+        timestamp: NOW - 60_000,
+        workspaceId: 'ws-b',
+        totalTokens: 500
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, workspaces)
+    expect(data.favoriteProject).toBe('Guitar Cabs')
+  })
+
+  it('degrades to "n/a" when called without a workspaces list', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60_000,
+        workspaceId: 'ws-a',
+        totalTokens: 1_000
+      })
+    ]
+    // No workspaces arg → backstop default `[]` → lookup misses.
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.favoriteProject).toBe('n/a')
+  })
+})
+
 describe('mixProviderColors', () => {
   const palette = {
     gemini: '#2563EB',

@@ -1,4 +1,9 @@
-import type { ChatRecord, ProviderId, UsageRecord } from '../../../main/store/types'
+import type {
+  ChatRecord,
+  ProviderId,
+  UsageRecord,
+  WorkspaceRecord
+} from '../../../main/store/types'
 
 export type WelcomeUsageTab = 'overview' | 'models'
 /**
@@ -78,6 +83,15 @@ export interface WelcomeUsageDashboardData {
   longestStreak: number
   peakHour: string
   favoriteModel: string
+  /**
+   * Display name of the workspace with the most tokens consumed in the
+   * selected range. Surfaced as a hero chip alongside Favorite model.
+   * Falls back to `'n/a'` when no records carried a workspaceId in the
+   * window (typical for users who only run global / no-workspace chats).
+   * Global chats and records without a workspaceId are excluded from
+   * the tally — a "project" implies a workspace.
+   */
+  favoriteProject: string
   providerCount: number
   comparisonText: string
   heatmap: WelcomeUsageDayCell[]
@@ -242,7 +256,14 @@ export const buildWelcomeUsageDashboardData = (
   records: UsageRecord[],
   chats: ChatRecord[],
   range: WelcomeUsageRange,
-  now = Date.now()
+  now = Date.now(),
+  /**
+   * Optional workspace list for resolving favoriteProject. Caller passes
+   * the renderer's `workspaces` slice; we only ever look up `id` and
+   * `displayName`. Pass `[]` (or omit) to skip the workspace dimension —
+   * `favoriteProject` then degrades to `'n/a'`.
+   */
+  workspaces: Pick<WorkspaceRecord, 'id' | 'displayName'>[] = []
 ): WelcomeUsageDashboardData => {
   const cutoff = getWelcomeUsageRangeCutoff(range, now)
   const runRecords = records
@@ -291,6 +312,12 @@ export const buildWelcomeUsageDashboardData = (
   // even when the user views a wider window.
   const cutoff24h = now - 24 * 60 * 60 * 1000
   let tokens24h = 0
+  // L9 — per-workspace token totals for the favoriteProject hero chip.
+  // Records that lack a workspaceId (global chats, ad-hoc runs) are
+  // skipped so the "favourite project" signal stays workspace-scoped.
+  // Token-weighted, not record-count-weighted, to align with the rest
+  // of the dashboard's tokens-centric framing.
+  const workspaceTokens = new Map<string, number>()
   /**
    * Hourly buckets keyed by the local-time hour start (ms epoch). We bucket
    * usage records here so the dense 30×24 welcome heatmap can render
@@ -329,6 +356,12 @@ export const buildWelcomeUsageDashboardData = (
     hourlyTotals[hour] += totalTokens || 1
     dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
     if (record.timestamp >= cutoff24h) tokens24h += totalTokens
+    if (record.workspaceId) {
+      workspaceTokens.set(
+        record.workspaceId,
+        (workspaceTokens.get(record.workspaceId) || 0) + totalTokens
+      )
+    }
 
     const hourStart = startOfLocalHour(record.timestamp)
     const bucket = hourBuckets.get(hourStart) || {
@@ -508,6 +541,24 @@ export const buildWelcomeUsageDashboardData = (
   }))
   const maxChartTotal = Math.max(1, ...chartDays.map((day) => day.total))
   const favoriteModel = modelBreakdown[0]?.label || 'n/a'
+  // Pick the workspace with the highest token total in-window, then
+  // look up its display name. Ties resolve to the first one we saw
+  // (Map iteration order is insertion order in JS), which matches
+  // "most recently seen first" for our typical flow. Zero-token
+  // workspaces are skipped: if every record had `totalTokens === 0`
+  // the favoriteProject falls through to 'n/a' rather than picking
+  // arbitrarily.
+  let favoriteWorkspaceId: string | null = null
+  let favoriteWorkspaceTokens = 0
+  for (const [workspaceId, tokens] of workspaceTokens) {
+    if (tokens > favoriteWorkspaceTokens) {
+      favoriteWorkspaceTokens = tokens
+      favoriteWorkspaceId = workspaceId
+    }
+  }
+  const favoriteProject = favoriteWorkspaceId
+    ? workspaces.find((w) => w.id === favoriteWorkspaceId)?.displayName || 'n/a'
+    : 'n/a'
   const hasActivity = runRecords.length > 0 || messageEvents.length > 0
   // Welcome L6 — lifetime "has any activity ever" flag. Used by the
   // renderer to decide whether to mount the dashboard at all. Without
@@ -530,6 +581,7 @@ export const buildWelcomeUsageDashboardData = (
     longestStreak,
     peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
     favoriteModel,
+    favoriteProject,
     providerCount: providerIds.size,
     comparisonText: hasActivity
       ? `You've tracked ${formatCompactUsageNumber(totalTokens)} tokens across ${providerIds.size || 1} provider${(providerIds.size || 1) === 1 ? '' : 's'}.`

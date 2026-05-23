@@ -4137,12 +4137,12 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
-/* Welcome L9 — hero row: two big chips (Favorite model + 24H Tkns).
- * Sits directly above the dense stat row so the user's eye lands on
- * the most-summarised data first. */
+/* Welcome L9 — hero row: three big chips (Favorite model + Favorite
+ * project + 24H Tkns). Sits directly above the dense stat row so the
+ * user's eye lands on the most-summarised data first. */
 .welcome-usage-stat-hero {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-bottom: 8px;
 }

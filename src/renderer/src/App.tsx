@@ -1691,10 +1691,10 @@ function WelcomeUsageDashboard({
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
 }) {
-  // Welcome L9 — Overview chip rework. Top row hosts two hero chips
-  // (Favorite model + 24H Tkns); bottom row carries the seven denser
-  // stat pills. Hero stats lead with what the user looks at first;
-  // dense pills carry the supporting numbers.
+  // Welcome L9 — Overview chip rework. Top row hosts three hero chips
+  // (Favorite model + Favorite project + 24H Tkns); bottom row carries
+  // the seven denser stat pills. Hero stats lead with what the user
+  // looks at first; dense pills carry the supporting numbers.
   const heroStatItems = [
     {
       label: 'Favorite model',
@@ -1702,6 +1702,13 @@ function WelcomeUsageDashboard({
       // Long model identifiers (e.g. `gemini-3.1-flash-lite-preview`)
       // would otherwise wrap awkwardly inside the hero chip.
       title: data.favoriteModel
+    },
+    {
+      label: 'Favorite project',
+      value: data.favoriteProject,
+      // Workspace display names can be long (full path tails) — keep
+      // the full string available on hover.
+      title: data.favoriteProject
     },
     { label: '24H Tkns', value: formatCompactUsageNumber(data.tokens24h) }
   ]
@@ -11476,9 +11483,13 @@ function App(): React.JSX.Element {
   // Welcome L7 — fixed 30D rolling window. The toggle is gone; the
   // dashboard always reports against the same 30-day cutoff the
   // sidebar UsageHeatmap uses, so the two surfaces stay coherent.
+  //
+  // `workspaces` is passed so the dashboard can resolve `favoriteProject`
+  // — the display-name of the workspace with the most tokens in-window
+  // (Welcome L9 hero chip).
   const welcomeUsageDashboardData = useMemo(
-    () => buildWelcomeUsageDashboardData(usageRecords, chats, '30d'),
-    [usageRecords, chats]
+    () => buildWelcomeUsageDashboardData(usageRecords, chats, '30d', undefined, workspaces),
+    [usageRecords, chats, workspaces]
   )
   // Welcome L6 — the outer guard uses `lifetimeHasActivity` so the
   // dashboard (and its range toggle) stay mounted even when the
