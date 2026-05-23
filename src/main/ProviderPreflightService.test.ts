@@ -48,7 +48,7 @@ function contract(partial: Partial<ProviderCapabilityContract> = {}): ProviderCa
         enforcedByAgentBench: true,
         enforcement: 'bridge',
         requiresApproval: true,
-        tools: ['creative_app_status', 'creative_app_capabilities']
+        tools: ['creative_app_status', 'creative_app_capabilities', 'creative_project_snapshot']
       },
       networkAccess: {
         id: 'networkAccess',

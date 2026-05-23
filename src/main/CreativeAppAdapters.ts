@@ -83,6 +83,41 @@ export interface CreativeAppCapabilitySnapshot {
   >
 }
 
+export type CreativeProjectKind =
+  | 'fcpxml'
+  | 'final-cut-library'
+  | 'final-cut-xml-bundle'
+  | 'logic-package'
+  | 'musicxml'
+  | 'midi'
+  | 'blender-binary'
+  | 'blender-exchange'
+  | 'unknown'
+
+export interface CreativeProjectSnapshotInput {
+  path: string
+  extension?: string
+  isDirectory: boolean
+  sizeBytes?: number
+  text?: string
+  bytes?: Uint8Array
+  now?: string
+}
+
+export interface CreativeProjectSnapshot {
+  ok: true
+  generatedAt: string
+  path: string
+  appId?: CreativeAppId
+  kind: CreativeProjectKind
+  readOnly: true
+  transport: CreativeAppTransport
+  summary: string
+  sizeBytes?: number
+  stats: Record<string, number | string | boolean>
+  warnings: string[]
+}
+
 export interface CreativeAppProbeInput {
   appId?: CreativeAppId
   attachedWindow?: CreativeAttachedWindowMeta | null
@@ -199,7 +234,8 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         transports: ['ax-ui', 'control-surface'],
         readOnly: false,
         requiresApproval: true,
-        summary: 'Use menu/control-surface actions only for approved import, export, transport, or bounce flows.'
+        summary:
+          'Use menu/control-surface actions only for approved import, export, transport, or bounce flows.'
       }
     ],
     prompts: ['soundtrack_spotting_notes', 'mix_notes_to_logic_regions'],
@@ -224,7 +260,8 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         transports: ['native-script', 'cli'],
         readOnly: true,
         requiresApproval: false,
-        summary: 'Inspect objects, materials, nodes, collections, and render settings through Blender data APIs.'
+        summary:
+          'Inspect objects, materials, nodes, collections, and render settings through Blender data APIs.'
       },
       {
         id: 'blender-structured-scene-patch',
@@ -273,13 +310,17 @@ export function listCreativeAppDefinitions(): CreativeAppDefinition[] {
   return CREATIVE_APP_DEFINITIONS.map((definition) => cloneDefinition(definition))
 }
 
-export function buildCreativeAppStatusSnapshot(input: CreativeAppProbeInput = {}): CreativeAppStatusSnapshot {
+export function buildCreativeAppStatusSnapshot(
+  input: CreativeAppProbeInput = {}
+): CreativeAppStatusSnapshot {
   const generatedAt = input.now || new Date().toISOString()
   return {
     ok: true,
     generatedAt,
     appId: input.appId,
-    apps: matchingDefinitions(input.appId).map((definition) => statusForDefinition(definition, input))
+    apps: matchingDefinitions(input.appId).map((definition) =>
+      statusForDefinition(definition, input)
+    )
   }
 }
 
@@ -299,10 +340,275 @@ export function buildCreativeAppCapabilitySnapshot(
   }
 }
 
+export function buildCreativeProjectSnapshot(
+  input: CreativeProjectSnapshotInput
+): CreativeProjectSnapshot {
+  const generatedAt = input.now || new Date().toISOString()
+  const extension = normalizeExtension(input.extension || extensionFromPath(input.path))
+  const inferred = inferCreativeProjectKind(input, extension)
+  const stats = buildProjectStats(inferred.kind, input)
+  return {
+    ok: true,
+    generatedAt,
+    path: input.path,
+    appId: inferred.appId,
+    kind: inferred.kind,
+    readOnly: true,
+    transport: inferred.transport,
+    summary: inferred.summary,
+    sizeBytes: input.sizeBytes,
+    stats,
+    warnings: buildProjectWarnings(inferred.kind, input)
+  }
+}
+
 function matchingDefinitions(appId?: CreativeAppId): CreativeAppDefinition[] {
   return appId
     ? CREATIVE_APP_DEFINITIONS.filter((definition) => definition.id === appId)
     : CREATIVE_APP_DEFINITIONS
+}
+
+function inferCreativeProjectKind(
+  input: CreativeProjectSnapshotInput,
+  extension: string
+): {
+  appId?: CreativeAppId
+  kind: CreativeProjectKind
+  transport: CreativeAppTransport
+  summary: string
+} {
+  if (input.isDirectory) {
+    if (extension === '.fcpbundle') {
+      return {
+        appId: 'final-cut-pro',
+        kind: 'final-cut-library',
+        transport: 'exchange-file',
+        summary:
+          'Final Cut Pro library package; package contents are not inspected by this read-only snapshot.'
+      }
+    }
+    if (extension === '.fcpxmld') {
+      return {
+        appId: 'final-cut-pro',
+        kind: 'final-cut-xml-bundle',
+        transport: 'exchange-file',
+        summary:
+          'Final Cut Pro XML bundle; bundle contents are not inspected by this read-only snapshot.'
+      }
+    }
+    if (extension === '.logicx') {
+      return {
+        appId: 'logic-pro',
+        kind: 'logic-package',
+        transport: 'exchange-file',
+        summary:
+          'Logic Pro project package; package contents are not treated as a public project API.'
+      }
+    }
+  }
+
+  if (extension === '.fcpxml' || textIncludes(input.text, '<fcpxml')) {
+    return {
+      appId: 'final-cut-pro',
+      kind: 'fcpxml',
+      transport: 'exchange-file',
+      summary: 'Final Cut Pro XML interchange document.'
+    }
+  }
+  if (extension === '.musicxml' || textIncludes(input.text, '<score-partwise')) {
+    return {
+      appId: 'logic-pro',
+      kind: 'musicxml',
+      transport: 'exchange-file',
+      summary: 'MusicXML score interchange document suitable for Logic Pro file workflows.'
+    }
+  }
+  if (extension === '.mid' || extension === '.midi' || startsWithAscii(input.bytes, 'MThd')) {
+    return {
+      appId: 'logic-pro',
+      kind: 'midi',
+      transport: 'exchange-file',
+      summary: 'Standard MIDI file for Logic Pro import or audition workflows.'
+    }
+  }
+  if (
+    extension === '.blend' ||
+    extension === '.blend1' ||
+    startsWithAscii(input.bytes, 'BLENDER')
+  ) {
+    return {
+      appId: 'blender',
+      kind: 'blender-binary',
+      transport: 'cli',
+      summary:
+        'Blender binary project; deep scene inspection requires a Blender batch or live bridge.'
+    }
+  }
+  if (
+    extension === '.fbx' ||
+    extension === '.obj' ||
+    extension === '.gltf' ||
+    extension === '.glb'
+  ) {
+    return {
+      appId: 'blender',
+      kind: 'blender-exchange',
+      transport: 'exchange-file',
+      summary: 'Blender-compatible asset exchange file.'
+    }
+  }
+  return {
+    kind: 'unknown',
+    transport: 'exchange-file',
+    summary: 'Creative project type is not recognized by the current adapter registry.'
+  }
+}
+
+function buildProjectStats(
+  kind: CreativeProjectKind,
+  input: CreativeProjectSnapshotInput
+): Record<string, number | string | boolean> {
+  if (kind === 'fcpxml') {
+    const text = input.text || ''
+    return {
+      version: firstAttribute(text, 'fcpxml', 'version') || 'unknown',
+      libraries: countTag(text, 'library'),
+      events: countTag(text, 'event'),
+      projects: countTag(text, 'project'),
+      sequences: countTag(text, 'sequence'),
+      assets: countTag(text, 'asset'),
+      clips: countAnyTag(text, ['clip', 'asset-clip', 'sync-clip', 'mc-clip']),
+      markers: countTag(text, 'marker'),
+      captions: countTag(text, 'caption'),
+      effects: countTag(text, 'effect')
+    }
+  }
+  if (kind === 'musicxml') {
+    const text = input.text || ''
+    return {
+      title: tagText(text, 'work-title') || tagText(text, 'movement-title') || 'unknown',
+      parts: countTag(text, 'part'),
+      measures: countTag(text, 'measure'),
+      notes: countTag(text, 'note'),
+      harmonies: countTag(text, 'harmony')
+    }
+  }
+  if (kind === 'midi') {
+    return midiStats(input.bytes)
+  }
+  if (kind === 'blender-binary') {
+    return blenderStats(input.bytes)
+  }
+  return {
+    directory: input.isDirectory
+  }
+}
+
+function buildProjectWarnings(
+  kind: CreativeProjectKind,
+  input: CreativeProjectSnapshotInput
+): string[] {
+  const warnings: string[] = []
+  if (input.text === undefined && (kind === 'fcpxml' || kind === 'musicxml')) {
+    warnings.push('Text content was not loaded, so XML element counts are unavailable.')
+  }
+  if (kind === 'final-cut-library') {
+    warnings.push('AGBench does not inspect or mutate .fcpbundle internals in this snapshot.')
+  }
+  if (kind === 'logic-package') {
+    warnings.push(
+      'AGBench does not inspect or mutate .logicx internals because they are not a public project API.'
+    )
+  }
+  if (kind === 'blender-binary') {
+    warnings.push(
+      'Use a future Blender batch/live adapter for authoritative scene graph inspection.'
+    )
+  }
+  if (kind === 'unknown') {
+    warnings.push('No adapter-specific parser matched this path.')
+  }
+  return warnings
+}
+
+function normalizeExtension(value: string): string {
+  const trimmed = value.trim().toLowerCase()
+  return trimmed.startsWith('.') || !trimmed ? trimmed : `.${trimmed}`
+}
+
+function extensionFromPath(path: string): string {
+  const name = path.split(/[\\/]/).pop() || ''
+  const index = name.lastIndexOf('.')
+  return index >= 0 ? name.slice(index) : ''
+}
+
+function textIncludes(text: string | undefined, needle: string): boolean {
+  return Boolean(text && text.toLowerCase().includes(needle.toLowerCase()))
+}
+
+function startsWithAscii(bytes: Uint8Array | undefined, prefix: string): boolean {
+  if (!bytes || bytes.length < prefix.length) return false
+  for (let index = 0; index < prefix.length; index += 1) {
+    if (bytes[index] !== prefix.charCodeAt(index)) return false
+  }
+  return true
+}
+
+function countTag(text: string, tagName: string): number {
+  return countAnyTag(text, [tagName])
+}
+
+function countAnyTag(text: string, tagNames: string[]): number {
+  if (!text) return 0
+  return tagNames.reduce((count, tagName) => {
+    const pattern = new RegExp(`<${tagName}(\\s|>|/)`, 'gi')
+    return count + (text.match(pattern)?.length || 0)
+  }, 0)
+}
+
+function firstAttribute(text: string, tagName: string, attributeName: string): string | undefined {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*\\s${attributeName}=["']([^"']+)["']`, 'i')
+  return text.match(pattern)?.[1]
+}
+
+function tagText(text: string, tagName: string): string | undefined {
+  const pattern = new RegExp(`<${tagName}\\b[^>]*>([^<]{1,200})</${tagName}>`, 'i')
+  return text.match(pattern)?.[1]?.trim()
+}
+
+function readUint16BE(bytes: Uint8Array, offset: number): number | undefined {
+  if (bytes.length < offset + 2) return undefined
+  return bytes[offset] * 256 + bytes[offset + 1]
+}
+
+function midiStats(bytes: Uint8Array | undefined): Record<string, number | string | boolean> {
+  if (!startsWithAscii(bytes, 'MThd') || !bytes) {
+    return { validHeader: false }
+  }
+  return {
+    validHeader: true,
+    format: readUint16BE(bytes, 8) ?? 'unknown',
+    tracks: readUint16BE(bytes, 10) ?? 'unknown',
+    division: readUint16BE(bytes, 12) ?? 'unknown'
+  }
+}
+
+function blenderStats(bytes: Uint8Array | undefined): Record<string, number | string | boolean> {
+  if (!startsWithAscii(bytes, 'BLENDER') || !bytes) {
+    return { validHeader: false }
+  }
+  return {
+    validHeader: true,
+    pointerSize: bytes[7] === 45 ? 8 : bytes[7] === 95 ? 4 : 'unknown',
+    endian: bytes[8] === 118 ? 'little' : bytes[8] === 86 ? 'big' : 'unknown',
+    version: bytes.length >= 12 ? asciiSlice(bytes, 9, 12) : 'unknown'
+  }
+}
+
+function asciiSlice(bytes: Uint8Array, start: number, end: number): string {
+  return Array.from(bytes.slice(start, end))
+    .map((byte) => String.fromCharCode(byte))
+    .join('')
 }
 
 function statusForDefinition(

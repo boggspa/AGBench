@@ -29,6 +29,7 @@ export const AGENTBENCH_MCP_TOOLS = [
   'open_workspace_file',
   'creative_app_status',
   'creative_app_capabilities',
+  'creative_project_snapshot',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

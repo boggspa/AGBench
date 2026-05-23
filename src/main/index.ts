@@ -146,6 +146,7 @@ import { tryRunGeminiApi } from './GeminiApiProvider'
 import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
+  buildCreativeProjectSnapshot,
   isCreativeAppId,
   type CreativeAppId,
   type CreativeAttachedWindowMeta
@@ -258,6 +259,7 @@ const NATIVE_GLASS_VIBRANCY: BrowserWindowConstructorOptions['vibrancy'] = 'side
 let appliedNativeGlassState: string | null = null
 const FILE_ICON_CACHE = new Map<string, string | null>()
 const MAX_EDITOR_FILE_BYTES = 1_500_000
+const MAX_CREATIVE_PROJECT_SNAPSHOT_BYTES = 2_000_000
 const MAX_EDITOR_FILES = 900
 const MAX_EDITOR_DEPTH = 6
 const MAX_GEMINI_SESSION_LINES = 200
@@ -11690,6 +11692,57 @@ function executeCreativeAppCapabilities(args: Record<string, any>): unknown {
   })
 }
 
+async function readFilePrefixBytes(targetPath: string, sizeBytes: number): Promise<Buffer> {
+  const bytesToRead = Math.min(sizeBytes, MAX_CREATIVE_PROJECT_SNAPSHOT_BYTES)
+  const handle = await fs.open(targetPath, 'r')
+  try {
+    const buffer = Buffer.alloc(bytesToRead)
+    const result = await handle.read(buffer, 0, bytesToRead, 0)
+    return buffer.subarray(0, result.bytesRead)
+  } finally {
+    await handle.close()
+  }
+}
+
+function shouldDecodeCreativeProjectText(extension: string, buffer: Buffer): boolean {
+  const normalized = extension.toLowerCase()
+  if (normalized === '.fcpxml' || normalized === '.musicxml' || normalized === '.xml') {
+    return true
+  }
+  const prefix = buffer.subarray(0, 200).toString('utf8').toLowerCase()
+  return prefix.includes('<fcpxml') || prefix.includes('<score-partwise')
+}
+
+async function executeCreativeProjectSnapshot(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const rawPath = requireNonEmptyString(args.path || args.file_path || args.projectPath, 'path')
+  const targetPath = resolveGeminiMcpScopedPath(context, rawPath)
+  const stat = await fs.stat(targetPath)
+  const extension = extname(targetPath)
+  if (stat.isDirectory()) {
+    return buildCreativeProjectSnapshot({
+      path: formatScopedPath(context, targetPath),
+      extension,
+      isDirectory: true,
+      sizeBytes: stat.size
+    })
+  }
+  if (!stat.isFile()) {
+    throw new Error('creative_project_snapshot requires a file or package directory path.')
+  }
+  const buffer = await readFilePrefixBytes(targetPath, stat.size)
+  return buildCreativeProjectSnapshot({
+    path: formatScopedPath(context, targetPath),
+    extension,
+    isDirectory: false,
+    sizeBytes: stat.size,
+    bytes: buffer,
+    text: shouldDecodeCreativeProjectText(extension, buffer) ? buffer.toString('utf8') : undefined
+  })
+}
+
 async function executeBrowserTool(
   toolName: AGBenchMcpToolName,
   args: Record<string, any>,
@@ -12301,6 +12354,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(executeCreativeAppStatus(args))
     } else if (toolName === 'creative_app_capabilities') {
       text = mcpJson(executeCreativeAppCapabilities(args))
+    } else if (toolName === 'creative_project_snapshot') {
+      text = mcpJson(await executeCreativeProjectSnapshot(args, context))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13486,6 +13541,27 @@ function mcpToolDefinitions() {
             description: 'Optional creative app id to filter.'
           }
         }
+      }
+    },
+    {
+      name: 'creative_project_snapshot',
+      description:
+        'Read a workspace creative project or interchange file and return a bounded, read-only structural snapshot. Supports FCPXML, MusicXML, MIDI headers, Blender file hints, and package metadata without mutating source projects.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Workspace-relative path to a creative project file or package directory.'
+          }
+        },
+        required: ['path']
       }
     },
     {

@@ -61,7 +61,8 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.fileChanges.tools).toEqual(['write_file', 'replace'])
     expect(contract.tools.creativeApps.tools).toEqual([
       'creative_app_status',
-      'creative_app_capabilities'
+      'creative_app_capabilities',
+      'creative_project_snapshot'
     ])
     expect(contract.mcp.tools).toContain('list_directory')
     expect(contract.approvals.inAppApprovals).toBe(true)

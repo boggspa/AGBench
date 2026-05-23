@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
+  buildCreativeProjectSnapshot,
   isCreativeAppId
 } from './CreativeAppAdapters'
 
@@ -56,5 +57,55 @@ describe('CreativeAppAdapters', () => {
   it('validates creative app ids', () => {
     expect(isCreativeAppId('logic-pro')).toBe(true)
     expect(isCreativeAppId('premiere-pro')).toBe(false)
+  })
+
+  it('summarizes FCPXML without mutating the source document', () => {
+    const snapshot = buildCreativeProjectSnapshot({
+      path: 'edit.fcpxml',
+      isDirectory: false,
+      text: `
+        <fcpxml version="1.14">
+          <resources><asset id="r1" /><effect id="e1" /></resources>
+          <library><event><project><sequence><spine><asset-clip /><marker /></spine></sequence></project></event></library>
+        </fcpxml>
+      `
+    })
+
+    expect(snapshot.appId).toBe('final-cut-pro')
+    expect(snapshot.kind).toBe('fcpxml')
+    expect(snapshot.readOnly).toBe(true)
+    expect(snapshot.stats.version).toBe('1.14')
+    expect(snapshot.stats.assets).toBe(1)
+    expect(snapshot.stats.projects).toBe(1)
+    expect(snapshot.stats.markers).toBe(1)
+  })
+
+  it('summarizes MIDI headers for Logic file workflows', () => {
+    const snapshot = buildCreativeProjectSnapshot({
+      path: 'cue.mid',
+      isDirectory: false,
+      bytes: new Uint8Array([
+        0x4d, 0x54, 0x68, 0x64, 0x00, 0x00, 0x00, 0x06, 0x00, 0x01, 0x00, 0x02, 0x01, 0xe0
+      ])
+    })
+
+    expect(snapshot.appId).toBe('logic-pro')
+    expect(snapshot.kind).toBe('midi')
+    expect(snapshot.stats.validHeader).toBe(true)
+    expect(snapshot.stats.format).toBe(1)
+    expect(snapshot.stats.tracks).toBe(2)
+  })
+
+  it('treats app packages as metadata-only snapshots', () => {
+    const snapshot = buildCreativeProjectSnapshot({
+      path: 'Project.logicx',
+      isDirectory: true,
+      sizeBytes: 4096
+    })
+
+    expect(snapshot.appId).toBe('logic-pro')
+    expect(snapshot.kind).toBe('logic-package')
+    expect(snapshot.stats.directory).toBe(true)
+    expect(snapshot.warnings[0]).toContain('.logicx internals')
   })
 })
