@@ -1760,7 +1760,14 @@ function WelcomeUsageDashboard({
           </div>
           <div className="welcome-usage-stat-grid welcome-usage-stat-grid--dense">
             {denseStatItems.map((item) => (
-              <div key={item.label} className="welcome-usage-stat welcome-usage-stat--dense">
+              <div
+                key={item.label}
+                className="welcome-usage-stat welcome-usage-stat--dense"
+                /* Surface the full label on hover so a 2-line wrap (or
+                 * any rare future overflow past the line-clamp) stays
+                 * inspectable. Cheap accessibility win. */
+                title={item.label}
+              >
                 <span>{item.label}</span>
                 <strong>{item.value}</strong>
               </div>
