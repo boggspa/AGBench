@@ -206,6 +206,9 @@ describe('ToolParser', () => {
       expect(
         getToolDisplayName('mcp__AGBench__creative_project_snapshot', { path: 'edit.fcpxml' })
       ).toBe('Creative project snapshot edit.fcpxml')
+      expect(getToolDisplayName('creative_timeline_validate', { path: 'edit.fcpxml' })).toBe(
+        'Validate timeline edit.fcpxml'
+      )
     })
     it('shows Used <toolName> for unknown', () => {
       expect(getToolDisplayName('magic_tool', {})).toBe('Used magic_tool')

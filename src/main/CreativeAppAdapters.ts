@@ -118,6 +118,37 @@ export interface CreativeProjectSnapshot {
   warnings: string[]
 }
 
+export type CreativeValidationSeverity = 'error' | 'warning' | 'info'
+
+export interface CreativeValidationIssue {
+  severity: CreativeValidationSeverity
+  code: string
+  message: string
+  detail?: string
+}
+
+export interface FcpxmlValidationInput {
+  path: string
+  text: string
+  truncated?: boolean
+  now?: string
+}
+
+export interface FcpxmlValidationResult {
+  ok: true
+  generatedAt: string
+  appId: 'final-cut-pro'
+  path: string
+  kind: 'fcpxml'
+  readOnly: true
+  validation: 'lightweight-fcpxml'
+  valid: boolean
+  version: string
+  stats: Record<string, number | string | boolean>
+  issueCounts: Record<CreativeValidationSeverity, number>
+  issues: CreativeValidationIssue[]
+}
+
 export interface CreativeAppProbeInput {
   appId?: CreativeAppId
   attachedWindow?: CreativeAttachedWindowMeta | null
@@ -149,6 +180,16 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         readOnly: true,
         requiresApproval: false,
         summary: 'Parse exported FCPXML for clips, edit decisions, metadata, markers, and assets.'
+      },
+      {
+        id: 'fcpxml-lightweight-validate',
+        label: 'FCPXML lightweight validation',
+        riskTier: 'draft',
+        transports: ['exchange-file'],
+        readOnly: true,
+        requiresApproval: false,
+        summary:
+          'Check FCPXML root/version, duplicate ids, unresolved refs, and structural counts before import planning.'
       },
       {
         id: 'fcpxml-patch-plan',
@@ -359,6 +400,115 @@ export function buildCreativeProjectSnapshot(
     sizeBytes: input.sizeBytes,
     stats,
     warnings: buildProjectWarnings(inferred.kind, input)
+  }
+}
+
+export function validateFcpxml(input: FcpxmlValidationInput): FcpxmlValidationResult {
+  const generatedAt = input.now || new Date().toISOString()
+  const text = input.text || ''
+  const stats = buildProjectStats('fcpxml', { path: input.path, isDirectory: false, text })
+  const issues: CreativeValidationIssue[] = []
+
+  if (!text.trim()) {
+    issues.push({
+      severity: 'error',
+      code: 'empty-document',
+      message: 'FCPXML document is empty.'
+    })
+  }
+  if (!textIncludes(text, '<fcpxml')) {
+    issues.push({
+      severity: 'error',
+      code: 'missing-root',
+      message: 'FCPXML document does not contain an <fcpxml> root element.'
+    })
+  }
+
+  const version = typeof stats.version === 'string' ? stats.version : 'unknown'
+  if (version === 'unknown') {
+    issues.push({
+      severity: 'warning',
+      code: 'missing-version',
+      message: 'FCPXML root has no detected version attribute.'
+    })
+  } else if (!/^\d+(\.\d+)?$/.test(version)) {
+    issues.push({
+      severity: 'warning',
+      code: 'unexpected-version-format',
+      message: `FCPXML version "${version}" does not look like a numeric version.`
+    })
+  }
+
+  const ids = collectAttributeValues(text, 'id')
+  const duplicateIds = duplicateValues(ids)
+  for (const id of duplicateIds.slice(0, 20)) {
+    issues.push({
+      severity: 'error',
+      code: 'duplicate-id',
+      message: `Duplicate FCPXML id "${id}" detected.`
+    })
+  }
+  if (duplicateIds.length > 20) {
+    issues.push({
+      severity: 'warning',
+      code: 'duplicate-id-truncated',
+      message: `${duplicateIds.length - 20} additional duplicate ids were omitted from this result.`
+    })
+  }
+
+  const idSet = new Set(ids)
+  const unresolvedRefs = collectAttributeValues(text, 'ref').filter((ref) => !idSet.has(ref))
+  for (const ref of [...new Set(unresolvedRefs)].slice(0, 20)) {
+    issues.push({
+      severity: 'error',
+      code: 'unresolved-ref',
+      message: `Reference "${ref}" does not match any detected id.`
+    })
+  }
+  if (unresolvedRefs.length > 20) {
+    issues.push({
+      severity: 'warning',
+      code: 'unresolved-ref-truncated',
+      message: `${unresolvedRefs.length - 20} additional unresolved refs were omitted from this result.`
+    })
+  }
+
+  if (Number(stats.assets || 0) === 0) {
+    issues.push({
+      severity: 'info',
+      code: 'no-assets',
+      message: 'No <asset> entries were detected.'
+    })
+  }
+  if (Number(stats.sequences || 0) === 0) {
+    issues.push({
+      severity: 'info',
+      code: 'no-sequences',
+      message: 'No <sequence> entries were detected.'
+    })
+  }
+  if (input.truncated) {
+    issues.push({
+      severity: 'warning',
+      code: 'document-truncated',
+      message: 'Only the initial portion of this FCPXML document was validated.',
+      detail: 'Increase the snapshot limit or validate the file externally before importing.'
+    })
+  }
+
+  return {
+    ok: true,
+    generatedAt,
+    appId: 'final-cut-pro',
+    path: input.path,
+    kind: 'fcpxml',
+    readOnly: true,
+    validation: 'lightweight-fcpxml',
+    valid: !issues.some((issue) => issue.severity === 'error'),
+    version,
+    stats,
+    issueCounts: countIssuesBySeverity(issues),
+    issues
   }
 }
 
@@ -574,6 +724,39 @@ function firstAttribute(text: string, tagName: string, attributeName: string): s
 function tagText(text: string, tagName: string): string | undefined {
   const pattern = new RegExp(`<${tagName}\\b[^>]*>([^<]{1,200})</${tagName}>`, 'i')
   return text.match(pattern)?.[1]?.trim()
+}
+
+function collectAttributeValues(text: string, attributeName: string): string[] {
+  if (!text) return []
+  const pattern = new RegExp(`\\s${attributeName}=["']([^"']+)["']`, 'gi')
+  const values: string[] = []
+  for (const match of text.matchAll(pattern)) {
+    if (match[1]) values.push(match[1])
+  }
+  return values
+}
+
+function duplicateValues(values: string[]): string[] {
+  const seen = new Set<string>()
+  const duplicates = new Set<string>()
+  for (const value of values) {
+    if (seen.has(value)) {
+      duplicates.add(value)
+    } else {
+      seen.add(value)
+    }
+  }
+  return [...duplicates]
+}
+
+function countIssuesBySeverity(
+  issues: CreativeValidationIssue[]
+): Record<CreativeValidationSeverity, number> {
+  return {
+    error: issues.filter((issue) => issue.severity === 'error').length,
+    warning: issues.filter((issue) => issue.severity === 'warning').length,
+    info: issues.filter((issue) => issue.severity === 'info').length
+  }
 }
 
 function readUint16BE(bytes: Uint8Array, offset: number): number | undefined {

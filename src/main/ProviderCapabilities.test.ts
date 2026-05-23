@@ -62,7 +62,8 @@ describe('ProviderCapabilities', () => {
     expect(contract.tools.creativeApps.tools).toEqual([
       'creative_app_status',
       'creative_app_capabilities',
-      'creative_project_snapshot'
+      'creative_project_snapshot',
+      'creative_timeline_validate'
     ])
     expect(contract.mcp.tools).toContain('list_directory')
     expect(contract.approvals.inAppApprovals).toBe(true)

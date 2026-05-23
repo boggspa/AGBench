@@ -292,6 +292,9 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
   if (unqualifiedName === 'creative_project_snapshot') {
     return filePath ? `Creative project snapshot ${filePath}` : 'Creative project snapshot'
   }
+  if (unqualifiedName === 'creative_timeline_validate') {
+    return filePath ? `Validate timeline ${filePath}` : 'Validate timeline'
+  }
 
   switch (category) {
     case 'task':

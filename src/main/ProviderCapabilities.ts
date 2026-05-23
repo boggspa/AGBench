@@ -145,9 +145,14 @@ function creativeAppsCapability(policy?: AgenticServicePolicy): ProviderToolingC
     enforcement: 'bridge',
     policy,
     requiresApproval: serviceRequiresApproval(policy),
-    tools: ['creative_app_status', 'creative_app_capabilities', 'creative_project_snapshot'],
+    tools: [
+      'creative_app_status',
+      'creative_app_capabilities',
+      'creative_project_snapshot',
+      'creative_timeline_validate'
+    ],
     details:
-      'AGBench exposes read-only creative app discovery now; future apply/control tools will route through the same approval model.'
+      'AGBench exposes read-only creative app discovery, snapshots, and validation; future apply/control tools will route through the same approval model.'
   }
 }
 

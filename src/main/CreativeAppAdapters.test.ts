@@ -3,7 +3,8 @@ import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
   buildCreativeProjectSnapshot,
-  isCreativeAppId
+  isCreativeAppId,
+  validateFcpxml
 } from './CreativeAppAdapters'
 
 describe('CreativeAppAdapters', () => {
@@ -107,5 +108,38 @@ describe('CreativeAppAdapters', () => {
     expect(snapshot.kind).toBe('logic-package')
     expect(snapshot.stats.directory).toBe(true)
     expect(snapshot.warnings[0]).toContain('.logicx internals')
+  })
+
+  it('validates clean FCPXML with lightweight checks', () => {
+    const result = validateFcpxml({
+      path: 'edit.fcpxml',
+      text: `
+        <fcpxml version="1.14">
+          <resources><asset id="r1" src="file:///clip.mov" /></resources>
+          <library><event><project><sequence><spine><asset-clip ref="r1" /></spine></sequence></project></event></library>
+        </fcpxml>
+      `
+    })
+
+    expect(result.valid).toBe(true)
+    expect(result.version).toBe('1.14')
+    expect(result.issueCounts.error).toBe(0)
+    expect(result.stats.assets).toBe(1)
+  })
+
+  it('flags duplicate ids and unresolved refs in FCPXML', () => {
+    const result = validateFcpxml({
+      path: 'broken.fcpxml',
+      text: `
+        <fcpxml version="1.14">
+          <resources><asset id="r1" /><asset id="r1" /></resources>
+          <library><event><project><sequence><spine><asset-clip ref="missing" /></spine></sequence></project></event></library>
+        </fcpxml>
+      `
+    })
+
+    expect(result.valid).toBe(false)
+    expect(result.issues.map((issue) => issue.code)).toContain('duplicate-id')
+    expect(result.issues.map((issue) => issue.code)).toContain('unresolved-ref')
   })
 })
