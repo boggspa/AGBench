@@ -7677,11 +7677,11 @@ button.diff-file-row {
 /* ============================================================
  * Sidebar tile overflow menu (… ⇒ popover with chat/workspace
  * actions). Trigger sits inline with other sidebar-item-actions;
- * popover floats below the trigger, positioned relative to the
- * .sidebar-overflow-menu wrapper.
+ * the popover is portaled to document.body and positioned via JS
+ * (position: fixed against the trigger's bounding rect) so it can
+ * escape the sidebar's overflow:hidden / overflow:auto containers.
  * ============================================================ */
 .sidebar-overflow-menu {
-  position: relative;
   display: inline-flex;
   align-items: center;
 }
@@ -7700,16 +7700,13 @@ button.diff-file-row {
 }
 
 .sidebar-overflow-menu-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  right: 0;
+  /* position/top/right/z-index applied inline from the component. */
   min-width: 168px;
   padding: 4px;
   border-radius: 10px;
   background: color-mix(in srgb, #181818 96%, transparent);
   border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
-  z-index: 20;
   display: flex;
   flex-direction: column;
   gap: 1px;
