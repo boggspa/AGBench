@@ -4073,25 +4073,118 @@ button.sidebar-item {
   z-index: -1;
 }
 
+/* Welcome L9 — header carries a thin bottom hairline so the active
+ * tab's underline indicator visually rides on it. Differentiates the
+ * dashboard from Claude's pill-tab-on-blank-header pattern: ours
+ * reads as a small framed view with a real tab bar at the top. */
 .welcome-usage-dashboard-header {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 40%, transparent);
 }
 
-/* Welcome L7 — fixed-window label sits where the range toggle used to.
- * Quiet, non-interactive — just a reminder of the rolling window the
- * dashboard reports against. */
+/* Welcome L9 — reporting-window label is now a small pill with a
+ * clock icon, deliberately distinct from a Claude-style plain
+ * uppercase tail. Gives the header two visual masses (left = nav,
+ * right = scope) instead of nav-left/empty-right. */
 .welcome-usage-window-label {
-  font-size: var(--font-size-xs);
-  letter-spacing: 0.04em;
-  color: color-mix(in srgb, var(--text-tertiary) 92%, transparent);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 38%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+  font-size: calc(var(--font-size-xs) - 1px);
+  letter-spacing: 0.03em;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+.welcome-usage-window-label .sf-symbol-icon {
+  width: 12px;
+  height: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-usage-window-label .sf-symbol-icon svg {
+  width: 100%;
+  height: 100%;
 }
 
-.welcome-usage-tabs,
+/* Welcome L9 — underline-style tabs replace the soft pill segmented
+ * control we cloned from Claude. The strip is now a flush row of
+ * icon+label buttons with the active state expressed via a 2px
+ * accent underline + bolder weight, not a contained pill. Reads as a
+ * native macOS tab view rather than a web-app segmented control.
+ *
+ * The legacy `.welcome-usage-range` rule (and its `-btn`s) is kept
+ * around for the range toggle that lives elsewhere in the app —
+ * scoping the new rules to the tabs alone keeps that surface intact. */
+.welcome-usage-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.welcome-usage-tab {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  font-weight: 500;
+  line-height: 1.1;
+  padding: 4px 0 7px;
+  margin-bottom: -7px; /* aligns the underline indicator with the header hairline */
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
+  transition: color 140ms ease;
+}
+.welcome-usage-tab .sf-symbol-icon {
+  width: 13px;
+  height: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.welcome-usage-tab .sf-symbol-icon svg {
+  width: 100%;
+  height: 100%;
+}
+.welcome-usage-tab::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: transparent;
+  transition: background-color 140ms ease;
+}
+.welcome-usage-tab:hover:not(.active) {
+  color: var(--text-primary);
+}
+.welcome-usage-tab.active {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.welcome-usage-tab.active::after {
+  background: var(--accent);
+}
+
+/* Range toggle (elsewhere in the app) keeps its historical pill style. */
 .welcome-usage-range {
   display: inline-flex;
   align-items: center;
@@ -4101,8 +4194,6 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 48%, transparent);
 }
-
-.welcome-usage-tab,
 .welcome-usage-range-btn {
   appearance: none;
   -webkit-appearance: none;
@@ -4111,18 +4202,12 @@ button.sidebar-item {
   background: transparent;
   color: color-mix(in srgb, var(--text-secondary) 88%, transparent);
   font: inherit;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-xs);
   line-height: 1.1;
   padding: 5px 9px;
   cursor: pointer;
   transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
 }
-
-.welcome-usage-range-btn {
-  font-size: var(--font-size-xs);
-}
-
-.welcome-usage-tab.active,
 .welcome-usage-range-btn.active {
   background: linear-gradient(180deg, color-mix(in srgb, var(--text-primary) 15%, transparent), color-mix(in srgb, var(--accent) 10%, transparent));
   color: var(--text-primary);
@@ -4130,8 +4215,6 @@ button.sidebar-item {
     inset 0 1px 0 color-mix(in srgb, var(--text-primary) 22%, transparent),
     0 4px 12px color-mix(in srgb, var(--accent) 12%, transparent);
 }
-
-.welcome-usage-tab:hover:not(.active),
 .welcome-usage-range-btn:hover:not(.active) {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);

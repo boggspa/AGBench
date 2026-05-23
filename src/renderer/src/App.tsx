@@ -1,5 +1,5 @@
 import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactElement } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import {
@@ -927,6 +927,33 @@ function PlusSymbolIcon() {
 // The dead icon component is removed; if a future surface needs a
 // chart-bar glyph we can re-add it then.
 
+/**
+ * Small bar-chart glyph used as the Overview-tab icon on the welcome
+ * dashboard. Lives inline with the other inline SymbolIcon components
+ * to keep the icon shape consistent (stroked, 16-viewbox, rounded
+ * caps). Welcome L9 — added when we swapped the dashboard tabs from
+ * the Claude-style pill segmented control to icon + underline tabs.
+ */
+function OverviewSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2.5 13.5h11" />
+        <rect x="3.6" y="8" width="2.2" height="4.4" rx="0.5" />
+        <rect x="6.9" y="5.5" width="2.2" height="6.9" rx="0.5" />
+        <rect x="10.2" y="3" width="2.2" height="9.4" rx="0.5" />
+      </svg>
+    </span>
+  )
+}
+
 function CommandSymbolIcon() {
   return (
     <span className="sf-symbol-icon composer-control-icon" aria-hidden>
@@ -1663,9 +1690,21 @@ const formatScheduledRunTime = (iso: string): string => {
   })
 }
 
-const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
-  { value: 'overview', label: 'Overview' },
-  { value: 'models', label: 'Models' }
+/**
+ * Welcome-dashboard tab descriptors. Each entry carries an icon
+ * component so the header reads "<icon> <label>" — a deliberate
+ * point of differentiation from Claude's text-only segmented tabs
+ * (the dashboard otherwise sat very close to Claude's pattern).
+ * Icons are reused from the inline SymbolIcon set so they pick up
+ * theme colour tokens automatically.
+ */
+const WELCOME_USAGE_TABS: Array<{
+  value: WelcomeUsageTab
+  label: string
+  Icon: () => ReactElement
+}> = [
+  { value: 'overview', label: 'Overview', Icon: OverviewSymbolIcon },
+  { value: 'models', label: 'Models', Icon: ModelSymbolIcon }
 ]
 
 // Welcome L7 — range toggle retired. The dashboard now locks to a
@@ -1726,19 +1765,26 @@ function WelcomeUsageDashboard({
     <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
       <div className="welcome-usage-dashboard-header">
         <div className="welcome-usage-tabs" role="tablist" aria-label="Usage view">
-          {WELCOME_USAGE_TABS.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`welcome-usage-tab ${tab === option.value ? 'active' : ''}`}
-              onClick={() => onTabChange(option.value)}
-            >
-              {option.label}
-            </button>
-          ))}
+          {WELCOME_USAGE_TABS.map((option) => {
+            const Icon = option.Icon
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="tab"
+                aria-selected={tab === option.value}
+                className={`welcome-usage-tab ${tab === option.value ? 'active' : ''}`}
+                onClick={() => onTabChange(option.value)}
+              >
+                <Icon />
+                <span className="welcome-usage-tab-label">{option.label}</span>
+              </button>
+            )
+          })}
         </div>
         <span className="welcome-usage-window-label" aria-label="Reporting window">
-          Last 30 days
+          <ClockSymbolIcon />
+          <span>Last 30 days</span>
         </span>
       </div>
 
