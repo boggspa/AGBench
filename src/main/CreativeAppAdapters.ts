@@ -55,6 +55,19 @@ export interface CreativeAppStatus {
   label: string
   bundleIds: string[]
   installedHint: boolean
+  /**
+   * True when at least one of the app's declared `bundleIds` is currently
+   * running according to `NSRunningApplication`. Surfaced separately from
+   * `installedHint` because the agent often needs both signals: an app
+   * can be installed-but-quit (don't suggest sending it work yet) or
+   * running-but-not-focused (probably fine to push an import to).
+   *
+   * `false` when the daemon isn't available — callers should treat
+   * `installedHint=true && runningHint=false` as "installed; running
+   * status unknown or quit" since the probe degrades gracefully.
+   * Phase K1.
+   */
+  runningHint: boolean
   attached: boolean
   attachedWindow?: CreativeAttachedWindowMeta
   projectExtensions: string[]
@@ -321,6 +334,15 @@ export interface CreativeAppProbeInput {
   attachedWindow?: CreativeAttachedWindowMeta | null
   now?: string
   fileExists?: (path: string) => boolean
+  /**
+   * Predicate that answers "is this bundle id currently running?" for a
+   * given bundle id. Backed by the Swift daemon's
+   * `creative.runningApplications` JSON-RPC method via
+   * `NSRunningApplication.runningApplications(withBundleIdentifier:)`.
+   * Omit when the probe is unavailable (no daemon) — `runningHint`
+   * degrades to `false`. Phase K1.
+   */
+  runningHint?: (bundleId: string) => boolean
 }
 
 const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
@@ -535,6 +557,21 @@ export function isCreativeAppId(value: unknown): value is CreativeAppId {
 
 export function listCreativeAppDefinitions(): CreativeAppDefinition[] {
   return CREATIVE_APP_DEFINITIONS.map((definition) => cloneDefinition(definition))
+}
+
+/**
+ * Flat de-duplicated list of every bundle id any creative-app definition
+ * declares. Handy for the main-process running-app probe: it can fetch
+ * the running-state of all bundle ids in a single JSON-RPC call to the
+ * daemon, then hand the resulting map back through the `runningHint`
+ * predicate. Phase K1.
+ */
+export function listCreativeAppBundleIds(): string[] {
+  const set = new Set<string>()
+  for (const definition of CREATIVE_APP_DEFINITIONS) {
+    for (const bundleId of definition.bundleIds) set.add(bundleId)
+  }
+  return [...set]
 }
 
 export function buildCreativeAppStatusSnapshot(
@@ -1514,6 +1551,11 @@ function statusForDefinition(
     label: definition.label,
     bundleIds: [...definition.bundleIds],
     installedHint: definition.commonAppPaths.some((path) => input.fileExists?.(path) === true),
+    // K1 — true when any of the app's declared bundle IDs reports
+    // as running via the daemon probe. `.some()` because some apps
+    // ship multiple bundle IDs across versions (Logic Pro X vs
+    // newer SKU, etc.) and we count any match as "running".
+    runningHint: definition.bundleIds.some((id) => input.runningHint?.(id) === true),
     attached: Boolean(attachedWindow),
     attachedWindow,
     projectExtensions: [...definition.projectExtensions],

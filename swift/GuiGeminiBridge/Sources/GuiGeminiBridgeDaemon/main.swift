@@ -1011,6 +1011,27 @@ dispatcher.register("attachedWindow.status") { _ in
     ]
 }
 
+// MARK: - Creative-app probe (Phase K1)
+//
+// `creative.runningApplications` — answers "is bundle id X currently running?"
+// for one or more requested bundle ids. Used by `creative_app_status` /
+// `creative_app_capabilities` on the renderer side to upgrade the status
+// snapshot from "installed" (a `fileExists` check) to "installed + running".
+//
+// Params shape: `{ bundleIds: [string] }`. Returns `{ [bundleId]: bool }`.
+// Empty input → empty map; the renderer's caching layer treats that as a
+// safe no-op.
+dispatcher.register("creative.runningApplications") { params in
+    let dict = (params as? [String: Any]) ?? [:]
+    guard let bundleIds = dict["bundleIds"] as? [String] else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "creative.runningApplications expects { bundleIds: [string] }"
+        )
+    }
+    return CreativeAppProbe.runningBundleIds(bundleIds)
+}
+
 // MARK: - Run-event forwarding (Phase C-late slice "stream events to iOS")
 
 // Summary broadcasts (workspace/thread sidebar data) ride the same

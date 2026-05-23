@@ -150,6 +150,7 @@ import {
   buildFcpxmlTimelineDiffPlan,
   buildFcpxmlTimelineIr,
   isCreativeAppId,
+  listCreativeAppBundleIds,
   validateFcpxml,
   type CreativeAppId,
   type CreativeAttachedWindowMeta
@@ -11670,6 +11671,53 @@ function currentCreativeAttachedWindowMeta(): CreativeAttachedWindowMeta | null 
   }
 }
 
+// Phase K1 — Cached running-app probe. The status / capabilities MCP
+// tools each call this before building their snapshot; without a
+// cache, a chatty agent that hammers `creative_app_status` every turn
+// would round-trip to the daemon every call. The cache TTL is short
+// (3 s) because the user can launch / quit an app at any moment and a
+// stale "running" signal could misdirect the agent.
+//
+// Returns a predicate `(bundleId) => boolean` (rather than the raw
+// map) so the adapter can stay map-shape-agnostic. Degrades silently
+// to `() => false` whenever the daemon is unavailable — `runningHint`
+// becomes `false` everywhere, and the agent still gets `installedHint`
+// from the (untouched) fileExists check.
+const CREATIVE_RUNNING_PROBE_TTL_MS = 3_000
+let creativeRunningProbeCache: { fetchedAt: number; running: Map<string, boolean> } | null = null
+
+async function creativeAppRunningHint(): Promise<(bundleId: string) => boolean> {
+  const daemon = bridgeDaemonRef
+  if (!daemon) return () => false
+  const now = Date.now()
+  if (
+    creativeRunningProbeCache &&
+    now - creativeRunningProbeCache.fetchedAt < CREATIVE_RUNNING_PROBE_TTL_MS
+  ) {
+    const cached = creativeRunningProbeCache.running
+    return (bundleId) => cached.get(bundleId) === true
+  }
+  const bundleIds = listCreativeAppBundleIds()
+  if (bundleIds.length === 0) return () => false
+  try {
+    const result = await daemon.request<Record<string, boolean>>(
+      'creative.runningApplications',
+      { bundleIds },
+      { timeoutMs: 2_000 }
+    )
+    const running = new Map<string, boolean>()
+    for (const id of bundleIds) running.set(id, result?.[id] === true)
+    creativeRunningProbeCache = { fetchedAt: now, running }
+    return (bundleId) => running.get(bundleId) === true
+  } catch (err) {
+    // Daemon timeout / channel error — log once and degrade. A noisy
+    // log here would spam on every status call when the daemon is
+    // intentionally disabled, so the message lives at warn level.
+    console.warn('[creativeAppRunningHint] daemon probe failed:', (err as Error).message)
+    return () => false
+  }
+}
+
 function creativeAppIdFromArgs(args: Record<string, any>): CreativeAppId | undefined {
   const value = optionalString(args.appId || args.app || args.id)
   if (!value) return undefined
@@ -11679,19 +11727,23 @@ function creativeAppIdFromArgs(args: Record<string, any>): CreativeAppId | undef
   return value
 }
 
-function executeCreativeAppStatus(args: Record<string, any>): unknown {
+async function executeCreativeAppStatus(args: Record<string, any>): Promise<unknown> {
+  const runningHint = await creativeAppRunningHint()
   return buildCreativeAppStatusSnapshot({
     appId: creativeAppIdFromArgs(args),
     attachedWindow: currentCreativeAttachedWindowMeta(),
-    fileExists: fsSync.existsSync
+    fileExists: fsSync.existsSync,
+    runningHint
   })
 }
 
-function executeCreativeAppCapabilities(args: Record<string, any>): unknown {
+async function executeCreativeAppCapabilities(args: Record<string, any>): Promise<unknown> {
+  const runningHint = await creativeAppRunningHint()
   return buildCreativeAppCapabilitySnapshot({
     appId: creativeAppIdFromArgs(args),
     attachedWindow: currentCreativeAttachedWindowMeta(),
-    fileExists: fsSync.existsSync
+    fileExists: fsSync.existsSync,
+    runningHint
   })
 }
 
@@ -12427,9 +12479,9 @@ async function executeGeminiMcpTool(
     } else if (toolName === 'raw_provider_events') {
       text = mcpJson(executeRawProviderEvents(args, context))
     } else if (toolName === 'creative_app_status') {
-      text = mcpJson(executeCreativeAppStatus(args))
+      text = mcpJson(await executeCreativeAppStatus(args))
     } else if (toolName === 'creative_app_capabilities') {
-      text = mcpJson(executeCreativeAppCapabilities(args))
+      text = mcpJson(await executeCreativeAppCapabilities(args))
     } else if (toolName === 'creative_project_snapshot') {
       text = mcpJson(await executeCreativeProjectSnapshot(args, context))
     } else if (toolName === 'creative_timeline_validate') {

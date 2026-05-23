@@ -6,6 +6,7 @@ import {
   buildFcpxmlTimelineDiffPlan,
   buildFcpxmlTimelineIr,
   isCreativeAppId,
+  listCreativeAppBundleIds,
   validateFcpxml
 } from './CreativeAppAdapters'
 
@@ -258,6 +259,68 @@ describe('CreativeAppAdapters', () => {
       schema: 'agbench-fcpxml-diff-plan-v1',
       beforePath: 'original.fcpxml',
       afterPath: 'draft.fcpxml'
+    })
+  })
+
+  // Phase K1 — running-process probe.
+  describe('runningHint (K1)', () => {
+    it('exposes every declared bundle id via listCreativeAppBundleIds', () => {
+      const ids = listCreativeAppBundleIds()
+      expect(ids).toContain('com.apple.FinalCut')
+      expect(ids).toContain('com.apple.logic10')
+      expect(ids).toContain('org.blenderfoundation.blender')
+      // Set semantics — no duplicates.
+      expect(new Set(ids).size).toBe(ids.length)
+    })
+
+    it('defaults runningHint to false when no predicate is supplied', () => {
+      const snapshot = buildCreativeAppStatusSnapshot({ fileExists: () => true })
+      for (const app of snapshot.apps) {
+        expect(app.runningHint).toBe(false)
+      }
+    })
+
+    it('flips runningHint to true when the predicate returns true for any declared bundle id', () => {
+      const snapshot = buildCreativeAppStatusSnapshot({
+        fileExists: () => true,
+        runningHint: (bundleId) => bundleId === 'com.apple.FinalCut'
+      })
+      const fcp = snapshot.apps.find((app) => app.id === 'final-cut-pro')
+      const logic = snapshot.apps.find((app) => app.id === 'logic-pro')
+      const blender = snapshot.apps.find((app) => app.id === 'blender')
+      expect(fcp?.runningHint).toBe(true)
+      expect(logic?.runningHint).toBe(false)
+      expect(blender?.runningHint).toBe(false)
+    })
+
+    it('keeps installedHint and runningHint orthogonal — installed-but-quit and quit-but-running are both representable', () => {
+      // Installed but not running (app on disk, quit): installedHint=true, runningHint=false.
+      const installedQuiet = buildCreativeAppStatusSnapshot({
+        appId: 'final-cut-pro',
+        fileExists: (path) => path === '/Applications/Final Cut Pro.app',
+        runningHint: () => false
+      })
+      expect(installedQuiet.apps[0].installedHint).toBe(true)
+      expect(installedQuiet.apps[0].runningHint).toBe(false)
+      // Running but on a non-/Applications path (less common, but possible
+      // for sideloaded copies): installedHint=false, runningHint=true.
+      // The agent sees "running without a known disk hint" — useful signal.
+      const runningElsewhere = buildCreativeAppStatusSnapshot({
+        appId: 'final-cut-pro',
+        fileExists: () => false,
+        runningHint: () => true
+      })
+      expect(runningElsewhere.apps[0].installedHint).toBe(false)
+      expect(runningElsewhere.apps[0].runningHint).toBe(true)
+    })
+
+    it('propagates runningHint into the capabilities snapshot too', () => {
+      const snapshot = buildCreativeAppCapabilitySnapshot({
+        appId: 'blender',
+        fileExists: () => true,
+        runningHint: (bundleId) => bundleId === 'org.blenderfoundation.blender'
+      })
+      expect(snapshot.apps[0].runningHint).toBe(true)
     })
   })
 })
