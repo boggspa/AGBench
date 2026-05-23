@@ -1703,8 +1703,8 @@ const WELCOME_USAGE_TABS: Array<{
   label: string
   Icon: () => ReactElement
 }> = [
-  { value: 'overview', label: 'Overview', Icon: OverviewSymbolIcon },
-  { value: 'models', label: 'Models', Icon: ModelSymbolIcon }
+  { value: 'overview', label: 'Statistics', Icon: OverviewSymbolIcon },
+  { value: 'models', label: 'Model Comparisons', Icon: ModelSymbolIcon }
 ]
 
 // Welcome L7 — range toggle retired. The dashboard now locks to a
