@@ -25,6 +25,8 @@ export interface ActivityRenderInputs {
   previews: Array<{ content: string }>
   /** Number of files in any computed diff summary. */
   diffFileCount: number
+  /** Number of custom structured detail widgets the row can reveal. */
+  customDetailCount?: number
   /** Whether the activity is missing-name and we must dump the raw event. */
   shouldShowRawEvent: boolean
 }
@@ -45,10 +47,14 @@ export function hasSubstantivePreview(previews: ActivityRenderInputs['previews']
 
 /** True when there is *any* persistent body the card mode would expose. */
 export function hasCardContent(
-  inputs: Pick<ActivityRenderInputs, 'previews' | 'diffFileCount' | 'shouldShowRawEvent'>
+  inputs: Pick<
+    ActivityRenderInputs,
+    'previews' | 'diffFileCount' | 'customDetailCount' | 'shouldShowRawEvent'
+  >
 ): boolean {
   if (inputs.shouldShowRawEvent) return true
   if (inputs.diffFileCount > 0) return true
+  if ((inputs.customDetailCount || 0) > 0) return true
   return hasSubstantivePreview(inputs.previews)
 }
 
@@ -78,10 +84,11 @@ export function hasExpandableDetail(
   activity: Pick<ToolActivity, 'rawUseEvent' | 'rawResultEvent'>,
   inputs: Pick<
     ActivityRenderInputs,
-    'detailRowCount' | 'previews' | 'diffFileCount' | 'shouldShowRawEvent'
+    'detailRowCount' | 'previews' | 'diffFileCount' | 'customDetailCount' | 'shouldShowRawEvent'
   >
 ): boolean {
   if (inputs.shouldShowRawEvent) return Boolean(activity.rawUseEvent || activity.rawResultEvent)
   if (inputs.diffFileCount > 0) return true
+  if ((inputs.customDetailCount || 0) > 0) return true
   return hasSubstantivePreview(inputs.previews)
 }

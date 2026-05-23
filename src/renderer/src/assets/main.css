@@ -12264,6 +12264,337 @@ input:disabled, select:disabled, textarea:disabled {
   padding: 2px 8px;
 }
 
+.creative-timeline-diff-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.18);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 70%, var(--info));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, rgb(var(--agent-accent-rgb) / 0.09), transparent 60%),
+    color-mix(in srgb, var(--app-bg-elevated) 86%, transparent);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.025),
+    0 10px 24px rgb(0 0 0 / 0.12);
+  color: var(--text-primary);
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.creative-timeline-diff-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.creative-timeline-diff-title-row,
+.creative-timeline-path-row,
+.creative-timeline-guard-row,
+.creative-timeline-resource-chips,
+.creative-timeline-sidecar,
+.creative-timeline-warnings {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.creative-timeline-app-chip,
+.creative-timeline-warning-chip,
+.creative-timeline-resource-chip,
+.creative-timeline-guard-row span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  border-radius: 7px;
+  padding: 0.22rem 0.48rem;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.creative-timeline-app-chip {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.creative-timeline-warning-chip {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning) 24%, transparent);
+}
+
+.creative-timeline-diff-title {
+  font-size: var(--font-size-sm);
+  font-weight: 750;
+  color: var(--text-primary);
+}
+
+.creative-timeline-path-row {
+  justify-content: flex-end;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.creative-timeline-path-row span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.creative-timeline-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgb(255 255 255 / 0.08);
+  border-radius: 7px;
+  background: rgb(255 255 255 / 0.035);
+}
+
+.creative-timeline-stat span {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-stat strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-guard-row span {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.creative-timeline-projects {
+  display: grid;
+  gap: 8px;
+}
+
+.creative-timeline-project {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  border-top: 1px solid rgb(255 255 255 / 0.08);
+  padding-top: 8px;
+}
+
+.creative-timeline-project-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.creative-timeline-project-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 750;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-event {
+  flex: 0 0 auto;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.creative-timeline-project-fields {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-project-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.creative-timeline-project-section {
+  min-width: 0;
+}
+
+.creative-timeline-project-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.creative-timeline-item-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.creative-timeline-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border: 1px solid rgb(255 255 255 / 0.075);
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: rgb(255 255 255 / 0.03);
+  padding: 6px 7px;
+}
+
+.creative-timeline-item.tone-added {
+  border-left-color: var(--success);
+}
+
+.creative-timeline-item.tone-changed {
+  border-left-color: var(--info);
+}
+
+.creative-timeline-item.tone-removed {
+  border-left-color: var(--danger);
+}
+
+.creative-timeline-item-name,
+.creative-timeline-item-meta,
+.creative-timeline-field-list {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-timeline-item-name {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.creative-timeline-item-meta,
+.creative-timeline-field-list {
+  color: var(--text-tertiary);
+  font-size: 10px;
+}
+
+.creative-timeline-resources {
+  display: grid;
+  gap: 5px;
+}
+
+.creative-timeline-resource-row {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.creative-timeline-resource-label {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-resource-chip {
+  color: var(--text-secondary);
+  background: rgb(255 255 255 / 0.045);
+  border: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.creative-timeline-resource-chip.muted {
+  color: var(--text-tertiary);
+}
+
+.creative-timeline-sidecar {
+  border-top: 1px dashed rgb(255 255 255 / 0.09);
+  padding-top: 8px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.creative-timeline-sidecar span {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.creative-timeline-sidecar code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  padding: 0;
+}
+
+.creative-timeline-warnings {
+  color: var(--warning);
+  font-size: 11px;
+}
+
+.creative-timeline-overflow {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+@media (max-width: 760px) {
+  .creative-timeline-diff-header,
+  .creative-timeline-project-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .creative-timeline-path-row {
+    justify-content: flex-start;
+  }
+
+  .creative-timeline-stat-grid,
+  .creative-timeline-project-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── DigitOdometer ──────────────────────────────────────────────────
    Skeuomorphic per-digit rolling counter. Each digit slot is a
    1em-tall clipped window containing a 10-cell vertical column

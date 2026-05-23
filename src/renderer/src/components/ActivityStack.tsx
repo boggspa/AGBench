@@ -20,6 +20,8 @@ import { FileTypeIcon } from './FileTypeIcon'
 import { DigitOdometer } from './DigitOdometer'
 import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
 import { TurnReceiptCard } from './TurnReceiptCard'
+import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
+import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
 
 interface ActivityStackProps {
   activities: ToolActivity[]
@@ -1143,7 +1145,10 @@ export function ActivityStack({
 /** Local hook wrapper so callers see a familiar `useState`-shaped
  * tuple. Centralised so future extensions (persistence across
  * remounts, keyboard-shortcut binding, etc.) live in one place. */
-function useExpandedIdsState(): [Set<string>, (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void] {
+function useExpandedIdsState(): [
+  Set<string>,
+  (next: Set<string> | ((prev: Set<string>) => Set<string>)) => void
+] {
   const [ids, setIds] = useState<Set<string>>(() => new Set())
   return [ids, setIds]
 }
@@ -1476,7 +1481,12 @@ function ActivityRow({
     inlineStats.visible ? inlineStats.additions : diffSummary?.additions,
     inlineStats.visible ? inlineStats.deletions : diffSummary?.deletions
   )
-  const hasSanitizedDetail = sanitizedDetail.rows.length > 0 || sanitizedDetail.previews.length > 0
+  const creativeTimelineDiff = creativeTimelineDiffModelFromActivity(activity)
+  const visiblePreviews = creativeTimelineDiff
+    ? sanitizedDetail.previews.filter((preview) => preview.label !== 'Result')
+    : sanitizedDetail.previews
+  const hasSanitizedDetail =
+    sanitizedDetail.rows.length > 0 || visiblePreviews.length > 0 || Boolean(creativeTimelineDiff)
   const shouldShowRawEvent = showDebugWarning || (isUnknown && !hasSanitizedDetail)
   const diffFileCount = diffSummary?.files?.length || 0
   const renderInputs = {
@@ -1484,6 +1494,7 @@ function ActivityRow({
     detailRowCount: sanitizedDetail.rows.length,
     previews: sanitizedDetail.previews,
     diffFileCount,
+    customDetailCount: creativeTimelineDiff ? 1 : 0,
     shouldShowRawEvent
   }
   // Phase L4 slice 3 — all rows render in the inline body-text form by
@@ -1522,11 +1533,7 @@ function ActivityRow({
         role={canExpand ? 'button' : undefined}
         tabIndex={canExpand ? 0 : -1}
         aria-expanded={canExpand ? expanded : undefined}
-        onClick={
-          canExpand
-            ? (event) => toggleExpanded(event.metaKey || event.shiftKey)
-            : undefined
-        }
+        onClick={canExpand ? (event) => toggleExpanded(event.metaKey || event.shiftKey) : undefined}
         onKeyDown={
           canExpand
             ? (event) => {
@@ -1680,7 +1687,8 @@ function ActivityRow({
                 </div>
               )}
               <ActivityDiffFiles diffSummary={diffSummary} workspacePath={workspacePath} />
-              {sanitizedDetail.previews.map((preview) => (
+              {creativeTimelineDiff && <CreativeTimelineDiffCard activity={activity} />}
+              {visiblePreviews.map((preview) => (
                 <div key={`${preview.label}-${preview.content.slice(0, 32)}`}>
                   <div className="activity-detail-section-title">{preview.label}</div>
                   <ActivityPreview preview={preview} />

@@ -56,6 +56,17 @@ describe('ActivityRenderMode', () => {
       )
     })
 
+    it('returns true when a custom structured detail widget is attached', () => {
+      expect(
+        hasCardContent({
+          previews: [],
+          diffFileCount: 0,
+          customDetailCount: 1,
+          shouldShowRawEvent: false
+        })
+      ).toBe(true)
+    })
+
     it('returns true when a preview is substantive', () => {
       expect(
         hasCardContent({
@@ -139,6 +150,10 @@ describe('ActivityRenderMode', () => {
 
     it('is true when diff files are attached', () => {
       expect(hasExpandableDetail({}, { ...baseInputs, diffFileCount: 1 })).toBe(true)
+    })
+
+    it('is true when custom structured detail is attached', () => {
+      expect(hasExpandableDetail({}, { ...baseInputs, customDetailCount: 1 })).toBe(true)
     })
 
     it('is true when a substantive preview is present', () => {
