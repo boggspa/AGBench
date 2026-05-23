@@ -139,6 +139,46 @@ const formatPeakHour = (hour: number): string => {
   return `${display} ${suffix}`
 }
 
+/**
+ * Welcome L8 — model-breakdown filter. Drops noisy entries from the
+ * Models-tab meter list so usage reads deterministically:
+ *
+ *   - `default` / `unknown` model names are removed across all providers
+ *     (model usage needs to be explicit, not a wildcard bucket).
+ *   - Kimi: only the canonical `kimi-k2.6` (default) and any thinking
+ *     variant survive; deprecated names (`kimi-latest`, `kimi-k2`,
+ *     `kimi-k2.5`, `kimi-k2-thinking` aliases, etc.) collapse to nothing.
+ *     Moonshot's docs now treat K2.6 as the implicit default model.
+ *
+ * Returns `false` when the (provider, model) pair shouldn't surface in
+ * the dashboard's per-model breakdown.
+ */
+const shouldSurfaceModelInBreakdown = (provider: ProviderId, model: string): boolean => {
+  const trimmed = (model || '').trim().toLowerCase()
+  if (!trimmed || trimmed === 'default' || trimmed === 'unknown') return false
+  if (provider === 'kimi') {
+    const KIMI_KEEP = new Set(['kimi-k2.6', 'kimi-k2.6-thinking', 'kimi-k2-thinking'])
+    return KIMI_KEEP.has(trimmed)
+  }
+  return true
+}
+
+/**
+ * Friendly label for the per-model meter row. Falls back to the raw
+ * model id when no provider-specific rename applies, so unfamiliar
+ * models stay readable.
+ */
+const labelForBreakdownModel = (provider: ProviderId, model: string): string => {
+  const trimmed = (model || '').trim().toLowerCase()
+  if (provider === 'kimi') {
+    if (trimmed === 'kimi-k2.6') return 'Kimi K2.6'
+    if (trimmed === 'kimi-k2.6-thinking' || trimmed === 'kimi-k2-thinking') {
+      return 'Kimi K2.6 Thinking'
+    }
+  }
+  return model
+}
+
 const inferProviderFromModelName = (model: string): ProviderId => {
   const normalized = model.toLowerCase()
   if (
@@ -265,8 +305,12 @@ export const buildWelcomeUsageDashboardData = (
     const outputTokens = Math.max(0, Number(record.outputTokens || 0))
     const dayKey = dayKeyFromTimestamp(record.timestamp)
     const hour = new Date(record.timestamp).getHours()
-    const modelId = `${provider}:${model}`
 
+    // Aggregate stats (sessions / activeDays / hourly / hourly heatmap)
+    // always count the record. Only the per-model breakdown is gated by
+    // shouldSurfaceModelInBreakdown — so a run from a deprecated Kimi
+    // alias still bumps the sidebar heatmap + headline stats, but
+    // doesn't add a separate noisy meter row to the Models tab.
     activeDayKeys.add(dayKey)
     sessionIds.add(record.chatId)
     providerIds.add(provider)
@@ -286,11 +330,14 @@ export const buildWelcomeUsageDashboardData = (
     bucket.providerTotals[provider] += cellWeight
     hourBuckets.set(hourStart, bucket)
 
+    if (!shouldSurfaceModelInBreakdown(provider, model)) continue
+    const modelId = `${provider}:${model}`
+    const label = labelForBreakdownModel(provider, model)
     const existing = modelMap.get(modelId) || {
       id: modelId,
       provider,
       model,
-      label: model,
+      label,
       runs: 0,
       inputTokens: 0,
       outputTokens: 0,
@@ -312,19 +359,25 @@ export const buildWelcomeUsageDashboardData = (
       Math.max(0, Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)),
     0
   )
-  // Welcome L4 — model breakdown is range-scoped, not lifetime.
-  // `modelMap` is built from `runRecords` which is already filtered by
-  // the `range` cutoff (line above this comment block in the source).
-  // Both the numerator (model.totalTokens) and the denominator
-  // (totalTokens) come from the same filtered set, so `percent`
-  // describes the model's share of activity inside the selected
-  // window. When the window has no activity, the breakdown is `[]`
-  // rather than a list of 0%-models — see the L4 unit tests.
+  // Welcome L4/L8 — model breakdown is range-scoped AND filtered to
+  // canonical models (see shouldSurfaceModelInBreakdown). Percentage
+  // denominator is the sum of KEPT model tokens, not all run records:
+  // otherwise dropping `default` / deprecated-Kimi entries would just
+  // lower every visible model's percent without rebalancing. The
+  // headline `totalTokens` stat above still sums every run record so
+  // users see all tracked activity, not just the kept-model subset.
+  const modelBreakdownTokenTotal = Array.from(modelMap.values()).reduce(
+    (sum, model) => sum + model.totalTokens,
+    0
+  )
   const modelBreakdown = Array.from(modelMap.values())
     .sort((a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs)
     .map((model) => ({
       ...model,
-      percent: totalTokens > 0 ? (model.totalTokens / totalTokens) * 100 : 0
+      percent:
+        modelBreakdownTokenTotal > 0
+          ? (model.totalTokens / modelBreakdownTokenTotal) * 100
+          : 0
     }))
 
   const todayStart = startOfLocalDay(now)

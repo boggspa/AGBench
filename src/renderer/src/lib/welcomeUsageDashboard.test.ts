@@ -339,6 +339,112 @@ describe('buildWelcomeUsageDashboardData headline stats — range scoping (Welco
   })
 })
 
+describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', () => {
+  const NOW = new Date(2026, 4, 22, 12, 0).getTime()
+
+  it('drops `default` model entries across every provider', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60_000,
+        provider: 'claude',
+        model: 'default',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'b',
+        timestamp: NOW - 90_000,
+        provider: 'kimi',
+        model: 'default',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'c',
+        timestamp: NOW - 120_000,
+        provider: 'gemini',
+        model: 'gemini-3-flash-preview',
+        totalTokens: 5_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    expect(data.modelBreakdown.map((m) => m.model)).toEqual(['gemini-3-flash-preview'])
+    // The `default` runs still contribute to total tokens + active days
+    // because they happened — only the per-model breakdown filter is
+    // narrower than the rest of the stats.
+    expect(data.totalTokens).toBeGreaterThan(5_000)
+  })
+
+  it('keeps only canonical Kimi variants (K2.6 + K2.6 Thinking) and relabels them', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'a',
+        timestamp: NOW - 60_000,
+        provider: 'kimi',
+        model: 'kimi-k2.6',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'b',
+        timestamp: NOW - 90_000,
+        provider: 'kimi',
+        model: 'kimi-k2-thinking',
+        totalTokens: 500
+      }),
+      baseRecord({
+        id: 'c',
+        timestamp: NOW - 120_000,
+        provider: 'kimi',
+        model: 'kimi-latest',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'd',
+        timestamp: NOW - 150_000,
+        provider: 'kimi',
+        model: 'kimi-k2.5',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'e',
+        timestamp: NOW - 180_000,
+        provider: 'kimi',
+        model: 'kimi-k2',
+        totalTokens: 1_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    expect(data.modelBreakdown.map((m) => m.label)).toEqual([
+      'Kimi K2.6',
+      'Kimi K2.6 Thinking'
+    ])
+  })
+
+  it('percentages are computed against kept-model tokens, not the lifetime aggregate', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'kept',
+        timestamp: NOW - 60_000,
+        provider: 'gemini',
+        model: 'gemini-3-flash-preview',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'dropped',
+        timestamp: NOW - 90_000,
+        provider: 'claude',
+        model: 'default',
+        totalTokens: 1_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+    // Without rebalancing, this would read ~50%. With the L8 rebalanced
+    // denominator (kept-tokens only), the surviving entry reads 100%.
+    expect(data.modelBreakdown).toHaveLength(1)
+    expect(data.modelBreakdown[0].percent).toBeCloseTo(100, 0)
+    expect(data.totalTokens).toBeGreaterThan(1_500) // still counts both runs
+  })
+})
+
 describe('mixProviderColors', () => {
   const palette = {
     gemini: '#2563EB',
