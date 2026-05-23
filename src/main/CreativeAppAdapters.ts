@@ -149,6 +149,100 @@ export interface FcpxmlValidationResult {
   issues: CreativeValidationIssue[]
 }
 
+export interface FcpxmlTimelineIrInput {
+  path: string
+  text: string
+  truncated?: boolean
+  now?: string
+}
+
+export interface FcpxmlResourceIr {
+  id: string
+  name?: string
+  uid?: string
+  src?: string
+  duration?: string
+  start?: string
+  format?: string
+  role?: string
+  mediaRepCount?: number
+}
+
+export interface FcpxmlFormatIr {
+  id: string
+  name?: string
+  width?: string
+  height?: string
+  frameDuration?: string
+  colorSpace?: string
+}
+
+export interface FcpxmlEffectIr {
+  id: string
+  name?: string
+  uid?: string
+}
+
+export interface FcpxmlTimelineMarkerIr {
+  type: 'marker' | 'chapter-marker' | 'caption'
+  value?: string
+  start?: string
+  duration?: string
+  note?: string
+  role?: string
+}
+
+export interface FcpxmlTimelineItemIr {
+  index: number
+  type: string
+  name?: string
+  ref?: string
+  refName?: string
+  offset?: string
+  start?: string
+  duration?: string
+  lane?: string
+  role?: string
+  format?: string
+  markers: FcpxmlTimelineMarkerIr[]
+  captions: FcpxmlTimelineMarkerIr[]
+}
+
+export interface FcpxmlSequenceIr {
+  name?: string
+  duration?: string
+  format?: string
+  tcStart?: string
+  tcFormat?: string
+  spine: FcpxmlTimelineItemIr[]
+  markers: FcpxmlTimelineMarkerIr[]
+}
+
+export interface FcpxmlProjectIr {
+  name?: string
+  eventName?: string
+  sequence?: FcpxmlSequenceIr
+}
+
+export interface FcpxmlTimelineIr {
+  ok: true
+  generatedAt: string
+  appId: 'final-cut-pro'
+  path: string
+  kind: 'fcpxml'
+  readOnly: true
+  ir: 'fcpxml-timeline-ir-v1'
+  version: string
+  resources: {
+    assets: FcpxmlResourceIr[]
+    formats: FcpxmlFormatIr[]
+    effects: FcpxmlEffectIr[]
+  }
+  projects: FcpxmlProjectIr[]
+  summary: Record<string, number | string | boolean>
+  warnings: string[]
+}
+
 export interface CreativeAppProbeInput {
   appId?: CreativeAppId
   attachedWindow?: CreativeAttachedWindowMeta | null
@@ -180,6 +274,15 @@ const CREATIVE_APP_DEFINITIONS: CreativeAppDefinition[] = [
         readOnly: true,
         requiresApproval: false,
         summary: 'Parse exported FCPXML for clips, edit decisions, metadata, markers, and assets.'
+      },
+      {
+        id: 'fcpxml-timeline-ir',
+        label: 'FCPXML timeline IR',
+        riskTier: 'observe',
+        transports: ['exchange-file'],
+        readOnly: true,
+        requiresApproval: false,
+        summary: 'Parse FCPXML into a compact timeline IR for diffing, draft plans, and preview UX.'
       },
       {
         id: 'fcpxml-lightweight-validate',
@@ -512,6 +615,77 @@ export function validateFcpxml(input: FcpxmlValidationInput): FcpxmlValidationRe
   }
 }
 
+export function buildFcpxmlTimelineIr(input: FcpxmlTimelineIrInput): FcpxmlTimelineIr {
+  const generatedAt = input.now || new Date().toISOString()
+  const text = input.text || ''
+  const stats = buildProjectStats('fcpxml', { path: input.path, isDirectory: false, text })
+  const document = parseXmlDocument(text)
+  const fcpxml = firstDescendant(document, 'fcpxml')
+  const warnings: string[] = []
+  if (!fcpxml) {
+    warnings.push('No <fcpxml> root element was found; timeline IR may be empty.')
+  }
+  if (input.truncated) {
+    warnings.push('Only the initial portion of this FCPXML document was parsed into timeline IR.')
+  }
+
+  const assets = descendants(document, 'asset').map(assetToIr)
+  const assetNameById = new Map(
+    assets.map((asset) => [asset.id, asset.name || asset.uid || asset.id])
+  )
+  const formats = descendants(document, 'format').map(formatToIr)
+  const effects = descendants(document, 'effect').map(effectToIr)
+  const effectNameById = new Map(
+    effects.map((effect) => [effect.id, effect.name || effect.uid || effect.id])
+  )
+
+  const projects = descendants(document, 'project').map((project) => {
+    const sequence = firstChild(project, 'sequence') || firstDescendant(project, 'sequence')
+    return {
+      name: project.attrs.name,
+      eventName: nearestAncestorName(project, 'event'),
+      sequence: sequence ? sequenceToIr(sequence, assetNameById, effectNameById) : undefined
+    }
+  })
+
+  if (projects.length === 0) {
+    warnings.push('No <project> entries were detected.')
+  }
+
+  const clipCount = projects.reduce(
+    (count, project) => count + (project.sequence?.spine.length || 0),
+    0
+  )
+  const markerCount = projects.reduce(
+    (count, project) => count + (project.sequence?.markers.length || 0),
+    0
+  )
+
+  return {
+    ok: true,
+    generatedAt,
+    appId: 'final-cut-pro',
+    path: input.path,
+    kind: 'fcpxml',
+    readOnly: true,
+    ir: 'fcpxml-timeline-ir-v1',
+    version: typeof stats.version === 'string' ? stats.version : 'unknown',
+    resources: { assets, formats, effects },
+    projects,
+    summary: {
+      projectCount: projects.length,
+      sequenceCount: projects.filter((project) => project.sequence).length,
+      assetCount: assets.length,
+      formatCount: formats.length,
+      effectCount: effects.length,
+      timelineItemCount: clipCount,
+      markerCount,
+      truncated: Boolean(input.truncated)
+    },
+    warnings
+  }
+}
+
 function matchingDefinitions(appId?: CreativeAppId): CreativeAppDefinition[] {
   return appId
     ? CREATIVE_APP_DEFINITIONS.filter((definition) => definition.id === appId)
@@ -756,6 +930,202 @@ function countIssuesBySeverity(
     error: issues.filter((issue) => issue.severity === 'error').length,
     warning: issues.filter((issue) => issue.severity === 'warning').length,
     info: issues.filter((issue) => issue.severity === 'info').length
+  }
+}
+
+interface XmlNode {
+  name: string
+  attrs: Record<string, string>
+  children: XmlNode[]
+  parent?: XmlNode
+}
+
+function parseXmlDocument(text: string): XmlNode {
+  const root: XmlNode = { name: '#document', attrs: {}, children: [] }
+  const stack: XmlNode[] = [root]
+  const tagPattern = /<([^!?][^>]*)>/g
+  for (const match of text.matchAll(tagPattern)) {
+    const raw = match[1]?.trim() || ''
+    if (!raw || raw.startsWith('!--')) continue
+    if (raw.startsWith('/')) {
+      const closingName = raw.slice(1).trim().split(/\s+/)[0]
+      while (stack.length > 1) {
+        const current = stack.pop()
+        if (current?.name === closingName) break
+      }
+      continue
+    }
+    const selfClosing = raw.endsWith('/')
+    const body = selfClosing ? raw.slice(0, -1).trim() : raw
+    const name = body.split(/\s+/)[0]
+    if (!name) continue
+    const node: XmlNode = {
+      name,
+      attrs: parseXmlAttributes(body.slice(name.length)),
+      children: [],
+      parent: stack[stack.length - 1]
+    }
+    stack[stack.length - 1].children.push(node)
+    if (!selfClosing) stack.push(node)
+  }
+  return root
+}
+
+function parseXmlAttributes(source: string): Record<string, string> {
+  const attrs: Record<string, string> = {}
+  const pattern = /([A-Za-z_:][-A-Za-z0-9_:.]*)\s*=\s*("([^"]*)"|'([^']*)')/g
+  for (const match of source.matchAll(pattern)) {
+    const name = match[1]
+    const value = match[3] ?? match[4] ?? ''
+    attrs[name] = decodeXmlAttribute(value)
+  }
+  return attrs
+}
+
+function decodeXmlAttribute(value: string): string {
+  return value
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+}
+
+function firstDescendant(node: XmlNode, name: string): XmlNode | undefined {
+  return descendants(node, name)[0]
+}
+
+function descendants(node: XmlNode, name: string): XmlNode[] {
+  const matches: XmlNode[] = []
+  for (const child of node.children) {
+    if (child.name === name) matches.push(child)
+    matches.push(...descendants(child, name))
+  }
+  return matches
+}
+
+function firstChild(node: XmlNode, name: string): XmlNode | undefined {
+  return node.children.find((child) => child.name === name)
+}
+
+function nearestAncestorName(node: XmlNode, ancestorName: string): string | undefined {
+  let current = node.parent
+  while (current) {
+    if (current.name === ancestorName) return current.attrs.name
+    current = current.parent
+  }
+  return undefined
+}
+
+function assetToIr(node: XmlNode): FcpxmlResourceIr {
+  return {
+    id: node.attrs.id || '',
+    name: node.attrs.name,
+    uid: node.attrs.uid,
+    src: node.attrs.src,
+    duration: node.attrs.duration,
+    start: node.attrs.start,
+    format: node.attrs.format,
+    role: node.attrs.role,
+    mediaRepCount: descendants(node, 'media-rep').length
+  }
+}
+
+function formatToIr(node: XmlNode): FcpxmlFormatIr {
+  return {
+    id: node.attrs.id || '',
+    name: node.attrs.name,
+    width: node.attrs.width,
+    height: node.attrs.height,
+    frameDuration: node.attrs.frameDuration,
+    colorSpace: node.attrs.colorSpace
+  }
+}
+
+function effectToIr(node: XmlNode): FcpxmlEffectIr {
+  return {
+    id: node.attrs.id || '',
+    name: node.attrs.name,
+    uid: node.attrs.uid
+  }
+}
+
+function sequenceToIr(
+  node: XmlNode,
+  assetNameById: Map<string, string>,
+  effectNameById: Map<string, string>
+): FcpxmlSequenceIr {
+  const spine = firstChild(node, 'spine')
+  const spineItems = spine
+    ? spine.children
+        .filter((child) => isTimelineItemNode(child.name))
+        .map((child, index) => timelineItemToIr(child, index, assetNameById, effectNameById))
+    : []
+  return {
+    name: node.attrs.name,
+    duration: node.attrs.duration,
+    format: node.attrs.format,
+    tcStart: node.attrs.tcStart,
+    tcFormat: node.attrs.tcFormat,
+    spine: spineItems,
+    markers: collectTimelineMarkers(node)
+  }
+}
+
+function timelineItemToIr(
+  node: XmlNode,
+  index: number,
+  assetNameById: Map<string, string>,
+  effectNameById: Map<string, string>
+): FcpxmlTimelineItemIr {
+  const ref = node.attrs.ref
+  return {
+    index,
+    type: node.name,
+    name: node.attrs.name,
+    ref,
+    refName: ref ? assetNameById.get(ref) || effectNameById.get(ref) : undefined,
+    offset: node.attrs.offset,
+    start: node.attrs.start,
+    duration: node.attrs.duration,
+    lane: node.attrs.lane,
+    role: node.attrs.role,
+    format: node.attrs.format,
+    markers: collectTimelineMarkers(node).filter((marker) => marker.type !== 'caption'),
+    captions: collectTimelineMarkers(node).filter((marker) => marker.type === 'caption')
+  }
+}
+
+function isTimelineItemNode(name: string): boolean {
+  return [
+    'asset-clip',
+    'clip',
+    'sync-clip',
+    'mc-clip',
+    'ref-clip',
+    'gap',
+    'title',
+    'generator',
+    'transition'
+  ].includes(name)
+}
+
+function collectTimelineMarkers(node: XmlNode): FcpxmlTimelineMarkerIr[] {
+  return [
+    ...descendants(node, 'marker').map((marker) => markerToIr(marker, 'marker')),
+    ...descendants(node, 'chapter-marker').map((marker) => markerToIr(marker, 'chapter-marker')),
+    ...descendants(node, 'caption').map((marker) => markerToIr(marker, 'caption'))
+  ]
+}
+
+function markerToIr(node: XmlNode, type: FcpxmlTimelineMarkerIr['type']): FcpxmlTimelineMarkerIr {
+  return {
+    type,
+    value: node.attrs.value,
+    start: node.attrs.start,
+    duration: node.attrs.duration,
+    note: node.attrs.note,
+    role: node.attrs.role
   }
 }
 

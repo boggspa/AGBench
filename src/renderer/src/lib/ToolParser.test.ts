@@ -209,6 +209,9 @@ describe('ToolParser', () => {
       expect(getToolDisplayName('creative_timeline_validate', { path: 'edit.fcpxml' })).toBe(
         'Validate timeline edit.fcpxml'
       )
+      expect(getToolDisplayName('creative_timeline_ir', { path: 'edit.fcpxml' })).toBe(
+        'Timeline IR edit.fcpxml'
+      )
     })
     it('shows Used <toolName> for unknown', () => {
       expect(getToolDisplayName('magic_tool', {})).toBe('Used magic_tool')

@@ -279,7 +279,7 @@ describe('buildGeminiFunctionDeclarations', () => {
  * world — too heavy for a unit test. The shape below mirrors the
  * literal so the round-trip test exercises every AGBench MCP tool.
  *
- * The list is intentionally exhaustive (29 entries). Each entry is the
+ * The list is intentionally exhaustive (37 entries). Each entry is the
  * minimal subset of fields the converter touches: `name`, optional
  * `description`, optional `inputSchema`. We do NOT need the
  * `annotations` block, so it's omitted to keep this snapshot compact.
@@ -500,6 +500,23 @@ const MCP_TOOL_DEFINITIONS_SNAPSHOT: Array<{
     }
   },
   {
+    name: 'attached_window_capture',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        include_ocr: { type: 'boolean' },
+        max_dimension_px: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'attached_window_status',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
     name: 'browser_console',
     inputSchema: {
       type: 'object',
@@ -569,6 +586,48 @@ const MCP_TOOL_DEFINITIONS_SNAPSHOT: Array<{
     inputSchema: {
       type: 'object',
       properties: { path: { type: 'string' }, reveal: { type: 'boolean' } },
+      required: ['path']
+    }
+  },
+  {
+    name: 'creative_app_status',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', enum: ['final-cut-pro', 'logic-pro', 'blender'] }
+      }
+    }
+  },
+  {
+    name: 'creative_app_capabilities',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        appId: { type: 'string', enum: ['final-cut-pro', 'logic-pro', 'blender'] }
+      }
+    }
+  },
+  {
+    name: 'creative_project_snapshot',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' } },
+      required: ['path']
+    }
+  },
+  {
+    name: 'creative_timeline_validate',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' } },
+      required: ['path']
+    }
+  },
+  {
+    name: 'creative_timeline_ir',
+    inputSchema: {
+      type: 'object',
+      properties: { path: { type: 'string' } },
       required: ['path']
     }
   },

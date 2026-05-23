@@ -149,7 +149,8 @@ function creativeAppsCapability(policy?: AgenticServicePolicy): ProviderToolingC
       'creative_app_status',
       'creative_app_capabilities',
       'creative_project_snapshot',
-      'creative_timeline_validate'
+      'creative_timeline_validate',
+      'creative_timeline_ir'
     ],
     details:
       'AGBench exposes read-only creative app discovery, snapshots, and validation; future apply/control tools will route through the same approval model.'

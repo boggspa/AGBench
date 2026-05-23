@@ -31,6 +31,7 @@ export const AGENTBENCH_MCP_TOOLS = [
   'creative_app_capabilities',
   'creative_project_snapshot',
   'creative_timeline_validate',
+  'creative_timeline_ir',
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',

@@ -295,6 +295,9 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
   if (unqualifiedName === 'creative_timeline_validate') {
     return filePath ? `Validate timeline ${filePath}` : 'Validate timeline'
   }
+  if (unqualifiedName === 'creative_timeline_ir') {
+    return filePath ? `Timeline IR ${filePath}` : 'Timeline IR'
+  }
 
   switch (category) {
     case 'task':

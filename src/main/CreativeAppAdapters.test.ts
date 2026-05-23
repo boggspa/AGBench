@@ -3,6 +3,7 @@ import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
   buildCreativeProjectSnapshot,
+  buildFcpxmlTimelineIr,
   isCreativeAppId,
   validateFcpxml
 } from './CreativeAppAdapters'
@@ -141,5 +142,47 @@ describe('CreativeAppAdapters', () => {
     expect(result.valid).toBe(false)
     expect(result.issues.map((issue) => issue.code)).toContain('duplicate-id')
     expect(result.issues.map((issue) => issue.code)).toContain('unresolved-ref')
+  })
+
+  it('parses FCPXML into a compact timeline IR', () => {
+    const result = buildFcpxmlTimelineIr({
+      path: 'edit.fcpxml',
+      text: `
+        <fcpxml version="1.14">
+          <resources>
+            <format id="fmt1" name="FFVideoFormat1080p30" width="1920" height="1080" />
+            <asset id="r1" name="Interview" uid="abc" src="file:///interview.mov" duration="10s" />
+            <effect id="title1" name="Basic Title" uid=".../Titles.localized/Basic Title" />
+          </resources>
+          <library>
+            <event name="Day 1">
+              <project name="Assembly">
+                <sequence format="fmt1" duration="10s" tcStart="0s">
+                  <spine>
+                    <asset-clip name="Interview clip" ref="r1" offset="0s" duration="10s">
+                      <marker start="1s" value="Intro" />
+                      <caption start="2s" duration="1s" role="caption" />
+                    </asset-clip>
+                    <title name="Lower third" ref="title1" offset="3s" duration="2s" />
+                  </spine>
+                </sequence>
+              </project>
+            </event>
+          </library>
+        </fcpxml>
+      `
+    })
+
+    expect(result.ir).toBe('fcpxml-timeline-ir-v1')
+    expect(result.version).toBe('1.14')
+    expect(result.resources.assets[0].name).toBe('Interview')
+    expect(result.resources.formats[0].width).toBe('1920')
+    expect(result.projects[0].eventName).toBe('Day 1')
+    expect(result.projects[0].sequence?.format).toBe('fmt1')
+    expect(result.projects[0].sequence?.spine).toHaveLength(2)
+    expect(result.projects[0].sequence?.spine[0].refName).toBe('Interview')
+    expect(result.projects[0].sequence?.spine[0].markers[0].value).toBe('Intro')
+    expect(result.projects[0].sequence?.spine[0].captions).toHaveLength(1)
+    expect(result.projects[0].sequence?.spine[1].refName).toBe('Basic Title')
   })
 })

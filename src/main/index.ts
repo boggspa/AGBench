@@ -147,6 +147,7 @@ import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
   buildCreativeProjectSnapshot,
+  buildFcpxmlTimelineIr,
   isCreativeAppId,
   validateFcpxml,
   type CreativeAppId,
@@ -11767,6 +11768,29 @@ async function executeCreativeTimelineValidate(
   })
 }
 
+async function executeCreativeTimelineIr(
+  args: Record<string, any>,
+  context: GeminiToolContext
+): Promise<unknown> {
+  const rawPath = requireNonEmptyString(args.path || args.file_path || args.timelinePath, 'path')
+  const targetPath = resolveGeminiMcpScopedPath(context, rawPath)
+  const stat = await fs.stat(targetPath)
+  if (!stat.isFile()) {
+    throw new Error('creative_timeline_ir requires a workspace FCPXML file path.')
+  }
+  const extension = extname(targetPath).toLowerCase()
+  const buffer = await readFilePrefixBytes(targetPath, stat.size)
+  const text = buffer.toString('utf8')
+  if (extension !== '.fcpxml' && !text.toLowerCase().includes('<fcpxml')) {
+    throw new Error('creative_timeline_ir currently supports FCPXML documents only.')
+  }
+  return buildFcpxmlTimelineIr({
+    path: formatScopedPath(context, targetPath),
+    text,
+    truncated: stat.size > buffer.byteLength
+  })
+}
+
 async function executeBrowserTool(
   toolName: AGBenchMcpToolName,
   args: Record<string, any>,
@@ -12382,6 +12406,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeCreativeProjectSnapshot(args, context))
     } else if (toolName === 'creative_timeline_validate') {
       text = mcpJson(await executeCreativeTimelineValidate(args, context))
+    } else if (toolName === 'creative_timeline_ir') {
+      text = mcpJson(await executeCreativeTimelineIr(args, context))
     } else if (toolName === 'open_workspace_file') {
       text = mcpJson(await executeOpenWorkspaceFile(args, context))
     } else if (toolName === 'create_handoff_card') {
@@ -13594,6 +13620,27 @@ function mcpToolDefinitions() {
       name: 'creative_timeline_validate',
       description:
         'Validate a workspace FCPXML timeline/interchange document with lightweight read-only checks: root/version, structural counts, duplicate ids, unresolved refs, and truncation warnings. Does not import or mutate Final Cut Pro projects.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: {
+            type: 'string',
+            description: 'Workspace-relative path to an FCPXML document.'
+          }
+        },
+        required: ['path']
+      }
+    },
+    {
+      name: 'creative_timeline_ir',
+      description:
+        'Parse a workspace FCPXML document into the compact AGBench timeline IR for preview, diff, and plan workflows. Does not import or mutate Final Cut Pro projects.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
