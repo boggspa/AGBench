@@ -127,7 +127,6 @@ import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
   type WelcomeUsageDashboardData,
-  type WelcomeUsageRange,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
 
@@ -1669,32 +1668,12 @@ const WELCOME_USAGE_TABS: Array<{ value: WelcomeUsageTab; label: string }> = [
   { value: 'models', label: 'Models' }
 ]
 
-/**
- * Time-window toggle for the welcome dashboard. The actual
- * `WelcomeUsageRange` type lives in
- * `./lib/welcomeUsageDashboard.ts` so the builder and the
- * App.tsx control share one source of truth.
- */
-const WELCOME_USAGE_RANGES: Array<{ value: WelcomeUsageRange; label: string; aria: string }> = [
-  { value: '24h', label: '24h', aria: 'Last 24 hours' },
-  { value: '7d', label: '7D', aria: 'Last 7 days' },
-  { value: '30d', label: '30D', aria: 'Last 30 days' },
-  { value: 'all', label: 'All', aria: 'All recorded activity' }
-]
-
-/** Human copy for the L6 empty-state — "No activity in the last 7 days." */
-function rangeLabelFor(range: WelcomeUsageRange): string {
-  switch (range) {
-    case '24h':
-      return 'the last 24 hours'
-    case '7d':
-      return 'the last 7 days'
-    case '30d':
-      return 'the last 30 days'
-    case 'all':
-      return 'any tracked activity yet'
-  }
-}
+// Welcome L7 — range toggle retired. The dashboard now locks to a
+// fixed 30-day rolling window that matches the sidebar UsageHeatmap.
+// (The L2–L5 toggle infrastructure stays in the lib because the
+// builder still accepts a `range` param, but the UI only ever calls
+// it with '30d' from one site.) The WELCOME_USAGE_RANGES constant +
+// rangeLabelFor helper were removed alongside the toggle JSX.
 
 const providerModelColorClass = (provider: ProviderId): string => `provider-${provider}`
 
@@ -1706,15 +1685,11 @@ const providerModelColorClass = (provider: ProviderId): string => `provider-${pr
 function WelcomeUsageDashboard({
   data,
   tab,
-  onTabChange,
-  range,
-  onRangeChange
+  onTabChange
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
-  range: WelcomeUsageRange
-  onRangeChange: (range: WelcomeUsageRange) => void
 }) {
   const topModels = data.modelBreakdown.slice(0, 4)
   const statItems = [
@@ -1743,33 +1718,19 @@ function WelcomeUsageDashboard({
             </button>
           ))}
         </div>
-        <div className="welcome-usage-range" role="tablist" aria-label="Usage range">
-          {WELCOME_USAGE_RANGES.map((option) => (
-            <button
-              key={option.value}
-              type="button"
-              className={`welcome-usage-range-btn ${range === option.value ? 'active' : ''}`}
-              onClick={() => onRangeChange(option.value)}
-              aria-label={option.aria}
-              aria-pressed={range === option.value}
-              title={option.aria}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
+        <span className="welcome-usage-window-label" aria-label="Reporting window">
+          Last 30 days
+        </span>
       </div>
 
-      {/* Welcome L6 — empty-state copy for the selected range. Mounted
-          on both tabs so the user can pick a wider range from the
-          toggle without leaving the dashboard. */}
+      {/* Welcome L6/L7 — empty-state when the 30-day rolling window has
+          no activity. The dashboard still mounts (lifetimeHasActivity
+          is true) so the user sees the headline shape; this card
+          replaces the stat grid / chart inside. */}
       {!data.hasActivity ? (
         <div className="welcome-usage-empty welcome-usage-empty--range">
-          <strong>No activity in {rangeLabelFor(range)}.</strong>
-          <span>
-            Try the <em>All</em> tab above to see your lifetime usage, or kick off a run on this
-            workspace.
-          </span>
+          <strong>No activity in the last 30 days.</strong>
+          <span>Kick off a run on this workspace to start filling the dashboard.</span>
         </div>
       ) : tab === 'overview' ? (
         <>
@@ -4188,11 +4149,9 @@ function App(): React.JSX.Element {
   const [usageSummary, setUsageSummary] = useState<ModelUsageAggregate[]>([])
   const [usageRecords, setUsageRecords] = useState<UsageRecord[]>([])
   const [welcomeUsageTab, setWelcomeUsageTab] = useState<WelcomeUsageTab>('overview')
-  // Welcome L2 — time-window toggle. Default `30d` matches the
-  // sidebar's UsageHeatmap window. `all` reproduces the historical
-  // welcome behaviour (lifetime aggregate). L3-L5 wire this to the
-  // model bars, percentages, and headline stats respectively.
-  const [welcomeUsageRange, setWelcomeUsageRange] = useState<WelcomeUsageRange>('30d')
+  // Welcome L7 — fixed 30-day rolling window; the toggle UI is gone.
+  // (Builder still accepts the range param so the lib stays flexible
+  // for future surfaces; this is the single canonical caller.)
   const saveChatTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const lastUsageWindowsByProviderRef = useRef<Record<ProviderId, UsageWindowAggregate[]>>({
     gemini: [],
@@ -11478,13 +11437,12 @@ function App(): React.JSX.Element {
       }),
     [currentChat, transcriptMessages, isCurrentChatRunning, showFallbackUX]
   )
-  // Welcome L3: builder now respects the toggle from L2. Bars,
-  // headline totals, and per-model breakdowns all re-aggregate when
-  // the user flips between 24h / 7D / 30D / All instead of staring at
-  // a hardcoded `'all'` lifetime aggregate.
+  // Welcome L7 — fixed 30D rolling window. The toggle is gone; the
+  // dashboard always reports against the same 30-day cutoff the
+  // sidebar UsageHeatmap uses, so the two surfaces stay coherent.
   const welcomeUsageDashboardData = useMemo(
-    () => buildWelcomeUsageDashboardData(usageRecords, chats, welcomeUsageRange),
-    [usageRecords, chats, welcomeUsageRange]
+    () => buildWelcomeUsageDashboardData(usageRecords, chats, '30d'),
+    [usageRecords, chats]
   )
   // Welcome L6 — the outer guard uses `lifetimeHasActivity` so the
   // dashboard (and its range toggle) stay mounted even when the
@@ -12333,8 +12291,6 @@ function App(): React.JSX.Element {
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}
                 onTabChange={setWelcomeUsageTab}
-                range={welcomeUsageRange}
-                onRangeChange={setWelcomeUsageRange}
               />
             </div>
           )}

@@ -4081,6 +4081,16 @@ button.sidebar-item {
   margin-bottom: 10px;
 }
 
+/* Welcome L7 — fixed-window label sits where the range toggle used to.
+ * Quiet, non-interactive — just a reminder of the rolling window the
+ * dashboard reports against. */
+.welcome-usage-window-label {
+  font-size: var(--font-size-xs);
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text-tertiary) 92%, transparent);
+  text-transform: uppercase;
+}
+
 .welcome-usage-tabs,
 .welcome-usage-range {
   display: inline-flex;
