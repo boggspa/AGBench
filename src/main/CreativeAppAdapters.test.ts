@@ -7,7 +7,9 @@ import {
   buildFcpxmlTimelineIr,
   isCreativeAppId,
   listCreativeAppBundleIds,
-  validateFcpxml
+  serializeFcpxmlTimelineIr,
+  validateFcpxml,
+  type FcpxmlTimelineIr
 } from './CreativeAppAdapters'
 
 describe('CreativeAppAdapters', () => {
@@ -321,6 +323,222 @@ describe('CreativeAppAdapters', () => {
         runningHint: (bundleId) => bundleId === 'org.blenderfoundation.blender'
       })
       expect(snapshot.apps[0].runningHint).toBe(true)
+    })
+  })
+
+  // Phase K2 — FCPXML writer round-trip.
+  describe('serializeFcpxmlTimelineIr (K2)', () => {
+    it('emits a minimal valid FCPXML skeleton from an empty IR', () => {
+      const result = serializeFcpxmlTimelineIr({ ir: {} })
+      expect(result.ok).toBe(true)
+      expect(result.text).toMatch(/^<\?xml version="1\.0" encoding="UTF-8"\?>/)
+      expect(result.text).toContain('<!DOCTYPE fcpxml>')
+      expect(result.text).toContain('<fcpxml version="1.13">')
+      expect(result.text).toContain('<resources>')
+      // No <library> when no projects — keeps the doc minimal and importable.
+      expect(result.text).not.toContain('<library>')
+      expect(result.text).toMatch(/<\/fcpxml>\n$/)
+      expect(result.summary.assetCount).toBe(0)
+      expect(result.summary.projectCount).toBe(0)
+    })
+
+    it('round-trips a representative IR through emit → parse without losing structural fields', () => {
+      const ir: FcpxmlTimelineIr = {
+        ok: true,
+        generatedAt: '2026-05-23T00:00:00.000Z',
+        appId: 'final-cut-pro',
+        path: 'edit.fcpxml',
+        kind: 'fcpxml',
+        readOnly: true,
+        ir: 'fcpxml-timeline-ir-v1',
+        version: '1.13',
+        resources: {
+          formats: [
+            {
+              id: 'r1',
+              name: 'FFVideoFormat1080p2997',
+              width: '1920',
+              height: '1080',
+              frameDuration: '1001/30000s'
+            }
+          ],
+          assets: [
+            {
+              id: 'r2',
+              name: 'B-roll',
+              uid: 'ABC123',
+              src: 'file:///Users/dev/Movies/broll.mov',
+              duration: '120s',
+              start: '0s',
+              format: 'r1'
+            }
+          ],
+          effects: [{ id: 'r3', name: 'Basic Title', uid: '.../Titles.localized/Basic Title.moef' }]
+        },
+        projects: [
+          {
+            name: 'My Edit',
+            eventName: 'Phase K shoot',
+            sequence: {
+              name: 'My Edit',
+              duration: '180s',
+              format: 'r1',
+              tcStart: '0s',
+              tcFormat: 'NDF',
+              spine: [
+                {
+                  index: 0,
+                  type: 'asset-clip',
+                  name: 'Opening shot',
+                  ref: 'r2',
+                  refName: 'B-roll',
+                  offset: '0s',
+                  start: '0s',
+                  duration: '60s',
+                  role: 'video',
+                  markers: [
+                    {
+                      type: 'marker',
+                      start: '15s',
+                      duration: '1/30000s',
+                      value: 'beat drop',
+                      note: 'cymbal hit'
+                    }
+                  ],
+                  captions: [
+                    {
+                      type: 'caption',
+                      start: '5s',
+                      duration: '3s',
+                      value: 'Hello world',
+                      role: 'iTT'
+                    }
+                  ]
+                },
+                {
+                  index: 1,
+                  type: 'gap',
+                  name: undefined,
+                  offset: '60s',
+                  duration: '2s',
+                  markers: [],
+                  captions: []
+                }
+              ],
+              markers: [
+                {
+                  type: 'chapter-marker',
+                  start: '0s',
+                  duration: '1/30000s',
+                  value: 'Chapter 1'
+                }
+              ]
+            }
+          }
+        ],
+        summary: {},
+        warnings: []
+      }
+      const writer = serializeFcpxmlTimelineIr({ ir })
+      expect(writer.summary.timelineItemCount).toBe(2)
+      // Reparse — the IR builder should reconstitute the same structural shape.
+      const reparsed = buildFcpxmlTimelineIr({ path: 'roundtrip.fcpxml', text: writer.text })
+      expect(reparsed.version).toBe('1.13')
+      expect(reparsed.resources.assets.map((asset) => asset.id)).toEqual(['r2'])
+      expect(reparsed.resources.assets[0].name).toBe('B-roll')
+      expect(reparsed.resources.assets[0].src).toBe('file:///Users/dev/Movies/broll.mov')
+      expect(reparsed.resources.formats[0].frameDuration).toBe('1001/30000s')
+      expect(reparsed.resources.effects[0].name).toBe('Basic Title')
+      expect(reparsed.projects).toHaveLength(1)
+      const project = reparsed.projects[0]
+      expect(project.name).toBe('My Edit')
+      expect(project.eventName).toBe('Phase K shoot')
+      expect(project.sequence?.spine).toHaveLength(2)
+      expect(project.sequence?.spine[0].type).toBe('asset-clip')
+      expect(project.sequence?.spine[0].name).toBe('Opening shot')
+      expect(project.sequence?.spine[0].ref).toBe('r2')
+      expect(project.sequence?.spine[0].duration).toBe('60s')
+      expect(project.sequence?.spine[0].markers).toHaveLength(1)
+      expect(project.sequence?.spine[0].markers[0].value).toBe('beat drop')
+      expect(project.sequence?.spine[0].captions).toHaveLength(1)
+      expect(project.sequence?.spine[0].captions[0].value).toBe('Hello world')
+      expect(project.sequence?.spine[1].type).toBe('gap')
+      expect(project.sequence?.spine[1].duration).toBe('2s')
+      // Sequence-level markers in the parser use recursive `descendants()`
+      // so the count is "all marker-like elements in the subtree" — the
+      // chapter-marker we put at sequence level plus the marker+caption
+      // inside the clip. That's pre-existing parser behavior, not a
+      // writer concern. We just assert the chapter-marker we emitted
+      // round-trips into the set.
+      const chapterMarkers = (project.sequence?.markers || []).filter(
+        (m) => m.type === 'chapter-marker'
+      )
+      expect(chapterMarkers).toHaveLength(1)
+      expect(chapterMarkers[0].value).toBe('Chapter 1')
+    })
+
+    it('escapes XML metacharacters in attribute values', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            assets: [
+              {
+                id: 'r1',
+                name: 'Title with <special> & "quotes" \'apostrophes\'',
+                src: 'file:///path/with&amp;.mov'
+              }
+            ]
+          }
+        }
+      })
+      // Verify entities, not raw chars. The doc must still be parseable.
+      expect(writer.text).toContain('&lt;special&gt;')
+      expect(writer.text).toContain('&amp;')
+      expect(writer.text).toContain('&quot;quotes&quot;')
+      expect(writer.text).toContain('&apos;apostrophes&apos;')
+      // And it round-trips back to the original strings.
+      const reparsed = buildFcpxmlTimelineIr({ path: 'esc.fcpxml', text: writer.text })
+      expect(reparsed.resources.assets[0].name).toBe(
+        'Title with <special> & "quotes" \'apostrophes\''
+      )
+    })
+
+    it('preserves spine item ordering across emit/parse', () => {
+      const ir: FcpxmlTimelineIr['projects'][number] = {
+        name: 'order-test',
+        sequence: {
+          spine: [
+            { index: 0, type: 'asset-clip', name: 'A', markers: [], captions: [] },
+            { index: 1, type: 'gap', markers: [], captions: [] },
+            { index: 2, type: 'asset-clip', name: 'B', markers: [], captions: [] },
+            { index: 3, type: 'title', name: 'C', markers: [], captions: [] }
+          ],
+          markers: []
+        }
+      }
+      const writer = serializeFcpxmlTimelineIr({ ir: { projects: [ir] } })
+      const reparsed = buildFcpxmlTimelineIr({ path: 'order.fcpxml', text: writer.text })
+      const names = reparsed.projects[0].sequence?.spine.map((s) => s.name || s.type)
+      expect(names).toEqual(['A', 'gap', 'B', 'C'])
+    })
+
+    it('warns when an IR asset declares media-rep children (dropped on emission)', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            assets: [{ id: 'r1', name: 'Proxy asset', src: 'file:///x.mov', mediaRepCount: 2 }]
+          }
+        }
+      })
+      expect(writer.warnings.some((w) => /media-rep/.test(w))).toBe(true)
+    })
+
+    it('synthesises an event name for projects without one so the doc validates', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: { projects: [{ name: 'untagged', eventName: undefined, sequence: undefined }] }
+      })
+      // The fallback name lives between the <event name="..."> attribute quotes.
+      expect(writer.text).toMatch(/<event name="AGBench Drafts">/)
     })
   })
 })

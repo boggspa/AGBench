@@ -806,6 +806,301 @@ export function buildFcpxmlTimelineIr(input: FcpxmlTimelineIrInput): FcpxmlTimel
   }
 }
 
+/**
+ * K2 — Forward emitter: FCPXML timeline IR → FCPXML document text.
+ *
+ * Pairs with `buildFcpxmlTimelineIr`. Lets an agent build a timeline
+ * structurally (assets, sequences, clips, markers) and emit a valid
+ * `.fcpxml` that Final Cut Pro can ingest via the K3 import path or a
+ * traditional File → Import XML flow.
+ *
+ * Fidelity envelope:
+ * - LOSSLESS for everything the IR captures: resource ids/names, format
+ *   geometry, asset src/role/duration, spine item shape (type, ref,
+ *   offset/start/duration, lane/role/format/name), markers/captions
+ *   with their start/duration/value/note/role.
+ * - LOSSY for everything the IR drops on parse: arbitrary XML
+ *   attributes outside the well-known set, `<media-rep>` storage
+ *   metadata (we only count it in the IR, we don't round-trip it),
+ *   custom param/key-frame data, comments, processing instructions.
+ *
+ * The writer is intended for new content the agent constructs, not for
+ * mutating arbitrary user-authored .fcpxml — the IR isn't rich enough
+ * for that and a "round-trip user FCPXML" capability would need a
+ * separate, richer IR.
+ */
+export interface FcpxmlTimelineWriterInput {
+  /**
+   * The IR to emit. Accepts the full `FcpxmlTimelineIr` shape returned
+   * by `buildFcpxmlTimelineIr` (the agent reads → mutates → re-emits
+   * flow) OR an agent-constructed minimal subset (`version` defaults
+   * to '1.13' when missing; `resources` defaults to empty arrays;
+   * `projects` defaults to empty).
+   */
+  ir: {
+    version?: string
+    resources?: {
+      assets?: FcpxmlResourceIr[]
+      formats?: FcpxmlFormatIr[]
+      effects?: FcpxmlEffectIr[]
+    }
+    projects?: FcpxmlProjectIr[]
+  }
+  /** Indent string per nesting level. Default '  ' (two spaces). */
+  indent?: string
+}
+
+export interface FcpxmlTimelineWriterResult {
+  ok: true
+  text: string
+  summary: {
+    assetCount: number
+    formatCount: number
+    effectCount: number
+    projectCount: number
+    timelineItemCount: number
+    markerCount: number
+  }
+  warnings: string[]
+}
+
+/**
+ * Escape a string for safe inclusion as an XML attribute value or text
+ * node. Mirrors the parser's tolerance — `'`, `"`, `<`, `>`, `&` all
+ * get entitised. Newlines and other control chars are preserved so
+ * the writer doesn't accidentally re-flow long marker notes.
+ */
+function escapeXmlText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;')
+}
+
+/**
+ * Build an XML attribute string from a set of named values. Skips
+ * `undefined` / empty-string attributes — FCPXML's parsers (including
+ * our own) treat absent and empty attributes as identical, but FCP
+ * itself is fussier and will complain about `name=""` on a clip. The
+ * writer is conservative: only emit attributes the IR actually carries.
+ */
+function emitAttrs(pairs: Array<[string, string | undefined]>): string {
+  const parts: string[] = []
+  for (const [name, value] of pairs) {
+    if (value === undefined || value === '') continue
+    parts.push(`${name}="${escapeXmlText(value)}"`)
+  }
+  return parts.length ? ' ' + parts.join(' ') : ''
+}
+
+/**
+ * Phase K2 — emit a valid FCPXML 1.13 document from a timeline IR.
+ *
+ * See {@link FcpxmlTimelineWriterInput} for the fidelity envelope and
+ * the supported input shape (full IR or minimal subset).
+ */
+export function serializeFcpxmlTimelineIr(
+  input: FcpxmlTimelineWriterInput
+): FcpxmlTimelineWriterResult {
+  const ir = input.ir
+  const version = ir.version || '1.13'
+  const indent = input.indent ?? '  '
+  const assets = ir.resources?.assets || []
+  const formats = ir.resources?.formats || []
+  const effects = ir.resources?.effects || []
+  const projects = ir.projects || []
+  const warnings: string[] = []
+
+  let timelineItemCount = 0
+  let markerCount = 0
+
+  // FCPXML's resource ordering convention is format → asset → effect.
+  // The DTD doesn't strictly require it but FCP's importer reads
+  // resources left-to-right and resolves refs as it goes, so an asset
+  // that references a format-id must come AFTER its format. Keeping
+  // formats first eliminates that whole class of "ref not found"
+  // surprises during import.
+  const lines: string[] = []
+  lines.push('<?xml version="1.0" encoding="UTF-8"?>')
+  lines.push('<!DOCTYPE fcpxml>')
+  lines.push(`<fcpxml version="${escapeXmlText(version)}">`)
+  lines.push(`${indent}<resources>`)
+  for (const format of formats) {
+    lines.push(
+      `${indent}${indent}<format${emitAttrs([
+        ['id', format.id],
+        ['name', format.name],
+        ['width', format.width],
+        ['height', format.height],
+        ['frameDuration', format.frameDuration],
+        ['colorSpace', format.colorSpace]
+      ])}/>`
+    )
+  }
+  for (const asset of assets) {
+    // The IR carries `mediaRepCount` but no media-rep details. We
+    // drop the stub media-reps on emission — FCP's importer is happy
+    // to resolve `<asset src="...">` without an inner `<media-rep>`
+    // for the file-on-disk case; the media-rep is only required for
+    // proxy-render workflows we don't model in the IR.
+    if (asset.mediaRepCount && asset.mediaRepCount > 0) {
+      warnings.push(
+        `Asset "${asset.id}" had ${asset.mediaRepCount} <media-rep> children in the source IR; ` +
+          'they are dropped on emission (the IR captures count only, not the rep details).'
+      )
+    }
+    lines.push(
+      `${indent}${indent}<asset${emitAttrs([
+        ['id', asset.id],
+        ['name', asset.name],
+        ['uid', asset.uid],
+        ['src', asset.src],
+        ['duration', asset.duration],
+        ['start', asset.start],
+        ['format', asset.format],
+        ['role', asset.role]
+      ])}/>`
+    )
+  }
+  for (const effect of effects) {
+    lines.push(
+      `${indent}${indent}<effect${emitAttrs([
+        ['id', effect.id],
+        ['name', effect.name],
+        ['uid', effect.uid]
+      ])}/>`
+    )
+  }
+  lines.push(`${indent}</resources>`)
+
+  // Library wraps every event. The IR carries a per-project eventName
+  // string, so projects sharing an event get folded back together;
+  // projects with distinct eventNames each get their own <event>. A
+  // missing eventName falls into a synthesized "AGBench Drafts" event
+  // so the output validates against importers that require non-empty
+  // event names.
+  if (projects.length > 0) {
+    lines.push(`${indent}<library>`)
+    const projectsByEvent = new Map<string, FcpxmlProjectIr[]>()
+    for (const project of projects) {
+      const eventKey = project.eventName || 'AGBench Drafts'
+      const bucket = projectsByEvent.get(eventKey) || []
+      bucket.push(project)
+      projectsByEvent.set(eventKey, bucket)
+    }
+    for (const [eventName, eventProjects] of projectsByEvent) {
+      lines.push(`${indent}${indent}<event name="${escapeXmlText(eventName)}">`)
+      for (const project of eventProjects) {
+        lines.push(
+          `${indent}${indent}${indent}<project${emitAttrs([['name', project.name]])}>`
+        )
+        if (project.sequence) {
+          const seq = project.sequence
+          lines.push(
+            `${indent}${indent}${indent}${indent}<sequence${emitAttrs([
+              ['name', seq.name],
+              ['duration', seq.duration],
+              ['format', seq.format],
+              ['tcStart', seq.tcStart],
+              ['tcFormat', seq.tcFormat]
+            ])}>`
+          )
+          lines.push(`${indent}${indent}${indent}${indent}${indent}<spine>`)
+          for (const item of seq.spine) {
+            timelineItemCount += 1
+            markerCount += item.markers.length + item.captions.length
+            const hasChildren = item.markers.length > 0 || item.captions.length > 0
+            const headerAttrs = emitAttrs([
+              ['name', item.name],
+              ['ref', item.ref],
+              ['offset', item.offset],
+              ['start', item.start],
+              ['duration', item.duration],
+              ['lane', item.lane],
+              ['role', item.role],
+              ['format', item.format]
+            ])
+            if (!hasChildren) {
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}/>`
+              )
+              continue
+            }
+            lines.push(
+              `${indent}${indent}${indent}${indent}${indent}${indent}<${item.type}${headerAttrs}>`
+            )
+            for (const marker of item.markers) {
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs(
+                  [
+                    ['start', marker.start],
+                    ['duration', marker.duration],
+                    ['value', marker.value],
+                    ['note', marker.note],
+                    ['role', marker.role]
+                  ]
+                )}/>`
+              )
+            }
+            for (const caption of item.captions) {
+              lines.push(
+                `${indent}${indent}${indent}${indent}${indent}${indent}${indent}<caption${emitAttrs(
+                  [
+                    ['start', caption.start],
+                    ['duration', caption.duration],
+                    ['value', caption.value],
+                    ['note', caption.note],
+                    ['role', caption.role]
+                  ]
+                )}/>`
+              )
+            }
+            lines.push(`${indent}${indent}${indent}${indent}${indent}${indent}</${item.type}>`)
+          }
+          lines.push(`${indent}${indent}${indent}${indent}${indent}</spine>`)
+          // Sequence-level markers ride at the spine sibling level.
+          for (const marker of seq.markers) {
+            markerCount += 1
+            lines.push(
+              `${indent}${indent}${indent}${indent}${indent}<${marker.type}${emitAttrs([
+                ['start', marker.start],
+                ['duration', marker.duration],
+                ['value', marker.value],
+                ['note', marker.note],
+                ['role', marker.role]
+              ])}/>`
+            )
+          }
+          lines.push(`${indent}${indent}${indent}${indent}</sequence>`)
+        }
+        lines.push(`${indent}${indent}${indent}</project>`)
+      }
+      lines.push(`${indent}${indent}</event>`)
+    }
+    lines.push(`${indent}</library>`)
+  }
+
+  lines.push('</fcpxml>')
+  // Trailing newline — POSIX-friendly, matches Final Cut's own export.
+  const text = lines.join('\n') + '\n'
+
+  return {
+    ok: true,
+    text,
+    summary: {
+      assetCount: assets.length,
+      formatCount: formats.length,
+      effectCount: effects.length,
+      projectCount: projects.length,
+      timelineItemCount,
+      markerCount
+    },
+    warnings
+  }
+}
+
 export function buildFcpxmlTimelineDiffPlan(
   input: FcpxmlTimelineDiffInput
 ): FcpxmlTimelineDiffPlan {
