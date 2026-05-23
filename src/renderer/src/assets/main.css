@@ -12792,6 +12792,20 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 
+/* Belt-and-braces: strip the footer chrome to transparent so the
+ * control row reads as floating satellite chips on the page background
+ * instead of a single dark rounded rect linking them. The composer
+ * surface itself keeps its Codex-purple aura — only the inner footer
+ * strip needs to disappear. Mirrors the Claude-shell treatment above. */
+[data-composer-style="codex"] .composer-control-footer,
+[data-composer-style="codex"] .composer-inline-pickers,
+[data-composer-style="codex"] .composer-inline-pickers-left,
+[data-composer-style="codex"] .composer-inline-actions {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 /* ============== CLAUDE STYLE ============== */
 [data-composer-style="claude"] .composer-surface {
   border-radius: 14px;
