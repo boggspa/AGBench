@@ -12,5 +12,12 @@
     <true/>
     <key>com.apple.security.network.server</key>
     <true/>
+    <!-- Phase K4 — required for the hardened runtime to permit
+         outgoing AppleEvents (NSAppleScript / OSAKit dispatching into
+         Final Cut Pro and Logic Pro). Without this entitlement, the
+         OS rejects every cross-app automation call with errAEEvent
+         NotPermitted (-1743), regardless of TCC user approval. -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
   </dict>
 </plist>
