@@ -17118,12 +17118,65 @@ input:disabled, select:disabled, textarea:disabled {
 .first-launch-sheet-provider-card-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
 }
 .first-launch-sheet-provider-card-label {
   font-weight: 600;
   font-size: 1em;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Provider logo on the left of each provider card header.
+ * Sourced from `src/renderer/src/assets/provider-logos/*.png`
+ * (same logos used in the model usage cards). 24×24, no
+ * background — just the logo glyph sized to sit next to the
+ * provider name. */
+.first-launch-sheet-provider-card-logo {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  object-fit: contain;
+  border-radius: 5px;
+}
+
+/* Per-provider colour tinting. Cards pick up the canonical
+ * provider colour tokens (defined in theme.css) for the
+ * border + label, so each card reads as "the Codex card",
+ * "the Claude card", etc. at a glance. Tonally subtle on the
+ * card background so the cards stay readable; saturated on
+ * the label so the provider identity reads. */
+.first-launch-sheet-provider-card[data-provider="codex"] {
+  border-color: color-mix(in srgb, var(--provider-codex-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-codex-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="codex"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-codex-color) 78%, var(--text-primary));
+}
+.first-launch-sheet-provider-card[data-provider="claude"] {
+  border-color: color-mix(in srgb, var(--provider-claude-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-claude-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="claude"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-claude-color) 78%, var(--text-primary));
+}
+.first-launch-sheet-provider-card[data-provider="gemini"] {
+  border-color: color-mix(in srgb, var(--provider-gemini-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-gemini-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="gemini"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-gemini-color) 78%, var(--text-primary));
+}
+.first-launch-sheet-provider-card[data-provider="kimi"] {
+  border-color: color-mix(in srgb, var(--provider-kimi-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-kimi-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="kimi"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-kimi-color) 78%, var(--text-primary));
 }
 .first-launch-sheet-provider-card-optional-badge {
   font-size: 0.7em;

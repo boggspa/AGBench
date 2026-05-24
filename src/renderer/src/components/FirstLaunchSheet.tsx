@@ -1,6 +1,17 @@
 import React, { useEffect, useRef } from 'react'
 import type { ProviderApiKeyStatus, GeminiAuthStatus } from '../../../main/store/types'
 import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
+import codexLogo from '../assets/provider-logos/codex.png'
+import claudeLogo from '../assets/provider-logos/claude.png'
+import geminiLogo from '../assets/provider-logos/gemini.png'
+import kimiLogo from '../assets/provider-logos/kimi.png'
+
+const PROVIDER_LOGOS: Record<'codex' | 'claude' | 'gemini' | 'kimi', string> = {
+  codex: codexLogo,
+  claude: claudeLogo,
+  gemini: geminiLogo,
+  kimi: kimiLogo
+}
 
 /**
  * FirstLaunchSheet — onboarding overlay for fresh AGBench testers.
@@ -449,6 +460,12 @@ function ProviderCard({ row, onOpenSettings }: ProviderCardProps): React.JSX.Ele
   return (
     <div className={classes} data-provider={row.id}>
       <div className="first-launch-sheet-provider-card-header">
+        <img
+          src={PROVIDER_LOGOS[row.id]}
+          alt=""
+          aria-hidden
+          className="first-launch-sheet-provider-card-logo"
+        />
         <span className="first-launch-sheet-provider-card-label">{row.label}</span>
         {row.optional && (
           <span className="first-launch-sheet-provider-card-optional-badge">Optional</span>
