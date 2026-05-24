@@ -1569,8 +1569,12 @@ function ActivityRow({
                          * Phase K-followup — another 1.25× bump
                          * (24 → 30px). The icon now carries the
                          * row's left-margin anchor (replacing the
-                         * removed traffic-light gutter dot). */
-                        size={30}
+                         * removed traffic-light gutter dot).
+                         * K-followup-2 — small density bump
+                         * (30 → 34px) so the icon reads as the
+                         * dominant left-edge anchor of the row at
+                         * normal transcript zoom. */
+                        size={34}
                         className="activity-category-icon"
                       />
                     ) : (
@@ -1597,8 +1601,12 @@ function ActivityRow({
                          * Slice 4 follow-up — 1.5× bump (14 → 21px)
                          * for scannability in long transcripts. Icons
                          * now lead the row visually rather than
-                         * competing with body text. */
-                        size={21}
+                         * competing with body text.
+                         * K-followup-2 — density bump (21 → 25px)
+                         * to match the now-bolded label weight; the
+                         * icon needs to read with similar prominence
+                         * or the row feels lopsided. */
+                        size={25}
                         className={`activity-inline-icon category-${activity.category || 'unknown'}`}
                       />
                     ) : (

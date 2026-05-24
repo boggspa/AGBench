@@ -219,11 +219,26 @@ describe('ToolParser', () => {
         })
       ).toBe('Timeline diff original.fcpxml -> draft.fcpxml')
     })
-    it('shows Used <toolName> for unknown', () => {
-      expect(getToolDisplayName('magic_tool', {})).toBe('Used magic_tool')
+    it('humanises snake_case tool names through the title-case fallback', () => {
+      expect(getToolDisplayName('magic_tool', {})).toBe('Used Magic Tool')
     })
     it('shows Used unknown when no name', () => {
       expect(getToolDisplayName('', {})).toBe('Used unknown')
+    })
+    it('uses the ToolDisplayNames dictionary for delegate_to_subthread', () => {
+      expect(getToolDisplayName('delegate_to_subthread', {})).toBe('Delegated to sub-thread')
+    })
+    it('uses the dictionary through provider namespace prefixes', () => {
+      expect(getToolDisplayName('mcp__AGBench__delegate_to_subthread', {})).toBe(
+        'Delegated to sub-thread'
+      )
+      expect(getToolDisplayName('agbench__attached_window_capture', {})).toBe(
+        'Captured attached window'
+      )
+    })
+    it('uses the dictionary for editor / IDE transport tools', () => {
+      expect(getToolDisplayName('reveal_in_finder', {})).toBe('Revealed in Finder')
+      expect(getToolDisplayName('open_in_ide_at_position', {})).toBe('Opened in IDE at position')
     })
   })
 

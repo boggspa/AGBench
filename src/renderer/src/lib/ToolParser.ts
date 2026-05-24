@@ -5,6 +5,7 @@ import {
   ToolDiffFileSummary,
   ToolDiffSummary
 } from '../../../main/store/types'
+import { lookupToolDisplayName, titleCaseToolName } from './ToolDisplayNames'
 
 export function extractToolName(event: any): string {
   if (!event || typeof event !== 'object') return 'unknown'
@@ -370,8 +371,23 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
     }
     case 'shell':
       return 'Shell command'
-    default:
-      return toolName && toolName !== 'unknown' ? `Used ${toolName}` : 'Used unknown'
+    default: {
+      // Catch-all branch. Order:
+      //   1. Tool dictionary — friendly past-tense or noun-phrase
+      //      label (e.g. delegate_to_subthread → "Delegated to
+      //      sub-thread"). Renders standalone, no "Used " prefix.
+      //   2. Snake-case title-case fallback (e.g. magic_tool →
+      //      "Used Magic Tool"), keeping the "Used " prefix as a
+      //      hint that this came through the generic path.
+      //   3. The literal toolName (e.g. camelCase identifiers we
+      //      can't safely re-split), still with the "Used " prefix.
+      //   4. "Used unknown" when toolName is empty / "unknown".
+      if (!toolName || toolName === 'unknown') return 'Used unknown'
+      const friendly = lookupToolDisplayName(unqualifiedName)
+      if (friendly) return friendly
+      const titleCased = titleCaseToolName(unqualifiedName)
+      return `Used ${titleCased || toolName}`
+    }
   }
 }
 

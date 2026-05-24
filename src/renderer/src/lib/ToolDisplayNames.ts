@@ -1,0 +1,146 @@
+/*
+ * ToolDisplayNames.ts — humaniser dictionary for tool-call labels.
+ *
+ * Without this, the transcript shows raw `tool_name` identifiers like
+ *   "Used delegate_to_subthread"
+ *   "Used attached_window_capture"
+ *   "Used creative_midi_dispatch"
+ * Those leak underscores, casing, and provider-internal naming into a
+ * user-facing surface. This dictionary maps the canonical (namespace-
+ * stripped) tool name to a tidy past-tense or noun-phrase label that
+ * reads naturally in a chat transcript.
+ *
+ * Coverage rules:
+ *  - Keys are the unqualified name (mcp__/agbench__/agentbench__ prefix
+ *    stripped, lower-case). Mixed-case keys never match.
+ *  - Values are the FULL label as it should appear in the transcript.
+ *    They DO NOT include a "Used " prefix — the parser composes that
+ *    only as a fallback when no dictionary entry exists.
+ *  - Past-tense action verbs ("Delegated", "Captured", "Opened")
+ *    preferred where the tool clearly performs an action; noun
+ *    phrases ("Git status", "Approval status") where the tool just
+ *    reads or reports.
+ *  - When a tool has a path or query parameter that's already woven
+ *    into the label by a richer branch in `getToolDisplayName`
+ *    (e.g. `read_file` → "Read README.md"), it is NOT listed here.
+ *    The dictionary is only for the catch-all default branch.
+ *
+ * Adding new tools: drop a key/value pair below. Update the matching
+ * test in `ToolParser.test.ts` if you want lock-in coverage.
+ */
+
+export const TOOL_DISPLAY_NAMES: Record<string, string> = {
+  // ── Sub-thread orchestration (cross-provider delegation) ──────
+  delegate_to_subthread: 'Delegated to sub-thread',
+  list_subthreads: 'Listed sub-threads',
+  read_subthread_result: 'Read sub-thread result',
+  cancel_subthread: 'Cancelled sub-thread',
+
+  // ── Git ──────────────────────────────────────────────────────
+  git_status: 'Git status',
+  git_diff: 'Git diff',
+  git_stage: 'Git stage',
+  git_commit: 'Git commit',
+
+  // ── Browser automation ───────────────────────────────────────
+  browser_open: 'Opened browser',
+  browser_click: 'Clicked in browser',
+  browser_screenshot: 'Browser screenshot',
+  browser_console: 'Browser console',
+
+  // ── Attached window (Vision OCR / capture) ───────────────────
+  attached_window_capture: 'Captured attached window',
+  attached_window_status: 'Attached window status',
+
+  // ── Workspace / project introspection ────────────────────────
+  workspace_search: 'Workspace search',
+  workspace_symbols: 'Workspace symbols',
+  open_workspace_file: 'Opened workspace file',
+
+  // ── System / runtime introspection ───────────────────────────
+  approval_status: 'Approval status',
+  provider_auth_status: 'Provider auth status',
+  run_task: 'Ran task',
+  run_timeline: 'Run timeline',
+  raw_provider_events: 'Raw provider events',
+  test_result_summary: 'Test result summary',
+
+  // ── Handoff / role / auth ────────────────────────────────────
+  create_handoff_card: 'Created handoff card',
+  switch_auth_profile: 'Switched auth profile',
+  agent_delegation_role: 'Agent delegation role',
+
+  // ── Editor / IDE transport (Phase L) ─────────────────────────
+  open_in_ide: 'Opened in IDE',
+  open_in_ide_at_position: 'Opened in IDE at position',
+  reveal_in_finder: 'Revealed in Finder',
+  ide_app_status: 'IDE app status',
+  ide_app_capabilities: 'IDE app capabilities',
+  list_running_ides: 'Listed running IDEs',
+
+  // ── Creative apps (Phase K) — the *_status / *_capabilities /
+  // *_snapshot / *_validate / *_ir / *_diff variants are handled
+  // by richer branches in getToolDisplayName that fold path params
+  // into the label, so they're intentionally omitted here. Only
+  // the dispatch-style tools (which have no useful path) live in
+  // the dictionary. ─────────────────────────────────────────────
+  creative_timeline_import: 'Imported timeline',
+  creative_applescript_dispatch: 'Dispatched AppleScript',
+  creative_blender_python: 'Ran Blender Python script',
+  creative_midi_dispatch: 'Dispatched MIDI',
+
+  // ── Provider-internal task / thinking tools ──────────────────
+  // (richer task-category branches handle these when a `title`
+  // param is supplied — these are the no-title fallbacks.)
+  update_topic: 'Topic update',
+  invoke_agent: 'Invoked agent',
+  codex_reasoning: 'Codex reasoning',
+  codex_plan: 'Codex plan',
+  kimi_thinking: 'Kimi thinking',
+  summary: 'Summary',
+  intent: 'Intent',
+  progress: 'Progress',
+  tool_progress: 'Tool progress',
+
+  // ── Web search (also matched by category='search' branch) ────
+  google_web_search: 'Searched the web',
+  web_search: 'Searched the web',
+
+  // ── Misc shell / search aliases not always reached by the
+  // category branches (some providers emit these as the literal
+  // unqualified name without a query parameter). ───────────────
+  grep: 'Grep',
+  rg: 'Ripgrep',
+  glob: 'Glob',
+  grep_search: 'Grep search'
+}
+
+/**
+ * Title-case fallback for tools that aren't in the dictionary.
+ * "magic_tool" → "Magic Tool"; "MCPSomeWeirdTool" → "MCPSomeWeirdTool"
+ * (only snake_case is rewritten; camelCase / PascalCase pass through).
+ */
+export function titleCaseToolName(rawToolName: string): string {
+  if (!rawToolName) return rawToolName
+  // Only humanise snake_case shapes. Preserve already-cased identifiers.
+  if (!/_/.test(rawToolName)) return rawToolName
+  return rawToolName
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+/**
+ * Look up the human-readable label for a tool name. Returns
+ * undefined when the tool isn't in the dictionary so callers can
+ * fall through to their own naming logic (file-path-aware labels,
+ * "Used …" prefix, etc.).
+ *
+ * The argument should already be unqualified (namespace prefixes
+ * stripped) and lower-case — that's what ToolParser passes in.
+ */
+export function lookupToolDisplayName(unqualifiedLowerName: string): string | undefined {
+  if (!unqualifiedLowerName) return undefined
+  return TOOL_DISPLAY_NAMES[unqualifiedLowerName]
+}
