@@ -8709,7 +8709,16 @@ function handleCodexServerRequest(message: any) {
     params,
     service,
     workspacePath: isGlobalScope ? undefined : state.workspacePath,
-    runId: state.appRunId
+    runId: state.appRunId,
+    externalPathDetection:
+      externalPathDetection && externalPathDetection.path && externalPathDetection.access
+        ? {
+            path: externalPathDetection.path,
+            access: externalPathDetection.access,
+            basename: externalPathDetection.basename,
+            appChatId: state.appChatId
+          }
+        : undefined
   })
   runManager.registerApproval(state.appRunId, approvalId)
   scheduleApprovalTimeout({
@@ -19260,6 +19269,69 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'respond-agent-approval',
       async (_, requestId: string, action: AgentApprovalAction) => {
+        // Slice 5 v2 of the external-path-redesign arc. When the user
+        // clicks "Grant read access" / "Grant edit access" in the
+        // approval modal, peek at the pending approval's stashed
+        // externalPathDetection BEFORE resolving — issue a signed grant
+        // and persist it onto the chat's providerMetadata so the
+        // secondary above-row appears the moment the modal closes.
+        if (
+          action === 'grantExternalPathRead' ||
+          action === 'grantExternalPathEdit'
+        ) {
+          const detection =
+            approvalServiceInstance.getPendingExternalPathDetection(requestId)
+          if (detection?.path && detection.appChatId) {
+            try {
+              const grantAccess: 'read' | 'write' =
+                action === 'grantExternalPathEdit' ? 'write' : 'read'
+              // Probe synchronously to determine file vs directory.
+              // Best-effort — fall back to 'file' on any error.
+              let grantKind: 'file' | 'directory' = 'file'
+              try {
+                const stat = await fs.stat(detection.path)
+                if (stat.isDirectory()) grantKind = 'directory'
+              } catch {
+                /* keep default */
+              }
+              const grant = issueExternalPathGrant({
+                id: `runtime-${Date.now()}-${randomBytes(4).toString('hex')}`,
+                provider: 'codex',
+                workspaceId: undefined,
+                chatId: detection.appChatId,
+                path: detection.path,
+                kind: grantKind,
+                access: grantAccess,
+                duration: 'thisThread',
+                securityScopedBookmark: undefined,
+                createdAt: new Date().toISOString()
+              })
+              const chat = AppStore.getChat(detection.appChatId)
+              if (chat) {
+                const existing = Array.isArray(
+                  chat.providerMetadata?.codexExternalPathGrants
+                )
+                  ? (chat.providerMetadata!.codexExternalPathGrants as ExternalPathGrant[])
+                  : []
+                const updatedChat = {
+                  ...chat,
+                  providerMetadata: {
+                    ...(chat.providerMetadata || {}),
+                    codexExternalPathGrants: [...existing, grant]
+                  },
+                  updatedAt: Date.now()
+                }
+                AppStore.saveChat(updatedChat)
+                mainWindow?.webContents.send('chat-updated', updatedChat)
+              }
+            } catch (err) {
+              console.warn(
+                '[ExternalPathGrant] runtime grant persistence failed',
+                err
+              )
+            }
+          }
+        }
         return approvalServiceInstance.resolve(requestId, action)
       }
     )

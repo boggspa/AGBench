@@ -96,6 +96,20 @@ export interface PendingCodexApproval {
   service?: AgenticServiceId
   workspacePath?: string
   runId?: string
+  /**
+   * Slice 5 of the external-path-redesign arc. Populated by the
+   * registration site (`main/index.ts` Codex elicitation handler)
+   * when `detectExternalPath` flagged the tool call as referencing
+   * a path outside the workspace. The slice-5.2 resolver reads this
+   * payload to issue + persist a signed grant when the user clicks
+   * `grantExternalPathRead` / `grantExternalPathEdit` in the modal.
+   */
+  externalPathDetection?: {
+    path: string
+    access: 'read' | 'write'
+    basename?: string
+    appChatId?: string
+  }
 }
 
 export interface PendingKimiApproval {
@@ -270,6 +284,20 @@ export class ApprovalService {
       appRunId: info.runId,
       workspacePath: info.workspacePath
     })
+  }
+
+  /**
+   * Slice 5 v2: peek at the pending Codex approval's externalPathDetection
+   * payload. The `respond-agent-approval` IPC handler reads this BEFORE
+   * resolving so it can issue + persist a signed grant when the user
+   * clicks `grantExternalPathRead` / `grantExternalPathEdit` in the modal.
+   * Returns undefined when the approval isn't registered or wasn't an
+   * external-path prompt.
+   */
+  getPendingExternalPathDetection(
+    approvalId: string
+  ): PendingCodexApproval['externalPathDetection'] | undefined {
+    return this.pendingCodex.get(approvalId)?.externalPathDetection
   }
 
   registerKimi(approvalId: string, info: PendingKimiApproval): void {
