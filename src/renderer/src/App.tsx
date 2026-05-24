@@ -12862,6 +12862,23 @@ function App(): React.JSX.Element {
               onRepairProductInstall={() => void repairProductInstall()}
               onChange={handleSettingsChange}
               onClose={() => setShowSettings(false)}
+              workspaces={workspaces}
+              currentWorkspace={currentWorkspace}
+              onSelectWorkspace={handleSelectExistingWorkspace}
+              onSelectWorkspaceDialog={handleSelectWorkspace}
+              onRemoveWorkspace={(workspaceId) => {
+                // SettingsPanel's Workspaces tab passes a bare id; the
+                // host `handleRemoveWorkspace` expects an event for its
+                // sidebar use case (to call stopPropagation on the row
+                // click). Synthesize a stub event so the call shape
+                // matches.
+                const stubEvent = {
+                  preventDefault: () => {},
+                  stopPropagation: () => {}
+                } as unknown as React.MouseEvent<HTMLButtonElement>
+                handleRemoveWorkspace(workspaceId, stubEvent)
+              }}
+              onTogglePinWorkspace={handleTogglePinWorkspace}
             />
           </div>
         )}

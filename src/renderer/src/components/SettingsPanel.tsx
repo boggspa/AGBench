@@ -23,7 +23,8 @@ import type {
   ThemeAppearance,
   ThemeCornerStyle,
   ToolIconAccent,
-  VisualEffectStyle
+  VisualEffectStyle,
+  WorkspaceRecord
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
 import {
@@ -168,6 +169,19 @@ interface SettingsPanelProps {
    */
   activeTab?: SettingsTab
   onTabChange?: (tab: SettingsTab) => void
+  /**
+   * Workspace-management hooks. Used by the new "Workspaces" tab
+   * (Codex-Environments-style list of loaded workspaces with open /
+   * pin / remove actions). Optional so any host that doesn't yet
+   * surface the tab can leave them unset — the tab content just
+   * renders an empty-state in that case.
+   */
+  workspaces?: WorkspaceRecord[]
+  currentWorkspace?: WorkspaceRecord | null
+  onSelectWorkspace?: (workspace: WorkspaceRecord) => void
+  onSelectWorkspaceDialog?: () => void
+  onRemoveWorkspace?: (workspaceId: string) => void
+  onTogglePinWorkspace?: (workspaceId: string) => void
   /**
    * Layout shape. `'sheet'` (default) renders the inline tab bar +
    * "Done" button at the top — the historic modal-sheet treatment.
@@ -346,6 +360,7 @@ export type SettingsTab =
   | 'approval-ledger'
   | 'bridge-networking'
   | 'pairing'
+  | 'workspaces'
 
 /**
  * Tab grouping discriminator. The settings sidebar renders a visual
@@ -383,6 +398,13 @@ export const SETTINGS_TABS: Array<{
   // through to no render (defensive guard until the type union sheds
   // the id).
   { id: 'behavior', label: 'General', group: 'settings' },
+  // "Workspaces" — Codex Environments-style page that lists every
+  // workspace the user has loaded into AGBench. Clicking a row opens
+  // that workspace in a fresh chat surface (closes Settings on the
+  // way out). The chat sidebar's workspace tree is still the primary
+  // surface for active use; this tab is the project-wide manage-and-
+  // re-open page.
+  { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
   { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
   // "Devices" merges the legacy "Pairing" + "Remote Workspaces" +
@@ -542,7 +564,13 @@ export function SettingsPanel({
   onClose,
   activeTab: activeTabProp,
   onTabChange,
-  layout = 'sheet'
+  layout = 'sheet',
+  workspaces = [],
+  currentWorkspace,
+  onSelectWorkspace,
+  onSelectWorkspaceDialog,
+  onRemoveWorkspace,
+  onTogglePinWorkspace
 }: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('')
   const [kimiKeyInput, setKimiKeyInput] = useState('')
@@ -797,6 +825,39 @@ export function SettingsPanel({
                 <p className="settings-hint">
                   {COMPOSER_STYLE_OPTIONS.find((option) => option.value === composerStyle)?.helper}
                 </p>
+                {/*
+                  Composer preview — generic layout mockup that flips
+                  visual identity (border-radius, padding, chip
+                  layout) based on the selected shell. Not a 1:1
+                  reproduction of the real composer; intent is "show
+                  me at a glance what each shell's chrome feels like"
+                  before I commit to it from this dropdown.
+                */}
+                <div className="shell-preview-card">
+                  <span className="shell-preview-card-label">Preview</span>
+                  <div className="shell-preview-stage" data-shell-preview-style={composerStyle}>
+                    <div className="shell-preview-above-row">
+                      <span className="shell-preview-pill">workspace</span>
+                      <span className="shell-preview-pill">main · 2 files</span>
+                    </div>
+                    <div className="shell-preview-composer">
+                      <span className="shell-preview-placeholder">
+                        Ask anything…
+                      </span>
+                      <div className="shell-preview-action-row">
+                        <span className="shell-preview-model-chip">
+                          <span className="shell-preview-dot" aria-hidden />
+                          Codex · GPT-5
+                        </span>
+                        <span className="shell-preview-grant-chip">Auto edit</span>
+                        <span className="shell-preview-spacer" aria-hidden />
+                        <span className="shell-preview-send" aria-hidden>
+                          →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               <div className="settings-group settings-typography-group">
@@ -2028,6 +2089,114 @@ export function SettingsPanel({
           is effectively dead, but kept defensively until the type
           union sheds the id.
         */}
+
+        {/* ── Workspaces (Codex Environments-style list) ───────────────── */}
+        {activeTab === 'workspaces' && (
+          <div className="settings-workspaces">
+            <div className="settings-workspaces-header">
+              <div className="settings-workspaces-header-copy">
+                <h3 className="settings-workspaces-subtitle">Loaded workspaces</h3>
+                <p className="settings-workspaces-description">
+                  Every project folder you&apos;ve pointed AGBench at. Click a row to
+                  switch the chat surface to that workspace; pin to keep it at the
+                  top of the sidebar; remove to drop it from the list (chats
+                  inside the workspace stay on disk).
+                </p>
+              </div>
+              {onSelectWorkspaceDialog && (
+                <button
+                  type="button"
+                  className="btn btn-sm settings-workspaces-add"
+                  onClick={onSelectWorkspaceDialog}
+                  title="Add a new workspace folder"
+                >
+                  Add workspace
+                </button>
+              )}
+            </div>
+            {workspaces.length === 0 ? (
+              <div className="settings-workspaces-empty" role="note">
+                <strong>No workspaces yet.</strong>
+                <span>
+                  Use <em>Add workspace</em> above to point AGBench at your first
+                  project folder.
+                </span>
+              </div>
+            ) : (
+              <ul className="settings-workspaces-list">
+                {workspaces.map((workspace) => {
+                  const isActive = currentWorkspace?.id === workspace.id
+                  const pathParts = workspace.path.split(/[\\/]/).filter(Boolean)
+                  const compactPath =
+                    pathParts.length > 3
+                      ? `…/${pathParts.slice(-3).join('/')}`
+                      : workspace.path
+                  return (
+                    <li
+                      key={workspace.id}
+                      className={`settings-workspace-row ${isActive ? 'is-active' : ''} ${workspace.pinned ? 'is-pinned' : ''}`}
+                    >
+                      <button
+                        type="button"
+                        className="settings-workspace-tile"
+                        onClick={() => {
+                          if (!onSelectWorkspace) return
+                          onSelectWorkspace(workspace)
+                          onClose()
+                        }}
+                        title={`Open ${workspace.displayName} in the chat surface`}
+                      >
+                        <span className="settings-workspace-folder" aria-hidden>
+                          <svg
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M2.8 4.4h4.1L7.3 5.6h6.5c.6 0 1.1.4 1.1 1v6.2c0 .6-.5 1-1.1 1H2.8C2.2 13.8 1.7 13.4 1.7 12.8V5.5c0-.6.5-1.1 1.1-1.1z" />
+                          </svg>
+                        </span>
+                        <span className="settings-workspace-copy">
+                          <span className="settings-workspace-name">{workspace.displayName}</span>
+                          <span className="settings-workspace-path">{compactPath}</span>
+                          {workspace.branch && (
+                            <span className="settings-workspace-branch">
+                              branch · {workspace.branch}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                      <div className="settings-workspace-actions">
+                        {onTogglePinWorkspace && (
+                          <button
+                            type="button"
+                            className={`btn btn-sm btn-ghost ${workspace.pinned ? 'is-pinned' : ''}`}
+                            onClick={() => onTogglePinWorkspace(workspace.id)}
+                            title={workspace.pinned ? 'Unpin workspace' : 'Pin workspace'}
+                          >
+                            {workspace.pinned ? 'Unpin' : 'Pin'}
+                          </button>
+                        )}
+                        {onRemoveWorkspace && (
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-ghost"
+                            onClick={() => onRemoveWorkspace(workspace.id)}
+                            title="Remove this workspace from the list"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         {/* ── Approvals (Phase E2 + admin grants) ──────────────────────── */}
         {activeTab === 'approval-ledger' && (

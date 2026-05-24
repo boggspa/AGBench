@@ -8168,6 +8168,369 @@ button.diff-file-row {
   padding-bottom: 4px;
 }
 
+/* Composer preview — shows under the "Interface shell" picker in the
+ * Appearance tab so users can see at a glance what each shell's
+ * chrome feels like before committing. Generic placeholder content
+ * (workspace pill, model chip, send button) under a stylised
+ * composer surface that flips its visual identity via the
+ * `data-shell-preview-style` attribute. Not a 1:1 reproduction of
+ * each shell — intent is "layout context", not "full fidelity". */
+.shell-preview-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.shell-preview-card-label {
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+}
+
+.shell-preview-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.shell-preview-above-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.shell-preview-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  color: var(--text-secondary);
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+.shell-preview-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--app-bg-elevated, var(--text-primary)) 6%, transparent);
+}
+
+.shell-preview-placeholder {
+  font-size: var(--font-size-sm, 13px);
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  font-style: italic;
+}
+
+.shell-preview-action-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shell-preview-spacer {
+  flex: 1;
+}
+
+.shell-preview-model-chip,
+.shell-preview-grant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+  font-size: 10.5px;
+  font-weight: 600;
+}
+
+.shell-preview-grant-chip {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 90%, var(--text-primary) 10%);
+}
+
+.shell-preview-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.shell-preview-send {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Per-shell visual identity tweaks. Each shell flips a small set of
+ * tokens so the preview reads visibly different — not a faithful
+ * reproduction, just a layout-context tell. */
+.shell-preview-stage[data-shell-preview-style="gemini"] .shell-preview-composer {
+  border-radius: 999px;
+  padding: 8px 16px;
+  border-color: color-mix(in srgb, #5a8cff 36%, transparent);
+  background: color-mix(in srgb, #5a8cff 6%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="gemini"] .shell-preview-above-row {
+  justify-content: center;
+}
+.shell-preview-stage[data-shell-preview-style="codex"] .shell-preview-composer {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="codex"] .shell-preview-above-row {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="claude"] .shell-preview-composer {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, #d97706 30%, transparent);
+  background: color-mix(in srgb, #d97706 5%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="kimi"] .shell-preview-composer {
+  border-radius: 18px;
+  border-color: color-mix(in srgb, #84a33b 40%, transparent);
+  background: color-mix(in srgb, #84a33b 8%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="modular"] {
+  background: transparent;
+  border-color: transparent;
+}
+.shell-preview-stage[data-shell-preview-style="modular"] .shell-preview-composer {
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="modular"] .shell-preview-pill {
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  border-radius: 999px;
+}
+.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-composer {
+  border-radius: 4px;
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, #000 56%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-placeholder {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-style: normal;
+}
+.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-placeholder::before {
+  content: "> ";
+  color: var(--accent);
+}
+.shell-preview-stage[data-shell-preview-style="stub"] .shell-preview-composer {
+  border-radius: 6px;
+  border-style: dashed;
+  background: color-mix(in srgb, #f8e0a1 10%, transparent);
+}
+.shell-preview-stage[data-shell-preview-style="satellite"] {
+  background: transparent;
+  border-color: transparent;
+}
+.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-composer {
+  border: 0;
+  background: transparent;
+  padding: 0;
+}
+.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-pill,
+.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-model-chip,
+.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-grant-chip {
+  background: transparent;
+  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+}
+
+/* Workspaces tab — Codex Environments-style list of every loaded
+ * project folder, with open / pin / remove actions per row. */
+.settings-workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-workspaces-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-workspaces-header-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-workspaces-subtitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 620;
+  color: var(--text-primary);
+}
+
+.settings-workspaces-description {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.settings-workspaces-add {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.settings-workspaces-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.settings-workspaces-empty strong {
+  color: var(--text-primary);
+  font-weight: 620;
+}
+
+.settings-workspaces-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.settings-workspace-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px 4px 4px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.settings-workspace-row:hover,
+.settings-workspace-row:focus-within {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.settings-workspace-row.is-active {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.settings-workspace-row.is-pinned .settings-workspace-folder {
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary) 12%);
+}
+
+.settings-workspace-tile {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.settings-workspace-folder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  flex: 0 0 auto;
+}
+
+.settings-workspace-folder svg {
+  width: 16px;
+  height: 16px;
+}
+
+.settings-workspace-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.settings-workspace-name {
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 620;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-workspace-path {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.settings-workspace-branch {
+  font-size: var(--font-size-xs, 11px);
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+}
+
+.settings-workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+  flex: 0 0 auto;
+}
+
+.settings-workspace-actions .btn.is-pinned {
+  color: color-mix(in srgb, var(--accent) 90%, var(--text-primary) 10%);
+}
+
 /* Pairing tab — the merged Devices page: pair-flow on top, paired-
  * device workspace allowlist below. Vertical flex column with a
  * proper section separator between the two. */
