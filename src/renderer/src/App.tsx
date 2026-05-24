@@ -2118,19 +2118,35 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
   if (!Array.isArray(value)) return []
   const seen = new Set<string>()
   const grants: ExternalPathGrant[] = []
+  // Slice 2 of the external-path-redesign arc: the previous hard
+  // filter `grant.provider !== 'codex'` was a leftover from the
+  // era when only Codex CLI consumed external-path grants. The
+  // CLI translation layer (`externalPathGrantsToCliAddDirArgs` in
+  // main/index.ts) has been provider-agnostic for a while now —
+  // Gemini, Claude, and Kimi all consume the same grant list via
+  // `--add-dir <path>`. Loosen the filter so runtime-issued grants
+  // for any provider can persist into chat metadata.
+  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set([
+    'codex',
+    'claude',
+    'gemini',
+    'kimi'
+  ])
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
     const grant = item as Partial<ExternalPathGrant>
-    if (grant.provider !== 'codex' || typeof grant.path !== 'string' || !grant.path.trim()) continue
+    const providerToken = grant.provider as ProviderId | undefined
+    if (!providerToken || !VALID_PROVIDERS.has(providerToken)) continue
+    if (typeof grant.path !== 'string' || !grant.path.trim()) continue
     if (grant.issuedBy !== 'main' || typeof grant.signature !== 'string' || !grant.signature)
       continue
     const access = grant.access === 'write' ? 'write' : 'read'
-    const key = `${access}:${grant.path.trim()}`
+    const key = `${providerToken}:${access}:${grant.path.trim()}`
     if (seen.has(key)) continue
     seen.add(key)
     grants.push({
       id: grant.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-      provider: 'codex',
+      provider: providerToken,
       workspaceId: grant.workspaceId,
       chatId: grant.chatId,
       path: grant.path.trim(),
@@ -4522,13 +4538,29 @@ function App(): React.JSX.Element {
       ? showGhostCompanion && !showSkyVisualFx
       : showGhostCompanion
     : false
+  /*
+   * Slice 2 of the external-path-redesign arc. Previously this useMemo
+   * gated the grant list on `currentProvider === 'codex'`, so a chat
+   * could only ever see Codex grants. The runtime-detection flow
+   * (slice 5) issues grants from whichever provider triggered the
+   * approval, so we now read ALL grants from the chat's metadata
+   * regardless of the *current* provider — the CLI translator
+   * (`externalPathGrantsToCliAddDirArgs` in main/index.ts) is already
+   * provider-agnostic on the consumption side. The variable name is
+   * still `codexExternalPathGrants` for back-compat with the existing
+   * 30+ call sites — a follow-up renames it to `externalPathGrants`
+   * once the call sites are sorted in one sweep.
+   */
   const codexExternalPathGrants = useMemo(
     () =>
-      currentProvider === 'codex' && !isCurrentGlobalChat
+      !isCurrentGlobalChat
         ? normalizeExternalPathGrants(currentChat?.providerMetadata?.codexExternalPathGrants)
         : [],
-    [currentChat?.providerMetadata?.codexExternalPathGrants, currentProvider, isCurrentGlobalChat]
+    [currentChat?.providerMetadata?.codexExternalPathGrants, isCurrentGlobalChat]
   )
+  // `useExternalPathRepoMetadata(codexExternalPathGrants)` is wired
+  // in by slice 3, alongside the new <ExternalPathAboveRow /> that
+  // consumes the metadata.
   const currentComposerChatId = currentChat?.appChatId || null
   const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
   const imageAttachments = useMemo(
