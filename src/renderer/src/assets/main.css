@@ -18985,17 +18985,34 @@ input:disabled, select:disabled, textarea:disabled {
   right: 14px !important;
 }
 
-/* 3) Diff stats right-aligned + gray button skin, sitting
- *    immediately next to the Create PR action.
- *    Yesterday's Slice 1 rule forced `.composer-above-bar-stats`
- *    transparent + bare text — this rule re-enables a contained
- *    button look ONLY on the stats element, leaves branch/files
- *    as bare text. Flex `order` re-positions stats from its
- *    natural DOM position (between files and workspace pills)
- *    to the row's far right, just before the action button. */
+/* 3) Right-cluster: files-changed button + diff button + Create
+ *    PR, all sitting tight at the row's right edge.
+ *
+ *    `.composer-above-bar-files` (the "N files changed" element)
+ *    becomes a gray button matching the diff button + Create PR.
+ *    It gets `margin-left: auto` to consume all leftover space
+ *    in the row, pushing it + the diff + action to the right end.
+ *
+ *    `.composer-above-bar-stats` (the "+N -M" diff) stays gray
+ *    button styled, ordered just after files.
+ *
+ *    The diff-to-Create-PR gap is tightened with a negative
+ *    margin on the action so the pair reads as tightly grouped
+ *    (matches real Claude's `+100 -0 Commit changes` spacing). */
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files {
+  order: 8;
+  margin-left: auto;
+  background: #3a3a3a !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-md, 10px) !important;
+  padding: 4px 10px !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-variant-numeric: tabular-nums;
+}
+
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
   order: 9;
-  margin-left: auto;
+  margin-left: 0;
   background: #3a3a3a !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   border-radius: var(--radius-md, 10px) !important;
@@ -19006,6 +19023,17 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
   order: 10;
+  /* Pull tighter against the diff button — the parent has a 10px
+   * `gap` which is a touch wide for the diff-to-PR pairing real
+   * Claude shows. -6px lands on a 4px effective gap. */
+  margin-left: -6px;
+}
+
+/* Light-mode counterparts for the new files-changed button skin. */
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-files {
+  background: #e8e8ea !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(29, 29, 31, 0.92) !important;
 }
 
 [data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
