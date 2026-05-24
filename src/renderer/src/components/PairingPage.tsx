@@ -26,6 +26,7 @@
  */
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import QRCode from 'qrcode'
+import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
 
 interface BootstrapState {
   /** Pretty-printed JSON for display + copy. */
@@ -234,6 +235,25 @@ export function PairingPage(): JSX.Element {
           sure it matches before tapping confirm on iOS.
         </span>
       </footer>
+
+      {/*
+        Second section: paired-device workspace allowlist. Lives in the
+        same tab as pairing because granting a paired iPad access to a
+        specific workspace is the natural follow-up to scanning the QR.
+        Used to be its own "Remote Workspaces" tab; consolidated here
+        for density and intentionality.
+      */}
+      <section className="pairing-page__section pairing-page__allowlist">
+        <header className="pairing-page__section-header">
+          <h3 className="pairing-page__section-title">Paired-device workspace access</h3>
+          <p className="pairing-page__section-subtitle">
+            Choose which workspaces a paired iPhone / iPad can run agents against.
+            Empty list = all iOS-initiated runs are denied. Per-action revalidation is
+            enforced — revoking an entry takes effect on the next iOS request.
+          </p>
+        </header>
+        <RemoteWorkspacesPanel />
+      </section>
 
       {/* Maximised QR overlay — covers the screen so the iPad camera
           can comfortably scan from any reasonable distance. Click /

@@ -8113,7 +8113,10 @@ button.diff-file-row {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--panel-bg, transparent);
+  /* Theme-aware: `--content-bg` is what `.app-transcript` uses so
+   * the takeover inherits the same surface tone as the chat pane it
+   * replaces. Flips to a light surface in light themes automatically. */
+  background: var(--content-bg, var(--panel-bg, transparent));
 }
 
 /* Reset SettingsPanel chrome when rendered in takeover mode so the
@@ -8126,8 +8129,76 @@ button.diff-file-row {
   border: 0;
 }
 
+/* Drop the legacy 2-column flow in the takeover layout. The 2-column
+ * was tuned for a 1080px-wide modal; in the takeover pane (often
+ * 1500px+) it splits forms into uncomfortably narrow columns and —
+ * worse — breaks long lists like the Approvals ledger into a
+ * surprise multi-column layout. Single column, centred, max-width
+ * 920px reads as a proper settings page instead. */
 .settings-panel-takeover .settings-panel-content {
-  padding-top: var(--space-xl, 24px);
+  column-count: 1;
+  column-gap: 0;
+  padding: 36px max(28px, calc((100% - 920px) / 2)) 72px;
+  /* Generous vertical spacing between consecutive settings groups
+   * so the page breathes rather than feeling crammed. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg, 18px);
+}
+
+/* Page title — only rendered in the takeover layout (see JSX). Big
+ * left-aligned heading at the top so the surface reads as a real
+ * settings page rather than a sheet stretched into a sidebar slot. */
+.settings-takeover-title {
+  margin: 0 0 8px;
+  font-size: 22px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+/* Settings groups inside the takeover get a little more vertical
+ * breathing room than the modal-sheet variant; otherwise the
+ * single-column flow reads as a wall of dense form fields. */
+.settings-panel-takeover .settings-group {
+  break-inside: auto;
+  -webkit-column-break-inside: auto;
+  page-break-inside: auto;
+  padding-bottom: 4px;
+}
+
+/* Pairing tab — the merged Devices page: pair-flow on top, paired-
+ * device workspace allowlist below. Vertical flex column with a
+ * proper section separator between the two. */
+.pairing-page__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm, 8px);
+  padding-top: var(--space-lg, 18px);
+  margin-top: var(--space-md, 12px);
+  border-top: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+}
+
+.pairing-page__section-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pairing-page__section-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 620;
+  color: var(--text-primary);
+  letter-spacing: -0.005em;
+}
+
+.pairing-page__section-subtitle {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-secondary);
+  line-height: 1.45;
 }
 
 /* Settings sidebar — Codex-style minimal list. Reuses `.app-sidebar`

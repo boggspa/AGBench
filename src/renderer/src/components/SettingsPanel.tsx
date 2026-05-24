@@ -38,7 +38,10 @@ import {
   resolveComposerFontFamily,
   type TypefaceOption
 } from '../lib/typefaceOptions'
-import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
+// RemoteWorkspacesPanel was previously rendered here under the
+// `remote-workspaces` tab. It now lives inside `PairingPage` (the
+// "Devices" tab) so paired-device QR + workspace allowlist sit
+// together as a single device-management page.
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
 import { ApnsConfigPanel } from './ApnsConfigPanel'
@@ -371,10 +374,14 @@ export const SETTINGS_TABS: Array<{
   { id: 'behavior', label: 'Behavior', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
   { id: 'system', label: 'System', group: 'settings' },
-  { id: 'remote-workspaces', label: 'Remote Workspaces', group: 'settings' },
   { id: 'bridge-networking', label: 'Bridge Networking', group: 'settings' },
   { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
-  { id: 'pairing', label: 'Pairing', group: 'devices' }
+  // "Devices" merges the legacy "Pairing" + "Remote Workspaces" tabs
+  // into one page. Pair a fresh iPhone / iPad at the top, manage its
+  // allowlist below — both are the same conceptual workflow. The
+  // `pairing` id is preserved so existing settings-tab restore paths
+  // continue to land on the right page.
+  { id: 'pairing', label: 'Devices', group: 'devices' }
 ]
 
 type LocalFontData = {
@@ -646,6 +653,21 @@ export function SettingsPanel({
       )}
 
       <div className="settings-panel-content">
+        {/*
+          Page title — only rendered in the full-app takeover layout
+          (the legacy modal-sheet kept its tab bar with the active
+          label highlighted, which served the same purpose). Big
+          left-aligned heading at the top of the content area so the
+          takeover reads as a real settings page rather than a sheet
+          stretched into a sidebar. The label is sourced from
+          `SETTINGS_TABS` so renaming a tab updates both the sidebar
+          and the page title in lockstep.
+        */}
+        {layout === 'takeover' && (
+          <h1 className="settings-takeover-title">
+            {SETTINGS_TABS.find((tab) => tab.id === activeTab)?.label ?? 'Settings'}
+          </h1>
+        )}
         {/* ── Appearance ─────────────────────────────────── */}
         {
           activeTab === 'appearance' && (
@@ -1980,7 +2002,15 @@ export function SettingsPanel({
         }
 
         {/* ── Remote Workspaces (Phase C4) ─────────────────────────────── */}
-        {activeTab === 'remote-workspaces' && <RemoteWorkspacesPanel />}
+        {/*
+          Remote Workspaces moved into the Devices tab below — it was
+          a paired-device allowlist all along, so it lives next to the
+          QR pair flow now. Activating the `remote-workspaces` tab id
+          (legacy bookmark / restore path) falls through to no render
+          here; the sidebar no longer surfaces the tab so this branch
+          is effectively dead, but kept defensively until the type
+          union sheds the id.
+        */}
 
         {/* ── Approvals (Phase E2 + admin grants) ──────────────────────── */}
         {activeTab === 'approval-ledger' && (
