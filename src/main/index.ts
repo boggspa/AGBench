@@ -8669,6 +8669,7 @@ function handleCodexServerRequest(message: any) {
           : ''
     const detection = detectExternalPath({
       toolName: probedToolName,
+      method,
       params,
       workspacePath: isGlobalScope ? undefined : state.workspacePath,
       existingGrants

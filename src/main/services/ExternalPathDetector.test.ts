@@ -159,4 +159,70 @@ describe('detectExternalPath', () => {
       basename: 'foo.ts'
     })
   })
+
+  // Slice 5 v3 — Codex's `item/fileChange/requestApproval` shape.
+  // No `toolName` in params; path lives inside `params.changes[].path`.
+  // The detector falls back to the `method` argument to infer category
+  // and digs into the changes array for the path.
+  it('handles Codex fileChange approval shape', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/fileChange/requestApproval',
+        params: {
+          changes: [{ path: '/Users/me/Other/proj/src/bar.ts', kind: 'edit' }]
+        },
+        workspacePath: '/Users/me/code/proj'
+      })
+    ).toEqual({
+      needsPrompt: true,
+      path: '/Users/me/Other/proj/src/bar.ts',
+      access: 'write',
+      basename: 'bar.ts'
+    })
+  })
+
+  it('handles nested item.changes shape', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/fileChange/requestApproval',
+        params: {
+          item: {
+            changes: [{ path: '/tmp/nested.txt', kind: 'write' }]
+          }
+        },
+        workspacePath: '/Users/me/code/proj'
+      })
+    ).toEqual({
+      needsPrompt: true,
+      path: '/tmp/nested.txt',
+      access: 'write',
+      basename: 'nested.txt'
+    })
+  })
+
+  it('ignores fileChange method when the path is INSIDE the workspace', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/fileChange/requestApproval',
+        params: {
+          changes: [{ path: '/Users/me/code/proj/src/internal.ts', kind: 'edit' }]
+        },
+        workspacePath: '/Users/me/code/proj'
+      })
+    ).toEqual({ needsPrompt: false })
+  })
+
+  it('skips when method is unrelated and no toolName matches', () => {
+    expect(
+      detectExternalPath({
+        toolName: '',
+        method: 'item/permissions/requestApproval',
+        params: { permissions: {} },
+        workspacePath: '/Users/me/code/proj'
+      })
+    ).toEqual({ needsPrompt: false })
+  })
 })

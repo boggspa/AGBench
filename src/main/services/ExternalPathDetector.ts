@@ -60,14 +60,22 @@ function stripToolNamespace(toolName: string): string {
 /**
  * Inspect a params object for the conventional path-bearing fields.
  * Returns the first non-empty absolute path found, or undefined.
+ *
+ * Covers three param-shape families AGBench's detectors see in the wild:
+ *  1. Flat path fields used by most tool-call params (path, filePath,
+ *     file_path, target, target_file, target_file_path).
+ *  2. Codex's `item/fileChange/requestApproval` shape, which carries a
+ *     `changes: [{path, kind?}]` array instead of a flat field.
+ *  3. Codex's `item/.../command` shape, where the agent is asking to
+ *     execute a command in a `cwd` — useful when the command would
+ *     work against a directory outside the workspace.
  */
 function extractPathFromParams(params: unknown): string | undefined {
   if (!params || typeof params !== 'object') return undefined
   const record = params as Record<string, unknown>
-  // Field order tracks ToolParser's `getPathFromRecord` (renderer side)
-  // but stays local to main since we can't import across the bundle
-  // boundary cleanly.
-  const candidates = [
+  // (1) Flat fields. ToolParser's `getPathFromRecord` covers the same
+  // set on the renderer side.
+  const flatCandidates = [
     record.path,
     record.filePath,
     record.file_path,
@@ -75,13 +83,31 @@ function extractPathFromParams(params: unknown): string | undefined {
     record.target_file,
     record.target_file_path,
     record.targetPath,
-    record.targetFile
+    record.targetFile,
+    record.cwd,
+    record.workdir
   ]
-  for (const candidate of candidates) {
+  for (const candidate of flatCandidates) {
     if (typeof candidate === 'string' && candidate.trim()) {
       const trimmed = candidate.trim()
       if (path.isAbsolute(trimmed)) return trimmed
     }
+  }
+  // (2) Codex `item/fileChange/requestApproval` shape.
+  const changes = record.changes as Array<Record<string, unknown>> | undefined
+  if (Array.isArray(changes) && changes.length > 0) {
+    for (const change of changes) {
+      const p = change?.path
+      if (typeof p === 'string' && p.trim() && path.isAbsolute(p.trim())) {
+        return p.trim()
+      }
+    }
+  }
+  // (3) Nested `item.path` / `item.changes` shape (Codex wraps params
+  // in an `item` object for some methods).
+  const item = record.item as Record<string, unknown> | undefined
+  if (item && typeof item === 'object') {
+    return extractPathFromParams(item)
   }
   return undefined
 }
@@ -126,6 +152,16 @@ export function detectExternalPath(input: {
   params: unknown
   workspacePath?: string
   /**
+   * Codex JSON-RPC method name (e.g. `item/fileChange/requestApproval`,
+   * `item/permissions/requestApproval`). When the toolName isn't in the
+   * params (Codex's fileChange + command approvals don't carry a tool
+   * name field), the method itself acts as a fallback category hint:
+   *   - `item/fileChange/...` → 'write' (file mutation)
+   * The `tool` allowlist is the primary check; this is only consulted
+   * when no `toolName` matched.
+   */
+  method?: string
+  /**
    * Existing grants for the chat (provider-agnostic). When the path
    * is already granted at the same-or-higher access level, the
    * detector returns `needsPrompt: false` so the agent proceeds
@@ -133,7 +169,14 @@ export function detectExternalPath(input: {
    */
   existingGrants?: Array<{ path: string; access: 'read' | 'write' }>
 }): ExternalPathDetection {
-  const category = FILE_IO_TOOL_CATEGORY[stripToolNamespace(input.toolName)]
+  let category = FILE_IO_TOOL_CATEGORY[stripToolNamespace(input.toolName)]
+  // Method-based fallback: when the wire protocol doesn't expose a
+  // toolName (Codex's fileChange + command approvals), infer category
+  // from the method itself.
+  if (!category && input.method) {
+    const method = input.method.toLowerCase()
+    if (method.includes('filechange')) category = 'write'
+  }
   if (!category) return { needsPrompt: false }
 
   const detectedPath = extractPathFromParams(input.params)
