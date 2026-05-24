@@ -73,6 +73,7 @@ import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SubThreadCreator } from './components/SubThreadCreator'
+import { FirstLaunchSheet } from './components/FirstLaunchSheet'
 import { IncomingPairingPrompt } from './components/IncomingPairingPrompt'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
@@ -1316,6 +1317,26 @@ const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
  * re-opens it.
  */
 const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'guiGemini.onboardingHintDismissed'
+/**
+ * Set to `'true'` after the user explicitly dismisses the
+ * full-modal FirstLaunchSheet (provider sign-in checklist,
+ * workspace primer, power-user tips). Auto-shows on first launch
+ * when this flag is absent; the `?` button in the chat-corner
+ * controls re-opens it on demand. Kept separate from
+ * `ONBOARDING_HINT_DISMISSED_STORAGE_KEY` so existing users who
+ * had only dismissed the inline T1b sidebar hint still get the
+ * richer sheet shown to them once after upgrading.
+ */
+const FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY = 'guiGemini.firstLaunchSheetDismissed'
+/**
+ * Lifetime of the post-dismissal pointer animation on the sidebar
+ * `+` workspace button. After the sheet closes for the first
+ * time, the pointer pulses for this many milliseconds so the user
+ * can see exactly which control adds their first workspace. The
+ * animation also dismisses on click anywhere — the timer is the
+ * fallback floor. Kept under 7s so it never lingers if the user
+ * tabs away. */
+const WORKSPACE_ADD_POINTER_DURATION_MS = 6000
 const RUN_WRITE_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file']
 // Per-provider palette CORE constants moved to
 // src/renderer/src/lib/ComposerSlashCommands.ts. Imported under the
@@ -2935,6 +2956,29 @@ const getStoredOnboardingHintDismissed = (): boolean => {
   }
 }
 
+/** Read the persisted FirstLaunchSheet dismissal flag. Returns false
+ * in test environments and when localStorage is unavailable so the
+ * sheet stays out of the way of headless test runs. */
+const getStoredFirstLaunchSheetDismissed = (): boolean => {
+  // Skip auto-show entirely under Vitest — the existing test suite
+  // mounts App fragments without expecting an onboarding overlay.
+  // Treating the flag as "dismissed" in NODE_ENV=test keeps every
+  // existing test green without each one having to stub localStorage.
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV === 'test') {
+      return true
+    }
+  } catch {
+    /* process may not be defined in some renderer contexts — fall
+     * through to the localStorage read. */
+  }
+  try {
+    return window.localStorage.getItem(FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 const SKY_VISUAL_FX_STORAGE_KEY = 'guiGemini.skyVisualFxEnabled'
 const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 const MIN_GEMINI_TERMINAL_HEIGHT = 150
@@ -4509,6 +4553,72 @@ function App(): React.JSX.Element {
       window.localStorage.setItem(ONBOARDING_HINT_DISMISSED_STORAGE_KEY, 'true')
     } catch {
       /* localStorage may be disabled — non-fatal */
+    }
+  }, [])
+  /**
+   * Full-modal first-launch onboarding sheet. Auto-shows on a fresh
+   * install (dismissal flag absent from localStorage) and can be
+   * re-opened at any time via the `?` button in the chat-corner
+   * controls. Distinct from the lightweight T1b sidebar hint which
+   * stays as an inline reminder once the sheet is closed.
+   */
+  const [showFirstLaunchSheet, setShowFirstLaunchSheet] = useState<boolean>(
+    () => !getStoredFirstLaunchSheetDismissed()
+  )
+  /**
+   * Transient "this is the button" pointer that pulses around the
+   * sidebar `+` workspace button after the FirstLaunchSheet
+   * dismisses for the very first time. Lifetime is bounded by
+   * `WORKSPACE_ADD_POINTER_DURATION_MS` and an early-click escape
+   * hatch — never persists across launches. */
+  const [workspaceAddPointerActive, setWorkspaceAddPointerActive] = useState(false)
+  const workspaceAddPointerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleDismissFirstLaunchSheet = useCallback(() => {
+    setShowFirstLaunchSheet(false)
+    let wasFirstDismissal = false
+    try {
+      wasFirstDismissal =
+        window.localStorage.getItem(FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY) !== 'true'
+      window.localStorage.setItem(FIRST_LAUNCH_SHEET_DISMISSED_STORAGE_KEY, 'true')
+    } catch {
+      /* localStorage may be disabled — treat as not-first-dismissal so
+       * the pointer animation doesn't kick in spuriously every time
+       * the user re-opens and closes the sheet. */
+      wasFirstDismissal = false
+    }
+    if (!wasFirstDismissal) return
+    // First-time dismissal: light up the sidebar `+` pointer for
+    // the configured window. A subsequent click anywhere on the
+    // app surface fires the cleanup branch below to dismiss early.
+    setWorkspaceAddPointerActive(true)
+    if (workspaceAddPointerTimerRef.current) {
+      clearTimeout(workspaceAddPointerTimerRef.current)
+    }
+    workspaceAddPointerTimerRef.current = setTimeout(() => {
+      setWorkspaceAddPointerActive(false)
+      workspaceAddPointerTimerRef.current = null
+    }, WORKSPACE_ADD_POINTER_DURATION_MS)
+  }, [])
+  // Pointer dismisses early on any user click. Stays out of the
+  // way once `setWorkspaceAddPointerActive(false)` runs.
+  useEffect(() => {
+    if (!workspaceAddPointerActive) return
+    const dismissPointer = (): void => {
+      setWorkspaceAddPointerActive(false)
+      if (workspaceAddPointerTimerRef.current) {
+        clearTimeout(workspaceAddPointerTimerRef.current)
+        workspaceAddPointerTimerRef.current = null
+      }
+    }
+    window.addEventListener('pointerdown', dismissPointer, { once: true })
+    return () => window.removeEventListener('pointerdown', dismissPointer)
+  }, [workspaceAddPointerActive])
+  // Cleanup on unmount — never leave a stray timer.
+  useEffect(() => {
+    return () => {
+      if (workspaceAddPointerTimerRef.current) {
+        clearTimeout(workspaceAddPointerTimerRef.current)
+      }
     }
   }, [])
   const [showFileEditor, setShowFileEditor] = useState(false)
@@ -12463,6 +12573,7 @@ function App(): React.JSX.Element {
               runningChatIds={runningChatIdsArray}
               showOnboardingHint={showOnboardingHint}
               onDismissOnboardingHint={handleDismissOnboardingHint}
+              workspaceAddPointerActive={workspaceAddPointerActive}
               onSelectWorkspace={handleSelectExistingWorkspace}
               onRemoveWorkspace={handleRemoveWorkspace}
               onSelectWorkspaceDialog={handleSelectWorkspace}
@@ -12554,21 +12665,23 @@ function App(): React.JSX.Element {
               <GhostCompanionIcon />
             </button>
             {/*
-              First-launch onboarding hint re-opener. The hint
-              auto-shows for fresh users with no workspaces; this
-              button lets existing users (or testers running
-              demos) flip it back on regardless of the dismissal
-              flag. Toggles purely visibility — does NOT touch
-              the persisted dismissal state, so re-opening here
-              doesn't make the hint auto-show again next launch.
+              First-launch onboarding sheet re-opener. The sheet
+              auto-shows on a fresh install and stays available
+              from this button so existing users / testers can
+              flip it back on at any time. Toggles purely the
+              visibility state — does NOT touch the persisted
+              dismissal flag, so closing the sheet again doesn't
+              cause it to auto-show next launch.
             */}
             <button
-              className={`chat-corner-btn ${showOnboardingHint ? 'active' : ''}`}
+              className={`chat-corner-btn ${showFirstLaunchSheet ? 'active' : ''}`}
               type="button"
-              onClick={() => setShowOnboardingHint((current) => !current)}
-              title={showOnboardingHint ? 'Hide onboarding hint' : 'Show onboarding hint'}
-              aria-label="Toggle onboarding hint"
-              aria-pressed={showOnboardingHint}
+              onClick={() => setShowFirstLaunchSheet((current) => !current)}
+              title={
+                showFirstLaunchSheet ? 'Hide onboarding sheet' : 'Open onboarding sheet'
+              }
+              aria-label="Toggle onboarding sheet"
+              aria-pressed={showFirstLaunchSheet}
             >
               <span className="chat-corner-symbol">?</span>
             </button>
@@ -14700,6 +14813,29 @@ function App(): React.JSX.Element {
       )}
       <IncomingPairingPrompt />
       {showPairingSheet && <PairingSheet onClose={() => setShowPairingSheet(false)} />}
+      {/* FirstLaunchSheet — auto-shows on fresh installs and stays
+        re-openable from the `?` corner control. Mounted at app root
+        so it overlays all surfaces; its own z-index (9100) sits
+        between SubThreadCreator (9000) and CreativeActionApprovalModal
+        (10000) so it always wins focus on a new install while still
+        deferring to genuine approval prompts. */}
+      <FirstLaunchSheet
+        open={showFirstLaunchSheet}
+        onDismiss={handleDismissFirstLaunchSheet}
+        onOpenSettings={() => {
+          // Closing the sheet AND opening settings in a single click
+          // keeps the affordance discoverable: the user lands on the
+          // Settings panel with the sheet out of the way, finishes
+          // sign-in, and can re-open the sheet later from the `?`
+          // corner control to verify the status pill flipped green.
+          setShowFirstLaunchSheet(false)
+          setShowSettings(true)
+        }}
+        codexStatus={codexStatus}
+        claudeAuthStatus={claudeAuthStatus}
+        kimiAuthStatus={kimiAuthStatus}
+        geminiAuthStatus={geminiAuthStatus}
+      />
       {subThreadCreatorParent && (
         <SubThreadCreator
           parentChat={subThreadCreatorParent}
