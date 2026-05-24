@@ -7393,6 +7393,43 @@ button.diff-file-row {
   white-space: nowrap;
 }
 
+/* Transcript truncation: long shell commands (full /Users/... paths,
+ * piped one-liners) were extending beyond the chat thread's right
+ * gutter because the inline-command span had `white-space: nowrap`
+ * but no overflow handling, and the parent flex chain inherited
+ * `min-width: auto` so couldn't shrink below the content's
+ * intrinsic width. The 150-char hard-limit truncate in
+ * `ActivityStack.tsx` still applies as a backstop; this is the
+ * responsive visual cap that fits the actual transcript width.
+ *
+ * Chain: each level of the row needs `min-width: 0` (so flex
+ * children allow shrinking past intrinsic content size) AND the
+ * inline-command itself needs `display: inline-block` +
+ * `text-overflow: ellipsis` to render the "…".
+ */
+.activity-row-inline {
+  min-width: 0;
+}
+.activity-row-inline .activity-body,
+.activity-row-inline .activity-header {
+  min-width: 0;
+  max-width: 100%;
+}
+.activity-row-inline .activity-label,
+.activity-row-inline .activity-label-main {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.activity-row-inline .activity-inline-command {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
 .activity-row-inline .activity-file-type-icon {
   opacity: 0.72;
 }
@@ -19304,14 +19341,29 @@ input:disabled, select:disabled, textarea:disabled {
   letter-spacing: 0.01em;
 }
 
-/* Light-mode Codex tucked tab inherits the same dark fill since
- * the codex composer-surface itself stays dark in light mode
- * (intentional — matches real Codex). The notch-darker CX2 fill
- * applies in both modes. */
+/* Light-mode Codex tucked tab: was previously forced to the
+ * dark fill on the assumption Codex's composer-surface stayed
+ * dark in light mode. That assumption no longer holds — the
+ * surface uses `var(--surface-2)` in light themes (see the
+ * light-theme block above), so the tucked tab needs to land
+ * in the same light palette but a notch darker for the
+ * recessed-tray depth effect (CX2 polarity flipped for light).
+ *
+ * `--surface-3` is the design-system token Codex's parallel
+ * pass landed for "stronger than surface-2"; using it here
+ * keeps the tab consistent with other depth surfaces in light
+ * themes (sheets, popovers, etc.). */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar {
-  background: color-mix(in srgb, #0f0f0f 92%, #756af4 8%) !important;
-  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
-  color: rgba(255, 255, 255, 0.84) !important;
+  background: color-mix(in srgb, var(--surface-3) 80%, var(--surface-2) 20%) !important;
+  border-color: var(--surface-border) !important;
+  color: rgba(29, 29, 31, 0.84) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar .composer-above-bar-secondary-branch {
+  color: rgba(29, 29, 31, 0.62) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar-action {
+  color: rgba(29, 29, 31, 0.86) !important;
+  border-color: var(--surface-border) !important;
 }
 
 /* -----------------------------------------------------------
@@ -19894,6 +19946,69 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="codex"] .composer-combined-picker-trigger-suffix {
   color: color-mix(in srgb, #ffffff 56%, transparent);
+}
+
+/* Light-mode counterparts for the Codex picker chrome. Real
+ * Codex (chatgpt.com) in light mode shows the picker chips as
+ * dark text on the composer's light fill, with a subtle hover
+ * darken. The chrome below mirrors that. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger {
+  color: rgba(29, 29, 31, 0.86);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, #1d1d1f 6%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-suffix {
+  color: rgba(29, 29, 31, 0.58);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-primary {
+  color: rgba(29, 29, 31, 0.86);
+}
+
+/* Permission picker colour-coded chips (CX4) need MORE saturated
+ * tones on light bg so the tint reads at the same legibility as
+ * on the dark composer. The base CX4 colours (#6fb6ff / #ffa45c)
+ * wash out on a light fill; pull them toward fully saturated
+ * accent tones for light themes. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="plan"],
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="plan"]
+  .composer-combined-picker-trigger-primary {
+  color: #1976d2;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"],
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
+  color: #d97706;
+}
+
+/* Codex bottom-row controls: model/permission/provider chip
+ * text colour in light mode. The dark-mode rules at
+ * [data-composer-style="codex"] [data-composer-control="X"]
+ * hardcode `color-mix(in srgb, #ffffff …)` which appears as
+ * white-on-white in light themes. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="model"],
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="permission"],
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="provider"] {
+  color: rgba(29, 29, 31, 0.86) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="model"]:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="permission"]:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="provider"]:hover {
+  background: color-mix(in srgb, #1d1d1f 8%, transparent) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="model"]::before {
+  background-color: color-mix(in srgb, var(--accent) 80%, #1d1d1f) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="model"]::after,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="permission"]::after {
+  color: rgba(29, 29, 31, 0.62) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] [data-composer-control="provider"] {
+  border-color: var(--surface-border) !important;
 }
 
 [data-composer-style="claude"] .composer-combined-picker-trigger {
