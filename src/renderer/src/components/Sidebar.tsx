@@ -117,6 +117,24 @@ interface SidebarProps {
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
+/**
+ * Collapsed-section memory for the four top-level sidebar lists
+ * (Pinned / Recents / Ensembles / Workspaces). Set semantics: an id
+ * present in the set means the user has explicitly collapsed that
+ * section. Default is empty (all expanded) for new users.
+ *
+ * Independent from `EXPANDED_WORKSPACES_STORAGE_KEY` — that one tracks
+ * per-workspace chat-list expansion within the Workspaces section;
+ * this one tracks the section header itself.
+ */
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sections'
+type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces'
+const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
+  'pinned',
+  'recents',
+  'ensembles',
+  'workspaces'
+] as const
 
 function FolderSymbolIcon() {
   return (
@@ -660,6 +678,28 @@ export function Sidebar({
       }
     }
   )
+  // Section-level collapse state for the four top-level sidebar lists.
+  // Default empty (all expanded). `isSectionCollapsed` below applies a
+  // search-active override so a filter pass forces every section open
+  // — otherwise a user with all sections collapsed would see no
+  // results despite typing in the search box.
+  const [collapsedSidebarSections, setCollapsedSidebarSections] = useState<Set<SidebarSectionId>>(
+    () => {
+      try {
+        const raw = localStorage.getItem(COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY)
+        if (!raw) return new Set<SidebarSectionId>()
+        const parsed = JSON.parse(raw)
+        if (!Array.isArray(parsed)) return new Set<SidebarSectionId>()
+        return new Set(
+          parsed.filter((value): value is SidebarSectionId =>
+            SIDEBAR_SECTION_IDS.includes(value as SidebarSectionId)
+          )
+        )
+      } catch {
+        return new Set<SidebarSectionId>()
+      }
+    }
+  )
   const regularChats = chats.filter((chat) => chat.chatKind !== 'ensemble')
   const ensembleChats = ensembleModeEnabled
     ? chats.filter((chat) => chat.chatKind === 'ensemble' && !chat.archived)
@@ -881,6 +921,42 @@ export function Sidebar({
       // Ignore persistence errors in constrained environments.
     }
   }, [collapsedSubThreadParentIds])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY,
+        JSON.stringify([...collapsedSidebarSections])
+      )
+    } catch {
+      // Ignore persistence errors in constrained environments.
+    }
+  }, [collapsedSidebarSections])
+
+  /**
+   * Honor an explicit collapse — except while the user is actively
+   * searching. The search input is global to the sidebar; forcing
+   * sections open during search means matches in collapsed sections
+   * stay reachable. When the search input clears, the user's prior
+   * collapse choice snaps back automatically (state was never
+   * mutated).
+   */
+  const isSectionCollapsed = (sectionId: SidebarSectionId): boolean => {
+    if (isSidebarSearchActive) return false
+    return collapsedSidebarSections.has(sectionId)
+  }
+
+  const toggleSidebarSection = (sectionId: SidebarSectionId): void => {
+    setCollapsedSidebarSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(sectionId)) {
+        next.delete(sectionId)
+      } else {
+        next.add(sectionId)
+      }
+      return next
+    })
+  }
 
   // Phase J2: auto-expand a workspace when a fresh sub-thread arrives
   // inside it. Pairs with the App.tsx onChatUpdated insert-when-not-
@@ -1166,8 +1242,18 @@ export function Sidebar({
         {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
           <div className="sidebar-pinned-section">
             <div className="sidebar-section-header">
-              <h4 className="sidebar-section-title">Pinned</h4>
+              <button
+                type="button"
+                className="sidebar-section-header-toggle"
+                onClick={() => toggleSidebarSection('pinned')}
+                aria-expanded={!isSectionCollapsed('pinned')}
+                title={isSectionCollapsed('pinned') ? 'Expand Pinned' : 'Collapse Pinned'}
+              >
+                <ChevronSymbolIcon isExpanded={!isSectionCollapsed('pinned')} />
+                <h4 className="sidebar-section-title">Pinned</h4>
+              </button>
             </div>
+            {!isSectionCollapsed('pinned') && (
             <div className="sidebar-pinned-list">
               {visiblePinnedWorkspaces.map((workspace) => (
                 <div
@@ -1256,14 +1342,25 @@ export function Sidebar({
                 </div>
               ))}
             </div>
+            )}
           </div>
         )}
 
         {visibleRecentChats.length > 0 && (
           <div className="sidebar-recents-section">
             <div className="sidebar-section-header">
-              <h4 className="sidebar-section-title">Recents</h4>
+              <button
+                type="button"
+                className="sidebar-section-header-toggle"
+                onClick={() => toggleSidebarSection('recents')}
+                aria-expanded={!isSectionCollapsed('recents')}
+                title={isSectionCollapsed('recents') ? 'Expand Recents' : 'Collapse Recents'}
+              >
+                <ChevronSymbolIcon isExpanded={!isSectionCollapsed('recents')} />
+                <h4 className="sidebar-section-title">Recents</h4>
+              </button>
             </div>
+            {!isSectionCollapsed('recents') && (
             <div className="sidebar-recents-list">
               {visibleRecentChats.map((chat) => {
                 const chatAgeTimestamp = chat.updatedAt || chat.createdAt
@@ -1315,15 +1412,26 @@ export function Sidebar({
                 )
               })}
             </div>
+            )}
           </div>
         )}
 
         {ensembleModeEnabled && (
           <div className="sidebar-ensembles-section">
             <div className="sidebar-section-header">
-              <h4 className="sidebar-section-title">Ensembles</h4>
+              <button
+                type="button"
+                className="sidebar-section-header-toggle"
+                onClick={() => toggleSidebarSection('ensembles')}
+                aria-expanded={!isSectionCollapsed('ensembles')}
+                title={isSectionCollapsed('ensembles') ? 'Expand Ensembles' : 'Collapse Ensembles'}
+              >
+                <ChevronSymbolIcon isExpanded={!isSectionCollapsed('ensembles')} />
+                <h4 className="sidebar-section-title">Ensembles</h4>
+              </button>
             </div>
-            {visibleEnsembleChats.length === 0 ? (
+            {!isSectionCollapsed('ensembles') && (
+              visibleEnsembleChats.length === 0 ? (
               /*
                 Empty-state caption. Gives ensembles the same
                 discoverability Workspaces gets when the list is
@@ -1392,6 +1500,7 @@ export function Sidebar({
                 )
               })}
               </div>
+              )
             )}
           </div>
         )}
@@ -1406,7 +1515,18 @@ export function Sidebar({
 
         <div className="sidebar-workspace-scroll">
           <div className="sidebar-section-header">
-            <h4 className="sidebar-section-title">Workspaces</h4>
+            <button
+              type="button"
+              className="sidebar-section-header-toggle"
+              onClick={() => toggleSidebarSection('workspaces')}
+              aria-expanded={!isSectionCollapsed('workspaces')}
+              title={
+                isSectionCollapsed('workspaces') ? 'Expand Workspaces' : 'Collapse Workspaces'
+              }
+            >
+              <ChevronSymbolIcon isExpanded={!isSectionCollapsed('workspaces')} />
+              <h4 className="sidebar-section-title">Workspaces</h4>
+            </button>
             {/*
               `+` workspace button. The wrapping span carries the
               `workspace-add-pointer` class when the host has flipped
@@ -1414,6 +1534,12 @@ export function Sidebar({
               + label. Span-not-button-class because we want the
               animated ring to sit OUTSIDE the button's hover/focus
               rectangle so it doesn't clash with the normal hover ring.
+
+              Sits OUTSIDE the section-header toggle so clicking `+`
+              opens the workspace picker without ever collapsing the
+              section. Keeping the `+` reachable when the section is
+              collapsed lets the user add a workspace even while their
+              list is folded away.
             */}
             <span
               className={
@@ -1444,7 +1570,7 @@ export function Sidebar({
             chat-corner-controls-left). Inline ✕ persists the
             dismissal so the next launch starts hidden too.
           */}
-          {showOnboardingHint && workspaces.length === 0 && (
+          {!isSectionCollapsed('workspaces') && showOnboardingHint && workspaces.length === 0 && (
             <div className="sidebar-onboarding-hint" role="note">
               <div className="sidebar-onboarding-hint-body">
                 <strong>Add your first workspace</strong>
@@ -1468,7 +1594,17 @@ export function Sidebar({
             </div>
           )}
           <div className="sidebar-workspace-list">
-            {visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
+            {/*
+              Workspace entries — gated on the Workspaces section's
+              collapse state. The "No matches" search empty-state and
+              the global "Chats" section below stay visible regardless
+              so the user can still find / open global chats with the
+              Workspaces list folded away. (Chats is a separate concept
+              and the user only asked for four sections to be made
+              collapsible: Pinned / Recents / Ensembles / Workspaces.)
+            */}
+            {!isSectionCollapsed('workspaces') &&
+              visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
               const expanded = isSidebarSearchActive ? true : expandedWorkspaceIds.has(ws.id)
               const workspaceChats = chatsByWorkspace.get(ws.id) || []
               const workspaceHasRunning = workspaceChats.some((chat) =>

@@ -640,6 +640,52 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+/* Section-header toggle button. Wraps `ChevronSymbolIcon` + the
+ * `<h4>` title so the whole left-side cluster is a single click target
+ * that collapses / expands the section. The `+` button on the
+ * Workspaces section is intentionally kept as a sibling (not nested
+ * inside this button) so clicking the picker does not toggle collapse. */
+.sidebar-section-header-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  /* Reset default <button> baselines so the inner <h4> doesn't
+   * inherit weird padding or text-transform mismatches. */
+  text-align: left;
+  line-height: 1.15;
+}
+
+.sidebar-section-header-toggle:hover .sidebar-section-title,
+.sidebar-section-header-toggle:focus-visible .sidebar-section-title {
+  color: var(--text-primary);
+}
+
+.sidebar-section-header-toggle:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 56%, transparent);
+  outline-offset: 2px;
+  border-radius: var(--composer-bubble-radius, 18px);
+}
+
+/* Keep the chevron quietly compact next to the title pill — the
+ * pill carries its own padding; the chevron should not push the pill
+ * off-center vertically. */
+.sidebar-section-header-toggle .sidebar-tree-chevron {
+  width: 12px;
+  height: 12px;
+  color: color-mix(in srgb, var(--sidebar-text) 56%, transparent);
+}
+
+.sidebar-section-header-toggle:hover .sidebar-tree-chevron,
+.sidebar-section-header-toggle:focus-visible .sidebar-tree-chevron {
+  color: color-mix(in srgb, var(--sidebar-text) 88%, transparent);
+}
+
 /* First-launch onboarding hint. Sits between the "Workspaces"
  * section header and the (empty) workspace list when fresh
  * users open the app. Faint so it doesn't compete visually
