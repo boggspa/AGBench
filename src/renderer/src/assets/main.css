@@ -18615,12 +18615,26 @@ input:disabled, select:disabled, textarea:disabled {
  *      in light mode (containers stay invisible by design).
  * ============================================================ */
 
-/* 1) MODULAR above-bar — strip backdrop-filter so the row reads
- *    truly transparent. Children already pill-styled by my prior
- *    rule at `.composer-above-bar > *`. */
+/* 1) MODULAR above-bar — strip ALL container chrome so the row
+ *    reads truly transparent. Children already pill-styled by my
+ *    prior rule at `.composer-above-bar > *`. The per-provider
+ *    `.app-transcript.provider-X .composer-above-bar::before`
+ *    rules at lines 13763-13781 paint a navy linear-gradient at
+ *    specificity (0, 3, 1) which beats my (0, 2, 1) reset, so the
+ *    ::before kill needs `!important` + `display: none` to win. */
 [data-composer-style="modular"] .composer-above-bar {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
+}
+
+[data-composer-style="modular"] .composer-above-bar::before,
+[data-composer-style="modular"] .composer-above-bar::after {
+  display: none !important;
+  background: none !important;
+  box-shadow: none !important;
 }
 
 /* Modular light-mode children — extend the prior light fix to
