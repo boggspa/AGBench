@@ -17755,3 +17755,42 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
 }
+
+/* ============================================================
+ * CODEX + CLAUDE — !important DARK RULES OVERRIDE
+ * --------------------------------------------------------------
+ * Three rules in the themed-shell section force a dark surface
+ * with `!important`, written when only dark mode existed:
+ *
+ *   line 14905: `[data-composer-style="claude"] .composer-above-bar
+ *                { background: #151515 !important; }`
+ *   line 14913: `[data-interface-style="codex"] .composer-surface
+ *                { background: ...#1d1d1d... !important; }`
+ *   line 14943: `[data-interface-style="claude"] .composer-textarea
+ *                { background: #151515 !important; }`
+ *
+ * Plain specificity overrides can't beat `!important`, so the
+ * earlier light-mode fixes for these three surfaces silently
+ * lost the cascade. Re-declare them here with both `!important`
+ * and a more specific `[data-theme="light"]`-qualified selector
+ * so they win deterministically — same physical surface, light
+ * tint instead of dark.
+ * ============================================================ */
+
+[data-theme="light"][data-interface-style="codex"] .composer-surface {
+  background: var(--unified-soft-surface-bg) !important;
+  border-color: var(--unified-soft-surface-border) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
+}
+
+[data-theme="light"][data-interface-style="claude"] .composer-textarea {
+  background: var(--unified-soft-surface-bg) !important;
+  border-color: var(--unified-soft-surface-border) !important;
+  color: var(--text-primary) !important;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar {
+  background: var(--unified-soft-surface-bg) !important;
+  border-color: var(--unified-soft-surface-border) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+}
