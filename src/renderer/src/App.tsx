@@ -67,6 +67,8 @@ import { ComposerSlashMenu } from './components/ComposerSlashMenu'
 import { CreativeActionApprovalModal } from './components/CreativeActionApprovalModal'
 import { UsageHeatmap } from './components/UsageHeatmap'
 import { useAppearance } from './hooks/useAppearance'
+import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
+import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel } from './components/SettingsPanel'
@@ -4558,9 +4560,12 @@ function App(): React.JSX.Element {
         : [],
     [currentChat?.providerMetadata?.codexExternalPathGrants, isCurrentGlobalChat]
   )
-  // `useExternalPathRepoMetadata(codexExternalPathGrants)` is wired
-  // in by slice 3, alongside the new <ExternalPathAboveRow /> that
-  // consumes the metadata.
+  // Slice 3 of the external-path-redesign arc. Per-grant repo
+  // metadata (isRepo / branch) drives the stacked secondary rows
+  // rendered alongside the primary above-bar. Probe results are
+  // cached in the hook so re-renders are free; only changes to the
+  // grant set trigger new probes.
+  const externalPathRepoMetadata = useExternalPathRepoMetadata(codexExternalPathGrants)
   const currentComposerChatId = currentChat?.appChatId || null
   const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
   const imageAttachments = useMemo(
@@ -12581,6 +12586,7 @@ function App(): React.JSX.Element {
                 button and keep Create PR as the above-bar action.
               */}
             {!isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
+              <div className="composer-above-bar-stack">
               <div className="composer-above-bar style-unified">
                 <span className="composer-above-bar-branch">
                   <svg
@@ -12669,6 +12675,20 @@ function App(): React.JSX.Element {
                         ? 'Retry PR'
                         : 'Create PR'}
                 </button>
+              </div>
+              {/* Slice 3 of the external-path-redesign arc. One stacked
+                  row per external-path grant. Per-grant repo metadata
+                  decides whether the row shows branch+repo-name or a
+                  bare basename. Per-repo diff stats + per-repo Create
+                  PR land in slice 6. */}
+              {codexExternalPathGrants.map((grant) => (
+                <ExternalPathAboveRow
+                  key={grant.id}
+                  grant={grant}
+                  repoMetadata={externalPathRepoMetadata[grant.id] || null}
+                  onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
+                />
+              ))}
               </div>
             )}
             <div

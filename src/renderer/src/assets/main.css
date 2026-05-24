@@ -19362,3 +19362,81 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
   color: color-mix(in srgb, #ffffff 54%, transparent) !important;
 }
+
+/* ============================================================
+ * COMPOSER ABOVE-BAR STACK — Slice 3 of external-path-redesign
+ * --------------------------------------------------------------
+ * The above-bar is now a vertical stack: one primary row (the
+ * current workspace) + N secondary rows (one per external-path
+ * grant). Each row inherits the existing `.composer-above-bar`
+ * styling so per-shell skins (Codex tucked tab, Claude bare-text,
+ * Modular floating, Stub parchment, etc.) apply uniformly to
+ * every row in the stack.
+ *
+ * Secondary rows are slightly less prominent than the primary —
+ * tighter padding, dimmed text — so the primary row visually
+ * "owns" the workspace identity while secondary rows read as
+ * grants attached to the same thread.
+ * ============================================================ */
+
+.composer-above-bar-stack {
+  width: 100%;
+  max-width: min(100%, var(--composer-content-max-width));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.composer-above-bar-secondary {
+  /* Secondary rows are visually quieter than the primary — they
+   * represent attached grants, not the main workspace identity. */
+  opacity: 0.92;
+  font-size: calc(var(--font-size-xs) + 0.5px);
+}
+
+.composer-above-bar-secondary-branch {
+  font-style: normal;
+  font-weight: 500;
+  opacity: 0.78;
+}
+
+.composer-above-bar-secondary-access {
+  margin-left: auto;
+  margin-right: 8px;
+  font-size: calc(var(--font-size-xs) - 0.5px);
+  font-variant: small-caps;
+  letter-spacing: 0.04em;
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+
+.composer-above-bar-secondary-revoke {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 84%, transparent);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  transition: background 0.16s, color 0.16s;
+}
+
+.composer-above-bar-secondary-revoke:hover {
+  background: color-mix(in srgb, var(--danger) 18%, transparent);
+  color: var(--danger);
+}
+
+/* Tucked Codex tab — when secondary rows are present, the bottom
+ * row's tucked-bottom merge should sit ABOVE the composer-surface;
+ * intermediate rows lose their bottom radius so they read as one
+ * continuous stack rather than discrete tabs. */
+[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:last-child) {
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  margin-bottom: 0;
+}
