@@ -19333,6 +19333,75 @@ input:disabled, select:disabled, textarea:disabled {
   flex-shrink: 0;
 }
 
+/* Fast-mode lightning bolt next to capable model labels. Sits
+ * between the model name and the check mark when both are present.
+ * Subtle by default so it doesn't compete with the selected check
+ * — its job is to whisper "this model can do Fast", not shout it. */
+.composer-combined-picker-fast-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--accent) 70%, transparent);
+  opacity: 0.75;
+}
+.composer-combined-picker-row.is-selected .composer-combined-picker-fast-indicator,
+.composer-combined-picker-row.is-highlighted .composer-combined-picker-fast-indicator {
+  opacity: 1;
+}
+
+/* Fast-mode toggle row at the bottom of the Reasoning column. Same
+ * row chrome as the reasoning options for visual consistency, plus
+ * a slim top border so the user reads it as a distinct sub-section
+ * rather than another reasoning option. The label cluster on the
+ * left holds the bolt + "Fast mode" text; the switch sits on the
+ * right where the check mark would be on other rows. */
+.composer-combined-picker-fast-toggle {
+  border-top: 1px solid
+    color-mix(in srgb, var(--text-primary) 12%, transparent);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.composer-combined-picker-fast-toggle .composer-combined-picker-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+.composer-combined-picker-fast-toggle:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.composer-combined-picker-fast-toggle:disabled .composer-combined-picker-row-label {
+  color: color-mix(in srgb, var(--text-primary) 62%, transparent);
+}
+
+.composer-combined-picker-fast-switch {
+  flex-shrink: 0;
+  width: 26px;
+  height: 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+.composer-combined-picker-fast-switch.is-on {
+  background: var(--accent);
+}
+.composer-combined-picker-fast-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.15s ease;
+}
+.composer-combined-picker-fast-switch.is-on .composer-combined-picker-fast-switch-thumb {
+  transform: translateX(12px);
+}
+
 /* Tool-Grant rows: multi-select with a leading checkbox glyph + a
  * smaller sub-label describing the global policy state for each
  * service. Shape mirrors the model/reasoning row but with denser

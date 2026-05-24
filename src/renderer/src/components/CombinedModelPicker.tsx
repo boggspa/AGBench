@@ -63,7 +63,47 @@ interface CombinedModelPickerProps {
   claudeReasoningEffort?: string
   /** Kimi thinking flag (so the chip text can format it). */
   kimiThinkingEnabled?: boolean
+  /**
+   * Set of model IDs that support the paid Fast tier (Codex GPT-5.5
+   * + GPT-5.4; Claude Opus 4.7 + Opus 4.6). Used both to (1) render a
+   * lightning bolt next to capable model labels and (2) gate the
+   * "Fast Mode" toggle below the Reasoning column. Pass an empty set
+   * to hide the toggle row entirely (e.g. Gemini / Kimi).
+   */
+  fastModeCapableModelIds?: Set<string>
+  /**
+   * Current fast-mode state. Renders the toggle as "on" when true.
+   */
+  fastModeEnabled?: boolean
+  /**
+   * Flip fast mode. Invoked from the toggle's onClick; the caller
+   * decides which provider's state to mutate (Codex's serviceTier,
+   * Claude's claudeFastMode, etc.) and is also responsible for
+   * persisting to chat metadata.
+   */
+  onToggleFastMode?: () => void
   disabled?: boolean
+}
+
+/**
+ * Inline lightning-bolt icon used as the "supports Fast tier"
+ * affordance next to capable model labels and as the icon for
+ * the toggle row beneath the Reasoning column.
+ */
+function FastBoltIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="11"
+      height="11"
+      viewBox="0 0 12 12"
+      fill="currentColor"
+      aria-hidden
+      focusable="false"
+      style={{ flexShrink: 0 }}
+    >
+      <path d="M7 1 2.2 6.8h2.5L3.6 11 9 4.6H6.4L7 1z" />
+    </svg>
+  )
 }
 
 export function CombinedModelPicker({
@@ -78,8 +118,16 @@ export function CombinedModelPicker({
   codexReasoningEffort,
   claudeReasoningEffort,
   kimiThinkingEnabled,
+  fastModeCapableModelIds,
+  fastModeEnabled,
+  onToggleFastMode,
   disabled
 }: CombinedModelPickerProps): React.JSX.Element {
+  const fastModeCapable =
+    Boolean(fastModeCapableModelIds && fastModeCapableModelIds.has(selectedModelId))
+  const fastModeRowVisible = Boolean(
+    fastModeCapableModelIds && fastModeCapableModelIds.size > 0 && onToggleFastMode
+  )
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const [open, setOpen] = useState(false)
@@ -282,30 +330,44 @@ export function CombinedModelPicker({
         className={`composer-combined-picker-column composer-combined-picker-models ${focusedColumn === 'model' ? 'is-focused' : ''}`}
       >
         <div className="composer-combined-picker-column-header">Model</div>
-        {modelOptions.map((option, idx) => (
-          <button
-            key={option.id}
-            type="button"
-            className={`composer-combined-picker-row ${option.id === selectedModelId ? 'is-selected' : ''} ${idx === modelHighlight && focusedColumn === 'model' ? 'is-highlighted' : ''}`}
-            onMouseEnter={() => {
-              setFocusedColumn('model')
-              setModelHighlight(idx)
-            }}
-            onClick={() => {
-              onSelectModel(option.id)
-              // Keep the popover open so the user can also tweak
-              // reasoning without re-clicking the chip. Real Codex
-              // behaves the same way.
-            }}
-          >
-            <span className="composer-combined-picker-row-label">{option.label}</span>
-            {option.id === selectedModelId && (
-              <span className="composer-combined-picker-check" aria-hidden>
-                ✓
-              </span>
-            )}
-          </button>
-        ))}
+        {modelOptions.map((option, idx) => {
+          const supportsFast = Boolean(
+            fastModeCapableModelIds && fastModeCapableModelIds.has(option.id)
+          )
+          return (
+            <button
+              key={option.id}
+              type="button"
+              className={`composer-combined-picker-row ${option.id === selectedModelId ? 'is-selected' : ''} ${idx === modelHighlight && focusedColumn === 'model' ? 'is-highlighted' : ''}`}
+              onMouseEnter={() => {
+                setFocusedColumn('model')
+                setModelHighlight(idx)
+              }}
+              onClick={() => {
+                onSelectModel(option.id)
+                // Keep the popover open so the user can also tweak
+                // reasoning without re-clicking the chip. Real Codex
+                // behaves the same way.
+              }}
+            >
+              <span className="composer-combined-picker-row-label">{option.label}</span>
+              {supportsFast && (
+                <span
+                  className="composer-combined-picker-fast-indicator"
+                  title="Supports Fast mode"
+                  aria-label="Supports Fast mode"
+                >
+                  <FastBoltIcon />
+                </span>
+              )}
+              {option.id === selectedModelId && (
+                <span className="composer-combined-picker-check" aria-hidden>
+                  ✓
+                </span>
+              )}
+            </button>
+          )
+        })}
       </div>
       {reasoningOptions.length > 0 && (
         <div
@@ -333,6 +395,45 @@ export function CombinedModelPicker({
               )}
             </button>
           ))}
+          {/*
+            Fast Mode toggle. Tucked under the Reasoning column so
+            it reads as a Reasoning-adjacent capability rather than
+            a separate concept. Visible only for Codex + Claude
+            (the providers with capable models); the row stays
+            visible but disabled when the selected model isn't
+            in `fastModeCapableModelIds` so the user understands
+            the affordance exists but doesn't apply to this model.
+          */}
+          {fastModeRowVisible && (
+            <button
+              type="button"
+              className={`composer-combined-picker-row composer-combined-picker-fast-toggle ${fastModeEnabled ? 'is-selected' : ''}`}
+              onClick={() => {
+                if (!fastModeCapable) return
+                onToggleFastMode?.()
+              }}
+              disabled={!fastModeCapable}
+              aria-pressed={Boolean(fastModeEnabled && fastModeCapable)}
+              title={
+                fastModeCapable
+                  ? fastModeEnabled
+                    ? 'Disable Fast mode (uses standard tier)'
+                    : 'Enable Fast mode (paid Fast tier)'
+                  : 'Selected model does not support Fast mode'
+              }
+            >
+              <span className="composer-combined-picker-row-label">
+                <FastBoltIcon />
+                <span>Fast mode</span>
+              </span>
+              <span
+                className={`composer-combined-picker-fast-switch ${fastModeEnabled && fastModeCapable ? 'is-on' : ''}`}
+                aria-hidden
+              >
+                <span className="composer-combined-picker-fast-switch-thumb" />
+              </span>
+            </button>
+          )}
         </div>
       )}
     </div>
