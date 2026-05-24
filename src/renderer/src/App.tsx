@@ -6846,36 +6846,13 @@ function App(): React.JSX.Element {
     window.api.saveChat(updatedChat)
   }
 
-  const handlePickExternalPathGrant = async (access: 'read' | 'write') => {
-    // Composer-unification (Phase J1): the External Path picker is now
-    // cross-provider. Codex still routes the grant through its existing
-    // sandbox-policy translator; Gemini / Claude / Kimi route the same
-    // grant into a `--add-dir <path>` CLI flag (see
-    // `externalPathGrantsToCliAddDirArgs` in main). The picker no
-    // longer hard-restricts to `currentProvider === 'codex'`.
-    if (
-      !currentChat ||
-      !currentWorkspace ||
-      typeof window.api.selectExternalPathGrant !== 'function'
-    ) {
-      return
-    }
-    const grant = await window.api.selectExternalPathGrant(access, currentProvider)
-    if (!grant) return
-    const nextGrant: ExternalPathGrant = {
-      ...grant,
-      workspaceId: currentWorkspace.id,
-      chatId: currentChat.appChatId
-    }
-    updateCodexExternalPathGrants([...codexExternalPathGrants, nextGrant])
-    setRawLogs((prev) => [
-      ...prev,
-      {
-        type: 'info',
-        content: `Granted ${currentProviderLabel} ${access} access to external ${nextGrant.kind}: ${nextGrant.path}`
-      }
-    ])
-  }
+  // `handlePickExternalPathGrant` was the entry point for the
+  // pre-emptive picker pill that lived in the composer's above-bar.
+  // Removed with the pill (slice 8) — runtime detection (slice 5)
+  // now drives the grant flow via the approval modal. The IPC
+  // (`window.api.selectExternalPathGrant`) is preserved in preload
+  // so a future Settings → Approvals tab can offer a manual
+  // grant-entry escape hatch (post-lunch plan item).
 
   const handleRemoveExternalPathGrant = (id: string) => {
     updateCodexExternalPathGrants(codexExternalPathGrants.filter((grant) => grant.id !== id))
@@ -12636,13 +12613,6 @@ function App(): React.JSX.Element {
                 isCurrentGlobalChat={isCurrentGlobalChat}
                 isCurrentComposerLocked={isCurrentComposerLocked}
                 hasWorkspaceContext={hasWorkspaceContext}
-                externalPathGrants={codexExternalPathGrants}
-                onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
-                agenticServices={agenticServices}
-                agenticWorkspaceGrants={agenticWorkspaceGrants}
-                onSetWorkspaceGrant={(service, enabled) =>
-                  void handleSetAgenticWorkspaceGrant(service, enabled)
-                }
                 currentGeminiWorktree={currentGeminiWorktree}
                 onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
                 worktreeToggleLabel={worktreeToggleLabel}
@@ -12730,13 +12700,6 @@ function App(): React.JSX.Element {
                   isCurrentGlobalChat={isCurrentGlobalChat}
                   isCurrentComposerLocked={isCurrentComposerLocked}
                   hasWorkspaceContext={hasWorkspaceContext}
-                  externalPathGrants={codexExternalPathGrants}
-                  onPickExternalPathGrant={(access) => void handlePickExternalPathGrant(access)}
-                  agenticServices={agenticServices}
-                  agenticWorkspaceGrants={agenticWorkspaceGrants}
-                  onSetWorkspaceGrant={(service, enabled) =>
-                    void handleSetAgenticWorkspaceGrant(service, enabled)
-                  }
                   currentGeminiWorktree={currentGeminiWorktree}
                   onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
                   worktreeToggleLabel={worktreeToggleLabel}

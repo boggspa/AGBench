@@ -30,18 +30,21 @@
  */
 
 import type {
-  AgenticServiceId,
-  AgenticServicesSettings,
-  AgenticWorkspaceGrant,
   ProviderId,
   WorkspaceRecord,
-  ExternalPathGrant,
   GeminiWorktreeConfig
 } from '../../../main/store/types'
 
 // `WORKSPACE_POLICY_SERVICES` lifted to `../lib/workspacePolicyServices`
 // — both this component and the new CombinedPermissionsPicker import
 // it from there now.
+//
+// Post-slice-8 cleanup: `externalPathGrants`, `onPickExternalPathGrant`,
+// `agenticServices`, `agenticWorkspaceGrants`, `onSetWorkspaceGrant`
+// dropped from the props interface. External Path now lives as
+// secondary above-rows + runtime-grant modal (slices 3+4+5); Tool
+// Grants moved into CombinedPermissionsPicker. The remaining shape
+// of this component is purely the Gemini Worktree toggle pill.
 
 interface WorkspaceAccessControlsProps {
   variant: 'satellite' | 'inline'
@@ -50,11 +53,6 @@ interface WorkspaceAccessControlsProps {
   isCurrentGlobalChat: boolean
   isCurrentComposerLocked: boolean
   hasWorkspaceContext: boolean
-  externalPathGrants: ExternalPathGrant[]
-  onPickExternalPathGrant: (access: 'read' | 'write') => void
-  agenticServices: AgenticServicesSettings
-  agenticWorkspaceGrants: AgenticWorkspaceGrant[]
-  onSetWorkspaceGrant: (service: AgenticServiceId, enabled: boolean) => void
   currentGeminiWorktree?: GeminiWorktreeConfig | undefined
   onGeminiWorktreeToggle: () => void
   worktreeToggleLabel: string
@@ -110,12 +108,6 @@ export function WorkspaceAccessControls(
     isCurrentGlobalChat,
     isCurrentComposerLocked,
     hasWorkspaceContext,
-    // externalPathGrants / onPickExternalPathGrant / agenticServices /
-    // agenticWorkspaceGrants / onSetWorkspaceGrant remain on the props
-    // interface for backwards compatibility (App.tsx still passes them)
-    // but are no longer rendered here. Destructured-but-unused
-    // bindings would TS6133-fail, so we deliberately don't pull them
-    // out of props.
     currentGeminiWorktree,
     onGeminiWorktreeToggle,
     worktreeToggleLabel,
@@ -143,21 +135,11 @@ export function WorkspaceAccessControls(
         primary workspace row (via slice 3's <ExternalPathAboveRow />),
         and slice 5's runtime detector handles new grants on-demand
         when the agent first tries to access a path outside the
-        workspace. The standalone pill became redundant once those
-        flows landed.
-
-        `externalPathGrants` + `onPickExternalPathGrant` props are
-        retained on this component for backwards compatibility (the
-        Settings panel may still wire a manual grant entry point
-        through `selectExternalPathGrant` IPC). They're just no
-        longer surfaced in the composer's above-bar.
-
-        Tool Grants pill removed earlier (Phase J7-followup) — those
-        toggles now live inside the CombinedPermissionsPicker.
-
-        `agenticServices`, `agenticWorkspaceGrants`,
-        `onSetWorkspaceGrant` props remain on the interface for the
-        same back-compat reason but no longer render here.
+        workspace. Tool Grants pill removed earlier (Phase
+        J7-followup) — those toggles now live inside the
+        CombinedPermissionsPicker. After post-slice-8 cleanup the
+        remaining shape of this component is just the Gemini
+        Worktree pill below.
       */}
       {worktreeInteractive && (
         <button
