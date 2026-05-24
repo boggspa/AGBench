@@ -42,6 +42,7 @@ import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
 import { ApnsConfigPanel } from './ApnsConfigPanel'
+import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 
 interface SettingsPanelProps {
@@ -337,21 +338,43 @@ export type SettingsTab =
   | 'remote-workspaces'
   | 'approval-ledger'
   | 'bridge-networking'
+  | 'pairing'
+
+/**
+ * Tab grouping discriminator. The settings sidebar renders a visual
+ * divider between groups so user-facing categories stay distinct.
+ * "settings" — the canonical app-configuration tabs (Appearance,
+ * Behavior, ...).
+ * "devices" — pairing / device-management pages, anchored at the
+ * bottom of the sidebar.
+ */
+export type SettingsTabGroup = 'settings' | 'devices'
 
 /**
  * Canonical settings-tab list. Exported so `SettingsSidebar` (used in
  * full-app takeover layout) can render the same list of tabs as the
  * inline tab bar inside this panel — keeping both render sites in
  * lockstep when tabs are added / renamed.
+ *
+ * Order matters: the sidebar renders tabs in this order and inserts
+ * a divider whenever the `group` field changes from the previous
+ * tab. The Pairing tab sits at the end under the "devices" group so
+ * Chris's screenshot pattern reads correctly: settings tabs on top,
+ * pairing pinned to the bottom with a visual gap.
  */
-export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
-  { id: 'appearance', label: 'Appearance' },
-  { id: 'behavior', label: 'Behavior' },
-  { id: 'providers', label: 'Providers' },
-  { id: 'system', label: 'System' },
-  { id: 'remote-workspaces', label: 'Remote Workspaces' },
-  { id: 'bridge-networking', label: 'Bridge Networking' },
-  { id: 'approval-ledger', label: 'Approvals' }
+export const SETTINGS_TABS: Array<{
+  id: SettingsTab
+  label: string
+  group: SettingsTabGroup
+}> = [
+  { id: 'appearance', label: 'Appearance', group: 'settings' },
+  { id: 'behavior', label: 'Behavior', group: 'settings' },
+  { id: 'providers', label: 'Providers', group: 'settings' },
+  { id: 'system', label: 'System', group: 'settings' },
+  { id: 'remote-workspaces', label: 'Remote Workspaces', group: 'settings' },
+  { id: 'bridge-networking', label: 'Bridge Networking', group: 'settings' },
+  { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
+  { id: 'pairing', label: 'Pairing', group: 'devices' }
 ]
 
 type LocalFontData = {
@@ -1978,6 +2001,9 @@ export function SettingsPanel({
             <ApnsConfigPanel />
           </>
         )}
+
+        {/* ── Pairing (post-1.0.2: folded in from the legacy modal sheet) ── */}
+        {activeTab === 'pairing' && <PairingPage />}
       </div>
       {/* end settings-panel-content */}
     </div>

@@ -8185,6 +8185,21 @@ button.diff-file-row {
   margin-top: 4px;
 }
 
+/* Slot wraps each tab so a divider can sit directly above it when
+ * the group changes (e.g. between settings tabs and the pairing /
+ * device-management tab). Block element so the divider lays out as
+ * a sibling of the tab button. */
+.settings-sidebar-tab-slot {
+  display: block;
+}
+
+.settings-sidebar-divider {
+  display: block;
+  height: 1px;
+  margin: 10px 8px;
+  background: color-mix(in srgb, var(--sidebar-border) 60%, transparent);
+}
+
 .settings-sidebar-tab {
   display: flex;
   align-items: center;
@@ -18496,6 +18511,31 @@ input:disabled, select:disabled, textarea:disabled {
    scan / paste. Layered above the standard app surface but BELOW the
    IncomingPairingPrompt modal that takes over once the iOS device
    responds. */
+
+/* PairingPage — pairing flow rendered inside the Settings takeover
+ * (post-1.0.2). Breaks out of the panel's `column-count: 2` flow so
+ * the QR + JSON panes lay out side-by-side at full width. The inner
+ * `.pairing-sheet__*` rules below are shared with the (now-retired)
+ * PairingSheet modal — kept verbatim because they describe content
+ * layout, not chrome. */
+.pairing-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md, 12px);
+  column-span: all;
+  -webkit-column-span: all;
+  break-inside: avoid;
+}
+
+.pairing-page__header {
+  /* Drop the modal close-button slot — title-only header in the
+   * tab variant. */
+  align-items: flex-start;
+}
+
+.pairing-page__footer {
+  margin-top: var(--space-md, 12px);
+}
 
 .pairing-sheet-backdrop {
   position: fixed;

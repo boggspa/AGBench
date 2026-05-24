@@ -89,7 +89,10 @@ import { FileEditorPanel } from './components/FileEditorPanel'
 import { MarkdownMessage } from './components/MarkdownMessage'
 import { RunCard } from './components/RunCard'
 import { RunInspector } from './components/RunInspector'
-import { PairingSheet } from './components/PairingSheet'
+// PairingSheet retired in the post-1.0.2 Settings full-app takeover.
+// The pairing flow now lives as a Settings tab (`PairingPage` mounted
+// inside SettingsPanel). Triggers route through `setShowSettings(true)
+// + setSettingsActiveTab('pairing')`.
 import { EnsembleParticipantStrip } from './components/EnsembleParticipantStrip'
 import { EnsembleSetupSheet } from './components/EnsembleSetupSheet'
 import { SubThreadReturnCard } from './components/SubThreadReturnCard'
@@ -4532,7 +4535,11 @@ function App(): React.JSX.Element {
   // and drive the same value. Remembered across opens so the user
   // re-enters Settings on whichever tab they were on last.
   const [settingsActiveTab, setSettingsActiveTab] = useState<SettingsTab>('appearance')
-  const [showPairingSheet, setShowPairingSheet] = useState(false)
+  // Pairing trigger callback. Opens the Settings takeover on the
+  // Pairing tab — see also the legacy `setShowPairingSheet(true)`
+  // call sites that have been updated to use this helper instead.
+  // Wrapped in a function so the trigger can be passed as a prop
+  // without binding identity to render output.
   // Phase F1: sub-thread creator modal state. Null when closed; holds
   // the parent chat when open so the modal knows what to delegate from.
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
@@ -12756,7 +12763,10 @@ function App(): React.JSX.Element {
                   }
                   setInspectingRunId(runId)
                 }}
-                onShowPairingSheet={() => setShowPairingSheet(true)}
+                onShowPairingSheet={() => {
+                  setSettingsActiveTab('pairing')
+                  setShowSettings(true)
+                }}
               />
             )}
             <div
@@ -14961,7 +14971,10 @@ function App(): React.JSX.Element {
         return the user to the chat surface.
       */}
       <IncomingPairingPrompt />
-      {showPairingSheet && <PairingSheet onClose={() => setShowPairingSheet(false)} />}
+      {/* PairingSheet modal mount retired — Pairing now renders as a
+          Settings tab (`activeTab === 'pairing'`). `IncomingPairingPrompt`
+          above continues to handle the 6-digit verification overlay
+          regardless of which screen the user is on. */}
       {/* FirstLaunchSheet — auto-shows on fresh installs and stays
         re-openable from the `?` corner control. Mounted at app root
         so it overlays all surfaces; its own z-index (9100) sits
