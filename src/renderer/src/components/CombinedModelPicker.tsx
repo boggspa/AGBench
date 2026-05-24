@@ -446,6 +446,9 @@ export function CombinedModelPicker({
         type="button"
         className="composer-combined-picker-trigger"
         data-composer-control="model"
+        data-fast-mode-active={
+          fastModeEnabled && fastModeCapable ? 'true' : 'false'
+        }
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled}
         aria-haspopup="dialog"
