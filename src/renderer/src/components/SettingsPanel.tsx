@@ -178,7 +178,9 @@ const THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
   { value: 'sunset', label: 'Sunset' },
   { value: 'forest', label: 'Forest' },
   { value: 'cyber', label: 'Cyber' },
-  { value: 'candy', label: 'Candy' }
+  { value: 'candy', label: 'Candy' },
+  { value: 'mist', label: 'Mist' },
+  { value: 'sage', label: 'Sage' }
 ]
 const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
   { value: 'system', label: 'System' },

@@ -969,16 +969,16 @@ button.sidebar-item {
 }
 
 /* Light theme: dial the tint way down so it reads as a hint, not a wash. */
-[data-theme="light"] .app-transcript.provider-gemini {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-gemini {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #4a73ff 4%);
 }
-[data-theme="light"] .app-transcript.provider-codex {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-codex {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #8e81ff 4%);
 }
-[data-theme="light"] .app-transcript.provider-claude {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-claude {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #ff973a 4%);
 }
-[data-theme="light"] .app-transcript.provider-kimi {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript.provider-kimi {
   background-color: color-mix(in srgb, var(--bg-primary) 96%, #a4be4a 4%);
 }
 
@@ -7078,7 +7078,7 @@ button.diff-file-row {
 
 /* Phase L3 — theme-aware skeuomorphic skin (slice 3).
  *
- * The 21 AGBench themes (see `ThemeAppearance` in `store/types.ts`)
+ * The 23 AGBench themes (see `ThemeAppearance` in `store/types.ts`)
  * collapse to 5 skin archetypes that flow from the active `data-theme`
  * attribute (set on `<html>` by `useAppearance`). Each skin is a
  * lightweight visual layer on top of the base `.activity-row-inline .activity-detail`
@@ -7087,7 +7087,7 @@ button.diff-file-row {
  * the user switches themes.
  *
  * Skin mappings:
- *   paper   — light, system, citrus, yellow, orange
+ *   paper   — light, system, citrus, yellow, orange, mist, sage
  *   slate   — dark, midnight, graphite
  *   glass   — blue, purple, pink, red, green, ocean, sunset, forest, twilight
  *   neon    — cyber, rainbow
@@ -7102,7 +7102,7 @@ button.diff-file-row {
  * top edge that hints at a ruled notebook page without going full
  * texture. Works against light/warm themes where a deeper shadow
  * reads as physical depth. */
-[data-theme="light"] .activity-row-inline .activity-detail,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-row-inline .activity-detail,
 [data-theme="system"] .activity-row-inline .activity-detail,
 [data-theme="citrus"] .activity-row-inline .activity-detail,
 [data-theme="yellow"] .activity-row-inline .activity-detail,
@@ -7968,6 +7968,8 @@ button.diff-file-row {
 .theme-rainbow { --dot-color: linear-gradient(135deg, #ff5fa2, #f2c94c, #4cc38a, #62d8ff); }
 .theme-twilight { --dot-color: linear-gradient(135deg, #5a8cff, #bf7cff); }
 .theme-cyber { --dot-color: linear-gradient(135deg, #62d8ff, #4cc38a); }
+.theme-mist { --dot-color: linear-gradient(135deg, #eef4f6, #3f8794); }
+.theme-sage { --dot-color: linear-gradient(135deg, #f0f5f0, #5f8f62); }
 
 .accent-system { --dot-color: var(--accent); }
 .accent-blue { --dot-color: #5a8cff; }
@@ -14347,12 +14349,12 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Light-theme override: invert chip text/hover for legibility */
-[data-theme="light"] .composer-claude-chip,
-[data-theme="light"] .composer-codex-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-claude-chip,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-codex-chip {
   color: color-mix(in srgb, #000000 60%, transparent);
 }
-[data-theme="light"] .composer-claude-chip:hover,
-[data-theme="light"] .composer-codex-chip:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-claude-chip:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-codex-chip:hover {
   background: color-mix(in srgb, #000000 6%, transparent);
   color: color-mix(in srgb, #000000 88%, transparent);
 }
@@ -17355,7 +17357,7 @@ input:disabled, select:disabled, textarea:disabled {
  *
  * Per the request — "a generic light gray with black text might
  * get us out of jail" — we override each shell's dark surface
- * with a light surface in `[data-theme="light"]`, and let the
+ * with a light surface in `:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])`, and let the
  * sidebars inherit AGBench's default light styling by neutering
  * the forced-dark gradient/background.
  *
@@ -17366,24 +17368,24 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* --- Composer surfaces ----------------------------------------- */
 
-[data-theme="light"][data-composer-style="codex"] .composer-surface,
-[data-theme="light"][data-composer-style="claude"] .composer-surface,
-[data-theme="light"][data-composer-style="gemini"] .composer-surface,
-[data-theme="light"][data-composer-style="kimi"] .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-surface {
   background: var(--surface-2);
   border-color: var(--surface-border);
   color: var(--surface-text);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within,
-[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within,
-[data-theme="light"][data-composer-style="kimi"] .composer-surface:focus-within {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface:focus-within,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface:focus-within,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-surface:focus-within {
   border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
 }
 
-[data-theme="light"][data-composer-style="gemini"] .composer-surface:focus-within {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-surface:focus-within {
   /* Keep Gemini's signature blue glow, just remix for a light bg. */
   border-color: color-mix(in srgb, #5a8cff 56%, transparent);
   box-shadow:
@@ -17391,54 +17393,54 @@ input:disabled, select:disabled, textarea:disabled {
     0 0 0 4px color-mix(in srgb, #5a8cff 14%, transparent);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-textarea,
-[data-theme="light"][data-composer-style="claude"] .composer-textarea,
-[data-theme="light"][data-composer-style="gemini"] .composer-textarea,
-[data-theme="light"][data-composer-style="kimi"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-textarea,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-textarea,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-textarea,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-textarea {
   color: var(--surface-text);
   background: transparent;
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-textarea::placeholder,
-[data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder,
-[data-theme="light"][data-composer-style="gemini"] .composer-textarea::placeholder,
-[data-theme="light"][data-composer-style="kimi"] .composer-textarea::placeholder {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-textarea::placeholder,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-textarea::placeholder,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-textarea::placeholder,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-textarea::placeholder {
   color: var(--text-tertiary);
 }
 
 /* Composer above-bar pills + chips — Claude shell uses these
  * most heavily but the rule is shared for any shell that opts in.
  * Drop the white-on-* fades and use dark text on a faint chip bg. */
-[data-theme="light"][data-composer-style="codex"] .composer-above-bar,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar,
-[data-theme="light"][data-composer-style="gemini"] .composer-above-bar,
-[data-theme="light"][data-composer-style="kimi"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-above-bar {
   color: rgba(29, 29, 31, 0.72);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-above-bar > *,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar > *,
-[data-theme="light"][data-composer-style="gemini"] .composer-above-bar > *,
-[data-theme="light"][data-composer-style="kimi"] .composer-above-bar > * {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar > *,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar > *,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-above-bar > *,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-above-bar > * {
   color: inherit;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-chip {
   color: rgba(29, 29, 31, 0.72);
   background: color-mix(in srgb, var(--surface-2) 64%, var(--surface-1));
   border-color: var(--surface-border);
 }
-[data-theme="light"][data-composer-style="claude"] .composer-chip:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-chip:hover {
   background: color-mix(in srgb, var(--surface-3) 46%, var(--surface-1));
 }
 
 /* Workspace access pills (External Path / Tool grants / Worktree /
  * files-changed) live inside the above-bar and inherit the same
  * dark-on-light treatment. */
-[data-theme="light"][data-composer-style="codex"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="claude"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="gemini"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="kimi"] .composer-workspace-access-pill {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-workspace-access-pill {
   color: rgba(29, 29, 31, 0.78);
   background: color-mix(in srgb, var(--surface-2) 64%, var(--surface-1));
   border-color: var(--surface-border);
@@ -17451,55 +17453,55 @@ input:disabled, select:disabled, textarea:disabled {
  * shell's behaviour. Item-text colors were keyed off the dark
  * bg (white at 60–70% mix) so re-key them to dark on light. */
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar {
   background: var(--sidebar-bg);
   border-right-color: var(--panel-border);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-section-header,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-section-header {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-section-header,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-section-header {
   color: var(--text-secondary);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-header-card,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-header-card {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-header-card,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-header-card {
   background: rgba(0, 0, 0, 0.03);
   border-color: rgba(0, 0, 0, 0.08);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-item:hover,
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-item:hover,
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item:hover,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-item:hover,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-item:hover,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-workspace-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-chat-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-workspace-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-chat-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item:hover {
   background: rgba(0, 0, 0, 0.05);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-item.active,
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-item.active,
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item.active {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-workspace-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-chat-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item.active {
   background: rgba(0, 0, 0, 0.08);
   border-color: rgba(0, 0, 0, 0.1);
 }
 
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-item.active,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-item.active,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item.active {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-workspace-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-chat-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item.active {
   background: color-mix(in srgb, #f4a35d 16%, transparent);
   border-color: color-mix(in srgb, #f4a35d 36%, transparent);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-title,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-title {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-chat-title,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-chat-title {
   color: var(--text-primary);
 }
 
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-subline,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-subline,
-[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-meta,
-[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-meta {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-chat-subline,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-chat-subline,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-workspace-meta,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar .sidebar-workspace-meta {
   color: var(--text-secondary);
   opacity: 1;
 }
@@ -17508,49 +17510,49 @@ input:disabled, select:disabled, textarea:disabled {
  * the user wants consistency with the rest of the light chrome,
  * so we drop the dark blue and let a faint blue accent border
  * mark the shell identity. */
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar {
   background: var(--sidebar-bg);
   border-right: 1px solid color-mix(in srgb, #5a8cff 22%, var(--panel-border));
 }
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-section-header {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-section-header {
   color: var(--text-secondary);
 }
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-workspace-item:hover,
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-chat-item:hover,
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-workspace-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-chat-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item:hover {
   background: color-mix(in srgb, #5a8cff 10%, transparent);
 }
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-chat-item.active,
-[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item.active {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-chat-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item.active {
   background: color-mix(in srgb, #5a8cff 16%, transparent);
 }
 
 /* Kimi sidebar — near-black in dark mode. In light mode use the
  * default light bg and a subtle warm-accent border for identity. */
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar {
   background: var(--sidebar-bg);
   border-right: 1px solid color-mix(in srgb, #a9bd55 24%, var(--panel-border));
 }
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-section-header {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-section-header {
   color: var(--text-secondary);
 }
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-workspace-item:hover,
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-chat-item:hover,
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-workspace-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-chat-item:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item:hover {
   background: color-mix(in srgb, #a9bd55 10%, transparent);
 }
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-chat-item.active,
-[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item.active {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-chat-item.active,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item.active {
   background: color-mix(in srgb, #a9bd55 18%, transparent);
 }
 
 /* Transcript surfaces — the themed shells composite a near-black
  * gradient over the transcript. In light mode that produces a
  * murky grey-on-grey panel; restore it to the native light pane. */
-[data-theme="light"][data-interface-style="codex"] .app-transcript,
-[data-theme="light"][data-interface-style="claude"] .app-transcript,
-[data-theme="light"][data-interface-style="gemini"] .app-transcript,
-[data-theme="light"][data-interface-style="kimi"] .app-transcript {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-transcript,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-transcript,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-transcript,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-transcript {
   background: var(--content-bg);
 }
 
@@ -17587,7 +17589,7 @@ input:disabled, select:disabled, textarea:disabled {
  * lightest, freshest surface in the UI.
  * ============================================================ */
 
-[data-theme="light"] {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) {
   --unified-soft-surface-bg: var(--surface-2);
   --unified-soft-surface-border: var(--surface-border);
 
@@ -17599,7 +17601,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Transcript provider run-id card ("Codex unknown #17791113"). */
-[data-theme="light"] .run-card {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .run-card {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
@@ -17607,20 +17609,20 @@ input:disabled, select:disabled, textarea:disabled {
 /* User message bubble. Already #ffffff in light mode — settle it
  * onto the same unified surface so all bubble-shaped chrome reads
  * as the same card material. */
-[data-theme="light"] .message-bubble.user {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .message-bubble.user {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
 
 /* Sidebar info cards (Run Summary + Model Usage list). */
-[data-theme="light"] .run-summary {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .run-summary {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
 
 /* Inspector / RunInspector "Codex safety" / "Codex usage import"
  * / "Codex login" cards in the right panel. */
-[data-theme="light"] .safety-card {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .safety-card {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
@@ -17628,19 +17630,19 @@ input:disabled, select:disabled, textarea:disabled {
 /* Composer-internal pills (picker buttons, chips, attach button)
  * become a softer fill when sitting on a near-white composer,
  * so the dark pill text doesn't fight the surface contrast. */
-[data-theme="light"] .composer-picker-label,
-[data-theme="light"] .composer-picker-command,
-[data-theme="light"] .composer-image-picker-btn,
-[data-theme="light"] .composer-control-button {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-picker-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-picker-command,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-image-picker-btn,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-control-button {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
 }
 
-[data-theme="light"] .composer-picker-label:hover,
-[data-theme="light"] .composer-picker-command:hover:not(:disabled),
-[data-theme="light"] .composer-image-picker-btn:hover:not(:disabled),
-[data-theme="light"] .composer-control-button:hover:not(:disabled) {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-picker-label:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-picker-command:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-image-picker-btn:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-control-button:hover:not(:disabled) {
   background: color-mix(in srgb, var(--unified-soft-surface-bg) 70%, var(--text-primary) 6%);
   border-color: rgba(0, 0, 0, 0.1);
 }
@@ -17650,15 +17652,15 @@ input:disabled, select:disabled, textarea:disabled {
  * stop reading as a noticeably darker chip pair against the
  * #ffffff composer surface. The inner `<input>` and `<select>`
  * inherit text-primary so their values stay legible. */
-[data-theme="light"] .composer-schedule-label,
-[data-theme="light"] .composer-runtime-profile {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-schedule-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-runtime-profile {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
 }
 
-[data-theme="light"] .composer-schedule-input,
-[data-theme="light"] .composer-runtime-profile select {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-schedule-input,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-runtime-profile select {
   color: var(--text-primary);
 }
 
@@ -17667,7 +17669,7 @@ input:disabled, select:disabled, textarea:disabled {
  * than a darker tone-shift above the composer surface. The
  * accent variants (`.status-running` / `.status-due`) keep
  * their own brand fills, so this only touches the idle state. */
-[data-theme="light"] .scheduled-task-pill {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .scheduled-task-pill {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
@@ -17677,10 +17679,10 @@ input:disabled, select:disabled, textarea:disabled {
  * — previously hardcoded to #f5f5f7 in light mode. Re-key them to
  * the same unified card surface so all four shells + AGBench-native
  * share the same light-mode palette family. */
-[data-theme="light"][data-composer-style="codex"] .composer-surface,
-[data-theme="light"][data-composer-style="claude"] .composer-surface,
-[data-theme="light"][data-composer-style="gemini"] .composer-surface,
-[data-theme="light"][data-composer-style="kimi"] .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-surface {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
@@ -17689,17 +17691,17 @@ input:disabled, select:disabled, textarea:disabled {
  * Worktree) inside themed shells — match the same unified fill so
  * the pill row reads as a coherent strip rather than three slightly
  * different greys. */
-[data-theme="light"][data-composer-style="codex"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="claude"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="gemini"] .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="kimi"] .composer-workspace-access-pill {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-workspace-access-pill {
   background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
 }
 
 /* Claude composer-chip in light mode — same treatment. */
-[data-theme="light"][data-composer-style="claude"] .composer-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-chip {
   background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
@@ -17730,7 +17732,7 @@ input:disabled, select:disabled, textarea:disabled {
  * vibrancy reads through correctly.
  * ============================================================ */
 
-[data-appearance="native_glass"][data-theme="light"] {
+[data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) {
   --app-bg-elevated: rgba(0, 0, 0, 0.04);
   --panel-elevated-bg: rgba(0, 0, 0, 0.035);
   --composer-bg: rgba(255, 255, 255, 0.56);
@@ -17743,7 +17745,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Sidebar glass-fill tokens — invert from dark-glass (rgba(24,25,24))
  * to light-glass (rgba(255,255,255)) so the gradient + glass-fill
  * composition reads as light frost. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) {
   --sidebar-glass-fill: rgba(255, 255, 255, 0.32);
   --sidebar-glass-fill-elevated: rgba(255, 255, 255, 0.44);
   --sidebar-glass-fill-strong: rgba(255, 255, 255, 0.56);
@@ -17760,7 +17762,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Sidebar background gradient — light frost over the
  * (now-light-tokenised) sidebar-glass-fill. Overrides the
  * dark gradient hardcoded at line 12870. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar {
   background:
     linear-gradient(180deg, rgba(255, 255, 248, 0.28), rgba(240, 240, 240, 0.14) 42%, rgba(255, 255, 255, 0.26)),
     var(--sidebar-glass-fill) !important;
@@ -17768,7 +17770,7 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: var(--sidebar-glass-inner-shadow), var(--sidebar-glass-shadow);
 }
 
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar::before {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar::before {
   background:
     linear-gradient(120deg, transparent 0 18%, rgba(255, 255, 255, 0.34) 28%, transparent 42%),
     radial-gradient(circle at 28% 0%, rgba(255, 255, 255, 0.4), transparent 34%),
@@ -17777,14 +17779,14 @@ input:disabled, select:disabled, textarea:disabled {
   opacity: 0.4;
 }
 
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar::after {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar::after {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.42), transparent 2px, transparent calc(100% - 2px), rgba(255, 255, 255, 0.34));
   opacity: 0.4;
 }
 
 /* Sidebar inner tile chrome (.sidebar-masthead, search field,
  * Run Summary, Model Usage, footer button) — light frosted tiles. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar :is(
   .sidebar-masthead,
   .sidebar-search-field,
   .sidebar-empty-state,
@@ -17802,7 +17804,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Section header badges. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar :is(
   .sidebar-section-header,
   .sidebar-section-title,
   .sidebar-masthead-stats span,
@@ -17813,14 +17815,14 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: rgba(0, 0, 0, 0.08);
 }
 
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
   background:
     linear-gradient(to bottom, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.018)),
     rgba(255, 255, 255, 0.34);
 }
 
 /* Active workspace / chat / global-chat item — soft accent on light glass. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar :is(
   .sidebar-workspace-item.active,
   .sidebar-chat-item.active,
   .sidebar-global-chat-item.active
@@ -17837,14 +17839,14 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Drop the dark-mode text-shadow on sidebar inputs/buttons — the
  * white halo is unnecessary against a light backdrop. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(input, button, .sidebar-search-hint) {
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-sidebar :is(input, button, .sidebar-search-hint) {
   text-shadow: none;
 }
 
 /* Inspector / file editor / gemini terminal split / composer surface
  * — the right-pane chrome + composer surface. Light frost over the
  * macOS vibrancy. Replaces the dark glass at line 12972. */
-[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] :is(
+[data-appearance="native_glass"][data-reduce-transparency="false"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) :is(
   .app-inspector,
   .app-file-editor,
   .gemini-terminal-split,
@@ -17861,7 +17863,7 @@ input:disabled, select:disabled, textarea:disabled {
  * now-light-tokenised --content-bg so the macOS vibrancy shows through
  * a light frost. The provider tint (.app-transcript::after) still
  * paints its accent gradient on top, just over a light base. */
-[data-appearance="native_glass"][data-theme="light"] .app-transcript {
+[data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript {
   background: var(--content-bg);
 }
 
@@ -17870,7 +17872,7 @@ input:disabled, select:disabled, textarea:disabled {
  * ::after gradient uses dark provider colors (purple/orange/etc.)
  * at ~16% alpha; in light glass mode we halve the opacity so the
  * frost stays bright. */
-[data-appearance="native_glass"][data-theme="light"] .app-transcript::after {
+[data-appearance="native_glass"]:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .app-transcript::after {
   opacity: 0.5;
 }
 
@@ -17903,53 +17905,53 @@ input:disabled, select:disabled, textarea:disabled {
 /* CODEX shell — composer surface + the per-provider variants
  * that set --composer-bg dark. Specificity (0, 4, 0) matches
  * the dark rule. */
-[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface,
-[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-codex .composer-surface,
-[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-claude .composer-surface,
-[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .app-transcript.provider-codex .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .app-transcript.provider-claude .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface {
   --composer-bg: var(--unified-soft-surface-bg);
   --composer-border: var(--unified-soft-surface-border);
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-surface:focus-within {
   border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-textarea {
   color: var(--text-primary);
   background: transparent;
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-textarea::placeholder {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-textarea::placeholder {
   color: var(--text-tertiary);
 }
 
 /* CLAUDE shell — surface is transparent, the visible bubble is
  * `.composer-textarea`. Light fill + dark border + dark text. */
-[data-theme="light"][data-composer-style="claude"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-textarea {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
   border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow:
     0 4px 22px rgba(0, 0, 0, 0.1),
     0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-textarea::placeholder {
   color: var(--text-tertiary);
 }
 
@@ -17960,23 +17962,23 @@ input:disabled, select:disabled, textarea:disabled {
  * lightens to match. But the base rule also paints a dark glass
  * gradient via ::before; tone that down in light mode so the bar
  * doesn't carry residual navy at the corners. */
-[data-theme="light"][data-composer-style="codex"] .composer-above-bar,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
-[data-theme="light"][data-composer-style="codex"] .composer-above-bar::before,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar::before {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar::before {
   background: none;
 }
 
 /* Claude composer-chip in the above-bar — light fill, dark text. */
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-chip,
-[data-theme="light"][data-composer-style="codex"] .composer-codex-chip,
-[data-theme="light"][data-composer-style="claude"] .composer-claude-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-chip,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-codex-chip,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-claude-chip {
   background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
@@ -17998,7 +18000,7 @@ input:disabled, select:disabled, textarea:disabled {
  * Plain specificity overrides can't beat `!important`, so the
  * earlier light-mode fixes for these three surfaces silently
  * lost the cascade. Re-declare them here with both `!important`
- * and a more specific `[data-theme="light"]`-qualified selector
+ * and a more specific `:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])`-qualified selector
  * so they win deterministically — same physical surface, light
  * tint instead of dark.
  * ============================================================ */
@@ -18010,19 +18012,19 @@ input:disabled, select:disabled, textarea:disabled {
  * outline so the bubble has clear edges in light mode. The
  * above-bar stays at the unified soft surface so the bubble
  * reads as the visually weightier element of the pair. */
-[data-theme="light"][data-interface-style="codex"] .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .composer-surface {
   background: var(--surface-3) !important;
   border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
 }
 
-[data-theme="light"][data-interface-style="claude"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .composer-textarea {
   background: var(--surface-3) !important;
   border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
   color: var(--text-primary) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar {
   background: var(--unified-soft-surface-bg) !important;
   border-color: var(--unified-soft-surface-border) !important;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
@@ -18138,14 +18140,14 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-[data-theme="light"][data-composer-style="modular"] .composer-textarea,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar > *,
-[data-theme="light"][data-composer-style="modular"] .composer-picker-label,
-[data-theme="light"][data-composer-style="modular"] .composer-picker-command,
-[data-theme="light"][data-composer-style="modular"] .composer-image-picker-btn,
-[data-theme="light"][data-composer-style="modular"] .composer-control-button,
-[data-theme="light"][data-composer-style="modular"] .composer-schedule-label,
-[data-theme="light"][data-composer-style="modular"] .composer-runtime-profile {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-textarea,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar > *,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-picker-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-picker-command,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-image-picker-btn,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-control-button,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-schedule-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-runtime-profile {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
@@ -18306,11 +18308,11 @@ input:disabled, select:disabled, textarea:disabled {
   color: #ccffe4;
 }
 
-[data-theme="light"][data-composer-style="terminal"] .composer-surface {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-surface {
   background: #0d1b14;
   border-color: color-mix(in srgb, #00ff88 28%, transparent);
 }
-[data-theme="light"][data-composer-style="terminal"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar {
   background: color-mix(in srgb, #0d1b14 88%, transparent);
 }
 
@@ -18421,23 +18423,23 @@ input:disabled, select:disabled, textarea:disabled {
   font-weight: 700;
 }
 
-[data-theme="light"][data-composer-style="stub"] .composer-surface,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar {
   background:
     repeating-linear-gradient(135deg, rgba(120, 90, 40, 0.03) 0 2px, transparent 2px 6px),
     #fbf3df;
   border-color: rgba(193, 154, 77, 0.28);
   color: #4a3a16;
 }
-[data-theme="light"][data-composer-style="stub"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-textarea {
   color: #4a3a16;
 }
-[data-theme="light"][data-composer-style="stub"] .composer-picker-label,
-[data-theme="light"][data-composer-style="stub"] .composer-picker-command,
-[data-theme="light"][data-composer-style="stub"] .composer-image-picker-btn,
-[data-theme="light"][data-composer-style="stub"] .composer-control-button,
-[data-theme="light"][data-composer-style="stub"] .composer-schedule-label,
-[data-theme="light"][data-composer-style="stub"] .composer-runtime-profile {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-picker-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-picker-command,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-image-picker-btn,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-control-button,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-schedule-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-runtime-profile {
   background: #f6ecd1;
   border-color: rgba(193, 154, 77, 0.32);
   color: #4a3a16;
@@ -18797,12 +18799,12 @@ input:disabled, select:disabled, textarea:disabled {
  * cover all above-bar element classes (the prior rule only hit
  * `.composer-above-bar > *` which works for direct children but
  * not deeply-nested span/button structure inside some chips). */
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-above-bar-branch,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-above-bar-files,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-above-bar-stats,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-above-bar-action,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="modular"] .composer-above-bar .composer-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-branch,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-files,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-stats,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-action,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-chip {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
@@ -18811,31 +18813,31 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* 2) STUB above-bar — light-mode dark text + cream chips on every
  *    above-bar descendant. */
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-above-bar-branch,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-above-bar-files,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-above-bar-stats,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-above-bar-action,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar .composer-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-above-bar-branch,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-above-bar-files,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-above-bar-stats,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-above-bar-action,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar .composer-chip {
   background: #f6ecd1;
   border-color: rgba(193, 154, 77, 0.36);
   color: #4a3a16;
 }
 
-[data-theme="light"][data-composer-style="stub"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="stub"] .composer-above-bar {
   color: #4a3a16 !important;
 }
 
 /* 3) SATELLITE above-bar — children render as raw dark text.
  *    No chip chrome (satellite design rule: containers invisible).
  *    Just legible text + accent for the action button. */
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-above-bar-branch,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-above-bar-files,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-above-bar-stats,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-workspace-access-pill,
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-chip {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-branch,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-files,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-stats,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-workspace-access-pill,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-chip {
   background: transparent !important;
   border-color: transparent !important;
   color: color-mix(in srgb, var(--text-primary) 84%, transparent) !important;
@@ -18843,7 +18845,7 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Satellite Create PR action keeps its accent tint in light mode
  * so the primary call-to-action is visible against the bare bg. */
-[data-theme="light"][data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action {
   color: color-mix(in srgb, var(--accent) 86%, var(--text-primary)) !important;
 }
 
@@ -18859,7 +18861,7 @@ input:disabled, select:disabled, textarea:disabled {
  * sits inside the light palette family without becoming a dark
  * outlier.
  * ============================================================ */
-[data-theme="light"] .sidebar-masthead {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-masthead {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.18) 74%),
     var(--surface-2);
@@ -18880,20 +18882,20 @@ input:disabled, select:disabled, textarea:disabled {
  * modular / terminal / stub / satellite shells rendering with
  * white labels on a light page.
  *
- * Override at the root `[data-theme="light"]` level so the pill
+ * Override at the root `:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])` level so the pill
  * is legible regardless of composer shell or variant
  * (satellite above-the-composer vs inline in the above-bar).
  * Themed-shell overrides above still tune the pill further per
  * shell; this rule only ensures a sane default contrast.
  * ============================================================ */
 
-[data-theme="light"] .composer-workspace-access-pill {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-workspace-access-pill {
   color: rgba(29, 29, 31, 0.84);
   background: color-mix(in srgb, var(--surface-1) 74%, transparent);
   border-color: var(--surface-border);
 }
 
-[data-theme="light"] .composer-workspace-access-pill:hover:not(:disabled) {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-workspace-access-pill:hover:not(:disabled) {
   background: color-mix(in srgb, var(--surface-1) 92%, var(--surface-2));
   color: rgba(29, 29, 31, 1);
   border-color: color-mix(in srgb, var(--surface-border) 60%, var(--surface-text) 12%);
@@ -18901,18 +18903,18 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Active / warning variants keep their accent fill but get a
  * darker text tone so the colour reads against a light pill. */
-[data-theme="light"] .composer-workspace-access-pill.is-active {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-workspace-access-pill.is-active {
   color: color-mix(in srgb, #2a9468 92%, #1d1d1f);
   border-color: color-mix(in srgb, #2a9468 36%, transparent);
 }
 
-[data-theme="light"] .composer-workspace-access-pill.is-warning {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-workspace-access-pill.is-warning {
   color: color-mix(in srgb, #b07a18 90%, #1d1d1f);
   border-color: color-mix(in srgb, #b07a18 36%, transparent);
 }
 
 /* Inner select (External path picker) inherits the same dark text. */
-[data-theme="light"] .composer-workspace-access-pill .composer-workspace-access-select {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-workspace-access-pill .composer-workspace-access-select {
   color: rgba(29, 29, 31, 0.84);
 }
 
@@ -18964,10 +18966,10 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Light-mode counterpart — bare text uses theme text colour
  * rather than a faded white-mix. */
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-summary {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-summary {
   color: rgba(29, 29, 31, 0.84) !important;
 }
 
@@ -19013,19 +19015,19 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Light-mode counterpart for the gray button. */
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
   background: #e8e8ea !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   color: rgba(29, 29, 31, 0.92) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:hover:not(:disabled) {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:hover:not(:disabled) {
   background: #dcdce0 !important;
   border-color: rgba(0, 0, 0, 0.14) !important;
   color: rgba(29, 29, 31, 1) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:disabled {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:disabled {
   background: rgba(232, 232, 234, 0.6) !important;
   color: rgba(29, 29, 31, 0.5) !important;
 }
@@ -19074,7 +19076,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Light-mode Codex tucked tab inherits the same dark fill since
  * the codex composer-surface itself stays dark in light mode
  * (intentional — matches real Codex). */
-[data-theme="light"][data-composer-style="codex"] .composer-above-bar {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar {
   background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%) !important;
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
   color: rgba(255, 255, 255, 0.84) !important;
@@ -19108,7 +19110,7 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: rgba(255, 255, 255, 0.18) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-textarea {
   background: #f0f0f3 !important;
   border-color: rgba(0, 0, 0, 0.14) !important;
 }
@@ -19121,7 +19123,7 @@ input:disabled, select:disabled, textarea:disabled {
     0 0 0 1px rgba(255, 255, 255, 0.18) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
   border-color: rgba(0, 0, 0, 0.26) !important;
   box-shadow:
     0 4px 22px rgba(0, 0, 0, 0.12),
@@ -19186,13 +19188,13 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* Light-mode counterparts for the new files-changed button skin. */
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-files {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files {
   background: #e8e8ea !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   color: rgba(29, 29, 31, 0.92) !important;
 }
 
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
   background: #e8e8ea !important;
   border-color: rgba(0, 0, 0, 0.08) !important;
   color: rgba(29, 29, 31, 0.92) !important;
@@ -19206,10 +19208,10 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-del {
   color: #ff7d7d;
 }
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-add {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-add {
   color: #1f9d6b;
 }
-[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-del {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-del {
   color: #c44141;
 }
 
@@ -19230,13 +19232,13 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: rgba(255, 255, 255, 0.16);
 }
 
-[data-theme="light"][data-composer-style="claude"] [data-composer-control="permission"] {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] [data-composer-control="permission"] {
   background: rgba(0, 0, 0, 0.04);
   border-color: rgba(0, 0, 0, 0.10);
   color: rgba(29, 29, 31, 0.92);
 }
 
-[data-theme="light"][data-composer-style="claude"] [data-composer-control="permission"]:hover {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] [data-composer-control="permission"]:hover {
   background: rgba(0, 0, 0, 0.08);
   border-color: rgba(0, 0, 0, 0.16);
 }
@@ -19476,16 +19478,16 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Light-mode trigger contrast --------------------------------- */
 
-[data-theme="light"] .composer-combined-picker-trigger {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-combined-picker-trigger {
   background: color-mix(in srgb, var(--surface-1) 74%, transparent);
   border-color: var(--surface-border);
   color: var(--surface-text);
 }
-[data-theme="light"] .composer-combined-picker-trigger-suffix {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-combined-picker-trigger-suffix {
   color: var(--surface-text-muted);
 }
-[data-theme="light"][data-composer-style="codex"] .composer-combined-picker-trigger,
-[data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-combined-picker-trigger {
   /* Codex shell + Claude shell deliberately stay dark in light mode
    * (themed-shell stays themed). Re-assert the dark inherited
    * styles to beat the generic light-theme rule above. */
@@ -19493,8 +19495,8 @@ input:disabled, select:disabled, textarea:disabled {
   color: rgba(255, 255, 255, 0.86) !important;
   border-color: transparent !important;
 }
-[data-theme="light"][data-composer-style="codex"] .composer-combined-picker-trigger-suffix,
-[data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-suffix,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
   color: color-mix(in srgb, #ffffff 54%, transparent) !important;
 }
 
