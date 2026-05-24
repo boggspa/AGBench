@@ -275,4 +275,147 @@ describe('GeminiStreamAdapter', () => {
       itemId: 'agent-msg-2'
     })
   })
+
+  it('keeps representative provider streaming fixtures intact', () => {
+    const fixtures = [
+      {
+        provider: 'codex',
+        jsonl: [
+          { type: 'init', session_id: 'codex-session', model: 'codex', provider: 'codex' },
+          { type: 'content', text: 'Codex ', provider: 'codex', itemId: 'item-1' },
+          { type: 'content', text: 'stream', provider: 'codex', itemId: 'item-1' },
+          {
+            type: 'tool_use',
+            tool_name: 'read_file',
+            tool_id: 'tool-1',
+            parameters: { path: 'README.md' },
+            provider: 'codex'
+          },
+          {
+            type: 'tool_result',
+            tool_name: 'read_file',
+            tool_id: 'tool-1',
+            output: 'ok',
+            provider: 'codex'
+          },
+          { type: 'content', text: '', provider: 'codex', itemId: 'item-1', complete: true },
+          { type: 'result', status: 'success', providerThreadId: 'codex-session' }
+        ],
+        text: 'Codex stream',
+        tool: 'read_file'
+      },
+      {
+        provider: 'claude',
+        jsonl: [
+          { type: 'init', session_id: 'claude-session', model: 'claude', provider: 'claude' },
+          { type: 'message', role: 'assistant', content: 'Claude ', delta: true },
+          { type: 'token', content: 'stream' },
+          {
+            type: 'tool_use',
+            tool_name: 'run_shell_command',
+            tool_id: 'tool-2',
+            parameters: { command: 'pwd' },
+            provider: 'claude'
+          },
+          {
+            type: 'tool_result',
+            tool_name: 'run_shell_command',
+            tool_id: 'tool-2',
+            output: '/tmp',
+            provider: 'claude'
+          },
+          { type: 'result', status: 'success', providerThreadId: 'claude-session' }
+        ],
+        text: 'Claude stream',
+        tool: 'run_shell_command'
+      },
+      {
+        provider: 'gemini',
+        jsonl: [
+          { type: 'init', session_id: 'gemini-session', model: 'gemini', provider: 'gemini' },
+          { type: 'message', role: 'assistant', content: 'Gemini ', delta: true },
+          { type: 'message', role: 'assistant', content: 'stream', delta: true },
+          {
+            type: 'tool_use',
+            tool_name: 'list_directory',
+            tool_id: 'tool-3',
+            parameters: { path: '.' },
+            provider: 'gemini'
+          },
+          {
+            type: 'tool_result',
+            tool_name: 'list_directory',
+            tool_id: 'tool-3',
+            output: 'src',
+            provider: 'gemini'
+          },
+          { type: 'result', status: 'success', providerThreadId: 'gemini-session' }
+        ],
+        text: 'Gemini stream',
+        tool: 'list_directory'
+      },
+      {
+        provider: 'kimi',
+        jsonl: [
+          { type: 'init', session_id: 'kimi-session', model: 'kimi', provider: 'kimi' },
+          { type: 'content', text: 'Kimi ', provider: 'kimi' },
+          { type: 'content', text: 'stream', provider: 'kimi' },
+          {
+            type: 'tool_use',
+            tool_name: 'kimi_thinking',
+            tool_id: 'tool-4',
+            parameters: { title: 'Kimi thinking' },
+            provider: 'kimi'
+          },
+          {
+            type: 'tool_result',
+            tool_name: 'kimi_thinking',
+            tool_id: 'tool-4',
+            output: 'reasoning summary',
+            provider: 'kimi'
+          },
+          { type: 'result', status: 'success', providerThreadId: 'kimi-session' }
+        ],
+        text: 'Kimi stream',
+        tool: 'kimi_thinking'
+      }
+    ]
+
+    for (const fixture of fixtures) {
+      const onEvent = vi.fn()
+      const adapter = new GeminiStreamAdapter(onEvent)
+      const jsonl = fixture.jsonl.map((event) => JSON.stringify(event)).join('\n') + '\n'
+
+      adapter.appendChunk(jsonl.slice(0, Math.floor(jsonl.length / 2)))
+      adapter.appendChunk(jsonl.slice(Math.floor(jsonl.length / 2)))
+      adapter.end()
+
+      const events = onEvent.mock.calls.map(([event]) => event)
+      const streamedText = events
+        .filter((event) => event.type === 'assistant_message_delta')
+        .map((event) => event.content)
+        .join('')
+      expect(streamedText).toBe(fixture.text)
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'tool_event',
+          name: fixture.tool,
+          isUse: true
+        })
+      )
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'tool_event',
+          name: fixture.tool,
+          isResult: true
+        })
+      )
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'run_finished',
+          status: 'success'
+        })
+      )
+    }
+  })
 })
