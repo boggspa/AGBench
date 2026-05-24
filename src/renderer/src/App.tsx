@@ -4353,6 +4353,15 @@ function App(): React.JSX.Element {
       pid: number
     }
     attachedAt: string
+    // Phase M1 — set by main when Appwatch is running for this handle. The
+    // pill flips to its `is-streaming` variant whenever this field is set;
+    // bare `attached` (no streaming) still uses the original visual.
+    streaming?: {
+      fps: number
+      bufferSeconds: number
+      frameCount: number
+      startedAt: string
+    }
   }
   const [attachedWindow, setAttachedWindow] = useState<AttachedWindowSnapshot | null>(null)
   const [isAttachingWindow, setIsAttachingWindow] = useState(false)
@@ -13254,22 +13263,57 @@ function App(): React.JSX.Element {
                     </button>
                     {attachedWindow ? (
                       <button
-                        className="composer-attached-window-pill"
+                        className={
+                          attachedWindow.streaming
+                            ? 'composer-attached-window-pill is-streaming'
+                            : 'composer-attached-window-pill'
+                        }
                         type="button"
-                        title={`Detach ${attachedWindow.windowMeta.applicationName || 'window'}: ${attachedWindow.windowMeta.title || '(untitled)'}`}
-                        aria-label="Detach attached window"
+                        title={
+                          attachedWindow.streaming
+                            ? `Streaming ${attachedWindow.windowMeta.applicationName || 'window'} at ${attachedWindow.streaming.fps}fps — click to detach (stops the stream)`
+                            : `Detach ${attachedWindow.windowMeta.applicationName || 'window'}: ${attachedWindow.windowMeta.title || '(untitled)'}`
+                        }
+                        aria-label={
+                          attachedWindow.streaming
+                            ? 'Stop live capture and detach window'
+                            : 'Detach attached window'
+                        }
                         onClick={handleDetachWindow}
                         data-composer-control="attached-window"
+                        data-streaming={attachedWindow.streaming ? 'true' : 'false'}
                       >
+                        {attachedWindow.streaming && (
+                          // The pulsing dot is the at-a-glance signal that a
+                          // continuous SCStream is running against this
+                          // window. CSS handles the pulse animation; we just
+                          // own the markup. Aria-hidden so screen readers
+                          // get the textual fps/buffer readout below.
+                          <span
+                            className="composer-attached-window-pill-dot"
+                            aria-hidden="true"
+                          />
+                        )}
                         <span className="composer-attached-window-pill-app">
                           {attachedWindow.windowMeta.applicationName ||
                             attachedWindow.windowMeta.bundleID ||
                             'window'}
                         </span>
-                        {attachedWindow.windowMeta.title && (
-                          <span className="composer-attached-window-pill-title">
-                            {attachedWindow.windowMeta.title}
+                        {attachedWindow.streaming ? (
+                          // Monospace fps · frame-count readout. We don't
+                          // surface the title in the streaming variant
+                          // because the dot + readout already occupy the
+                          // visual budget the pill has.
+                          <span className="composer-attached-window-pill-readout">
+                            {attachedWindow.streaming.fps}fps ·{' '}
+                            {attachedWindow.streaming.frameCount}f
                           </span>
+                        ) : (
+                          attachedWindow.windowMeta.title && (
+                            <span className="composer-attached-window-pill-title">
+                              {attachedWindow.windowMeta.title}
+                            </span>
+                          )
                         )}
                         <span className="composer-attached-window-pill-x" aria-hidden="true">
                           ×

@@ -5581,6 +5581,76 @@ button.sidebar-item {
   margin-left: 2px;
 }
 
+/*
+ * Phase M1 — Appwatch streaming pill variant.
+ *
+ * `.is-streaming` is set on the existing pill button when an SCStream is
+ * running against the attached window. The visual budget is the same
+ * (28px pill, 240px max width); the streaming state differs from `attached`
+ * by:
+ *   1. A pulsing accent-coloured dot at the leading edge (camera-like
+ *      indicator — keeps the "we're recording" signal cheap and obvious).
+ *   2. The window title is hidden in favour of a monospace fps · frame-count
+ *      readout, so the pill stays scannable at a glance.
+ *   3. The pill background tints toward the accent colour so it reads as
+ *      "active" against the neutral attached state.
+ *
+ * Click handler is unchanged — detaching the window is the documented "abort
+ * the stream" path. The pill's tooltip + aria-label spells out the stream
+ * implication when the variant is active.
+ */
+.composer-attached-window-pill.is-streaming {
+  border-color: color-mix(in srgb, var(--accent-color, #6dd3a1) 55%, transparent);
+  background: color-mix(in srgb, var(--accent-color, #6dd3a1) 14%, transparent);
+}
+
+.composer-attached-window-pill.is-streaming:hover {
+  border-color: color-mix(in srgb, var(--accent-color, #6dd3a1) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-color, #6dd3a1) 22%, transparent);
+}
+
+.composer-attached-window-pill-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--accent-color, #6dd3a1);
+  margin-right: 2px;
+  /* Pulse loop tuned to feel like the camera-on indicator on macOS —
+     ~1.4s period, never goes fully off so the pill never looks static. */
+  animation: composer-attached-window-pill-pulse 1.4s ease-in-out infinite;
+  box-shadow: 0 0 6px color-mix(in srgb, var(--accent-color, #6dd3a1) 60%, transparent);
+}
+
+.composer-attached-window-pill-readout {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+
+@keyframes composer-attached-window-pill-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+}
+
+/* Respect users with `prefers-reduced-motion: reduce`. Static dot still
+   reads as "stream is live" — the colour is the signal, the pulse is
+   the bonus. */
+@media (prefers-reduced-motion: reduce) {
+  .composer-attached-window-pill-dot {
+    animation: none;
+  }
+}
+
 .composer-permission-card {
   margin: 0 var(--space-md) 0;
   border-radius: var(--radius-sm);
