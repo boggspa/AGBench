@@ -2632,8 +2632,19 @@ function expireRunScopedApprovalLedger(session: {
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
-  mcpTools: 'MCP and tool calls',
+  mcpTools: 'Tool calls',
   subThreadDelegation: 'Sub-thread delegation'
+}
+
+function agenticServiceBlockedMessage(service: AgenticServiceId): string {
+  return `${AGENTIC_SERVICE_LABELS[service]} blocked by AGBench settings.`
+}
+
+function agenticServiceDisabledMessage(service: AgenticServiceId): string {
+  if (service === 'subThreadDelegation') {
+    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in AGBench settings.`
+  }
+  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in AGBench settings.`
 }
 
 const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
@@ -2698,7 +2709,6 @@ async function requestAgenticServiceApproval(
     settings
   )
   const { policy, workspaceGrantAllowed, sessionGrantAllowed, decision } = resolution
-  const label = AGENTIC_SERVICE_LABELS[service]
 
   if (decision === 'deny') {
     auditService.recordAutomaticApprovalDecision(
@@ -2712,7 +2722,7 @@ async function requestAgenticServiceApproval(
       'request',
       { policy }
     )
-    sender?.send('agent-error', { provider, error: `${label} blocked by AGBench settings.` })
+    sender?.send('agent-error', { provider, error: agenticServiceBlockedMessage(service) })
     return false
   }
 
@@ -8520,7 +8530,6 @@ function handleCodexServerRequest(message: any) {
   }
 
   if (service && policy === 'deny') {
-    const label = AGENTIC_SERVICE_LABELS[service]
     auditService.recordAutomaticApprovalDecision(
       'codex',
       { appRunId: state.appRunId, appChatId: state.appChatId },
@@ -8537,8 +8546,8 @@ function handleCodexServerRequest(message: any) {
       'request',
       { policy }
     )
-    codexClient.reject(message.id, `${label} are disabled in AGBench settings.`)
-    sendAgentCompatError(state.sender, 'codex', `${label} blocked by AGBench settings.`, state)
+    codexClient.reject(message.id, agenticServiceDisabledMessage(service))
+    sendAgentCompatError(state.sender, 'codex', agenticServiceBlockedMessage(service), state)
     return
   }
 

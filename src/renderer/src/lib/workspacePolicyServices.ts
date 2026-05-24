@@ -16,25 +16,43 @@ export interface WorkspacePolicyService {
   help: string
 }
 
+export const WORKSPACE_POLICY_SERVICE_LABELS: Record<AgenticServiceId, string> = {
+  shellCommands: 'Shell commands',
+  fileChanges: 'File changes',
+  mcpTools: 'Tool calls',
+  subThreadDelegation: 'Sub-thread delegation'
+}
+
+export const WORKSPACE_POLICY_SERVICE_HELP: Record<AgenticServiceId, string> = {
+  shellCommands: 'Run workspace-scoped shell commands without asking again.',
+  fileChanges: 'Write, replace, or patch workspace files without asking again.',
+  mcpTools: 'Use read/search/status tools without asking again.',
+  subThreadDelegation: 'Spawn cross-provider sub-threads without asking again.'
+}
+
+export function getWorkspacePolicyServiceLabel(service: AgenticServiceId): string {
+  return WORKSPACE_POLICY_SERVICE_LABELS[service]
+}
+
 export const WORKSPACE_POLICY_SERVICES: WorkspacePolicyService[] = [
   {
     id: 'shellCommands',
-    label: 'Shell',
-    help: 'Run shell commands without asking again when global policy is Workspace grant.'
+    label: WORKSPACE_POLICY_SERVICE_LABELS.shellCommands,
+    help: WORKSPACE_POLICY_SERVICE_HELP.shellCommands
   },
   {
     id: 'fileChanges',
-    label: 'Edit files',
-    help: 'Write or replace files without asking again when global policy is Workspace grant.'
+    label: WORKSPACE_POLICY_SERVICE_LABELS.fileChanges,
+    help: WORKSPACE_POLICY_SERVICE_HELP.fileChanges
   },
   {
     id: 'mcpTools',
-    label: 'Read/search tools',
-    help: 'Use MCP tools such as read/list/search without asking again when global policy is Workspace grant.'
+    label: WORKSPACE_POLICY_SERVICE_LABELS.mcpTools,
+    help: WORKSPACE_POLICY_SERVICE_HELP.mcpTools
   },
   {
     id: 'subThreadDelegation',
-    label: 'Delegate',
-    help: 'Spawn cross-provider sub-threads without asking again when global policy is Workspace grant.'
+    label: WORKSPACE_POLICY_SERVICE_LABELS.subThreadDelegation,
+    help: WORKSPACE_POLICY_SERVICE_HELP.subThreadDelegation
   }
 ]

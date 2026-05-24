@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
-  AgenticServiceId,
   AgenticWorkspaceGrant,
   ApprovalLedgerRecord,
   ApprovalLedgerStatus,
   ProviderId
 } from '../../../main/store/types'
+import { getWorkspacePolicyServiceLabel } from '../lib/workspacePolicyServices'
 
 /**
  * ApprovalLedgerPanel — Phase E2 admin UI for the durable approval ledger.
@@ -53,13 +53,6 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   codex: 'Codex',
   claude: 'Claude',
   kimi: 'Kimi'
-}
-
-const SERVICE_LABELS: Record<AgenticServiceId, string> = {
-  shellCommands: 'Shell commands',
-  fileChanges: 'File changes',
-  mcpTools: 'Read/search tools',
-  subThreadDelegation: 'Sub-thread delegation'
 }
 
 export interface ApprovalLedgerPanelProps {
@@ -250,7 +243,8 @@ export function ApprovalLedgerPanel({
                 <li key={grant.id} className="approval-grant-row">
                   <div className="approval-grant-row-main">
                     <span className="approval-grant-row-title">
-                      {PROVIDER_LABELS[grant.provider]} · {SERVICE_LABELS[grant.service]}
+                      {PROVIDER_LABELS[grant.provider]} ·{' '}
+                      {getWorkspacePolicyServiceLabel(grant.service)}
                     </span>
                     <span className="approval-grant-row-meta" title={grant.workspacePath}>
                       {workspaceBasename(grant.workspacePath)} · Granted {createdAt}
