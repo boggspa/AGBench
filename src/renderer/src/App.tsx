@@ -77,7 +77,8 @@ import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
 import { Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
-import { SettingsPanel } from './components/SettingsPanel'
+import { SettingsPanel, type SettingsTab } from './components/SettingsPanel'
+import { SettingsSidebar } from './components/SettingsSidebar'
 import { SubThreadCreator } from './components/SubThreadCreator'
 import { FirstLaunchSheet } from './components/FirstLaunchSheet'
 import { BugReportSheet, type BugReportSubmission } from './components/BugReportSheet'
@@ -4525,6 +4526,12 @@ function App(): React.JSX.Element {
   // Appearance & Settings
   const appearance = useAppearance()
   const [showSettings, setShowSettings] = useState(false)
+  // Active Settings tab. Hoisted from `SettingsPanel`'s internal
+  // state because the full-app takeover layout renders the tab list
+  // in a sibling `SettingsSidebar` — both render sites need to read
+  // and drive the same value. Remembered across opens so the user
+  // re-enters Settings on whichever tab they were on last.
+  const [settingsActiveTab, setSettingsActiveTab] = useState<SettingsTab>('appearance')
   const [showPairingSheet, setShowPairingSheet] = useState(false)
   // Phase F1: sub-thread creator modal state. Null when closed; holds
   // the parent chat when open so the modal knows what to delegate from.
@@ -12698,44 +12705,60 @@ function App(): React.JSX.Element {
       >
         {showWorkspaceSidebar && (
           <>
-            <Sidebar
-              workspaces={workspaces}
-              currentWorkspace={currentWorkspace}
-              chats={chats}
-              currentChat={currentChat}
-              usageSummary={usageSummary}
-              runningChatIds={runningChatIdsArray}
-              showOnboardingHint={showOnboardingHint}
-              onDismissOnboardingHint={handleDismissOnboardingHint}
-              workspaceAddPointerActive={workspaceAddPointerActive}
-              onSelectWorkspace={handleSelectExistingWorkspace}
-              onRemoveWorkspace={handleRemoveWorkspace}
-              onSelectWorkspaceDialog={handleSelectWorkspace}
-              onNewChat={handleNewChat}
-              onNewGlobalChat={handleNewGlobalChat}
-              onNewEnsemble={handleNewEnsemble}
-              ensembleModeEnabled={isEnsembleModeEnabled}
-              onSelectChat={handleSelectChat}
-              onOpenSettings={() => setShowSettings(true)}
-              onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
-              onTogglePinChat={handleTogglePinChat}
-              onTogglePinWorkspace={handleTogglePinWorkspace}
-              onToggleArchiveChat={handleToggleArchiveChat}
-              onDeleteChat={handleDeleteChat}
-              onInspectRun={(runId, chatId) => {
-                // Navigate to the chat first (handleSelectChat fires via
-                // ActiveRunsSection.onSelectChat above), then open the
-                // Inspector. The chat-switch reset effect won't clobber
-                // this because it's gated on "does the new chat own this
-                // runId?" — see effect below.
-                if (chatId) {
-                  const chat = chats.find((c) => c.appChatId === chatId)
-                  if (chat) handleSelectChat(chat)
-                }
-                setInspectingRunId(runId)
-              }}
-              onShowPairingSheet={() => setShowPairingSheet(true)}
-            />
+            {/*
+              Sidebar swap. In Settings full-app takeover layout
+              (`showSettings === true`), the workspace `Sidebar`
+              is replaced by `SettingsSidebar` — the latter carries
+              the back-to-app button and the tab list. The resize
+              handle stays so the main-pane width remains consistent
+              when entering / leaving Settings.
+            */}
+            {showSettings ? (
+              <SettingsSidebar
+                activeTab={settingsActiveTab}
+                onTabChange={setSettingsActiveTab}
+                onBackToApp={() => setShowSettings(false)}
+              />
+            ) : (
+              <Sidebar
+                workspaces={workspaces}
+                currentWorkspace={currentWorkspace}
+                chats={chats}
+                currentChat={currentChat}
+                usageSummary={usageSummary}
+                runningChatIds={runningChatIdsArray}
+                showOnboardingHint={showOnboardingHint}
+                onDismissOnboardingHint={handleDismissOnboardingHint}
+                workspaceAddPointerActive={workspaceAddPointerActive}
+                onSelectWorkspace={handleSelectExistingWorkspace}
+                onRemoveWorkspace={handleRemoveWorkspace}
+                onSelectWorkspaceDialog={handleSelectWorkspace}
+                onNewChat={handleNewChat}
+                onNewGlobalChat={handleNewGlobalChat}
+                onNewEnsemble={handleNewEnsemble}
+                ensembleModeEnabled={isEnsembleModeEnabled}
+                onSelectChat={handleSelectChat}
+                onOpenSettings={() => setShowSettings(true)}
+                onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
+                onTogglePinChat={handleTogglePinChat}
+                onTogglePinWorkspace={handleTogglePinWorkspace}
+                onToggleArchiveChat={handleToggleArchiveChat}
+                onDeleteChat={handleDeleteChat}
+                onInspectRun={(runId, chatId) => {
+                  // Navigate to the chat first (handleSelectChat fires via
+                  // ActiveRunsSection.onSelectChat above), then open the
+                  // Inspector. The chat-switch reset effect won't clobber
+                  // this because it's gated on "does the new chat own this
+                  // runId?" — see effect below.
+                  if (chatId) {
+                    const chat = chats.find((c) => c.appChatId === chatId)
+                    if (chat) handleSelectChat(chat)
+                  }
+                  setInspectingRunId(runId)
+                }}
+                onShowPairingSheet={() => setShowPairingSheet(true)}
+              />
+            )}
             <div
               className="workspace-sidebar-resize-handle"
               role="separator"
@@ -12752,9 +12775,90 @@ function App(): React.JSX.Element {
           </>
         )}
 
+        {/*
+          Settings full-app takeover pane. When `showSettings` is true,
+          this sibling renders the SettingsPanel inline in the main pane
+          slot — paired with the SettingsSidebar swap above. The
+          adjacent `.app-transcript` element is hidden via the
+          `transcript-hidden-for-settings` class (just `display: none`)
+          so its ref stays valid and its state survives the round-trip
+          back to the chat surface.
+        */}
+        {showSettings && (
+          <div className="app-settings-pane" role="region" aria-label="Settings">
+            <SettingsPanel
+              layout="takeover"
+              activeTab={settingsActiveTab}
+              onTabChange={setSettingsActiveTab}
+              mode={appearance.mode}
+              visualEffectStyle={appearance.visualEffectStyle}
+              themeAppearance={appearance.themeAppearance}
+              themeCornerStyle={appearance.themeCornerStyle}
+              themeAccentStyle={appearance.themeAccentStyle}
+              toolIconAccent={appearance.toolIconAccent}
+              promptSurfaceStyle={appearance.promptSurfaceStyle}
+              composerStyle={appearance.composerStyle}
+              transcriptFontFamily={appearance.transcriptFontFamily}
+              composerFontFamily={appearance.composerFontFamily}
+              reduceTransparency={appearance.reduceTransparency}
+              reduceMotion={appearance.reduceMotion}
+              compactDensity={appearance.compactDensity}
+              geminiCheckpointingEnabled={geminiCheckpointingEnabled}
+              geminiApiRuntime={geminiApiRuntime}
+              chatContextTurns={chatContextTurns}
+              claudeBinaryPath={claudeBinaryPath}
+              kimiBinaryPath={kimiBinaryPath}
+              agenticServices={agenticServices}
+              autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
+              agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
+              agenticWorkspaceGrants={agenticWorkspaceGrants}
+              activeProvider={currentProvider}
+              providerCapabilities={currentProviderCapabilities}
+              geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
+              geminiMcpBridgeStatus={geminiMcpBridgeStatus}
+              codexSandboxFallback={codexSandboxFallback}
+              funFxEnabled={appearance.funFxEnabled}
+              funFxMode={appearance.funFxMode}
+              advancedFx={appearance.advancedFx}
+              updateChannel={updateChannel}
+              approvalTimeouts={approvalTimeouts}
+              productOperationsStatus={productOperationsStatus}
+              geminiAuthStatus={geminiAuthStatus}
+              geminiAuthProfiles={geminiAuthProfiles}
+              claudeAuthStatus={claudeAuthStatus}
+              kimiAuthStatus={kimiAuthStatus}
+              claudeLoginState={claudeLoginState}
+              onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
+              onStoreClaudeApiKey={(key) => void handleStoreClaudeApiKey(key)}
+              onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
+              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
+              onClearKimiApiKey={() => void handleClearKimiApiKey()}
+              onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
+              onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
+              onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}
+              onSetDefaultGeminiAuthProfile={(profileId) =>
+                void handleSetDefaultGeminiAuthProfile(profileId)
+              }
+              onDeleteGeminiAuthProfile={(profileId) =>
+                void handleDeleteGeminiAuthProfile(profileId)
+              }
+              onRemoveAgenticWorkspaceGrant={(provider, workspacePath, service) =>
+                void handleRemoveAgenticWorkspaceGrant(provider, workspacePath, service)
+              }
+              onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
+              onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
+              onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}
+              onExportProductDiagnostics={() => void exportProductDiagnostics()}
+              onRepairProductInstall={() => void repairProductInstall()}
+              onChange={handleSettingsChange}
+              onClose={() => setShowSettings(false)}
+            />
+          </div>
+        )}
+
         <div
           ref={appTranscriptRef}
-          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''}`}
+          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
           style={
             showGeminiTerminal && currentProvider === 'gemini'
               ? ({ '--gemini-terminal-height': `${geminiTerminalHeight}px` } as CSSProperties)
@@ -14848,110 +14952,14 @@ function App(): React.JSX.Element {
         />
       )}
 
-      {showSettings && (
-        <div
-          className="settings-backdrop"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setShowSettings(false)
-            }
-          }}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 100,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            background: 'rgba(0,0,0,0.45)'
-          }}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Settings"
-            className="settings-floater"
-            style={{
-              width: 'min(1080px, calc(100vw - 64px))',
-              height: 'min(640px, 70vh)',
-              maxHeight: 'calc(100dvh - 48px)',
-              background: 'var(--panel-bg-solid)',
-              border: '1px solid var(--panel-border)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: 'var(--shadow-lg)',
-              overflow: 'hidden',
-              display: 'flex',
-              flexDirection: 'column'
-            }}
-          >
-            <SettingsPanel
-              mode={appearance.mode}
-              visualEffectStyle={appearance.visualEffectStyle}
-              themeAppearance={appearance.themeAppearance}
-              themeCornerStyle={appearance.themeCornerStyle}
-              themeAccentStyle={appearance.themeAccentStyle}
-              toolIconAccent={appearance.toolIconAccent}
-              promptSurfaceStyle={appearance.promptSurfaceStyle}
-              composerStyle={appearance.composerStyle}
-              transcriptFontFamily={appearance.transcriptFontFamily}
-              composerFontFamily={appearance.composerFontFamily}
-              reduceTransparency={appearance.reduceTransparency}
-              reduceMotion={appearance.reduceMotion}
-              compactDensity={appearance.compactDensity}
-              geminiCheckpointingEnabled={geminiCheckpointingEnabled}
-              geminiApiRuntime={geminiApiRuntime}
-              chatContextTurns={chatContextTurns}
-              claudeBinaryPath={claudeBinaryPath}
-              kimiBinaryPath={kimiBinaryPath}
-              agenticServices={agenticServices}
-              autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
-              agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
-              agenticWorkspaceGrants={agenticWorkspaceGrants}
-              activeProvider={currentProvider}
-              providerCapabilities={currentProviderCapabilities}
-              geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
-              geminiMcpBridgeStatus={geminiMcpBridgeStatus}
-              codexSandboxFallback={codexSandboxFallback}
-              funFxEnabled={appearance.funFxEnabled}
-              funFxMode={appearance.funFxMode}
-              advancedFx={appearance.advancedFx}
-              updateChannel={updateChannel}
-              approvalTimeouts={approvalTimeouts}
-              productOperationsStatus={productOperationsStatus}
-              geminiAuthStatus={geminiAuthStatus}
-              geminiAuthProfiles={geminiAuthProfiles}
-              claudeAuthStatus={claudeAuthStatus}
-              kimiAuthStatus={kimiAuthStatus}
-              claudeLoginState={claudeLoginState}
-              onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
-              onStoreClaudeApiKey={(key) => void handleStoreClaudeApiKey(key)}
-              onClearClaudeApiKey={() => void handleClearClaudeApiKey()}
-              onStoreKimiApiKey={(key) => void handleStoreKimiApiKey(key)}
-              onClearKimiApiKey={() => void handleClearKimiApiKey()}
-              onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
-              onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
-              onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}
-              onSetDefaultGeminiAuthProfile={(profileId) =>
-                void handleSetDefaultGeminiAuthProfile(profileId)
-              }
-              onDeleteGeminiAuthProfile={(profileId) =>
-                void handleDeleteGeminiAuthProfile(profileId)
-              }
-              onRemoveAgenticWorkspaceGrant={(provider, workspacePath, service) =>
-                void handleRemoveAgenticWorkspaceGrant(provider, workspacePath, service)
-              }
-              onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
-              onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
-              onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}
-              onExportProductDiagnostics={() => void exportProductDiagnostics()}
-              onRepairProductInstall={() => void repairProductInstall()}
-              onChange={handleSettingsChange}
-              onClose={() => setShowSettings(false)}
-            />
-          </div>
-        </div>
-      )}
+      {/*
+        Settings now renders as a full-app takeover — workspace
+        sidebar swaps to `<SettingsSidebar />` and the main pane
+        slot renders `<SettingsPanel layout="takeover" />`. Both
+        swaps live inside `.app-main` above. The legacy modal-sheet
+        mount that lived here was removed; "← Back to app" + Escape
+        return the user to the chat surface.
+      */}
       <IncomingPairingPrompt />
       {showPairingSheet && <PairingSheet onClose={() => setShowPairingSheet(false)} />}
       {/* FirstLaunchSheet — auto-shows on fresh installs and stays

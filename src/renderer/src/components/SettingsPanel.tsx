@@ -151,6 +151,23 @@ interface SettingsPanelProps {
     approvalTimeouts?: AppSettings['approvalTimeouts']
   }) => void
   onClose: () => void
+  /**
+   * Optional controlled tab state. When `activeTab` + `onTabChange`
+   * are both provided, the panel renders the content for the
+   * caller's chosen tab and routes user clicks through `onTabChange`.
+   * Without them the panel keeps its own internal state (back-compat
+   * for the legacy sheet form-factor and unit-test mounts).
+   */
+  activeTab?: SettingsTab
+  onTabChange?: (tab: SettingsTab) => void
+  /**
+   * Layout shape. `'sheet'` (default) renders the inline tab bar +
+   * "Done" button at the top — the historic modal-sheet treatment.
+   * `'takeover'` suppresses that header entirely because the host
+   * (App.tsx) renders a `SettingsSidebar` next to the panel that
+   * carries the tab list and the back-to-app affordance instead.
+   */
+  layout?: 'sheet' | 'takeover'
 }
 
 const CONTEXT_TURN_OPTIONS = [0, 2, 4, 6, 8, 10, 12, 16, 20]
@@ -312,7 +329,7 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ]
 
-type SettingsTab =
+export type SettingsTab =
   | 'appearance'
   | 'behavior'
   | 'providers'
@@ -320,6 +337,22 @@ type SettingsTab =
   | 'remote-workspaces'
   | 'approval-ledger'
   | 'bridge-networking'
+
+/**
+ * Canonical settings-tab list. Exported so `SettingsSidebar` (used in
+ * full-app takeover layout) can render the same list of tabs as the
+ * inline tab bar inside this panel — keeping both render sites in
+ * lockstep when tabs are added / renamed.
+ */
+export const SETTINGS_TABS: Array<{ id: SettingsTab; label: string }> = [
+  { id: 'appearance', label: 'Appearance' },
+  { id: 'behavior', label: 'Behavior' },
+  { id: 'providers', label: 'Providers' },
+  { id: 'system', label: 'System' },
+  { id: 'remote-workspaces', label: 'Remote Workspaces' },
+  { id: 'bridge-networking', label: 'Bridge Networking' },
+  { id: 'approval-ledger', label: 'Approvals' }
+]
 
 type LocalFontData = {
   family?: string
@@ -466,7 +499,10 @@ export function SettingsPanel({
   onExportProductDiagnostics,
   onRepairProductInstall,
   onChange,
-  onClose
+  onClose,
+  activeTab: activeTabProp,
+  onTabChange,
+  layout = 'sheet'
 }: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('')
   const [kimiKeyInput, setKimiKeyInput] = useState('')
@@ -474,7 +510,15 @@ export function SettingsPanel({
   const [geminiApiKeyInput, setGeminiApiKeyInput] = useState('')
   const [geminiVertexProject, setGeminiVertexProject] = useState('')
   const [geminiVertexLocation, setGeminiVertexLocation] = useState('us-central1')
-  const [activeTab, setActiveTab] = useState<SettingsTab>('appearance')
+  // Uncontrolled fallback state. Used only when the caller doesn't
+  // pass `activeTab`/`onTabChange` — i.e. when SettingsPanel is mounted
+  // without the surrounding sidebar takeover (legacy / future tests).
+  const [internalActiveTab, setInternalActiveTab] = useState<SettingsTab>('appearance')
+  const activeTab = activeTabProp ?? internalActiveTab
+  const setActiveTab = (next: SettingsTab): void => {
+    if (onTabChange) onTabChange(next)
+    else setInternalActiveTab(next)
+  }
   const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([])
   const [installedFontStatus, setInstalledFontStatus] = useState('')
   const safeTurns = Number.isFinite(chatContextTurns)
@@ -550,36 +594,33 @@ export function SettingsPanel({
     onChange({ advancedFx: { ...advancedFx, ...partial } })
   }
 
-  const TABS: Array<{ id: SettingsTab; label: string }> = [
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'behavior', label: 'Behavior' },
-    { id: 'providers', label: 'Providers' },
-    { id: 'system', label: 'System' },
-    { id: 'remote-workspaces', label: 'Remote Workspaces' },
-    { id: 'bridge-networking', label: 'Bridge Networking' },
-    { id: 'approval-ledger', label: 'Approvals' }
-  ]
-
   return (
-    <div className="settings-panel">
-      {/* Sticky header with tabs */}
-      <div className="settings-panel-header">
-        <div className="settings-tab-bar">
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
+    <div className={`settings-panel settings-panel-${layout}`}>
+      {/*
+        Sticky header with inline tab bar + "Done" button. Suppressed
+        in `takeover` layout because the host renders a SettingsSidebar
+        next to this panel that carries the tab list AND the back-to-app
+        affordance — duplicating it here would just clutter the chrome.
+      */}
+      {layout === 'sheet' && (
+        <div className="settings-panel-header">
+          <div className="settings-tab-bar">
+            {SETTINGS_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <button className="btn btn-sm btn-ghost" onClick={onClose}>
+            Done
+          </button>
         </div>
-        <button className="btn btn-sm btn-ghost" onClick={onClose}>
-          Done
-        </button>
-      </div>
+      )}
 
       <div className="settings-panel-content">
         {/* ── Appearance ─────────────────────────────────── */}

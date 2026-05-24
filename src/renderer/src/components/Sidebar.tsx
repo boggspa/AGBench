@@ -1793,7 +1793,7 @@ export function Sidebar({
                                     subThreadCount > 0) && (
                                     <span className="sidebar-chat-subline">
                                       {isChatRunning ? (
-                                        <span className="sidebar-run-status tone-warning">
+                                        <span className="sidebar-run-status tone-running">
                                           Running
                                         </span>
                                       ) : lastRunStatus ? (
@@ -1907,7 +1907,7 @@ export function Sidebar({
                                               subLastStatus.tone !== 'muted')) && (
                                             <span className="sidebar-chat-subline">
                                               {subRunning ? (
-                                                <span className="sidebar-run-status tone-warning">
+                                                <span className="sidebar-run-status tone-running">
                                                   Running
                                                 </span>
                                               ) : subLastStatus ? (
@@ -1981,7 +1981,7 @@ export function Sidebar({
                           lastRunStatus.tone !== 'muted')) && (
                         <span className="sidebar-chat-subline">
                           {isChatRunning ? (
-                            <span className="sidebar-run-status tone-warning">Running</span>
+                            <span className="sidebar-run-status tone-running">Running</span>
                           ) : lastRunStatus ? (
                             <span className={`sidebar-run-status tone-${lastRunStatus.tone}`}>
                               {lastRunStatus.label}

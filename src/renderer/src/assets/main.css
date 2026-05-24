@@ -8090,6 +8090,133 @@ button.diff-file-row {
   }
 }
 
+/* ── Settings full-app takeover (Phase post-1.0.2) ────────────────────
+ * The legacy modal-sheet Settings (centred floater + dim backdrop) was
+ * retired in favour of a Codex / Claude-Code-app-style takeover:
+ * `<SettingsSidebar />` replaces the workspace sidebar (carrying
+ * "← Back to app" + the tab list), and `<SettingsPanel layout="takeover" />`
+ * renders in the main-pane slot. The original transcript pane stays
+ * mounted but is hidden via `.transcript-hidden-for-settings` so
+ * scroll position, refs, and any in-flight chat state survive the
+ * round-trip.
+ *
+ * Width parity with `.app-sidebar` is intentional — entering Settings
+ * doesn't reflow the main pane width, just swaps its content.
+ */
+.app-transcript.transcript-hidden-for-settings {
+  display: none !important;
+}
+
+.app-settings-pane {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--panel-bg, transparent);
+}
+
+/* Reset SettingsPanel chrome when rendered in takeover mode so the
+ * panel reads as a full-pane workspace rather than a card. */
+.settings-panel-takeover {
+  flex: 1;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  border: 0;
+}
+
+.settings-panel-takeover .settings-panel-content {
+  padding-top: var(--space-xl, 24px);
+}
+
+/* Settings sidebar — Codex-style minimal list. Reuses `.app-sidebar`
+ * background tokens for chrome parity. */
+.settings-sidebar {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.settings-sidebar-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 10px;
+  overflow-y: auto;
+}
+
+.settings-sidebar-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 50%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sidebar-text) 4%, transparent);
+  color: var(--sidebar-text);
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+  /* Slight top margin so it doesn't kiss the app-window chrome. */
+  margin-top: 2px;
+}
+
+.settings-sidebar-back:hover,
+.settings-sidebar-back:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  outline: 0;
+}
+
+.settings-sidebar-back .sf-symbol-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.settings-sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 4px;
+}
+
+.settings-sidebar-tab {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-text-secondary, var(--text-secondary));
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  text-align: left;
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+
+.settings-sidebar-tab:hover {
+  background: color-mix(in srgb, var(--sidebar-text) 6%, transparent);
+  color: var(--text-primary);
+}
+
+.settings-sidebar-tab.active {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary) 14%);
+  font-weight: 620;
+}
+
+.settings-sidebar-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 56%, transparent);
+  outline-offset: -2px;
+}
+
 .settings-group {
   display: flex;
   flex-direction: column;
@@ -20032,6 +20159,45 @@ input:disabled, select:disabled, textarea:disabled {
   background-size: 240% 100%;
   background-repeat: no-repeat;
   animation: status-shimmer-sweep 2.6s linear infinite;
+}
+
+/* Sidebar "Running" pill — quieter than the run-card variant above
+ * which paints in accent. The sidebar already carries the busy-dot
+ * + age label, so the pill itself just reads as "this thread is
+ * busy" without competing visually. White pill, gray text, and a
+ * shimmer sweep across the TEXT only (mirrors the `.message-thinking`
+ * treatment from `text-shimmer-sweep` at line ~3547). The accent
+ * background-shimmer above is OVERRIDDEN here for the sidebar slot
+ * specifically — the run-card variant still uses it. */
+.sidebar-run-status.tone-running {
+  /* Solid white pill. In dark themes #ffffff reads as a clean
+   * chip against the sidebar's frosted backdrop; in light themes
+   * mix in a hair of the surface so the white doesn't punch out. */
+  background-color: color-mix(in srgb, #ffffff 96%, var(--surface-1) 4%);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--text-secondary) 55%, transparent) 0%,
+    color-mix(in srgb, var(--text-secondary) 55%, transparent) 32%,
+    color-mix(in srgb, var(--text-primary) 92%, transparent) 50%,
+    color-mix(in srgb, var(--text-secondary) 55%, transparent) 68%,
+    color-mix(in srgb, var(--text-secondary) 55%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  border-color: color-mix(in srgb, #000000 14%, transparent);
+  animation: text-shimmer-sweep 2.4s linear infinite;
+}
+
+/* Reduce-motion: stop the sweep but keep the legible gray text on
+ * a white pill so the state still reads. */
+[data-reduce-motion="true"] .sidebar-run-status.tone-running {
+  animation: none;
+  background-image: none;
+  color: var(--text-secondary);
+  -webkit-text-fill-color: var(--text-secondary);
 }
 
 .subthread-delegation-status.status-running {
