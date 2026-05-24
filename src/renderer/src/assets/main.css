@@ -13321,16 +13321,24 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
-  background-color: rgba(0, 0, 0, 0.25);
+  /* Bumped from 0.25 → 0.38 (≈50% more opacity, per user
+   * preference). With the macOS vibrancy view underneath, the
+   * old 25% black overlay let too much of the desktop tint
+   * bleed through the transcript pane; the higher overlay
+   * tones down the wash so the message body stays the visual
+   * priority while still reading as a glass surface. */
+  background-color: rgba(0, 0, 0, 0.38);
 }
 
 /* Light-theme override for native_glass transcript + sidebar.
  * The dark 25%-black overlay above was painted on top of the
  * macOS vibrancy view, which in light mode renders as muddy
- * gray. Switch to a 30% white overlay in light themes so the
- * vibrancy reads as bright + frosted rather than darkened. */
+ * gray. Light-theme uses a 48% white overlay (≈50% more
+ * opacity than the previous 32%) so the vibrancy reads as
+ * bright + frosted while still keeping the desktop tint
+ * subdued enough that the transcript stays legible. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
-  background-color: rgba(255, 255, 255, 0.32) !important;
+  background-color: rgba(255, 255, 255, 0.48) !important;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
   /* Lift the sidebar fill in light + native-glass to a brighter
