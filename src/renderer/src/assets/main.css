@@ -17777,15 +17777,22 @@ input:disabled, select:disabled, textarea:disabled {
  * tint instead of dark.
  * ============================================================ */
 
+/* The Codex composer surface + Claude textarea bubble take a
+ * slightly darker fill than the unified soft surface (#f1f1f4)
+ * so the bubble reads as a noticeable card on the page rather
+ * than a white-on-white wash. Paired with a more visible rim
+ * outline so the bubble has clear edges in light mode. The
+ * above-bar stays at the unified soft surface so the bubble
+ * reads as the visually weightier element of the pair. */
 [data-theme="light"][data-interface-style="codex"] .composer-surface {
-  background: var(--unified-soft-surface-bg) !important;
-  border-color: var(--unified-soft-surface-border) !important;
+  background: #e7e7ec !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
 }
 
 [data-theme="light"][data-interface-style="claude"] .composer-textarea {
-  background: var(--unified-soft-surface-bg) !important;
-  border-color: var(--unified-soft-surface-border) !important;
+  background: #e7e7ec !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
   color: var(--text-primary) !important;
 }
 
