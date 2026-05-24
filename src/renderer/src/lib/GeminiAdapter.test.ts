@@ -466,4 +466,102 @@ describe('GeminiStreamAdapter', () => {
       })
     )
   })
+
+  it('keeps Codex parent to Claude sub-thread delegation streaming paired', () => {
+    const onEvent = vi.fn()
+    const adapter = new GeminiStreamAdapter(onEvent)
+    const fixture = [
+      {
+        type: 'init',
+        provider: 'codex',
+        session_id: 'codex-parent-session',
+        model: 'gpt-5.5'
+      },
+      {
+        type: 'content',
+        provider: 'codex',
+        itemId: 'parent-msg-1',
+        text: 'I will ask Claude to review. '
+      },
+      {
+        type: 'tool_use',
+        provider: 'codex',
+        tool_name: 'delegate_to_subthread',
+        tool_id: 'delegate-claude-1',
+        parameters: {
+          provider: 'claude',
+          prompt: 'Review this patch for behavioral risk.',
+          returnResult: true
+        }
+      },
+      {
+        type: 'tool_result',
+        provider: 'codex',
+        tool_name: 'delegate_to_subthread',
+        tool_id: 'delegate-claude-1',
+        output: 'Spawned claude sub-thread (id=claude-sub-1).',
+        result: {
+          subThreadId: 'claude-sub-1',
+          provider: 'claude'
+        }
+      },
+      {
+        type: 'content',
+        provider: 'codex',
+        itemId: 'parent-msg-1',
+        text: 'Waiting for Claude.'
+      },
+      {
+        type: 'result',
+        provider: 'codex',
+        status: 'success',
+        providerThreadId: 'codex-parent-session',
+        stats: { input_tokens: 101, output_tokens: 29, total_tokens: 130, duration_ms: 900 }
+      }
+    ]
+    const jsonl = fixture.map((event) => JSON.stringify(event)).join('\n') + '\n'
+
+    adapter.appendChunk(jsonl.slice(0, 137))
+    adapter.appendChunk(jsonl.slice(137, 319))
+    adapter.appendChunk(jsonl.slice(319))
+    adapter.end()
+
+    const events = onEvent.mock.calls.map(([event]) => event)
+    const streamedText = events
+      .filter((event) => event.type === 'assistant_message_delta')
+      .map((event) => event.content)
+      .join('')
+
+    expect(streamedText).toBe('I will ask Claude to review. Waiting for Claude.')
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_event',
+        name: 'delegate_to_subthread',
+        isUse: true,
+        data: expect.objectContaining({
+          tool_id: 'delegate-claude-1',
+          parameters: expect.objectContaining({ provider: 'claude' })
+        })
+      })
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_event',
+        name: 'delegate_to_subthread',
+        isResult: true,
+        data: expect.objectContaining({
+          tool_id: 'delegate-claude-1',
+          output: expect.stringContaining('claude sub-thread'),
+          result: expect.objectContaining({ subThreadId: 'claude-sub-1' })
+        })
+      })
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'run_finished',
+        status: 'success',
+        stats: { input_tokens: 101, output_tokens: 29, total_tokens: 130, duration_ms: 900 }
+      })
+    )
+  })
 })
