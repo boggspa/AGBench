@@ -19173,11 +19173,15 @@ input:disabled, select:disabled, textarea:disabled {
  * ---------------------------------------------------------- */
 
 [data-composer-style="codex"] .composer-above-bar {
-  /* CX1 (refined): match composer-surface width minus a wider
-   * inset (60px) so the tab visibly nests inside the composer's
-   * rounded corners rather than fighting them. */
-  width: 100%;
-  max-width: min(100%, calc(var(--composer-content-max-width) - 60px));
+  /* CX1 (refined): width is parent-relative `calc(100% - 80px)`
+   * rather than capped via `--composer-content-max-width`. The
+   * stack parent IS the variable's width, so a var-based max
+   * just matched it; pulling the width from the parent ensures
+   * the tab is *visibly* 80px narrower than the composer-surface
+   * below regardless of viewport size — which is what stops it
+   * from fighting the composer's rounded corners. */
+  width: calc(100% - 80px);
+  max-width: calc(100% - 80px);
   align-self: center;
   /* Tucked-tab geometry retained from the earlier shape. */
   border-bottom-left-radius: 0;
@@ -19295,15 +19299,34 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Chip trigger — outline + text colour shift per mode. The
  * pill chrome stays the same; only the accent within it picks
- * up the mode's hue. */
+ * up the mode's hue.
+ *
+ * `.composer-combined-picker-trigger-primary` (the inner span
+ * holding the human-readable label) has its own
+ * `color: var(--text-primary)` rule and wins by specificity if
+ * we only set color on the outer button. The deeper selector
+ * below targets the primary span directly so the closed-state
+ * chip actually visibly tints. */
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="plan"],
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="plan"]
+  .composer-combined-picker-trigger-primary {
+  color: #6fb6ff;
+}
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"] {
-  color: #6fb6ff;
   border-color: color-mix(in srgb, #6fb6ff 36%, var(--composer-border));
 }
 [data-composer-style="codex"]
-  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"],
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
   color: #ffa45c;
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
   border-color: color-mix(in srgb, #ffa45c 36%, var(--composer-border));
 }
 /* `default` intentionally has no override — it inherits the

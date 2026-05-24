@@ -12940,6 +12940,22 @@ function App(): React.JSX.Element {
                   Gemini / Kimi shells.
                 */}
                 <span className="composer-above-bar-files-cluster">
+                  {/*
+                    Order: diff stats FIRST (`+N -M`), then the
+                    files-changed pill. Mirrors real Codex's
+                    above-row reading order ("+2808 -1071 23 files
+                    changed") and matches the user's stated
+                    preference. The non-Codex shells (cluster has
+                    `display: contents`) inherit this order too
+                    since the children participate directly in the
+                    parent flex.
+                  */}
+                  {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                    <span className="composer-above-bar-stats">
+                      <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
+                      <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                    </span>
+                  )}
                   <span
                     className="composer-above-bar-files"
                     title={
@@ -12951,12 +12967,6 @@ function App(): React.JSX.Element {
                     <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
                     {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
                   </span>
-                  {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                    <span className="composer-above-bar-stats">
-                      <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
-                      <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
-                    </span>
-                  )}
                 </span>
                 {/*
                     Composer-unification (Phase J1): once the chat has
