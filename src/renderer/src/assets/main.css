@@ -19364,6 +19364,52 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
+ * ABOVE-BAR RIGHT-CLUSTER — universal pattern
+ *
+ * The Claude shell slice (commit 6c53add) introduced a right-
+ * cluster pattern where `[N files changed]` + `[+/- diff]` + the
+ * `Create PR` action button live as a tight group on the row's
+ * right edge, mirroring real Claude Code's `+100 -0 Commit changes`
+ * pair. The pattern reads naturally — workspace identity on the
+ * left, "what you'll do with it" on the right — and is worth
+ * spreading across every shell. Codex shell stays as its tucked
+ * tab where the natural content-width packing already groups
+ * stats + action tightly, so we exclude it from the right-cluster
+ * to avoid double-affecting layout.
+ * ============================================================ */
+
+.composer-above-bar:not([data-composer-style="codex"]) .composer-above-bar-files,
+[data-composer-style="default"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="modular"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="stub"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-files {
+  order: 8;
+  margin-left: auto;
+}
+[data-composer-style="default"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="modular"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="stub"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-stats {
+  order: 9;
+}
+[data-composer-style="default"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="gemini"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="kimi"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="modular"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="terminal"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="stub"] .composer-above-bar .composer-above-bar-action,
+[data-composer-style="satellite"] .composer-above-bar .composer-above-bar-action {
+  order: 10;
+  margin-left: -2px;
+}
+
+/* ============================================================
  * COMPOSER ABOVE-BAR STACK — Slice 3 of external-path-redesign
  * --------------------------------------------------------------
  * The above-bar is now a vertical stack: one primary row (the

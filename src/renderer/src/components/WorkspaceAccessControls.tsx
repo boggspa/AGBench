@@ -61,24 +61,9 @@ interface WorkspaceAccessControlsProps {
   worktreeDiffUnavailable: boolean
 }
 
-function PermissionGlyph(): React.JSX.Element {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 16 16"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden
-    >
-      <path d="M4 7v-1a4 4 0 1 1 8 0v1" />
-      <rect x="3" y="7" width="10" height="7" rx="1.5" />
-    </svg>
-  )
-}
+// `PermissionGlyph` was the lock icon on the now-removed External
+// Path picker pill (Slice 8 of external-path-redesign). The only
+// remaining glyph in this file is the Gemini Worktree pill below.
 
 function WorktreeGlyph(): React.JSX.Element {
   return (
@@ -125,22 +110,17 @@ export function WorkspaceAccessControls(
     isCurrentGlobalChat,
     isCurrentComposerLocked,
     hasWorkspaceContext,
-    externalPathGrants,
-    onPickExternalPathGrant,
-    // agenticServices / agenticWorkspaceGrants / onSetWorkspaceGrant
-    // were used by the in-component Tool Grants pill (now removed).
-    // They remain on the props interface for backwards compatibility
-    // — App.tsx still passes them, and they flow through to the new
-    // CombinedPermissionsPicker instead. Destructured-but-unused
+    // externalPathGrants / onPickExternalPathGrant / agenticServices /
+    // agenticWorkspaceGrants / onSetWorkspaceGrant remain on the props
+    // interface for backwards compatibility (App.tsx still passes them)
+    // but are no longer rendered here. Destructured-but-unused
     // bindings would TS6133-fail, so we deliberately don't pull them
-    // out of props here.
+    // out of props.
     currentGeminiWorktree,
     onGeminiWorktreeToggle,
     worktreeToggleLabel,
     worktreeDiffUnavailable
   } = props
-
-  const grantsCount = externalPathGrants.length
 
   // Hide entirely for global-scope chats: External Path and Worktree
   // are workspace-scoped concepts, no sense surfacing them when the
@@ -149,11 +129,6 @@ export function WorkspaceAccessControls(
     return null
   }
 
-  const externalPathTitle =
-    grantsCount > 0
-      ? `External path access (${grantsCount} granted). Add another below.`
-      : 'Grant access to a file or folder outside this workspace.'
-
   const worktreeInteractive = provider === 'gemini'
 
   return (
@@ -161,41 +136,28 @@ export function WorkspaceAccessControls(
       className={`composer-workspace-access composer-workspace-access-${variant} provider-${provider}`}
       aria-label="Workspace access controls"
     >
-      <label
-        className="composer-workspace-access-pill composer-workspace-access-external-path"
-        title={externalPathTitle}
-      >
-        <PermissionGlyph />
-        <select
-          className="composer-workspace-access-select"
-          aria-label="Grant external path access"
-          value=""
-          disabled={isCurrentComposerLocked || !currentWorkspace}
-          onChange={(event) => {
-            const access = event.target.value as 'read' | 'write'
-            if (access === 'read' || access === 'write') {
-              onPickExternalPathGrant(access)
-            }
-          }}
-        >
-          <option value="">
-            {grantsCount > 0 ? `External path (${grantsCount})` : 'External path'}
-          </option>
-          <option value="read">Grant read…</option>
-          <option value="write">Grant edit…</option>
-        </select>
-      </label>
       {/*
-        Tool Grants pill removed — Phase J7-followup. The grant
-        toggles now live inside the CombinedPermissionsPicker
-        (composer footer), as the right column of its two-column
-        popover. Keeps the above-bar tidy and matches the
-        Permissions | Reasoning pattern of the new model picker.
+        Slice 8 of the external-path-redesign arc — the External
+        Path picker pill is gone from the above-bar. Each granted
+        path now renders as its own dedicated row beside the
+        primary workspace row (via slice 3's <ExternalPathAboveRow />),
+        and slice 5's runtime detector handles new grants on-demand
+        when the agent first tries to access a path outside the
+        workspace. The standalone pill became redundant once those
+        flows landed.
 
-        Props `agenticServices`, `agenticWorkspaceGrants`,
-        `onSetWorkspaceGrant` are retained on this component for
-        backwards compatibility but no longer rendered here. They
-        flow through App.tsx to CombinedPermissionsPicker instead.
+        `externalPathGrants` + `onPickExternalPathGrant` props are
+        retained on this component for backwards compatibility (the
+        Settings panel may still wire a manual grant entry point
+        through `selectExternalPathGrant` IPC). They're just no
+        longer surfaced in the composer's above-bar.
+
+        Tool Grants pill removed earlier (Phase J7-followup) — those
+        toggles now live inside the CombinedPermissionsPicker.
+
+        `agenticServices`, `agenticWorkspaceGrants`,
+        `onSetWorkspaceGrant` props remain on the interface for the
+        same back-compat reason but no longer render here.
       */}
       {worktreeInteractive && (
         <button

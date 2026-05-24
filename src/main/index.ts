@@ -18061,8 +18061,30 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('get-workspaces', () => workspaceService.getWorkspaces())
     ipcMain.handle(
       'add-or-update-workspace',
-      (_, path: string, partial: Partial<WorkspaceRecord>) => {
-        const ws = workspaceService.addOrUpdateWorkspace(path, partial)
+      async (_, path: string, partial: Partial<WorkspaceRecord>) => {
+        // Phase J7 follow-up: auto-detect the workspace's current
+        // git branch at registration time. Previously every
+        // WorkspaceRecord persisted with `branch: undefined`, so
+        // the composer's above-bar always read "detached" even on
+        // freshly-checked-out repos. Re-uses the slice-1
+        // ExternalPathProbe (same machinery that drives the
+        // external-path row stack). Best-effort — falls through to
+        // whatever the caller passed if the probe errors.
+        let resolvedPartial: Partial<WorkspaceRecord> = partial || {}
+        if (!resolvedPartial.branch) {
+          try {
+            const { probeExternalPath } = await import(
+              './services/ExternalPathProbe'
+            )
+            const probed = await probeExternalPath(path)
+            if (probed?.branch) {
+              resolvedPartial = { ...resolvedPartial, branch: probed.branch }
+            }
+          } catch {
+            /* keep partial as-is */
+          }
+        }
+        const ws = workspaceService.addOrUpdateWorkspace(path, resolvedPartial)
         broadcastWorkspaceUpdate(ws?.id)
         return ws
       }
