@@ -5950,6 +5950,19 @@ function App(): React.JSX.Element {
     applyAgenticWorkspaceGrantSettings(nextSettings)
   }
 
+  const handleRemoveAgenticWorkspaceGrant = async (
+    provider: ProviderId,
+    workspacePath: string,
+    service: AgenticServiceId
+  ) => {
+    const nextSettings = await window.api.removeAgenticWorkspaceGrant(
+      provider,
+      workspacePath,
+      service
+    )
+    applyAgenticWorkspaceGrantSettings(nextSettings)
+  }
+
   const handleTriggerClaudeLogin = async () => {
     if (typeof window.api.triggerClaudeLogin !== 'function') return
     setClaudeLoginState('loading')
@@ -14423,6 +14436,7 @@ function App(): React.JSX.Element {
               agenticServices={agenticServices}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
               agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
+              agenticWorkspaceGrants={agenticWorkspaceGrants}
               activeProvider={currentProvider}
               providerCapabilities={currentProviderCapabilities}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
@@ -14452,6 +14466,9 @@ function App(): React.JSX.Element {
               }
               onDeleteGeminiAuthProfile={(profileId) =>
                 void handleDeleteGeminiAuthProfile(profileId)
+              }
+              onRemoveAgenticWorkspaceGrant={(provider, workspacePath, service) =>
+                void handleRemoveAgenticWorkspaceGrant(provider, workspacePath, service)
               }
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
