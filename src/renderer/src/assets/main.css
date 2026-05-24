@@ -17801,3 +17801,507 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: var(--unified-soft-surface-border) !important;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
 }
+
+/* ============================================================
+ * FOUR NEW COMPOSER SHELLS (Phase J7 — creative variants)
+ * --------------------------------------------------------------
+ * These four shells use the AGBench-native composer as the
+ * structural reference — all the elements stay (datetime
+ * scheduler, runtime profile picker, attach button, model
+ * picker, permission picker, send button, above-bar) — only
+ * the chrome (background, border, shadow, font, radius) is
+ * remixed. Each shell expresses a distinct visual idiom while
+ * preserving the underlying layout and interactivity.
+ *
+ *   1. Modular   — every element gets its own floating pill.
+ *   2. Terminal  — monospace, bracketed chips, caret prompt.
+ *   3. Stub      — paper-textured ticket with perforated edge.
+ *   4. Satellite — all containers invisible; elements float.
+ *
+ * Each block follows the same anatomy:
+ *   - composer-surface chrome
+ *   - composer-textarea bubble
+ *   - composer-above-bar
+ *   - inline pickers + control footer
+ *   - shell-specific chip / picker shape
+ *   - send button accent (where altered)
+ * ============================================================ */
+
+/* ----------------------------------------------------------------
+ * 1) MODULAR SHELL
+ *    Container disappears; every chip is its own micro-card with
+ *    soft shadow + hairline border. Textarea floats as its own
+ *    distinct pill above the controls strip. Spacing matches the
+ *    AGBench native composer so the rhythm is familiar.
+ * ---------------------------------------------------------------- */
+
+[data-composer-style="modular"] .composer-surface {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 6px 0 4px;
+}
+[data-composer-style="modular"] .composer-surface:focus-within {
+  box-shadow: none;
+  border-color: transparent;
+}
+[data-composer-style="modular"] .composer-surface::before {
+  display: none;
+}
+
+[data-composer-style="modular"] .composer-textarea {
+  background: color-mix(in srgb, var(--composer-bg-solid) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+}
+[data-composer-style="modular"] .composer-surface:focus-within .composer-textarea {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--panel-border));
+  box-shadow:
+    0 4px 18px rgba(0, 0, 0, 0.22),
+    0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Above-bar strip strips its container chrome; each child child
+ * becomes a free-standing chip. */
+[data-composer-style="modular"] .composer-above-bar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  gap: 8px;
+}
+[data-composer-style="modular"] .composer-above-bar::before {
+  background: none;
+}
+[data-composer-style="modular"] .composer-above-bar > * {
+  background: color-mix(in srgb, var(--composer-bg-solid) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 999px;
+  padding: 4px 10px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+/* Inline pickers row — container goes flat, each pill puffs up. */
+[data-composer-style="modular"] .composer-inline-pickers,
+[data-composer-style="modular"] .composer-control-footer {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 6px;
+}
+
+[data-composer-style="modular"] .composer-picker-label,
+[data-composer-style="modular"] .composer-picker-command,
+[data-composer-style="modular"] .composer-image-picker-btn,
+[data-composer-style="modular"] .composer-control-button,
+[data-composer-style="modular"] .composer-schedule-label,
+[data-composer-style="modular"] .composer-runtime-profile {
+  background: color-mix(in srgb, var(--composer-bg-solid) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
+}
+
+[data-composer-style="modular"] .composer-action-btn.run-btn,
+[data-composer-style="modular"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, var(--accent) 86%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 56%, var(--panel-border));
+  border-radius: 999px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+[data-theme="light"][data-composer-style="modular"] .composer-textarea,
+[data-theme="light"][data-composer-style="modular"] .composer-above-bar > *,
+[data-theme="light"][data-composer-style="modular"] .composer-picker-label,
+[data-theme="light"][data-composer-style="modular"] .composer-picker-command,
+[data-theme="light"][data-composer-style="modular"] .composer-image-picker-btn,
+[data-theme="light"][data-composer-style="modular"] .composer-control-button,
+[data-theme="light"][data-composer-style="modular"] .composer-schedule-label,
+[data-theme="light"][data-composer-style="modular"] .composer-runtime-profile {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  color: var(--text-primary);
+}
+
+/* ----------------------------------------------------------------
+ * 2) TERMINAL SHELL
+ *    Monospace everything. Sharp 2px corners. Bracket-wrapped
+ *    chips: [Codex] [GPT-5.5]. A `>` caret prefix in the textarea
+ *    bubble. Subtle terminal-green focus glow.
+ * ---------------------------------------------------------------- */
+
+[data-composer-style="terminal"] .composer-surface {
+  background: color-mix(in srgb, #0a0e0a 92%, #00ff88 8%);
+  border: 1px solid color-mix(in srgb, #00ff88 24%, transparent);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #00ff88 8%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.4);
+  padding: 12px 14px;
+  font-family: var(--font-mono);
+}
+[data-composer-style="terminal"] .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #00ff88 52%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #00ff88 12%, transparent),
+    0 6px 18px rgba(0, 0, 0, 0.4),
+    0 0 0 2px color-mix(in srgb, #00ff88 18%, transparent);
+}
+[data-composer-style="terminal"] .composer-surface::before {
+  display: none;
+}
+
+[data-composer-style="terminal"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-sm) - 1px);
+  color: color-mix(in srgb, #ccffe4 92%, #ffffff);
+  padding: 4px 4px 6px 18px;
+  min-height: 56px;
+  position: relative;
+}
+[data-composer-style="terminal"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ccffe4 36%, transparent);
+  font-style: normal;
+}
+
+/* `> ` prompt caret inside the textarea bubble — overlay positioned
+ * absolutely against `.composer-surface`. */
+[data-composer-style="terminal"] .composer-surface > .composer-textarea + *,
+[data-composer-style="terminal"] .composer-surface::after {
+  /* placeholder for future glyph layer */
+}
+[data-composer-style="terminal"] .composer-surface .composer-textarea {
+  background-image: linear-gradient(transparent, transparent);
+}
+/* Use the textarea's wrapper to project the prompt caret. */
+[data-composer-style="terminal"] .composer-surface {
+  position: relative;
+}
+[data-composer-style="terminal"] .composer-surface > textarea.composer-textarea {
+  /* Cannot ::before a textarea — paint the caret via the surface
+   * instead, anchored to the textarea's top-left. */
+}
+[data-composer-style="terminal"] .composer-textarea-wrap::before,
+[data-composer-style="terminal"] .composer-surface > .composer-textarea::placeholder {
+  /* fallback if .composer-textarea-wrap doesn't exist yet */
+}
+[data-composer-style="terminal"] .composer-surface::before {
+  content: ">";
+  display: block;
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  width: 12px;
+  height: 18px;
+  line-height: 18px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: calc(var(--font-size-sm) - 1px);
+  color: color-mix(in srgb, #00ff88 86%, #ffffff);
+  pointer-events: none;
+  background: none;
+  z-index: 2;
+}
+
+/* Above-bar: status-bar feel, monospace, narrow padding. */
+[data-composer-style="terminal"] .composer-above-bar {
+  background: color-mix(in srgb, #0a0e0a 78%, transparent);
+  border: 1px solid color-mix(in srgb, #00ff88 18%, transparent);
+  border-radius: 2px;
+  padding: 4px 10px;
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, #ccffe4 72%, transparent);
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-composer-style="terminal"] .composer-above-bar::before {
+  background: none;
+}
+
+/* Inline pickers: bracket chips. */
+[data-composer-style="terminal"] .composer-inline-pickers,
+[data-composer-style="terminal"] .composer-control-footer {
+  background: transparent;
+  border: 0;
+  font-family: var(--font-mono);
+}
+
+[data-composer-style="terminal"] .composer-picker-label,
+[data-composer-style="terminal"] .composer-picker-command,
+[data-composer-style="terminal"] .composer-image-picker-btn,
+[data-composer-style="terminal"] .composer-control-button,
+[data-composer-style="terminal"] .composer-schedule-label,
+[data-composer-style="terminal"] .composer-runtime-profile {
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #00ff88 14%, transparent);
+  border-radius: 2px;
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-xs) - 1px);
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
+  box-shadow: none;
+}
+[data-composer-style="terminal"] .composer-picker-label:hover,
+[data-composer-style="terminal"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="terminal"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="terminal"] .composer-control-button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #00ff88 32%, transparent);
+  background: color-mix(in srgb, #00ff88 6%, transparent);
+}
+
+/* Bracket the visible text inside picker chips via ::before / ::after.
+ * (Only adds brackets to elements that hold a single label span.) */
+[data-composer-style="terminal"] .composer-runtime-profile > span:first-child::before,
+[data-composer-style="terminal"] .composer-picker-label > span:first-child::before {
+  content: "[";
+  margin-right: 2px;
+  opacity: 0.6;
+}
+[data-composer-style="terminal"] .composer-runtime-profile select::after,
+[data-composer-style="terminal"] .composer-picker-label::after {
+  content: "]";
+  margin-left: 2px;
+  opacity: 0.6;
+}
+
+/* Send button: square, terminal-green. */
+[data-composer-style="terminal"] .composer-action-btn.run-btn,
+[data-composer-style="terminal"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, #00ff88 24%, #0a0e0a);
+  border: 1px solid color-mix(in srgb, #00ff88 56%, transparent);
+  border-radius: 2px;
+  color: #ccffe4;
+}
+
+[data-theme="light"][data-composer-style="terminal"] .composer-surface {
+  background: #0d1b14;
+  border-color: color-mix(in srgb, #00ff88 28%, transparent);
+}
+[data-theme="light"][data-composer-style="terminal"] .composer-above-bar {
+  background: color-mix(in srgb, #0d1b14 88%, transparent);
+}
+
+/* ----------------------------------------------------------------
+ * 3) TICKET-STUB SHELL
+ *    Composer reads like a cinema ticket — cream paper backdrop,
+ *    rounded corners, and a dashed perforation line separating the
+ *    above-bar "stub" from the body. Faint repeating gradient
+ *    suggests paper grain.
+ * ---------------------------------------------------------------- */
+
+[data-composer-style="stub"] .composer-surface {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 248, 230, 0.04) 0 2px, transparent 2px 6px),
+    color-mix(in srgb, #fcf6e6 14%, var(--composer-bg-solid));
+  border: 1px solid color-mix(in srgb, #d4c89a 36%, var(--panel-border));
+  border-radius: 14px;
+  padding: 14px 18px 12px;
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 6%, transparent) inset,
+    0 8px 22px rgba(0, 0, 0, 0.18);
+  position: relative;
+}
+[data-composer-style="stub"] .composer-surface:focus-within {
+  border-color: color-mix(in srgb, #d4c89a 60%, var(--panel-border));
+  box-shadow:
+    0 1px 0 color-mix(in srgb, #ffffff 8%, transparent) inset,
+    0 10px 26px rgba(0, 0, 0, 0.22);
+}
+[data-composer-style="stub"] .composer-surface::before {
+  display: none;
+}
+
+/* Dashed perforation between the schedule/runtime row and the
+ * textarea — projected via ::after on the surface. */
+[data-composer-style="stub"] .composer-surface::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 48px;
+  height: 1px;
+  background-image: linear-gradient(to right, color-mix(in srgb, #d4c89a 56%, transparent) 50%, transparent 50%);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  pointer-events: none;
+  opacity: 0.62;
+  z-index: 1;
+}
+
+[data-composer-style="stub"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  padding: 12px 0 6px;
+  font-family: var(--font-serif);
+  font-size: var(--font-size-md);
+  color: color-mix(in srgb, var(--text-primary) 96%, #c19a4d);
+}
+[data-composer-style="stub"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 60%, #c19a4d);
+  font-style: italic;
+}
+
+/* Above-bar: the ticket stub head — same cream, narrower. */
+[data-composer-style="stub"] .composer-above-bar {
+  background:
+    repeating-linear-gradient(135deg, rgba(255, 248, 230, 0.04) 0 2px, transparent 2px 6px),
+    color-mix(in srgb, #fcf6e6 14%, var(--composer-bg-solid));
+  border: 1px solid color-mix(in srgb, #d4c89a 36%, var(--panel-border));
+  border-radius: 14px;
+  color: color-mix(in srgb, var(--text-primary) 90%, #c19a4d);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+[data-composer-style="stub"] .composer-above-bar::before {
+  background: none;
+}
+
+[data-composer-style="stub"] .composer-inline-pickers,
+[data-composer-style="stub"] .composer-control-footer {
+  background: transparent;
+  border: 0;
+}
+
+[data-composer-style="stub"] .composer-picker-label,
+[data-composer-style="stub"] .composer-picker-command,
+[data-composer-style="stub"] .composer-image-picker-btn,
+[data-composer-style="stub"] .composer-control-button,
+[data-composer-style="stub"] .composer-schedule-label,
+[data-composer-style="stub"] .composer-runtime-profile {
+  background: color-mix(in srgb, #fcf6e6 18%, var(--composer-bg-solid));
+  border: 1px solid color-mix(in srgb, #d4c89a 30%, var(--panel-border));
+  border-radius: 4px;
+  color: color-mix(in srgb, var(--text-primary) 92%, #c19a4d);
+  box-shadow: none;
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-composer-style="stub"] .composer-action-btn.run-btn,
+[data-composer-style="stub"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, #c19a4d 60%, #fcf6e6);
+  border: 1px solid color-mix(in srgb, #c19a4d 72%, transparent);
+  border-radius: 4px;
+  color: #2a1d05;
+  font-family: var(--font-serif);
+  font-weight: 700;
+}
+
+[data-theme="light"][data-composer-style="stub"] .composer-surface,
+[data-theme="light"][data-composer-style="stub"] .composer-above-bar {
+  background:
+    repeating-linear-gradient(135deg, rgba(120, 90, 40, 0.03) 0 2px, transparent 2px 6px),
+    #fbf3df;
+  border-color: rgba(193, 154, 77, 0.28);
+  color: #4a3a16;
+}
+[data-theme="light"][data-composer-style="stub"] .composer-textarea {
+  color: #4a3a16;
+}
+[data-theme="light"][data-composer-style="stub"] .composer-picker-label,
+[data-theme="light"][data-composer-style="stub"] .composer-picker-command,
+[data-theme="light"][data-composer-style="stub"] .composer-image-picker-btn,
+[data-theme="light"][data-composer-style="stub"] .composer-control-button,
+[data-theme="light"][data-composer-style="stub"] .composer-schedule-label,
+[data-theme="light"][data-composer-style="stub"] .composer-runtime-profile {
+  background: #f6ecd1;
+  border-color: rgba(193, 154, 77, 0.32);
+  color: #4a3a16;
+}
+
+/* ----------------------------------------------------------------
+ * 4) SATELLITE SHELL
+ *    Every container is invisible — only labels, icons, and the
+ *    textarea text remain visible. Layout intact, chrome zero.
+ *    Pure floating-elements look.
+ * ---------------------------------------------------------------- */
+
+[data-composer-style="satellite"] .composer-surface {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 6px 4px 0;
+}
+[data-composer-style="satellite"] .composer-surface:focus-within {
+  box-shadow: none;
+  border-color: transparent;
+}
+[data-composer-style="satellite"] .composer-surface::before {
+  display: none;
+}
+
+[data-composer-style="satellite"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-radius: 0;
+  padding: 8px 2px 10px;
+  font-size: calc(var(--font-size-md) + 1px);
+  color: var(--text-primary);
+  box-shadow: none;
+  min-height: 56px;
+}
+[data-composer-style="satellite"] .composer-surface:focus-within .composer-textarea {
+  border-bottom-color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
+  box-shadow: 0 1px 0 0 color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
+[data-composer-style="satellite"] .composer-above-bar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+  gap: 12px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+[data-composer-style="satellite"] .composer-above-bar::before {
+  background: none;
+}
+
+[data-composer-style="satellite"] .composer-inline-pickers,
+[data-composer-style="satellite"] .composer-control-footer {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  gap: 14px;
+}
+
+[data-composer-style="satellite"] .composer-picker-label,
+[data-composer-style="satellite"] .composer-picker-command,
+[data-composer-style="satellite"] .composer-image-picker-btn,
+[data-composer-style="satellite"] .composer-control-button,
+[data-composer-style="satellite"] .composer-schedule-label,
+[data-composer-style="satellite"] .composer-runtime-profile {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 4px 6px;
+  color: color-mix(in srgb, var(--text-primary) 78%, transparent);
+}
+[data-composer-style="satellite"] .composer-picker-label:hover,
+[data-composer-style="satellite"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="satellite"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="satellite"] .composer-control-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border-radius: 8px;
+}
+
+/* Send button — only "container" that keeps its shape so the
+ * primary action remains visually anchored. */
+[data-composer-style="satellite"] .composer-action-btn.run-btn,
+[data-composer-style="satellite"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, var(--accent) 92%, transparent);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 36%, transparent);
+}

@@ -213,6 +213,26 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     value: 'kimi',
     label: 'Kimi shell',
     helper: 'Kimi-like dark rounded composer, green-yellow accent, minimal sidebar.'
+  },
+  {
+    value: 'modular',
+    label: 'Modular',
+    helper: 'Each composer element floats as its own pill — no grouped container.'
+  },
+  {
+    value: 'terminal',
+    label: 'Terminal',
+    helper: 'Monospace command-line aesthetic with bracketed chips and a caret prompt.'
+  },
+  {
+    value: 'stub',
+    label: 'Ticket stub',
+    helper: 'Paper-textured composer with a perforated separator above the textarea.'
+  },
+  {
+    value: 'satellite',
+    label: 'Satellite',
+    helper: 'All containers invisible — every element floats freely on the page.'
   }
 ]
 const AGENTIC_SERVICE_POLICY_OPTIONS: Array<{ value: AgenticServicePolicy; label: string }> = [

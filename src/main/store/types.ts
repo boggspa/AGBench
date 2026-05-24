@@ -33,7 +33,25 @@ export type ThemeAccentStyle =
   | 'red'
   | 'yellow'
 export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic'
-export type ComposerStyle = 'default' | 'codex' | 'claude' | 'gemini' | 'kimi'
+export type ComposerStyle =
+  | 'default'
+  | 'codex'
+  | 'claude'
+  | 'gemini'
+  | 'kimi'
+  /** Modular: every composer element gets its own floating pill,
+   * no grouping container. Spacing preserved; chrome inverted. */
+  | 'modular'
+  /** Terminal: monospace + sharp corners + bracket-style chips +
+   * a `>` caret prefix on the textarea. Command-line aesthetic. */
+  | 'terminal'
+  /** Ticket stub: paper-textured composer with a perforated
+   * separator between the controls strip and the textarea bubble.
+   * Mirrors AGBench's tool-call ticket grouping aesthetic. */
+  | 'stub'
+  /** Satellite: everything floats; all containers, borders, and
+   * fills go invisible. Layout intact, chrome stripped. */
+  | 'satellite'
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
 export type ChatScope = 'workspace' | 'global'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
