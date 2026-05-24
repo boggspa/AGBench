@@ -16932,20 +16932,16 @@ input:disabled, select:disabled, textarea:disabled {
   flex: 1;
   min-width: 0;
 }
+/* Branded AGBench ghost mark next to the welcome heading. The
+ * SVG itself ships gradients + rim treatment, so the wrapper is
+ * just sizing — no tinted-circle background. Slightly larger
+ * than the earlier inline-glyph variant (32 → 40px) so the
+ * branded artwork gets the visual weight it's designed for. */
 .first-launch-sheet-ghost {
   flex-shrink: 0;
-  width: 32px;
-  height: 32px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: var(--accent);
-}
-.first-launch-sheet-ghost svg {
-  width: 22px;
-  height: 22px;
+  width: 40px;
+  height: 40px;
+  display: block;
 }
 .first-launch-sheet-header h2 {
   margin: 0 0 4px 0;

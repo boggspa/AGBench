@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import type { ProviderApiKeyStatus, GeminiAuthStatus } from '../../../main/store/types'
+import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
 
 /**
  * FirstLaunchSheet — onboarding overlay for fresh AGBench testers.
@@ -303,27 +304,20 @@ export function FirstLaunchSheet({
         <header className="first-launch-sheet-header">
           <div className="first-launch-sheet-header-text">
             {/*
-              AGBench's ghost mascot — same hand-drawn glyph used in the
-              chat-corner ghost button (App.tsx `GhostCompanionIcon`).
-              Inlined here so the sheet stays self-contained without
-              pulling the App-level component into a shared module.
-              Inherits `currentColor`, which the wrapper class re-tints
-              so the ghost reads with the heading rather than competing.
+              AGBench's branded ghost mark. Lives at
+              `src/renderer/src/assets/agbench-ghost-mark.svg`, copied
+              from `design-assets/ghost/ghost-guy-mark.svg` so the
+              renderer can `import` it (Vite asset import). The SVG
+              ships its own gradients + rim, so the wrapper here is
+              just sizing — no tinted-circle background like the
+              earlier inline-glyph variant carried.
             */}
-            <span className="first-launch-sheet-ghost" aria-hidden>
-              <svg
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.3"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M3.2 13.2V6.5a4.8 4.8 0 0 1 9.6 0v6.7l-1.7-1.1-1.6 1.1-1.5-1.1-1.5 1.1-1.6-1.1-1.7 1.1z" />
-                <path d="M5.8 6.4h.1M10.1 6.4h.1" />
-                <path d="M6.5 9.2c.8.5 2.2.5 3 0" />
-              </svg>
-            </span>
+            <img
+              src={agbenchGhostMark}
+              alt=""
+              className="first-launch-sheet-ghost"
+              aria-hidden
+            />
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to AGBench</h2>
               <p className="first-launch-sheet-subtitle">
