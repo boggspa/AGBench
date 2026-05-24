@@ -8361,6 +8361,106 @@ button.diff-file-row {
   border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
+/* Model usage tab — cross-provider quota dashboard.
+ *
+ * Headline-tile strip up top (Total tokens / Runs / Providers), then
+ * the existing sidebar `ModelUsageCard` re-mounted at full width
+ * (quota meters + 30-day heatmap baked in). Reuses the takeover's
+ * single-column max-width-920px content padding, so the meters
+ * have room to breathe vs. the cramped sidebar footer rendering. */
+.settings-model-usage {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.settings-model-usage-description {
+  margin: 0;
+  font-size: var(--font-size-sm, 13px);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.settings-model-usage-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-model-usage-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.settings-model-usage-tile-label {
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 620;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+
+.settings-model-usage-tile-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-model-usage-tile-meta {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-model-usage-card {
+  /* The embedded `.run-summary` chrome from ModelUsageCard adds its
+   * own padding/border — wrap so the card doesn't bleed into the
+   * surrounding tab gap and reads as a cohesive section. */
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-model-usage-card .run-summary {
+  border-radius: 14px;
+}
+
+.settings-model-usage-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px dashed color-mix(in srgb, var(--text-primary) 14%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm, 13px);
+}
+
+.settings-model-usage-empty strong {
+  color: var(--text-primary);
+  font-weight: 620;
+}
+
+/* Narrow viewport — collapse the 3-tile grid into 2 cols, then 1. */
+@media (max-width: 720px) {
+  .settings-model-usage-tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 480px) {
+  .settings-model-usage-tiles {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 /* Workspaces tab — Codex Environments-style list of every loaded
  * project folder, with open / pin / remove actions per row. */
 .settings-workspaces {

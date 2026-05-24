@@ -12879,6 +12879,7 @@ function App(): React.JSX.Element {
                 handleRemoveWorkspace(workspaceId, stubEvent)
               }}
               onTogglePinWorkspace={handleTogglePinWorkspace}
+              usageSummary={usageSummary}
             />
           </div>
         )}

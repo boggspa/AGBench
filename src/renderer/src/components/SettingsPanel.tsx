@@ -52,6 +52,8 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 // `bridge-networking` tab id falls through to no render.
 import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
+import { ModelUsageCard } from './ModelUsageCard'
+import type { ModelUsageAggregate } from '../App'
 
 interface SettingsPanelProps {
   mode: AppearanceMode
@@ -182,6 +184,13 @@ interface SettingsPanelProps {
   onSelectWorkspaceDialog?: () => void
   onRemoveWorkspace?: (workspaceId: string) => void
   onTogglePinWorkspace?: (workspaceId: string) => void
+  /**
+   * Cross-provider usage aggregate. Populated by App's
+   * `refreshUsageSummary` from the `getUsage` IPC. Renders the new
+   * "Model usage" tab via the existing `ModelUsageCard` plus a
+   * headline-tiles strip above it. Optional so test mounts can omit.
+   */
+  usageSummary?: ModelUsageAggregate[]
   /**
    * Layout shape. `'sheet'` (default) renders the inline tab bar +
    * "Done" button at the top — the historic modal-sheet treatment.
@@ -361,6 +370,7 @@ export type SettingsTab =
   | 'bridge-networking'
   | 'pairing'
   | 'workspaces'
+  | 'model-usage'
 
 /**
  * Tab grouping discriminator. The settings sidebar renders a visual
@@ -406,6 +416,12 @@ export const SETTINGS_TABS: Array<{
   // re-open page.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
+  // "Model usage" — richer cross-provider usage page. Reuses the
+  // sidebar's ModelUsageCard (quota meters per provider + 30-day
+  // heatmap) with extra context tiles on top (cumulative tokens,
+  // run counts, cost estimates). Sister to the welcome dashboard
+  // but available without leaving Settings.
+  { id: 'model-usage', label: 'Model usage', group: 'settings' },
   { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
   // "Devices" merges the legacy "Pairing" + "Remote Workspaces" +
   // "Bridge Networking" tabs into one device-management page. Pair a
@@ -570,7 +586,8 @@ export function SettingsPanel({
   onSelectWorkspace,
   onSelectWorkspaceDialog,
   onRemoveWorkspace,
-  onTogglePinWorkspace
+  onTogglePinWorkspace,
+  usageSummary = []
 }: SettingsPanelProps): React.JSX.Element {
   const [claudeKeyInput, setClaudeKeyInput] = useState('')
   const [kimiKeyInput, setKimiKeyInput] = useState('')
@@ -2197,6 +2214,100 @@ export function SettingsPanel({
             )}
           </div>
         )}
+
+        {/* ── Model usage (cross-provider) ──────────────────────────────── */}
+        {activeTab === 'model-usage' && (() => {
+          // Roll up cross-provider headline stats. We compute these inline
+          // (vs. memoising) because the Settings takeover renders are
+          // infrequent and the aggregate set is small (<20 entries).
+          const allRunEntries = usageSummary.filter(
+            (entry) => entry.model && entry.model !== 'usage limits'
+          )
+          const totalTokens = allRunEntries.reduce(
+            (sum, entry) => sum + (entry.totalTokens || 0),
+            0
+          )
+          const totalInputTokens = allRunEntries.reduce(
+            (sum, entry) => sum + (entry.inputTokens || 0),
+            0
+          )
+          const totalOutputTokens = allRunEntries.reduce(
+            (sum, entry) => sum + (entry.outputTokens || 0),
+            0
+          )
+          const totalRuns = allRunEntries.reduce(
+            (sum, entry) => sum + (entry.runs || 0),
+            0
+          )
+          const providerCount = new Set(allRunEntries.map((entry) => entry.provider)).size
+          const modelCount = allRunEntries.length
+          // Rough cost estimate gated on whether the per-row stats
+          // carried explicit cost data. Skipped for v1 — keep the
+          // tile set focused on counts the user can verify against
+          // their provider dashboards.
+          const formatLargeNumber = (value: number): string => {
+            if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)}B`
+            if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+            if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+            return String(Math.round(value))
+          }
+          return (
+            <div className="settings-model-usage">
+              <p className="settings-model-usage-description">
+                Cross-provider token + quota dashboard. Pulled from the same
+                aggregate the welcome screen + sidebar consume. To view
+                invoices or change payment methods, visit each provider&apos;s
+                billing surface directly — AGBench never proxies credentials.
+              </p>
+
+              {/* Headline tiles — at-a-glance numbers above the meters. */}
+              <div className="settings-model-usage-tiles">
+                <div className="settings-model-usage-tile">
+                  <span className="settings-model-usage-tile-label">Total tokens</span>
+                  <span className="settings-model-usage-tile-value">
+                    {formatLargeNumber(totalTokens)}
+                  </span>
+                  <span className="settings-model-usage-tile-meta">
+                    {formatLargeNumber(totalInputTokens)} in ·{' '}
+                    {formatLargeNumber(totalOutputTokens)} out
+                  </span>
+                </div>
+                <div className="settings-model-usage-tile">
+                  <span className="settings-model-usage-tile-label">Runs</span>
+                  <span className="settings-model-usage-tile-value">
+                    {formatLargeNumber(totalRuns)}
+                  </span>
+                  <span className="settings-model-usage-tile-meta">across all chats</span>
+                </div>
+                <div className="settings-model-usage-tile">
+                  <span className="settings-model-usage-tile-label">Providers</span>
+                  <span className="settings-model-usage-tile-value">{providerCount}</span>
+                  <span className="settings-model-usage-tile-meta">
+                    {modelCount} model{modelCount === 1 ? '' : 's'} tracked
+                  </span>
+                </div>
+              </div>
+
+              {/* Existing sidebar card — quota meters per provider + the
+                  30-day usage heatmap baked in. Wrapped in a max-width
+                  container so it inherits the same legibility budget as
+                  the rest of the takeover content. */}
+              <div className="settings-model-usage-card">
+                <ModelUsageCard usageSummary={usageSummary} />
+              </div>
+
+              {usageSummary.length === 0 && (
+                <div className="settings-model-usage-empty" role="note">
+                  <strong>No usage data yet.</strong>
+                  <span>
+                    Start a chat with any provider to populate the meters —
+                    AGBench begins tracking on the first completed run.
+                  </span>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* ── Approvals (Phase E2 + admin grants) ──────────────────────── */}
         {activeTab === 'approval-ledger' && (
