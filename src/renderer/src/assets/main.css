@@ -6455,16 +6455,21 @@ button.sidebar-item {
 
 /* CodeMirror's height chain inside the file editor.
  *
- * The wrapper `<div class="cm-theme">` rendered by @uiw/react-codemirror has
- * no display rules of its own, so we explicitly turn the cm-theme + cm-editor
- * chain into proper flex columns with `min-height: 0`. Without that, when the
- * file content is taller than the viewport the wrapper happily grows to fit
- * the content and the inner `.cm-scroller` never sees overflow — mouse-wheel
- * and trackpad gestures bubble out to the page with nothing to scroll, while
- * keyboard navigation still works because focus-following programmatically
- * adjusts `scrollTop`.
+ * `@uiw/react-codemirror` renders its outer wrapper with a class that
+ * varies with the `theme` prop: when `theme` is a string it's
+ * `cm-theme-<value>` (defaults to `cm-theme-light`); when `theme` is an
+ * Extension it's bare `cm-theme`. We don't pass `theme`, so the actual
+ * DOM class is `cm-theme-light` — an earlier `.cm-theme`-only selector
+ * silently failed to match in production. Use `[class^="cm-theme"]` so
+ * the rule binds regardless of which variant the wrapper renders with.
+ *
+ * Without these rules, when the file content is taller than the viewport
+ * the wrapper grows to fit the content and the inner `.cm-scroller`
+ * never sees overflow — mouse-wheel and trackpad gestures bubble out to
+ * the page with nothing to scroll, while keyboard navigation still
+ * works because focus-following programmatically adjusts `scrollTop`.
  */
-.file-editor-code-surface .cm-theme,
+.file-editor-code-surface [class^="cm-theme"],
 .file-editor-code-surface .cm-editor {
   display: flex;
   flex-direction: column;
