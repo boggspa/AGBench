@@ -16711,6 +16711,394 @@ input:disabled, select:disabled, textarea:disabled {
   padding-top: 6px;
 }
 
+/* ── FirstLaunchSheet ──────────────────────────────────────────────────
+ * Onboarding overlay that auto-shows on first launch. Sits at z-index
+ * 9100 — above SubThreadCreator (9000) so it always wins the focus
+ * fight on a brand-new install, but below CreativeActionApprovalModal
+ * (10000) so genuine approval prompts still cut through.
+ *
+ * Visual register: same dark glass card as SubThreadCreator with a
+ * slightly larger max-width and a multi-section vertical scroll. Per-
+ * provider cards use a status-dot pill plus a "Open Settings" CTA so
+ * the user always knows what's signed in vs not. Kimi (a tester doesn't
+ * have it) gets a de-emphasised variant — faded outline and muted
+ * type — so the user can skim past without thinking. */
+.first-launch-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9100;
+  padding: 32px 24px;
+}
+.first-launch-sheet {
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--panel-bg, rgba(20, 24, 30, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 26px 28px 22px;
+}
+.first-launch-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.first-launch-sheet-header h2 {
+  margin: 0 0 4px 0;
+  font-size: 1.25em;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+.first-launch-sheet-subtitle {
+  margin: 0;
+  font-size: 0.88em;
+  color: var(--text-secondary);
+}
+.first-launch-sheet-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.5em;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.first-launch-sheet-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+.first-launch-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.first-launch-sheet-section-title {
+  margin: 0;
+  font-size: 0.78em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  color: var(--text-tertiary);
+}
+.first-launch-sheet-section-helper {
+  margin: 0;
+  font-size: 0.88em;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+.first-launch-sheet-prose {
+  margin: 0;
+  font-size: 0.95em;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+.first-launch-sheet-prose strong {
+  font-weight: 600;
+}
+.first-launch-sheet-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent, #5a8cff) 22%, transparent);
+  color: var(--accent, #5a8cff);
+  font-weight: 600;
+}
+.first-launch-sheet-tips {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.92em;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+.first-launch-sheet-tips li strong {
+  font-weight: 600;
+}
+.first-launch-sheet-tips code,
+.first-launch-sheet-tips kbd {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.first-launch-sheet-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 10px;
+}
+.first-launch-sheet-provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.first-launch-sheet-provider-card-signed-in {
+  border-color: color-mix(in srgb, #3fb950 38%, transparent);
+  background: color-mix(in srgb, #3fb950 6%, rgba(255, 255, 255, 0.02));
+}
+.first-launch-sheet-provider-card-partial {
+  border-color: color-mix(in srgb, #d29922 38%, transparent);
+  background: color-mix(in srgb, #d29922 6%, rgba(255, 255, 255, 0.02));
+}
+.first-launch-sheet-provider-card-not-signed-in {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.first-launch-sheet-provider-card-not-available {
+  border-color: color-mix(in srgb, #f85149 28%, transparent);
+  background: color-mix(in srgb, #f85149 4%, rgba(255, 255, 255, 0.02));
+}
+.first-launch-sheet-provider-card-deemphasised {
+  opacity: 0.65;
+}
+.first-launch-sheet-provider-card-deemphasised:hover {
+  opacity: 0.92;
+}
+.first-launch-sheet-provider-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.first-launch-sheet-provider-card-label {
+  font-weight: 600;
+  font-size: 1em;
+}
+.first-launch-sheet-provider-card-optional-badge {
+  font-size: 0.7em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-tertiary);
+}
+.first-launch-sheet-provider-card-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85em;
+  color: var(--text-secondary);
+}
+.first-launch-sheet-provider-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+}
+.first-launch-sheet-provider-status-dot-signed-in {
+  background: #3fb950;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #3fb950 22%, transparent);
+}
+.first-launch-sheet-provider-status-dot-partial {
+  background: #d29922;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #d29922 22%, transparent);
+}
+.first-launch-sheet-provider-status-dot-not-signed-in {
+  background: rgba(255, 255, 255, 0.32);
+}
+.first-launch-sheet-provider-status-dot-not-available {
+  background: #f85149;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #f85149 22%, transparent);
+}
+.first-launch-sheet-provider-card-description {
+  margin: 0;
+  font-size: 0.85em;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+.first-launch-sheet-provider-card-hint {
+  margin: 0;
+  font-size: 0.8em;
+  line-height: 1.4;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+.first-launch-sheet-provider-card-actions {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 4px;
+}
+.first-launch-sheet-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 16px;
+}
+.first-launch-sheet-footer-helper {
+  font-size: 0.82em;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+.first-launch-sheet-helper-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+}
+.first-launch-sheet-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── First-time pointer animation ──────────────────────────────────────
+ * Renders alongside the sidebar `+` workspace button for ~6 seconds
+ * after the FirstLaunchSheet dismisses on first launch. The host
+ * (App.tsx) flips a transient flag (`workspaceAddPointerActive`) that
+ * the Sidebar reads to add the class below to the `+` button's wrapper.
+ *
+ * Tone: faint accent-coloured ring pulse + small "Start here" pill
+ * floating above. Single visible pulse over ~1.6s, then label fades
+ * with the ring as the timer expires. Click anywhere dismisses early. */
+.workspace-add-pointer {
+  position: relative;
+}
+.workspace-add-pointer::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in srgb, var(--accent, #5a8cff) 60%, transparent);
+  pointer-events: none;
+  animation: workspace-add-pointer-ring 1.6s ease-out infinite;
+}
+.workspace-add-pointer-label {
+  position: absolute;
+  top: -28px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 0.72em;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent, #5a8cff);
+  color: #fff;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent, #5a8cff) 32%, transparent);
+  pointer-events: none;
+  animation: workspace-add-pointer-fade-in 280ms ease-out both;
+  z-index: 3;
+}
+.workspace-add-pointer-label::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 50%;
+  transform: translateX(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--accent, #5a8cff);
+}
+@keyframes workspace-add-pointer-ring {
+  0% {
+    opacity: 0.85;
+    transform: scale(0.85);
+  }
+  60% {
+    opacity: 0.1;
+    transform: scale(1.45);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.55);
+  }
+}
+@keyframes workspace-add-pointer-fade-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -4px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace-add-pointer::before {
+    animation: none;
+    opacity: 0.6;
+  }
+  .workspace-add-pointer-label {
+    animation: none;
+  }
+}
+
+/* ── Light mode tweaks for FirstLaunchSheet ────────────────────────────
+ * Inherit the global light/dark theme — the parent overrides text and
+ * panel colours via CSS vars. Only the rgba-baked surfaces need an
+ * explicit light variant. */
+:root[data-theme='light'] .first-launch-sheet-backdrop,
+.theme-light .first-launch-sheet-backdrop {
+  background: rgba(0, 0, 0, 0.32);
+}
+:root[data-theme='light'] .first-launch-sheet,
+.theme-light .first-launch-sheet {
+  background: var(--panel-bg, rgba(255, 255, 255, 0.98));
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.18);
+}
+:root[data-theme='light'] .first-launch-sheet-provider-card,
+.theme-light .first-launch-sheet-provider-card {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+:root[data-theme='light'] .first-launch-sheet-provider-card-not-signed-in,
+.theme-light .first-launch-sheet-provider-card-not-signed-in {
+  border-color: rgba(0, 0, 0, 0.1);
+}
+:root[data-theme='light'] .first-launch-sheet-tips code,
+:root[data-theme='light'] .first-launch-sheet-tips kbd,
+.theme-light .first-launch-sheet-tips code,
+.theme-light .first-launch-sheet-tips kbd {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+:root[data-theme='light'] .first-launch-sheet-helper-kbd,
+.theme-light .first-launch-sheet-helper-kbd {
+  background: rgba(0, 0, 0, 0.08);
+}
+:root[data-theme='light'] .first-launch-sheet-provider-card-optional-badge,
+.theme-light .first-launch-sheet-provider-card-optional-badge {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* ── UpdateStatusPane (Phase G2) ────────────────────────────────────── */
 .update-status-pane {
   margin-top: 12px;
