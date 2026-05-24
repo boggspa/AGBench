@@ -42,6 +42,43 @@ describe('ProviderRunStats', () => {
     })
   })
 
+  it('preserves cache-separate inputs and marks canonical input as cache-inclusive', () => {
+    expect(
+      extractProviderUsage('claude', {
+        usage: {
+          input_tokens: 10,
+          cache_creation_input_tokens: 4,
+          cache_read_input_tokens: 3,
+          output_tokens: 2
+        }
+      })
+    ).toMatchObject({
+      input_tokens: 17,
+      output_tokens: 2,
+      total_tokens: 19,
+      _agentbench_input_includes_cache: true
+    })
+  })
+
+  it('does not add cache fields again after stats are already canonicalized', () => {
+    expect(
+      extractProviderUsage('claude', {
+        stats: {
+          input_tokens: 17,
+          cache_creation_input_tokens: 4,
+          cache_read_input_tokens: 3,
+          output_tokens: 2,
+          _agentbench_input_includes_cache: true
+        }
+      })
+    ).toMatchObject({
+      input_tokens: 17,
+      output_tokens: 2,
+      total_tokens: 19,
+      _agentbench_input_includes_cache: true
+    })
+  })
+
   it('extracts and canonicalizes Kimi input_other payloads', () => {
     expect(
       extractProviderUsage('kimi', {

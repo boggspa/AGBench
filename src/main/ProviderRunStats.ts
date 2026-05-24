@@ -66,6 +66,7 @@ export function normalizeProviderUsage(
     'input_cache_read'
   ])
   const audioInput = sumProviderUsageNumbers(usage, ['input_audio_tokens'])
+  const inputAlreadyIncludesCache = usage._agentbench_input_includes_cache === true
   const outputBase = firstProviderUsageNumber(usage, [
     'output_tokens',
     'outputTokens',
@@ -75,7 +76,9 @@ export function normalizeProviderUsage(
     'candidatesTokenCount'
   ])
   const outputAudio = sumProviderUsageNumbers(usage, ['output_audio_tokens'])
-  const inputTokens = Math.trunc(inputBase + cacheInput + audioInput)
+  const inputTokens = Math.trunc(
+    inputBase + (inputAlreadyIncludesCache ? 0 : cacheInput + audioInput)
+  )
   const outputTokens = Math.trunc(outputBase + outputAudio)
   const explicitTotal = firstProviderUsageNumber(usage, [
     'total_tokens',
@@ -116,7 +119,8 @@ export function normalizeProviderUsage(
     ...(limits.inputTokenLimit ? { inputTokenLimit: limits.inputTokenLimit } : {}),
     ...(limits.outputTokenLimit ? { outputTokenLimit: limits.outputTokenLimit } : {}),
     ...(limits.totalTokenLimit ? { totalTokenLimit: limits.totalTokenLimit } : {}),
-    _agentbench_input_includes_cache: cacheInput > 0 || audioInput > 0 || provider === 'kimi'
+    _agentbench_input_includes_cache:
+      inputAlreadyIncludesCache || cacheInput > 0 || audioInput > 0 || provider === 'kimi'
   }
 }
 

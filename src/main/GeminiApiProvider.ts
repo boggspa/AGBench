@@ -920,10 +920,12 @@ export async function tryRunGeminiApi(
   //      that omit `recordUsage` still pass — the call is a no-op when
   //      the dep is absent.
   // We swallow any thrown error so a flaky disk doesn't crash the run.
-  const usageAlreadyRecorded = Boolean(
-    deps.recordUsage && normalizedRoute.appRunId && normalizedRoute.appChatId
-  )
-  if (usageAlreadyRecorded) {
+  const recordUsage = deps.recordUsage
+  const appRunId = normalizedRoute.appRunId
+  const appChatId = normalizedRoute.appChatId
+  let usageAlreadyRecorded = false
+  if (recordUsage && appRunId && appChatId) {
+    usageAlreadyRecorded = true
     try {
       const inputTokens = lastUsage?.promptTokenCount ?? 0
       const outputTokens = lastUsage?.candidatesTokenCount ?? 0
@@ -932,11 +934,11 @@ export async function tryRunGeminiApi(
         priorChat?.workspaceId ||
         (priorChat?.scope === 'global' ? '__agentbench_global_chats__' : '') ||
         ''
-      deps.recordUsage({
+      recordUsage({
         provider: 'gemini',
         workspaceId,
-        chatId: normalizedRoute.appChatId,
-        runId: normalizedRoute.appRunId,
+        chatId: appChatId,
+        runId: appRunId,
         usageKind: 'run',
         model,
         inputTokens,
