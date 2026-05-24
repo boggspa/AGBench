@@ -3449,6 +3449,57 @@ button.sidebar-item {
   padding-block: calc(var(--space-sm) + 1px);
 }
 
+/*
+ * "Thinking…" text shimmer-sweep.
+ *
+ * Real Codex's "Thinking" label has a brighter highlight band
+ * sweeping left-to-right across the text — gives the moment-of-
+ * waiting a sense of forward motion instead of a static label.
+ *
+ * Implementation: linear-gradient background clipped to the
+ * glyph silhouette via `background-clip: text` + transparent
+ * fill, animated by sliding `background-position`. The
+ * `text-shimmer-sweep` keyframes (defined below) animate from
+ * +220% → -120% over 2.4s linear loop, matching the timing
+ * the run-status shimmer-sweep already uses for visual
+ * consistency.
+ *
+ * Targets the first <span> inside `.message-thinking` (the
+ * literal word "Thinking"); the trailing `.thinking-dots`
+ * cluster keeps its own pulse animation untouched.
+ */
+.message-thinking > span:first-child {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 0%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 35%,
+    var(--text-primary) 50%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 65%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer-sweep 2.4s linear infinite;
+}
+
+@keyframes text-shimmer-sweep {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -120% 0; }
+}
+
+/* Reduced-motion respect: hold the brighter colour mid-sweep
+ * instead of animating. Same pattern the run-status shimmer
+ * uses elsewhere in the file. */
+[data-reduce-motion="true"] .message-thinking > span:first-child {
+  animation: none;
+  background: none;
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+
 .thinking-dots {
   display: inline-flex;
   align-items: center;
@@ -7116,6 +7167,53 @@ button.diff-file-row {
   color: var(--tool-error);
   opacity: 1;
 }
+/*
+ * Active tool-call row label — shimmer-sweep through the label
+ * text while the tool call is in flight. Reads as "the agent is
+ * actively doing this thing right now" without needing a separate
+ * spinner or status badge. Pairs with the icon-pulse rule right
+ * below it.
+ *
+ * Re-uses the `text-shimmer-sweep` keyframes defined alongside
+ * the "Thinking…" label so the timing matches across both
+ * surfaces (2.4s linear loop).
+ *
+ * Targets the label cluster `.activity-label-main` (covers the
+ * inline-row text + its `<strong>` filename + the
+ * `.activity-inline-command` code chip). Icon is excluded
+ * because its own pulse animation already conveys the running
+ * state visually.
+ */
+.activity-row[data-status="running"] .activity-label,
+.activity-row[data-status="running"] .activity-label-main,
+.activity-row[data-status="running"] .activity-label-main strong,
+.activity-row[data-status="running"] .activity-inline-command {
+  background: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 0%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 35%,
+    var(--text-primary) 50%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 65%,
+    color-mix(in srgb, var(--text-secondary) 70%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: text-shimmer-sweep 2.4s linear infinite;
+}
+
+[data-reduce-motion="true"] .activity-row[data-status="running"] .activity-label,
+[data-reduce-motion="true"] .activity-row[data-status="running"] .activity-label-main,
+[data-reduce-motion="true"] .activity-row[data-status="running"] .activity-label-main strong,
+[data-reduce-motion="true"] .activity-row[data-status="running"] .activity-inline-command {
+  animation: none;
+  background: none;
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+
 .activity-row[data-status="running"] .activity-category-icon {
   /* Running keeps the accent but pulses gently so the user sees
    * something is in flight. No separate `--tool-running` color
