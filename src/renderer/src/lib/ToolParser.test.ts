@@ -240,6 +240,16 @@ describe('ToolParser', () => {
       expect(getToolDisplayName('reveal_in_finder', {})).toBe('Revealed in Finder')
       expect(getToolDisplayName('open_in_ide_at_position', {})).toBe('Opened in IDE at position')
     })
+    it('uses the dictionary for AppWatch and browser monitoring tools', () => {
+      expect(getToolDisplayName('appwatch_latest_frame', {})).toBe('Latest AppWatch frame')
+      expect(getToolDisplayName('appwatch_frames', {})).toBe('AppWatch frames')
+      expect(getToolDisplayName('browser_navigate', {})).toBe('Navigated browser')
+      expect(getToolDisplayName('mcp__AGBench__browser_snapshot', {})).toBe('Browser snapshot')
+    })
+    it('uses the dictionary for handoff and collaboration fallbacks', () => {
+      expect(getToolDisplayName('get_handoff_cards', {})).toBe('Handoff cards')
+      expect(getToolDisplayName('collabToolCall', {})).toBe('Collaboration tool call')
+    })
   })
 
   describe('estimateLineChanges', () => {

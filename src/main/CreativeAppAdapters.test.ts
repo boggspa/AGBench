@@ -1529,4 +1529,99 @@ describe('CreativeAppAdapters', () => {
       expect(writer.text).not.toContain('font="Arial"')
     })
   })
+
+  describe('FCPXML capability probe writer rows', () => {
+    it('row 2.2: emits an audio-only asset-clip on lane -1 under the picture', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          resources: {
+            formats: [{ id: 'r1', name: '24p', frameDuration: '1/24s' }],
+            assets: [
+              { id: 'r2', name: 'Picture', src: 'file:///picture.mov' },
+              {
+                id: 'r3',
+                name: 'Music Bed',
+                src: 'file:///music.wav',
+                hasVideo: '0',
+                hasAudio: '1'
+              }
+            ]
+          },
+          projects: [
+            {
+              name: 'probe-2-2',
+              sequence: {
+                format: 'r1',
+                duration: '5s',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'asset-clip',
+                    name: 'Picture',
+                    ref: 'r2',
+                    offset: '0s',
+                    duration: '5s',
+                    videoRole: 'video',
+                    markers: [],
+                    captions: []
+                  },
+                  {
+                    index: 1,
+                    type: 'asset-clip',
+                    name: 'Music Bed',
+                    ref: 'r3',
+                    offset: '0s',
+                    duration: '5s',
+                    lane: '-1',
+                    audioRole: 'music',
+                    markers: [],
+                    captions: []
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+
+      expect(writer.text).toMatch(/<asset[^>]+id="r3"[^>]+hasVideo="0"[^>]+hasAudio="1"/)
+      expect(writer.text).toMatch(
+        /<asset-clip[^>]+name="Music Bed"[^>]+lane="-1"[^>]+audioRole="music"/
+      )
+    })
+
+    it('row 3.3: emits the canonical Basic Title Position param for offset titles', () => {
+      const writer = serializeFcpxmlTimelineIr({
+        ir: {
+          projects: [
+            {
+              name: 'probe-3-3',
+              sequence: {
+                duration: '5s',
+                spine: [
+                  {
+                    index: 0,
+                    type: 'title',
+                    name: 'Offset Title',
+                    duration: '3s',
+                    lane: '1',
+                    markers: [],
+                    captions: [],
+                    text: 'Lower third',
+                    position: '0 -200'
+                  }
+                ],
+                markers: []
+              }
+            }
+          ]
+        }
+      })
+
+      expect(writer.text).toContain(
+        '<param name="Position" key="9999/999166631/999166633/1/100/101" value="0 -200"/>'
+      )
+    })
+  })
 })

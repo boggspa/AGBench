@@ -9,10 +9,7 @@ import {
   powerMonitor
 } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
-import {
-  detectExternalPath,
-  type ExternalPathDetection
-} from './services/ExternalPathDetector'
+import { detectExternalPath } from './services/ExternalPathDetector'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
@@ -41,7 +38,11 @@ import {
 import { detectTailscale } from './TailscaleDetector'
 import { UpdateService, type UpdateStateSnapshot } from './UpdateService'
 import { AuditService } from './services/AuditService'
-import { ApprovalService, handleApprovalTimeout } from './services/ApprovalService'
+import {
+  ApprovalService,
+  handleApprovalTimeout,
+  type PendingExternalPathDetection
+} from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
 import { RunCoordinator } from './services/RunCoordinator'
@@ -2632,8 +2633,19 @@ function expireRunScopedApprovalLedger(session: {
 const AGENTIC_SERVICE_LABELS: Record<AgenticServiceId, string> = {
   shellCommands: 'Shell commands',
   fileChanges: 'File changes',
-  mcpTools: 'MCP and tool calls',
+  mcpTools: 'Tool calls',
   subThreadDelegation: 'Sub-thread delegation'
+}
+
+function agenticServiceBlockedMessage(service: AgenticServiceId): string {
+  return `${AGENTIC_SERVICE_LABELS[service]} blocked by AGBench settings.`
+}
+
+function agenticServiceDisabledMessage(service: AgenticServiceId): string {
+  if (service === 'subThreadDelegation') {
+    return `${AGENTIC_SERVICE_LABELS[service]} is disabled in AGBench settings.`
+  }
+  return `${AGENTIC_SERVICE_LABELS[service]} are disabled in AGBench settings.`
 }
 
 const AGENTIC_SERVICE_IDS = new Set<AgenticServiceId>([
@@ -2687,6 +2699,7 @@ async function requestAgenticServiceApproval(
     preview?: any
     runId?: string
     forcePrompt?: boolean
+    externalPathDetection?: PendingExternalPathDetection
   }
 ): Promise<boolean> {
   const settings = AppStore.getSettings()
@@ -2698,7 +2711,6 @@ async function requestAgenticServiceApproval(
     settings
   )
   const { policy, workspaceGrantAllowed, sessionGrantAllowed, decision } = resolution
-  const label = AGENTIC_SERVICE_LABELS[service]
 
   if (decision === 'deny') {
     auditService.recordAutomaticApprovalDecision(
@@ -2712,7 +2724,7 @@ async function requestAgenticServiceApproval(
       'request',
       { policy }
     )
-    sender?.send('agent-error', { provider, error: `${label} blocked by AGBench settings.` })
+    sender?.send('agent-error', { provider, error: agenticServiceBlockedMessage(service) })
     return false
   }
 
@@ -2737,7 +2749,11 @@ async function requestAgenticServiceApproval(
     )
     return true
   }
-  if (decision === 'allow' && !(request.forcePrompt && !sessionGrantAllowed)) {
+  if (
+    decision === 'allow' &&
+    !request.externalPathDetection &&
+    !(request.forcePrompt && !sessionGrantAllowed)
+  ) {
     auditService.recordAutomaticApprovalDecision(
       provider,
       { appRunId: request.runId },
@@ -2756,13 +2772,19 @@ async function requestAgenticServiceApproval(
   }
 
   const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
-  const actions = approvalActionsForPolicy(policy, workspacePath)
+  const externalPathDetection = request.externalPathDetection
+  const actions: AgentApprovalAction[] = externalPathDetection
+    ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
+    : approvalActionsForPolicy(policy, workspacePath)
+  const title = externalPathDetection ? externalPathApprovalTitle() : request.title
+  const body = externalPathDetection ? externalPathApprovalBody(externalPathDetection) : request.body
   return new Promise((resolveApproval) => {
     approvalService?.registerGeminiTool(approvalId, {
       provider,
       service,
       workspacePath,
       runId: request.runId,
+      externalPathDetection,
       resolve: resolveApproval
     })
     runManager.registerApproval(request.runId, approvalId)
@@ -2780,9 +2802,15 @@ async function requestAgenticServiceApproval(
       id: approvalId,
       approvalId,
       method: request.method,
-      title: request.title,
-      body: request.body,
-      preview: { ...(request.preview || {}), actions },
+      title,
+      body,
+      preview: {
+        ...(request.preview || {}),
+        actions,
+        ...(externalPathDetection
+          ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
+          : {})
+      },
       actions
     }
     appendDurableRunEventForRoute(
@@ -2790,7 +2818,7 @@ async function requestAgenticServiceApproval(
       { appRunId: session?.runId, appChatId: session?.appChatId },
       'approval_request',
       'control',
-      request.title,
+      title,
       approvalPayload
     )
     recordApprovalLedgerRequest(
@@ -2810,7 +2838,7 @@ async function requestAgenticServiceApproval(
       approvalId,
       workspaceId: workspaceIdForApprovalPush(workspacePath),
       threadId: session?.appChatId ?? request.runId ?? approvalId,
-      summary: request.title
+      summary: title
     })
   })
 }
@@ -6299,6 +6327,14 @@ async function canUseClaudeSdkTool(
   if (!service) {
     return { behavior: 'allow', updatedInput }
   }
+  const externalPathDetection = detectExternalPathForProviderApproval({
+    provider: 'claude',
+    appChatId: route.appChatId,
+    toolName,
+    method: 'claude/canUseTool',
+    params: normalizedInput,
+    workspacePath: payload.scope === 'global' ? undefined : payload.workspace
+  })
   const allowed = await requestAgenticServiceApproval(
     sender,
     'claude',
@@ -6314,7 +6350,8 @@ async function canUseClaudeSdkTool(
             : 'Approve Claude tool call',
       body: toolName,
       preview: claudeToolApprovalPreview(toolName, normalizedInput, service),
-      runId: route.appRunId
+      runId: route.appRunId,
+      externalPathDetection
     }
   )
   return allowed
@@ -6975,11 +7012,36 @@ async function runKimiWireProvider(
             const requestType = message.params?.type
             if (requestType === 'ApprovalRequest') {
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
+              const kimiToolName = String(
+                message.params?.payload?.sender ||
+                  message.params?.payload?.action ||
+                  'kimi_action'
+              )
+              const externalPathDetection = detectExternalPathForProviderApproval({
+                provider: 'kimi',
+                appChatId: route.appChatId,
+                toolName: kimiToolName,
+                method: 'request/ApprovalRequest',
+                params: message.params?.payload,
+                workspacePath: payload.scope === 'global' ? undefined : payload.workspace
+              })
+              const actions: AgentApprovalAction[] = externalPathDetection
+                ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
+                : ['accept', 'acceptForSession', 'decline', 'cancel']
+              const approvalTitle = externalPathDetection
+                ? externalPathApprovalTitle()
+                : 'Approve Kimi action'
+              const approvalBody = externalPathDetection
+                ? externalPathApprovalBody(externalPathDetection)
+                : message.params?.payload?.description ||
+                  message.params?.payload?.action ||
+                  'Kimi is requesting permission to continue.'
               approvalService?.registerKimi(approvalId, {
                 child,
                 rpcId: message.id,
                 params: message.params,
-                runId: route.appRunId
+                runId: route.appRunId,
+                externalPathDetection
               })
               runManager.registerApproval(route.appRunId, approvalId)
               scheduleApprovalTimeout({
@@ -6997,30 +7059,17 @@ async function runKimiWireProvider(
                 requestId: message.id,
                 method: 'request/ApprovalRequest',
                 params: message.params,
-                title: 'Approve Kimi action',
-                body:
-                  message.params?.payload?.description ||
-                  message.params?.payload?.action ||
-                  'Kimi is requesting permission to continue.',
-                actions: [
-                  'accept',
-                  'acceptForSession',
-                  'decline',
-                  'cancel'
-                ] as AgentApprovalAction[],
+                title: approvalTitle,
+                body: approvalBody,
+                actions,
                 preview: {
                   kind: 'tool',
-                  toolName:
-                    message.params?.payload?.sender ||
-                    message.params?.payload?.action ||
-                    'kimi_action',
+                  toolName: kimiToolName,
                   params: message.params?.payload,
-                  actions: [
-                    'accept',
-                    'acceptForSession',
-                    'decline',
-                    'cancel'
-                  ] as AgentApprovalAction[]
+                  actions,
+                  ...(externalPathDetection
+                    ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
+                    : {})
                 }
               }
               appendDurableRunEventForRoute(
@@ -7028,7 +7077,7 @@ async function runKimiWireProvider(
                 route,
                 'approval_request',
                 'control',
-                'Approve Kimi action',
+                approvalTitle,
                 approvalPayload
               )
               recordApprovalLedgerRequest('kimi', route, approvalPayload, {
@@ -7047,8 +7096,9 @@ async function runKimiWireProvider(
                 // run id and finally the approval id so the push always has
                 // a routable identifier.
                 threadId: route.appChatId ?? route.appRunId ?? approvalId,
-                summary:
-                  message.params?.payload?.description ||
+                summary: externalPathDetection
+                  ? approvalTitle
+                  : message.params?.payload?.description ||
                   message.params?.payload?.action ||
                   'Kimi is requesting permission to continue.'
               })
@@ -7594,6 +7644,81 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
     })
   }
   return normalized
+}
+
+function externalPathGrantMetadataLists(chat: ChatRecord | null | undefined): ExternalPathGrant[] {
+  const metadata = chat?.providerMetadata as Record<string, unknown> | undefined
+  if (!metadata) return []
+  return [
+    metadata.codexExternalPathGrants,
+    metadata.externalPathGrants,
+    metadata.claudeExternalPathGrants,
+    metadata.geminiExternalPathGrants,
+    metadata.kimiExternalPathGrants
+  ].flatMap((candidate) => (Array.isArray(candidate) ? (candidate as ExternalPathGrant[]) : []))
+}
+
+function externalPathGrantsForProvider(
+  appChatId: string | undefined,
+  provider: ProviderId
+): ExternalPathGrant[] {
+  if (!appChatId) return []
+  return normalizeExternalPathGrants(
+    externalPathGrantMetadataLists(AppStore.getChat(appChatId))
+  ).filter((grant) => grant.provider === provider)
+}
+
+function detectExternalPathForProviderApproval(input: {
+  provider: ProviderId
+  appChatId?: string
+  toolName: string
+  method?: string
+  params: unknown
+  workspacePath?: string
+}): PendingExternalPathDetection | undefined {
+  const detection = detectExternalPath({
+    toolName: input.toolName,
+    method: input.method,
+    params: input.params,
+    workspacePath: input.workspacePath,
+    existingGrants: externalPathGrantsForProvider(input.appChatId, input.provider).map(
+      (grant) => ({
+        path: grant.path,
+        access: grant.access
+      })
+    )
+  })
+  if (!detection.needsPrompt || !detection.path || !detection.access) return undefined
+  return {
+    provider: input.provider,
+    path: detection.path,
+    access: detection.access,
+    basename: detection.basename,
+    appChatId: input.appChatId
+  }
+}
+
+function externalPathApprovalTitle(): string {
+  return 'Grant access to a file outside this workspace?'
+}
+
+function externalPathApprovalBody(detection: PendingExternalPathDetection): string {
+  const label = providerLabel(detection.provider)
+  return detection.access === 'write'
+    ? `${label} wants to edit a file outside the workspace.`
+    : `${label} wants to read a file outside the workspace.`
+}
+
+function externalPathApprovalPreview(detection: PendingExternalPathDetection): {
+  path: string
+  basename?: string
+  access: 'read' | 'write'
+} {
+  return {
+    path: detection.path,
+    basename: detection.basename,
+    access: detection.access
+  }
 }
 
 /**
@@ -8520,7 +8645,6 @@ function handleCodexServerRequest(message: any) {
   }
 
   if (service && policy === 'deny') {
-    const label = AGENTIC_SERVICE_LABELS[service]
     auditService.recordAutomaticApprovalDecision(
       'codex',
       { appRunId: state.appRunId, appChatId: state.appChatId },
@@ -8537,8 +8661,8 @@ function handleCodexServerRequest(message: any) {
       'request',
       { policy }
     )
-    codexClient.reject(message.id, `${label} are disabled in AGBench settings.`)
-    sendAgentCompatError(state.sender, 'codex', `${label} blocked by AGBench settings.`, state)
+    codexClient.reject(message.id, agenticServiceDisabledMessage(service))
+    sendAgentCompatError(state.sender, 'codex', agenticServiceBlockedMessage(service), state)
     return
   }
 
@@ -8645,43 +8769,29 @@ function handleCodexServerRequest(message: any) {
   // The slice-4 modal then renders path-specific copy + 3 buttons:
   // "Grant read access" / "Grant edit access" / "Deny once".
   //
-  // v1: Codex registration only. Gemini + Kimi wire-ins land in a
-  //     follow-up. Grant PERSISTENCE (so the secondary above-row
-  //     appears after granting) also ships as a follow-up; for now
-  //     the action resolves the underlying tool call as approve but
-  //     the grant isn't yet added to chat metadata.
-  let externalPathDetection: ExternalPathDetection | undefined
+  // Provider-specific registration sites share the same external-path
+  // prompt shape so the renderer can issue signed grants consistently.
+  let externalPathDetection: PendingExternalPathDetection | undefined
   try {
-    const existingChat = state.appChatId ? AppStore.getChat(state.appChatId) : null
-    const existingGrants = Array.isArray(
-      existingChat?.providerMetadata?.codexExternalPathGrants
-    )
-      ? (existingChat?.providerMetadata?.codexExternalPathGrants as Array<{
-          path: string
-          access: 'read' | 'write'
-        }>)
-      : []
     const probedToolName =
       typeof (params as Record<string, unknown>)?.toolName === 'string'
         ? ((params as Record<string, unknown>).toolName as string)
         : typeof (params as Record<string, unknown>)?.tool === 'string'
           ? ((params as Record<string, unknown>).tool as string)
           : ''
-    const detection = detectExternalPath({
+    const detection = detectExternalPathForProviderApproval({
+      provider: 'codex',
+      appChatId: state.appChatId,
       toolName: probedToolName,
       method,
       params,
-      workspacePath: isGlobalScope ? undefined : state.workspacePath,
-      existingGrants
+      workspacePath: isGlobalScope ? undefined : state.workspacePath
     })
-    if (detection.needsPrompt && detection.path) {
+    if (detection) {
       externalPathDetection = detection
       actions = ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
-      formatted.title = 'Grant access to a file outside this workspace?'
-      formatted.body =
-        detection.access === 'write'
-          ? `Codex wants to edit a file outside the workspace.`
-          : `Codex wants to read a file outside the workspace.`
+      formatted.title = externalPathApprovalTitle()
+      formatted.body = externalPathApprovalBody(detection)
     }
   } catch (err) {
     // Detector is best-effort. If it throws, fall through to the
@@ -8695,11 +8805,7 @@ function handleCodexServerRequest(message: any) {
     actions,
     ...(externalPathDetection && externalPathDetection.path
       ? {
-          externalPathDetection: {
-            path: externalPathDetection.path,
-            basename: externalPathDetection.basename,
-            access: externalPathDetection.access
-          }
+          externalPathDetection: externalPathApprovalPreview(externalPathDetection)
         }
       : {})
   }
@@ -8711,15 +8817,7 @@ function handleCodexServerRequest(message: any) {
     service,
     workspacePath: isGlobalScope ? undefined : state.workspacePath,
     runId: state.appRunId,
-    externalPathDetection:
-      externalPathDetection && externalPathDetection.path && externalPathDetection.access
-        ? {
-            path: externalPathDetection.path,
-            access: externalPathDetection.access,
-            basename: externalPathDetection.basename,
-            appChatId: state.appChatId
-          }
-        : undefined
+    externalPathDetection
   })
   runManager.registerApproval(state.appRunId, approvalId)
   scheduleApprovalTimeout({
@@ -19293,11 +19391,11 @@ if (isGeminiMcpBridgeProcess) {
       'respond-agent-approval',
       async (_, requestId: string, action: AgentApprovalAction) => {
         // Slice 5 v2 of the external-path-redesign arc. When the user
-        // clicks "Grant read access" / "Grant edit access" in the
-        // approval modal, peek at the pending approval's stashed
+        // clicks "Grant read access" / "Grant edit access" in an
+        // external-path approval modal, peek at the pending approval's stashed
         // externalPathDetection BEFORE resolving — issue a signed grant
-        // and persist it onto the chat's providerMetadata so the
-        // secondary above-row appears the moment the modal closes.
+        // and persist it onto the chat's providerMetadata so the secondary
+        // above-row appears the moment the modal closes.
         if (
           action === 'grantExternalPathRead' ||
           action === 'grantExternalPathEdit'
@@ -19319,7 +19417,7 @@ if (isGeminiMcpBridgeProcess) {
               }
               const grant = issueExternalPathGrant({
                 id: `runtime-${Date.now()}-${randomBytes(4).toString('hex')}`,
-                provider: 'codex',
+                provider: detection.provider,
                 workspaceId: undefined,
                 chatId: detection.appChatId,
                 path: detection.path,

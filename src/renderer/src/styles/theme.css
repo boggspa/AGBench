@@ -22,6 +22,17 @@
   --panel-border: rgba(255, 255, 255, 0.06);
   --panel-elevated-bg: rgba(38, 38, 44, 0.88);
 
+  /* Surface scale. Keep shared UI chrome on these tokens so new themes
+   * can alter hierarchy without chasing one-off panel/composer colors. */
+  --surface-1: #1c1c20;
+  --surface-2: #24242a;
+  --surface-3: #2e2e36;
+  --surface-border: rgba(255, 255, 255, 0.06);
+  --surface-text: var(--text-primary);
+  --surface-text-muted: var(--text-secondary);
+  --surface: var(--surface-1);
+  --surface-elevated: var(--surface-2);
+
   /* Content / Transcript */
   --content-bg: transparent;
   --content-max-width: 780px;
@@ -137,6 +148,10 @@
   --panel-bg: rgba(239, 243, 248, 0.68);
   --panel-bg-solid: #eef2f7;
   --panel-elevated-bg: rgba(255, 255, 255, 0.72);
+  --surface-1: #ffffff;
+  --surface-2: #f1f1f4;
+  --surface-3: #e7e7ec;
+  --surface-border: rgba(18, 21, 27, 0.10);
   --composer-bg: rgba(255, 255, 255, 0.78);
   --composer-bg-solid: #ffffff;
   --composer-glass-bg: rgba(255, 255, 255, 0.46);
@@ -237,6 +252,74 @@
 [data-theme="citrus"] {
   --accent: #d8a900;
   --accent-hover: #efbf1d;
+}
+
+[data-theme="mist"] {
+  --app-bg: #eef4f6;
+  --app-bg-elevated: #fbfdfe;
+  --app-bg-sunken: #dfe9ed;
+  --content-bg: rgba(244, 249, 251, 0.96);
+  --sidebar-bg: rgba(229, 238, 242, 0.70);
+  --sidebar-bg-solid: #e5eef2;
+  --panel-bg: rgba(232, 241, 245, 0.72);
+  --panel-bg-solid: #e8f1f5;
+  --panel-elevated-bg: rgba(251, 253, 254, 0.78);
+  --surface-1: #fbfdfe;
+  --surface-2: #eef3f6;
+  --surface-3: #e0e9ee;
+  --surface-border: rgba(28, 44, 54, 0.11);
+  --composer-bg: rgba(251, 253, 254, 0.82);
+  --composer-bg-solid: #fbfdfe;
+  --composer-glass-bg: rgba(251, 253, 254, 0.48);
+  --composer-glass-border: rgba(45, 88, 100, 0.18);
+  --composer-glass-highlight: rgba(255, 255, 255, 0.76);
+  --composer-glass-vignette: rgba(55, 92, 108, 0.08);
+  --text-primary: rgba(18, 29, 35, 0.92);
+  --text-secondary: rgba(18, 29, 35, 0.62);
+  --text-tertiary: rgba(18, 29, 35, 0.45);
+  --text-muted: rgba(18, 29, 35, 0.32);
+  --sidebar-text: rgba(18, 29, 35, 0.82);
+  --sidebar-text-secondary: rgba(18, 29, 35, 0.52);
+  --sidebar-border: rgba(28, 44, 54, 0.10);
+  --panel-border: rgba(28, 44, 54, 0.10);
+  --composer-border: rgba(28, 44, 54, 0.12);
+  --accent: #3f8794;
+  --accent-hover: #2e7180;
+  --shadow-lg: 0 14px 44px rgba(66, 92, 112, 0.16);
+}
+
+[data-theme="sage"] {
+  --app-bg: #f0f5f0;
+  --app-bg-elevated: #fcfefb;
+  --app-bg-sunken: #e3ece2;
+  --content-bg: rgba(247, 250, 246, 0.96);
+  --sidebar-bg: rgba(231, 240, 229, 0.70);
+  --sidebar-bg-solid: #e7f0e5;
+  --panel-bg: rgba(235, 243, 233, 0.72);
+  --panel-bg-solid: #ebf3e9;
+  --panel-elevated-bg: rgba(252, 254, 251, 0.78);
+  --surface-1: #fcfefb;
+  --surface-2: #f0f4ed;
+  --surface-3: #e3ecdf;
+  --surface-border: rgba(34, 54, 38, 0.11);
+  --composer-bg: rgba(252, 254, 251, 0.82);
+  --composer-bg-solid: #fcfefb;
+  --composer-glass-bg: rgba(252, 254, 251, 0.48);
+  --composer-glass-border: rgba(68, 104, 74, 0.18);
+  --composer-glass-highlight: rgba(255, 255, 255, 0.76);
+  --composer-glass-vignette: rgba(70, 105, 76, 0.08);
+  --text-primary: rgba(22, 32, 22, 0.92);
+  --text-secondary: rgba(22, 32, 22, 0.62);
+  --text-tertiary: rgba(22, 32, 22, 0.45);
+  --text-muted: rgba(22, 32, 22, 0.32);
+  --sidebar-text: rgba(22, 32, 22, 0.82);
+  --sidebar-text-secondary: rgba(22, 32, 22, 0.52);
+  --sidebar-border: rgba(34, 54, 38, 0.10);
+  --panel-border: rgba(34, 54, 38, 0.10);
+  --composer-border: rgba(34, 54, 38, 0.12);
+  --accent: #5f8f62;
+  --accent-hover: #4b7a4f;
+  --shadow-lg: 0 14px 44px rgba(76, 98, 78, 0.16);
 }
 
 [data-theme="graphite"] {

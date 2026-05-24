@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react'
 import type {
   AgenticNetworkPolicy,
+  AgenticServiceId,
   AgenticServicePolicy,
   AgenticServicesSettings,
+  AgenticWorkspaceGrant,
   AppearanceMode,
   CodexSandboxFallbackMode,
   AppSettings,
@@ -68,6 +70,7 @@ interface SettingsPanelProps {
    * `returnResultToParent: true`) finishes. See AutoResumeParent.ts. */
   autoResumeParentOnSubThreadCompletion: boolean
   agenticWorkspaceGrantCount: number
+  agenticWorkspaceGrants: AgenticWorkspaceGrant[]
   activeProvider: ProviderId
   providerCapabilities?: ProviderCapabilityContract | null
   geminiMcpBridgeEnabled: boolean
@@ -106,6 +109,11 @@ interface SettingsPanelProps {
   onCancelGeminiOAuthLogin?: (profileId?: string | null) => void
   onSetDefaultGeminiAuthProfile?: (profileId: string | null) => void
   onDeleteGeminiAuthProfile?: (profileId: string) => void
+  onRemoveAgenticWorkspaceGrant?: (
+    provider: ProviderId,
+    workspacePath: string,
+    service: AgenticServiceId
+  ) => Promise<void> | void
   onInstallGeminiMcpBridge: () => void
   onRefreshGeminiMcpBridgeStatus: () => void
   onRefreshProductOperationsStatus: () => void
@@ -170,7 +178,9 @@ const THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
   { value: 'sunset', label: 'Sunset' },
   { value: 'forest', label: 'Forest' },
   { value: 'cyber', label: 'Cyber' },
-  { value: 'candy', label: 'Candy' }
+  { value: 'candy', label: 'Candy' },
+  { value: 'mist', label: 'Mist' },
+  { value: 'sage', label: 'Sage' }
 ]
 const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
   { value: 'system', label: 'System' },
@@ -404,6 +414,7 @@ export function SettingsPanel({
   agenticServices,
   autoResumeParentOnSubThreadCompletion,
   agenticWorkspaceGrantCount,
+  agenticWorkspaceGrants,
   activeProvider,
   providerCapabilities,
   geminiMcpBridgeEnabled,
@@ -430,6 +441,7 @@ export function SettingsPanel({
   onCancelGeminiOAuthLogin,
   onSetDefaultGeminiAuthProfile,
   onDeleteGeminiAuthProfile,
+  onRemoveAgenticWorkspaceGrant,
   onInstallGeminiMcpBridge,
   onRefreshGeminiMcpBridgeStatus,
   onRefreshProductOperationsStatus,
@@ -527,7 +539,7 @@ export function SettingsPanel({
     { id: 'system', label: 'System' },
     { id: 'remote-workspaces', label: 'Remote Workspaces' },
     { id: 'bridge-networking', label: 'Bridge Networking' },
-    { id: 'approval-ledger', label: 'Approval Ledger' }
+    { id: 'approval-ledger', label: 'Approvals' }
   ]
 
   return (
@@ -1870,8 +1882,15 @@ export function SettingsPanel({
         {/* ── Remote Workspaces (Phase C4) ─────────────────────────────── */}
         {activeTab === 'remote-workspaces' && <RemoteWorkspacesPanel />}
 
-        {/* ── Approval Ledger (Phase E2) ───────────────────────────────── */}
-        {activeTab === 'approval-ledger' && <ApprovalLedgerPanel />}
+        {/* ── Approvals (Phase E2 + admin grants) ──────────────────────── */}
+        {activeTab === 'approval-ledger' && (
+          <ApprovalLedgerPanel
+            workspaceGrants={agenticWorkspaceGrants}
+            onRevokeWorkspaceGrant={(grant) =>
+              onRemoveAgenticWorkspaceGrant?.(grant.provider, grant.workspacePath, grant.service)
+            }
+          />
+        )}
 
         {/* ── Bridge Networking (Phase E3) ─────────────────────────────── */}
         {activeTab === 'bridge-networking' && (

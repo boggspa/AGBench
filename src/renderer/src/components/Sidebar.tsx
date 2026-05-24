@@ -31,7 +31,6 @@ interface SidebarProps {
   currentWorkspace: WorkspaceRecord | null
   chats: ChatRecord[]
   currentChat: ChatRecord | null
-  currentRun: any
   usageSummary: Array<{
     provider: ProviderId
     model: string
@@ -535,7 +534,6 @@ export function Sidebar({
   currentWorkspace,
   chats,
   currentChat,
-  currentRun,
   usageSummary,
   runningChatIds = [],
   onSelectWorkspace,
@@ -1607,35 +1605,6 @@ export function Sidebar({
             </div>
           </div>
         </div>
-
-        {/* Run Summary */}
-        {currentRun && currentRun.stats && (
-          <div className="run-summary">
-            <div className="run-summary-title">Run Summary</div>
-            <div className="run-summary-row">
-              <span>Model</span>
-              <span>{currentRun.actualModel || currentRun.requestedModel}</span>
-            </div>
-            <div className="run-summary-row">
-              <span>Mode</span>
-              <span>{currentRun.approvalMode || 'unknown'}</span>
-            </div>
-            <div className="run-summary-row">
-              <span>Status</span>
-              <span>{currentRun.status}</span>
-            </div>
-            <div className="run-summary-row">
-              <span>Duration</span>
-              <span>{currentRun.stats.duration_ms}ms</span>
-            </div>
-            <div className="run-summary-row">
-              <span>Tokens</span>
-              <span>
-                {currentRun.stats.input_tokens || 0} → {currentRun.stats.output_tokens || 0}
-              </span>
-            </div>
-          </div>
-        )}
 
         {/* Phase L6 slice 1 — Model Usage card extracted to its own
          * component. Phase L6 slices 2-6 will rebuild this card's

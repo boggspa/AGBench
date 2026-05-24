@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import type {
+  AgenticWorkspaceGrant,
   ApprovalLedgerRecord,
   ApprovalLedgerStatus,
   ProviderId
 } from '../../../main/store/types'
+import { getWorkspacePolicyServiceLabel } from '../lib/workspacePolicyServices'
 
 /**
  * ApprovalLedgerPanel — Phase E2 admin UI for the durable approval ledger.
@@ -46,10 +48,27 @@ const DATE_RANGES = [
 
 type DateRangeId = (typeof DATE_RANGES)[number]['id']
 
-export function ApprovalLedgerPanel(): React.JSX.Element {
+const PROVIDER_LABELS: Record<ProviderId, string> = {
+  gemini: 'Gemini',
+  codex: 'Codex',
+  claude: 'Claude',
+  kimi: 'Kimi'
+}
+
+export interface ApprovalLedgerPanelProps {
+  workspaceGrants?: AgenticWorkspaceGrant[]
+  onRevokeWorkspaceGrant?: (grant: AgenticWorkspaceGrant) => Promise<void> | void
+}
+
+export function ApprovalLedgerPanel({
+  workspaceGrants = [],
+  onRevokeWorkspaceGrant
+}: ApprovalLedgerPanelProps): React.JSX.Element {
   const [records, setRecords] = useState<ApprovalLedgerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [revokeError, setRevokeError] = useState<string | null>(null)
+  const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null)
   const [providerFilter, setProviderFilter] = useState<ProviderId | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<Set<ApprovalLedgerStatus>>(new Set(ALL_STATUSES))
   const [dateRange, setDateRange] = useState<DateRangeId>('7d')
@@ -126,6 +145,18 @@ export function ApprovalLedgerPanel(): React.JSX.Element {
       .sort((a, b) => Date.parse(b.requestedAt) - Date.parse(a.requestedAt))
   }, [records, dateRange, search])
 
+  const sortedWorkspaceGrants = useMemo(
+    () =>
+      [...workspaceGrants].sort((a, b) => {
+        const workspaceCompare = a.workspacePath.localeCompare(b.workspacePath)
+        if (workspaceCompare !== 0) return workspaceCompare
+        const providerCompare = a.provider.localeCompare(b.provider)
+        if (providerCompare !== 0) return providerCompare
+        return a.service.localeCompare(b.service)
+      }),
+    [workspaceGrants]
+  )
+
   const toggleStatus = (status: ApprovalLedgerStatus): void => {
     setStatusFilter((prev) => {
       const next = new Set(prev)
@@ -161,17 +192,78 @@ export function ApprovalLedgerPanel(): React.JSX.Element {
     URL.revokeObjectURL(url)
   }, [providerFilter, statusFilter, dateRange, search, visibleRecords])
 
+  const handleRevokeWorkspaceGrant = useCallback(
+    async (grant: AgenticWorkspaceGrant): Promise<void> => {
+      if (!onRevokeWorkspaceGrant) return
+      try {
+        setRevokeError(null)
+        setRevokingGrantId(grant.id)
+        await onRevokeWorkspaceGrant(grant)
+      } catch (err) {
+        setRevokeError(err instanceof Error ? err.message : String(err))
+      } finally {
+        setRevokingGrantId(null)
+      }
+    },
+    [onRevokeWorkspaceGrant]
+  )
+
   return (
     <div className="approval-ledger-panel">
       <div className="approval-ledger-header">
-        <label className="settings-label">Approval ledger</label>
+        <label className="settings-label">Approvals</label>
         <div className="settings-hint approval-ledger-hint">
-          Durable record of every approval decision (manual, auto-allowed by policy, auto-denied on
-          timeout). Useful for auditing why a run paused, was approved, or was denied unattended.
+          Review durable workspace grants and the approval ledger for manual, policy, and timeout
+          decisions.
         </div>
       </div>
 
       {error && <div className="settings-error approval-ledger-error">{error}</div>}
+      {revokeError && <div className="settings-error approval-ledger-error">{revokeError}</div>}
+
+      <section className="approval-grant-admin" aria-label="Workspace approval grants">
+        <div className="approval-grant-admin-header">
+          <div>
+            <div className="approval-grant-admin-title">Workspace grants</div>
+            <div className="settings-hint approval-grant-admin-hint">
+              Session and run grants expire automatically; workspace grants stay active until
+              revoked.
+            </div>
+          </div>
+          <span className="approval-grant-admin-count">{sortedWorkspaceGrants.length}</span>
+        </div>
+        {sortedWorkspaceGrants.length === 0 ? (
+          <div className="settings-hint approval-grant-empty">No active workspace grants.</div>
+        ) : (
+          <ul className="approval-grant-list">
+            {sortedWorkspaceGrants.map((grant) => {
+              const createdAt = formatTimestamp(grant.createdAt)
+              const isRevoking = revokingGrantId === grant.id
+              return (
+                <li key={grant.id} className="approval-grant-row">
+                  <div className="approval-grant-row-main">
+                    <span className="approval-grant-row-title">
+                      {PROVIDER_LABELS[grant.provider]} ·{' '}
+                      {getWorkspacePolicyServiceLabel(grant.service)}
+                    </span>
+                    <span className="approval-grant-row-meta" title={grant.workspacePath}>
+                      {workspaceBasename(grant.workspacePath)} · Granted {createdAt}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost approval-grant-revoke"
+                    onClick={() => void handleRevokeWorkspaceGrant(grant)}
+                    disabled={!onRevokeWorkspaceGrant || isRevoking}
+                  >
+                    {isRevoking ? 'Revoking…' : 'Revoke'}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
 
       <div className="approval-ledger-controls">
         <div className="approval-ledger-control-group">

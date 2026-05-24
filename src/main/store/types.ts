@@ -22,6 +22,8 @@ export type ThemeAppearance =
   | 'forest'
   | 'cyber'
   | 'candy'
+  | 'mist'
+  | 'sage'
 export type ThemeCornerStyle = 'rounded' | 'hard'
 export type ThemeAccentStyle =
   | 'system'

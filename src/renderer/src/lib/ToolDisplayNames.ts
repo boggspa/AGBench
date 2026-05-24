@@ -44,13 +44,30 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
 
   // ── Browser automation ───────────────────────────────────────
   browser_open: 'Opened browser',
+  browser_navigate: 'Navigated browser',
   browser_click: 'Clicked in browser',
+  browser_type: 'Typed in browser',
+  browser_press_key: 'Pressed browser key',
+  browser_select: 'Selected in browser',
+  browser_wait: 'Waited in browser',
+  browser_evaluate: 'Ran browser script',
   browser_screenshot: 'Browser screenshot',
+  browser_snapshot: 'Browser snapshot',
   browser_console: 'Browser console',
 
   // ── Attached window (Vision OCR / capture) ───────────────────
   attached_window_capture: 'Captured attached window',
   attached_window_status: 'Attached window status',
+  attached_window_pick: 'Picked attached window',
+  attached_window_detach: 'Detached attached window',
+
+  // ── AppWatch / Appshots window monitoring ────────────────────
+  appwatch_start: 'Started AppWatch',
+  appwatch_stop: 'Stopped AppWatch',
+  appwatch_status: 'AppWatch status',
+  appwatch_latest_frame: 'Latest AppWatch frame',
+  appwatch_frames: 'AppWatch frames',
+  appwatch_ocr: 'AppWatch OCR',
 
   // ── Workspace / project introspection ────────────────────────
   workspace_search: 'Workspace search',
@@ -62,11 +79,17 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   provider_auth_status: 'Provider auth status',
   run_task: 'Ran task',
   run_timeline: 'Run timeline',
+  run_events: 'Run events',
+  run_diff: 'Run diff',
   raw_provider_events: 'Raw provider events',
   test_result_summary: 'Test result summary',
+  probe_external_path: 'External path probe',
 
   // ── Handoff / role / auth ────────────────────────────────────
   create_handoff_card: 'Created handoff card',
+  get_handoff_cards: 'Handoff cards',
+  update_handoff_card: 'Updated handoff card',
+  delete_handoff_card: 'Deleted handoff card',
   switch_auth_profile: 'Switched auth profile',
   agent_delegation_role: 'Agent delegation role',
 
@@ -94,6 +117,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   // param is supplied — these are the no-title fallbacks.)
   update_topic: 'Topic update',
   invoke_agent: 'Invoked agent',
+  collabtoolcall: 'Collaboration tool call',
   codex_reasoning: 'Codex reasoning',
   codex_plan: 'Codex plan',
   kimi_thinking: 'Kimi thinking',

@@ -186,6 +186,41 @@ describe('ApprovalService — registries', () => {
     svc.deleteHostCommand('h-1')
     expect(svc.getHostCommand('h-1')).toBeUndefined()
   })
+
+  it('getPendingExternalPathDetection reads provider approval registries', () => {
+    const { deps } = makeDeps()
+    const svc = new ApprovalService(deps)
+    const claudeDetection = {
+      provider: 'claude' as const,
+      path: '/outside/file.ts',
+      access: 'write' as const,
+      basename: 'file.ts',
+      appChatId: 'chat-1'
+    }
+    const kimiDetection = {
+      provider: 'kimi' as const,
+      path: '/outside/readme.md',
+      access: 'read' as const,
+      basename: 'readme.md',
+      appChatId: 'chat-2'
+    }
+    svc.registerGeminiTool('g-1', {
+      provider: 'claude',
+      service: 'fileChanges',
+      resolve: vi.fn(),
+      externalPathDetection: claudeDetection
+    })
+    svc.registerKimi('k-1', {
+      child: { kill: vi.fn() } as never,
+      rpcId: 1,
+      params: {},
+      externalPathDetection: kimiDetection
+    })
+
+    expect(svc.getPendingExternalPathDetection('g-1')).toBe(claudeDetection)
+    expect(svc.getPendingExternalPathDetection('k-1')).toBe(kimiDetection)
+    expect(svc.getPendingExternalPathDetection('missing')).toBeUndefined()
+  })
 })
 
 describe('ApprovalService — lookupRoute', () => {
@@ -348,6 +383,30 @@ describe('ApprovalService — resolve dispatch', () => {
       expect.objectContaining({ request_id: 'kimi-req-1', response: 'approve' })
     )
     expect(childKill).not.toHaveBeenCalled()
+  })
+
+  it('Kimi: external path grant actions approve the pending wire request', async () => {
+    const { deps, spies } = makeDeps()
+    const svc = new ApprovalService(deps)
+    svc.registerKimi('k-1', {
+      child: { kill: vi.fn() } as never,
+      rpcId: 42,
+      params: { payload: { id: 'kimi-req-1' } },
+      runId: 'r-1',
+      externalPathDetection: {
+        provider: 'kimi',
+        path: '/outside/file.ts',
+        access: 'write',
+        basename: 'file.ts',
+        appChatId: 'chat-1'
+      }
+    })
+    await svc.resolve('k-1', 'grantExternalPathEdit')
+    expect(spies.respondToKimiWireRequest).toHaveBeenCalledWith(
+      expect.anything(),
+      42,
+      expect.objectContaining({ request_id: 'kimi-req-1', response: 'approve' })
+    )
   })
 
   it('Kimi cancel kills the child process', async () => {

@@ -89,6 +89,10 @@ import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCa
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import {
+  formatComposerPathMention,
+  parseComposerMentionTrigger
+} from './lib/ComposerMentionTrigger'
+import {
   CombinedModelPicker,
   type CombinedModelPickerModelOption,
   type CombinedModelPickerReasoningOption
@@ -97,6 +101,7 @@ import {
   CombinedPermissionsPicker,
   type PermissionOption
 } from './components/CombinedPermissionsPicker'
+import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
@@ -1250,6 +1255,18 @@ type RunCompleteNotice = {
   startedAt?: string
 }
 
+type RunCompleteSummaryRow = {
+  label: string
+  value: string
+}
+
+type ChatTokenTally = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  explicitCostUsd: number
+}
+
 type PersistentSessionStatus =
   | 'idle'
   | 'starting'
@@ -1627,6 +1644,75 @@ const formatWorkDuration = (startedAt?: string, completedAt?: string): string | 
   if (seconds > 0 || parts.length === 0) parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`)
 
   return `Worked for ${parts.slice(0, 2).join(' ')}`
+}
+
+const formatCompactDurationMs = (durationMs: number): string => {
+  const ms = Math.max(0, Math.round(durationMs))
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (minutes < 60) return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
+}
+
+const formatRunStatusLabel = (status?: string): string => {
+  if (!status) return 'Unknown'
+  if (status === 'success' || status === 'completed') return 'Complete'
+  if (status === 'success_with_warnings') return 'Warnings'
+  if (status === 'failed') return 'Failed'
+  if (status === 'cancelled') return 'Cancelled'
+  return status
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const formatApprovalModeLabel = (mode?: string): string => {
+  if (!mode) return 'Unknown'
+  if (mode === 'plan') return 'Read-only'
+  if (mode === 'auto_edit') return 'Auto edit'
+  return formatRunStatusLabel(mode)
+}
+
+const getRunDurationMs = (run: ChatRun): number => {
+  const statsDuration = extractUsageCount(run.stats, [['duration_ms'], ['durationMs']])
+  if (statsDuration > 0) return statsDuration
+
+  const started = run.startedAt ? Date.parse(run.startedAt) : NaN
+  const ended = run.endedAt ? Date.parse(run.endedAt) : NaN
+  if (Number.isFinite(started) && Number.isFinite(ended) && ended >= started) {
+    return ended - started
+  }
+  return 0
+}
+
+const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSummaryRow[] => {
+  if (!run) return []
+
+  const rows: RunCompleteSummaryRow[] = []
+  const model = run.actualModel || run.requestedModel
+  if (model) rows.push({ label: 'Model', value: model })
+  rows.push({ label: 'Mode', value: formatApprovalModeLabel(run.approvalMode) })
+  rows.push({ label: 'Status', value: formatRunStatusLabel(run.status) })
+
+  const durationMs = getRunDurationMs(run)
+  if (durationMs > 0) rows.push({ label: 'Duration', value: formatCompactDurationMs(durationMs) })
+
+  const counts = extractUsageCountsFromCandidate(run.stats)
+  if (counts.totalTokens > 0) {
+    rows.push({
+      label: 'Tokens',
+      value: `${formatContextTokens(counts.inputTokens)} in / ${formatContextTokens(counts.outputTokens)} out`
+    })
+    rows.push({ label: 'Total', value: `${formatContextTokens(counts.totalTokens)} tokens` })
+  }
+
+  return rows
 }
 
 const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
@@ -2668,6 +2754,22 @@ const extractUsageCountsFromCandidate = (
   }
 }
 
+const extractUsageCostUsd = (stats: any): number => {
+  const raw = extractNestedValue(stats, [
+    ['cost_usd'],
+    ['costUsd'],
+    ['total_cost_usd'],
+    ['totalCostUsd'],
+    ['usage', 'cost_usd'],
+    ['usage', 'costUsd'],
+    ['billing', 'cost_usd'],
+    ['billing', 'costUsd']
+  ])
+  if (raw === undefined || raw === null || raw === '') return 0
+  const parsed = typeof raw === 'string' ? Number(raw.trim()) : Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
 const isNonEmptyObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
@@ -3172,6 +3274,31 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   return 'Gemini'
+}
+const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
+  return runs.reduce<ChatTokenTally>(
+    (total, run) => {
+      const counts = extractUsageCountsFromCandidate(run?.stats)
+      return {
+        inputTokens: total.inputTokens + counts.inputTokens,
+        outputTokens: total.outputTokens + counts.outputTokens,
+        totalTokens: total.totalTokens + counts.totalTokens,
+        explicitCostUsd: total.explicitCostUsd + extractUsageCostUsd(run?.stats)
+      }
+    },
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0 }
+  )
+}
+const formatExplicitCostUsd = (costUsd: number): string => {
+  if (!Number.isFinite(costUsd) || costUsd <= 0) return ''
+  if (costUsd < 0.01) return '<$0.01'
+  if (costUsd < 1) return `$${costUsd.toFixed(2)}`
+  return `$${costUsd.toFixed(2)}`
+}
+const formatThreadTokenTally = (providerLabel: string, tally: ChatTokenTally): string | null => {
+  if (tally.totalTokens <= 0) return null
+  const cost = formatExplicitCostUsd(tally.explicitCostUsd)
+  return `${providerLabel} ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
 }
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean =>
@@ -3746,6 +3873,7 @@ type TranscriptPanelProps = {
   runCompleteNotice: RunCompleteNotice | null
   runCompleteDurationText: string | null
   currentChat: ChatRecord | null
+  currentRun?: ChatRun | null
   currentWorkspacePath?: string
   currentProviderLabel: string
   displayFileChangeSummaries: DiffFileSummary[]
@@ -3784,6 +3912,7 @@ const TranscriptPanel = memo(
     runCompleteNotice,
     runCompleteDurationText,
     currentChat,
+    currentRun,
     currentWorkspacePath,
     currentProviderLabel,
     displayFileChangeSummaries,
@@ -3804,6 +3933,10 @@ const TranscriptPanel = memo(
       [isWelcomeChat, messages]
     )
     const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
+    const runCompleteSummaryRows = useMemo(
+      () => buildRunCompleteSummaryRows(currentRun),
+      [currentRun]
+    )
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
       const runById = new Map<string, ChatRun>()
@@ -4032,6 +4165,21 @@ const TranscriptPanel = memo(
                   <CopyResponseIcon />
                 </button>
               </div>
+              {runCompleteSummaryRows.length > 0 && (
+                <div className="run-complete-summary-card">
+                  <div className="run-complete-summary-header">
+                    <strong>Run details</strong>
+                  </div>
+                  <div className="run-complete-summary-grid">
+                    {runCompleteSummaryRows.map((row) => (
+                      <div key={row.label} className="run-complete-summary-item">
+                        <span>{row.label}</span>
+                        <strong title={row.value}>{row.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="file-change-summary-card">
                 <div className="file-change-summary-header">
                   <strong>File changes</strong>
@@ -4114,6 +4262,7 @@ const TranscriptPanel = memo(
     previous.pendingPlanChoice === next.pendingPlanChoice &&
     previous.runCompleteNotice === next.runCompleteNotice &&
     previous.runCompleteDurationText === next.runCompleteDurationText &&
+    previous.currentRun === next.currentRun &&
     previous.currentChat === next.currentChat &&
     previous.currentWorkspacePath === next.currentWorkspacePath &&
     previous.currentProviderLabel === next.currentProviderLabel &&
@@ -4473,8 +4622,8 @@ function App(): React.JSX.Element {
   const rawEventsAutoFollowRef = useRef(true)
   const rawEventsUserScrolledAwayRef = useRef(false)
   const composerAreaRef = useRef<HTMLDivElement>(null)
-  // Composer textarea + @-mention popover state. AgentMentionMenu reads the
-  // anchor + query and inserts `[@Name](agent://uuid)` at the caret on select.
+  // Composer textarea + @-mention popover state. AgentMentionMenu can insert
+  // agent markdown mentions or plain path text at the caret.
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
@@ -5803,6 +5952,19 @@ function App(): React.JSX.Element {
           currentWorkspace.path,
           service
         )
+    applyAgenticWorkspaceGrantSettings(nextSettings)
+  }
+
+  const handleRemoveAgenticWorkspaceGrant = async (
+    provider: ProviderId,
+    workspacePath: string,
+    service: AgenticServiceId
+  ) => {
+    const nextSettings = await window.api.removeAgenticWorkspaceGrant(
+      provider,
+      workspacePath,
+      service
+    )
     applyAgenticWorkspaceGrantSettings(nextSettings)
   }
 
@@ -11394,11 +11556,13 @@ function App(): React.JSX.Element {
     state: steerState,
     chatId: currentChat?.appChatId || null
   })
+  const currentProviderLabel = getProviderLabel(currentProvider)
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
-  const cumulativeChatTokens = (currentChat?.runs || []).reduce((sum, run) => {
-    const counts = extractUsageCountsFromCandidate(run?.stats)
-    return sum + (counts.totalTokens || 0)
-  }, 0)
+  const chatTokenTally = useMemo(
+    () => buildChatTokenTally(currentChat?.runs || []),
+    [currentChat?.runs]
+  )
+  const cumulativeChatTokens = chatTokenTally.totalTokens
   const latestRunLimits = extractUsageLimits(currentRun?.stats)
   const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
   const contextWindowSize = resolveContextWindow(
@@ -11409,6 +11573,7 @@ function App(): React.JSX.Element {
   const contextUsedPercent =
     contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
   const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
+  const threadTokenTallyLabel = formatThreadTokenTally(currentProviderLabel, chatTokenTally)
   const latestRunDiffStats = useMemo(() => {
     // Prefer a live aggregate from tool activities on the current run so the
     // above-composer bar updates mid-task rather than only after runDiff lands.
@@ -11526,7 +11691,6 @@ function App(): React.JSX.Element {
     codexExternalPathGrants,
     externalPathRepoMetadata
   ])
-  const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -12229,7 +12393,6 @@ function App(): React.JSX.Element {
               currentWorkspace={currentWorkspace}
               chats={chats}
               currentChat={currentChat}
-              currentRun={currentRun}
               usageSummary={usageSummary}
               runningChatIds={runningChatIdsArray}
               onSelectWorkspace={handleSelectExistingWorkspace}
@@ -12479,6 +12642,7 @@ function App(): React.JSX.Element {
               runCompleteNotice={runCompleteNotice}
               runCompleteDurationText={runCompleteDurationText}
               currentChat={currentChat}
+              currentRun={currentRun}
               currentWorkspacePath={currentWorkspace?.path}
               currentProviderLabel={currentProviderLabel}
               displayFileChangeSummaries={displayFileChangeSummaries}
@@ -12861,7 +13025,9 @@ function App(): React.JSX.Element {
                   const caret = e.target.selectionStart ?? nextValue.length
                   const before = nextValue.slice(0, caret)
                   const slashMatch = before.match(/(?:^|\s)\/([\w-]*)$/)
-                  const atMatch = !slashMatch ? before.match(/@([\w-]*)$/) : null
+                  const mentionTrigger = !slashMatch
+                    ? parseComposerMentionTrigger(nextValue, caret)
+                    : null
                   if (slashMatch) {
                     // The `/` itself sits at `caret - slashQueryLen - 1`.
                     const queryLen = slashMatch[1].length
@@ -12873,9 +13039,9 @@ function App(): React.JSX.Element {
                       setMentionQuery('')
                       mentionAnchorIndexRef.current = null
                     }
-                  } else if (atMatch) {
-                    mentionAnchorIndexRef.current = caret - atMatch[0].length
-                    setMentionQuery(atMatch[1] || '')
+                  } else if (mentionTrigger) {
+                    mentionAnchorIndexRef.current = mentionTrigger.anchorIndex
+                    setMentionQuery(mentionTrigger.query)
                     setMentionMenuOpen(true)
                     if (slashMenuOpen) {
                       setSlashMenuOpen(false)
@@ -12938,6 +13104,8 @@ function App(): React.JSX.Element {
               <AgentMentionMenu
                 chat={currentChat || undefined}
                 provider={currentProvider}
+                workspacePath={currentWorkspace?.path}
+                externalPathGrants={codexExternalPathGrants}
                 prompt={prompt}
                 open={mentionMenuOpen}
                 anchorRef={composerTextareaRef}
@@ -12947,7 +13115,7 @@ function App(): React.JSX.Element {
                   setMentionQuery('')
                   mentionAnchorIndexRef.current = null
                 }}
-                onPick={({ agentId, name }) => {
+                onPick={(mention) => {
                   const anchor = mentionAnchorIndexRef.current
                   if (anchor === null) {
                     setMentionMenuOpen(false)
@@ -12956,17 +13124,20 @@ function App(): React.JSX.Element {
                   }
                   const before = prompt.slice(0, anchor)
                   const afterQuery = prompt.slice(anchor + 1 + mentionQuery.length)
-                  const mentionMarkdown = `[@${name}](agent://${agentId}) `
-                  const next = `${before}${mentionMarkdown}${afterQuery}`
+                  const insertion =
+                    mention.kind === 'agent' && mention.agentId
+                      ? `[@${mention.name}](agent://${mention.agentId}) `
+                      : formatComposerPathMention(mention.path || mention.name)
+                  const next = `${before}${insertion}${afterQuery}`
                   setPrompt(next)
                   setMentionMenuOpen(false)
                   setMentionQuery('')
                   mentionAnchorIndexRef.current = null
-                  // Restore caret after the inserted mention.
+                  // Restore caret after the inserted mention/path.
                   requestAnimationFrame(() => {
                     const ta = composerTextareaRef.current
                     if (!ta) return
-                    const newCaret = before.length + mentionMarkdown.length
+                    const newCaret = before.length + insertion.length
                     ta.focus()
                     ta.setSelectionRange(newCaret, newCaret)
                   })
@@ -13451,17 +13622,113 @@ function App(): React.JSX.Element {
                 )}
                 <div className="composer-inline-pickers">
                   <div className="composer-inline-pickers-left">
-                    <button
-                      className="composer-image-picker-btn"
-                      type="button"
-                      title="Add attachment"
-                      aria-label="Add attachment"
-                      onClick={handlePickImages}
-                      disabled={isCurrentComposerLocked}
-                      data-composer-control="attach"
-                    >
-                      <PlusSymbolIcon />
-                    </button>
+                    {(() => {
+                      const workspaceActionDisabled = !currentWorkspace || !currentChat
+                      const plusSections: ComposerPlusPickerSection[] = [
+                        {
+                          id: 'add',
+                          title: 'Add',
+                          items: [
+                            {
+                              id: 'attachment',
+                              label: 'Attachment',
+                              description: 'Add files or images',
+                              icon: <PlusSymbolIcon />,
+                              disabled: isCurrentComposerLocked,
+                              onSelect: handlePickImages
+                            },
+                            {
+                              id: 'attached-window',
+                              label: attachedWindow ? 'Detach app' : 'Attach app',
+                              description: attachedWindow
+                                ? attachedWindow.streaming
+                                  ? 'Stop live capture and detach'
+                                  : 'Detach the picked window'
+                                : 'Pick a running app window',
+                              icon: <CommandSymbolIcon />,
+                              disabled:
+                                isCurrentComposerLocked ||
+                                (!attachedWindow && isAttachingWindow),
+                              onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
+                            }
+                          ]
+                        },
+                        {
+                          id: 'workspace',
+                          title: 'Workspace',
+                          items: isCurrentGlobalChat
+                            ? []
+                            : [
+                                {
+                                  id: 'safety',
+                                  label: 'Status',
+                                  description: `${currentProviderLabel} safety and setup`,
+                                  icon: <TrustSymbolIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('safety')
+                                },
+                                {
+                                  id: 'diff',
+                                  label: 'Diff Studio',
+                                  description: `${currentProviderLabel} workspace changes`,
+                                  icon: <FileMenuSelectionIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('diff')
+                                },
+                                {
+                                  id: 'capabilities',
+                                  label: 'Models',
+                                  description: `${currentProviderLabel} capability state`,
+                                  icon: <ModelSymbolIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('capabilities')
+                                }
+                              ]
+                        },
+                        {
+                          id: 'commands',
+                          title: 'Commands',
+                          items: isCurrentGlobalChat
+                            ? []
+                            : [
+                                {
+                                  id: 'palette',
+                                  label:
+                                    currentProvider === 'gemini'
+                                      ? 'Slash commands'
+                                      : 'Command palette',
+                                  description:
+                                    currentProvider === 'gemini'
+                                      ? 'Gemini slash command palette'
+                                      : `${currentProviderLabel} command palette`,
+                                  icon: <CommandSymbolIcon />,
+                                  active: isCommandPaletteOpen,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () =>
+                                    setIsCommandPaletteOpen((current) => !current)
+                                },
+                                {
+                                  id: 'review',
+                                  label: isPreparingDiffReview ? 'Preparing review' : 'Review diff',
+                                  description: 'Read-only plan-mode review',
+                                  icon: <ReviewSymbolIcon />,
+                                  disabled:
+                                    workspaceActionDisabled || isPreparingDiffReview,
+                                  onSelect: () => void handleReviewCurrentDiff()
+                                }
+                              ]
+                        }
+                      ]
+                      return (
+                        <ComposerPlusPicker
+                          provider={currentProvider}
+                          composerStyle={appearance.composerStyle}
+                          sections={plusSections}
+                          disabled={isCurrentComposerLocked}
+                          triggerIcon={<PlusSymbolIcon />}
+                        />
+                      )
+                    })()}
                     {attachedWindow ? (
                       <button
                         className={
@@ -13481,7 +13748,7 @@ function App(): React.JSX.Element {
                             : 'Detach attached window'
                         }
                         onClick={handleDetachWindow}
-                        data-composer-control="attached-window"
+                        data-composer-control="attach"
                         data-streaming={attachedWindow.streaming ? 'true' : 'false'}
                       >
                         {attachedWindow.streaming && (
@@ -13520,19 +13787,7 @@ function App(): React.JSX.Element {
                           ×
                         </span>
                       </button>
-                    ) : (
-                      <button
-                        className="composer-image-picker-btn"
-                        type="button"
-                        title="Attach a running app (pick a window via the macOS picker)"
-                        aria-label="Attach a running app"
-                        onClick={handleAttachWindow}
-                        disabled={isCurrentComposerLocked || isAttachingWindow}
-                        data-composer-control="attach-window"
-                      >
-                        {isAttachingWindow ? '…' : '⌘'}
-                      </button>
-                    )}
+                    ) : null}
                     <label
                       className="composer-picker-label"
                       title="Provider"
@@ -13851,96 +14106,14 @@ function App(): React.JSX.Element {
                         </select>
                       </label>
                     )}
-                    {/*
-                      Composer-unification (Phase J1): the inline-pickers
-                      tail is now identical across providers:
-                        [safety] [diff] [models] [command-palette] [review]
-                      Previously Gemini had its own bonanza of standalone
-                      buttons (`/stats`, `/help`, `GEMINI.md`, `/restore`,
-                      palette) and other providers had the safety/diff/
-                      models/palette icons. Now everyone shares the same
-                      five icons; Gemini's bespoke commands live INSIDE the
-                      palette popover (see `geminiQuickToggleItems` in the
-                      palette items derivation) so they're still one click
-                      away but the row position stays predictable.
-                    */}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('safety')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Show ${currentProviderLabel} safety and setup state`}
-                        aria-label={`Show ${currentProviderLabel} status`}
-                      >
-                        <TrustSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('diff')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Open Diff Studio for ${currentProviderLabel} workspace changes`}
-                        aria-label={`Open ${currentProviderLabel} diff`}
-                      >
-                        <FileMenuSelectionIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('capabilities')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Show ${currentProviderLabel} models and capability state`}
-                        aria-label={`Show ${currentProviderLabel} models`}
-                      >
-                        <ModelSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
-                        type="button"
-                        onClick={() => setIsCommandPaletteOpen((current) => !current)}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={
-                          currentProvider === 'gemini'
-                            ? 'Open Gemini slash command palette'
-                            : `Open ${currentProviderLabel} command palette`
-                        }
-                        aria-label={
-                          currentProvider === 'gemini'
-                            ? 'Open Gemini slash command palette'
-                            : `Open ${currentProviderLabel} command palette`
-                        }
-                      >
-                        <CommandSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command composer-review-command"
-                        type="button"
-                        onClick={() => void handleReviewCurrentDiff()}
-                        disabled={!currentWorkspace || !currentChat || isPreparingDiffReview}
-                        title={
-                          isPreparingDiffReview
-                            ? 'Preparing review...'
-                            : 'Review the current workspace diff in read-only plan mode'
-                        }
-                        aria-label={
-                          isPreparingDiffReview ? 'Preparing review' : 'Review current diff'
-                        }
-                      >
-                        <ReviewSymbolIcon />
-                      </button>
-                    )}
                   </div>
                   <div className="composer-inline-actions">
                     <ContextWheel percent={contextUsedPercent} label={contextLabel} />
+                    {threadTokenTallyLabel && (
+                      <span className="composer-thread-token-tally" title={contextLabel}>
+                        {threadTokenTallyLabel}
+                      </span>
+                    )}
                     {steerIndicatorMessage && (
                       <span className="composer-steer-indicator" role="status" aria-live="polite">
                         <span className="composer-steer-indicator-dot" aria-hidden />
@@ -14272,6 +14445,7 @@ function App(): React.JSX.Element {
               agenticServices={agenticServices}
               autoResumeParentOnSubThreadCompletion={autoResumeParentOnSubThreadCompletion}
               agenticWorkspaceGrantCount={agenticWorkspaceGrantCount}
+              agenticWorkspaceGrants={agenticWorkspaceGrants}
               activeProvider={currentProvider}
               providerCapabilities={currentProviderCapabilities}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
@@ -14301,6 +14475,9 @@ function App(): React.JSX.Element {
               }
               onDeleteGeminiAuthProfile={(profileId) =>
                 void handleDeleteGeminiAuthProfile(profileId)
+              }
+              onRemoveAgenticWorkspaceGrant={(provider, workspacePath, service) =>
+                void handleRemoveAgenticWorkspaceGrant(provider, workspacePath, service)
               }
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}

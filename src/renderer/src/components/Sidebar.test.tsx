@@ -60,7 +60,6 @@ function renderSidebar(chats: ChatRecord[]) {
       currentWorkspace={workspace}
       chats={chats}
       currentChat={chats[0] ?? null}
-      currentRun={null}
       usageSummary={[]}
       runningChatIds={[]}
       onSelectWorkspace={() => {}}
