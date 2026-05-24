@@ -226,6 +226,9 @@ declare global {
         access?: 'read' | 'write',
         provider?: string
       ) => Promise<ExternalPathGrant | null>
+      probeExternalPath: (
+        absolutePath: string
+      ) => Promise<{ isRepo: boolean; repoRoot: string; branch?: string } | null>
       runGemini: (
         workspace: string,
         prompt: string,

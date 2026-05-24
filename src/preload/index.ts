@@ -12,6 +12,20 @@ const api = {
   // back-compat with prior renderers that only sent `access`).
   selectExternalPathGrant: (access: 'read' | 'write' = 'read', provider?: string) =>
     ipcRenderer.invoke('select-external-path-grant', access, provider),
+  /**
+   * Slice 1 of the external-path-redesign arc. Renderer asks main to
+   * look at an absolute path and report whether it's a git repo (and
+   * what branch is checked out). Used by the new stacked above-rows
+   * to label each external-path grant. Returns
+   *   { isRepo: true, repoRoot, branch? }
+   * for repos, or null when the path doesn't exist / isn't a repo.
+   */
+  probeExternalPath: (absolutePath: string) =>
+    ipcRenderer.invoke('probe-external-path', absolutePath) as Promise<{
+      isRepo: boolean
+      repoRoot: string
+      branch?: string
+    } | null>,
   runGemini: (
     workspace: string,
     prompt: string,

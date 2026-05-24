@@ -93,6 +93,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'select-workspace': [],
   'select-image-files': [],
   'select-external-path-grant': ['externalPathGrantAccess'],
+  'probe-external-path': ['nonEmptyString'],
   'list-workspace-files': ['workspacePath'],
   'read-workspace-file': ['workspacePath', 'filePath'],
   'discover-gemini-commands': ['workspacePath'],

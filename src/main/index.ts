@@ -18344,6 +18344,21 @@ if (isGeminiMcpBridgeProcess) {
       }
     )
 
+    /**
+     * Slice 1 of the external-path-redesign arc. Given an absolute
+     * path, return whether it sits inside a git repo + the current
+     * branch. Used by the renderer's stacked above-rows to label
+     * each external-path grant with its branch name (mirrors how
+     * Claude Code shows `<repo> <branch>` per touched repo).
+     */
+    ipcMain.handle(
+      'probe-external-path',
+      async (_, absolutePath: string) => {
+        const { probeExternalPath } = await import('./services/ExternalPathProbe')
+        return probeExternalPath(absolutePath)
+      }
+    )
+
     ipcMain.handle(
       'read-workspace-file',
       async (_, workspace: string, filePath: string): Promise<WorkspaceFileReadResult> => {
