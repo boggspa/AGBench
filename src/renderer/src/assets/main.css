@@ -19303,24 +19303,25 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"] .composer-above-bar > .composer-above-bar-files-cluster {
   grid-column: 2;
   justify-self: center;
-  display: inline-flex;
+  display: inline-flex !important;
+  flex-direction: row !important;
   align-items: center;
   gap: 8px;
 }
 
-/* Enforce files-first ordering inside the Codex cluster. JSX
- * already renders files before stats, so this is defensive —
- * pins the order regardless of any future stylesheet override
- * or stale dev cache that might invert the visual sequence. */
+/* Enforce files-first ordering inside the Codex cluster. `!important`
+ * to defeat any stale build cache, late-stage cascade override, or
+ * future stylesheet inversion. Files render at order 1 (left), diff
+ * stats at order 2 (right). */
 [data-composer-style="codex"]
   .composer-above-bar-files-cluster
   .composer-above-bar-files {
-  order: 1;
+  order: 1 !important;
 }
 [data-composer-style="codex"]
   .composer-above-bar-files-cluster
   .composer-above-bar-stats {
-  order: 2;
+  order: 2 !important;
 }
 [data-composer-style="codex"] .composer-above-bar > .composer-above-bar-action {
   grid-column: 3;
@@ -20061,16 +20062,39 @@ input:disabled, select:disabled, textarea:disabled {
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-combined-picker-trigger-suffix {
   color: var(--surface-text-muted);
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger,
+/*
+ * Codex shell trigger chrome in light mode.
+ *
+ * Earlier this block FORCED white-on-* with `!important` on the
+ * assumption that "themed-shell stays themed" — Codex/Claude
+ * chrome stayed dark even in light themes. The product spec
+ * flipped tonight: the Codex shell should be light-mode aware,
+ * matching the real Codex app's light theme. Switch the trigger
+ * + suffix text to dark tones so labels like "Full Workspace
+ * Access" / "4 grants" / "Extra High" become legible on the
+ * light composer surface.
+ *
+ * Claude shell still stays dark — Claude's identity is the
+ * orange-on-near-black palette in both modes, no light variant.
+ */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger {
+  background: transparent !important;
+  color: rgba(29, 29, 31, 0.86) !important;
+  border-color: transparent !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-primary {
+  color: rgba(29, 29, 31, 0.86) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-suffix {
+  color: rgba(29, 29, 31, 0.56) !important;
+}
+
+/* Claude shell still uses the dark palette in light themes. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-combined-picker-trigger {
-  /* Codex shell + Claude shell deliberately stay dark in light mode
-   * (themed-shell stays themed). Re-assert the dark inherited
-   * styles to beat the generic light-theme rule above. */
   background: transparent !important;
   color: rgba(255, 255, 255, 0.86) !important;
   border-color: transparent !important;
 }
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-combined-picker-trigger-suffix,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
   color: color-mix(in srgb, #ffffff 54%, transparent) !important;
 }
