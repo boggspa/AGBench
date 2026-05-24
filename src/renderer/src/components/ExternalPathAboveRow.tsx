@@ -21,9 +21,21 @@ import type { ExternalPathGrant } from '../../../main/store/types'
 import type { ExternalPathGitMetadata } from '../lib/ExternalPathRepoDetect'
 import { describeExternalPath } from '../lib/ExternalPathRepoDetect'
 
+interface ExternalPathDiffStats {
+  additions: number
+  deletions: number
+  filesChanged: number
+}
+
 interface ExternalPathAboveRowProps {
   grant: ExternalPathGrant
   repoMetadata: ExternalPathGitMetadata | null
+  /**
+   * Per-repo diff stats from `externalPathDiffStatsByGrant` (slice 6).
+   * Optional — omitted when nothing's been touched in this grant's
+   * scope, in which case the row renders without the diff pill.
+   */
+  diffStats?: ExternalPathDiffStats
   onRevoke: (grant: ExternalPathGrant) => void
 }
 
@@ -88,11 +100,17 @@ function RevokeGlyph(): React.JSX.Element {
 export function ExternalPathAboveRow({
   grant,
   repoMetadata,
+  diffStats,
   onRevoke
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
   const isWrite = grant.access === 'write'
   const accessLabel = isWrite ? 'edit' : 'read'
+  const hasDiff =
+    diffStats &&
+    (diffStats.filesChanged > 0 ||
+      diffStats.additions > 0 ||
+      diffStats.deletions > 0)
 
   return (
     <div
@@ -113,6 +131,25 @@ export function ExternalPathAboveRow({
           ) : null}
         </span>
       </span>
+      {hasDiff && (
+        <>
+          <span
+            className="composer-above-bar-files"
+            title={`${diffStats!.filesChanged} ${
+              diffStats!.filesChanged === 1 ? 'file' : 'files'
+            } changed in this path`}
+          >
+            <strong>{diffStats!.filesChanged}</strong>{' '}
+            {diffStats!.filesChanged === 1 ? 'file changed' : 'files changed'}
+          </span>
+          {(diffStats!.additions > 0 || diffStats!.deletions > 0) && (
+            <span className="composer-above-bar-stats">
+              <span className="composer-diff-add">+{diffStats!.additions}</span>
+              <span className="composer-diff-del">-{diffStats!.deletions}</span>
+            </span>
+          )}
+        </>
+      )}
       <span className="composer-above-bar-secondary-access">
         {isWrite ? 'edit access' : 'read access'}
       </span>

@@ -11472,6 +11472,83 @@ function App(): React.JSX.Element {
       filesChanged: files.length
     }
   }, [currentChat, currentRun?.runId, runDiff])
+  // Slice 6 of the external-path-redesign arc: partition diff stats
+  // by which grant's repoRoot each tool activity's file path falls
+  // under. Secondary above-rows read their entry to display per-repo
+  // file counts + +/- additions, just like the primary row does for
+  // the workspace.
+  //
+  // Bucketing is by the activity's primary file path (`activity.filePath`
+  // for single-file ops, else `diffSummary.files[0].path`). Multi-file
+  // activities are attributed to whichever bucket holds their first
+  // file — approximate but pragmatic for v1; per-file partitioning
+  // can land in a follow-up if it shows up as a real concern. Today
+  // (before slice 5 lands the runtime detector) no tool activity
+  // references external paths, so this aggregate stays empty.
+  const externalPathDiffStatsByGrant = useMemo(() => {
+    const result: Record<
+      string,
+      { additions: number; deletions: number; filesChanged: number }
+    > = {}
+    if (!currentChat) return result
+    // Build the list of (grantId, repoRoot) pairs to bucket against.
+    const grantBuckets: Array<{ id: string; root: string }> = []
+    for (const grant of codexExternalPathGrants) {
+      const meta = externalPathRepoMetadata[grant.id]
+      const root = meta?.isRepo ? meta.repoRoot : grant.path
+      if (!root) continue
+      grantBuckets.push({ id: grant.id, root })
+    }
+    if (grantBuckets.length === 0) return result
+    // Sort longest-first so nested repoRoots (e.g. /a/b inside /a)
+    // bucket to the more specific path.
+    grantBuckets.sort((a, b) => b.root.length - a.root.length)
+
+    const fileBuckets: Record<string, Set<string>> = {}
+    const totals: Record<string, { additions: number; deletions: number }> = {}
+    for (const { id } of grantBuckets) {
+      fileBuckets[id] = new Set()
+      totals[id] = { additions: 0, deletions: 0 }
+    }
+
+    const bucketForPath = (filePath: string | undefined): string | null => {
+      if (!filePath) return null
+      for (const { id, root } of grantBuckets) {
+        if (filePath === root || filePath.startsWith(root + '/')) return id
+      }
+      return null
+    }
+
+    const runId = currentRun?.runId
+    for (const message of currentChat.messages || []) {
+      if (runId && message.runId && message.runId !== runId) continue
+      for (const activity of message.toolActivities || []) {
+        const diff = activity.diffSummary
+        if (!diff) continue
+        const primaryPath = activity.filePath || diff.files?.[0]?.path
+        const grantId = bucketForPath(primaryPath)
+        if (!grantId) continue
+        if (typeof diff.additions === 'number') totals[grantId].additions += diff.additions
+        if (typeof diff.deletions === 'number') totals[grantId].deletions += diff.deletions
+        for (const file of diff.files || []) {
+          if (file?.path) fileBuckets[grantId].add(file.path)
+        }
+      }
+    }
+    for (const { id } of grantBuckets) {
+      result[id] = {
+        additions: totals[id].additions,
+        deletions: totals[id].deletions,
+        filesChanged: fileBuckets[id].size
+      }
+    }
+    return result
+  }, [
+    currentChat,
+    currentRun?.runId,
+    codexExternalPathGrants,
+    externalPathRepoMetadata
+  ])
   const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
@@ -12693,6 +12770,7 @@ function App(): React.JSX.Element {
                   key={grant.id}
                   grant={grant}
                   repoMetadata={externalPathRepoMetadata[grant.id] || null}
+                  diffStats={externalPathDiffStatsByGrant[grant.id]}
                   onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
                 />
               ))}
