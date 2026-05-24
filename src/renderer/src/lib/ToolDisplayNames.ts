@@ -56,16 +56,25 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   attached_window_capture: 'Captured attached window',
   attached_window_status: 'Attached window status',
 
-  // ── Appwatch (Phase M — SCStream ring of recent frames) ──────
-  // M1 surface today; M2 will add `appwatch_frames` for batched
-  // since-cursor retrieval (entry already pre-registered so adding
-  // M2 in the daemon doesn't leave the renderer mis-labeling it).
-  appwatch_attach: 'Attached to window',
-  appwatch_start: 'Started window watch',
-  appwatch_stop: 'Stopped window watch',
-  appwatch_status: 'Window watch status',
-  appwatch_capture: 'Captured window frame',
-  appwatch_frames: 'Pulled window frames',
+  // ── AppWatch / Appshots window monitoring ────────────────────
+  // M1 surface today: start / stop / status / latest_frame. M2
+  // entries (`appwatch_frames`, `appwatch_ocr`) are pre-registered
+  // so the daemon shipping those later doesn't leave the renderer
+  // mis-labeling them as raw underscored identifiers.
+  //
+  // Wording harmonised with Codex's parallel-session expansion on
+  // `codex/tier2-polish-experiments`: "AppWatch" matches the
+  // product-surface name, so post-merge there's no label drift
+  // between the two branches.
+  //
+  // Window ATTACH / DETACH live under the `attached_window_*`
+  // tool family, not here — see entries above.
+  appwatch_start: 'Started AppWatch',
+  appwatch_stop: 'Stopped AppWatch',
+  appwatch_status: 'AppWatch status',
+  appwatch_latest_frame: 'Latest AppWatch frame',
+  appwatch_frames: 'AppWatch frames',
+  appwatch_ocr: 'AppWatch OCR',
 
   // ── Workspace / project introspection ────────────────────────
   workspace_search: 'Workspace search',
