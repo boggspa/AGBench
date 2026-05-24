@@ -14188,10 +14188,37 @@ function App(): React.JSX.Element {
                       // absorbs the old "Tool Grants" pill from the
                       // above-bar. Single chip, two-column popover
                       // (Permissions | Tool Grants).
+                      /*
+                       * Permission mode options shown in the picker.
+                       *
+                       * Internal values (`plan` / `default` / `auto_edit`)
+                       * are the canonical tokens persisted to chat
+                       * metadata and threaded into provider runtime
+                       * mappings (codexApprovalPolicyForMode etc). The
+                       * user-facing labels below are display-only.
+                       *
+                       * Pre-1.0.1 ship UX refinement: relabelled
+                       * `auto_edit` as "Full Workspace Access" — the
+                       * old "Edit files (auto_edit)" label leaked an
+                       * internal token that meant little to a new
+                       * tester. The full preset/effective-permissions
+                       * architecture proposed alongside this rename
+                       * (parseable PermissionPreset enum, centralized
+                       * EffectiveRunPermissions, automatic Tool Grants
+                       * activation per provider/workspace) is queued
+                       * for 1.0.2 — see POST-LUNCH-PLAN.md. Keeping
+                       * the internal token unchanged so the rename is
+                       * label-only with zero behavioural risk.
+                       *
+                       * Read-only safety, global-deny precedence,
+                       * external-path grant separation, and global
+                       * networkAccess gating are unaffected — same
+                       * resolver paths handle the work today.
+                       */
                       const permissionPickerOptions: PermissionOption[] = [
                         { value: 'plan', label: 'Plan / Read-only' },
-                        { value: 'default', label: 'Default approval' },
-                        { value: 'auto_edit', label: 'Edit files (auto_edit)' }
+                        { value: 'default', label: 'Default Approval' },
+                        { value: 'auto_edit', label: 'Full Workspace Access' }
                       ]
                       const normalizedWorkspacePath = (currentWorkspace?.path || '').replace(
                         /\/+$/,
