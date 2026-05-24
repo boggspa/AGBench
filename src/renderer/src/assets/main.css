@@ -18305,3 +18305,113 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 999px;
   box-shadow: 0 4px 14px color-mix(in srgb, var(--accent) 36%, transparent);
 }
+
+/* ============================================================
+ * NEW-SHELL VISUAL FIXES (Phase J7 follow-up)
+ *
+ * Three issues surfaced after the four new shells shipped:
+ *
+ *   1. Textarea content overlaps the absolutely-positioned
+ *      `.composer-top-toggles` (scheduler pill + runtime picker)
+ *      at top-right of the composer-surface. The toggles sit at
+ *      `top: 10px` (~28px tall) so anything starting at the
+ *      textarea's top edge collides with them. Fix: push the
+ *      textarea content down with `padding-top: 44px` for all
+ *      four new shells so the toggles + textarea stop fighting.
+ *
+ *   2. Send button (and other elements that lean against the
+ *      surface edge) gets clipped because the base
+ *      `.composer-surface` rule sets `overflow: hidden`. Lift
+ *      that to `overflow: visible` for the new shells where the
+ *      surface chrome is intentionally invisible or chips float.
+ *
+ *   3. In Native Glass appearance, the rule at line 12972
+ *      `[data-appearance="native_glass"]... :is(.composer-surface)`
+ *      slams a dark glass fill onto `.composer-surface` at
+ *      specificity (0, 4, 0) — beating the new shells' (0, 2, 0)
+ *      transparent rules. The Modular + Satellite shells, which
+ *      want a fully-invisible surface, show a residual dark
+ *      rectangle. Fix: re-assert transparency at higher
+ *      specificity AND `!important` for those two shells.
+ * ============================================================ */
+
+/* 1) Textarea top-padding for all four new shells so the
+ *    absolutely-positioned scheduler + runtime pickers in the
+ *    top-right don't overlap the placeholder / first line. */
+[data-composer-style="modular"] .composer-textarea,
+[data-composer-style="terminal"] .composer-textarea,
+[data-composer-style="stub"] .composer-textarea,
+[data-composer-style="satellite"] .composer-textarea {
+  padding-top: 44px;
+}
+
+/* Terminal's `>` caret needs to slide down with the textarea
+ * content so it still anchors the first input line. */
+[data-composer-style="terminal"] .composer-surface::before {
+  top: 50px;
+}
+
+/* Stub's dashed perforation moves down by the same amount so it
+ * still sits just above where the textarea begins, not stranded
+ * mid-textarea. */
+[data-composer-style="stub"] .composer-surface::after {
+  top: 90px;
+}
+
+/* 2) Overflow: the base surface clips children with overflow:
+ *    hidden. Modular + Satellite have chips/buttons that float
+ *    around (or just past) the surface edge — let them show. */
+[data-composer-style="modular"] .composer-surface,
+[data-composer-style="satellite"] .composer-surface {
+  overflow: visible;
+}
+
+/* 3) MODULAR — bulletproof transparency on the surface and on
+ *    every container that could carry a residual fill (handles
+ *    the native-glass `:is(.composer-surface)` override too).
+ *    `!important` is the simplest way to beat the (0, 4, 0)
+ *    native_glass rule without a specificity arms race. */
+[data-composer-style="modular"] .composer-surface,
+[data-composer-style="modular"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="modular"] .composer-surface::before,
+[data-composer-style="modular"] .composer-surface::after {
+  display: none !important;
+}
+
+/* 4) SATELLITE — surface goes invisible but keep a subtle ambient
+ *    shadow under everything so the floating elements have a
+ *    soft anchor on the page. Above-bar also goes container-less:
+ *    every child reads as floating text/icons. */
+[data-composer-style="satellite"] .composer-surface,
+[data-composer-style="satellite"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  /* Keep the shadow as the user requested — a soft ambient
+   * grounding without a bounded box. */
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18) !important;
+}
+[data-composer-style="satellite"] .composer-surface::before,
+[data-composer-style="satellite"] .composer-surface::after {
+  display: none !important;
+}
+
+[data-composer-style="satellite"] .composer-above-bar {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="satellite"] .composer-above-bar::before,
+[data-composer-style="satellite"] .composer-above-bar::after {
+  display: none !important;
+  background: none !important;
+}
