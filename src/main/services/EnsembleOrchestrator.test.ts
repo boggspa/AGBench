@@ -99,21 +99,27 @@ function makeSettings(): AppSettings {
   }
 }
 
-function makeHarness() {
+function makeHarness(options: {
+  dispatch?: (payload: AgentRunPayload) => Promise<{ dispatched: boolean; appRunId: string }>
+} = {}) {
   let chat = makeChat()
   let counter = 0
   const dispatched: AgentRunPayload[] = []
+  const dispatch = vi.fn(async (payload: AgentRunPayload) => {
+    dispatched.push(payload)
+    return options.dispatch
+      ? options.dispatch(payload)
+      : { dispatched: true, appRunId: payload.appRunId || '' }
+  })
+  const cancelRun = vi.fn(async () => true)
   const orchestrator = new EnsembleOrchestrator({
     getChat: () => chat,
     saveChat: (next) => {
       chat = next
     },
     getSettings: makeSettings,
-    dispatch: vi.fn(async (payload) => {
-      dispatched.push(payload)
-      return { dispatched: true, appRunId: payload.appRunId || '' }
-    }),
-    cancelRun: vi.fn(async () => true),
+    dispatch,
+    cancelRun,
     createRunId: (provider) => `${provider}-run-${++counter}`,
     now: () => counter,
     nowIso: () => `2026-05-24T00:00:0${counter}.000Z`
@@ -122,7 +128,9 @@ function makeHarness() {
     get chat() {
       return chat
     },
+    cancelRun,
     dispatched,
+    dispatch,
     orchestrator
   }
 }
@@ -137,6 +145,13 @@ describe('EnsembleOrchestrator', () => {
     })
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
     expect(harness.dispatched[0].provider).toBe('claude')
+    expect(harness.dispatched[0].ensembleRun).toMatchObject({
+      roundId: harness.chat.ensemble?.activeRound?.roundId,
+      participantId: 'claude',
+      provider: 'claude',
+      role: 'Reviewer',
+      order: 1
+    })
     harness.orchestrator.handleProviderOutput('claude', {
       appRunId: harness.dispatched[0].appRunId,
       appChatId: 'ensemble-chat'
@@ -173,5 +188,110 @@ describe('EnsembleOrchestrator', () => {
     })
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.chat.messages.map((message) => message.content)).toContain('Second prompt')
+  })
+
+  it('steers by cancelling the active run without deleting the replacement round', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Original prompt',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const oldRun = harness.dispatched[0]
+
+    const steered = harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Steered prompt',
+      event: { sender: {} as Electron.WebContents },
+      mode: 'steer'
+    })
+
+    expect(steered.status).toBe('steered')
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.cancelRun).toHaveBeenCalledWith('claude', oldRun.appRunId)
+    expect(harness.chat.ensemble?.activeRound?.roundId).toBe(steered.roundId)
+    expect(harness.chat.ensemble?.activeRound?.prompt).toBe('Steered prompt')
+    expect(harness.chat.messages.map((message) => message.content)).toContain(
+      'Ensemble steered: interrupted the active speaker and started a fresh round.'
+    )
+
+    const handled = harness.orchestrator.handleProviderOutput('claude', {
+      appRunId: oldRun.appRunId,
+      appChatId: 'ensemble-chat'
+    }, {
+      type: 'content',
+      text: 'late old content'
+    })
+    expect(handled).toBe(false)
+    expect(harness.chat.messages.map((message) => message.content)).not.toContain(
+      'late old content'
+    )
+  })
+
+  it('continues to the next participant when the current participant yields', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Split this work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    expect(
+      harness.orchestrator.markYielded(harness.dispatched[0].appRunId!, 'Passing to worker.')
+    ).toBe(true)
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+    expect(harness.chat.messages.map((message) => message.content)).toContain(
+      'Reviewer yielded. Passing to worker.'
+    )
+  })
+
+  it('skips a failed dispatch and advances the round', async () => {
+    let calls = 0
+    const harness = makeHarness({
+      dispatch: async (payload) => ({
+        dispatched: ++calls !== 1,
+        appRunId: payload.appRunId || ''
+      })
+    })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Try both participants.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[0].provider).toBe('claude')
+    expect(harness.dispatched[1].provider).toBe('codex')
+    expect(harness.chat.messages.map((message) => message.content)).toContain(
+      'Reviewer failed. Dispatch failed.'
+    )
+  })
+
+  it('clears queued work when a round is stopped', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Original prompt',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Queued prompt',
+      event: { sender: {} as Electron.WebContents },
+      mode: 'queue'
+    })
+    expect(harness.chat.ensemble?.activeRound?.queuedPrompt).toBe('Queued prompt')
+
+    await harness.orchestrator.cancelRound('ensemble-chat')
+
+    expect(harness.chat.ensemble?.activeRound?.status).toBe('cancelled')
+    expect(harness.chat.ensemble?.activeRound?.queuedPrompt).toBeUndefined()
+    expect(harness.cancelRun).toHaveBeenCalledWith('claude', harness.dispatched[0].appRunId)
   })
 })

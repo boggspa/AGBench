@@ -44,6 +44,11 @@ export function EnsembleParticipantStrip({
         })}
       </div>
       <div className="ensemble-strip-actions">
+        {activeRound?.status === 'running' && activeRound.queuedPrompt && (
+          <span className="ensemble-strip-queued" title={activeRound.queuedPrompt}>
+            Queued next round
+          </span>
+        )}
         {activeRound?.status === 'running' && onStop && (
           <button type="button" className="btn btn-sm btn-ghost" onClick={onStop}>
             Stop Ensemble
@@ -64,4 +69,3 @@ function formatParticipantUsage(participant: EnsembleParticipant): string {
   if (total >= 1_000) return `${Math.round(total / 100) / 10}k tokens`
   return `${total} tokens`
 }
-

@@ -113,7 +113,8 @@ import {
   GeminiAuthStatus,
   GeminiOAuthLoginStatus,
   UsageRecord,
-  EffectiveRunPermissions
+  EffectiveRunPermissions,
+  EnsembleRunIdentity
 } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
@@ -708,6 +709,7 @@ export interface AgentRunPayload {
   handoffSourceRunId?: string
   runtimeProfile?: RuntimeProfile
   effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
 }
 
 interface CodexRunState {
@@ -724,6 +726,7 @@ interface CodexRunState {
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
   effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
   appRunId?: string
   appChatId?: string
   tokenUsage?: any
@@ -749,6 +752,7 @@ interface GeminiToolContext {
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
   effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
 }
 
 // Phase B3: AgenticApprovalWaiter moved into
@@ -1194,7 +1198,19 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     handoffSourceRunId: optionalString(payload.handoffSourceRunId),
     effectivePermissions: isRecord(payload.effectivePermissions)
       ? (payload.effectivePermissions as unknown as EffectiveRunPermissions)
-      : undefined
+      : undefined,
+    ensembleRun: normalizeEnsembleRunIdentity(payload.ensembleRun)
+  }
+}
+
+function normalizeEnsembleRunIdentity(value: unknown): EnsembleRunIdentity | undefined {
+  if (!isRecord(value)) return undefined
+  return {
+    roundId: requireNonEmptyString(value.roundId, 'Ensemble round id'),
+    participantId: requireNonEmptyString(value.participantId, 'Ensemble participant id'),
+    provider: assertProviderId(value.provider),
+    role: optionalString(value.role) || 'Participant',
+    order: optionalNumber(value.order) ?? 0
   }
 }
 
@@ -1641,6 +1657,7 @@ interface CliProviderStreamState {
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
   effectivePermissions?: EffectiveRunPermissions
+  ensembleRun?: EnsembleRunIdentity
   runId?: string | null
   appRunId?: string
   appChatId?: string
@@ -2719,6 +2736,43 @@ function approvalActionsForPolicy(policy: string, workspacePath?: string): Agent
   return actions
 }
 
+function ensembleApprovalContext(
+  identity: EnsembleRunIdentity | undefined,
+  service: AgenticServiceId,
+  workspacePath: string | undefined
+):
+  | {
+      label: string
+      bodyPrefix: string
+      preview: Record<string, unknown>
+    }
+  | undefined {
+  if (!identity) return undefined
+  const provider = providerLabel(identity.provider)
+  const role = identity.role || 'Participant'
+  const label = `${provider} / ${role}`
+  const lines = [
+    `Ensemble participant: ${label}`,
+    `Provider: ${provider}`,
+    `Role: ${role}`,
+    `Service: ${AGENTIC_SERVICE_LABELS[service]}`,
+    workspacePath ? `Workspace: ${workspacePath}` : undefined
+  ].filter(Boolean)
+  return {
+    label,
+    bodyPrefix: lines.join('\n'),
+    preview: {
+      roundId: identity.roundId,
+      participantId: identity.participantId,
+      provider: identity.provider,
+      role,
+      order: identity.order,
+      service,
+      workspacePath
+    }
+  }
+}
+
 async function requestAgenticServiceApproval(
   sender: Electron.WebContents | null,
   provider: ProviderId,
@@ -2739,6 +2793,8 @@ async function requestAgenticServiceApproval(
   const effectivePermissions = session?.state?.effectivePermissions as
     | EffectiveRunPermissions
     | undefined
+  const ensembleRun = session?.state?.ensembleRun as EnsembleRunIdentity | undefined
+  const ensembleApproval = ensembleApprovalContext(ensembleRun, service, workspacePath)
   const effectiveSettings = effectivePermissions
     ? {
         ...settings,
@@ -2768,7 +2824,7 @@ async function requestAgenticServiceApproval(
       'autoDeny',
       'policy',
       'request',
-      { policy }
+      { policy, ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {}) }
     )
     sender?.send('agent-error', { provider, error: agenticServiceBlockedMessage(service) })
     return false
@@ -2791,7 +2847,11 @@ async function requestAgenticServiceApproval(
       'autoAllow',
       'session_yolo',
       'session',
-      { policy, yoloEnabledAt: sessionYoloState.enabledAt }
+      {
+        policy,
+        yoloEnabledAt: sessionYoloState.enabledAt,
+        ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {})
+      }
     )
     return true
   }
@@ -2809,7 +2869,7 @@ async function requestAgenticServiceApproval(
       'autoAllow',
       workspaceGrantAllowed ? 'workspace_grant' : sessionGrantAllowed ? 'session_grant' : 'policy',
       workspaceGrantAllowed ? 'workspace' : sessionGrantAllowed ? 'session' : 'request',
-      { policy }
+      { policy, ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {}) }
     )
     return true
   }
@@ -2822,10 +2882,12 @@ async function requestAgenticServiceApproval(
   const actions: AgentApprovalAction[] = externalPathDetection
     ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
     : approvalActionsForPolicy(policy, workspacePath)
-  const title = externalPathDetection ? externalPathApprovalTitle() : request.title
-  const body = externalPathDetection
+  const baseTitle = externalPathDetection ? externalPathApprovalTitle() : request.title
+  const baseBody = externalPathDetection
     ? externalPathApprovalBody(externalPathDetection)
     : request.body
+  const title = ensembleApproval ? `${ensembleApproval.label}: ${baseTitle}` : baseTitle
+  const body = ensembleApproval ? `${ensembleApproval.bodyPrefix}\n\n${baseBody}` : baseBody
   return new Promise((resolveApproval) => {
     approvalService?.registerGeminiTool(approvalId, {
       provider,
@@ -2854,6 +2916,7 @@ async function requestAgenticServiceApproval(
       preview: {
         ...(request.preview || {}),
         actions,
+        ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {}),
         ...(externalPathDetection
           ? { externalPathDetection: externalPathApprovalPreview(externalPathDetection) }
           : {})
@@ -2875,7 +2938,10 @@ async function requestAgenticServiceApproval(
       {
         service,
         workspacePath,
-        metadata: { policy }
+        metadata: {
+          policy,
+          ...(ensembleApproval ? { ensembleParticipant: ensembleApproval.preview } : {})
+        }
       }
     )
     sender.send('agent-approval-request', approvalPayload)
@@ -6015,6 +6081,7 @@ function runCliProviderProcess(
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
     effectivePermissions: payload.effectivePermissions,
+    ensembleRun: payload.ensembleRun,
     ...route
   }
   registerRunSession(
@@ -6422,6 +6489,7 @@ async function tryRunClaudeSdk(
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
     effectivePermissions: payload.effectivePermissions,
+    ensembleRun: payload.ensembleRun,
     ...route
   }
   registerRunSession(
@@ -6824,6 +6892,7 @@ async function runKimiWireProvider(
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
     effectivePermissions: payload.effectivePermissions,
+    ensembleRun: payload.ensembleRun,
     ...route
   }
   registerRunSession(
@@ -7851,6 +7920,7 @@ function createCodexRunState(
     externalPathGrants: payload?.externalPathGrants,
     runtimeProfileId: payload?.runtimeProfileId,
     effectivePermissions: payload?.effectivePermissions,
+    ensembleRun: payload?.ensembleRun,
     ...normalizeRunRoute(route),
     assistantTextByItemId: new Map(),
     timelineStartedItemIds: new Set(),
@@ -16636,6 +16706,7 @@ function installGeminiToolContextForRun(
     externalPathGrants: options.runPayload?.externalPathGrants,
     runtimeProfileId: options.runPayload?.runtimeProfileId,
     effectivePermissions: options.runPayload?.effectivePermissions,
+    ensembleRun: options.runPayload?.ensembleRun,
     providerSessionId: options.providerSessionId ?? options.runPayload?.providerSessionId,
     ...routed
   }
@@ -18491,6 +18562,9 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'create-ensemble-chat',
       (_, args?: { workspaceId?: string; workspacePath?: string }) => {
+        if (AppStore.getSettings().ensembleModeEnabled === false) {
+          throw new Error('Ensemble Mode is disabled.')
+        }
         const chat = chatService.createEnsembleChat(args)
         broadcastThreadUpdate(chat?.appChatId)
         return chat
@@ -19640,6 +19714,9 @@ if (isGeminiMcpBridgeProcess) {
         event,
         payload: { chatId?: string; prompt?: string; mode?: 'normal' | 'queue' | 'steer' }
       ) => {
+        if (AppStore.getSettings().ensembleModeEnabled === false) {
+          throw new Error('Ensemble Mode is disabled.')
+        }
         const chatId = requireNonEmptyString(payload?.chatId, 'Ensemble chat id')
         const prompt = requireNonEmptyString(payload?.prompt, 'Ensemble prompt')
         return ensembleOrchestratorRef?.startRound({

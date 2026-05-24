@@ -228,6 +228,14 @@ export interface EnsembleRoundState {
   participants: EnsembleRoundParticipantState[]
 }
 
+export interface EnsembleRunIdentity {
+  roundId: string
+  participantId: string
+  provider: ProviderId
+  role: string
+  order: number
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number

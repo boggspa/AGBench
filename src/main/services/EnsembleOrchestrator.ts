@@ -12,6 +12,7 @@ import type {
   EffectiveRunPermissions,
   EnsembleParticipant,
   EnsembleParticipantStatus,
+  EnsembleRunIdentity,
   EnsembleRoundState,
   ProviderId
 } from '../store/types'
@@ -82,6 +83,11 @@ export class EnsembleOrchestrator {
       if (input.mode === 'steer') {
         void this.cancelRound(input.chatId, 'steered')
         const roundId = this.beginRound(input.chatId, prompt, input.event.sender)
+        this.appendRoundStatus(
+          input.chatId,
+          roundId,
+          'Ensemble steered: interrupted the active speaker and started a fresh round.'
+        )
         return { status: 'steered', roundId }
       }
       existing.queuedPrompt = prompt
@@ -99,15 +105,14 @@ export class EnsembleOrchestrator {
     if (!runtime) return false
     runtime.cancelled = true
     runtime.queuedPrompt = undefined
+    const roundId = runtime.roundId
     const active = runtime.activeRunId ? this.runsByRunId.get(runtime.activeRunId) : undefined
     if (active) {
-      active.status = 'cancelled'
-      active.completion?.('cancelled')
-      await this.deps.cancelRun(active.participant.provider, active.runId).catch(() => undefined)
+      this.finalizeRun(active, 'cancelled', reason)
     }
-    this.updateParticipantState(chatId, runtime.roundId, active?.participant.id, 'cancelled', reason)
+    this.updateParticipantState(chatId, roundId, active?.participant.id, 'cancelled', reason)
     this.updateChatRound(chatId, (round) =>
-      round
+      round?.roundId === roundId
         ? {
             ...round,
             status: 'cancelled',
@@ -117,7 +122,10 @@ export class EnsembleOrchestrator {
           }
         : round
     )
-    this.roundsByChatId.delete(chatId)
+    this.clearRuntimeIfCurrent(runtime)
+    if (active) {
+      await this.deps.cancelRun(active.participant.provider, active.runId).catch(() => undefined)
+    }
     return true
   }
 
@@ -260,7 +268,8 @@ export class EnsembleOrchestrator {
           participant.provider === 'gemini' ? participant.geminiAuthProfileId || null : null,
         providerSessionId: participant.linkedProviderSessionId || null,
         externalPathGrants: permissions.externalPathGrants,
-        effectivePermissions: permissions
+        effectivePermissions: permissions,
+        ensembleRun: ensembleRunIdentity(runtime.roundId, participant)
       }
       const dispatched = await this.deps.dispatch(payload, { sender: runtime.sender })
       if (!dispatched.dispatched) {
@@ -274,7 +283,7 @@ export class EnsembleOrchestrator {
 
     const queuedPrompt = runtime.queuedPrompt
     this.finishRound(runtime.chatId, runtime.roundId, runtime.cancelled ? 'cancelled' : 'completed')
-    this.roundsByChatId.delete(runtime.chatId)
+    this.clearRuntimeIfCurrent(runtime)
     if (queuedPrompt && !runtime.cancelled) {
       this.beginRound(runtime.chatId, queuedPrompt, runtime.sender)
     }
@@ -496,6 +505,35 @@ export class EnsembleOrchestrator {
     )
   }
 
+  private appendRoundStatus(chatId: string, roundId: string, content: string): void {
+    const chat = this.deps.getChat(chatId)
+    if (!chat?.ensemble) return
+    const timestamp = this.deps.nowIso()
+    this.deps.saveChat({
+      ...chat,
+      messages: [
+        ...chat.messages,
+        {
+          id: `ensemble-round-status-${roundId}`,
+          role: 'system',
+          content,
+          timestamp,
+          metadata: {
+            kind: 'ensembleRoundStatus',
+            ensembleRoundId: roundId
+          }
+        }
+      ],
+      updatedAt: this.deps.now()
+    })
+  }
+
+  private clearRuntimeIfCurrent(runtime: ActiveRoundRuntime): void {
+    if (this.roundsByChatId.get(runtime.chatId)?.roundId === runtime.roundId) {
+      this.roundsByChatId.delete(runtime.chatId)
+    }
+  }
+
   private updateChatRound(
     chatId: string,
     update: (round: EnsembleRoundState | undefined) => EnsembleRoundState | undefined
@@ -525,6 +563,19 @@ export class EnsembleOrchestrator {
       presetId: participant.permissionPresetId,
       overrides: participant.permissionOverrides || null
     })
+  }
+}
+
+function ensembleRunIdentity(
+  roundId: string,
+  participant: EnsembleParticipant
+): EnsembleRunIdentity {
+  return {
+    roundId,
+    participantId: participant.id,
+    provider: participant.provider,
+    role: participant.role,
+    order: participant.order
   }
 }
 
