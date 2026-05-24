@@ -43,8 +43,12 @@ import {
 // "Devices" tab) so paired-device QR + workspace allowlist sit
 // together as a single device-management page.
 import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
-import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
-import { ApnsConfigPanel } from './ApnsConfigPanel'
+// BridgeNetworkingPanel + ApnsConfigPanel were previously rendered
+// under the "Bridge Networking" tab. They now live inside `PairingPage`
+// (the "Devices" tab) so the iOS pair flow + workspace allowlist +
+// daemon/APNs configuration sit together as a single device-management
+// page. The original tab branch below is kept defensively so a stale
+// `bridge-networking` tab id falls through to no render.
 import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 
@@ -371,16 +375,22 @@ export const SETTINGS_TABS: Array<{
   group: SettingsTabGroup
 }> = [
   { id: 'appearance', label: 'Appearance', group: 'settings' },
-  { id: 'behavior', label: 'Behavior', group: 'settings' },
+  // "General" merges the legacy "Behavior" + "System" tabs. Both
+  // covered operational defaults (chat behaviour, approval timeouts,
+  // product update channel, diagnostics) — splitting them across two
+  // tabs was always arbitrary. The `behavior` id is preserved so any
+  // existing tab-restore path still lands here; `system` falls
+  // through to no render (defensive guard until the type union sheds
+  // the id).
+  { id: 'behavior', label: 'General', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
-  { id: 'system', label: 'System', group: 'settings' },
-  { id: 'bridge-networking', label: 'Bridge Networking', group: 'settings' },
   { id: 'approval-ledger', label: 'Approvals', group: 'settings' },
-  // "Devices" merges the legacy "Pairing" + "Remote Workspaces" tabs
-  // into one page. Pair a fresh iPhone / iPad at the top, manage its
-  // allowlist below — both are the same conceptual workflow. The
-  // `pairing` id is preserved so existing settings-tab restore paths
-  // continue to land on the right page.
+  // "Devices" merges the legacy "Pairing" + "Remote Workspaces" +
+  // "Bridge Networking" tabs into one device-management page. Pair a
+  // fresh iPhone / iPad at the top, manage its workspace allowlist
+  // in the middle, configure the daemon + APNs at the bottom — all
+  // the same conceptual workflow (LAN / off-LAN reach to paired iOS
+  // devices). The `pairing` id is preserved for settings-tab restore.
   { id: 'pairing', label: 'Devices', group: 'devices' }
 ]
 
@@ -1932,9 +1942,16 @@ export function SettingsPanel({
           ) /* end providers */
         }
 
-        {/* ── System ─────────────────────────────────── */}
+        {/* ── System (merged into the General tab — same `behavior` id) ── */}
+        {/*
+          Renders alongside the Behavior content above. The original
+          standalone "System" tab carried just one settings group
+          ("Product operations" — update channel, diagnostics, repair)
+          which never warranted a tab of its own; folding it under
+          General keeps the operational defaults in one place.
+        */}
         {
-          activeTab === 'system' && (
+          activeTab === 'behavior' && (
             <>
               <div className="settings-group span-all">
                 <h4 className="sidebar-section-title" style={{ margin: 0 }}>
@@ -2022,15 +2039,13 @@ export function SettingsPanel({
           />
         )}
 
-        {/* ── Bridge Networking (Phase E3) ─────────────────────────────── */}
-        {activeTab === 'bridge-networking' && (
-          <>
-            <BridgeNetworkingPanel />
-            {/* Phase E1: APNs production wiring — sits alongside bridge networking
-              because APNs is the off-LAN wake path for paired iPhones. */}
-            <ApnsConfigPanel />
-          </>
-        )}
+        {/*
+          Bridge Networking + APNs moved into the Devices tab below —
+          both are paired-device infrastructure (Bonjour for LAN,
+          APNs for off-LAN wake). The legacy `bridge-networking` tab
+          id no longer surfaces in the sidebar; this guard is dead
+          but kept until the type union sheds the id.
+        */}
 
         {/* ── Pairing (post-1.0.2: folded in from the legacy modal sheet) ── */}
         {activeTab === 'pairing' && <PairingPage />}

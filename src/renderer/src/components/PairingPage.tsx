@@ -27,6 +27,8 @@
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react'
 import QRCode from 'qrcode'
 import { RemoteWorkspacesPanel } from './RemoteWorkspacesPanel'
+import { BridgeNetworkingPanel } from './BridgeNetworkingPanel'
+import { ApnsConfigPanel } from './ApnsConfigPanel'
 
 interface BootstrapState {
   /** Pretty-printed JSON for display + copy. */
@@ -253,6 +255,30 @@ export function PairingPage(): JSX.Element {
           </p>
         </header>
         <RemoteWorkspacesPanel />
+      </section>
+
+      {/*
+        Third section: bridge daemon networking + APNs (off-LAN wake).
+        Both are paired-device infrastructure — Bonjour publishes the
+        Mac on the local network so iOS can reach it; APNs handles the
+        wake path when the iPad isn't on the same network. Used to be
+        its own "Bridge Networking" tab; consolidated here so the
+        whole device-management workflow (pair → allowlist → reach)
+        reads top-to-bottom.
+      */}
+      <section className="pairing-page__section pairing-page__networking">
+        <header className="pairing-page__section-header">
+          <h3 className="pairing-page__section-title">Bridge networking</h3>
+          <p className="pairing-page__section-subtitle">
+            How the desktop daemon advertises itself to paired iOS devices, and how
+            off-LAN devices wake the Mac via APNs.
+          </p>
+        </header>
+        <BridgeNetworkingPanel />
+        {/* Phase E1: APNs production wiring — sits alongside bridge
+           networking because APNs is the off-LAN wake path for paired
+           iPhones. */}
+        <ApnsConfigPanel />
       </section>
 
       {/* Maximised QR overlay — covers the screen so the iPad camera
