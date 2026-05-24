@@ -279,7 +279,7 @@ describe('buildGeminiFunctionDeclarations', () => {
  * world — too heavy for a unit test. The shape below mirrors the
  * literal so the round-trip test exercises every AGBench MCP tool.
  *
- * The list is intentionally exhaustive (38 entries). Each entry is the
+ * The list is intentionally exhaustive (43 entries). Each entry is the
  * minimal subset of fields the converter touches: `name`, optional
  * `description`, optional `inputSchema`. We do NOT need the
  * `annotations` block, so it's omitted to keep this snapshot compact.
@@ -514,6 +514,42 @@ const MCP_TOOL_DEFINITIONS_SNAPSHOT: Array<{
     inputSchema: {
       type: 'object',
       properties: {}
+    }
+  },
+  {
+    name: 'appwatch_start',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        fps: { type: 'number' },
+        buffer_seconds: { type: 'number' },
+        max_dimension_px: { type: 'number' }
+      }
+    }
+  },
+  {
+    name: 'appwatch_stop',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'appwatch_status',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'appwatch_latest_frame',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'appwatch_frames',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        since: { type: 'string' },
+        count: { type: 'number' },
+        format: { type: 'string', enum: ['jpeg', 'png'] },
+        include_ocr: { type: 'boolean' },
+        includeOCR: { type: 'boolean' }
+      }
     }
   },
   {

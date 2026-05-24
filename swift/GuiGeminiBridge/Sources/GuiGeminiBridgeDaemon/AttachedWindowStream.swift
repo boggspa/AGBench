@@ -57,6 +57,12 @@ struct AppwatchStatus: Sendable, Encodable {
     let startedAt: Date?
 }
 
+struct AppwatchBufferedFrames: Sendable {
+    let frames: [RingFrame]
+    let availableCapturedAt: [Date]
+    let nextSince: Date?
+}
+
 enum AppwatchError: LocalizedError, Sendable {
     case alreadyStreaming
     case notStreaming
@@ -340,6 +346,28 @@ actor AttachedWindowStream {
         return ring.last
     }
 
+    /// Return a chronological batch of frames. With `since`, this returns the
+    /// first `count` frames newer than that timestamp so callers can page
+    /// through the ring using `nextSince`. Without `since`, it returns the
+    /// latest `count` frames, still in chronological order.
+    func frames(since: Date?, count requestedCount: Int) -> AppwatchBufferedFrames {
+        lastPullAt = Date()
+        let count = max(1, min(20, requestedCount))
+        let available = ring.map(\.capturedAt)
+        let candidates: [RingFrame]
+        if let since {
+            candidates = ring.filter { $0.capturedAt > since }
+        } else {
+            candidates = Array(ring.suffix(count))
+        }
+        let selected = Array(candidates.prefix(count))
+        return AppwatchBufferedFrames(
+            frames: selected,
+            availableCapturedAt: available,
+            nextSince: selected.last?.capturedAt ?? since ?? ring.last?.capturedAt
+        )
+    }
+
     /// Read-only status. Does NOT bump lastPullAt — the renderer pill polls
     /// this and we don't want a UI poll to reset the idle clock.
     func status() -> AppwatchStatus {
@@ -487,8 +515,27 @@ actor AttachedWindowStream {
 /// AppKit/Vision lives outside the isolation boundary.
 enum AppwatchFrameEncoder {
     static func encodePNG(frame: RingFrame) throws -> Data {
+        let rep = try bitmapRep(frame: frame)
+        guard let png = rep.representation(using: .png, properties: [:]) else {
+            throw AppwatchError.pngEncodingFailed
+        }
+        return png
+    }
+
+    static func encodeJPEG(frame: RingFrame, compressionFactor: Double = 0.82) throws -> Data {
+        let rep = try bitmapRep(frame: frame)
+        guard let jpeg = rep.representation(
+            using: .jpeg,
+            properties: [.compressionFactor: compressionFactor]
+        ) else {
+            throw AppwatchError.pngEncodingFailed
+        }
+        return jpeg
+    }
+
+    private static func bitmapRep(frame: RingFrame) throws -> NSBitmapImageRep {
         // Build a CGImage from the BGRA bytes; NSBitmapImageRep then emits
-        // PNG using the same code path AttachedWindowCapture uses for the
+        // PNG/JPEG using the same code path AttachedWindowCapture uses for the
         // single-shot Appshots flow, so the renderer's image decoder doesn't
         // need a separate fast-path.
         let bitsPerComponent = 8
@@ -524,10 +571,6 @@ enum AppwatchFrameEncoder {
         ) else {
             throw AppwatchError.pngEncodingFailed
         }
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        guard let png = rep.representation(using: .png, properties: [:]) else {
-            throw AppwatchError.pngEncodingFailed
-        }
-        return png
+        return NSBitmapImageRep(cgImage: cgImage)
     }
 }

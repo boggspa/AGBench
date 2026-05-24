@@ -144,6 +144,40 @@ final class AttachedWindowStreamTests: XCTestCase {
         XCTAssertNil(frame, "No frames ingested yet → nil")
     }
 
+    func testFramesWithoutSinceReturnsLatestBatchChronologically() async {
+        let stream = AttachedWindowStream()
+        await stream._configureForTesting(fps: 5, bufferSeconds: 2, maxDimensionPx: 256)
+        let base = Date(timeIntervalSince1970: 1_000)
+        for i in 0..<6 {
+            await stream._appendFrameForTesting(
+                makeMockFrame(tag: i, capturedAt: base.addingTimeInterval(Double(i)))
+            )
+        }
+
+        let batch = await stream.frames(since: nil, count: 3)
+        XCTAssertEqual(batch.frames.map { $0.bgra.first }, [3, 4, 5])
+        XCTAssertEqual(batch.availableCapturedAt.count, 6)
+        XCTAssertEqual(batch.nextSince, batch.frames.last?.capturedAt)
+    }
+
+    func testFramesSincePagesForwardAndClampsCount() async {
+        let stream = AttachedWindowStream()
+        await stream._configureForTesting(fps: 5, bufferSeconds: 2, maxDimensionPx: 256)
+        let base = Date(timeIntervalSince1970: 2_000)
+        for i in 0..<8 {
+            await stream._appendFrameForTesting(
+                makeMockFrame(tag: i, capturedAt: base.addingTimeInterval(Double(i)))
+            )
+        }
+
+        let batch = await stream.frames(since: base.addingTimeInterval(2.5), count: 2)
+        XCTAssertEqual(batch.frames.map { $0.bgra.first }, [3, 4])
+        XCTAssertEqual(batch.nextSince, batch.frames.last?.capturedAt)
+
+        let oversized = await stream.frames(since: nil, count: 200)
+        XCTAssertLessThanOrEqual(oversized.frames.count, 20)
+    }
+
     // MARK: Error surfaces
 
     func testAppwatchErrorMessagesAreUserReadable() {
@@ -174,7 +208,7 @@ final class AttachedWindowStreamTests: XCTestCase {
 
     /// Synthesise a small BGRA frame with `tag` encoded as the leading byte.
     /// Tests use the leading byte to verify frame order after eviction.
-    private func makeMockFrame(tag: Int) -> RingFrame {
+    private func makeMockFrame(tag: Int, capturedAt: Date = Date()) -> RingFrame {
         // 1×1 BGRA frame is enough — tests only need ordering, not real pixels.
         // First byte (Blue channel) carries the tag so we can assert on it
         // without dragging in a PNG decoder.
@@ -183,7 +217,7 @@ final class AttachedWindowStreamTests: XCTestCase {
         // bytesPerRow. Tests don't decode the bytes themselves.
         bytes.append(contentsOf: [0, 0, 0, 0])
         return RingFrame(
-            capturedAt: Date(),
+            capturedAt: capturedAt,
             bgra: bytes,
             width: 1,
             height: 1,

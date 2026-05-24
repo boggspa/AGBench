@@ -3219,7 +3219,8 @@ function previewForGeminiMcpTool(
   if (
     toolName === 'appwatch_start' ||
     toolName === 'appwatch_stop' ||
-    toolName === 'appwatch_latest_frame'
+    toolName === 'appwatch_latest_frame' ||
+    toolName === 'appwatch_frames'
   ) {
     const meta = attachedWindowSnapshot?.windowMeta
     const label = meta
@@ -3230,7 +3231,9 @@ function previewForGeminiMcpTool(
         ? 'Start live window capture'
         : toolName === 'appwatch_stop'
           ? 'Stop live window capture'
-          : 'Pull latest live frame'
+          : toolName === 'appwatch_frames'
+            ? 'Pull live frame batch'
+            : 'Pull latest live frame'
     return {
       title,
       body: label,
@@ -11969,6 +11972,30 @@ type AppwatchLatestFrameDaemonResult = {
   height?: number
   capturedAt?: string
 }
+type AppwatchFrameDaemonResult = {
+  index?: number
+  capturedAt?: string
+  mimeType?: string
+  imageBase64?: string
+  byteLength?: number
+  width?: number
+  height?: number
+  ocr?: Record<string, unknown>
+  ocrError?: string
+}
+type AppwatchFramesDaemonResult = {
+  ok?: boolean
+  handleID?: string
+  hasFrames?: boolean
+  returned?: number
+  requested?: number
+  count?: number
+  format?: 'jpeg' | 'png'
+  includeOCR?: boolean
+  nextSince?: string
+  availableCapturedAt?: string[]
+  frames?: AppwatchFrameDaemonResult[]
+}
 
 /** Update `attachedWindowSnapshot.streaming` (or clear it) and broadcast the
  *  refreshed snapshot to the renderer over the existing
@@ -12244,6 +12271,92 @@ async function executeAppwatchLatestFrame(): Promise<McpToolExecutionResult> {
       windowMeta: snapshot.windowMeta
     },
     [{ type: 'image', mimeType: 'image/png', data: result.pngBase64 }]
+  )
+}
+
+async function executeAppwatchFrames(args: Record<string, any>): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_frames',
+      error:
+        'No window is attached. Ask the user to click "Attach app" so they can pick a window before pulling Appwatch frames.'
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_frames',
+      error: 'AGBench bridge daemon is not running.'
+    })
+  }
+  const includeOCR = args.include_ocr === true || args.includeOCR === true
+  const count = clampInteger(args.count, 5, 1, includeOCR ? 5 : 20)
+  const format = args.format === 'png' ? 'png' : 'jpeg'
+  let result: AppwatchFramesDaemonResult
+  try {
+    result = (await bridgeDaemonRef.request(
+      'appwatch.frames',
+      {
+        handleID: snapshot.handleID,
+        since: optionalString(args.since),
+        count,
+        format,
+        includeOCR
+      },
+      { timeoutMs: includeOCR ? 30_000 : 15_000 }
+    )) as AppwatchFramesDaemonResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      handleAppwatchWindowGone()
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_frames',
+      error: message
+    })
+  }
+
+  const frames = Array.isArray(result.frames) ? result.frames : []
+  const contentBlocks: McpToolContentBlock[] = []
+  const frameMetadata = frames.map((frame, index) => {
+    const mimeType = frame.mimeType === 'image/png' ? 'image/png' : 'image/jpeg'
+    if (frame.imageBase64) {
+      contentBlocks.push({ type: 'image', mimeType, data: frame.imageBase64 })
+    }
+    return {
+      index: typeof frame.index === 'number' ? frame.index : index,
+      capturedAt: frame.capturedAt ?? null,
+      mimeType,
+      byteLength: frame.byteLength ?? 0,
+      width: frame.width ?? 0,
+      height: frame.height ?? 0,
+      ...(frame.ocr ? { ocr: frame.ocr } : {}),
+      ...(frame.ocrError ? { ocrError: frame.ocrError } : {})
+    }
+  })
+
+  return mcpStructuredJsonResult(
+    {
+      ok: true,
+      tool: 'appwatch_frames',
+      hasFrames: Boolean(result.hasFrames && frameMetadata.length),
+      returned: frameMetadata.length,
+      requested: result.requested ?? count,
+      count: result.count ?? count,
+      format: result.format ?? format,
+      includeOCR,
+      handleID: snapshot.handleID,
+      nextSince: result.nextSince ?? null,
+      availableCapturedAt: Array.isArray(result.availableCapturedAt)
+        ? result.availableCapturedAt
+        : [],
+      frames: frameMetadata,
+      windowMeta: snapshot.windowMeta
+    },
+    contentBlocks
   )
 }
 
@@ -13795,6 +13908,14 @@ async function executeGeminiMcpTool(
   try {
     let text = ''
     let toolIsError = false
+    let richResult: McpToolExecutionResult | null = null
+    const useRichResult = (result: McpToolExecutionResult) => {
+      richResult = result
+      text = result.text
+      toolIsError =
+        result.isError === true ||
+        (isRecord(result.structuredContent) && result.structuredContent.ok === false)
+    }
 
     if (toolName === 'run_shell_command') {
       const command = String(args.command || '').trim()
@@ -13876,19 +13997,21 @@ async function executeGeminiMcpTool(
       toolName === 'browser_screenshot' ||
       toolName === 'browser_console'
     ) {
-      text = mcpJson(await executeBrowserTool(toolName, args, context))
+      useRichResult(await executeBrowserTool(toolName, args, context))
     } else if (toolName === 'attached_window_capture') {
-      text = mcpJson(await executeAttachedWindowCapture(args))
+      useRichResult(await executeAttachedWindowCapture(args))
     } else if (toolName === 'attached_window_status') {
-      text = mcpJson(executeAttachedWindowStatus())
+      useRichResult(executeAttachedWindowStatus())
     } else if (toolName === 'appwatch_start') {
-      text = mcpJson(await executeAppwatchStart(args))
+      useRichResult(await executeAppwatchStart(args))
     } else if (toolName === 'appwatch_stop') {
-      text = mcpJson(await executeAppwatchStop())
+      useRichResult(await executeAppwatchStop())
     } else if (toolName === 'appwatch_status') {
-      text = mcpJson(await executeAppwatchStatus())
+      useRichResult(await executeAppwatchStatus())
     } else if (toolName === 'appwatch_latest_frame') {
-      text = mcpJson(await executeAppwatchLatestFrame())
+      useRichResult(await executeAppwatchLatestFrame())
+    } else if (toolName === 'appwatch_frames') {
+      useRichResult(await executeAppwatchFrames(args))
     } else if (toolName === 'approval_status') {
       text = mcpJson(executeApprovalStatus(context, args, parentProvider))
     } else if (toolName === 'provider_auth_status') {
@@ -14376,6 +14499,10 @@ async function executeGeminiMcpTool(
       provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
+    const finalRichResult = richResult as McpToolExecutionResult | null
+    if (finalRichResult) {
+      return { ...finalRichResult, ...(toolIsError ? { isError: true } : {}) }
+    }
     return { text, ...(toolIsError ? { isError: true } : {}) }
   } catch (error) {
     const errorResult = mcpStructuredJsonResult({
@@ -15040,7 +15167,7 @@ function mcpToolDefinitions() {
     {
       name: 'appwatch_latest_frame',
       description:
-        'Return the most recent frame from the Appwatch ring buffer as a PNG (image content block). Bumps the idle-timeout pull clock so an active agent loop keeps the stream alive. Fails fast if `appwatch_start` has not been called for the current handle. Returns `hasFrame: false` when the stream is up but no frame has landed yet (first frame typically arrives within ~200 ms). M1 surface — batch/since retrieval lands in M2.',
+        'Return the most recent frame from the Appwatch ring buffer as a PNG (image content block). Bumps the idle-timeout pull clock so an active agent loop keeps the stream alive. Fails fast if `appwatch_start` has not been called for the current handle. Returns `hasFrame: false` when the stream is up but no frame has landed yet (first frame typically arrives within ~200 ms). For batch/since retrieval use `appwatch_frames`.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -15050,6 +15177,46 @@ function mcpToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: {}
+      }
+    },
+    {
+      name: 'appwatch_frames',
+      description:
+        'Return a chronological batch of recent Appwatch frames from the attached-window ring buffer. Input `{ since?: string, count?: number, format?: "jpeg" | "png", include_ocr?: boolean, includeOCR?: boolean }`; defaults to count=5 and jpeg, clamps count to 1..20, and clamps to 1..5 when OCR is enabled. Returns structured metadata with hasFrames, returned, nextSince, availability timestamps, and one image content block per returned frame.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          since: {
+            type: 'string',
+            description:
+              'Fractional-second ISO timestamp from a prior nextSince. Returns frames captured after this timestamp.'
+          },
+          count: {
+            type: 'number',
+            description:
+              'Number of frames to return. Default 5; clamped to 1..20, or 1..5 with OCR.'
+          },
+          format: {
+            type: 'string',
+            enum: ['jpeg', 'png'],
+            description: 'Image block format. Default jpeg.'
+          },
+          include_ocr: {
+            type: 'boolean',
+            description:
+              'Run local Vision OCR for each returned frame. Default false; limits count to 5.'
+          },
+          includeOCR: {
+            type: 'boolean',
+            description: 'Camel-case alias for include_ocr.'
+          }
+        }
       }
     },
     {

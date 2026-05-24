@@ -1045,6 +1045,52 @@ struct AppwatchStartParams: Decodable {
     let maxDimensionPx: Int?
 }
 
+struct AppwatchFramesParams: Decodable {
+    let handleID: String
+    let since: String?
+    let count: Int?
+    let format: String?
+    let includeOCR: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case handleID
+        case since
+        case count
+        case format
+        case includeOCR
+        case includeOCRSnake = "include_ocr"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        handleID = try container.decode(String.self, forKey: .handleID)
+        since = try container.decodeIfPresent(String.self, forKey: .since)
+        count = try container.decodeIfPresent(Int.self, forKey: .count)
+        format = try container.decodeIfPresent(String.self, forKey: .format)
+        includeOCR =
+            try container.decodeIfPresent(Bool.self, forKey: .includeOCR)
+            ?? container.decodeIfPresent(Bool.self, forKey: .includeOCRSnake)
+    }
+}
+
+@Sendable func appwatchISO8601(_ date: Date) -> String {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.string(from: date)
+}
+
+@Sendable func parseAppwatchISO8601(_ value: String?) -> Date? {
+    guard let value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return nil
+    }
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    if let date = fractional.date(from: value) {
+        return date
+    }
+    return ISO8601DateFormatter().date(from: value)
+}
+
 /// Build the `streaming` object the renderer pill (and the main-side snapshot)
 /// renders. Shared by `appwatch.start` and `appwatch.status` so both surfaces
 /// stay structurally identical — saves a renderer-side type fork.
@@ -1059,7 +1105,7 @@ struct AppwatchStartParams: Decodable {
         "frameCapacity": config.frameCapacity,
         "estimatedMemoryMB": config.estimatedMemoryMB,
         "memoryBudgetMB": AttachedWindowStream.memoryBudgetMB,
-        "startedAt": ISO8601DateFormatter().string(from: config.startedAt)
+        "startedAt": appwatchISO8601(config.startedAt)
     ]
 }
 
@@ -1232,16 +1278,16 @@ dispatcher.register("appwatch.status") { params in
         "memoryBudgetMB": status.memoryBudgetMB
     ]
     if let oldest = status.oldestAt {
-        payload["oldestAt"] = ISO8601DateFormatter().string(from: oldest)
+        payload["oldestAt"] = appwatchISO8601(oldest)
     }
     if let newest = status.newestAt {
-        payload["newestAt"] = ISO8601DateFormatter().string(from: newest)
+        payload["newestAt"] = appwatchISO8601(newest)
     }
     if let pulled = status.lastPullAt {
-        payload["lastPullAt"] = ISO8601DateFormatter().string(from: pulled)
+        payload["lastPullAt"] = appwatchISO8601(pulled)
     }
     if let started = status.startedAt {
-        payload["startedAt"] = ISO8601DateFormatter().string(from: started)
+        payload["startedAt"] = appwatchISO8601(started)
     }
     return payload
 }
@@ -1302,8 +1348,99 @@ dispatcher.register("appwatch.latestFrame") { params in
         "byteLength": pngData.count,
         "width": frame.width,
         "height": frame.height,
-        "capturedAt": ISO8601DateFormatter().string(from: frame.capturedAt)
+        "capturedAt": appwatchISO8601(frame.capturedAt)
     ]
+}
+
+/// `appwatch.frames` — return a chronological batch from the ring buffer,
+/// optionally newer than a fractional-second ISO timestamp. This powers
+/// M2 agent loops that want a small visual sequence instead of polling one
+/// latest frame repeatedly.
+dispatcher.register("appwatch.frames") { params in
+    let parsed: AppwatchFramesParams
+    do {
+        parsed = try decodeParams(params, as: AppwatchFramesParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid appwatch.frames params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try resolveAttachedEntry(store: attachedWindowStore, handleID: parsed.handleID)
+    guard let stream = entry.stream else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidRequest,
+            message: "Appwatch is not streaming for this handle (call appwatch.start first)."
+        )
+    }
+    let includeOCR = parsed.includeOCR ?? false
+    let requestedCount = parsed.count ?? 5
+    let countLimit = includeOCR ? 5 : 20
+    let count = max(1, min(countLimit, requestedCount))
+    let format = (parsed.format ?? "jpeg").lowercased() == "png" ? "png" : "jpeg"
+    let since = parseAppwatchISO8601(parsed.since)
+    let batch = try runBlocking { @Sendable [stream, since, count] in
+        await stream.frames(since: since, count: count)
+    }
+
+    var framesPayload: [[String: Any]] = []
+    framesPayload.reserveCapacity(batch.frames.count)
+    for (index, frame) in batch.frames.enumerated() {
+        let imageData: Data
+        do {
+            imageData = format == "png"
+                ? try AppwatchFrameEncoder.encodePNG(frame: frame)
+                : try AppwatchFrameEncoder.encodeJPEG(frame: frame)
+        } catch let err as AppwatchError {
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.internalError,
+                message: err.localizedDescription
+            )
+        } catch {
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.internalError,
+                message: error.localizedDescription
+            )
+        }
+
+        var framePayload: [String: Any] = [
+            "index": index,
+            "capturedAt": appwatchISO8601(frame.capturedAt),
+            "mimeType": format == "png" ? "image/png" : "image/jpeg",
+            "imageBase64": imageData.base64EncodedString(),
+            "byteLength": imageData.count,
+            "width": frame.width,
+            "height": frame.height
+        ]
+        if includeOCR {
+            do {
+                let ocr = try runBlocking { @Sendable [imageData] in
+                    try await AttachedWindowOCR.recognize(pngData: imageData)
+                }
+                framePayload["ocr"] = ocr.toJSONObject()
+            } catch {
+                framePayload["ocrError"] = error.localizedDescription
+            }
+        }
+        framesPayload.append(framePayload)
+    }
+
+    var payload: [String: Any] = [
+        "ok": true,
+        "handleID": parsed.handleID,
+        "hasFrames": !framesPayload.isEmpty,
+        "returned": framesPayload.count,
+        "requested": requestedCount,
+        "count": count,
+        "format": format,
+        "includeOCR": includeOCR,
+        "availableCapturedAt": batch.availableCapturedAt.map { appwatchISO8601($0) },
+        "frames": framesPayload
+    ]
+    if let nextSince = batch.nextSince {
+        payload["nextSince"] = appwatchISO8601(nextSince)
+    }
+    return payload
 }
 
 // MARK: - Creative-app probe (Phase K1)

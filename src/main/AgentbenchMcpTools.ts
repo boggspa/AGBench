@@ -30,6 +30,7 @@ export const AGENTBENCH_MCP_TOOLS = [
   'appwatch_stop',
   'appwatch_status',
   'appwatch_latest_frame',
+  'appwatch_frames',
   'approval_status',
   'provider_auth_status',
   'run_timeline',
