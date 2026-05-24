@@ -6880,56 +6880,87 @@ button.diff-file-row {
  * body / 10px caps so the receipt anchors the bottom of the stack
  * without overpowering it. Perforation height and side max-width
  * scale up too. */
+/*
+ * Phase L3 slice 5 — turn-receipt tape, ship-night polish pass.
+ *
+ * Earlier shape was deliberately understated (the comment block
+ * above describes it as "no background, just a hairline border").
+ * User feedback at ship: the receipt was reading too quiet —
+ * it deserves to feel like an actual ticket stub. Creative
+ * direction: nudge it toward thermal-printer-tape territory
+ * without going full novelty.
+ *
+ * Changes:
+ *   - Solid fill (no transparency), with subtle inset shading
+ *     so the receipt reads as a physical card rather than a
+ *     ghosted overlay.
+ *   - Deeper perforations: bigger holes (3px → 3.2px), tighter
+ *     spacing (8px → 7px), stronger contrast against the fill.
+ *   - Soft drop-shadow so the receipt sits ABOVE the transcript
+ *     rather than dissolving into it.
+ *   - TURN label promoted from low-contrast caps to a real
+ *     stamp: accent-tinted bg, accent text, slight outline,
+ *     and a tiny rotation so the asymmetry hints at hand-stamp
+ *     ink rather than a programmatically-rounded chip.
+ */
 .turn-receipt-card {
   position: relative;
-  margin-top: 6px;
+  margin-top: 8px;
   padding: 0;
   align-self: flex-end;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
-  border-radius: 4px;
+  background: color-mix(in srgb, var(--app-bg-elevated) 96%, var(--text-primary, white) 4%);
+  border-radius: 6px;
   font-size: 14px;
-  color: var(--text-secondary, rgba(255, 255, 255, 0.55));
-  max-width: 460px;
+  color: var(--text-secondary, rgba(255, 255, 255, 0.65));
+  max-width: 480px;
+  box-shadow:
+    0 4px 14px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary, white) 8%, transparent);
 }
 
 .turn-receipt-perf {
-  height: 6px;
+  height: 8px;
   background:
-    radial-gradient(circle at 4px 3px, var(--app-bg) 2px, transparent 2.2px) 0 0 / 8px 6px,
-    color-mix(in srgb, var(--app-bg-elevated) 70%, transparent);
+    radial-gradient(circle at 4px 4px, var(--app-bg) 3.2px, transparent 3.4px) 0 0 / 7px 8px,
+    color-mix(in srgb, var(--app-bg-elevated) 96%, var(--text-primary, white) 4%);
 }
 
 .turn-receipt-perf-top {
-  border-top-left-radius: 4px;
-  border-top-right-radius: 4px;
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
 }
 
 .turn-receipt-perf-bot {
-  border-bottom-left-radius: 4px;
-  border-bottom-right-radius: 4px;
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
 }
 
 .turn-receipt-body {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 6px 14px;
+  gap: 12px;
+  padding: 8px 16px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .turn-receipt-label {
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 10px;
-  color: var(--text-tertiary, rgba(255, 255, 255, 0.35));
-  padding: 2px 7px;
-  border-radius: 3px;
-  background: color-mix(in srgb, var(--text-primary, white) 6%, transparent);
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary, white));
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  /* Tiny rotation — hand-stamp asymmetry, not a perfect chip. */
+  transform: rotate(-1.5deg);
+  transform-origin: center;
+  flex-shrink: 0;
 }
 
 .turn-receipt-summary {
@@ -19536,9 +19567,23 @@ input:disabled, select:disabled, textarea:disabled {
  * cover all above-bar element classes (the prior rule only hit
  * `.composer-above-bar > *` which works for direct children but
  * not deeply-nested span/button structure inside some chips). */
+/*
+ * Modular shell light-mode pill fills.
+ *
+ * Originally applied the unified soft-surface bg to every
+ * above-bar descendant including `.composer-above-bar-files`
+ * and `.composer-above-bar-stats`. Those two are inline text
+ * labels, NOT pills — giving them a fill produced white
+ * strips behind the file count and diff stats that read as
+ * visual noise (only in modular shell + light mode; dark mode
+ * unaffected because this rule scope didn't apply there).
+ *
+ * Stripped `-files` and `-stats` from the selector list. The
+ * pill-shaped children (branch chip, action button,
+ * workspace-access pill, generic composer-chip) keep the
+ * soft-surface treatment — those WERE supposed to be pills.
+ */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-branch,
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-files,
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-stats,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-above-bar-action,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-workspace-access-pill,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="modular"] .composer-above-bar .composer-chip {
