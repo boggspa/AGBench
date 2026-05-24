@@ -1118,8 +1118,12 @@ dispatcher.register("appwatch.start") { params in
     } catch let err as AppwatchError {
         switch err {
         case .memoryBudgetExceeded:
+            // Distinct from -32001 (bridgeUnavailable / window gone) so
+            // the agent can retune bufferSeconds / fps / maxDimensionPx
+            // without us also clearing the attached-window state on
+            // the Electron side.
             throw JSONRPCError(
-                code: JSONRPCErrorCode.bridgeUnavailable,
+                code: JSONRPCErrorCode.appwatchBudgetExceeded,
                 message: err.localizedDescription
             )
         case .invalidConfig:

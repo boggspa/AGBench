@@ -11966,13 +11966,22 @@ async function executeAppwatchStart(
     )) as AppwatchStartDaemonResult
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    if (err instanceof BridgeDaemonError && err.code === -32001) {
+    const daemonCode = err instanceof BridgeDaemonError ? err.code : null
+    // -32001 = "the attached window has gone away" — drop our snapshot
+    // so the renderer pill clears and the agent sees the next status
+    // call as detached.
+    // -32002 = "the configured buffer would exceed the daemon's memory
+    // cap." Distinct from -32001 so the agent can retune
+    // bufferSeconds / fps / maxDimensionPx without us clearing the
+    // attached-window state. The numeric cap + estimate are in `message`.
+    if (daemonCode === -32001) {
       handleAppwatchWindowGone()
     }
     return mcpStructuredJsonResult({
       ok: false,
       tool: 'appwatch_start',
-      error: message
+      error: message,
+      ...(daemonCode !== null ? { errorCode: daemonCode } : {})
     })
   }
   const streaming = result.streaming
