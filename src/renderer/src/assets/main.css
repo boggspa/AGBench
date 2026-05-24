@@ -19191,7 +19191,15 @@ input:disabled, select:disabled, textarea:disabled {
   padding-top: 6px;
   padding-bottom: 14px;
   position: relative;
-  z-index: 3;
+  /* CX6: tuck the tab BEHIND the composer-surface (z-index: 2)
+   * rather than in front of it. The `margin-bottom: -10px` above
+   * pulls the tab into the composer's top edge by 10px; with the
+   * tab in front, that overlap painted on top of the composer
+   * border and read as a solid join. With the tab behind, the
+   * composer's rounded top corners stay visible and the tab
+   * reads as a real "tab under" — closer to real Codex's
+   * tucked-tab look. */
+  z-index: 1;
   /* CX2: notch darker than the composer-surface body for visual
    * depth — the tab now reads as a recessed tray rather than a
    * continuous extension of the composer. */
