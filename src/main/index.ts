@@ -55,6 +55,7 @@ import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
+import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
 import {
   runEventBus,
   makeElectronIpcSink,
@@ -172,11 +173,7 @@ import {
   findAppleScriptClass,
   formatAppleScriptClassName
 } from './CreativeAppleScriptClasses'
-import {
-  BLENDER_CLASSES,
-  findBlenderClass,
-  formatBlenderClassName
-} from './CreativeBlenderClasses'
+import { BLENDER_CLASSES, findBlenderClass, formatBlenderClassName } from './CreativeBlenderClasses'
 import {
   buildEditorPositionalArgs,
   findEditorById,
@@ -706,6 +703,7 @@ export interface AgentRunPayload {
 interface CodexRunState {
   sender: Electron.WebContents
   threadId: string
+  startedAt: number
   scope?: ChatScope
   cwd: string
   workspacePath?: string
@@ -2781,7 +2779,9 @@ async function requestAgenticServiceApproval(
     ? ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
     : approvalActionsForPolicy(policy, workspacePath)
   const title = externalPathDetection ? externalPathApprovalTitle() : request.title
-  const body = externalPathDetection ? externalPathApprovalBody(externalPathDetection) : request.body
+  const body = externalPathDetection
+    ? externalPathApprovalBody(externalPathDetection)
+    : request.body
   return new Promise((resolveApproval) => {
     approvalService?.registerGeminiTool(approvalId, {
       provider,
@@ -5586,109 +5586,9 @@ function extractProviderThinkingText(event: any): string {
   return contentPartsToThinkingText(event)
 }
 
-function providerUsageNumber(source: Record<string, unknown>, key: string): number {
-  const value = source[key]
-  const numeric =
-    typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : Number.NaN
-  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0
-}
-
-function firstProviderUsageNumber(source: Record<string, unknown>, keys: string[]): number {
-  for (const key of keys) {
-    const value = providerUsageNumber(source, key)
-    if (value > 0) return value
-  }
-  return 0
-}
-
-function sumProviderUsageNumbers(source: Record<string, unknown>, keys: string[]): number {
-  return keys.reduce((total, key) => total + providerUsageNumber(source, key), 0)
-}
-
-function normalizeProviderUsage(
-  provider: ProviderId,
-  usage: Record<string, unknown>
-): Record<string, unknown> {
-  if (!isRecord(usage)) return usage
-
-  const inputBase =
-    provider === 'kimi'
-      ? firstProviderUsageNumber(usage, [
-          'input_other',
-          'input_tokens',
-          'inputTokens',
-          'prompt_tokens',
-          'promptTokens',
-          'input'
-        ])
-      : firstProviderUsageNumber(usage, [
-          'input_tokens',
-          'inputTokens',
-          'prompt_tokens',
-          'promptTokens',
-          'input',
-          'input_other'
-        ])
-  const cacheInput = sumProviderUsageNumbers(usage, [
-    'cache_creation_input_tokens',
-    'cache_read_input_tokens',
-    'cached_input_tokens',
-    'input_cache_creation',
-    'input_cache_read'
-  ])
-  const audioInput = sumProviderUsageNumbers(usage, ['input_audio_tokens'])
-  const outputBase = firstProviderUsageNumber(usage, [
-    'output_tokens',
-    'outputTokens',
-    'completion_tokens',
-    'completionTokens',
-    'output'
-  ])
-  const outputAudio = sumProviderUsageNumbers(usage, ['output_audio_tokens'])
-  const inputTokens = Math.trunc(inputBase + cacheInput + audioInput)
-  const outputTokens = Math.trunc(outputBase + outputAudio)
-  const explicitTotal = firstProviderUsageNumber(usage, [
-    'total_tokens',
-    'totalTokens',
-    'all_tokens',
-    'total'
-  ])
-  const computedTotal = inputTokens + outputTokens
-  const totalTokens = Math.trunc(explicitTotal > 0 ? explicitTotal : computedTotal)
-
-  if (inputTokens <= 0 && outputTokens <= 0 && totalTokens <= 0) return usage
-
-  return {
-    ...usage,
-    input_tokens: inputTokens,
-    output_tokens: outputTokens,
-    total_tokens: totalTokens,
-    _agentbench_input_includes_cache: cacheInput > 0 || audioInput > 0 || provider === 'kimi'
-  }
-}
-
 function nestedRecord(source: Record<string, unknown>, key: string): Record<string, unknown> {
   const value = source[key]
   return isRecord(value) ? value : {}
-}
-
-function extractProviderUsage(
-  provider: ProviderId,
-  event: unknown
-): Record<string, unknown> | null {
-  if (!isRecord(event)) return null
-  const message = nestedRecord(event, 'message')
-  const params = nestedRecord(event, 'params')
-  const payload = nestedRecord(params, 'payload')
-  const usage = [
-    event.usage,
-    message.usage,
-    event.stats,
-    payload.token_usage,
-    params.token_usage
-  ].find(isRecord)
-  if (!usage) return null
-  return normalizeProviderUsage(provider, usage)
 }
 
 function extractProviderSessionId(event: unknown): string | null {
@@ -5915,7 +5815,7 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const sessionId = extractProviderSessionId(event)
   updateCliProviderSession(state, sessionId)
   const usage = extractProviderUsage(state.provider, event)
-  if (usage) state.tokenUsage = usage
+  if (usage) state.tokenUsage = mergeProviderUsage(state.provider, state.tokenUsage, usage)
   emitCliProviderToolEvent(state, event)
   if (state.provider === 'kimi') {
     emitCliProviderThinkingEvent(state, extractProviderThinkingText(event))
@@ -7017,9 +6917,7 @@ async function runKimiWireProvider(
             if (requestType === 'ApprovalRequest') {
               const approvalId = Date.now() + '-' + Math.random().toString(36).slice(2)
               const kimiToolName = String(
-                message.params?.payload?.sender ||
-                  message.params?.payload?.action ||
-                  'kimi_action'
+                message.params?.payload?.sender || message.params?.payload?.action || 'kimi_action'
               )
               const externalPathDetection = detectExternalPathForProviderApproval({
                 provider: 'kimi',
@@ -7103,8 +7001,8 @@ async function runKimiWireProvider(
                 summary: externalPathDetection
                   ? approvalTitle
                   : message.params?.payload?.description ||
-                  message.params?.payload?.action ||
-                  'Kimi is requesting permission to continue.'
+                    message.params?.payload?.action ||
+                    'Kimi is requesting permission to continue.'
               })
             } else if (requestType === 'QuestionRequest') {
               respondToKimiWireRequest(child, message.id, {
@@ -7571,13 +7469,39 @@ function sendAgentCompatError(
   }
 }
 
+function buildAgentExitStats(
+  provider: ProviderId,
+  route?: AgentRunRoute | null
+): Record<string, unknown> | undefined {
+  if (!route || typeof route !== 'object') return undefined
+  const tokenUsage = (route as { tokenUsage?: unknown }).tokenUsage
+  if (!tokenUsage || typeof tokenUsage !== 'object') return undefined
+  const startedAt = (route as { startedAt?: unknown }).startedAt
+  const durationMs =
+    typeof startedAt === 'number' && Number.isFinite(startedAt)
+      ? Math.max(0, Date.now() - startedAt)
+      : 0
+  if (provider === 'codex') {
+    return codexUsageToStats(tokenUsage, durationMs)
+  }
+  return {
+    ...(tokenUsage as Record<string, unknown>),
+    duration_ms: durationMs
+  }
+}
+
 function sendAgentCompatExit(
   sender: Electron.WebContents,
   provider: ProviderId,
   code: number | null,
   route?: AgentRunRoute | null
 ) {
-  const routed = enrichAgentPayload(provider, { code }, route)
+  const exitStats = buildAgentExitStats(provider, route)
+  const routed = enrichAgentPayload(
+    provider,
+    exitStats ? { code, stats: exitStats } : { code },
+    route
+  )
   appendDurableRunEventForRoute(
     provider,
     routed,
@@ -7685,12 +7609,10 @@ function detectExternalPathForProviderApproval(input: {
     method: input.method,
     params: input.params,
     workspacePath: input.workspacePath,
-    existingGrants: externalPathGrantsForProvider(input.appChatId, input.provider).map(
-      (grant) => ({
-        path: grant.path,
-        access: grant.access
-      })
-    )
+    existingGrants: externalPathGrantsForProvider(input.appChatId, input.provider).map((grant) => ({
+      path: grant.path,
+      access: grant.access
+    }))
   })
   if (!detection.needsPrompt || !detection.path || !detection.access) return undefined
   return {
@@ -7790,18 +7712,6 @@ function buildCodexUserInput(prompt: string, imagePaths: string[] = []) {
   return input
 }
 
-function codexUsageToStats(tokenUsage: any, fallbackDurationMs = 0) {
-  const last = tokenUsage?.last || tokenUsage?.total || {}
-  const modelContextWindow = tokenUsage?.modelContextWindow
-  return {
-    input_tokens: Number(last.inputTokens || last.input_tokens || 0),
-    output_tokens: Number(last.outputTokens || last.output_tokens || 0),
-    total_tokens: Number(last.totalTokens || last.total_tokens || 0),
-    totalTokenLimit: typeof modelContextWindow === 'number' ? modelContextWindow : undefined,
-    duration_ms: fallbackDurationMs
-  }
-}
-
 function normalizeCodexTurnStatus(status?: string): string {
   if (status === 'completed') return 'success'
   if (status === 'interrupted') return 'cancelled'
@@ -7822,6 +7732,7 @@ function createCodexRunState(
   return {
     sender,
     threadId,
+    startedAt: Date.now(),
     scope,
     cwd,
     workspacePath,
@@ -12004,9 +11915,7 @@ type AppwatchLatestFrameDaemonResult = {
  *  refreshed snapshot to the renderer over the existing
  *  `attached-window-changed` channel. Centralised so every Appwatch tool
  *  call ends with the renderer's pill in the correct state. */
-function setAttachedWindowStreaming(
-  streaming: AttachedWindowStreamingSnapshot | null
-): void {
+function setAttachedWindowStreaming(streaming: AttachedWindowStreamingSnapshot | null): void {
   if (!attachedWindowSnapshot) return
   const next: AttachedWindowSnapshot = {
     ...attachedWindowSnapshot,
@@ -12024,9 +11933,7 @@ function handleAppwatchWindowGone(): void {
   mainWindow?.webContents.send('attached-window-changed', null)
 }
 
-async function executeAppwatchStart(
-  args: Record<string, any>
-): Promise<McpToolExecutionResult> {
+async function executeAppwatchStart(args: Record<string, any>): Promise<McpToolExecutionResult> {
   const snapshot = attachedWindowSnapshot
   if (!snapshot) {
     return mcpStructuredJsonResult({
@@ -12687,8 +12594,7 @@ async function executeCreativeTimelineImport(
       summary: writer.summary,
       warnings: writer.warnings,
       dtdPreflight: preflight,
-      note:
-        'FCPXML DTD validation failed; Final Cut Pro would reject the import. The .fcpxml file was written for inspection but not dispatched.'
+      note: 'FCPXML DTD validation failed; Final Cut Pro would reject the import. The .fcpxml file was written for inspection but not dispatched.'
     }
   }
 
@@ -12761,9 +12667,7 @@ async function executeCreativeTimelineImport(
  * Whichever path: forwards to daemon `creative.runAppleScript` on
  * approval, returns `{ refused, reason }` on rejection.
  */
-async function executeCreativeAppleScriptDispatch(
-  args: Record<string, any>
-): Promise<unknown> {
+async function executeCreativeAppleScriptDispatch(args: Record<string, any>): Promise<unknown> {
   const gate = creativeApprovalGateRef
   const daemon = bridgeDaemonRef
   if (!gate) {
@@ -13052,9 +12956,7 @@ async function executeOpenInIde(
     const candidates = listEditorAdapters()
     adapter =
       candidates.find((c) => c.bundleIds.some((id) => runningHint(id))) ||
-      candidates.find((c) =>
-        c.commonAppPaths.some((path) => fsSync.existsSync(path))
-      ) ||
+      candidates.find((c) => c.commonAppPaths.some((path) => fsSync.existsSync(path))) ||
       findEditorById('vscode')
   }
   if (!adapter) {
@@ -13112,15 +13014,11 @@ async function executeOpenInIdeAtPosition(
     const candidates = listEditorAdapters()
     adapter =
       candidates.find((c) => c.bundleIds.some((id) => runningHint(id))) ||
-      candidates.find((c) =>
-        c.commonAppPaths.some((path) => fsSync.existsSync(path))
-      ) ||
+      candidates.find((c) => c.commonAppPaths.some((path) => fsSync.existsSync(path))) ||
       findEditorById('vscode')
   }
   if (!adapter) {
-    throw new Error(
-      'open_in_ide_at_position: no editor could be resolved. Pass `ide` explicitly.'
-    )
+    throw new Error('open_in_ide_at_position: no editor could be resolved. Pass `ide` explicitly.')
   }
   const positionalArgs = buildEditorPositionalArgs(adapter, filePath, line, column)
   if (positionalArgs && adapter.cliCommand) {
@@ -15006,7 +14904,7 @@ function mcpToolDefinitions() {
     {
       name: 'appwatch_start',
       description:
-        "Start a continuous low-fps capture stream of the attached window into a daemon-side ring buffer. Returns the resolved config. Idempotent: second call with same handle returns the existing config without restarting. Refuses if the configured buffer would exceed 350 MB — reduce fps/bufferSeconds/maxDimensionPx and retry. The user must have already attached a window via the picker; you cannot initiate the pick.",
+        'Start a continuous low-fps capture stream of the attached window into a daemon-side ring buffer. Returns the resolved config. Idempotent: second call with same handle returns the existing config without restarting. Refuses if the configured buffer would exceed 350 MB — reduce fps/bufferSeconds/maxDimensionPx and retry. The user must have already attached a window via the picker; you cannot initiate the pick.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -15361,7 +15259,7 @@ function mcpToolDefinitions() {
     {
       name: 'open_in_ide',
       description:
-        'Open a file in the user\'s editor of choice via NSWorkspace. Optional `ide` arg picks one of: vscode, vscode-insiders, cursor, zed, sublime-text, xcode, bbedit, nova, textmate, intellij-idea, webstorm, pycharm, goland, clion, rustrover, rider, rubymine, phpstorm, datagrip, android-studio. When omitted, picks the first running editor → first installed → vscode fallback. No approval needed (focus-change only).',
+        "Open a file in the user's editor of choice via NSWorkspace. Optional `ide` arg picks one of: vscode, vscode-insiders, cursor, zed, sublime-text, xcode, bbedit, nova, textmate, intellij-idea, webstorm, pycharm, goland, clion, rustrover, rider, rubymine, phpstorm, datagrip, android-studio. When omitted, picks the first running editor → first installed → vscode fallback. No approval needed (focus-change only).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -15383,7 +15281,7 @@ function mcpToolDefinitions() {
     {
       name: 'open_in_ide_at_position',
       description:
-        'Open a file at a specific line and column via the editor\'s CLI shim (code -g, cursor -g, subl, xed -l, JetBrains --line --column, etc). Falls back to a plain NSWorkspace open when the editor\'s CLI is not on PATH or doesn\'t support positional args (the fallback response includes a cliMissing flag the agent can surface to the user).',
+        "Open a file at a specific line and column via the editor's CLI shim (code -g, cursor -g, subl, xed -l, JetBrains --line --column, etc). Falls back to a plain NSWorkspace open when the editor's CLI is not on PATH or doesn't support positional args (the fallback response includes a cliMissing flag the agent can surface to the user).",
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -18232,9 +18130,7 @@ if (isGeminiMcpBridgeProcess) {
         let resolvedPartial: Partial<WorkspaceRecord> = partial || {}
         if (!resolvedPartial.branch) {
           try {
-            const { probeExternalPath } = await import(
-              './services/ExternalPathProbe'
-            )
+            const { probeExternalPath } = await import('./services/ExternalPathProbe')
             const probed = await probeExternalPath(path)
             if (probed?.branch) {
               resolvedPartial = { ...resolvedPartial, branch: probed.branch }
@@ -18642,13 +18538,10 @@ if (isGeminiMcpBridgeProcess) {
      * each external-path grant with its branch name (mirrors how
      * Claude Code shows `<repo> <branch>` per touched repo).
      */
-    ipcMain.handle(
-      'probe-external-path',
-      async (_, absolutePath: string) => {
-        const { probeExternalPath } = await import('./services/ExternalPathProbe')
-        return probeExternalPath(absolutePath)
-      }
-    )
+    ipcMain.handle('probe-external-path', async (_, absolutePath: string) => {
+      const { probeExternalPath } = await import('./services/ExternalPathProbe')
+      return probeExternalPath(absolutePath)
+    })
 
     ipcMain.handle(
       'read-workspace-file',
@@ -19490,12 +19383,8 @@ if (isGeminiMcpBridgeProcess) {
         // externalPathDetection BEFORE resolving — issue a signed grant
         // and persist it onto the chat's providerMetadata so the secondary
         // above-row appears the moment the modal closes.
-        if (
-          action === 'grantExternalPathRead' ||
-          action === 'grantExternalPathEdit'
-        ) {
-          const detection =
-            approvalServiceInstance.getPendingExternalPathDetection(requestId)
+        if (action === 'grantExternalPathRead' || action === 'grantExternalPathEdit') {
+          const detection = approvalServiceInstance.getPendingExternalPathDetection(requestId)
           if (detection?.path && detection.appChatId) {
             try {
               const grantAccess: 'read' | 'write' =
@@ -19523,9 +19412,7 @@ if (isGeminiMcpBridgeProcess) {
               })
               const chat = AppStore.getChat(detection.appChatId)
               if (chat) {
-                const existing = Array.isArray(
-                  chat.providerMetadata?.codexExternalPathGrants
-                )
+                const existing = Array.isArray(chat.providerMetadata?.codexExternalPathGrants)
                   ? (chat.providerMetadata!.codexExternalPathGrants as ExternalPathGrant[])
                   : []
                 const updatedChat = {
@@ -19540,10 +19427,7 @@ if (isGeminiMcpBridgeProcess) {
                 mainWindow?.webContents.send('chat-updated', updatedChat)
               }
             } catch (err) {
-              console.warn(
-                '[ExternalPathGrant] runtime grant persistence failed',
-                err
-              )
+              console.warn('[ExternalPathGrant] runtime grant persistence failed', err)
             }
           }
         }

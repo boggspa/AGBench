@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallbac
 import type { CSSProperties, ReactElement } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
+import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 import {
   AppSettings,
   WorkspaceRecord,
@@ -2245,12 +2246,7 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
   // Gemini, Claude, and Kimi all consume the same grant list via
   // `--add-dir <path>`. Loosen the filter so runtime-issued grants
   // for any provider can persist into chat metadata.
-  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set([
-    'codex',
-    'claude',
-    'gemini',
-    'kimi'
-  ])
+  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set(['codex', 'claude', 'gemini', 'kimi'])
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
     const grant = item as Partial<ExternalPathGrant>
@@ -3146,6 +3142,7 @@ interface RunRouteEventPayload {
   data?: string
   error?: string
   code?: number | null
+  stats?: any
 }
 
 interface ActiveRunContext {
@@ -3363,10 +3360,7 @@ const formatExplicitCostUsd = (costUsd: number): string => {
   if (costUsd < 1) return `$${costUsd.toFixed(2)}`
   return `$${costUsd.toFixed(2)}`
 }
-const formatThreadTokenTally = (
-  _providerLabel: string,
-  tally: ChatTokenTally
-): string | null => {
+const formatThreadTokenTally = (_providerLabel: string, tally: ChatTokenTally): string | null => {
   if (tally.totalTokens <= 0) return null
   const cost = formatExplicitCostUsd(tally.explicitCostUsd)
   // Provider label dropped — the user already knows which provider
@@ -8293,6 +8287,8 @@ function App(): React.JSX.Element {
       const completedWorkspacePath =
         isGlobalCompletedRun || completedRunDiffUnavailable ? null : context.workspacePath
       const completedRunStartedAt = context.startedAt
+      const completedRunExitStats =
+        payload && typeof payload === 'object' ? (payload as RunRouteEventPayload).stats : undefined
       const isVisibleCompletedRun = () =>
         !completedRunChatId || currentChatIdRef.current === completedRunChatId
       updateRunQueueJobStatus(
@@ -8347,6 +8343,9 @@ function App(): React.JSX.Element {
           }
           targetRun.exitCode = exitCode || undefined
           targetRun.warnings = [...context.warnings]
+          if (shouldBackfillRunStats(targetRun.stats, completedRunExitStats)) {
+            targetRun.stats = completedRunExitStats
+          }
         }
         updated.runs = runs
 
@@ -9768,45 +9767,48 @@ function App(): React.JSX.Element {
               extractUsageCount(event.stats, [['duration_ms'], ['durationMs']])
             )
 
-            const usageRecordPromises = runUsageEntries.map((usageEntry) => {
-              const {
-                model,
-                inputTokens,
-                outputTokens,
-                totalTokens,
-                inputTokenLimit,
-                outputTokenLimit,
-                totalTokenLimit,
-                resetAt,
-                resetText,
-                durationMs: entryDurationMs
-              } = usageEntry
-              const resetHint = runContext.usageResetHints.get(normalizeModelName(model)) || {}
-              const mergedReset = mergeUsageReset({ resetAt, resetText }, resetHint)
+            const usageAlreadyRecorded = Boolean(event.stats?._agentbench_usage_recorded)
+            const usageRecordPromises = usageAlreadyRecorded
+              ? []
+              : runUsageEntries.map((usageEntry) => {
+                  const {
+                    model,
+                    inputTokens,
+                    outputTokens,
+                    totalTokens,
+                    inputTokenLimit,
+                    outputTokenLimit,
+                    totalTokenLimit,
+                    resetAt,
+                    resetText,
+                    durationMs: entryDurationMs
+                  } = usageEntry
+                  const resetHint = runContext.usageResetHints.get(normalizeModelName(model)) || {}
+                  const mergedReset = mergeUsageReset({ resetAt, resetText }, resetHint)
 
-              return window.api.recordUsage({
-                provider: runProvider,
-                workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
-                chatId: updated.appChatId,
-                runId: currentRunId,
-                usageKind: 'run',
-                model,
-                inputTokens,
-                outputTokens,
-                totalTokens,
-                inputTokenLimit,
-                outputTokenLimit,
-                totalTokenLimit,
-                resetAt: mergedReset.resetAt,
-                resetText: mergedReset.resetText,
-                durationMs: entryDurationMs ?? runDurationMs,
-                promptText: contextualPrompt,
-                responseText:
-                  updated.messages[updated.messages.length - 1]?.role === 'assistant'
-                    ? updated.messages[updated.messages.length - 1].content
-                    : undefined
-              })
-            })
+                  return window.api.recordUsage({
+                    provider: runProvider,
+                    workspaceId: getUsageWorkspaceIdForChat(updated) || GLOBAL_USAGE_WORKSPACE_ID,
+                    chatId: updated.appChatId,
+                    runId: currentRunId,
+                    usageKind: 'run',
+                    model,
+                    inputTokens,
+                    outputTokens,
+                    totalTokens,
+                    inputTokenLimit,
+                    outputTokenLimit,
+                    totalTokenLimit,
+                    resetAt: mergedReset.resetAt,
+                    resetText: mergedReset.resetText,
+                    durationMs: entryDurationMs ?? runDurationMs,
+                    promptText: contextualPrompt,
+                    responseText:
+                      updated.messages[updated.messages.length - 1]?.role === 'assistant'
+                        ? updated.messages[updated.messages.length - 1].content
+                        : undefined
+                  })
+                })
 
             Promise.all(usageRecordPromises).then(() => {
               const usageWorkspaceId = getUsageWorkspaceIdForChat(updated)
@@ -11858,10 +11860,8 @@ function App(): React.JSX.Element {
   // (before slice 5 lands the runtime detector) no tool activity
   // references external paths, so this aggregate stays empty.
   const externalPathDiffStatsByGrant = useMemo(() => {
-    const result: Record<
-      string,
-      { additions: number; deletions: number; filesChanged: number }
-    > = {}
+    const result: Record<string, { additions: number; deletions: number; filesChanged: number }> =
+      {}
     if (!currentChat) return result
     // Build the list of (grantId, repoRoot) pairs to bucket against.
     const grantBuckets: Array<{ id: string; root: string }> = []
@@ -11915,12 +11915,7 @@ function App(): React.JSX.Element {
       }
     }
     return result
-  }, [
-    currentChat,
-    currentRun?.runId,
-    codexExternalPathGrants,
-    externalPathRepoMetadata
-  ])
+  }, [currentChat, currentRun?.runId, codexExternalPathGrants, externalPathRepoMetadata])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -12731,9 +12726,7 @@ function App(): React.JSX.Element {
               className={`chat-corner-btn ${showFirstLaunchSheet ? 'active' : ''}`}
               type="button"
               onClick={() => setShowFirstLaunchSheet((current) => !current)}
-              title={
-                showFirstLaunchSheet ? 'Hide onboarding sheet' : 'Open onboarding sheet'
-              }
+              title={showFirstLaunchSheet ? 'Hide onboarding sheet' : 'Open onboarding sheet'}
               aria-label="Toggle onboarding sheet"
               aria-pressed={showFirstLaunchSheet}
             >
@@ -13078,25 +13071,25 @@ function App(): React.JSX.Element {
               */}
             {!isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
               <div className="composer-above-bar-stack">
-              <div className="composer-above-bar style-unified">
-                <span className="composer-above-bar-branch">
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 16 16"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.4"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden
-                  >
-                    <circle cx="4" cy="3.5" r="1.6" />
-                    <circle cx="4" cy="12.5" r="1.6" />
-                    <circle cx="12" cy="7" r="1.6" />
-                    <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
-                  </svg>
-                  {/*
+                <div className="composer-above-bar style-unified">
+                  <span className="composer-above-bar-branch">
+                    <svg
+                      width="13"
+                      height="13"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <circle cx="4" cy="3.5" r="1.6" />
+                      <circle cx="4" cy="12.5" r="1.6" />
+                      <circle cx="12" cy="7" r="1.6" />
+                      <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
+                    </svg>
+                    {/*
                     `displayName · branch` mirrors the secondary rows
                     (`basename · branch` in ExternalPathAboveRow) so
                     the stack reads as one consistent label family
@@ -13107,15 +13100,15 @@ function App(): React.JSX.Element {
                     it reads as metadata). The "·" lives outside both
                     spans so it copy-pastes cleanly.
                   */}
-                  <span>
-                    {currentWorkspace.displayName}
-                    {' · '}
-                    <em className="composer-above-bar-secondary-branch">
-                      {currentWorkspace?.branch || 'detached'}
-                    </em>
+                    <span>
+                      {currentWorkspace.displayName}
+                      {' · '}
+                      <em className="composer-above-bar-secondary-branch">
+                        {currentWorkspace?.branch || 'detached'}
+                      </em>
+                    </span>
                   </span>
-                </span>
-                {/*
+                  {/*
                   Phase K-followup — files-changed pill is now
                   always rendered (with "0 files changed" when no
                   diff yet). Fills the real-estate freed by removing
@@ -13132,8 +13125,8 @@ function App(): React.JSX.Element {
                   layout regression in the AGBench / Claude /
                   Gemini / Kimi shells.
                 */}
-                <span className="composer-above-bar-files-cluster">
-                  {/*
+                  <span className="composer-above-bar-files-cluster">
+                    {/*
                     Order: files-changed pill FIRST, then the diff
                     stats (`+N -M`). Matches the user's stated
                     preference ("X files changed | +diff"). The
@@ -13141,117 +13134,117 @@ function App(): React.JSX.Element {
                     inherit this order too since the children
                     participate directly in the parent flex.
                   */}
-                  <span
-                    className="composer-above-bar-files"
-                    title={
-                      latestRunDiffStats.filesChanged > 0
-                        ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
-                        : 'No file changes from the most recent run'
-                    }
-                  >
-                    <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
-                    {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
-                  </span>
-                  {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                    <span className="composer-above-bar-stats">
-                      <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
-                      <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                    <span
+                      className="composer-above-bar-files"
+                      title={
+                        latestRunDiffStats.filesChanged > 0
+                          ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
+                          : 'No file changes from the most recent run'
+                      }
+                    >
+                      <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
+                      {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
                     </span>
-                  )}
-                </span>
-                {/*
+                    {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                      <span className="composer-above-bar-stats">
+                        <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
+                        <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                      </span>
+                    )}
+                  </span>
+                  {/*
                     Composer-unification (Phase J1): once the chat has
                     activity, External Path + Worktree migrate from the
                     welcome-state satellite slot into the above-bar so
                     they sit alongside the workspace summary band the
                     user is already looking at.
                   */}
-                <WorkspaceAccessControls
-                  variant="inline"
-                  provider={currentProvider}
-                  currentWorkspace={currentWorkspace}
-                  isCurrentGlobalChat={isCurrentGlobalChat}
-                  isCurrentComposerLocked={isCurrentComposerLocked}
-                  hasWorkspaceContext={hasWorkspaceContext}
-                  currentGeminiWorktree={currentGeminiWorktree}
-                  onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
-                  worktreeToggleLabel={worktreeToggleLabel}
-                  worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
-                />
-                {(() => {
-                  /*
-                   * Phase J7-followup: state-aware Create PR / Review
-                   * Changes button.
-                   *
-                   * Real Codex shows `Review here` and opens the diff
-                   * viewer; real Claude Code shows `Commit changes` and
-                   * commits the dirty tree. AGBench's button used to
-                   * unconditionally say "Create PR" and call
-                   * `gh pr create --fill` regardless of state, which
-                   * felt wrong when the user had uncommitted changes
-                   * they wanted to review first.
-                   *
-                   * New behaviour:
-                   *  - Latest run touched files (latestRunDiffStats
-                   *    .filesChanged > 0) → label "Review changes",
-                   *    action: focus the Diff Studio in the right pane.
-                   *    No git mutation. (Mirrors real Codex.)
-                   *  - Clean tree (no recent diff to review) → label
-                   *    "Create PR", action: existing `gh pr create`
-                   *    flow. (Mirrors AGBench's pre-existing UX.)
-                   *
-                   * Per-state pending / success / error variants keep
-                   * the existing tone classes for the active action.
-                   */
-                  const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
-                  if (hasReviewableDiff) {
+                  <WorkspaceAccessControls
+                    variant="inline"
+                    provider={currentProvider}
+                    currentWorkspace={currentWorkspace}
+                    isCurrentGlobalChat={isCurrentGlobalChat}
+                    isCurrentComposerLocked={isCurrentComposerLocked}
+                    hasWorkspaceContext={hasWorkspaceContext}
+                    currentGeminiWorktree={currentGeminiWorktree}
+                    onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
+                    worktreeToggleLabel={worktreeToggleLabel}
+                    worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
+                  />
+                  {(() => {
+                    /*
+                     * Phase J7-followup: state-aware Create PR / Review
+                     * Changes button.
+                     *
+                     * Real Codex shows `Review here` and opens the diff
+                     * viewer; real Claude Code shows `Commit changes` and
+                     * commits the dirty tree. AGBench's button used to
+                     * unconditionally say "Create PR" and call
+                     * `gh pr create --fill` regardless of state, which
+                     * felt wrong when the user had uncommitted changes
+                     * they wanted to review first.
+                     *
+                     * New behaviour:
+                     *  - Latest run touched files (latestRunDiffStats
+                     *    .filesChanged > 0) → label "Review changes",
+                     *    action: focus the Diff Studio in the right pane.
+                     *    No git mutation. (Mirrors real Codex.)
+                     *  - Clean tree (no recent diff to review) → label
+                     *    "Create PR", action: existing `gh pr create`
+                     *    flow. (Mirrors AGBench's pre-existing UX.)
+                     *
+                     * Per-state pending / success / error variants keep
+                     * the existing tone classes for the active action.
+                     */
+                    const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
+                    if (hasReviewableDiff) {
+                      return (
+                        <button
+                          type="button"
+                          className="composer-above-bar-action"
+                          onClick={() => setRightTab('diff')}
+                          title="Open Diff Studio to review the latest run's file changes"
+                        >
+                          Review changes
+                        </button>
+                      )
+                    }
                     return (
                       <button
                         type="button"
-                        className="composer-above-bar-action"
-                        onClick={() => setRightTab('diff')}
-                        title="Open Diff Studio to review the latest run's file changes"
+                        className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
+                        onClick={handleCreateGithubPr}
+                        disabled={createPrState.status === 'pending'}
+                        title={
+                          createPrState.message ||
+                          'Run `gh pr create --fill` against the current branch'
+                        }
                       >
-                        Review changes
+                        {createPrState.status === 'pending'
+                          ? 'Creating…'
+                          : createPrState.status === 'success'
+                            ? 'PR opened'
+                            : createPrState.status === 'error'
+                              ? 'Retry PR'
+                              : 'Create PR'}
                       </button>
                     )
-                  }
-                  return (
-                    <button
-                      type="button"
-                      className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
-                      onClick={handleCreateGithubPr}
-                      disabled={createPrState.status === 'pending'}
-                      title={
-                        createPrState.message ||
-                        'Run `gh pr create --fill` against the current branch'
-                      }
-                    >
-                      {createPrState.status === 'pending'
-                        ? 'Creating…'
-                        : createPrState.status === 'success'
-                          ? 'PR opened'
-                          : createPrState.status === 'error'
-                            ? 'Retry PR'
-                            : 'Create PR'}
-                    </button>
-                  )
-                })()}
-              </div>
-              {/* Slice 3 of the external-path-redesign arc. One stacked
+                  })()}
+                </div>
+                {/* Slice 3 of the external-path-redesign arc. One stacked
                   row per external-path grant. Per-grant repo metadata
                   decides whether the row shows branch+repo-name or a
                   bare basename. Per-repo diff stats + per-repo Create
                   PR land in slice 6. */}
-              {codexExternalPathGrants.map((grant) => (
-                <ExternalPathAboveRow
-                  key={grant.id}
-                  grant={grant}
-                  repoMetadata={externalPathRepoMetadata[grant.id] || null}
-                  diffStats={externalPathDiffStatsByGrant[grant.id]}
-                  onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
-                />
-              ))}
+                {codexExternalPathGrants.map((grant) => (
+                  <ExternalPathAboveRow
+                    key={grant.id}
+                    grant={grant}
+                    repoMetadata={externalPathRepoMetadata[grant.id] || null}
+                    diffStats={externalPathDiffStatsByGrant[grant.id]}
+                    onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
+                  />
+                ))}
               </div>
             )}
             <div
@@ -13708,9 +13701,7 @@ function App(): React.JSX.Element {
                           above won't match those approvals' action list,
                           so only these three appear for external-path
                           prompts. */}
-                      {(pendingAgentApproval.actions || []).includes(
-                        'grantExternalPathRead'
-                      ) && (
+                      {(pendingAgentApproval.actions || []).includes('grantExternalPathRead') && (
                         <button
                           className="btn btn-sm btn-primary"
                           type="button"
@@ -13724,9 +13715,7 @@ function App(): React.JSX.Element {
                           Grant read access
                         </button>
                       )}
-                      {(pendingAgentApproval.actions || []).includes(
-                        'grantExternalPathEdit'
-                      ) && (
+                      {(pendingAgentApproval.actions || []).includes('grantExternalPathEdit') && (
                         <button
                           className="btn btn-sm"
                           type="button"
@@ -13740,9 +13729,7 @@ function App(): React.JSX.Element {
                           Grant edit access
                         </button>
                       )}
-                      {(pendingAgentApproval.actions || []).includes(
-                        'declineExternalPath'
-                      ) && (
+                      {(pendingAgentApproval.actions || []).includes('declineExternalPath') && (
                         <button
                           className="btn btn-sm btn-ghost"
                           type="button"
@@ -13956,8 +13943,7 @@ function App(): React.JSX.Element {
                                 : 'Pick a running app window',
                               icon: <CommandSymbolIcon />,
                               disabled:
-                                isCurrentComposerLocked ||
-                                (!attachedWindow && isAttachingWindow),
+                                isCurrentComposerLocked || (!attachedWindow && isAttachingWindow),
                               onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
                             }
                           ]
@@ -14013,16 +13999,14 @@ function App(): React.JSX.Element {
                                   icon: <CommandSymbolIcon />,
                                   active: isCommandPaletteOpen,
                                   disabled: workspaceActionDisabled,
-                                  onSelect: () =>
-                                    setIsCommandPaletteOpen((current) => !current)
+                                  onSelect: () => setIsCommandPaletteOpen((current) => !current)
                                 },
                                 {
                                   id: 'review',
                                   label: isPreparingDiffReview ? 'Preparing review' : 'Review diff',
                                   description: 'Read-only plan-mode review',
                                   icon: <ReviewSymbolIcon />,
-                                  disabled:
-                                    workspaceActionDisabled || isPreparingDiffReview,
+                                  disabled: workspaceActionDisabled || isPreparingDiffReview,
                                   onSelect: () => void handleReviewCurrentDiff()
                                 }
                               ]
@@ -14066,10 +14050,7 @@ function App(): React.JSX.Element {
                           // window. CSS handles the pulse animation; we just
                           // own the markup. Aria-hidden so screen readers
                           // get the textual fps/buffer readout below.
-                          <span
-                            className="composer-attached-window-pill-dot"
-                            aria-hidden="true"
-                          />
+                          <span className="composer-attached-window-pill-dot" aria-hidden="true" />
                         )}
                         <span className="composer-attached-window-pill-app">
                           {attachedWindow.windowMeta.applicationName ||
@@ -14134,9 +14115,7 @@ function App(): React.JSX.Element {
                           id: model.id,
                           label: model.label || model.id
                         })),
-                        ...(currentProvider !== 'kimi'
-                          ? [{ id: 'custom', label: 'Custom…' }]
-                          : [])
+                        ...(currentProvider !== 'kimi' ? [{ id: 'custom', label: 'Custom…' }] : [])
                       ]
 
                       let combinedReasoningOptions: CombinedModelPickerReasoningOption[] = []
@@ -14180,13 +14159,10 @@ function App(): React.JSX.Element {
                           selectedModelType: nextModel
                         }
                         if (currentProvider === 'codex') {
-                          const modelOption = codexModels.find(
-                            (model) => model.id === nextModel
-                          )
+                          const modelOption = codexModels.find((model) => model.id === nextModel)
                           if (modelOption?.defaultReasoningEffort) {
                             setCodexReasoningEffort(modelOption.defaultReasoningEffort)
-                            metadataPatch.codexReasoningEffort =
-                              modelOption.defaultReasoningEffort
+                            metadataPatch.codexReasoningEffort = modelOption.defaultReasoningEffort
                           }
                           if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
                             setCodexServiceTier('')
@@ -14224,18 +14200,14 @@ function App(): React.JSX.Element {
                         if (currentProvider === 'codex') {
                           return new Set(
                             codexModels
-                              .filter((model) =>
-                                model.additionalSpeedTiers?.includes('fast')
-                              )
+                              .filter((model) => model.additionalSpeedTiers?.includes('fast'))
                               .map((model) => model.id)
                           )
                         }
                         if (currentProvider === 'claude') {
                           return new Set(
                             (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
-                              .filter((model) =>
-                                model.additionalSpeedTiers?.includes('fast')
-                              )
+                              .filter((model) => model.additionalSpeedTiers?.includes('fast'))
                               .map((model) => model.id)
                           )
                         }
@@ -14253,8 +14225,7 @@ function App(): React.JSX.Element {
                       const handleToggleFastMode =
                         currentProvider === 'codex'
                           ? () => {
-                              const nextTier =
-                                codexServiceTier === 'fast' ? '' : 'fast'
+                              const nextTier = codexServiceTier === 'fast' ? '' : 'fast'
                               setCodexServiceTier(nextTier)
                               rememberCurrentChatComposerSelection({
                                 codexServiceTier: nextTier
@@ -14420,7 +14391,11 @@ function App(): React.JSX.Element {
                       const enabledGrantIds = new Set(
                         agenticWorkspaceGrants
                           .filter((grant) => {
-                            if (!grant || grant.provider !== currentProvider || !grant.workspacePath)
+                            if (
+                              !grant ||
+                              grant.provider !== currentProvider ||
+                              !grant.workspacePath
+                            )
                               return false
                             return (
                               grant.workspacePath.replace(/\/+$/, '') === normalizedWorkspacePath
@@ -14444,10 +14419,7 @@ function App(): React.JSX.Element {
                             rememberCurrentChatComposerSelection({
                               approvalMode: nextApprovalMode
                             })
-                            if (
-                              currentProvider === 'gemini' &&
-                              nextApprovalMode !== approvalMode
-                            ) {
+                            if (currentProvider === 'gemini' && nextApprovalMode !== approvalMode) {
                               markPersistentSessionRestartNeeded(
                                 'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
                               )

@@ -280,6 +280,7 @@ describe('GeminiStreamAdapter', () => {
     const fixtures = [
       {
         provider: 'codex',
+        stats: { input_tokens: 11, output_tokens: 7, total_tokens: 18, duration_ms: 501 },
         jsonl: [
           { type: 'init', session_id: 'codex-session', model: 'codex', provider: 'codex' },
           { type: 'content', text: 'Codex ', provider: 'codex', itemId: 'item-1' },
@@ -299,13 +300,19 @@ describe('GeminiStreamAdapter', () => {
             provider: 'codex'
           },
           { type: 'content', text: '', provider: 'codex', itemId: 'item-1', complete: true },
-          { type: 'result', status: 'success', providerThreadId: 'codex-session' }
+          {
+            type: 'result',
+            status: 'success',
+            providerThreadId: 'codex-session',
+            stats: { input_tokens: 11, output_tokens: 7, total_tokens: 18, duration_ms: 501 }
+          }
         ],
         text: 'Codex stream',
         tool: 'read_file'
       },
       {
         provider: 'claude',
+        stats: { input_tokens: 13, output_tokens: 5, total_tokens: 18, duration_ms: 502 },
         jsonl: [
           { type: 'init', session_id: 'claude-session', model: 'claude', provider: 'claude' },
           { type: 'message', role: 'assistant', content: 'Claude ', delta: true },
@@ -324,13 +331,19 @@ describe('GeminiStreamAdapter', () => {
             output: '/tmp',
             provider: 'claude'
           },
-          { type: 'result', status: 'success', providerThreadId: 'claude-session' }
+          {
+            type: 'result',
+            status: 'success',
+            providerThreadId: 'claude-session',
+            stats: { input_tokens: 13, output_tokens: 5, total_tokens: 18, duration_ms: 502 }
+          }
         ],
         text: 'Claude stream',
         tool: 'run_shell_command'
       },
       {
         provider: 'gemini',
+        stats: { input_tokens: 17, output_tokens: 9, total_tokens: 26, duration_ms: 503 },
         jsonl: [
           { type: 'init', session_id: 'gemini-session', model: 'gemini', provider: 'gemini' },
           { type: 'message', role: 'assistant', content: 'Gemini ', delta: true },
@@ -349,13 +362,19 @@ describe('GeminiStreamAdapter', () => {
             output: 'src',
             provider: 'gemini'
           },
-          { type: 'result', status: 'success', providerThreadId: 'gemini-session' }
+          {
+            type: 'result',
+            status: 'success',
+            providerThreadId: 'gemini-session',
+            stats: { input_tokens: 17, output_tokens: 9, total_tokens: 26, duration_ms: 503 }
+          }
         ],
         text: 'Gemini stream',
         tool: 'list_directory'
       },
       {
         provider: 'kimi',
+        stats: { input_tokens: 19, output_tokens: 3, total_tokens: 22, duration_ms: 504 },
         jsonl: [
           { type: 'init', session_id: 'kimi-session', model: 'kimi', provider: 'kimi' },
           { type: 'content', text: 'Kimi ', provider: 'kimi' },
@@ -374,7 +393,12 @@ describe('GeminiStreamAdapter', () => {
             output: 'reasoning summary',
             provider: 'kimi'
           },
-          { type: 'result', status: 'success', providerThreadId: 'kimi-session' }
+          {
+            type: 'result',
+            status: 'success',
+            providerThreadId: 'kimi-session',
+            stats: { input_tokens: 19, output_tokens: 3, total_tokens: 22, duration_ms: 504 }
+          }
         ],
         text: 'Kimi stream',
         tool: 'kimi_thinking'
@@ -413,9 +437,33 @@ describe('GeminiStreamAdapter', () => {
       expect(events).toContainEqual(
         expect.objectContaining({
           type: 'run_finished',
-          status: 'success'
+          status: 'success',
+          stats: fixture.stats
         })
       )
     }
+  })
+
+  it('flushes a terminal result with stats when the final JSON line has no newline', () => {
+    const onEvent = vi.fn()
+    const adapter = new GeminiStreamAdapter(onEvent)
+
+    adapter.appendChunk(
+      '{"type":"result","status":"success","stats":{"input_tokens":3,"output_tokens":2,"total_tokens":5,"duration_ms":99}}'
+    )
+    adapter.end()
+
+    expect(onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'run_finished',
+        status: 'success',
+        stats: {
+          input_tokens: 3,
+          output_tokens: 2,
+          total_tokens: 5,
+          duration_ms: 99
+        }
+      })
+    )
   })
 })

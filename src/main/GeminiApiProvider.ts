@@ -83,6 +83,7 @@
 import { promises as fsPromises } from 'fs'
 import { extname } from 'path'
 import type { AgentRunPayload, AgentRunRoute } from './index'
+import { geminiUsageMetadataToStats } from './ProviderRunStats'
 import type {
   AppSettings,
   ChatMessage,
@@ -919,7 +920,10 @@ export async function tryRunGeminiApi(
   //      that omit `recordUsage` still pass — the call is a no-op when
   //      the dep is absent.
   // We swallow any thrown error so a flaky disk doesn't crash the run.
-  if (deps.recordUsage && normalizedRoute.appRunId && normalizedRoute.appChatId) {
+  const usageAlreadyRecorded = Boolean(
+    deps.recordUsage && normalizedRoute.appRunId && normalizedRoute.appChatId
+  )
+  if (usageAlreadyRecorded) {
     try {
       const inputTokens = lastUsage?.promptTokenCount ?? 0
       const outputTokens = lastUsage?.candidatesTokenCount ?? 0
@@ -994,8 +998,9 @@ export async function tryRunGeminiApi(
       type: 'result',
       status: 'success',
       stats: {
-        ...(lastUsage || {}),
-        duration_ms: durationMs
+        ...geminiUsageMetadataToStats(lastUsage || {}, durationMs, {
+          alreadyRecorded: usageAlreadyRecorded
+        })
       },
       provider: 'gemini',
       runtime: 'api-sdk',
