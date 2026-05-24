@@ -17117,3 +17117,213 @@ input:disabled, select:disabled, textarea:disabled {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ============================================================
+ * LIGHT-MODE CONTRAST FIXES FOR THEMED COMPOSER SHELLS
+ * --------------------------------------------------------------
+ * The four themed composer shells (codex / claude / kimi /
+ * gemini) hardcode dark composer-surface backgrounds and dark
+ * sidebar gradients. In light mode this produces low-contrast
+ * white-on-dark text in a light app chrome, and a sidebar that
+ * fights the rest of the UI.
+ *
+ * Per the request — "a generic light gray with black text might
+ * get us out of jail" — we override each shell's dark surface
+ * with a light surface in `[data-theme="light"]`, and let the
+ * sidebars inherit AGBench's default light styling by neutering
+ * the forced-dark gradient/background.
+ *
+ * Only contrast-affecting rules are overridden; accent borders,
+ * focus rings, and provider-color highlights are preserved (just
+ * remixed against a light backdrop where needed).
+ * ============================================================ */
+
+/* --- Composer surfaces ----------------------------------------- */
+
+[data-theme="light"][data-composer-style="codex"] .composer-surface,
+[data-theme="light"][data-composer-style="claude"] .composer-surface,
+[data-theme="light"][data-composer-style="gemini"] .composer-surface,
+[data-theme="light"][data-composer-style="kimi"] .composer-surface {
+  background: #f5f5f7;
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1d1d1f;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within,
+[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within,
+[data-theme="light"][data-composer-style="kimi"] .composer-surface:focus-within {
+  border-color: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"][data-composer-style="gemini"] .composer-surface:focus-within {
+  /* Keep Gemini's signature blue glow, just remix for a light bg. */
+  border-color: color-mix(in srgb, #5a8cff 56%, transparent);
+  box-shadow:
+    0 4px 22px rgba(0, 0, 0, 0.12),
+    0 0 0 4px color-mix(in srgb, #5a8cff 14%, transparent);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-textarea,
+[data-theme="light"][data-composer-style="claude"] .composer-textarea,
+[data-theme="light"][data-composer-style="gemini"] .composer-textarea,
+[data-theme="light"][data-composer-style="kimi"] .composer-textarea {
+  color: #1d1d1f;
+  background: transparent;
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-textarea::placeholder,
+[data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder,
+[data-theme="light"][data-composer-style="gemini"] .composer-textarea::placeholder,
+[data-theme="light"][data-composer-style="kimi"] .composer-textarea::placeholder {
+  color: rgba(29, 29, 31, 0.42);
+}
+
+/* Composer above-bar pills + chips — Claude shell uses these
+ * most heavily but the rule is shared for any shell that opts in.
+ * Drop the white-on-* fades and use dark text on a faint chip bg. */
+[data-theme="light"][data-composer-style="codex"] .composer-above-bar,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar,
+[data-theme="light"][data-composer-style="gemini"] .composer-above-bar,
+[data-theme="light"][data-composer-style="kimi"] .composer-above-bar {
+  color: rgba(29, 29, 31, 0.72);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-above-bar > *,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar > *,
+[data-theme="light"][data-composer-style="gemini"] .composer-above-bar > *,
+[data-theme="light"][data-composer-style="kimi"] .composer-above-bar > * {
+  color: inherit;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-chip {
+  color: rgba(29, 29, 31, 0.72);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"][data-composer-style="claude"] .composer-chip:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+/* Workspace access pills (External Path / Tool grants / Worktree /
+ * files-changed) live inside the above-bar and inherit the same
+ * dark-on-light treatment. */
+[data-theme="light"][data-composer-style="codex"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="claude"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="gemini"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="kimi"] .composer-workspace-access-pill {
+  color: rgba(29, 29, 31, 0.78);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* --- Sidebar (forced-dark override neutralisation) ------------- *
+ * Codex + Claude shells composite a dark gradient over
+ * var(--sidebar-bg). In light mode we drop the gradient so the
+ * native light --sidebar-bg shines through, matching the AGBench
+ * shell's behaviour. Item-text colors were keyed off the dark
+ * bg (white at 60–70% mix) so re-key them to dark on light. */
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar {
+  background: var(--sidebar-bg);
+  border-right-color: var(--panel-border);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-section-header,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-section-header {
+  color: var(--text-secondary);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-header-card,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-header-card {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-item:hover,
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-item:hover,
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item:hover,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-item:hover,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-item:hover,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-item.active,
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-item.active,
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-global-chat-item.active {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-item.active,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-item.active,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #f4a35d 16%, transparent);
+  border-color: color-mix(in srgb, #f4a35d 36%, transparent);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-title,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-title {
+  color: var(--text-primary);
+}
+
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-chat-subline,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-chat-subline,
+[data-theme="light"][data-interface-style="codex"] .app-sidebar .sidebar-workspace-meta,
+[data-theme="light"][data-interface-style="claude"] .app-sidebar .sidebar-workspace-meta {
+  color: var(--text-secondary);
+  opacity: 1;
+}
+
+/* Gemini sidebar — deep-blue is intentional, but in light mode
+ * the user wants consistency with the rest of the light chrome,
+ * so we drop the dark blue and let a faint blue accent border
+ * mark the shell identity. */
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid color-mix(in srgb, #5a8cff 22%, var(--panel-border));
+}
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-section-header {
+  color: var(--text-secondary);
+}
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-workspace-item:hover,
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-chat-item:hover,
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+}
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-chat-item.active,
+[data-theme="light"][data-interface-style="gemini"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #5a8cff 16%, transparent);
+}
+
+/* Kimi sidebar — near-black in dark mode. In light mode use the
+ * default light bg and a subtle warm-accent border for identity. */
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid color-mix(in srgb, #a9bd55 24%, var(--panel-border));
+}
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-section-header {
+  color: var(--text-secondary);
+}
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-workspace-item:hover,
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-chat-item:hover,
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item:hover {
+  background: color-mix(in srgb, #a9bd55 10%, transparent);
+}
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-chat-item.active,
+[data-theme="light"][data-interface-style="kimi"] .app-sidebar .sidebar-global-chat-item.active {
+  background: color-mix(in srgb, #a9bd55 18%, transparent);
+}
+
+/* Transcript surfaces — the themed shells composite a near-black
+ * gradient over the transcript. In light mode that produces a
+ * murky grey-on-grey panel; restore it to the native light pane. */
+[data-theme="light"][data-interface-style="codex"] .app-transcript,
+[data-theme="light"][data-interface-style="claude"] .app-transcript,
+[data-theme="light"][data-interface-style="gemini"] .app-transcript,
+[data-theme="light"][data-interface-style="kimi"] .app-transcript {
+  background: var(--content-bg);
+}
