@@ -7,6 +7,7 @@ import type {
   ThemeAccentStyle,
   ThemeAppearance,
   ThemeCornerStyle,
+  ToolIconAccent,
   VisualEffectStyle
 } from '../../../main/store/types'
 import {
@@ -30,6 +31,7 @@ export interface AppearanceState {
   themeAppearance: ThemeAppearance
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
+  toolIconAccent: ToolIconAccent
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily: string
@@ -86,6 +88,7 @@ function getInitialState(): AppearanceState {
     themeAppearance: 'system',
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
+    toolIconAccent: 'system',
     promptSurfaceStyle: 'liquid_glass',
     composerStyle: 'default',
     transcriptFontFamily: FONT_STACKS.agbench,
@@ -140,6 +143,7 @@ export function useAppearance() {
           themeAppearance: settings.themeAppearance || 'system',
           themeCornerStyle: settings.themeCornerStyle || 'rounded',
           themeAccentStyle: settings.themeAccentStyle || 'system',
+          toolIconAccent: settings.toolIconAccent || 'system',
           promptSurfaceStyle: settings.promptSurfaceStyle || 'liquid_glass',
           composerStyle: settings.composerStyle || 'default',
           transcriptFontFamily: normalizeFontFamily(
@@ -185,6 +189,7 @@ export function useAppearance() {
     root.setAttribute('data-theme', next.themeAppearance)
     root.setAttribute('data-corners', next.themeCornerStyle)
     root.setAttribute('data-accent', next.themeAccentStyle)
+    root.setAttribute('data-tool-icon-accent', next.toolIconAccent)
     root.setAttribute('data-prompt-surface', next.promptSurfaceStyle)
     root.setAttribute('data-composer-style', next.composerStyle)
     root.setAttribute('data-interface-style', next.composerStyle)
@@ -253,6 +258,7 @@ export function useAppearance() {
             themeAppearance: next.themeAppearance,
             themeCornerStyle: next.themeCornerStyle,
             themeAccentStyle: next.themeAccentStyle,
+            toolIconAccent: next.toolIconAccent,
             promptSurfaceStyle: next.promptSurfaceStyle,
             composerStyle: next.composerStyle,
             transcriptFontFamily: next.transcriptFontFamily,

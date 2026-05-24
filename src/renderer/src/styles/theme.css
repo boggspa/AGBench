@@ -370,6 +370,16 @@
   --tool-running: var(--accent);
 }
 
+/* Tool-icon accent overrides. `system` doesn't appear here — the
+ * default fallback in `.activity-category-icon` is `var(--accent)`,
+ * so leaving the var unset is exactly the "match accent" behaviour.
+ * The four named overrides pin only the tool-call icons; the rest
+ * of the UI keeps the user's theme accent. */
+[data-tool-icon-accent="red"]    { --tool-call-icon-accent: #e65b62; }
+[data-tool-icon-accent="amber"]  { --tool-call-icon-accent: #f2a64c; }
+[data-tool-icon-accent="cyan"]   { --tool-call-icon-accent: #4cb8d0; }
+[data-tool-icon-accent="violet"] { --tool-call-icon-accent: #bf7cff; }
+
 [data-corners="hard"] {
   --radius-sm: 3px;
   --radius-md: 5px;

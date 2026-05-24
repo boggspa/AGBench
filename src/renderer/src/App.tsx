@@ -1307,6 +1307,15 @@ const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
 const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
 const FX_BURST_DURATION_MS = 1150
 const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
+/**
+ * Set to `'true'` after the user explicitly dismisses the
+ * first-launch onboarding hint (the faint "Click + above to add
+ * your first workspace" card in the sidebar). Once set, the hint
+ * no longer auto-shows even when the workspace list is empty;
+ * the `?` button in the chat-corner-controls-left still manually
+ * re-opens it.
+ */
+const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'guiGemini.onboardingHintDismissed'
 const RUN_WRITE_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file']
 // Per-provider palette CORE constants moved to
 // src/renderer/src/lib/ComposerSlashCommands.ts. Imported under the
@@ -2918,6 +2927,14 @@ const getStoredGhostCompanionEnabled = (): boolean => {
   }
 }
 
+const getStoredOnboardingHintDismissed = (): boolean => {
+  try {
+    return window.localStorage.getItem(ONBOARDING_HINT_DISMISSED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 const SKY_VISUAL_FX_STORAGE_KEY = 'guiGemini.skyVisualFxEnabled'
 const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 const MIN_GEMINI_TERMINAL_HEIGHT = 150
@@ -3166,15 +3183,16 @@ const CODEX_DEFAULT_MODELS = [
       { reasoningEffort: 'high' },
       { reasoningEffort: 'xhigh' }
     ],
-    defaultReasoningEffort: 'medium',
-    additionalSpeedTiers: ['fast']
+    defaultReasoningEffort: 'medium'
+    // Note: 5.3 no longer carries `additionalSpeedTiers: ['fast']` —
+    // per product spec only 5.5 + 5.4 retain the paid Fast tier.
   },
   {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
-    defaultReasoningEffort: 'low',
-    additionalSpeedTiers: ['fast']
+    defaultReasoningEffort: 'low'
+    // Fast tier removed alongside 5.3 — see note above.
   }
 ] satisfies CodexModelOption[]
 const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id
@@ -3203,13 +3221,17 @@ const CLAUDE_DEFAULT_MODELS = [
     id: 'claude-opus-4-7',
     label: 'Claude Opus 4.7',
     description: 'Most capable — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
   },
   {
     id: 'claude-opus-4-7-1m',
     label: 'Claude Opus 4.7 1M',
     description: '1M context window — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    // 1M variant intentionally excluded from Fast tier per spec:
+    // the 1M-context path doesn't currently offer a paid Fast
+    // option. Only the standard Opus 4.7 + Opus 4.6 do.
   },
   {
     id: 'claude-sonnet-4-6',
@@ -3222,7 +3244,8 @@ const CLAUDE_DEFAULT_MODELS = [
     id: 'claude-opus-4-6',
     label: 'Claude Opus 4.6 Legacy',
     description: 'Previous Opus generation',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
   }
 ] satisfies CodexModelOption[]
 const KIMI_DEFAULT_MODELS = [
@@ -4281,6 +4304,7 @@ type SettingsPanelUpdate = {
   themeAppearance?: AppSettings['themeAppearance']
   themeCornerStyle?: AppSettings['themeCornerStyle']
   themeAccentStyle?: AppSettings['themeAccentStyle']
+  toolIconAccent?: AppSettings['toolIconAccent']
   promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
   composerStyle?: AppSettings['composerStyle']
   transcriptFontFamily?: AppSettings['transcriptFontFamily']
@@ -4376,6 +4400,15 @@ function App(): React.JSX.Element {
   const [codexReasoningEffort, setCodexReasoningEffort] = useState<string>('medium')
   const [codexServiceTier, setCodexServiceTier] = useState<string>('')
   const [claudeReasoningEffort, setClaudeReasoningEffort] = useState<string>('off')
+  /**
+   * Claude's paid Fast tier toggle. Mirrors Codex's `codexServiceTier`
+   * but only on the renderer side today — the Claude CLI flag /
+   * env var that this maps to is a backend follow-up. Capable
+   * models (per `additionalSpeedTiers: ['fast']`): claude-opus-4-7,
+   * claude-opus-4-6. Toggle is visible for every Claude model but
+   * disabled when the current one isn't capable.
+   */
+  const [claudeFastMode, setClaudeFastMode] = useState<boolean>(false)
   const [kimiThinkingEnabled, setKimiThinkingEnabled] = useState<boolean>(true)
   const [approvalMode, setApprovalMode] = useState<string>('default')
   const [claudeBinaryPath, setClaudeBinaryPath] = useState('')
@@ -4452,6 +4485,25 @@ function App(): React.JSX.Element {
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
+  /**
+   * First-launch onboarding hint visibility. Renders a faint
+   * "Click + above to add your first workspace" card under the
+   * sidebar's `+` button. Default: visible if the user hasn't
+   * explicitly dismissed it. The `?` button in the chat-corner-
+   * controls-left lets existing users manually re-open the hint
+   * for demo / testing purposes even after dismissal.
+   */
+  const [showOnboardingHint, setShowOnboardingHint] = useState<boolean>(
+    () => !getStoredOnboardingHintDismissed()
+  )
+  const handleDismissOnboardingHint = useCallback(() => {
+    setShowOnboardingHint(false)
+    try {
+      window.localStorage.setItem(ONBOARDING_HINT_DISMISSED_STORAGE_KEY, 'true')
+    } catch {
+      /* localStorage may be disabled — non-fatal */
+    }
+  }, [])
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
@@ -5266,6 +5318,8 @@ function App(): React.JSX.Element {
         typeof metadata.codexServiceTier === 'string' ? metadata.codexServiceTier : '',
       claudeReasoningEffort:
         typeof metadata.claudeReasoningEffort === 'string' ? metadata.claudeReasoningEffort : 'off',
+      claudeFastMode:
+        typeof metadata.claudeFastMode === 'boolean' ? metadata.claudeFastMode : false,
       kimiThinkingEnabled:
         typeof metadata.kimiThinkingEnabled === 'boolean' ? metadata.kimiThinkingEnabled : true
     }
@@ -5283,6 +5337,7 @@ function App(): React.JSX.Element {
     setCodexReasoningEffort(selection.codexReasoningEffort)
     setCodexServiceTier(selection.codexServiceTier)
     setClaudeReasoningEffort(selection.claudeReasoningEffort)
+    setClaudeFastMode(selection.claudeFastMode)
     setKimiThinkingEnabled(selection.kimiThinkingEnabled)
     setRuntimeProfileForChat(
       chat.appChatId,
@@ -5787,6 +5842,10 @@ function App(): React.JSX.Element {
     if (next.themeAccentStyle !== undefined) {
       settingsPatch.themeAccentStyle = next.themeAccentStyle
       appearance.update({ themeAccentStyle: next.themeAccentStyle })
+    }
+    if (next.toolIconAccent !== undefined) {
+      settingsPatch.toolIconAccent = next.toolIconAccent
+      appearance.update({ toolIconAccent: next.toolIconAccent })
     }
     if (next.promptSurfaceStyle !== undefined) {
       settingsPatch.promptSurfaceStyle = next.promptSurfaceStyle
@@ -12395,6 +12454,8 @@ function App(): React.JSX.Element {
               currentChat={currentChat}
               usageSummary={usageSummary}
               runningChatIds={runningChatIdsArray}
+              showOnboardingHint={showOnboardingHint}
+              onDismissOnboardingHint={handleDismissOnboardingHint}
               onSelectWorkspace={handleSelectExistingWorkspace}
               onRemoveWorkspace={handleRemoveWorkspace}
               onSelectWorkspaceDialog={handleSelectWorkspace}
@@ -12484,6 +12545,25 @@ function App(): React.JSX.Element {
               disabled={!isFxEnabled}
             >
               <GhostCompanionIcon />
+            </button>
+            {/*
+              First-launch onboarding hint re-opener. The hint
+              auto-shows for fresh users with no workspaces; this
+              button lets existing users (or testers running
+              demos) flip it back on regardless of the dismissal
+              flag. Toggles purely visibility — does NOT touch
+              the persisted dismissal state, so re-opening here
+              doesn't make the hint auto-show again next launch.
+            */}
+            <button
+              className={`chat-corner-btn ${showOnboardingHint ? 'active' : ''}`}
+              type="button"
+              onClick={() => setShowOnboardingHint((current) => !current)}
+              title={showOnboardingHint ? 'Hide onboarding hint' : 'Show onboarding hint'}
+              aria-label="Toggle onboarding hint"
+              aria-pressed={showOnboardingHint}
+            >
+              <span className="chat-corner-symbol">?</span>
             </button>
           </div>
 
@@ -13884,11 +13964,82 @@ function App(): React.JSX.Element {
                             metadataPatch.codexServiceTier = ''
                           }
                         }
+                        if (currentProvider === 'claude') {
+                          // Symmetric to Codex above: clear Fast when
+                          // switching to a non-capable Claude model so
+                          // the persisted flag doesn't outlive its
+                          // applicability.
+                          const claudeModelOption = (
+                            agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
+                          ).find((model) => model.id === nextModel)
+                          if (!claudeModelOption?.additionalSpeedTiers?.includes('fast')) {
+                            setClaudeFastMode(false)
+                            metadataPatch.claudeFastMode = false
+                          }
+                        }
                         if (currentProvider === 'gemini') {
                           syncPersistentModelSelection(nextModel)
                         }
                         rememberCurrentChatComposerSelection(metadataPatch)
                       }
+
+                      /*
+                       * Fast Mode toggle inside the picker. Replaces
+                       * the standalone Codex-only speed `<select>`
+                       * that previously sat next to the chip — same
+                       * underlying state, just surfaced inside the
+                       * Model+Reasoning popover so the user finds it
+                       * where they're already adjusting reasoning.
+                       */
+                      const fastModeCapableModelIds = (() => {
+                        if (currentProvider === 'codex') {
+                          return new Set(
+                            codexModels
+                              .filter((model) =>
+                                model.additionalSpeedTiers?.includes('fast')
+                              )
+                              .map((model) => model.id)
+                          )
+                        }
+                        if (currentProvider === 'claude') {
+                          return new Set(
+                            (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
+                              .filter((model) =>
+                                model.additionalSpeedTiers?.includes('fast')
+                              )
+                              .map((model) => model.id)
+                          )
+                        }
+                        // Gemini + Kimi: no Fast tier — hide the toggle
+                        // by passing an empty set (CombinedModelPicker
+                        // skips rendering the row in that case).
+                        return new Set<string>()
+                      })()
+                      const fastModeEnabledForProvider =
+                        currentProvider === 'codex'
+                          ? codexServiceTier === 'fast'
+                          : currentProvider === 'claude'
+                            ? claudeFastMode
+                            : false
+                      const handleToggleFastMode =
+                        currentProvider === 'codex'
+                          ? () => {
+                              const nextTier =
+                                codexServiceTier === 'fast' ? '' : 'fast'
+                              setCodexServiceTier(nextTier)
+                              rememberCurrentChatComposerSelection({
+                                codexServiceTier: nextTier
+                              })
+                            }
+                          : currentProvider === 'claude'
+                            ? () => {
+                                const nextFast = !claudeFastMode
+                                setClaudeFastMode(nextFast)
+                                rememberCurrentChatComposerSelection({
+                                  claudeFastMode: nextFast
+                                })
+                              }
+                            : undefined
 
                       const handleCombinedReasoningChange = (value: string) => {
                         if (currentProvider === 'codex') {
@@ -13924,6 +14075,9 @@ function App(): React.JSX.Element {
                             codexReasoningEffort={codexReasoningEffort}
                             claudeReasoningEffort={claudeReasoningEffort}
                             kimiThinkingEnabled={kimiThinkingEnabled}
+                            fastModeCapableModelIds={fastModeCapableModelIds}
+                            fastModeEnabled={fastModeEnabledForProvider}
+                            onToggleFastMode={handleToggleFastMode}
                             disabled={isCurrentComposerLocked}
                           />
                           {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
@@ -13972,32 +14126,15 @@ function App(): React.JSX.Element {
                       )
                     })()}
 
-                    {currentProvider === 'codex' && (
-                      <label
-                        className="composer-picker-label"
-                        title={
-                          codexSupportsFast
-                            ? 'Codex speed tier'
-                            : 'The selected Codex model only supports standard speed'
-                        }
-                      >
-                        <ClockSymbolIcon />
-                        <select
-                          className="composer-inline-picker"
-                          aria-label="Codex speed tier"
-                          value={codexServiceTier === 'fast' ? 'fast' : ''}
-                          onChange={(event) => {
-                            const nextTier = event.target.value === 'fast' ? 'fast' : ''
-                            setCodexServiceTier(nextTier)
-                            rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
-                          }}
-                          disabled={isCurrentComposerLocked || !codexSupportsFast}
-                        >
-                          <option value="">Standard</option>
-                          <option value="fast">Fast</option>
-                        </select>
-                      </label>
-                    )}
+                    {/*
+                      Codex speed-tier `<select>` removed — Fast mode
+                      now lives inside CombinedModelPicker as a toggle
+                      beneath the Reasoning column, gated by each
+                      model's `additionalSpeedTiers`. Same underlying
+                      `codexServiceTier` state, surfaced in the same
+                      popover the user already opens to tweak
+                      reasoning effort.
+                    */}
 
                     {currentProvider === 'claude' && (
                       <span
@@ -14430,6 +14567,7 @@ function App(): React.JSX.Element {
               themeAppearance={appearance.themeAppearance}
               themeCornerStyle={appearance.themeCornerStyle}
               themeAccentStyle={appearance.themeAccentStyle}
+              toolIconAccent={appearance.toolIconAccent}
               promptSurfaceStyle={appearance.promptSurfaceStyle}
               composerStyle={appearance.composerStyle}
               transcriptFontFamily={appearance.transcriptFontFamily}

@@ -22,6 +22,7 @@ import type {
   ThemeAccentStyle,
   ThemeAppearance,
   ThemeCornerStyle,
+  ToolIconAccent,
   VisualEffectStyle
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
@@ -49,6 +50,7 @@ interface SettingsPanelProps {
   themeAppearance: ThemeAppearance
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
+  toolIconAccent: ToolIconAccent
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily: string
@@ -125,6 +127,7 @@ interface SettingsPanelProps {
     themeAppearance?: ThemeAppearance
     themeCornerStyle?: ThemeCornerStyle
     themeAccentStyle?: ThemeAccentStyle
+    toolIconAccent?: ToolIconAccent
     promptSurfaceStyle?: PromptSurfaceStyle
     composerStyle?: ComposerStyle
     transcriptFontFamily?: string
@@ -191,6 +194,20 @@ const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
   { value: 'green', label: 'Green' },
   { value: 'red', label: 'Red' },
   { value: 'yellow', label: 'Yellow' }
+]
+/**
+ * Tool-icon accent. `system` (default) keeps the icons on the
+ * theme accent. The four named overrides pin the icons to a
+ * dedicated colour while leaving the rest of the UI on the
+ * user's accent choice — useful for tester debug or for users
+ * who want the tool-call ledger to read as a distinct surface.
+ */
+const TOOL_ICON_ACCENT_OPTIONS: Array<{ value: ToolIconAccent; label: string }> = [
+  { value: 'system', label: 'Match accent' },
+  { value: 'red', label: 'Red' },
+  { value: 'amber', label: 'Amber' },
+  { value: 'cyan', label: 'Cyan' },
+  { value: 'violet', label: 'Violet' }
 ]
 const PROMPT_SURFACE_OPTIONS: Array<{ value: PromptSurfaceStyle; label: string }> = [
   { value: 'theme', label: 'Follow theme' },
@@ -399,6 +416,7 @@ export function SettingsPanel({
   themeAppearance,
   themeCornerStyle,
   themeAccentStyle,
+  toolIconAccent,
   promptSurfaceStyle,
   composerStyle,
   transcriptFontFamily,
@@ -626,6 +644,24 @@ export function SettingsPanel({
                       onClick={() => onChange({ themeAccentStyle: option.value })}
                     >
                       <span className={`settings-radio-dot accent-dot accent-${option.value}`} />
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label">Tool-icon color</label>
+                <div className="settings-option-grid">
+                  {TOOL_ICON_ACCENT_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      className={`settings-radio-option ${toolIconAccent === option.value ? 'active' : ''}`}
+                      onClick={() => onChange({ toolIconAccent: option.value })}
+                    >
+                      <span
+                        className={`settings-radio-dot tool-icon-accent-dot tool-icon-accent-${option.value}`}
+                      />
                       <span>{option.label}</span>
                     </button>
                   ))}

@@ -58,6 +58,17 @@ interface SidebarProps {
     }>
   }>
   runningChatIds?: string[]
+  /**
+   * First-launch onboarding hint visibility. When true AND the
+   * workspace list is empty, the sidebar renders a faint card
+   * under the `+` button pointing the user at "Click + above to
+   * add your first workspace". The visibility itself is owned by
+   * App.tsx (so the `?` button in the chat-corner pill can flip
+   * it on/off); the dismissal flag persists in localStorage via
+   * `onDismissOnboardingHint`.
+   */
+  showOnboardingHint?: boolean
+  onDismissOnboardingHint?: () => void
   onSelectWorkspace: (ws: WorkspaceRecord) => void
   onRemoveWorkspace: (id: string, e: MouseEvent<HTMLButtonElement>) => void
   onSelectWorkspaceDialog: () => void
@@ -536,6 +547,8 @@ export function Sidebar({
   currentChat,
   usageSummary,
   runningChatIds = [],
+  showOnboardingHint = false,
+  onDismissOnboardingHint,
   onSelectWorkspace,
   onRemoveWorkspace,
   onSelectWorkspaceDialog,
@@ -1178,6 +1191,38 @@ export function Sidebar({
               +
             </button>
           </div>
+          {/*
+            First-launch onboarding hint. Renders only when the
+            workspace list is empty AND the App-owned
+            `showOnboardingHint` flag is on (which auto-starts true
+            for fresh users and stays off after explicit dismissal,
+            unless the user re-opens it from the `?` button in
+            chat-corner-controls-left). Inline ✕ persists the
+            dismissal so the next launch starts hidden too.
+          */}
+          {showOnboardingHint && workspaces.length === 0 && (
+            <div className="sidebar-onboarding-hint" role="note">
+              <div className="sidebar-onboarding-hint-body">
+                <strong>Add your first workspace</strong>
+                <span>
+                  Click the <span className="sidebar-onboarding-plus">+</span> above to
+                  point AGBench at a project folder. Workspaces hold your chats and let
+                  the agent read / edit files inside their trust boundary.
+                </span>
+              </div>
+              {onDismissOnboardingHint && (
+                <button
+                  className="sidebar-onboarding-hint-dismiss"
+                  type="button"
+                  onClick={onDismissOnboardingHint}
+                  aria-label="Dismiss onboarding hint"
+                  title="Dismiss"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
           <div className="sidebar-workspace-list">
             {visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
               const expanded = isSidebarSearchActive ? true : expandedWorkspaceIds.has(ws.id)

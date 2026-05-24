@@ -41,6 +41,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   git_diff: 'Git diff',
   git_stage: 'Git stage',
   git_commit: 'Git commit',
+  git_log: 'Git log',
+  git_show: 'Git show',
+  git_branch: 'Git branch',
+  git_blame: 'Git blame',
 
   // ── Browser automation ───────────────────────────────────────
   browser_open: 'Opened browser',
@@ -62,6 +66,26 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   attached_window_detach: 'Detached attached window',
 
   // ── AppWatch / Appshots window monitoring ────────────────────
+  appwatch_start: 'Started AppWatch',
+  appwatch_stop: 'Stopped AppWatch',
+  appwatch_status: 'AppWatch status',
+  appwatch_latest_frame: 'Latest AppWatch frame',
+  appwatch_frames: 'AppWatch frames',
+  appwatch_ocr: 'AppWatch OCR',
+
+  // ── AppWatch / Appshots window monitoring ────────────────────
+  // M1 surface today: start / stop / status / latest_frame. M2
+  // entries (`appwatch_frames`, `appwatch_ocr`) are pre-registered
+  // so the daemon shipping those later doesn't leave the renderer
+  // mis-labeling them as raw underscored identifiers.
+  //
+  // Wording harmonised with Codex's parallel-session expansion on
+  // `codex/tier2-polish-experiments`: "AppWatch" matches the
+  // product-surface name, so post-merge there's no label drift
+  // between the two branches.
+  //
+  // Window ATTACH / DETACH live under the `attached_window_*`
+  // tool family, not here — see entries above.
   appwatch_start: 'Started AppWatch',
   appwatch_stop: 'Stopped AppWatch',
   appwatch_status: 'AppWatch status',
@@ -121,6 +145,11 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   codex_reasoning: 'Codex reasoning',
   codex_plan: 'Codex plan',
   kimi_thinking: 'Kimi thinking',
+  claude_thinking: 'Claude thinking',
+  gemini_thinking: 'Gemini thinking',
+  task: 'Task',
+  todowrite: 'Updated TODO list',
+  todo_write: 'Updated TODO list',
   summary: 'Summary',
   intent: 'Intent',
   progress: 'Progress',
@@ -129,6 +158,22 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   // ── Web search (also matched by category='search' branch) ────
   google_web_search: 'Searched the web',
   web_search: 'Searched the web',
+  websearch: 'Searched the web',
+  webfetch: 'Fetched a web page',
+  web_fetch: 'Fetched a web page',
+
+  // ── Knowledge graph (Gemini `kg_*` family) ───────────────────
+  kg_search: 'Searched knowledge graph',
+  kg_list: 'Listed knowledge graph',
+  kg_describe: 'Described knowledge graph',
+  kg_query: 'Queried knowledge graph',
+
+  // ── Directory / file enumeration aliases ─────────────────────
+  ls: 'Listed directory',
+  list_files: 'Listed files',
+  directory_list: 'Listed directory',
+  read_directory: 'Read directory',
+  file_search: 'Searched files',
 
   // ── Misc shell / search aliases not always reached by the
   // category branches (some providers emit these as the literal

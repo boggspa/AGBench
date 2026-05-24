@@ -25,6 +25,15 @@ enum JSONRPCErrorCode {
     static let internalError = -32603
     // Reserved -32000..-32099 for server-defined errors. Bridge codes:
     static let bridgeUnavailable = -32001
+    /// `appwatch.start` was called with a config whose estimated
+    /// buffer footprint exceeds the daemon's memory cap. Distinct
+    /// from `-32001` so agents can branch — `-32001` historically
+    /// means "the attached window is gone" and triggers self-heal
+    /// on the Electron side, whereas this code means "retune
+    /// bufferSeconds / fps / maxDimensionPx and retry against the
+    /// same handle." The error's `message` carries the estimated
+    /// MB + cap MB numbers for the agent to plan its retry.
+    static let appwatchBudgetExceeded = -32002
 }
 
 final class JSONRPCDispatcher: @unchecked Sendable {

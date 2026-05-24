@@ -640,6 +640,67 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+/* First-launch onboarding hint. Sits between the "Workspaces"
+ * section header and the (empty) workspace list when fresh
+ * users open the app. Faint so it doesn't compete visually
+ * with the rest of the sidebar — its job is to point an
+ * inexperienced user at the `+` button right above it. */
+.sidebar-onboarding-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--sidebar-text) 22%, transparent);
+  background: color-mix(in srgb, var(--sidebar-bg, transparent) 60%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 72%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.42;
+}
+.sidebar-onboarding-hint-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+.sidebar-onboarding-hint-body strong {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--sidebar-text) 92%, transparent);
+}
+.sidebar-onboarding-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-onboarding-hint-dismiss {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--sidebar-text) 55%, transparent);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.sidebar-onboarding-hint-dismiss:hover {
+  background: color-mix(in srgb, var(--sidebar-text) 12%, transparent);
+  color: var(--sidebar-text);
+}
+
 .sidebar-item {
   display: flex;
   align-items: center;
@@ -8002,6 +8063,16 @@ button.diff-file-row {
 .accent-green { --dot-color: #4cc38a; }
 .accent-red { --dot-color: #e65b62; }
 .accent-yellow { --dot-color: #f2c94c; }
+
+/* Tool-icon accent swatches in the Settings radio. The "system"
+ * swatch mirrors the user's chosen accent so the preview reads
+ * "this option = match your accent"; the named overrides preview
+ * the exact override colour the option would apply. */
+.tool-icon-accent-system { --dot-color: var(--accent); }
+.tool-icon-accent-red    { --dot-color: #e65b62; }
+.tool-icon-accent-amber  { --dot-color: #f2a64c; }
+.tool-icon-accent-cyan   { --dot-color: #4cb8d0; }
+.tool-icon-accent-violet { --dot-color: #bf7cff; }
 
 .settings-hint {
   font-size: var(--font-size-xs);
@@ -19441,6 +19512,75 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
   font-size: 11px;
   flex-shrink: 0;
+}
+
+/* Fast-mode lightning bolt next to capable model labels. Sits
+ * between the model name and the check mark when both are present.
+ * Subtle by default so it doesn't compete with the selected check
+ * — its job is to whisper "this model can do Fast", not shout it. */
+.composer-combined-picker-fast-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: color-mix(in srgb, var(--accent) 70%, transparent);
+  opacity: 0.75;
+}
+.composer-combined-picker-row.is-selected .composer-combined-picker-fast-indicator,
+.composer-combined-picker-row.is-highlighted .composer-combined-picker-fast-indicator {
+  opacity: 1;
+}
+
+/* Fast-mode toggle row at the bottom of the Reasoning column. Same
+ * row chrome as the reasoning options for visual consistency, plus
+ * a slim top border so the user reads it as a distinct sub-section
+ * rather than another reasoning option. The label cluster on the
+ * left holds the bolt + "Fast mode" text; the switch sits on the
+ * right where the check mark would be on other rows. */
+.composer-combined-picker-fast-toggle {
+  border-top: 1px solid
+    color-mix(in srgb, var(--text-primary) 12%, transparent);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.composer-combined-picker-fast-toggle .composer-combined-picker-row-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+}
+.composer-combined-picker-fast-toggle:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.composer-combined-picker-fast-toggle:disabled .composer-combined-picker-row-label {
+  color: color-mix(in srgb, var(--text-primary) 62%, transparent);
+}
+
+.composer-combined-picker-fast-switch {
+  flex-shrink: 0;
+  width: 26px;
+  height: 14px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  position: relative;
+  transition: background-color 0.15s ease;
+}
+.composer-combined-picker-fast-switch.is-on {
+  background: var(--accent);
+}
+.composer-combined-picker-fast-switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: white;
+  transition: transform 0.15s ease;
+}
+.composer-combined-picker-fast-switch.is-on .composer-combined-picker-fast-switch-thumb {
+  transform: translateX(12px);
 }
 
 /* Tool-Grant rows: multi-select with a leading checkbox glyph + a
