@@ -17628,10 +17628,24 @@ input:disabled, select:disabled, textarea:disabled {
  * shell's behaviour. Item-text colors were keyed off the dark
  * bg (white at 60–70% mix) so re-key them to dark on light. */
 
+/* Light-mode sidebar fill for Codex + Claude interface shells.
+ *
+ * Previously `var(--sidebar-bg)` (`rgba(238, 242, 247, 0.64)`) —
+ * with the soft_glass blur + gradient composition the visible
+ * colour landed as a mid-tone gray, much darker than the
+ * Codex / Claude apps' near-white sidebars in light mode.
+ *
+ * Switch to `var(--surface-2)` (`#f1f1f4` in light themes) and
+ * peel back the soft/native-glass overlays in this scope via
+ * `!important` — the goal is a flat, near-white sidebar with a
+ * subtle 1px right border, matching the real apps' light-mode
+ * chrome rather than the AGBench glass aesthetic. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-sidebar {
-  background: var(--sidebar-bg);
-  border-right-color: var(--panel-border);
+  background: var(--surface-2) !important;
+  border-right-color: var(--surface-border);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .app-sidebar .sidebar-section-header,
