@@ -17419,6 +17419,34 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: rgba(0, 0, 0, 0.1);
 }
 
+/* Scheduler / runtime-profile pills (AGBench-native composer
+ * accessory row). Same unified light-gray treatment so they
+ * stop reading as a noticeably darker chip pair against the
+ * #ffffff composer surface. The inner `<input>` and `<select>`
+ * inherit text-primary so their values stay legible. */
+[data-theme="light"] .composer-schedule-label,
+[data-theme="light"] .composer-runtime-profile {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .composer-schedule-input,
+[data-theme="light"] .composer-runtime-profile select {
+  color: var(--text-primary);
+}
+
+/* Queued scheduled-task pills above the composer — same family
+ * so the strip reads as a coherent set of soft chips rather
+ * than a darker tone-shift above the composer surface. The
+ * accent variants (`.status-running` / `.status-due`) keep
+ * their own brand fills, so this only touches the idle state. */
+[data-theme="light"] .scheduled-task-pill {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
+
 /* Themed-shell composer surfaces (codex / claude / kimi / gemini)
  * — previously hardcoded to #f5f5f7 in light mode. Re-key them to
  * the same unified card surface so all four shells + AGBench-native
