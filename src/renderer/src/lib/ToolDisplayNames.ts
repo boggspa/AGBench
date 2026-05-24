@@ -66,23 +66,16 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   attached_window_detach: 'Detached attached window',
 
   // ── AppWatch / Appshots window monitoring ────────────────────
-  appwatch_start: 'Started AppWatch',
-  appwatch_stop: 'Stopped AppWatch',
-  appwatch_status: 'AppWatch status',
-  appwatch_latest_frame: 'Latest AppWatch frame',
-  appwatch_frames: 'AppWatch frames',
-  appwatch_ocr: 'AppWatch OCR',
-
-  // ── AppWatch / Appshots window monitoring ────────────────────
   // M1 surface today: start / stop / status / latest_frame. M2
   // entries (`appwatch_frames`, `appwatch_ocr`) are pre-registered
   // so the daemon shipping those later doesn't leave the renderer
   // mis-labeling them as raw underscored identifiers.
   //
-  // Wording harmonised with Codex's parallel-session expansion on
-  // `codex/tier2-polish-experiments`: "AppWatch" matches the
-  // product-surface name, so post-merge there's no label drift
-  // between the two branches.
+  // Labels were harmonised cross-branch (claude/tier01-polish +
+  // codex/tier2-polish-experiments) before the integration merge,
+  // so the two parallel additions landed on identical values. The
+  // duplicate section that materialised post-merge was deleted
+  // here in favour of the documented version.
   //
   // Window ATTACH / DETACH live under the `attached_window_*`
   // tool family, not here — see entries above.
