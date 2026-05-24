@@ -12929,24 +12929,35 @@ function App(): React.JSX.Element {
                   the non-interactive "Worktree: managed by X" pill
                   and gives the diff row a stable, predictable shape
                   regardless of run state.
+
+                  Wrapped in `.composer-above-bar-files-cluster` so
+                  the Codex shell can place files+diff as ONE grid
+                  cell and centre it cleanly. Other shells get
+                  `display: contents` on the wrapper (declared in
+                  main.css) so files + stats still behave as direct
+                  flex children of `.composer-above-bar` — no
+                  layout regression in the AGBench / Claude /
+                  Gemini / Kimi shells.
                 */}
-                <span
-                  className="composer-above-bar-files"
-                  title={
-                    latestRunDiffStats.filesChanged > 0
-                      ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
-                      : 'No file changes from the most recent run'
-                  }
-                >
-                  <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
-                  {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
-                </span>
-                {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                  <span className="composer-above-bar-stats">
-                    <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
-                    <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                <span className="composer-above-bar-files-cluster">
+                  <span
+                    className="composer-above-bar-files"
+                    title={
+                      latestRunDiffStats.filesChanged > 0
+                        ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
+                        : 'No file changes from the most recent run'
+                    }
+                  >
+                    <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
+                    {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
                   </span>
-                )}
+                  {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                    <span className="composer-above-bar-stats">
+                      <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
+                      <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                    </span>
+                  )}
+                </span>
                 {/*
                     Composer-unification (Phase J1): once the chat has
                     activity, External Path + Worktree migrate from the
