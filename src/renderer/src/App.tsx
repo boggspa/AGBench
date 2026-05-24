@@ -86,6 +86,11 @@ import { SubThreadDelegationCard } from './components/SubThreadDelegationCard'
 import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCardModel'
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
+import {
+  CombinedModelPicker,
+  type CombinedModelPickerModelOption,
+  type CombinedModelPickerReasoningOption
+} from './components/CombinedModelPicker'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
@@ -1014,25 +1019,6 @@ function ClockSymbolIcon() {
       >
         <circle cx="8" cy="8" r="5.7" />
         <path d="M8 4.8V8l2.2 1.4" />
-      </svg>
-    </span>
-  )
-}
-
-function QuestionmarkCircleSymbolIcon() {
-  return (
-    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
-      <svg
-        viewBox="0 0 16 16"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <circle cx="8" cy="8" r="5.7" />
-        <path d="M6.4 6.2A1.8 1.8 0 0 1 8.1 5c1 0 1.8.6 1.8 1.5 0 .8-.5 1.2-1.2 1.6-.5.3-.8.7-.8 1.3" />
-        <path d="M8 11.2h.01" />
       </svg>
     </span>
   )
@@ -13353,191 +13339,195 @@ function App(): React.JSX.Element {
                         <option value="kimi">Kimi</option>
                       </select>
                     </label>
-                    <label
-                      className="composer-picker-label"
-                      title="Model"
-                      data-composer-control="model"
-                    >
-                      <ModelSymbolIcon />
-                      <select
-                        className="composer-inline-picker"
-                        aria-label={`${currentProviderLabel} model`}
-                        value={selectedComposerModelType}
-                        onChange={(e) => {
-                          const nextModel = e.target.value
-                          if (nextModel !== 'custom') {
-                            setLastNonCustomModelType(nextModel)
+                    {(() => {
+                      // CombinedModelPicker — replaces the per-provider
+                      // native <select> chain that used to live here
+                      // (Model + Codex reasoning + Codex speed + Kimi
+                      // thinking + Claude reasoning) with one chip + a
+                      // two-column popover (Model | Reasoning).
+                      //
+                      // Speed tier (Codex) + Claude runtime chip +
+                      // permission picker stay as separate siblings
+                      // below — they're not part of the model+reasoning
+                      // pair.
+                      const combinedModelOptions: CombinedModelPickerModelOption[] = [
+                        ...currentProviderModelOptions.map((model) => ({
+                          id: model.id,
+                          label: model.label || model.id
+                        })),
+                        ...(currentProvider !== 'kimi'
+                          ? [{ id: 'custom', label: 'Custom…' }]
+                          : [])
+                      ]
+
+                      let combinedReasoningOptions: CombinedModelPickerReasoningOption[] = []
+                      let combinedSelectedReasoning = ''
+                      if (currentProvider === 'codex') {
+                        combinedReasoningOptions = codexReasoningOptions.map((option) => ({
+                          value: option.reasoningEffort,
+                          label:
+                            option.reasoningEffort === 'xhigh'
+                              ? 'Extra High'
+                              : option.reasoningEffort.charAt(0).toUpperCase() +
+                                option.reasoningEffort.slice(1)
+                        }))
+                        combinedSelectedReasoning = codexReasoningEffort
+                      } else if (currentProvider === 'claude') {
+                        combinedReasoningOptions = claudeReasoningOptions.map((option) => ({
+                          value: option.reasoningEffort,
+                          label:
+                            option.reasoningEffort === 'off'
+                              ? 'Thinking off'
+                              : option.reasoningEffort === 'high'
+                                ? 'Max'
+                                : option.reasoningEffort.charAt(0).toUpperCase() +
+                                  option.reasoningEffort.slice(1)
+                        }))
+                        combinedSelectedReasoning = claudeReasoningEffort
+                      } else if (currentProvider === 'kimi') {
+                        combinedReasoningOptions = [
+                          { value: 'on', label: 'Thinking on' },
+                          { value: 'off', label: 'Thinking off' }
+                        ]
+                        combinedSelectedReasoning = kimiThinkingEnabled ? 'on' : 'off'
+                      }
+
+                      const handleCombinedModelChange = (nextModel: string) => {
+                        if (nextModel !== 'custom') {
+                          setLastNonCustomModelType(nextModel)
+                        }
+                        setSelectedModelType(nextModel)
+                        const metadataPatch: Record<string, unknown> = {
+                          selectedModelType: nextModel
+                        }
+                        if (currentProvider === 'codex') {
+                          const modelOption = codexModels.find(
+                            (model) => model.id === nextModel
+                          )
+                          if (modelOption?.defaultReasoningEffort) {
+                            setCodexReasoningEffort(modelOption.defaultReasoningEffort)
+                            metadataPatch.codexReasoningEffort =
+                              modelOption.defaultReasoningEffort
                           }
-                          setSelectedModelType(nextModel)
-                          const metadataPatch: Record<string, unknown> = {
-                            selectedModelType: nextModel
+                          if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+                            setCodexServiceTier('')
+                            metadataPatch.codexServiceTier = ''
                           }
-                          if (currentProvider === 'codex') {
-                            const modelOption = codexModels.find((model) => model.id === nextModel)
-                            if (modelOption?.defaultReasoningEffort) {
-                              setCodexReasoningEffort(modelOption.defaultReasoningEffort)
-                              metadataPatch.codexReasoningEffort =
-                                modelOption.defaultReasoningEffort
-                            }
-                            if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
-                              setCodexServiceTier('')
-                              metadataPatch.codexServiceTier = ''
-                            }
-                          }
-                          if (currentProvider === 'gemini') {
-                            syncPersistentModelSelection(nextModel)
-                          }
-                          rememberCurrentChatComposerSelection(metadataPatch)
-                        }}
-                        disabled={isCurrentComposerLocked}
-                      >
-                        {currentProviderModelOptions.map((model) => (
-                          <option key={model.id} value={model.id}>
-                            {model.label || model.id}
-                          </option>
-                        ))}
-                        {currentProvider !== 'kimi' && <option value="custom">Custom…</option>}
-                      </select>
-                      {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
-                        <span className="composer-inline-custom-model">
-                          <input
-                            className="composer-inline-input"
-                            type="text"
-                            value={customModel}
-                            onChange={(e) => {
-                              setCustomModel(e.target.value)
-                              rememberCurrentChatComposerSelection({ customModel: e.target.value })
-                              if (currentProvider === 'gemini') {
-                                markPersistentSessionRestartNeeded(
-                                  'Gemini custom model changed. Restart the persistent session to apply the new model.'
-                                )
-                              }
-                            }}
-                            placeholder="Model ID"
+                        }
+                        if (currentProvider === 'gemini') {
+                          syncPersistentModelSelection(nextModel)
+                        }
+                        rememberCurrentChatComposerSelection(metadataPatch)
+                      }
+
+                      const handleCombinedReasoningChange = (value: string) => {
+                        if (currentProvider === 'codex') {
+                          setCodexReasoningEffort(value)
+                          rememberCurrentChatComposerSelection({
+                            codexReasoningEffort: value
+                          })
+                        } else if (currentProvider === 'claude') {
+                          setClaudeReasoningEffort(value)
+                          rememberCurrentChatComposerSelection({
+                            claudeReasoningEffort: value
+                          })
+                        } else if (currentProvider === 'kimi') {
+                          const enabled = value !== 'off'
+                          setKimiThinkingEnabled(enabled)
+                          rememberCurrentChatComposerSelection({
+                            kimiThinkingEnabled: enabled
+                          })
+                        }
+                      }
+
+                      return (
+                        <>
+                          <CombinedModelPicker
+                            provider={currentProvider}
+                            composerStyle={appearance.composerStyle}
+                            modelOptions={combinedModelOptions}
+                            selectedModelId={selectedComposerModelType}
+                            onSelectModel={handleCombinedModelChange}
+                            reasoningOptions={combinedReasoningOptions}
+                            selectedReasoning={combinedSelectedReasoning}
+                            onSelectReasoning={handleCombinedReasoningChange}
+                            codexReasoningEffort={codexReasoningEffort}
+                            claudeReasoningEffort={claudeReasoningEffort}
+                            kimiThinkingEnabled={kimiThinkingEnabled}
                             disabled={isCurrentComposerLocked}
                           />
-                          <button
-                            className="composer-inline-clear"
-                            type="button"
-                            onClick={() => {
-                              setCustomModel('')
-                              setSelectedModelType(lastNonCustomModelType)
-                              rememberCurrentChatComposerSelection({
-                                customModel: '',
-                                selectedModelType: lastNonCustomModelType
-                              })
-                              if (currentProvider === 'gemini') {
-                                syncPersistentModelSelection(lastNonCustomModelType)
-                              }
-                            }}
-                            disabled={isCurrentComposerLocked}
-                            title="Cancel custom model"
-                            aria-label="Cancel custom model"
-                          >
-                            <XSymbolIcon />
-                          </button>
-                        </span>
-                      )}
-                    </label>
+                          {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
+                            <span className="composer-inline-custom-model">
+                              <input
+                                className="composer-inline-input"
+                                type="text"
+                                value={customModel}
+                                onChange={(e) => {
+                                  setCustomModel(e.target.value)
+                                  rememberCurrentChatComposerSelection({
+                                    customModel: e.target.value
+                                  })
+                                  if (currentProvider === 'gemini') {
+                                    markPersistentSessionRestartNeeded(
+                                      'Gemini custom model changed. Restart the persistent session to apply the new model.'
+                                    )
+                                  }
+                                }}
+                                placeholder="Model ID"
+                                disabled={isCurrentComposerLocked}
+                              />
+                              <button
+                                className="composer-inline-clear"
+                                type="button"
+                                onClick={() => {
+                                  setCustomModel('')
+                                  setSelectedModelType(lastNonCustomModelType)
+                                  rememberCurrentChatComposerSelection({
+                                    customModel: '',
+                                    selectedModelType: lastNonCustomModelType
+                                  })
+                                  if (currentProvider === 'gemini') {
+                                    syncPersistentModelSelection(lastNonCustomModelType)
+                                  }
+                                }}
+                                disabled={isCurrentComposerLocked}
+                                title="Cancel custom model"
+                                aria-label="Cancel custom model"
+                              >
+                                <XSymbolIcon />
+                              </button>
+                            </span>
+                          )}
+                        </>
+                      )
+                    })()}
 
                     {currentProvider === 'codex' && (
-                      <>
-                        <label className="composer-picker-label" title="Reasoning effort">
-                          <QuestionmarkCircleSymbolIcon />
-                          <select
-                            className="composer-inline-picker"
-                            aria-label="Codex reasoning effort"
-                            value={codexReasoningEffort}
-                            onChange={(event) => {
-                              setCodexReasoningEffort(event.target.value)
-                              rememberCurrentChatComposerSelection({
-                                codexReasoningEffort: event.target.value
-                              })
-                            }}
-                            disabled={isCurrentComposerLocked}
-                          >
-                            {codexReasoningOptions.map((option) => (
-                              <option key={option.reasoningEffort} value={option.reasoningEffort}>
-                                {option.reasoningEffort}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label
-                          className="composer-picker-label"
-                          title={
-                            codexSupportsFast
-                              ? 'Codex speed tier'
-                              : 'The selected Codex model only supports standard speed'
-                          }
-                        >
-                          <ClockSymbolIcon />
-                          <select
-                            className="composer-inline-picker"
-                            aria-label="Codex speed tier"
-                            value={codexServiceTier === 'fast' ? 'fast' : ''}
-                            onChange={(event) => {
-                              const nextTier = event.target.value === 'fast' ? 'fast' : ''
-                              setCodexServiceTier(nextTier)
-                              rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
-                            }}
-                            disabled={isCurrentComposerLocked || !codexSupportsFast}
-                          >
-                            <option value="">Standard</option>
-                            <option value="fast">Fast</option>
-                          </select>
-                        </label>
-                      </>
-                    )}
-
-                    {currentProvider === 'kimi' && (
-                      <label className="composer-picker-label" title="Kimi thinking mode">
-                        <QuestionmarkCircleSymbolIcon />
+                      <label
+                        className="composer-picker-label"
+                        title={
+                          codexSupportsFast
+                            ? 'Codex speed tier'
+                            : 'The selected Codex model only supports standard speed'
+                        }
+                      >
+                        <ClockSymbolIcon />
                         <select
                           className="composer-inline-picker"
-                          aria-label="Kimi thinking mode"
-                          value={kimiThinkingEnabled ? 'on' : 'off'}
+                          aria-label="Codex speed tier"
+                          value={codexServiceTier === 'fast' ? 'fast' : ''}
                           onChange={(event) => {
-                            const nextThinking = event.target.value !== 'off'
-                            setKimiThinkingEnabled(nextThinking)
-                            rememberCurrentChatComposerSelection({
-                              kimiThinkingEnabled: nextThinking
-                            })
+                            const nextTier = event.target.value === 'fast' ? 'fast' : ''
+                            setCodexServiceTier(nextTier)
+                            rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
                           }}
-                          disabled={isCurrentComposerLocked}
+                          disabled={isCurrentComposerLocked || !codexSupportsFast}
                         >
-                          <option value="on">Thinking on</option>
-                          <option value="off">Thinking off</option>
+                          <option value="">Standard</option>
+                          <option value="fast">Fast</option>
                         </select>
                       </label>
                     )}
-
-                    {currentProvider === 'claude' &&
-                      claudeReasoningOptions.some((o) => o.reasoningEffort !== 'off') && (
-                        <label className="composer-picker-label" title="Extended thinking">
-                          <QuestionmarkCircleSymbolIcon />
-                          <select
-                            className="composer-inline-picker"
-                            aria-label="Claude thinking"
-                            value={claudeReasoningEffort}
-                            onChange={(event) => {
-                              setClaudeReasoningEffort(event.target.value)
-                              rememberCurrentChatComposerSelection({
-                                claudeReasoningEffort: event.target.value
-                              })
-                            }}
-                            disabled={isCurrentComposerLocked}
-                          >
-                            {claudeReasoningOptions.map((option) => (
-                              <option key={option.reasoningEffort} value={option.reasoningEffort}>
-                                {option.reasoningEffort === 'off'
-                                  ? 'Thinking off'
-                                  : `${option.reasoningEffort.charAt(0).toUpperCase() + option.reasoningEffort.slice(1)} thinking`}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
 
                     {currentProvider === 'claude' && (
                       <span
