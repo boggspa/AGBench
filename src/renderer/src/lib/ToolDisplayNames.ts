@@ -41,6 +41,10 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   git_diff: 'Git diff',
   git_stage: 'Git stage',
   git_commit: 'Git commit',
+  git_log: 'Git log',
+  git_show: 'Git show',
+  git_branch: 'Git branch',
+  git_blame: 'Git blame',
 
   // ── Browser automation ───────────────────────────────────────
   browser_open: 'Opened browser',
@@ -51,6 +55,17 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   // ── Attached window (Vision OCR / capture) ───────────────────
   attached_window_capture: 'Captured attached window',
   attached_window_status: 'Attached window status',
+
+  // ── Appwatch (Phase M — SCStream ring of recent frames) ──────
+  // M1 surface today; M2 will add `appwatch_frames` for batched
+  // since-cursor retrieval (entry already pre-registered so adding
+  // M2 in the daemon doesn't leave the renderer mis-labeling it).
+  appwatch_attach: 'Attached to window',
+  appwatch_start: 'Started window watch',
+  appwatch_stop: 'Stopped window watch',
+  appwatch_status: 'Window watch status',
+  appwatch_capture: 'Captured window frame',
+  appwatch_frames: 'Pulled window frames',
 
   // ── Workspace / project introspection ────────────────────────
   workspace_search: 'Workspace search',
@@ -97,6 +112,11 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   codex_reasoning: 'Codex reasoning',
   codex_plan: 'Codex plan',
   kimi_thinking: 'Kimi thinking',
+  claude_thinking: 'Claude thinking',
+  gemini_thinking: 'Gemini thinking',
+  task: 'Task',
+  todowrite: 'Updated TODO list',
+  todo_write: 'Updated TODO list',
   summary: 'Summary',
   intent: 'Intent',
   progress: 'Progress',
@@ -105,6 +125,22 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   // ── Web search (also matched by category='search' branch) ────
   google_web_search: 'Searched the web',
   web_search: 'Searched the web',
+  websearch: 'Searched the web',
+  webfetch: 'Fetched a web page',
+  web_fetch: 'Fetched a web page',
+
+  // ── Knowledge graph (Gemini `kg_*` family) ───────────────────
+  kg_search: 'Searched knowledge graph',
+  kg_list: 'Listed knowledge graph',
+  kg_describe: 'Described knowledge graph',
+  kg_query: 'Queried knowledge graph',
+
+  // ── Directory / file enumeration aliases ─────────────────────
+  ls: 'Listed directory',
+  list_files: 'Listed files',
+  directory_list: 'Listed directory',
+  read_directory: 'Read directory',
+  file_search: 'Searched files',
 
   // ── Misc shell / search aliases not always reached by the
   // category branches (some providers emit these as the literal
