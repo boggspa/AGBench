@@ -108,6 +108,7 @@ const defaultSettings: AppSettings = {
   themeAppearance: 'system',
   themeCornerStyle: 'rounded',
   themeAccentStyle: 'system',
+  toolIconAccent: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
   transcriptFontFamily:

@@ -19,6 +19,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     themeAppearance: 'system',
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
+    toolIconAccent: 'system',
     promptSurfaceStyle: 'theme',
     composerStyle: 'default',
     funFxEnabled: false,

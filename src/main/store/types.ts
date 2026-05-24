@@ -32,6 +32,14 @@ export type ThemeAccentStyle =
   | 'green'
   | 'red'
   | 'yellow'
+/**
+ * Tool-call icon accent override. `system` = follow theme accent
+ * (default). The four named overrides target an explicit colour
+ * for the tool-call icons only, leaving the rest of the UI on the
+ * user's chosen theme accent. CSS seam: `--tool-call-icon-accent`
+ * + `[data-tool-icon-accent="X"]` rules in `theme.css`.
+ */
+export type ToolIconAccent = 'system' | 'red' | 'amber' | 'cyan' | 'violet'
 export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic'
 export type ComposerStyle =
   | 'default'
@@ -460,6 +468,7 @@ export interface AppSettings {
   themeAppearance: ThemeAppearance
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
+  toolIconAccent: ToolIconAccent
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily?: string

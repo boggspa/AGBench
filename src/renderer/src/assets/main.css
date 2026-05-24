@@ -7966,6 +7966,16 @@ button.diff-file-row {
 .accent-red { --dot-color: #e65b62; }
 .accent-yellow { --dot-color: #f2c94c; }
 
+/* Tool-icon accent swatches in the Settings radio. The "system"
+ * swatch mirrors the user's chosen accent so the preview reads
+ * "this option = match your accent"; the named overrides preview
+ * the exact override colour the option would apply. */
+.tool-icon-accent-system { --dot-color: var(--accent); }
+.tool-icon-accent-red    { --dot-color: #e65b62; }
+.tool-icon-accent-amber  { --dot-color: #f2a64c; }
+.tool-icon-accent-cyan   { --dot-color: #4cb8d0; }
+.tool-icon-accent-violet { --dot-color: #bf7cff; }
+
 .settings-hint {
   font-size: var(--font-size-xs);
   color: var(--text-muted);

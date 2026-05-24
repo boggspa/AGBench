@@ -4132,6 +4132,7 @@ type SettingsPanelUpdate = {
   themeAppearance?: AppSettings['themeAppearance']
   themeCornerStyle?: AppSettings['themeCornerStyle']
   themeAccentStyle?: AppSettings['themeAccentStyle']
+  toolIconAccent?: AppSettings['toolIconAccent']
   promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
   composerStyle?: AppSettings['composerStyle']
   transcriptFontFamily?: AppSettings['transcriptFontFamily']
@@ -5638,6 +5639,10 @@ function App(): React.JSX.Element {
     if (next.themeAccentStyle !== undefined) {
       settingsPatch.themeAccentStyle = next.themeAccentStyle
       appearance.update({ themeAccentStyle: next.themeAccentStyle })
+    }
+    if (next.toolIconAccent !== undefined) {
+      settingsPatch.toolIconAccent = next.toolIconAccent
+      appearance.update({ toolIconAccent: next.toolIconAccent })
     }
     if (next.promptSurfaceStyle !== undefined) {
       settingsPatch.promptSurfaceStyle = next.promptSurfaceStyle
@@ -14257,6 +14262,7 @@ function App(): React.JSX.Element {
               themeAppearance={appearance.themeAppearance}
               themeCornerStyle={appearance.themeCornerStyle}
               themeAccentStyle={appearance.themeAccentStyle}
+              toolIconAccent={appearance.toolIconAccent}
               promptSurfaceStyle={appearance.promptSurfaceStyle}
               composerStyle={appearance.composerStyle}
               transcriptFontFamily={appearance.transcriptFontFamily}
