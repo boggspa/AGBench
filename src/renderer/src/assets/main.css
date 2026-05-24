@@ -21502,23 +21502,100 @@ input:disabled, select:disabled, textarea:disabled {
   position: relative;
 }
 
+/* `+ New` popover — mirrors the liquid-glass aesthetic used by the
+ * composer slash / mention menus (frosted backdrop, soft accent border,
+ * elevated shadow). Outside-click + Escape dismissal lives in the React
+ * component; this stylesheet only covers chrome. */
 .sidebar-new-menu {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   right: 0;
   z-index: 80;
-  min-width: 160px;
+  min-width: 200px;
   padding: 6px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--surface-elevated);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--panel-elevated-bg) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  box-shadow:
+    0 1px 0 inset color-mix(in srgb, #ffffff 10%, transparent),
+    0 14px 38px rgba(0, 0, 0, 0.34),
+    0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
+  /* Subtle fade-in so the popover doesn't pop in jarringly when the
+   * user hits the `+ New` button. ~140ms matches the slash-menu's
+   * cadence so popovers feel like one family. */
+  animation: sidebar-new-menu-fade-in 140ms ease-out;
+  transform-origin: top right;
 }
 
-.sidebar-new-menu button {
+@keyframes sidebar-new-menu-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.sidebar-new-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm, 13px);
+  text-align: left;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition: background 100ms ease;
+}
+
+.sidebar-new-menu-item .sf-symbol-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: color-mix(in srgb, var(--text-primary) 76%, transparent);
+}
+
+.sidebar-new-menu-item:hover,
+.sidebar-new-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  outline: 0;
+}
+
+.sidebar-new-menu-item:hover .sf-symbol-icon,
+.sidebar-new-menu-item:focus-visible .sf-symbol-icon {
+  color: var(--text-primary);
+}
+
+.sidebar-new-menu-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Legacy bare-button hover fallback so any caller still rendering the
+ * old shape (no `.sidebar-new-menu-item` wrapper) keeps a usable
+ * highlight. Kept narrow so it can't collide with `-item`. */
+.sidebar-new-menu > button:not(.sidebar-new-menu-item) {
   width: 100%;
   border: 0;
-  border-radius: 6px;
+  border-radius: 9px;
   background: transparent;
   color: var(--text-primary);
   font: inherit;
@@ -21526,8 +21603,38 @@ input:disabled, select:disabled, textarea:disabled {
   padding: 8px 10px;
 }
 
-.sidebar-new-menu button:hover {
-  background: color-mix(in srgb, var(--surface-elevated) 82%, var(--text-primary) 8%);
+.sidebar-new-menu > button:not(.sidebar-new-menu-item):hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Empty-state caption shown in the Ensembles sidebar section when the
+ * user has no ensembles yet. Discoverability — paired with the always-
+ * visible section header above, the caption nudges users at the `+ New`
+ * trigger by name so they can follow the link. */
+.sidebar-ensembles-empty {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 2px 10px;
+  padding: 8px 10px;
+  border: 1px dashed color-mix(in srgb, var(--sidebar-border) 60%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sidebar-text) 4%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 72%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.sidebar-ensembles-empty-icon .sf-symbol-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: color-mix(in srgb, var(--sidebar-text) 64%, transparent);
+}
+
+.sidebar-ensembles-empty-copy strong {
+  font-weight: 600;
+  color: color-mix(in srgb, var(--sidebar-text) 92%, transparent);
 }
 
 .sidebar-ensemble-list {

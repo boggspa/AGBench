@@ -264,6 +264,52 @@ function PinSymbolIcon({ filled = false }: { filled?: boolean }) {
   )
 }
 
+/**
+ * `EnsembleSymbolIcon` — two overlapping circles to convey "multiple
+ * agents collaborating" in the same thread. Used by the `+ New` menu
+ * dropdown alongside the New Chat / New Workspace items, and also for
+ * the Ensembles sidebar section header's empty-state caption.
+ */
+function EnsembleSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <circle cx="6" cy="8" r="3.2" />
+        <circle cx="10" cy="8" r="3.2" />
+      </svg>
+    </span>
+  )
+}
+
+/**
+ * `ChatBubbleSymbolIcon` — speech-bubble glyph for the "New Chat"
+ * row in the `+ New` dropdown. Distinct from the `+` of the trigger
+ * button so the menu items each carry their own affordance.
+ */
+function ChatBubbleSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M3.2 4.3c0-.66.54-1.2 1.2-1.2h7.2c.66 0 1.2.54 1.2 1.2v5.2c0 .66-.54 1.2-1.2 1.2H7.2L4.5 12.6V10.7H4.4a1.2 1.2 0 0 1-1.2-1.2V4.3Z" />
+      </svg>
+    </span>
+  )
+}
+
 // Phase L6 slice 1 — exported for `ModelUsageCard` provider headers.
 export function getProviderName(provider?: ProviderId) {
   if (provider === 'codex') return 'Codex'
@@ -579,6 +625,12 @@ export function Sidebar({
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
+  // Wrap ref for the `+ New` menu so an outside-click / Escape listener
+  // can dismiss the popover without each menu item having to remember
+  // to call `setNewMenuOpen(false)`. Mirrors the standard pattern the
+  // rest of the app uses for floating menus (overflow menus, slash
+  // menu portal, etc.).
+  const newMenuWrapRef = useRef<HTMLDivElement | null>(null)
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
@@ -733,6 +785,33 @@ export function Sidebar({
     setNewMenuOpen(false)
     onNewEnsemble()
   }
+
+  // Outside-click + Escape dismiss for the `+ New` popover. Mounts
+  // global mousedown / keydown listeners only while the menu is open
+  // so we don't sit on event traffic the rest of the time. Click-
+  // inside checks via `contains` on the wrap ref so menu-item clicks
+  // are not treated as outside-clicks; the menu items already call
+  // `setNewMenuOpen(false)` themselves after their action runs.
+  useEffect(() => {
+    if (!newMenuOpen) return
+    const handleMouseDown = (event: globalThis.MouseEvent) => {
+      const wrap = newMenuWrapRef.current
+      if (!wrap) return
+      if (event.target instanceof Node && wrap.contains(event.target)) return
+      setNewMenuOpen(false)
+    }
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setNewMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handleMouseDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [newMenuOpen])
 
   useEffect(() => {
     const workspaceIds = new Set(workspaces.map((workspace) => workspace.id))
@@ -993,7 +1072,7 @@ export function Sidebar({
             <strong title={currentWorkspace?.path || currentScopeTitle}>{currentScopeTitle}</strong>
             <span title={currentWorkspace?.path || currentScopeMeta}>{currentScopeMeta}</span>
           </div>
-          <div className="sidebar-new-menu-wrap">
+          <div className="sidebar-new-menu-wrap" ref={newMenuWrapRef}>
             <button
               type="button"
               className="sidebar-primary-action"
@@ -1001,28 +1080,44 @@ export function Sidebar({
               title="Create"
               aria-label="Create"
               aria-expanded={newMenuOpen}
+              aria-haspopup="menu"
             >
               <PlusSymbolIcon />
               <span>New</span>
             </button>
             {newMenuOpen && (
               <div className="sidebar-new-menu" role="menu">
-                <button type="button" role="menuitem" onClick={handlePrimaryNewChat} title={primaryNewTitle}>
-                  New Chat
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="sidebar-new-menu-item"
+                  onClick={handlePrimaryNewChat}
+                  title={primaryNewTitle}
+                >
+                  <ChatBubbleSymbolIcon />
+                  <span className="sidebar-new-menu-item-label">New Chat</span>
                 </button>
                 <button
                   type="button"
                   role="menuitem"
+                  className="sidebar-new-menu-item"
                   onClick={() => {
                     setNewMenuOpen(false)
                     onSelectWorkspaceDialog()
                   }}
                 >
-                  New Workspace
+                  <FolderSymbolIcon />
+                  <span className="sidebar-new-menu-item-label">New Workspace</span>
                 </button>
                 {ensembleModeEnabled && (
-                  <button type="button" role="menuitem" onClick={handleNewEnsemble}>
-                    New Ensemble
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="sidebar-new-menu-item"
+                    onClick={handleNewEnsemble}
+                  >
+                    <EnsembleSymbolIcon />
+                    <span className="sidebar-new-menu-item-label">New Ensemble</span>
                   </button>
                 )}
               </div>
@@ -1223,13 +1318,32 @@ export function Sidebar({
           </div>
         )}
 
-        {visibleEnsembleChats.length > 0 && (
+        {ensembleModeEnabled && (
           <div className="sidebar-ensembles-section">
             <div className="sidebar-section-header">
               <h4 className="sidebar-section-title">Ensembles</h4>
             </div>
-            <div className="sidebar-chat-list sidebar-ensemble-list">
-              {visibleEnsembleChats.map((chat) => {
+            {visibleEnsembleChats.length === 0 ? (
+              /*
+                Empty-state caption. Gives ensembles the same
+                discoverability Workspaces gets when the list is
+                empty — without it, fresh users never see the
+                section at all and have to learn the feature from
+                the `+ New` menu alone. The caption nudges them at
+                the trigger by name so the link is obvious.
+              */
+              <div className="sidebar-ensembles-empty" role="note">
+                <span className="sidebar-ensembles-empty-icon" aria-hidden>
+                  <EnsembleSymbolIcon />
+                </span>
+                <span className="sidebar-ensembles-empty-copy">
+                  No ensembles yet. Use <strong>+ New → New Ensemble</strong> to
+                  put two or more providers in the same thread.
+                </span>
+              </div>
+            ) : (
+              <div className="sidebar-chat-list sidebar-ensemble-list">
+                {visibleEnsembleChats.map((chat) => {
                 const activeRound = chat.ensemble?.activeRound
                 const activeParticipant = chat.ensemble?.participants.find(
                   (participant) => participant.id === activeRound?.activeParticipantId
@@ -1277,7 +1391,8 @@ export function Sidebar({
                   </button>
                 )
               })}
-            </div>
+              </div>
+            )}
           </div>
         )}
 
