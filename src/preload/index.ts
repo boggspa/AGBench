@@ -102,7 +102,15 @@ const api = {
     ipcRenderer.invoke('start-agent-review', provider, threadId, params),
   respondAgentApproval: (
     requestId: string,
-    action: 'accept' | 'acceptForSession' | 'acceptForWorkspace' | 'decline' | 'cancel'
+    action:
+      | 'accept'
+      | 'acceptForSession'
+      | 'acceptForWorkspace'
+      | 'decline'
+      | 'cancel'
+      | 'grantExternalPathRead'
+      | 'grantExternalPathEdit'
+      | 'declineExternalPath'
   ) => ipcRenderer.invoke('respond-agent-approval', requestId, action),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),

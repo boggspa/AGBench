@@ -104,6 +104,9 @@ type AgentApprovalAction =
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  | 'grantExternalPathRead'
+  | 'grantExternalPathEdit'
+  | 'declineExternalPath'
 
 interface AgentRunPayload {
   provider: ProviderId

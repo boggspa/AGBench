@@ -87,6 +87,17 @@ export type AgentApprovalAction =
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  // Slice 4 of the external-path-redesign arc. When the runtime
+  // detector (slice 5) spots a tool call referencing a path outside
+  // the workspace, the approval payload uses these actions in place
+  // of the generic accept/decline pair. `grantExternalPathRead` /
+  // `grantExternalPathEdit` issue a signed grant for the detected
+  // path AND resolve the pending approval as if the user accepted;
+  // `declineExternalPath` is behaviourally identical to `decline`
+  // but signals the renderer to render path-specific copy.
+  | 'grantExternalPathRead'
+  | 'grantExternalPathEdit'
+  | 'declineExternalPath'
 
 export interface ExternalPathGrant {
   id: string

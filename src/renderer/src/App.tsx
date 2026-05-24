@@ -3011,6 +3011,13 @@ type AgentApprovalAction =
   | 'acceptForWorkspace'
   | 'decline'
   | 'cancel'
+  // Slice 4 of the external-path-redesign arc. See the same union
+  // in src/main/store/types.ts:84 — mirrored here because App.tsx
+  // declares its own copy rather than importing the canonical
+  // definition. A follow-up unification would import from types.ts.
+  | 'grantExternalPathRead'
+  | 'grantExternalPathEdit'
+  | 'declineExternalPath'
 
 interface AgentApprovalRequest {
   id: string
@@ -13029,6 +13036,20 @@ function App(): React.JSX.Element {
                     {pendingAgentApproval.body && (
                       <div className="composer-permission-message">{pendingAgentApproval.body}</div>
                     )}
+                    {/* Slice 4 of the external-path-redesign arc.
+                        When the runtime detector emits an external-path
+                        approval, it stashes the detected path under
+                        `preview.externalPathDetection`. Render it
+                        prominently so the user knows WHICH path they're
+                        granting before clicking the action button. */}
+                    {pendingAgentApproval.preview?.externalPathDetection?.path && (
+                      <div className="composer-permission-external-path">
+                        <span className="composer-permission-external-path-label">Path</span>
+                        <code className="composer-permission-external-path-value">
+                          {pendingAgentApproval.preview.externalPathDetection.path}
+                        </code>
+                      </div>
+                    )}
                     {renderAgentApprovalPreview(pendingAgentApproval.preview)}
                     <div className="composer-permission-actions">
                       {(pendingAgentApproval.actions || ['accept']).includes('accept') && (
@@ -13116,6 +13137,60 @@ function App(): React.JSX.Element {
                           }
                         >
                           Cancel run
+                        </button>
+                      )}
+                      {/* Slice 4 external-path actions — only render when
+                          the runtime detector emitted the new action
+                          triplet. The generic accept/decline buttons
+                          above won't match those approvals' action list,
+                          so only these three appear for external-path
+                          prompts. */}
+                      {(pendingAgentApproval.actions || []).includes(
+                        'grantExternalPathRead'
+                      ) && (
+                        <button
+                          className="btn btn-sm btn-primary"
+                          type="button"
+                          onClick={() =>
+                            void handleAgentApprovalAction(
+                              pendingAgentApproval.id,
+                              'grantExternalPathRead'
+                            )
+                          }
+                        >
+                          Grant read access
+                        </button>
+                      )}
+                      {(pendingAgentApproval.actions || []).includes(
+                        'grantExternalPathEdit'
+                      ) && (
+                        <button
+                          className="btn btn-sm"
+                          type="button"
+                          onClick={() =>
+                            void handleAgentApprovalAction(
+                              pendingAgentApproval.id,
+                              'grantExternalPathEdit'
+                            )
+                          }
+                        >
+                          Grant edit access
+                        </button>
+                      )}
+                      {(pendingAgentApproval.actions || []).includes(
+                        'declineExternalPath'
+                      ) && (
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          type="button"
+                          onClick={() =>
+                            void handleAgentApprovalAction(
+                              pendingAgentApproval.id,
+                              'declineExternalPath'
+                            )
+                          }
+                        >
+                          Deny once
                         </button>
                       )}
                     </div>

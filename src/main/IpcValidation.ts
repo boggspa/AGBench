@@ -31,7 +31,12 @@ const APPROVAL_ACTIONS = new Set([
   'acceptForSession',
   'acceptForWorkspace',
   'decline',
-  'cancel'
+  'cancel',
+  // Slice 4 of the external-path-redesign arc — see
+  // AgentApprovalAction in store/types.ts.
+  'grantExternalPathRead',
+  'grantExternalPathEdit',
+  'declineExternalPath'
 ])
 const RUN_QUEUE_STATUSES = new Set([
   'queued',

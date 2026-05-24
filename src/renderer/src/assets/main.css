@@ -19440,3 +19440,41 @@ input:disabled, select:disabled, textarea:disabled {
   border-bottom-right-radius: 14px;
   margin-bottom: 0;
 }
+
+/* ============================================================
+ * EXTERNAL-PATH APPROVAL MODAL — Slice 4 of redesign arc
+ * --------------------------------------------------------------
+ * The composer's permission card surfaces the detected external
+ * path prominently before the action buttons so the user knows
+ * exactly which path they're about to grant access to. The
+ * monospace `<code>` block reads naturally next to the modal's
+ * existing body copy.
+ * ============================================================ */
+
+.composer-permission-external-path {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 8px 0 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.composer-permission-external-path-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
+  flex-shrink: 0;
+}
+
+.composer-permission-external-path-value {
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-xs) + 1px);
+  color: var(--text-primary);
+  word-break: break-all;
+  flex: 1;
+}

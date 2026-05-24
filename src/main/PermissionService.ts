@@ -186,7 +186,18 @@ export class PermissionService {
   }
 
   isApprovedAction(action: AgentApprovalAction): boolean {
-    return action === 'accept' || action === 'acceptForSession' || action === 'acceptForWorkspace'
+    return (
+      action === 'accept' ||
+      action === 'acceptForSession' ||
+      action === 'acceptForWorkspace' ||
+      // Slice 4 of the external-path-redesign arc. The two external-
+      // path grant actions resolve the underlying agent tool call as
+      // an approval (the agent gets to proceed); the *side effect* of
+      // persisting the grant is layered on top by the resolver in
+      // ApprovalService. `declineExternalPath` resolves as a denial.
+      action === 'grantExternalPathRead' ||
+      action === 'grantExternalPathEdit'
+    )
   }
 
   expireRunScopedApprovals(session: {
