@@ -1436,13 +1436,18 @@ function ActivityRow({
   const activityFilePath = getFilePathFromActivity(activity)
 
   const chipText: string[] = []
-  if (isWriteAction && activityFilePath) {
-    // Workspace-relative form keeps the meta line readable; absolute path
-    // still ships in the title attribute below for hover disambiguation.
-    chipText.push(
-      displayPathRelativeToWorkspace(activityFilePath, workspacePath) || activityFilePath
-    )
-  }
+  // Previously the meta line carried `<path> · <duration>ms` for write
+  // actions. The path was redundant — the main tool label already shows
+  // the file's basename (via ToolDisplayNames + per-tool path-aware
+  // labels), and when the file lives outside the workspace, the path
+  // fell back to its absolute form (`~/Documents/Other/.../file.swift`)
+  // and got truncated mid-segment in the meta band. That truncated path
+  // duplicated information that was already legible above and added
+  // visual noise without disambiguating anything for the user.
+  //
+  // The full absolute path still ships in the `.activity-meta` title
+  // attribute below for hover disambiguation when the basename alone
+  // isn't enough.
   if (activity.durationMs !== undefined) chipText.push(`${activity.durationMs}ms`)
   const metaText = chipText.join(' · ')
   const parameters = activity.parameters || {}
