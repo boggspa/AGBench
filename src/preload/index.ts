@@ -420,6 +420,30 @@ const api = {
   exportProductDiagnostics: (path?: string) =>
     ipcRenderer.invoke('export-product-diagnostics', path),
   repairProductInstall: () => ipcRenderer.invoke('repair-product-install'),
+  // Tester-feedback intake (1.0.1). `getAppVersion` lets the bug-report
+  // sheet show the same version string that `submit-bug-report` stamps
+  // into the file. `submitBugReport` ships the form contents + an
+  // auto-captured context block; main appends a Markdown entry to
+  // `<userData>/AGBench/bug-reports.md`.
+  getAppVersion: () => ipcRenderer.invoke('get-app-version') as Promise<string>,
+  submitBugReport: (payload: {
+    title: string
+    description: string
+    expected: string
+    severity: 'info' | 'minor' | 'major' | 'blocking'
+    context: {
+      timestamp: string
+      version: string
+      provider: string
+      workspace: string
+      shell: string
+    }
+  }) =>
+    ipcRenderer.invoke('submit-bug-report', payload) as Promise<{
+      ok: boolean
+      path?: string
+      error?: string
+    }>,
 
   onGeminiOutput: (callback: (data: any) => void) => {
     ipcRenderer.on('gemini-output', (_event, data) => callback(data))

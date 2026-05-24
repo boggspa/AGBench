@@ -663,6 +663,20 @@ declare global {
       recordProductCrash: (input: ProductCrashInput) => Promise<ProductCrashRecord>
       exportProductDiagnostics: (path?: string) => Promise<ProductDiagnosticsExportResult>
       repairProductInstall: () => Promise<ProductOperationsStatus>
+      getAppVersion: () => Promise<string>
+      submitBugReport: (payload: {
+        title: string
+        description: string
+        expected: string
+        severity: 'info' | 'minor' | 'major' | 'blocking'
+        context: {
+          timestamp: string
+          version: string
+          provider: string
+          workspace: string
+          shell: string
+        }
+      }) => Promise<{ ok: boolean; path?: string; error?: string }>
 
       onGeminiOutput: (callback: (data: GeminiStreamPayload) => void) => void
       onGeminiError: (callback: (error: GeminiStreamPayload) => void) => void

@@ -24,6 +24,7 @@ type ArgSpec =
   | 'chatId'
   | 'externalPathGrantAccess'
   | 'runQueueStatus'
+  | 'bugReportPayload'
 
 const PROVIDERS = new Set(['gemini', 'codex', 'claude', 'kimi'])
 const APPROVAL_ACTIONS = new Set([
@@ -48,6 +49,7 @@ const RUN_QUEUE_STATUSES = new Set([
   'failed',
   'completed'
 ])
+const BUG_REPORT_SEVERITIES = new Set(['info', 'minor', 'major', 'blocking'])
 
 const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-settings': [],
@@ -196,7 +198,15 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'select-apns-key-file': [],
   'set-apns-config': ['object'],
   'clear-apns-config': [],
-  'test-apns-push': []
+  'test-apns-push': [],
+  // Tester-feedback intake (1.0.1). The renderer collects a short
+  // title + optional description / expected / severity from
+  // BugReportSheet.tsx and ships the auto-captured context block
+  // alongside; main appends to `<userData>/AGBench/bug-reports.md`.
+  // Also exposes a tiny `get-app-version` so the sheet's read-only
+  // context row can display the canonical version without hard-coding.
+  'get-app-version': [],
+  'submit-bug-report': ['bugReportPayload']
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -256,6 +266,7 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
     throw new Error(`${label} must be read or write.`)
   if (spec === 'runPayload') validateRunPayload(channel, value)
   if (spec === 'settingsPatch') validateSettingsPatch(channel, value)
+  if (spec === 'bugReportPayload') validateBugReportPayload(channel, value)
 }
 
 function validateRunPayload(channel: string, value: unknown): void {
@@ -297,6 +308,31 @@ function validateSettingsPatch(channel: string, value: unknown): void {
     throw new Error(`${channel} agenticServices must be an object.`)
   if (value.agenticWorkspaceGrants !== undefined)
     throw new Error(`${channel} cannot update workspace grants directly.`)
+}
+
+/** Bug-report payload guard. Keeps the IPC honest: only the four
+ * known severities, title required (non-empty after trim), the
+ * three free-text fields are strings (possibly empty), and the
+ * context block carries the five auto-captured strings. */
+function validateBugReportPayload(channel: string, value: unknown): void {
+  if (!isRecord(value)) throw new Error(`${channel} bug-report payload must be an object.`)
+  if (typeof value.title !== 'string' || !value.title.trim())
+    throw new Error(`${channel} bug-report title must be a non-empty string.`)
+  if (value.title.length > 280)
+    throw new Error(`${channel} bug-report title must be 280 characters or fewer.`)
+  if (typeof value.description !== 'string')
+    throw new Error(`${channel} bug-report description must be a string.`)
+  if (typeof value.expected !== 'string')
+    throw new Error(`${channel} bug-report expected must be a string.`)
+  if (typeof value.severity !== 'string' || !BUG_REPORT_SEVERITIES.has(value.severity))
+    throw new Error(`${channel} bug-report severity must be info, minor, major, or blocking.`)
+  if (!isRecord(value.context))
+    throw new Error(`${channel} bug-report context must be an object.`)
+  const ctx = value.context
+  for (const key of ['timestamp', 'version', 'provider', 'workspace', 'shell'] as const) {
+    if (typeof ctx[key] !== 'string')
+      throw new Error(`${channel} bug-report context.${key} must be a string.`)
+  }
 }
 
 export function validateIpcArgs(channel: string, args: unknown[]): unknown[] {

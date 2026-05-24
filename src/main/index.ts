@@ -45,6 +45,10 @@ import {
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
+import {
+  appendBugReport,
+  type BugReportSubmission as BugReportSubmissionInput
+} from './services/BugReportService'
 import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
@@ -18406,6 +18410,40 @@ if (isGeminiMcpBridgeProcess) {
       exportProductDiagnostics(requestedPath)
     )
     ipcMain.handle('repair-product-install', async () => repairProductInstall())
+
+    // Tester-feedback intake (1.0.1). Returns the canonical app
+    // version so the BugReportSheet's read-only context row matches
+    // what `submit-bug-report` will stamp on the file. Cheap; we just
+    // forward `app.getVersion()`.
+    ipcMain.handle('get-app-version', () => app.getVersion() || 'unknown')
+    ipcMain.handle('submit-bug-report', async (_, payload: BugReportSubmissionInput) => {
+      try {
+        // Re-stamp the version + timestamp server-side so the file is
+        // authoritative even if the renderer's display is stale.
+        const submission: BugReportSubmissionInput = {
+          ...payload,
+          context: {
+            ...payload.context,
+            timestamp: payload.context.timestamp || new Date().toISOString(),
+            version: app.getVersion() || payload.context.version
+          }
+        }
+        const result = await appendBugReport(app.getPath('userData'), submission)
+        if (result.sizeWarning) {
+          // Soft warning only — the report still landed. Mirrors the
+          // diagnostics export soft-cap pattern (we log but don't
+          // reject the call).
+          console.warn(
+            `[bug-report] file is large (${result.totalBytes} bytes) — consider archiving and clearing ${result.path}.`
+          )
+        }
+        return { ok: true, path: result.path }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to save bug report.'
+        console.error('[bug-report] append failed:', err)
+        return { ok: false, error: message }
+      }
+    })
 
     ipcMain.handle(
       'set-appearance-mode',
