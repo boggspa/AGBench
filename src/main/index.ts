@@ -18166,7 +18166,54 @@ if (isGeminiMcpBridgeProcess) {
     )
 
     // Workspaces
-    ipcMain.handle('get-workspaces', () => workspaceService.getWorkspaces())
+    //
+    // `get-workspaces` lazily backfills git branches for any workspace
+    // whose record has `branch: undefined`. The probe-at-registration
+    // logic in `add-or-update-workspace` only runs when the renderer
+    // explicitly patches a workspace; it doesn't catch:
+    //   - workspaces persisted before commit `ec62275` shipped (their
+    //     stored record never had a branch);
+    //   - workspaces added via `select-workspace` (which routes through
+    //     `WorkspaceService.addWorkspaceFromNativeSelection`, bypassing
+    //     the probe wrapper).
+    // Both classes show "detached" forever in the composer above-bar
+    // until something else triggers `add-or-update-workspace`.
+    //
+    // Doing the backfill at fetch time, in parallel, is fast (each
+    // probe is a single `git rev-parse` worth of work) and keeps the
+    // probe surface in one place. After the first successful fetch
+    // every workspace has a branch persisted, so subsequent calls
+    // short-circuit on `missing.length === 0`.
+    ipcMain.handle('get-workspaces', async () => {
+      const workspaces = workspaceService.getWorkspaces()
+      const missing = workspaces.filter((ws) => !ws.branch)
+      if (missing.length === 0) return workspaces
+      try {
+        const { probeExternalPath } = await import('./services/ExternalPathProbe')
+        const probed = await Promise.all(
+          missing.map(async (ws) => {
+            try {
+              const result = await probeExternalPath(ws.path)
+              return { id: ws.id, path: ws.path, branch: result?.branch }
+            } catch {
+              return { id: ws.id, path: ws.path, branch: undefined }
+            }
+          })
+        )
+        let touched = false
+        for (const entry of probed) {
+          if (entry.branch) {
+            workspaceService.addOrUpdateWorkspace(entry.path, {
+              branch: entry.branch
+            })
+            touched = true
+          }
+        }
+        return touched ? workspaceService.getWorkspaces() : workspaces
+      } catch {
+        return workspaces
+      }
+    })
     ipcMain.handle(
       'add-or-update-workspace',
       async (_, path: string, partial: Partial<WorkspaceRecord>) => {
