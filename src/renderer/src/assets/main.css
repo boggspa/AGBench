@@ -19056,3 +19056,218 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] .context-wheel {
   color: #5d9eff;
 }
+
+/* ============================================================
+ * COMBINED MODEL + REASONING PICKER
+ * --------------------------------------------------------------
+ * Replaces the per-provider native <select> model + reasoning
+ * pickers with one combined chip + a two-column popover. Modelled
+ * after real Codex's Model | Reasoning side-by-side menu.
+ *
+ *   - .composer-combined-picker-trigger — the chip
+ *     - .composer-combined-picker-trigger-primary — model text
+ *     - .composer-combined-picker-trigger-suffix  — reasoning text
+ *       (rendered dimmer than primary so the chip reads as "model
+ *       — reasoning")
+ *
+ *   - .composer-combined-picker-popover — portaled to body
+ *     - .composer-combined-picker-column — one per Model / Reasoning
+ *       - .composer-combined-picker-column-header — section title
+ *       - .composer-combined-picker-row — clickable row, has
+ *         `.is-highlighted` (keyboard focus) and `.is-selected`
+ *         (current value) variants.
+ *
+ * The popover uses the AGBench panel palette by default; per-shell
+ * overrides further down tune it for Codex / Claude / Kimi / Gemini.
+ * ============================================================ */
+
+.composer-combined-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 78%, transparent);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+
+.composer-combined-picker-trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--panel-bg) 96%, transparent);
+  border-color: color-mix(in srgb, var(--text-primary) 18%, var(--panel-border));
+}
+
+.composer-combined-picker-trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.composer-combined-picker-trigger-primary {
+  color: var(--text-primary);
+}
+
+.composer-combined-picker-trigger-suffix {
+  color: color-mix(in srgb, var(--text-primary) 56%, transparent);
+  font-weight: 400;
+}
+
+/* Popover ------------------------------------------------------ */
+
+.composer-combined-picker-popover {
+  display: flex;
+  gap: 0;
+  min-width: 200px;
+  max-width: 420px;
+  padding: 6px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--panel-elevated-bg) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  z-index: 1000;
+  font-family: inherit;
+  font-size: calc(var(--font-size-xs) + 1px);
+  color: var(--text-primary);
+  isolation: isolate;
+}
+
+.composer-combined-picker-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px 0;
+}
+
+.composer-combined-picker-column + .composer-combined-picker-column {
+  border-left: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  margin-left: 4px;
+  padding-left: 6px;
+}
+
+.composer-combined-picker-column-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  padding: 4px 10px 6px;
+}
+
+.composer-combined-picker-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.composer-combined-picker-row:hover,
+.composer-combined-picker-row.is-highlighted {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.composer-combined-picker-row.is-selected {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.composer-combined-picker-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-combined-picker-check {
+  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+/* Per-shell trigger chrome ------------------------------------ */
+
+[data-composer-style="codex"] .composer-combined-picker-trigger {
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.86);
+  font-weight: 500;
+}
+[data-composer-style="codex"] .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="codex"] .composer-combined-picker-trigger-suffix {
+  color: color-mix(in srgb, #ffffff 56%, transparent);
+}
+
+[data-composer-style="claude"] .composer-combined-picker-trigger {
+  background: transparent;
+  border: 0;
+  padding: 0 4px;
+  color: rgba(255, 255, 255, 0.86);
+  font-weight: 500;
+}
+[data-composer-style="claude"] .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
+  color: color-mix(in srgb, #ffffff 52%, transparent);
+}
+
+[data-composer-style="gemini"] .composer-combined-picker-trigger {
+  background: color-mix(in srgb, #5a8cff 14%, transparent);
+  border-color: color-mix(in srgb, #5a8cff 24%, transparent);
+  color: rgba(255, 255, 255, 0.94);
+}
+
+[data-composer-style="kimi"] .composer-combined-picker-trigger {
+  background: color-mix(in srgb, #a9bd55 12%, transparent);
+  border-color: color-mix(in srgb, #a9bd55 22%, transparent);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* Light-mode trigger contrast --------------------------------- */
+
+[data-theme="light"] .composer-combined-picker-trigger {
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(0, 0, 0, 0.10);
+  color: rgba(29, 29, 31, 0.92);
+}
+[data-theme="light"] .composer-combined-picker-trigger-suffix {
+  color: rgba(29, 29, 31, 0.56);
+}
+[data-theme="light"][data-composer-style="codex"] .composer-combined-picker-trigger,
+[data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger {
+  /* Codex shell + Claude shell deliberately stay dark in light mode
+   * (themed-shell stays themed). Re-assert the dark inherited
+   * styles to beat the generic light-theme rule above. */
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.86) !important;
+  border-color: transparent !important;
+}
+[data-theme="light"][data-composer-style="codex"] .composer-combined-picker-trigger-suffix,
+[data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger-suffix {
+  color: color-mix(in srgb, #ffffff 54%, transparent) !important;
+}
