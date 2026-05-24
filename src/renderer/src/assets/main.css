@@ -6773,28 +6773,12 @@ button.diff-file-row {
  * `data-status` attribute, which we already set in Phase L3. The
  * `activity-stamp-land` animation (Phase L3 slice 4) is reused on
  * the dot when a tool transitions running → done. */
+/* Phase K-followup — gutter dot hidden (JSX no longer emits it,
+ * but the legacy rule is parked here as a safety net in case any
+ * older code path still renders the element). The tool-family icon
+ * (bumped to 30px) carries the row's left-margin anchor now. */
 .activity-gutter-dot {
-  position: absolute;
-  /* Anchor at the top of the row, vertically centred on the first
-   * line of content. With 1.5×-bumped icons (21px tall) + row
-   * padding-top 4px, the icon's vertical centre lands at ~14.5px;
-   * top:14px keeps the dot aligned with the icon's middle. */
-  top: 14px;
-  /* `left` is relative to the row's coordinate space (the row sits
-   * at timeline-left:16px after the slice-4 follow-up). With dot
-   * width 7px and left:-12px, the dot spans timeline-left:1px to
-   * 8px — leaves ~6px clear before the provider border at row-
-   * left:0 (timeline-left:16px). The dot reads as a status marker
-   * tucked into the gutter, just left of the provider stripe. */
-  left: -12px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-tertiary);
-  opacity: 0.55;
-  z-index: 1;
-  flex-shrink: 0;
-  transform-origin: center;
+  display: none !important;
 }
 .activity-row[data-status="success"]  .activity-gutter-dot { background: var(--tool-success); opacity: 1; }
 .activity-row[data-status="warning"]  .activity-gutter-dot { background: var(--tool-warning); opacity: 1; }
@@ -6870,8 +6854,35 @@ button.diff-file-row {
 
 .activity-category-icon {
   flex-shrink: 0;
-  opacity: 0.6;
-  color: var(--text-secondary);
+  /* Phase K-followup — tool-call icons follow the system accent
+   * colour. Per-row category coloring (was: write=accent, shell=
+   * warning amber, etc.) is gone — having shell tools render orange
+   * regardless of theme made the transcript feel disconnected from
+   * the user's accent choice. A separate `--tool-call-icon-accent`
+   * token is exposed (defaults to `--accent`) so a future settings
+   * pane can override the icon color independently from the rest
+   * of the UI's accent. Error status still red — that signal is too
+   * important to soften. */
+  color: var(--tool-call-icon-accent, var(--accent));
+  opacity: 0.85;
+}
+.activity-row[data-status="error"] .activity-category-icon {
+  color: var(--tool-error);
+  opacity: 1;
+}
+.activity-row[data-status="running"] .activity-category-icon {
+  /* Running keeps the accent but pulses gently so the user sees
+   * something is in flight. No separate `--tool-running` color
+   * grab — uses the same accent the icon is already on. */
+  opacity: 1;
+  animation: activity-icon-pulse 1.4s ease-in-out infinite alternate;
+}
+@keyframes activity-icon-pulse {
+  from { opacity: 0.55; }
+  to   { opacity: 1; }
+}
+[data-reduce-motion="true"] .activity-row[data-status="running"] .activity-category-icon {
+  animation: none;
 }
 
 .activity-category-pip {
@@ -6896,16 +6907,22 @@ button.diff-file-row {
  * Color mapping mirrors `.activity-category-pip` — same accent /
  * warning / info language so the user's existing color training
  * carries over after the icon swap. */
+/* Phase K-followup — inline-row icons follow the same
+ * `--tool-call-icon-accent` token as the card-form icons. The
+ * category-specific colors (shell→warning amber, search→info blue,
+ * write→accent) are gone; the icon's family identity already
+ * communicates the category through its glyph, so coloring on top
+ * of that was redundant decoration. Error rows still red via the
+ * row-level data-status rule below. */
 .activity-inline-icon {
   flex-shrink: 0;
-  color: var(--text-tertiary);
-  opacity: 0.7;
+  color: var(--tool-call-icon-accent, var(--accent));
+  opacity: 0.85;
 }
-.activity-inline-icon.category-write  { color: var(--accent); opacity: 0.85; }
-.activity-inline-icon.category-shell  { color: var(--warning); opacity: 0.85; }
-.activity-inline-icon.category-search { color: var(--info); opacity: 0.75; }
-.activity-inline-icon.category-task   { color: var(--accent); opacity: 0.85; }
-.activity-inline-icon.category-read   { color: var(--text-secondary); opacity: 0.75; }
+.activity-row[data-status="error"] .activity-inline-icon {
+  color: var(--tool-error);
+  opacity: 1;
+}
 
 /* Compact-group icon array. When a group contains tools from
  * multiple families, we render them side-by-side in a small row
@@ -6930,13 +6947,14 @@ button.diff-file-row {
 }
 
 .activity-row {
-  /* Phase L4 slice 4 — collapsed to a single inline-friendly base.
-   * `position: relative` anchors the absolute-positioned
-   * `.activity-gutter-dot` to each row (slice 2). The 2px
-   * `border-left` is the provider/category/status stripe (rules
-   * below). No background / outer border / radius — rows are
-   * transparent so they sit naturally in the transcript flow at
-   * body-text scale (Phase L4 grammar). */
+  /* Phase K-followup — collapsed past the L4 slice-4 base.
+   * Removed the 2px provider/category/status stripe along the left
+   * edge AND the absolute-positioned gutter dot. The tool-family
+   * icon now carries the visual anchor; status communicates via the
+   * icon's color (see `.activity-category-icon` recolor below). The
+   * row is pure flowing body text — no left rail, no traffic-light
+   * pip — so long transcripts read closer to a conversation
+   * transcript than a build log. */
   position: relative;
   display: flex;
   align-items: flex-start;
@@ -6945,30 +6963,15 @@ button.diff-file-row {
   padding: var(--space-sm) var(--space-lg);
   padding-left: 8px;
   border: 0;
-  border-left: 2px solid transparent;
   border-radius: 0;
   background: transparent;
   cursor: pointer;
   transition: background 0.1s ease;
 }
-.activity-row[data-category="write"]  { border-left-color: var(--accent); }
-.activity-row[data-category="shell"]  { border-left-color: var(--warning); }
-.activity-row[data-category="task"]   { border-left-color: var(--accent); }
-
-/* Provider color overrides category when known. The cascade order
- * matters: category rules above, provider rules here, status rules
- * below — so a running/error tool still wins on the most-urgent
- * signal (border-color flips to running pulse or danger red). */
-.activity-row[data-provider="gemini"] { border-left-color: var(--provider-gemini-color); }
-.activity-row[data-provider="codex"]  { border-left-color: var(--provider-codex-color); }
-.activity-row[data-provider="claude"] { border-left-color: var(--provider-claude-color); }
-.activity-row[data-provider="kimi"]   { border-left-color: var(--provider-kimi-color); }
-
-.activity-row[data-status="error"]    { border-left-color: var(--danger); }
-.activity-row[data-status="running"]  {
-  border-left-color: var(--accent);
-  animation: activity-border-pulse 0.9s ease-in-out infinite alternate;
-}
+/* Phase K-followup — `.activity-row` border-left rails removed.
+ * Provider/category/status used to drive a 2px stripe on the row's
+ * left edge; those rules are gone with the rail. Status now travels
+ * through the icon color (see `.activity-category-icon` rules). */
 
 /* Phase L3 — theme-aware skeuomorphic skin (slice 3).
  *

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import {
   ChatRecord,
   ChildAgentThread,
@@ -1407,30 +1407,13 @@ function ActivityRow({
   const [localExpanded, setLocalExpanded] = useState(false)
   const expanded = isExpanded ?? localExpanded
   // Phase L3 slice 4 — stamp animation on status transition. When a
-  // tool finishes (running → success/warning/error), we briefly mount
-  // a `.activity-status-stamping` class on the status icon so the
-  // CSS `activity-stamp-land` keyframe runs once. `prevStatusRef`
-  // tracks the previous value so the very first render (and any
-  // already-completed activity loaded from disk) doesn't fire the
-  // stamp on mount — only genuine transitions in this session do.
-  // Respects `[data-reduce-motion="true"]` via a CSS-side suppression.
-  const prevStatusRef = useRef<ToolActivity['status'] | null>(null)
-  const [justCompleted, setJustCompleted] = useState(false)
-  useEffect(() => {
-    const previous = prevStatusRef.current
-    prevStatusRef.current = activity.status
-    if (
-      previous === 'running' &&
-      (activity.status === 'success' ||
-        activity.status === 'warning' ||
-        activity.status === 'error')
-    ) {
-      setJustCompleted(true)
-      const timer = window.setTimeout(() => setJustCompleted(false), 260)
-      return () => window.clearTimeout(timer)
-    }
-    return undefined
-  }, [activity.status])
+  // Phase K-followup — `justCompleted` state + the running→done
+  // "stamp" animation are gone. Both were anchored to the now-removed
+  // traffic-light gutter dot. With the dot gone the icon's smooth
+  // color + opacity transition is the completion cue (see the
+  // `activity-icon-pulse` keyframe in main.css for the running
+  // state). If a future surface wants the celebration animation,
+  // hang it on `.activity-category-icon` instead.
   const progressNote = getProgressNote(activity)
   if (progressNote && !forceCompact) {
     return (
@@ -1545,18 +1528,15 @@ function ActivityRow({
             : undefined
         }
       >
-        {/* Phase L4 slice 2 — gutter status dot. Replaces the inline
-         * ActivityStatusIcon: the dot lives in the timeline's left
-         * gutter (via absolute positioning + the row's
-         * `position: relative`) so the row content reads as one
-         * uninterrupted body-text line. Color flows from the row's
-         * `data-status` attribute (already present); the
-         * `activity-status-stamping` class keeps the existing
-         * stamp-on-completion animation from Phase L3 slice 4. */}
-        <span
-          className={`activity-gutter-dot${justCompleted ? ' activity-status-stamping' : ''}`}
-          aria-hidden
-        />
+        {/*
+          Phase K-followup — traffic-light gutter dot removed. The
+          tool-family icon below (now larger) carries the visual
+          anchor for the row. Status communication moves to the
+          icon's color: accent by default, red on error. Cleaner
+          transcript, less per-row decoration competing with body
+          text. The justCompleted "stamp" animation is dropped along
+          with the dot (the icon doesn't need a celebration cue).
+        */}
         <div className="activity-body">
           <div className="activity-header">
             <div className="activity-label">
@@ -1585,8 +1565,12 @@ function ActivityRow({
                         /* Phase L4 slice 1 — card-form icon grows to
                          * 16px to match the body-text scale of the
                          * label beside it.
-                         * Slice 4 follow-up — 1.5× bump (16 → 24px). */
-                        size={24}
+                         * Slice 4 follow-up — 1.5× bump (16 → 24px).
+                         * Phase K-followup — another 1.25× bump
+                         * (24 → 30px). The icon now carries the
+                         * row's left-margin anchor (replacing the
+                         * removed traffic-light gutter dot). */
+                        size={30}
                         className="activity-category-icon"
                       />
                     ) : (
