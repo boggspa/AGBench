@@ -1,5 +1,6 @@
 import XCTest
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiBridgeDaemon
 

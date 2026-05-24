@@ -33,11 +33,27 @@ struct AttachedWindowMeta: Sendable {
 /// The `filter` is the picker's grant and is what `SCScreenshotManager` needs
 /// for capture; we hold on to it for the handle's lifetime so we don't have
 /// to re-correlate window metadata on every refresh.
-struct AttachedWindowEntry: @unchecked Sendable {
+///
+/// `stream` is the optional Appwatch SCStream owned by this entry. M1 ships
+/// at most one stream per entry; detaching the handle (or replacing it via a
+/// new pick) must tear the stream down so we never leak an SCStream past the
+/// user's intent. Reference type so the store can hand callers a stable
+/// pointer without copying the actor.
+final class AttachedWindowEntry: @unchecked Sendable {
     let handleID: String
     let meta: AttachedWindowMeta
     let filter: SCContentFilter
     let createdAt: Date
+    /// Lazily populated by `appwatch.start`. Nil until the first start call;
+    /// reset to nil when the handle detaches or the entry is replaced.
+    var stream: AttachedWindowStream?
+
+    init(handleID: String, meta: AttachedWindowMeta, filter: SCContentFilter, createdAt: Date) {
+        self.handleID = handleID
+        self.meta = meta
+        self.filter = filter
+        self.createdAt = createdAt
+    }
 }
 
 /// In-memory handle table. Lives for the daemon process lifetime — never
@@ -60,14 +76,31 @@ actor AttachedWindowStore {
         return entry
     }
 
+    /// Detach a single handle. Any Appwatch stream owned by the entry is
+    /// stopped first — leaving a streaming SCStream alive after the user
+    /// detached would silently keep the camera-like indicator running and
+    /// would slowly leak frames into a buffer no one can drain.
     @discardableResult
-    func detach(handleID: String) -> Bool {
-        let existed = entries.removeValue(forKey: handleID) != nil
+    func detach(handleID: String) async -> Bool {
+        guard let entry = entries.removeValue(forKey: handleID) else {
+            if currentHandle == handleID { currentHandle = nil }
+            return false
+        }
+        if let stream = entry.stream {
+            await stream.stop()
+            entry.stream = nil
+        }
         if currentHandle == handleID { currentHandle = nil }
-        return existed
+        return true
     }
 
-    func detachAll() {
+    func detachAll() async {
+        for (_, entry) in entries {
+            if let stream = entry.stream {
+                await stream.stop()
+                entry.stream = nil
+            }
+        }
         entries.removeAll()
         currentHandle = nil
     }
@@ -83,6 +116,31 @@ actor AttachedWindowStore {
 
     func count() -> Int {
         return entries.count
+    }
+
+    /// Set (or replace) the stream associated with a handle. The caller is
+    /// expected to have just constructed the stream and called `start`; we
+    /// keep this method on the store so the handle ↔ stream wiring stays
+    /// behind one isolation boundary. If a stream was already present we
+    /// stop it before swapping — a second `appwatch.start` is idempotent
+    /// at the JSON-RPC level, so this code path only fires when a caller
+    /// genuinely wants to replace the stream (e.g. a test rig).
+    func setStream(_ stream: AttachedWindowStream, for handleID: String) async {
+        guard let entry = entries[handleID] else { return }
+        if let existing = entry.stream, existing !== stream {
+            await existing.stop()
+        }
+        entry.stream = stream
+    }
+
+    /// Clear the stream associated with a handle. Does NOT stop the stream
+    /// itself — callers stop and then clear separately so the JSON-RPC
+    /// `appwatch.stop` handler can return the final status before the entry
+    /// loses its reference.
+    func clearStream(for handleID: String) {
+        if let entry = entries[handleID] {
+            entry.stream = nil
+        }
     }
 }
 

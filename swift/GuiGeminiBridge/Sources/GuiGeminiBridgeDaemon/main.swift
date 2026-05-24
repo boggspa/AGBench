@@ -42,7 +42,10 @@ private let guiGeminiConfiguration = BridgeProductConfiguration(
     macBundleIdentifier: "com.example.AGBench.mac",
     iosBundleIdentifier: "com.example.AGBench.ios",
     appGroupIdentifier: "group.com.example.AGBench",
-    cloudKitContainerIdentifier: "iCloud.com.example.AGBench",
+    // Upstream BridgeProductConfiguration dropped `cloudKitContainerIdentifier`
+    // in the BridgeCore drift before Phase M; keeping the GUIGemini-specific
+    // identifier here would re-introduce the build break. CloudKit is not
+    // used by AGBench's daemon path.
     keychainServiceIdentifier: "com.example.AGBench",
     bonjourServiceType: "_guigemini._tcp",
     bonjourQUICServiceType: "_guigemini-quic._udp",
@@ -254,13 +257,18 @@ Task.detached { [transportListener] in
 }
 
 func localMacDisplayName() -> String {
-    let candidates = [
+    // Optional-typed array so Swift can infer the closure parameter as
+    // `String?` and resolve `.whitespacesAndNewlines` against the
+    // `CharacterSet` namespace cleanly. Prior version relied on implicit
+    // contextual lookup that broke when the array's element type became
+    // ambiguous after a BridgeCore drift.
+    let candidates: [String?] = [
         Host.current().localizedName,
         ProcessInfo.processInfo.hostName,
         guiGeminiConfiguration.displayName
     ]
     return candidates
-        .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+        .compactMap { (value: String?) in value?.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines) }
         .first { !$0.isEmpty } ?? guiGeminiConfiguration.displayName
 }
 
@@ -707,7 +715,9 @@ dispatcher.register("bridge.getProductConfiguration") { _ in
         "macBundleIdentifier": cfg.macBundleIdentifier,
         "iosBundleIdentifier": cfg.iosBundleIdentifier,
         "appGroupIdentifier": cfg.appGroupIdentifier,
-        "cloudKitContainerIdentifier": cfg.cloudKitContainerIdentifier,
+        // `cloudKitContainerIdentifier` was dropped from upstream
+        // BridgeProductConfiguration during BridgeCore drift; the renderer
+        // settings panel no longer reads it.
         "keychainServiceIdentifier": cfg.keychainServiceIdentifier,
         "bonjourServiceType": cfg.bonjourServiceType,
         "bonjourQUICServiceType": cfg.bonjourQUICServiceType,
@@ -1008,6 +1018,287 @@ dispatcher.register("attachedWindow.status") { _ in
         "handleID": current.handleID,
         "windowMeta": current.meta.toJSONObject(),
         "attachedAt": ISO8601DateFormatter().string(from: current.createdAt)
+    ]
+}
+
+// MARK: - Appwatch RPCs (Phase M1)
+//
+// `appwatch.*` extends the single-shot `attachedWindow.capture` (Appshots)
+// flow with a low-fps SCStream into a small ring buffer. The agent gets
+// "the last frame" or "frames since T" without per-frame ScreenCaptureKit
+// overhead. M1 surface is the latest-frame pull only; M2 adds since/count
+// batch retrieval and per-frame OCR.
+//
+// Lifecycle:
+//   - `appwatch.start` requires a previously-attached handle (no auto-pick).
+//     Idempotent: a second start with the same handle returns the existing
+//     config without restarting the stream.
+//   - `appwatch.stop` tears the stream down and clears the ring.
+//   - 60s without a `appwatch.latestFrame` call auto-stops (idle timeout).
+//   - Stream is also stopped on `attachedWindow.detach` (handled inside the
+//     store) and on daemon exit.
+
+struct AppwatchStartParams: Decodable {
+    let handleID: String
+    let fps: Int?
+    let bufferSeconds: Int?
+    let maxDimensionPx: Int?
+}
+
+/// Build the `streaming` object the renderer pill (and the main-side snapshot)
+/// renders. Shared by `appwatch.start` and `appwatch.status` so both surfaces
+/// stay structurally identical — saves a renderer-side type fork.
+@Sendable func makeStreamingPayload(
+    config: AppwatchStreamConfig,
+    frameCount: Int
+) -> [String: Any] {
+    return [
+        "fps": config.fps,
+        "bufferSeconds": config.bufferSeconds,
+        "frameCount": frameCount,
+        "frameCapacity": config.frameCapacity,
+        "estimatedMemoryMB": config.estimatedMemoryMB,
+        "memoryBudgetMB": AttachedWindowStream.memoryBudgetMB,
+        "startedAt": ISO8601DateFormatter().string(from: config.startedAt)
+    ]
+}
+
+/// Look up an attached entry by handle, normalising the "no such handle"
+/// case into a structured JSON-RPC error so every appwatch handler returns
+/// the same shape. Used as the first line in each handler below.
+@Sendable func resolveAttachedEntry(
+    store: AttachedWindowStore,
+    handleID: String
+) throws -> AttachedWindowEntry {
+    let entry = try runBlocking { @Sendable [store, handleID] in
+        await store.entry(handleID: handleID)
+    }
+    guard let entry else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidRequest,
+            message: "Attached window handle not found (already detached or never attached)."
+        )
+    }
+    return entry
+}
+
+/// `appwatch.start` — spin up the SCStream for an already-attached window.
+/// Requires a valid handleID. Idempotent: a second start returns the existing
+/// config without restarting the stream. Refuses if the configured buffer
+/// would exceed the 350 MB memory cap (memoryBudgetExceeded → -32001).
+dispatcher.register("appwatch.start") { params in
+    let parsed: AppwatchStartParams
+    do {
+        parsed = try decodeParams(params, as: AppwatchStartParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid appwatch.start params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try resolveAttachedEntry(store: attachedWindowStore, handleID: parsed.handleID)
+    let fps = parsed.fps ?? 5
+    let bufferSeconds = parsed.bufferSeconds ?? 8
+    let maxDimensionPx = parsed.maxDimensionPx ?? 1280
+
+    // Reuse the existing stream when present so the handler is idempotent;
+    // construct a fresh one on first start. The store's `setStream` will
+    // stop and replace if the agent ever passes us a brand-new stream.
+    let stream = entry.stream ?? AttachedWindowStream()
+    let config: AppwatchStreamConfig
+    do {
+        config = try runBlocking { @Sendable [stream, filter = entry.filter, fps, bufferSeconds, maxDimensionPx] in
+            try await stream.start(
+                filter: filter,
+                fps: fps,
+                bufferSeconds: bufferSeconds,
+                maxDimensionPx: maxDimensionPx
+            )
+        }
+    } catch let err as AppwatchError {
+        switch err {
+        case .memoryBudgetExceeded:
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.bridgeUnavailable,
+                message: err.localizedDescription
+            )
+        case .invalidConfig:
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.invalidParams,
+                message: err.localizedDescription
+            )
+        default:
+            throw JSONRPCError(
+                code: JSONRPCErrorCode.internalError,
+                message: err.localizedDescription
+            )
+        }
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.internalError,
+            message: error.localizedDescription
+        )
+    }
+    let frameCount = try runBlocking { @Sendable [stream] in
+        await stream.status().frameCount
+    }
+    if entry.stream == nil {
+        try runBlocking { @Sendable [attachedWindowStore, stream, handleID = parsed.handleID] in
+            await attachedWindowStore.setStream(stream, for: handleID)
+        }
+    }
+    return [
+        "ok": true,
+        "handleID": parsed.handleID,
+        "streaming": makeStreamingPayload(config: config, frameCount: frameCount)
+    ]
+}
+
+struct AppwatchHandleParams: Decodable {
+    let handleID: String
+}
+
+/// `appwatch.stop` — tear down the stream and clear the ring. Safe to call
+/// when not streaming (returns `{ ok: true, streaming: false }`).
+dispatcher.register("appwatch.stop") { params in
+    let parsed: AppwatchHandleParams
+    do {
+        parsed = try decodeParams(params, as: AppwatchHandleParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid appwatch.stop params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try resolveAttachedEntry(store: attachedWindowStore, handleID: parsed.handleID)
+    guard let stream = entry.stream else {
+        return [
+            "ok": true,
+            "handleID": parsed.handleID,
+            "streaming": false
+        ] as [String: Any]
+    }
+    try runBlocking { @Sendable [stream] in
+        await stream.stop()
+    }
+    try runBlocking { @Sendable [attachedWindowStore, handleID = parsed.handleID] in
+        await attachedWindowStore.clearStream(for: handleID)
+    }
+    return [
+        "ok": true,
+        "handleID": parsed.handleID,
+        "streaming": false
+    ]
+}
+
+/// `appwatch.status` — non-mutating read of the stream state. Does NOT bump
+/// the idle-timeout pull clock — the renderer pill polls this every second
+/// and we don't want a UI poll to keep the stream alive after the agent
+/// stopped pulling frames.
+dispatcher.register("appwatch.status") { params in
+    let parsed: AppwatchHandleParams
+    do {
+        parsed = try decodeParams(params, as: AppwatchHandleParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid appwatch.status params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try resolveAttachedEntry(store: attachedWindowStore, handleID: parsed.handleID)
+    guard let stream = entry.stream else {
+        return [
+            "ok": true,
+            "handleID": parsed.handleID,
+            "streaming": false
+        ] as [String: Any]
+    }
+    let status = try runBlocking { @Sendable [stream] in
+        await stream.status()
+    }
+    var payload: [String: Any] = [
+        "ok": true,
+        "handleID": parsed.handleID,
+        "streaming": status.streaming,
+        "fps": status.fps,
+        "bufferSeconds": status.bufferSeconds,
+        "frameCount": status.frameCount,
+        "frameCapacity": status.frameCapacity,
+        "estimatedMemoryMB": status.estimatedMemoryMB,
+        "memoryBudgetMB": status.memoryBudgetMB
+    ]
+    if let oldest = status.oldestAt {
+        payload["oldestAt"] = ISO8601DateFormatter().string(from: oldest)
+    }
+    if let newest = status.newestAt {
+        payload["newestAt"] = ISO8601DateFormatter().string(from: newest)
+    }
+    if let pulled = status.lastPullAt {
+        payload["lastPullAt"] = ISO8601DateFormatter().string(from: pulled)
+    }
+    if let started = status.startedAt {
+        payload["startedAt"] = ISO8601DateFormatter().string(from: started)
+    }
+    return payload
+}
+
+/// `appwatch.latestFrame` — return the most recent BGRA frame from the ring
+/// as PNG bytes. M1 surface; M2 will add `since` / `count` for batch pulls.
+/// Bumps the idle-timeout pull clock so an active agent loop keeps the
+/// stream alive.
+dispatcher.register("appwatch.latestFrame") { params in
+    let parsed: AppwatchHandleParams
+    do {
+        parsed = try decodeParams(params, as: AppwatchHandleParams.self)
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidParams,
+            message: "Invalid appwatch.latestFrame params: \(error.localizedDescription)"
+        )
+    }
+    let entry = try resolveAttachedEntry(store: attachedWindowStore, handleID: parsed.handleID)
+    guard let stream = entry.stream else {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.invalidRequest,
+            message: "Appwatch is not streaming for this handle (call appwatch.start first)."
+        )
+    }
+    let frame = try runBlocking { @Sendable [stream] in
+        await stream.latestFrame()
+    }
+    guard let frame else {
+        // Stream is up but no frame has landed yet. Tell the renderer the
+        // truth (ok=true, frame=null) so it can show a "warming up" beat
+        // rather than a hard error.
+        return [
+            "ok": true,
+            "handleID": parsed.handleID,
+            "hasFrame": false
+        ] as [String: Any]
+    }
+    let pngData: Data
+    do {
+        pngData = try AppwatchFrameEncoder.encodePNG(frame: frame)
+    } catch let err as AppwatchError {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.internalError,
+            message: err.localizedDescription
+        )
+    } catch {
+        throw JSONRPCError(
+            code: JSONRPCErrorCode.internalError,
+            message: error.localizedDescription
+        )
+    }
+    return [
+        "ok": true,
+        "handleID": parsed.handleID,
+        "hasFrame": true,
+        "pngBase64": pngData.base64EncodedString(),
+        "byteLength": pngData.count,
+        "width": frame.width,
+        "height": frame.height,
+        "capturedAt": ISO8601DateFormatter().string(from: frame.capturedAt)
     ]
 }
 

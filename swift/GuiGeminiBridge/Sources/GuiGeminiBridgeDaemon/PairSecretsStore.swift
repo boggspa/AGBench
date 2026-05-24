@@ -22,13 +22,25 @@ public enum PairSecretsStore {
 
     /// On-wire shape persisted per pairID. Versioned (`v`) so a future
     /// rotation/upgrade can detect old blobs and re-derive.
+    ///
+    /// `recordPayloadKey` was renamed from `cloudKitPayloadKey` during the
+    /// upstream BridgeCore drift. The on-disk JSON still ships the older
+    /// `cloudKitPayloadKey` key name because that's what existing pairings
+    /// already wrote — a `CodingKeys` mapping keeps wire-compat with v1
+    /// blobs while the in-memory field follows the new upstream name.
     private struct PersistedPairSecrets: Codable, Sendable {
         let v: Int
         let pairRootKey: String
         let macToControllerKey: String
         let controllerToMacKey: String
         let attachmentWrapKey: String
-        let cloudKitPayloadKey: String
+        let recordPayloadKey: String
+
+        enum CodingKeys: String, CodingKey {
+            case v, pairRootKey, macToControllerKey, controllerToMacKey
+            case attachmentWrapKey
+            case recordPayloadKey = "cloudKitPayloadKey"
+        }
     }
 
     public static func save(
@@ -42,7 +54,7 @@ public enum PairSecretsStore {
             macToControllerKey: base64(keys.macToControllerKey),
             controllerToMacKey: base64(keys.controllerToMacKey),
             attachmentWrapKey: base64(keys.attachmentWrapKey),
-            cloudKitPayloadKey: base64(keys.cloudKitPayloadKey)
+            recordPayloadKey: base64(keys.recordPayloadKey)
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -67,7 +79,7 @@ public enum PairSecretsStore {
               let macToCtl = decodeKey(persisted.macToControllerKey),
               let ctlToMac = decodeKey(persisted.controllerToMacKey),
               let attachWrap = decodeKey(persisted.attachmentWrapKey),
-              let cloudKitPayload = decodeKey(persisted.cloudKitPayloadKey) else {
+              let recordPayload = decodeKey(persisted.recordPayloadKey) else {
             return nil
         }
         return PairingDerivedKeys(
@@ -75,7 +87,7 @@ public enum PairSecretsStore {
             macToControllerKey: macToCtl,
             controllerToMacKey: ctlToMac,
             attachmentWrapKey: attachWrap,
-            cloudKitPayloadKey: cloudKitPayload
+            recordPayloadKey: recordPayload
         )
     }
 

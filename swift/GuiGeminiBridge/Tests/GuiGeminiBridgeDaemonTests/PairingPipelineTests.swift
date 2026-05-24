@@ -2,6 +2,10 @@ import XCTest
 import CryptoKit
 @preconcurrency import Network
 import BridgeCore
+// BridgeCryptoPrimitives was previously a transitive import via BridgeCryptoPairing;
+// after the upstream BridgeCore drift `DeviceIdentitySigningKey` no longer
+// re-exports through Pairing, so the test target needs the explicit import.
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiBridgeDaemon
 
