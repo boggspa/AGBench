@@ -11,6 +11,19 @@ files:
   - '!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}'
   - '!dist/**'
   - '!dist-debug/**'
+  # Delivery artefacts — without these exclusions, electron-builder
+  # recursively bundles the for-tester/ folder (plus any nested build
+  # zips inside it) into app.asar. That ballooned 1.0.2's asar to
+  # 1.6 GB and made the packaged app fail to launch silently —
+  # Electron's asar loader can't mmap arbitrarily large bundles.
+  - '!for-tester/**'
+  - '!for-tester.zip'
+  # Misc top-level artefacts that have shown up in earlier ships.
+  - '!*.zip'
+  - '!*.dmg'
+  # Plan files / claude code agent worktrees from the dev loop.
+  - '!.claude/**'
+  - '!docs/**'
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**
