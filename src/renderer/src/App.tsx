@@ -127,6 +127,7 @@ import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/Use
 import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
+  mixProviderColors,
   type WelcomeUsageDashboardData,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
@@ -1731,6 +1732,39 @@ function WelcomeUsageDashboard({
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
 }) {
+  // Phase K-followup — Provider color palette + mixed rail colour.
+  // Each stat chip carries a thin top rail in this colour. The mix
+  // is computed from this dashboard's per-provider token totals so
+  // the rail visually communicates "this data spans these providers
+  // in roughly this proportion" — AGBench's distinct identity vs
+  // Claude's single-accent dashboard.
+  const PROVIDER_PALETTE = {
+    gemini: '#8eb1ff',
+    codex: '#aaa0ff',
+    claude: '#ffad64',
+    kimi: '#bbcf66'
+  } as const
+  const chipRailColor =
+    mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
+    'color-mix(in srgb, var(--accent) 60%, transparent)'
+  const chipRailStyle = { '--chip-rail-color': chipRailColor } as React.CSSProperties
+  // Provider mix ribbon segments — flex-grown by token share. Each
+  // segment is always present; segments with no tokens fall to a
+  // hairline minimum so the ribbon never collapses entirely while
+  // also not pretending a provider was active when it wasn't.
+  const totalProviderTokens =
+    data.providerTokenTotals.gemini +
+    data.providerTokenTotals.codex +
+    data.providerTokenTotals.claude +
+    data.providerTokenTotals.kimi
+  const providerRibbonSegments = (
+    ['gemini', 'codex', 'claude', 'kimi'] as Array<keyof typeof PROVIDER_PALETTE>
+  ).map((provider) => ({
+    provider,
+    weight: data.providerTokenTotals[provider],
+    share: totalProviderTokens > 0 ? data.providerTokenTotals[provider] / totalProviderTokens : 0
+  }))
+
   // Welcome L9 — Overview chip rework. Top row hosts three hero chips
   // (Favorite model + Favorite project + 24H Tkns); bottom row carries
   // the seven denser stat pills. Hero stats lead with what the user
@@ -1789,6 +1823,36 @@ function WelcomeUsageDashboard({
         </span>
       </div>
 
+      {/* Phase K-followup — Provider mix ribbon. Four-segment
+          horizontal bar where each segment's width is proportional to
+          that provider's token share in the 30-day window. AGBench's
+          multi-provider identity made literal — Claude structurally
+          cannot have this. Hidden when nothing has run yet. */}
+      {totalProviderTokens > 0 && (
+        <div
+          className="welcome-usage-provider-ribbon"
+          aria-label="Provider mix across the last 30 days"
+          title={providerRibbonSegments
+            .filter((s) => s.weight > 0)
+            .map((s) => `${s.provider}: ${Math.round(s.share * 100)}%`)
+            .join(' · ')}
+        >
+          {providerRibbonSegments.map((seg) => (
+            <span
+              key={seg.provider}
+              className={`welcome-usage-provider-ribbon-seg provider-${seg.provider}`}
+              style={
+                {
+                  flexGrow: seg.weight > 0 ? seg.weight : 0.001,
+                  background: PROVIDER_PALETTE[seg.provider],
+                  opacity: seg.weight > 0 ? 1 : 0.25
+                } as React.CSSProperties
+              }
+            />
+          ))}
+        </div>
+      )}
+
       {/* Welcome L6/L7 — empty-state when the 30-day rolling window has
           no activity. The dashboard still mounts (lifetimeHasActivity
           is true) so the user sees the headline shape; this card
@@ -1805,6 +1869,7 @@ function WelcomeUsageDashboard({
               <div
                 key={item.label}
                 className="welcome-usage-stat welcome-usage-stat--hero"
+                style={chipRailStyle}
                 title={item.title}
               >
                 <span>{item.label}</span>
@@ -1817,6 +1882,7 @@ function WelcomeUsageDashboard({
               <div
                 key={item.label}
                 className="welcome-usage-stat welcome-usage-stat--dense"
+                style={chipRailStyle}
                 /* Surface the full label on hover so a 2-line wrap (or
                  * any rare future overflow past the line-clamp) stays
                  * inspectable. Cheap accessibility win. */

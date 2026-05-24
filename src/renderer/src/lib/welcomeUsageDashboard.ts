@@ -93,6 +93,14 @@ export interface WelcomeUsageDashboardData {
    */
   favoriteProject: string
   providerCount: number
+  /**
+   * Per-provider token totals across the selected range. Drives the
+   * provider color rails on stat chips and the multi-provider mix
+   * ribbon under the tabs — AGBench's structural differentiator from
+   * Claude's single-provider dashboard. Always carries all four
+   * provider keys (zero-filled when a provider has no activity).
+   */
+  providerTokenTotals: Record<ProviderId, number>
   comparisonText: string
   heatmap: WelcomeUsageDayCell[]
   /**
@@ -304,6 +312,11 @@ export const buildWelcomeUsageDashboardData = (
   const activeDayKeys = new Set<string>()
   const sessionIds = new Set<string>()
   const providerIds = new Set<ProviderId>()
+  // Multi-provider color rail aggregate. Each provider gets a running
+  // token total scoped to the displayed range; the chip rail colour
+  // is mixed weighted by these totals at render time. Always carries
+  // all four provider keys so consumers don't need to null-check.
+  const providerTokenTotals = emptyProviderTotals()
   const hourlyTotals = new Array(24).fill(0) as number[]
   const dailyTotals = new Map<string, number>()
   const modelMap = new Map<string, WelcomeUsageModelDatum>()
@@ -353,6 +366,7 @@ export const buildWelcomeUsageDashboardData = (
     activeDayKeys.add(dayKey)
     sessionIds.add(record.chatId)
     providerIds.add(provider)
+    providerTokenTotals[provider] += totalTokens
     hourlyTotals[hour] += totalTokens || 1
     dailyTotals.set(dayKey, (dailyTotals.get(dayKey) || 0) + totalTokens)
     if (record.timestamp >= cutoff24h) tokens24h += totalTokens
@@ -583,6 +597,7 @@ export const buildWelcomeUsageDashboardData = (
     favoriteModel,
     favoriteProject,
     providerCount: providerIds.size,
+    providerTokenTotals,
     comparisonText: hasActivity
       ? `You've tracked ${formatCompactUsageNumber(totalTokens)} tokens across ${providerIds.size || 1} provider${(providerIds.size || 1) === 1 ? '' : 's'}.`
       : 'Start a provider run to seed workspace activity stats.',

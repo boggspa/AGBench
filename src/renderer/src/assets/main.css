@@ -4248,10 +4248,12 @@ button.sidebar-item {
 }
 
 .welcome-usage-stat {
+  position: relative; /* anchor the K-followup provider rail */
   min-height: 54px;
   padding: 7px 8px;
   border-radius: 6px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 38%, transparent);
+  overflow: hidden; /* clip the rail to the chip's rounded corners */
   background:
     linear-gradient(160deg, color-mix(in srgb, var(--text-primary) 12%, transparent), color-mix(in srgb, var(--accent) 6%, transparent)),
     color-mix(in srgb, var(--panel-bg) 18%, transparent);
@@ -4328,6 +4330,57 @@ button.sidebar-item {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Phase K-followup — Provider color rail on every stat chip. The
+ * rail colour comes from the inline CSS variable `--chip-rail-color`
+ * (computed by App.tsx as a color-mix of the four provider hexes
+ * weighted by their token share in the displayed range). When no
+ * activity yet, falls through to a subtle accent default.
+ *
+ * Visually: a 2px coloured line hugging the top edge of each chip.
+ * Subtle but communicates AGBench's distinct multi-provider identity
+ * without any text. Claude can't have this — they have one
+ * provider, so a "provider mix rail" wouldn't mean anything there. */
+.welcome-usage-stat::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--chip-rail-color, color-mix(in srgb, var(--accent) 60%, transparent));
+  pointer-events: none;
+}
+/* Hero chips get a slightly thicker rail for emphasis. */
+.welcome-usage-stat--hero::before {
+  height: 3px;
+}
+
+/* Phase K-followup — Provider mix ribbon. Four-segment horizontal
+ * bar under the dashboard header showing the proportional token
+ * share of each provider. Width-as-share is the strongest possible
+ * visual signal that this is a multi-provider tool. */
+.welcome-usage-provider-ribbon {
+  display: flex;
+  height: 4px;
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 0 10px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 30%, transparent);
+}
+.welcome-usage-provider-ribbon-seg {
+  display: block;
+  min-width: 2px;
+  transition: flex-grow 220ms ease;
+}
+/* Slight rounded edges on the leftmost and rightmost segments so
+ * the ribbon looks like a single pill rather than a tile strip. */
+.welcome-usage-provider-ribbon-seg:first-child {
+  border-radius: 3px 0 0 3px;
+}
+.welcome-usage-provider-ribbon-seg:last-child {
+  border-radius: 0 3px 3px 0;
 }
 
 .welcome-usage-heatmap {
