@@ -7326,7 +7326,7 @@ function App(): React.JSX.Element {
   // bluetooth keyboards) and the transcript appearing to slide under the
   // composer.
   //
-  // Current design — no ResizeObservers in the transcript path:
+  // Current design — no observers on the scroll container itself:
   //  1. Scroll listener flips autoFollowRef based on distance-from-bottom,
   //     with hysteresis (engage / disengage thresholds live in
   //     `lib/TranscriptScroll`) and rAF throttling.
@@ -7341,6 +7341,9 @@ function App(): React.JSX.Element {
   //     Kimi runs) cannot leave the user stranded above the new bottom.
   //  4. Chat-switch effect resets autoFollow + snaps to bottom on the new
   //     thread's last message.
+  //  5. The composer-area observer still writes its measured height, but
+  //     the transcript consumes it as bottom padding / scroll-padding so
+  //     the scroll viewport can extend behind the overlay.
   useEffect(() => {
     const scroller = transcriptScrollRef.current
     if (!scroller) return

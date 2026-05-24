@@ -913,6 +913,14 @@ button.sidebar-item {
   --composer-bottom-gap: 12px;
   --composer-reserved-height: calc(var(--composer-min-height) + (var(--space-lg) * 4));
   --composer-scroll-clearance: 14px;
+  --composer-scroll-under-padding: calc(
+    var(--composer-reserved-height) + var(--composer-bottom-gap) + var(--composer-scroll-clearance) +
+      env(safe-area-inset-bottom, 0px)
+  );
+  --composer-terminal-scroll-under-padding: calc(
+    var(--composer-scroll-under-padding) + var(--gemini-terminal-height) +
+      var(--gemini-terminal-bottom-gap)
+  );
   --composer-content-max-width: 980px;
   --welcome-usage-top: clamp(112px, 17vh, 220px);
   --chat-side-gutter: clamp(24px, 4.4vw, 72px);
@@ -2399,25 +2407,17 @@ button.sidebar-item {
   overflow-y: auto;
   overflow-x: hidden;
   box-sizing: border-box;
-  padding: calc(var(--space-lg) * 7.5) var(--chat-side-gutter) var(--composer-scroll-clearance);
-  margin-bottom: calc(var(--composer-reserved-height) + var(--composer-bottom-gap) + env(safe-area-inset-bottom, 0px));
+  padding: calc(var(--space-lg) * 7.5) var(--chat-side-gutter)
+    var(--composer-scroll-under-padding);
+  margin-bottom: 0;
   scroll-padding-top: calc(var(--space-lg) * 7.5);
-  scroll-padding-bottom: var(--composer-scroll-clearance);
+  scroll-padding-bottom: var(--composer-scroll-under-padding);
   display: flex;
   flex-direction: column;
   align-items: center;
   position: relative;
   z-index: 1;
   overflow-anchor: none;
-}
-
-.app-transcript.provider-codex .transcript-scroll {
-  padding-bottom: var(--composer-scroll-clearance);
-}
-
-.app-transcript.provider-claude .transcript-scroll,
-.app-transcript.provider-kimi .transcript-scroll {
-  padding-bottom: var(--composer-scroll-clearance);
 }
 
 .model-usage-window-list {
@@ -2816,9 +2816,9 @@ button.sidebar-item {
 }
 
 .gemini-terminal-open .transcript-scroll {
-  padding-bottom: var(--composer-scroll-clearance);
-  margin-bottom: calc(var(--composer-reserved-height) + var(--composer-bottom-gap) + var(--gemini-terminal-height) + var(--gemini-terminal-bottom-gap) + env(safe-area-inset-bottom, 0px));
-  scroll-padding-bottom: var(--composer-scroll-clearance);
+  padding-bottom: var(--composer-terminal-scroll-under-padding);
+  margin-bottom: 0;
+  scroll-padding-bottom: var(--composer-terminal-scroll-under-padding);
 }
 
 .transcript-inner {
@@ -3088,6 +3088,19 @@ button.sidebar-item {
 
 .welcome-mode .transcript-scroll {
   padding-bottom: var(--space-lg);
+  margin-bottom: 0;
+  scroll-padding-bottom: var(--space-lg);
+}
+
+.welcome-mode.gemini-terminal-open .transcript-scroll {
+  padding-bottom: calc(
+    var(--gemini-terminal-height) + var(--gemini-terminal-bottom-gap) + var(--space-lg) +
+      env(safe-area-inset-bottom, 0px)
+  );
+  scroll-padding-bottom: calc(
+    var(--gemini-terminal-height) + var(--gemini-terminal-bottom-gap) + var(--space-lg) +
+      env(safe-area-inset-bottom, 0px)
+  );
 }
 
 .chat-expanded {
