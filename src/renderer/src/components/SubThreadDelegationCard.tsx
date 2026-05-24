@@ -49,7 +49,9 @@ function statusLabel(status: DelegationCardStatus): string {
     case 'created':
       return 'Created'
     case 'running':
-      return 'Running'
+      // "Active" pairs with the contrast-aware accent shimmer-sweep
+      // on `.subthread-delegation-status.status-running`.
+      return 'Active'
     case 'completed':
       return 'Completed'
     case 'failed':

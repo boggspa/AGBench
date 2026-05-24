@@ -121,8 +121,10 @@ function BackgroundTaskRow({
             {elapsedLabel}
           </span>
         )}
-        <span className="background-task-state">
-          {thread.state === 'running' ? 'Running' : 'Queued'}
+        <span
+          className={`background-task-state ${thread.state === 'running' ? 'state-active' : ''}`}
+        >
+          {thread.state === 'running' ? 'Active' : 'Queued'}
         </span>
       </button>
     </li>

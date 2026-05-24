@@ -18415,3 +18415,104 @@ input:disabled, select:disabled, textarea:disabled {
   display: none !important;
   background: none !important;
 }
+
+/* ============================================================
+ * "ACTIVE" SHIMMER-SWEEP STATUS BADGE
+ * --------------------------------------------------------------
+ * Replaces the previous orange "Running" warning-tone pill with
+ * a contrast-aware accent-coloured shimmer-sweep "Active" badge
+ * used everywhere a thread / task / run is in flight:
+ *
+ *   - .run-card-status.tone-running    (RunCard — the big provider
+ *                                       run cards in the transcript)
+ *   - .sidebar-run-status.tone-running (ActiveRunsSection rows in
+ *                                       the sidebar)
+ *   - .subthread-delegation-status.status-running (sub-thread cards
+ *                                       in the transcript)
+ *   - .background-task-state.state-active (per-agent state pill
+ *                                       in the Background Tasks panel)
+ *
+ * Mechanism: a fixed accent-tinted base fill plus a wide moving
+ * linear-gradient that shifts a brighter highlight band across
+ * the pill. Background-size is wider than the element so the
+ * highlight reads as a sweeping "active" pulse rather than a
+ * thick stripe oscillating in place.
+ *
+ * Contrast-awareness: both `var(--accent)` and `var(--text-primary)`
+ * adapt to the user's theme, so the same shimmer reads correctly
+ * in dark mode (white-ish accent text on accent-tinted fill) and
+ * light mode (dark-ish accent text on light accent-tinted fill).
+ *
+ * Reduce-motion: the sweep animation is suppressed under
+ * `[data-reduce-motion="true"]` — the badge keeps its accent
+ * tint but stops animating.
+ * ============================================================ */
+
+@keyframes status-shimmer-sweep {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -120% 0; }
+}
+
+.run-card-status.tone-running,
+.sidebar-run-status.tone-running {
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary) 12%);
+  border-color: color-mix(in srgb, var(--accent) 36%, transparent);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--accent) 4%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 32%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 68%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-repeat: no-repeat;
+  animation: status-shimmer-sweep 2.6s linear infinite;
+}
+
+.subthread-delegation-status.status-running {
+  /* Override the old warning-orange palette set earlier at line 3585. */
+  color: color-mix(in srgb, var(--accent) 88%, var(--text-primary) 12%);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--accent) 4%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 32%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 68%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-repeat: no-repeat;
+  animation: status-shimmer-sweep 2.6s linear infinite;
+}
+
+.background-task-state.state-active {
+  color: color-mix(in srgb, var(--accent) 92%, var(--text-primary) 8%);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+  background-image: linear-gradient(
+    100deg,
+    color-mix(in srgb, var(--accent) 4%, transparent) 0%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 32%,
+    color-mix(in srgb, var(--accent) 28%, transparent) 50%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 68%,
+    color-mix(in srgb, var(--accent) 4%, transparent) 100%
+  );
+  background-size: 240% 100%;
+  background-repeat: no-repeat;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 700;
+  animation: status-shimmer-sweep 2.6s linear infinite;
+}
+
+/* Reduce-motion: hold the accent tint, drop the sweep. */
+[data-reduce-motion="true"] .run-card-status.tone-running,
+[data-reduce-motion="true"] .sidebar-run-status.tone-running,
+[data-reduce-motion="true"] .subthread-delegation-status.status-running,
+[data-reduce-motion="true"] .background-task-state.state-active {
+  animation: none;
+  background-image: none;
+}

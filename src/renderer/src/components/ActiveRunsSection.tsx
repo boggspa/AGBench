@@ -137,12 +137,16 @@ function formatElapsed(job: RunQueueJob): string {
 function statusLabel(status: RunQueueJobStatus): string {
   if (status === 'queued') return 'Queued'
   if (status === 'starting') return 'Starting'
-  if (status === 'active') return 'Running'
+  // "Active" reads more naturally than "Running" and pairs with the
+  // contrast-aware accent shimmer-sweep CSS hook on `.tone-running`.
+  if (status === 'active') return 'Active'
   return status
 }
 
-function statusTone(status: RunQueueJobStatus): 'success' | 'warning' | 'danger' | 'muted' {
-  if (status === 'active' || status === 'starting') return 'warning'
+function statusTone(
+  status: RunQueueJobStatus
+): 'success' | 'warning' | 'danger' | 'muted' | 'running' {
+  if (status === 'active' || status === 'starting') return 'running'
   return 'muted'
 }
 

@@ -142,11 +142,13 @@ function countRunDiffFiles(run: ChatRun): number | null {
 
 function getRunStatus(run: ChatRun): {
   label: string
-  tone: 'success' | 'warning' | 'danger' | 'muted'
+  tone: 'success' | 'warning' | 'danger' | 'muted' | 'running'
 } {
   if (run.cancelled || run.status === 'cancelled') return { label: 'Cancelled', tone: 'muted' }
   if (run.status === 'failed') return { label: 'Failed', tone: 'danger' }
-  if (!run.endedAt) return { label: 'Running', tone: 'warning' }
+  // In-flight runs render as the contrast-aware accent shimmer-sweep
+  // "Active" badge (CSS handles the animation; tone-running is the hook).
+  if (!run.endedAt) return { label: 'Active', tone: 'running' }
   if (run.status === 'success' || run.status === 'completed')
     return { label: 'Done', tone: 'success' }
   if (run.status === 'success_with_warnings') return { label: 'Warnings', tone: 'warning' }
