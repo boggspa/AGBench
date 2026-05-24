@@ -22,6 +22,17 @@
   --panel-border: rgba(255, 255, 255, 0.06);
   --panel-elevated-bg: rgba(38, 38, 44, 0.88);
 
+  /* Surface scale. Keep shared UI chrome on these tokens so new themes
+   * can alter hierarchy without chasing one-off panel/composer colors. */
+  --surface-1: #1c1c20;
+  --surface-2: #24242a;
+  --surface-3: #2e2e36;
+  --surface-border: rgba(255, 255, 255, 0.06);
+  --surface-text: var(--text-primary);
+  --surface-text-muted: var(--text-secondary);
+  --surface: var(--surface-1);
+  --surface-elevated: var(--surface-2);
+
   /* Content / Transcript */
   --content-bg: transparent;
   --content-max-width: 780px;
@@ -137,6 +148,10 @@
   --panel-bg: rgba(239, 243, 248, 0.68);
   --panel-bg-solid: #eef2f7;
   --panel-elevated-bg: rgba(255, 255, 255, 0.72);
+  --surface-1: #ffffff;
+  --surface-2: #f1f1f4;
+  --surface-3: #e7e7ec;
+  --surface-border: rgba(18, 21, 27, 0.10);
   --composer-bg: rgba(255, 255, 255, 0.78);
   --composer-bg-solid: #ffffff;
   --composer-glass-bg: rgba(255, 255, 255, 0.46);

@@ -17370,16 +17370,16 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-composer-style="claude"] .composer-surface,
 [data-theme="light"][data-composer-style="gemini"] .composer-surface,
 [data-theme="light"][data-composer-style="kimi"] .composer-surface {
-  background: #f5f5f7;
-  border-color: rgba(0, 0, 0, 0.12);
-  color: #1d1d1f;
+  background: var(--surface-2);
+  border-color: var(--surface-border);
+  color: var(--surface-text);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 
 [data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within,
 [data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within,
 [data-theme="light"][data-composer-style="kimi"] .composer-surface:focus-within {
-  border-color: rgba(0, 0, 0, 0.22);
+  border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
 }
 
@@ -17395,7 +17395,7 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-composer-style="claude"] .composer-textarea,
 [data-theme="light"][data-composer-style="gemini"] .composer-textarea,
 [data-theme="light"][data-composer-style="kimi"] .composer-textarea {
-  color: #1d1d1f;
+  color: var(--surface-text);
   background: transparent;
 }
 
@@ -17403,7 +17403,7 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder,
 [data-theme="light"][data-composer-style="gemini"] .composer-textarea::placeholder,
 [data-theme="light"][data-composer-style="kimi"] .composer-textarea::placeholder {
-  color: rgba(29, 29, 31, 0.42);
+  color: var(--text-tertiary);
 }
 
 /* Composer above-bar pills + chips — Claude shell uses these
@@ -17425,11 +17425,11 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-theme="light"][data-composer-style="claude"] .composer-chip {
   color: rgba(29, 29, 31, 0.72);
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: color-mix(in srgb, var(--surface-2) 64%, var(--surface-1));
+  border-color: var(--surface-border);
 }
 [data-theme="light"][data-composer-style="claude"] .composer-chip:hover {
-  background: rgba(0, 0, 0, 0.06);
+  background: color-mix(in srgb, var(--surface-3) 46%, var(--surface-1));
 }
 
 /* Workspace access pills (External Path / Tool grants / Worktree /
@@ -17440,8 +17440,8 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-composer-style="gemini"] .composer-workspace-access-pill,
 [data-theme="light"][data-composer-style="kimi"] .composer-workspace-access-pill {
   color: rgba(29, 29, 31, 0.78);
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
+  background: color-mix(in srgb, var(--surface-2) 64%, var(--surface-1));
+  border-color: var(--surface-border);
 }
 
 /* --- Sidebar (forced-dark override neutralisation) ------------- *
@@ -17588,14 +17588,14 @@ input:disabled, select:disabled, textarea:disabled {
  * ============================================================ */
 
 [data-theme="light"] {
-  --unified-soft-surface-bg: #f1f1f4;
-  --unified-soft-surface-border: rgba(0, 0, 0, 0.06);
+  --unified-soft-surface-bg: var(--surface-2);
+  --unified-soft-surface-border: var(--surface-border);
 
   /* AGBench-native composer reads as a fresh white sheet in
    * light mode (the themed shells get their own override below
    * so the composer hierarchy stays consistent across shells). */
-  --composer-bg: #ffffff;
-  --composer-bg-solid: #ffffff;
+  --composer-bg: var(--surface-1);
+  --composer-bg-solid: var(--surface-1);
 }
 
 /* Transcript provider run-id card ("Codex unknown #17791113"). */
@@ -17920,7 +17920,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within {
-  border-color: rgba(0, 0, 0, 0.22);
+  border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
 }
 
@@ -17930,7 +17930,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-theme="light"][data-composer-style="codex"] .composer-textarea::placeholder {
-  color: rgba(29, 29, 31, 0.42);
+  color: var(--text-tertiary);
 }
 
 /* CLAUDE shell — surface is transparent, the visible bubble is
@@ -17943,14 +17943,14 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 [data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
-  border-color: rgba(0, 0, 0, 0.22);
+  border-color: color-mix(in srgb, var(--surface-border) 44%, var(--surface-text) 18%);
   box-shadow:
     0 4px 22px rgba(0, 0, 0, 0.1),
     0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 [data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder {
-  color: rgba(29, 29, 31, 0.42);
+  color: var(--text-tertiary);
 }
 
 /* Above-composer bar (Codex + Claude — both shells render it).
@@ -18011,14 +18011,14 @@ input:disabled, select:disabled, textarea:disabled {
  * above-bar stays at the unified soft surface so the bubble
  * reads as the visually weightier element of the pair. */
 [data-theme="light"][data-interface-style="codex"] .composer-surface {
-  background: #e7e7ec !important;
-  border-color: rgba(0, 0, 0, 0.14) !important;
+  background: var(--surface-3) !important;
+  border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
 }
 
 [data-theme="light"][data-interface-style="claude"] .composer-textarea {
-  background: #e7e7ec !important;
-  border-color: rgba(0, 0, 0, 0.14) !important;
+  background: var(--surface-3) !important;
+  border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
   color: var(--text-primary) !important;
 }
 
@@ -18862,8 +18862,8 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"] .sidebar-masthead {
   background:
     linear-gradient(145deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.18) 74%),
-    #f5f5f8;
-  border-color: rgba(0, 0, 0, 0.08);
+    var(--surface-2);
+  border-color: var(--surface-border);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.6),
     0 6px 18px rgba(60, 60, 80, 0.06);
@@ -18889,14 +18889,14 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-theme="light"] .composer-workspace-access-pill {
   color: rgba(29, 29, 31, 0.84);
-  background: rgba(255, 255, 255, 0.74);
-  border-color: rgba(0, 0, 0, 0.10);
+  background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  border-color: var(--surface-border);
 }
 
 [data-theme="light"] .composer-workspace-access-pill:hover:not(:disabled) {
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface-1) 92%, var(--surface-2));
   color: rgba(29, 29, 31, 1);
-  border-color: rgba(0, 0, 0, 0.16);
+  border-color: color-mix(in srgb, var(--surface-border) 60%, var(--surface-text) 12%);
 }
 
 /* Active / warning variants keep their accent fill but get a
@@ -19477,12 +19477,12 @@ input:disabled, select:disabled, textarea:disabled {
 /* Light-mode trigger contrast --------------------------------- */
 
 [data-theme="light"] .composer-combined-picker-trigger {
-  background: rgba(255, 255, 255, 0.74);
-  border-color: rgba(0, 0, 0, 0.10);
-  color: rgba(29, 29, 31, 0.92);
+  background: color-mix(in srgb, var(--surface-1) 74%, transparent);
+  border-color: var(--surface-border);
+  color: var(--surface-text);
 }
 [data-theme="light"] .composer-combined-picker-trigger-suffix {
-  color: rgba(29, 29, 31, 0.56);
+  color: var(--surface-text-muted);
 }
 [data-theme="light"][data-composer-style="codex"] .composer-combined-picker-trigger,
 [data-theme="light"][data-composer-style="claude"] .composer-combined-picker-trigger {
