@@ -886,9 +886,30 @@ button.sidebar-item {
   inset: 0;
   pointer-events: none;
   z-index: 0;
+  /* No base background — provider-specific ::after rules
+   * (.provider-codex / -claude / -kimi / -gemini) supply the
+   * tinted overlay. The previous base `rgba(160, 34, 34, …)`
+   * red-orange gradient leaked through whenever no provider
+   * class was attached (e.g. mismatched shell+provider, or
+   * Gemini provider — which never had its own ::after
+   * override). That leakage produced a faint orange band at
+   * the top + bottom of the transcript that mutated visibly
+   * under cmd+/- zoom because the gradient stops fell on
+   * different pixel rows at each DPI ratio. */
+  background: none;
+}
+
+.app-transcript.provider-gemini::after {
+  /* Gemini provider lacked its own ::after override, so the
+   * old base orange gradient was the visible default. Add a
+   * Gemini-tinted overlay matching the codex/claude/kimi
+   * pattern at lines 894-918. */
+  --agent-accent-rgb: 105 157 255;
   background:
-    linear-gradient(to bottom, rgba(160, 34, 34, 0.055), rgba(160, 34, 34, 0) 17%),
-    linear-gradient(to top, rgba(160, 34, 34, 0.045), rgba(160, 34, 34, 0) 18%);
+    radial-gradient(ellipse at 0% 44%, rgba(36, 64, 138, 0.18), rgba(6, 12, 28, 0.08) 28%, transparent 54%),
+    radial-gradient(ellipse at 100% 52%, rgba(28, 56, 132, 0.18), rgba(4, 10, 24, 0.10) 30%, transparent 56%),
+    linear-gradient(to bottom, rgba(7, 10, 22, 0.34), rgba(28, 52, 124, 0.12) 16%, rgba(7, 10, 22, 0) 34%),
+    linear-gradient(to top, rgba(4, 8, 18, 0.42), rgba(30, 54, 132, 0.10) 17%, rgba(4, 8, 18, 0) 35%);
 }
 
 .app-transcript.provider-codex::after {
