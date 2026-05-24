@@ -18759,3 +18759,167 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"] .composer-workspace-access-pill .composer-workspace-access-select {
   color: rgba(29, 29, 31, 0.84);
 }
+
+/* ============================================================
+ * COMPOSER ABOVE-BAR — CLAUDE + CODEX EMULATION REFINEMENTS
+ * --------------------------------------------------------------
+ * Pulls the Codex + Claude composer-shell above-bars closer to
+ * the real upstream products' aesthetics:
+ *
+ *   - **Claude** — minimalist inline text row. Branch / files-
+ *     changed / diff stats lose their hairline-pill chrome and
+ *     read as bare body-weight text. Create PR becomes a solid
+ *     gray rounded-rect button matching Claude Code's "Commit
+ *     changes" button. Workspace-access pills (External path /
+ *     Tool grants / Worktree) keep their hairline-pill shape so
+ *     they stay visually distinct from the bare-text group.
+ *
+ *   - **Codex** — tucked tab. Above-bar packs to content width,
+ *     centers above the composer, flattens its bottom edge, and
+ *     overlaps the composer-surface top with negative margin +
+ *     z-index. Children stay in their existing chrome — the
+ *     tucked-tab framing carries the personality.
+ *
+ * CSS-only changes. JSX structure untouched. Scoped strictly
+ * under `[data-composer-style="claude"]` / `="codex"` so the
+ * other shells (AGBench native, Gemini, Kimi, Modular, Terminal,
+ * Stub, Satellite) are unaffected.
+ * ============================================================ */
+
+/* -----------------------------------------------------------
+ * 1) CLAUDE — bare text refinement on branch / files / stats
+ * ---------------------------------------------------------- */
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-summary {
+  background: transparent !important;
+  border-color: transparent !important;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-weight: 500;
+  padding: 3px 4px;
+}
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch svg,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files svg {
+  opacity: 0.85;
+}
+
+/* Light-mode counterpart — bare text uses theme text colour
+ * rather than a faded white-mix. */
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-summary {
+  color: rgba(29, 29, 31, 0.84) !important;
+}
+
+/* -----------------------------------------------------------
+ * 2) CLAUDE — workspace-access pill tighter padding
+ *    Keeps them as visibly interactive hairline chips but tones
+ *    them down so they don't dominate the bare-text neighbours.
+ * ---------------------------------------------------------- */
+
+[data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill {
+  padding: 3px 8px;
+  font-size: calc(var(--font-size-xs) + 0.5px);
+}
+
+/* -----------------------------------------------------------
+ * 3) CLAUDE — Create PR as a solid gray rounded-rect button
+ *    Matches Claude Code's "Commit changes" affordance. The
+ *    is-pending / is-success / is-error tone classes continue
+ *    to override this base palette where they apply.
+ * ---------------------------------------------------------- */
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+  background: #3a3a3a;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md, 10px);
+  padding: 5px 12px;
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 500;
+  box-shadow: none;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:hover:not(:disabled) {
+  background: #444444;
+  border-color: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:disabled {
+  background: rgba(58, 58, 58, 0.6);
+  color: rgba(255, 255, 255, 0.5);
+  cursor: not-allowed;
+}
+
+/* Light-mode counterpart for the gray button. */
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+  background: #e8e8ea !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(29, 29, 31, 0.92) !important;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:hover:not(:disabled) {
+  background: #dcdce0 !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+  color: rgba(29, 29, 31, 1) !important;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-action:disabled {
+  background: rgba(232, 232, 234, 0.6) !important;
+  color: rgba(29, 29, 31, 0.5) !important;
+}
+
+/* -----------------------------------------------------------
+ * 4) CODEX — tucked tab geometry
+ *    Packs to content width, flattens the bottom, overlaps the
+ *    composer-surface top edge so the tab reads as an extension
+ *    of the composer rather than a separate strip.
+ * ---------------------------------------------------------- */
+
+[data-composer-style="codex"] .composer-above-bar {
+  width: fit-content;
+  max-width: 100%;
+  align-self: center;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: 0;
+  margin-bottom: -10px;
+  padding-top: 6px;
+  padding-bottom: 14px;
+  position: relative;
+  z-index: 3;
+  /* Match the codex composer-surface fill so the merge reads
+   * as one continuous tab + body. */
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
+}
+
+/* Drop the navy ::before overlay on the tucked tab so the fill
+ * stays clean. Without this, the per-provider gradient at
+ * line 13763-13781 paints over the tab. */
+[data-composer-style="codex"] .composer-above-bar::before {
+  display: none;
+}
+
+/* The action button (margin-left: auto) becomes a no-op once
+ * width is fit-content (no remaining space to distribute), so
+ * children pack left-to-right with the action naturally on the
+ * right. Add a small explicit left margin so it's not flush
+ * against its left neighbour. */
+[data-composer-style="codex"] .composer-above-bar .composer-above-bar-action {
+  margin-left: 8px;
+}
+
+/* Light-mode Codex tucked tab inherits the same dark fill since
+ * the codex composer-surface itself stays dark in light mode
+ * (intentional — matches real Codex). */
+[data-theme="light"][data-composer-style="codex"] .composer-above-bar {
+  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%) !important;
+  border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
+  color: rgba(255, 255, 255, 0.84) !important;
+}
