@@ -9,6 +9,10 @@ import {
   powerMonitor
 } from 'electron'
 import type { BrowserWindowConstructorOptions } from 'electron'
+import {
+  detectExternalPath,
+  type ExternalPathDetection
+} from './services/ExternalPathDetector'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { spawn, ChildProcess } from 'child_process'
@@ -8623,7 +8627,7 @@ function handleCodexServerRequest(message: any) {
     }
   }
 
-  const actions: AgentApprovalAction[] = ['accept']
+  let actions: AgentApprovalAction[] = ['accept']
   if (
     service &&
     method === 'item/permissions/requestApproval' &&
@@ -8634,7 +8638,70 @@ function handleCodexServerRequest(message: any) {
     actions.push('acceptForWorkspace')
   }
   actions.push('acceptForSession', 'decline', 'cancel')
-  formatted.preview = { ...(formatted.preview || {}), actions }
+
+  // Slice 5 of the external-path-redesign arc. Detect tool calls
+  // referencing paths outside the workspace and override the generic
+  // approval action triplet with the slice-4 external-path actions.
+  // The slice-4 modal then renders path-specific copy + 3 buttons:
+  // "Grant read access" / "Grant edit access" / "Deny once".
+  //
+  // v1: Codex registration only. Gemini + Kimi wire-ins land in a
+  //     follow-up. Grant PERSISTENCE (so the secondary above-row
+  //     appears after granting) also ships as a follow-up; for now
+  //     the action resolves the underlying tool call as approve but
+  //     the grant isn't yet added to chat metadata.
+  let externalPathDetection: ExternalPathDetection | undefined
+  try {
+    const existingChat = state.appChatId ? AppStore.getChat(state.appChatId) : null
+    const existingGrants = Array.isArray(
+      existingChat?.providerMetadata?.codexExternalPathGrants
+    )
+      ? (existingChat?.providerMetadata?.codexExternalPathGrants as Array<{
+          path: string
+          access: 'read' | 'write'
+        }>)
+      : []
+    const probedToolName =
+      typeof (params as Record<string, unknown>)?.toolName === 'string'
+        ? ((params as Record<string, unknown>).toolName as string)
+        : typeof (params as Record<string, unknown>)?.tool === 'string'
+          ? ((params as Record<string, unknown>).tool as string)
+          : ''
+    const detection = detectExternalPath({
+      toolName: probedToolName,
+      params,
+      workspacePath: isGlobalScope ? undefined : state.workspacePath,
+      existingGrants
+    })
+    if (detection.needsPrompt && detection.path) {
+      externalPathDetection = detection
+      actions = ['grantExternalPathRead', 'grantExternalPathEdit', 'declineExternalPath']
+      formatted.title = 'Grant access to a file outside this workspace?'
+      formatted.body =
+        detection.access === 'write'
+          ? `Codex wants to edit a file outside the workspace.`
+          : `Codex wants to read a file outside the workspace.`
+    }
+  } catch (err) {
+    // Detector is best-effort. If it throws, fall through to the
+    // generic approval flow — the user still gets the standard
+    // accept/decline buttons.
+    console.warn('[ExternalPathDetector] codex registration probe failed', err)
+  }
+
+  formatted.preview = {
+    ...(formatted.preview || {}),
+    actions,
+    ...(externalPathDetection && externalPathDetection.path
+      ? {
+          externalPathDetection: {
+            path: externalPathDetection.path,
+            basename: externalPathDetection.basename,
+            access: externalPathDetection.access
+          }
+        }
+      : {})
+  }
 
   approvalService?.registerCodex(approvalId, {
     rpcId: message.id,
