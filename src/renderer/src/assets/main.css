@@ -14414,6 +14414,19 @@ input:disabled, select:disabled, textarea:disabled {
   color: #e6a960; /* tinted to read like Claude's amber indicator */
 }
 
+/* Light-theme override for the context donut. Base + Codex
+ * variants hardcode `color-mix(#ffffff 65|70%, transparent)`
+ * which renders as invisible white on light surfaces. Switch
+ * to dark tone so the donut + its dashed remainder ring read
+ * legibly. Claude's amber #e6a960 already works in both modes
+ * — no override needed there. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .context-wheel {
+  color: rgba(29, 29, 31, 0.62);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .context-wheel {
+  color: rgba(29, 29, 31, 0.66);
+}
+
 /* ============================================================
  * Claude inside/outside aesthetic
  * Textarea sits in its own bubble; control row visually floats below.
@@ -20016,6 +20029,60 @@ input:disabled, select:disabled, textarea:disabled {
 .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
   .composer-combined-picker-check {
   color: #ef4444;
+}
+
+/*
+ * Codex shell override — restore the original orange identity
+ * for "Full Workspace Access" (`auto_edit`). The shell-agnostic
+ * default is dark red; Codex's chrome historically tinted this
+ * chip orange (#ffa45c / #d97706) which matches the real Codex
+ * app's "Full access" badge colour. Keep that for users who
+ * picked the Codex shell so the chrome reads as authentic Codex.
+ * Plan stays blue (same as the shared default), so no override
+ * needed for that.
+ *
+ * `!important` required to defeat the shared default which also
+ * carries `!important` for cascade reasons documented above.
+ */
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"],
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
+  color: #ffa45c !important;
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
+  border-color: color-mix(in srgb, #ffa45c 36%, var(--composer-border));
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"]
+  .composer-combined-picker-row-label {
+  color: #ffa45c;
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
+  .composer-combined-picker-check {
+  color: #ffa45c;
+}
+
+/* Codex shell, light theme — saturated orange variant. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"],
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"]
+  .composer-combined-picker-trigger-primary {
+  color: #d97706 !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"]
+  .composer-combined-picker-row-label {
+  color: #d97706;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
+  .composer-combined-picker-check {
+  color: #d97706;
 }
 
 /* ============================================================
