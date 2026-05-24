@@ -86,7 +86,16 @@ export interface PendingGeminiToolApproval {
   service: AgenticServiceId
   workspacePath?: string
   runId?: string
+  externalPathDetection?: PendingExternalPathDetection
   resolve: (allowed: boolean) => void
+}
+
+export interface PendingExternalPathDetection {
+  provider: ProviderId
+  path: string
+  access: 'read' | 'write'
+  basename?: string
+  appChatId?: string
 }
 
 export interface PendingCodexApproval {
@@ -104,12 +113,7 @@ export interface PendingCodexApproval {
    * payload to issue + persist a signed grant when the user clicks
    * `grantExternalPathRead` / `grantExternalPathEdit` in the modal.
    */
-  externalPathDetection?: {
-    path: string
-    access: 'read' | 'write'
-    basename?: string
-    appChatId?: string
-  }
+  externalPathDetection?: PendingExternalPathDetection
 }
 
 export interface PendingKimiApproval {
@@ -117,6 +121,7 @@ export interface PendingKimiApproval {
   rpcId: number | string
   params: unknown
   runId?: string
+  externalPathDetection?: PendingExternalPathDetection
 }
 
 export interface PendingHostCommandApproval {
@@ -296,8 +301,12 @@ export class ApprovalService {
    */
   getPendingExternalPathDetection(
     approvalId: string
-  ): PendingCodexApproval['externalPathDetection'] | undefined {
-    return this.pendingCodex.get(approvalId)?.externalPathDetection
+  ): PendingExternalPathDetection | undefined {
+    return (
+      this.pendingCodex.get(approvalId)?.externalPathDetection ||
+      this.pendingGeminiTool.get(approvalId)?.externalPathDetection ||
+      this.pendingKimi.get(approvalId)?.externalPathDetection
+    )
   }
 
   registerKimi(approvalId: string, info: PendingKimiApproval): void {
@@ -647,7 +656,9 @@ export class ApprovalService {
       const response =
         action === 'acceptForSession' || action === 'acceptForWorkspace'
           ? 'approve_for_session'
-          : action === 'accept'
+          : action === 'accept' ||
+              action === 'grantExternalPathRead' ||
+              action === 'grantExternalPathEdit'
             ? 'approve'
             : 'reject'
       this.deps.respondToKimiWireRequest(pendingKimi.child, pendingKimi.rpcId, {

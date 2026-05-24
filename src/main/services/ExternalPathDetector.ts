@@ -2,7 +2,7 @@
  * ExternalPathDetector — slice 5 of the external-path-redesign arc.
  *
  * Inspects a tool-call's params for filesystem paths that fall outside
- * the workspace's containment. When detected, callers (Codex/Gemini/
+ * the workspace's containment. When detected, callers (Codex/Claude/
  * Kimi registration sites in `main/index.ts`) override the generic
  * approval `actions` with the slice-4 triplet
  * (`grantExternalPathRead | grantExternalPathEdit | declineExternalPath`)
