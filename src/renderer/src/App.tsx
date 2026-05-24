@@ -1250,6 +1250,11 @@ type RunCompleteNotice = {
   startedAt?: string
 }
 
+type RunCompleteSummaryRow = {
+  label: string
+  value: string
+}
+
 type PersistentSessionStatus =
   | 'idle'
   | 'starting'
@@ -1627,6 +1632,75 @@ const formatWorkDuration = (startedAt?: string, completedAt?: string): string | 
   if (seconds > 0 || parts.length === 0) parts.push(`${seconds} second${seconds === 1 ? '' : 's'}`)
 
   return `Worked for ${parts.slice(0, 2).join(' ')}`
+}
+
+const formatCompactDurationMs = (durationMs: number): string => {
+  const ms = Math.max(0, Math.round(durationMs))
+  if (ms < 1000) return `${ms}ms`
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  const minutes = Math.floor(seconds / 60)
+  const remainingSeconds = seconds % 60
+  if (minutes < 60) return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
+}
+
+const formatRunStatusLabel = (status?: string): string => {
+  if (!status) return 'Unknown'
+  if (status === 'success' || status === 'completed') return 'Complete'
+  if (status === 'success_with_warnings') return 'Warnings'
+  if (status === 'failed') return 'Failed'
+  if (status === 'cancelled') return 'Cancelled'
+  return status
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+const formatApprovalModeLabel = (mode?: string): string => {
+  if (!mode) return 'Unknown'
+  if (mode === 'plan') return 'Read-only'
+  if (mode === 'auto_edit') return 'Auto edit'
+  return formatRunStatusLabel(mode)
+}
+
+const getRunDurationMs = (run: ChatRun): number => {
+  const statsDuration = extractUsageCount(run.stats, [['duration_ms'], ['durationMs']])
+  if (statsDuration > 0) return statsDuration
+
+  const started = run.startedAt ? Date.parse(run.startedAt) : NaN
+  const ended = run.endedAt ? Date.parse(run.endedAt) : NaN
+  if (Number.isFinite(started) && Number.isFinite(ended) && ended >= started) {
+    return ended - started
+  }
+  return 0
+}
+
+const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSummaryRow[] => {
+  if (!run) return []
+
+  const rows: RunCompleteSummaryRow[] = []
+  const model = run.actualModel || run.requestedModel
+  if (model) rows.push({ label: 'Model', value: model })
+  rows.push({ label: 'Mode', value: formatApprovalModeLabel(run.approvalMode) })
+  rows.push({ label: 'Status', value: formatRunStatusLabel(run.status) })
+
+  const durationMs = getRunDurationMs(run)
+  if (durationMs > 0) rows.push({ label: 'Duration', value: formatCompactDurationMs(durationMs) })
+
+  const counts = extractUsageCountsFromCandidate(run.stats)
+  if (counts.totalTokens > 0) {
+    rows.push({
+      label: 'Tokens',
+      value: `${formatContextTokens(counts.inputTokens)} in / ${formatContextTokens(counts.outputTokens)} out`
+    })
+    rows.push({ label: 'Total', value: `${formatContextTokens(counts.totalTokens)} tokens` })
+  }
+
+  return rows
 }
 
 const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
@@ -3746,6 +3820,7 @@ type TranscriptPanelProps = {
   runCompleteNotice: RunCompleteNotice | null
   runCompleteDurationText: string | null
   currentChat: ChatRecord | null
+  currentRun?: ChatRun | null
   currentWorkspacePath?: string
   currentProviderLabel: string
   displayFileChangeSummaries: DiffFileSummary[]
@@ -3784,6 +3859,7 @@ const TranscriptPanel = memo(
     runCompleteNotice,
     runCompleteDurationText,
     currentChat,
+    currentRun,
     currentWorkspacePath,
     currentProviderLabel,
     displayFileChangeSummaries,
@@ -3804,6 +3880,10 @@ const TranscriptPanel = memo(
       [isWelcomeChat, messages]
     )
     const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
+    const runCompleteSummaryRows = useMemo(
+      () => buildRunCompleteSummaryRows(currentRun),
+      [currentRun]
+    )
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
       const runById = new Map<string, ChatRun>()
@@ -4032,6 +4112,21 @@ const TranscriptPanel = memo(
                   <CopyResponseIcon />
                 </button>
               </div>
+              {runCompleteSummaryRows.length > 0 && (
+                <div className="run-complete-summary-card">
+                  <div className="run-complete-summary-header">
+                    <strong>Run details</strong>
+                  </div>
+                  <div className="run-complete-summary-grid">
+                    {runCompleteSummaryRows.map((row) => (
+                      <div key={row.label} className="run-complete-summary-item">
+                        <span>{row.label}</span>
+                        <strong title={row.value}>{row.value}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="file-change-summary-card">
                 <div className="file-change-summary-header">
                   <strong>File changes</strong>
@@ -4114,6 +4209,7 @@ const TranscriptPanel = memo(
     previous.pendingPlanChoice === next.pendingPlanChoice &&
     previous.runCompleteNotice === next.runCompleteNotice &&
     previous.runCompleteDurationText === next.runCompleteDurationText &&
+    previous.currentRun === next.currentRun &&
     previous.currentChat === next.currentChat &&
     previous.currentWorkspacePath === next.currentWorkspacePath &&
     previous.currentProviderLabel === next.currentProviderLabel &&
@@ -12229,7 +12325,6 @@ function App(): React.JSX.Element {
               currentWorkspace={currentWorkspace}
               chats={chats}
               currentChat={currentChat}
-              currentRun={currentRun}
               usageSummary={usageSummary}
               runningChatIds={runningChatIdsArray}
               onSelectWorkspace={handleSelectExistingWorkspace}
@@ -12479,6 +12574,7 @@ function App(): React.JSX.Element {
               runCompleteNotice={runCompleteNotice}
               runCompleteDurationText={runCompleteDurationText}
               currentChat={currentChat}
+              currentRun={currentRun}
               currentWorkspacePath={currentWorkspace?.path}
               currentProviderLabel={currentProviderLabel}
               displayFileChangeSummaries={displayFileChangeSummaries}
