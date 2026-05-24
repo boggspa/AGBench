@@ -4101,6 +4101,29 @@ button.sidebar-item {
   color: color-mix(in srgb, var(--text-secondary) 96%, transparent);
 }
 
+/* Light-theme override for the welcome screen suggested-prompt
+ * cards. The dark-theme rule above mixes `--panel-bg` with 56%
+ * alpha which, layered over the welcome backdrop in light mode,
+ * still read as dark gray cards with washed-out text. Pin to
+ * the surface-token family used by other light-mode chrome so
+ * the cards land as white-ish on the light backdrop. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .welcome-suggestion-btn {
+  background: var(--surface-1);
+  border-color: var(--surface-border);
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .welcome-suggestion-btn:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--surface-text, rgba(29, 29, 31, 0.86)) 24%, var(--surface-border));
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .welcome-suggestion-label {
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .welcome-suggestion-description {
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+}
+
 .welcome-usage-region {
   position: absolute;
   left: 0;
@@ -14077,6 +14100,20 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #ffffff 72%, transparent);
 }
 
+/* Light-theme override for the files-changed chip + its inner
+ * number strong. Without this the white-on-white from the dark
+ * default rule above renders as invisible "files changed" with
+ * an invisible numeral in light themes. Targeting both the chip
+ * text colour AND the `<strong>` so the bold count stays
+ * legible (some non-Codex shells used to bleed `<strong>` as
+ * white even when the surrounding text recoloured correctly). */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files {
+  color: rgba(29, 29, 31, 0.78);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-above-bar-files strong {
+  color: rgba(29, 29, 31, 0.94);
+}
+
 /* ============================================================
  * Composer-unification (Phase J1): WorkspaceAccessControls pills
  *
@@ -17742,7 +17779,12 @@ input:disabled, select:disabled, textarea:disabled {
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .app-transcript,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="gemini"] .app-transcript,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="kimi"] .app-transcript {
-  background: var(--content-bg);
+  /* Was `var(--content-bg)` (`rgba(246,248,251,0.96)`) — slightly
+   * cool / grayish. Bumped to a near-white mix so the transcript
+   * pane reads as cleaner against the now-light sidebar. Real
+   * Codex / Claude transcripts are essentially white in light
+   * mode; this matches that read. */
+  background: color-mix(in srgb, var(--surface-1) 94%, var(--surface-2) 6%);
 }
 
 /* ============================================================
@@ -19720,6 +19762,25 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: calc(var(--font-size-xs) + 1px);
   color: var(--text-primary);
   isolation: isolate;
+}
+
+/* Light-theme variant of the model/permission picker popover.
+ * `--panel-elevated-bg` resolves dark in light themes through
+ * the cascade for legacy reasons, so the popover read as a dark
+ * sheet on a light backdrop. Switch to a frosted near-white
+ * fill (light-themed surface tokens) with a softer shadow and
+ * a higher-mix backdrop blur — closer to the macOS
+ * liquid-glass aesthetic real Codex / Claude use for menus. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-combined-picker-popover {
+  background: color-mix(in srgb, var(--surface-1) 78%, transparent);
+  border-color: var(--surface-border);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  color: var(--surface-text);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-combined-picker-column + .composer-combined-picker-column {
+  border-left-color: var(--surface-border);
 }
 
 .composer-combined-picker-column {

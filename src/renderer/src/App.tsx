@@ -3318,10 +3318,17 @@ const formatExplicitCostUsd = (costUsd: number): string => {
   if (costUsd < 1) return `$${costUsd.toFixed(2)}`
   return `$${costUsd.toFixed(2)}`
 }
-const formatThreadTokenTally = (providerLabel: string, tally: ChatTokenTally): string | null => {
+const formatThreadTokenTally = (
+  _providerLabel: string,
+  tally: ChatTokenTally
+): string | null => {
   if (tally.totalTokens <= 0) return null
   const cost = formatExplicitCostUsd(tally.explicitCostUsd)
-  return `${providerLabel} ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
+  // Provider label dropped — the user already knows which provider
+  // they're talking to (the provider chip is right next to this
+  // tally), and the inline real-estate is tight. `_providerLabel`
+  // kept as a positional arg so the call site doesn't change shape.
+  return `${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
 }
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean =>
