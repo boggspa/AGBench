@@ -17393,6 +17393,331 @@ input:disabled, select:disabled, textarea:disabled {
   background: rgba(0, 0, 0, 0.06);
 }
 
+/* ── BugReportSheet ──────────────────────────────────────────────────
+ * Sits alongside FirstLaunchSheet — same backdrop + solid-surface
+ * pattern, but the panel is form-shaped rather than checklist-shaped.
+ * Sized one notch narrower (560px vs 720px) since the form fields
+ * fit more naturally on a compact column than a full-width grid.
+ * z-index 9120 — between FirstLaunchSheet (9100) and the creative-
+ * action approval modal (10000) — so the bug-report wins when both
+ * the onboarding sheet and the report sheet are open, but always
+ * yields to a genuine approval prompt. */
+.bug-report-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9120;
+  padding: 32px 24px;
+}
+.bug-report-sheet {
+  width: min(560px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 16px;
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.42);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px 26px 20px;
+}
+.bug-report-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+.bug-report-sheet-header-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+/* The "!" glyph mirrors the FirstLaunchSheet ghost mark slot — a 40px
+ * circular badge so the sheet header has a recognisable shoulder.
+ * Amber tint reads as "report a bug" without being alarming red. */
+.bug-report-sheet-glyph {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4em;
+  font-weight: 700;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  background: color-mix(in srgb, #d29922 18%, transparent);
+  color: #f0b050;
+  border: 1px solid color-mix(in srgb, #d29922 38%, transparent);
+}
+.bug-report-sheet-header h2 {
+  margin: 0 0 4px 0;
+  font-size: 1.18em;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+}
+.bug-report-sheet-subtitle {
+  margin: 0;
+  font-size: 0.86em;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+.bug-report-sheet-close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.5em;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.bug-report-sheet-close:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+.bug-report-sheet-close:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.bug-report-sheet-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.bug-report-sheet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bug-report-sheet-label {
+  font-size: 0.82em;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+.bug-report-sheet-label-helper {
+  font-weight: 400;
+  font-size: 0.92em;
+  color: var(--text-tertiary);
+}
+.bug-report-sheet-required {
+  color: #f0b050;
+}
+.bug-report-sheet-input,
+.bug-report-sheet-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 0.92em;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+.bug-report-sheet-input:focus,
+.bug-report-sheet-textarea:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 50%, transparent);
+  background: rgba(255, 255, 255, 0.06);
+}
+.bug-report-sheet-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+.bug-report-sheet-input-invalid {
+  border-color: color-mix(in srgb, #f85149 60%, transparent);
+}
+.bug-report-sheet-validation {
+  font-size: 0.78em;
+  color: #f0837a;
+}
+.bug-report-sheet-severity-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+}
+.bug-report-sheet-severity-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+.bug-report-sheet-severity-chip:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.bug-report-sheet-severity-chip input {
+  /* The label is the click target; hide the actual radio without
+   * dropping it from the a11y tree. */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.bug-report-sheet-severity-chip-label {
+  font-size: 0.86em;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.bug-report-sheet-severity-chip-description {
+  font-size: 0.74em;
+  color: var(--text-tertiary);
+  line-height: 1.3;
+}
+.bug-report-sheet-severity-chip-checked.bug-report-sheet-severity-chip-info {
+  border-color: color-mix(in srgb, #58a6ff 55%, transparent);
+  background: color-mix(in srgb, #58a6ff 10%, rgba(255, 255, 255, 0.02));
+}
+.bug-report-sheet-severity-chip-checked.bug-report-sheet-severity-chip-minor {
+  border-color: color-mix(in srgb, #3fb950 50%, transparent);
+  background: color-mix(in srgb, #3fb950 9%, rgba(255, 255, 255, 0.02));
+}
+.bug-report-sheet-severity-chip-checked.bug-report-sheet-severity-chip-major {
+  border-color: color-mix(in srgb, #d29922 55%, transparent);
+  background: color-mix(in srgb, #d29922 10%, rgba(255, 255, 255, 0.02));
+}
+.bug-report-sheet-severity-chip-checked.bug-report-sheet-severity-chip-blocking {
+  border-color: color-mix(in srgb, #f85149 55%, transparent);
+  background: color-mix(in srgb, #f85149 10%, rgba(255, 255, 255, 0.02));
+}
+.bug-report-sheet-context {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+.bug-report-sheet-label-context {
+  font-size: 0.74em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+.bug-report-sheet-context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.84em;
+}
+.bug-report-sheet-context-list li {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  gap: 8px;
+  align-items: baseline;
+}
+.bug-report-sheet-context-key {
+  color: var(--text-tertiary);
+}
+.bug-report-sheet-context-value {
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+  word-break: break-all;
+}
+.bug-report-sheet-error {
+  font-size: 0.84em;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, #f85149 12%, transparent);
+  border: 1px solid color-mix(in srgb, #f85149 32%, transparent);
+  color: #ffb4ad;
+}
+.bug-report-sheet-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 14px;
+}
+.bug-report-sheet-footer-helper {
+  font-size: 0.78em;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+.bug-report-sheet-footer-helper code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.92em;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.bug-report-sheet-confirmation {
+  font-size: 0.86em;
+  font-weight: 600;
+  color: #7fdc9a;
+}
+.bug-report-sheet-footer-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Light-mode tweaks. Mirrors the same pattern as FirstLaunchSheet —
+ * keep the surface-1 opaque white and tone down the rgba-baked edges
+ * so the form fields don't disappear into the white panel. */
+:root[data-theme='light'] .bug-report-sheet-backdrop,
+.theme-light .bug-report-sheet-backdrop {
+  background: rgba(0, 0, 0, 0.32);
+}
+:root[data-theme='light'] .bug-report-sheet,
+.theme-light .bug-report-sheet {
+  background: var(--surface-1, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 32px 80px rgba(0, 0, 0, 0.18);
+}
+:root[data-theme='light'] .bug-report-sheet-input,
+:root[data-theme='light'] .bug-report-sheet-textarea,
+.theme-light .bug-report-sheet-input,
+.theme-light .bug-report-sheet-textarea {
+  background: rgba(0, 0, 0, 0.03);
+  border-color: rgba(0, 0, 0, 0.12);
+  color: #1a1a1a;
+}
+:root[data-theme='light'] .bug-report-sheet-input:focus,
+:root[data-theme='light'] .bug-report-sheet-textarea:focus,
+.theme-light .bug-report-sheet-input:focus,
+.theme-light .bug-report-sheet-textarea:focus {
+  background: rgba(0, 0, 0, 0.04);
+}
+:root[data-theme='light'] .bug-report-sheet-severity-chip,
+.theme-light .bug-report-sheet-severity-chip {
+  background: rgba(0, 0, 0, 0.025);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+:root[data-theme='light'] .bug-report-sheet-context,
+.theme-light .bug-report-sheet-context {
+  background: rgba(0, 0, 0, 0.02);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+:root[data-theme='light'] .bug-report-sheet-footer-helper code,
+.theme-light .bug-report-sheet-footer-helper code {
+  background: rgba(0, 0, 0, 0.06);
+}
+
 /* ── UpdateStatusPane (Phase G2) ────────────────────────────────────── */
 .update-status-pane {
   margin-top: 12px;

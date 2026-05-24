@@ -74,6 +74,7 @@ import { Inspector } from './components/Inspector'
 import { SettingsPanel } from './components/SettingsPanel'
 import { SubThreadCreator } from './components/SubThreadCreator'
 import { FirstLaunchSheet } from './components/FirstLaunchSheet'
+import { BugReportSheet, type BugReportSubmission } from './components/BugReportSheet'
 import { IncomingPairingPrompt } from './components/IncomingPairingPrompt'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
@@ -4621,6 +4622,59 @@ function App(): React.JSX.Element {
       }
     }
   }, [])
+  /**
+   * Inline bug-report sheet. The tester (a tester) opens this from the
+   * "!" button next to the onboarding `?` button, describes whatever
+   * he just hit, and the main process appends a markdown record to
+   * `<userData>/AGBench/bug-reports.md` for Chris to triage at the
+   * end of the test session. No persisted draft state — the sheet
+   * resets every open. */
+  const [showBugReportSheet, setShowBugReportSheet] = useState(false)
+  /** Fetched once on mount so the BugReportSheet's auto-captured row
+   * shows the same version string the main process will stamp into
+   * the file. Falls back to "unknown" before the IPC resolves so the
+   * UI never flashes empty. */
+  const [appVersion, setAppVersion] = useState<string>('unknown')
+  useEffect(() => {
+    let cancelled = false
+    const api = window.api as typeof window.api & {
+      getAppVersion?: () => Promise<string>
+    }
+    if (typeof api.getAppVersion !== 'function') return
+    api
+      .getAppVersion()
+      .then((version) => {
+        if (!cancelled && typeof version === 'string' && version.trim()) {
+          setAppVersion(version)
+        }
+      })
+      .catch(() => {
+        /* Non-fatal — the sheet displays "unknown" and the main
+         * process stamps the canonical version on the file regardless. */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  const handleSubmitBugReport = useCallback(
+    async (submission: BugReportSubmission): Promise<void> => {
+      const api = window.api as typeof window.api & {
+        submitBugReport?: (
+          payload: BugReportSubmission
+        ) => Promise<{ ok: boolean; path?: string; error?: string }>
+      }
+      if (typeof api.submitBugReport !== 'function') {
+        throw new Error(
+          'Bug-report bridge is not available — please update the app or contact Chris directly.'
+        )
+      }
+      const result = await api.submitBugReport(submission)
+      if (!result?.ok) {
+        throw new Error(result?.error || 'Main process refused the report.')
+      }
+    },
+    []
+  )
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
@@ -12685,6 +12739,25 @@ function App(): React.JSX.Element {
             >
               <span className="chat-corner-symbol">?</span>
             </button>
+            {/*
+              Bug-report sheet trigger. Mirrors the `?` button's shape
+              but uses a subtle amber "!" glyph that reads as "report
+              a bug" without being alarming red. Lets a tester type a
+              one-liner + description inline as he hits issues during
+              the 1.0.1 test session — the main process appends the
+              report to `<userData>/AGBench/bug-reports.md` for Chris
+              to sweep at the end.
+            */}
+            <button
+              className={`chat-corner-btn chat-corner-btn-bug-report ${showBugReportSheet ? 'active' : ''}`}
+              type="button"
+              onClick={() => setShowBugReportSheet((current) => !current)}
+              title="Report a bug or issue"
+              aria-label="Report a bug or issue"
+              aria-pressed={showBugReportSheet}
+            >
+              <span className="chat-corner-symbol">!</span>
+            </button>
           </div>
 
           <div className="chat-corner-controls chat-corner-controls-right">
@@ -14835,6 +14908,19 @@ function App(): React.JSX.Element {
         claudeAuthStatus={claudeAuthStatus}
         kimiAuthStatus={kimiAuthStatus}
         geminiAuthStatus={geminiAuthStatus}
+      />
+      {/* BugReportSheet — inline issue capture for testers. z-index
+          (9120) sits above the FirstLaunchSheet (9100) so the bug-report
+          wins when both happen to be open, and stays below the
+          creative-action approval modal (10000). */}
+      <BugReportSheet
+        open={showBugReportSheet}
+        onDismiss={() => setShowBugReportSheet(false)}
+        onSubmit={handleSubmitBugReport}
+        appVersion={appVersion}
+        currentProvider={currentProvider}
+        currentWorkspacePath={currentWorkspace?.path ?? null}
+        composerShell={appearance.composerStyle || 'default'}
       />
       {subThreadCreatorParent && (
         <SubThreadCreator
