@@ -116,7 +116,7 @@ interface InspectorProps {
   codexMcpStatus?: any
   providerCapabilities?: ProviderCapabilityContract | null
   codexThreads?: any[]
-  codexExternalPathGrants?: ExternalPathGrant[]
+  externalPathGrants?: ExternalPathGrant[]
   geminiMcpBridgeEnabled?: boolean
   geminiMcpBridgeStatus?: GeminiMcpBridgeStatus | null
   onRefreshCodexThreads?: () => void
@@ -1463,7 +1463,7 @@ function SafetyTab({
   currentWorkspace,
   onImportCodexUsageCredential,
   onClearCodexUsageCredential,
-  codexExternalPathGrants = []
+  externalPathGrants = []
 }: InspectorProps) {
   if (provider === 'codex') {
     const sandbox = approvalMode === 'plan' ? 'read-only' : 'workspace-write'
@@ -1513,7 +1513,7 @@ function SafetyTab({
           </div>
           <div className="safety-row">
             <span>External grants</span>
-            <span>{codexExternalPathGrants.length}</span>
+            <span>{externalPathGrants.length}</span>
           </div>
           <div className="safety-row">
             <span>CLI</span>
@@ -1536,9 +1536,9 @@ function SafetyTab({
             </>
           )}
         </div>
-        {codexExternalPathGrants.length > 0 && (
+        {externalPathGrants.length > 0 && (
           <div className="safety-card">
-            <h4>Codex external path grants</h4>
+            <h4>External path grants</h4>
             <p
               style={{
                 fontSize: 'var(--font-size-sm)',
@@ -1546,10 +1546,10 @@ function SafetyTab({
                 margin: '0 0 var(--space-md) 0'
               }}
             >
-              These selected files or folders are passed as scoped sandbox roots for Codex
-              app-server runs in this chat. Revoke them from the composer chip before the next run.
+              These selected files or folders are passed as scoped sandbox roots for provider runs
+              in this chat. Revoke them from the composer chip before the next run.
             </p>
-            {codexExternalPathGrants.map((grant) => (
+            {externalPathGrants.map((grant) => (
               <div className="safety-row" key={grant.id}>
                 <span>
                   {grant.access === 'write' ? 'Edit' : 'Read'} {grant.kind}

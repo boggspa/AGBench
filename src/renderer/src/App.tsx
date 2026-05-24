@@ -43,6 +43,11 @@ import {
   HandoffCard
 } from '../../main/store/types'
 import {
+  canonicalizeExternalPathGrantMetadata,
+  collectExternalPathGrantsFromMetadata,
+  coalesceExternalPathGrants
+} from '../../main/store/ExternalPathGrants'
+import {
   createToolActivity,
   pairToolResult,
   isToolUseEvent,
@@ -383,18 +388,9 @@ function collectChatMediaRefs(
   currentExternalPathGrants.forEach((grant) => addGrant(grant))
 
   const chatAny = chat as any
-  const providerMetadata = chatAny?.providerMetadata || {}
-  ;[
-    providerMetadata.codexExternalPathGrants,
-    providerMetadata.externalPathGrants,
-    providerMetadata.claudeExternalPathGrants,
-    providerMetadata.geminiExternalPathGrants,
-    providerMetadata.kimiExternalPathGrants
-  ].forEach((candidate) => {
-    if (Array.isArray(candidate)) {
-      candidate.forEach((grant) => addGrant(grant))
-    }
-  })
+  collectExternalPathGrantsFromMetadata(chatAny?.providerMetadata).forEach((grant) =>
+    addGrant(grant)
+  )
 
   const messages = Array.isArray(chatAny?.messages) ? chatAny.messages : []
   messages.forEach((message: any) => {
@@ -2236,7 +2232,6 @@ const mergeImageAttachments = (
 
 const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
   if (!Array.isArray(value)) return []
-  const seen = new Set<string>()
   const grants: ExternalPathGrant[] = []
   // Slice 2 of the external-path-redesign arc: the previous hard
   // filter `grant.provider !== 'codex'` was a leftover from the
@@ -2256,9 +2251,6 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
     if (grant.issuedBy !== 'main' || typeof grant.signature !== 'string' || !grant.signature)
       continue
     const access = grant.access === 'write' ? 'write' : 'read'
-    const key = `${providerToken}:${access}:${grant.path.trim()}`
-    if (seen.has(key)) continue
-    seen.add(key)
     grants.push({
       id: grant.id || `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       provider: providerToken,
@@ -2274,7 +2266,7 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
       createdAt: grant.createdAt || new Date().toISOString()
     })
   }
-  return grants
+  return coalesceExternalPathGrants(grants)
 }
 
 const mergeCommandPaletteItems = (customItems: CommandPaletteItem[]): CommandPaletteItem[] => {
@@ -4913,32 +4905,24 @@ function App(): React.JSX.Element {
       ? showGhostCompanion && !showSkyVisualFx
       : showGhostCompanion
     : false
-  /*
-   * Slice 2 of the external-path-redesign arc. Previously this useMemo
-   * gated the grant list on `currentProvider === 'codex'`, so a chat
-   * could only ever see Codex grants. The runtime-detection flow
-   * (slice 5) issues grants from whichever provider triggered the
-   * approval, so we now read ALL grants from the chat's metadata
-   * regardless of the *current* provider — the CLI translator
-   * (`externalPathGrantsToCliAddDirArgs` in main/index.ts) is already
-   * provider-agnostic on the consumption side. The variable name is
-   * still `codexExternalPathGrants` for back-compat with the existing
-   * 30+ call sites — a follow-up renames it to `externalPathGrants`
-   * once the call sites are sorted in one sweep.
-   */
-  const codexExternalPathGrants = useMemo(
+  // Canonical external-path grant list. New writes use
+  // providerMetadata.externalPathGrants; legacy provider-specific keys
+  // are coalesced here for old chats.
+  const externalPathGrants = useMemo(
     () =>
       !isCurrentGlobalChat
-        ? normalizeExternalPathGrants(currentChat?.providerMetadata?.codexExternalPathGrants)
+        ? normalizeExternalPathGrants(
+            collectExternalPathGrantsFromMetadata(currentChat?.providerMetadata)
+          )
         : [],
-    [currentChat?.providerMetadata?.codexExternalPathGrants, isCurrentGlobalChat]
+    [currentChat?.providerMetadata, isCurrentGlobalChat]
   )
   // Slice 3 of the external-path-redesign arc. Per-grant repo
   // metadata (isRepo / branch) drives the stacked secondary rows
   // rendered alongside the primary above-bar. Probe results are
   // cached in the hook so re-renders are free; only changes to the
   // grant set trigger new probes.
-  const externalPathRepoMetadata = useExternalPathRepoMetadata(codexExternalPathGrants)
+  const externalPathRepoMetadata = useExternalPathRepoMetadata(externalPathGrants)
   const currentComposerChatId = currentChat?.appChatId || null
   const prompt = currentComposerChatId ? composerDraftsByChatId[currentComposerChatId] || '' : ''
   const imageAttachments = useMemo(
@@ -4949,8 +4933,8 @@ function App(): React.JSX.Element {
     [currentComposerChatId, imageAttachmentsByChatId]
   )
   const currentChatMediaRefs = useMemo(
-    () => collectChatMediaRefs(currentChat, imageAttachments, codexExternalPathGrants),
-    [currentChat, imageAttachments, codexExternalPathGrants]
+    () => collectChatMediaRefs(currentChat, imageAttachments, externalPathGrants),
+    [currentChat, imageAttachments, externalPathGrants]
   )
   const permissionRequestState = currentComposerChatId
     ? permissionRequestByChatId[currentComposerChatId] || EMPTY_PERMISSION_STATE
@@ -7210,7 +7194,7 @@ function App(): React.JSX.Element {
     setImageAttachments((prev) => prev.filter((item) => item.id !== id))
   }
 
-  const updateCodexExternalPathGrants = (nextGrants: ExternalPathGrant[]) => {
+  const updateExternalPathGrants = (nextGrants: ExternalPathGrant[]) => {
     if (!currentChat) return
     const normalized = normalizeExternalPathGrants(nextGrants).map((grant) => ({
       ...grant,
@@ -7219,10 +7203,10 @@ function App(): React.JSX.Element {
     }))
     const updatedChat = {
       ...currentChat,
-      providerMetadata: {
-        ...(currentChat.providerMetadata || {}),
-        codexExternalPathGrants: normalized
-      },
+      providerMetadata: canonicalizeExternalPathGrantMetadata(
+        currentChat.providerMetadata,
+        normalized
+      ),
       updatedAt: Date.now()
     }
     setCurrentChat(updatedChat)
@@ -7241,7 +7225,7 @@ function App(): React.JSX.Element {
   // grant-entry escape hatch (post-lunch plan item).
 
   const handleRemoveExternalPathGrant = (id: string) => {
-    updateCodexExternalPathGrants(codexExternalPathGrants.filter((grant) => grant.id !== id))
+    updateExternalPathGrants(externalPathGrants.filter((grant) => grant.id !== id))
   }
 
   const handleSelectChat = async (chat: ChatRecord) => {
@@ -9026,8 +9010,10 @@ function App(): React.JSX.Element {
         ? composerSelection?.claudeReasoningEffort || claudeReasoningEffort
         : claudeReasoningEffort
     const externalPathGrants =
-      provider === 'codex' && scope !== 'global'
-        ? normalizeExternalPathGrants(selectedChat?.providerMetadata?.codexExternalPathGrants)
+      scope !== 'global'
+        ? normalizeExternalPathGrants(
+            collectExternalPathGrantsFromMetadata(selectedChat?.providerMetadata)
+          ).filter((grant) => grant.provider === provider)
         : []
 
     return {
@@ -10452,9 +10438,11 @@ function App(): React.JSX.Element {
       sessionTrust,
       imageAttachments: [],
       externalPathGrants:
-        provider === 'codex'
-          ? normalizeExternalPathGrants(chat.providerMetadata?.codexExternalPathGrants)
-          : [],
+        getChatScope(chat) === 'global'
+          ? []
+          : normalizeExternalPathGrants(
+              collectExternalPathGrantsFromMetadata(chat.providerMetadata)
+            ).filter((grant) => grant.provider === provider),
       geminiWorktree:
         getChatScope(chat) === 'global'
           ? undefined
@@ -11865,7 +11853,7 @@ function App(): React.JSX.Element {
     if (!currentChat) return result
     // Build the list of (grantId, repoRoot) pairs to bucket against.
     const grantBuckets: Array<{ id: string; root: string }> = []
-    for (const grant of codexExternalPathGrants) {
+    for (const grant of externalPathGrants) {
       const meta = externalPathRepoMetadata[grant.id]
       const root = meta?.isRepo ? meta.repoRoot : grant.path
       if (!root) continue
@@ -11915,7 +11903,7 @@ function App(): React.JSX.Element {
       }
     }
     return result
-  }, [currentChat, currentRun?.runId, codexExternalPathGrants, externalPathRepoMetadata])
+  }, [currentChat, currentRun?.runId, externalPathGrants, externalPathRepoMetadata])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -13236,7 +13224,7 @@ function App(): React.JSX.Element {
                   decides whether the row shows branch+repo-name or a
                   bare basename. Per-repo diff stats + per-repo Create
                   PR land in slice 6. */}
-                {codexExternalPathGrants.map((grant) => (
+                {externalPathGrants.map((grant) => (
                   <ExternalPathAboveRow
                     key={grant.id}
                     grant={grant}
@@ -13407,7 +13395,7 @@ function App(): React.JSX.Element {
                 chat={currentChat || undefined}
                 provider={currentProvider}
                 workspacePath={currentWorkspace?.path}
-                externalPathGrants={codexExternalPathGrants}
+                externalPathGrants={externalPathGrants}
                 prompt={prompt}
                 open={mentionMenuOpen}
                 anchorRef={composerTextareaRef}
@@ -13485,9 +13473,9 @@ function App(): React.JSX.Element {
                 )}
                 {currentProvider === 'codex' &&
                   !isCurrentGlobalChat &&
-                  codexExternalPathGrants.length > 0 && (
+                  externalPathGrants.length > 0 && (
                     <div className="composer-image-strip composer-external-grant-strip">
-                      {codexExternalPathGrants.map((grant) => (
+                      {externalPathGrants.map((grant) => (
                         <div
                           key={grant.id}
                           className={`composer-image-item external-grant access-${grant.access}`}
@@ -14717,7 +14705,7 @@ function App(): React.JSX.Element {
               codexMcpStatus={currentAgentMcpStatus}
               providerCapabilities={currentProviderCapabilities}
               codexThreads={codexThreads}
-              codexExternalPathGrants={codexExternalPathGrants}
+              externalPathGrants={externalPathGrants}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
               onRefreshCodexThreads={refreshCodexThreads}

@@ -346,6 +346,30 @@ describe('ComposerService', () => {
     expect(payload.serviceTier).toBe('fast')
   })
 
+  it('passes provider-filtered external grants for non-Codex providers without Codex prompt text', () => {
+    const geminiGrant = makeGrant({
+      id: 'gemini-grant',
+      provider: 'gemini',
+      access: 'read',
+      path: '/outside/gemini.txt'
+    })
+    const claudeGrant = makeGrant({
+      id: 'claude-grant',
+      provider: 'claude',
+      access: 'write',
+      path: '/outside/claude.txt'
+    })
+    const payload = compose(
+      { provider: 'gemini' },
+      { externalPathGrants: [geminiGrant, claudeGrant] }
+    )
+
+    expect(payload.externalPathGrants).toEqual([geminiGrant])
+    expect(payload.prompt).not.toContain(
+      'User-approved external path grants for this Codex request'
+    )
+  })
+
   it('applies Codex model-handoff context once and returns providerMetadata patch data', () => {
     const payload = compose(
       {

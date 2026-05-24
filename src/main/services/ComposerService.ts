@@ -1,5 +1,6 @@
 import type { AgentRunPayload } from '../index'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
+import { coalesceExternalPathGrants } from '../store/ExternalPathGrants'
 import type {
   AppSettings,
   ChatRecord,
@@ -109,8 +110,8 @@ export class ComposerService {
     )
     const imagePaths = normalizeImagePaths(input.imageAttachments || input.attachments || [])
     const externalPathGrants =
-      provider === 'codex' && scope !== 'global'
-        ? normalizeComposerExternalPathGrants(input.externalPathGrants || [])
+      scope !== 'global'
+        ? normalizeComposerExternalPathGrants(input.externalPathGrants || [], provider)
         : []
     const finalPrompt = `${basePrompt}${attachmentPromptAppendix(imagePaths)}${provider === 'codex' ? externalPathGrantPromptAppendix(externalPathGrants) : ''}`
     const geminiAuthProfileId =
@@ -300,20 +301,19 @@ function normalizeImagePaths(attachments: ComposerImageAttachment[]): string[] {
     .filter((path): path is string => Boolean(path))
 }
 
-function normalizeComposerExternalPathGrants(value: ExternalPathGrant[]): ExternalPathGrant[] {
+function normalizeComposerExternalPathGrants(
+  value: ExternalPathGrant[],
+  provider: ProviderId
+): ExternalPathGrant[] {
   if (!Array.isArray(value)) return []
-  const seen = new Set<string>()
   const grants: ExternalPathGrant[] = []
   for (const grant of value) {
-    if (!grant || grant.provider !== 'codex' || typeof grant.path !== 'string') continue
+    if (!grant || grant.provider !== provider || typeof grant.path !== 'string') continue
     if (grant.issuedBy !== 'main' || typeof grant.signature !== 'string' || !grant.signature)
       continue
     const access = grant.access === 'write' ? 'write' : 'read'
     const grantPath = grant.path.trim()
     if (!grantPath) continue
-    const key = `${access}:${grantPath}`
-    if (seen.has(key)) continue
-    seen.add(key)
     grants.push({
       ...grant,
       path: grantPath,
@@ -322,7 +322,7 @@ function normalizeComposerExternalPathGrants(value: ExternalPathGrant[]): Extern
       duration: grant.duration || 'thisThread'
     })
   }
-  return grants
+  return coalesceExternalPathGrants(grants)
 }
 
 function attachmentPromptAppendix(imagePaths: string[]): string {

@@ -33,6 +33,7 @@ import {
   HandoffCard,
   HandoffCardFilter
 } from './types'
+import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
 import { createHash, randomUUID } from 'crypto'
 import {
   createRunQueueJob,
@@ -585,16 +586,21 @@ export class AppStore {
   // Chats
   static normalizeChatRecord(chat: ChatRecord): ChatRecord {
     const scope = chat.scope === 'global' ? 'global' : 'workspace'
+    const providerMetadata = chat.providerMetadata
+      ? canonicalizeExternalPathGrantMetadata(chat.providerMetadata)
+      : chat.providerMetadata
     if (scope === 'global') {
       const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat
       return {
         ...rest,
-        scope
+        scope,
+        providerMetadata
       }
     }
     return {
       ...chat,
       scope,
+      providerMetadata,
       workspaceId: chat.workspaceId || '',
       workspacePath: chat.workspacePath || ''
     }

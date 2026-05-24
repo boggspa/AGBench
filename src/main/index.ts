@@ -57,6 +57,11 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
 import {
+  canonicalizeExternalPathGrantMetadata,
+  coalesceExternalPathGrants,
+  collectExternalPathGrantsFromMetadata
+} from './store/ExternalPathGrants'
+import {
   runEventBus,
   makeElectronIpcSink,
   makeDebugLoggerSink,
@@ -1138,7 +1143,7 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
   }
   const appChatId = optionalString(payload.appChatId) || optionalString(payload.chatId)
   let workspace: string | undefined
-  let scopedExternalPathGrants = externalPathGrants
+  let scopedExternalPathGrants = externalPathGrants.filter((grant) => grant.provider === provider)
   if (scope === 'global') {
     requireGlobalChat(appChatId, 'Run global chat')
     workspace = globalRunCwd()
@@ -3010,10 +3015,77 @@ function resolveGeminiMcpScopedPath(context: GeminiToolContext, filePath: string
   return resolveGeminiMcpPath(context.workspacePath || context.cwd, filePath)
 }
 
+function hasExternalPathGrantForTarget(
+  context: GeminiToolContext,
+  provider: ProviderId,
+  targetPath: string,
+  access: 'read' | 'write'
+): boolean {
+  const grants = normalizeExternalPathGrants([
+    ...(context.externalPathGrants || []),
+    ...externalPathGrantsForProvider(context.appChatId, provider)
+  ]).filter((grant) => grant.provider === provider)
+  const target = resolve(targetPath).replace(/\/+$/, '')
+  return grants.some((grant) => {
+    const grantPath = resolve(grant.path).replace(/\/+$/, '')
+    const coversPath = target === grantPath || target.startsWith(grantPath + sep)
+    if (!coversPath) return false
+    return access === 'read' || grant.access === 'write'
+  })
+}
+
+function resolveGeminiMcpGrantAwarePath(
+  context: GeminiToolContext,
+  provider: ProviderId,
+  filePath: string,
+  access: 'read' | 'write'
+): string {
+  if (typeof filePath !== 'string' || !filePath.trim()) {
+    throw new Error(
+      context.scope === 'global' ? 'A host path is required.' : 'A workspace path is required.'
+    )
+  }
+  if (context.scope === 'global') {
+    return isAbsolute(filePath) ? resolve(filePath) : resolve(context.cwd, filePath)
+  }
+
+  const workspaceRoot = resolve(context.workspacePath || context.cwd)
+  const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
+  if (isPathInsideWorkspace(workspaceRoot, targetPath)) {
+    return resolveGeminiMcpPath(workspaceRoot, targetPath)
+  }
+  if (
+    isAbsolute(filePath) &&
+    hasExternalPathGrantForTarget(context, provider, targetPath, access)
+  ) {
+    return targetPath
+  }
+  const accessLabel = access === 'write' ? 'edit' : 'read'
+  throw new Error(`Path is outside the workspace and has no ${accessLabel} grant.`)
+}
+
+function previewGeminiMcpPath(context: GeminiToolContext, filePath: string): string {
+  if (typeof filePath !== 'string' || !filePath.trim()) return filePath
+  try {
+    if (context.scope === 'global') {
+      return isAbsolute(filePath) ? resolve(filePath) : resolve(context.cwd, filePath)
+    }
+    const workspaceRoot = resolve(context.workspacePath || context.cwd)
+    const targetPath = isAbsolute(filePath) ? resolve(filePath) : resolve(workspaceRoot, filePath)
+    return isPathInsideWorkspace(workspaceRoot, targetPath)
+      ? formatScopedPath(context, targetPath)
+      : targetPath
+  } catch {
+    return filePath
+  }
+}
+
 function formatScopedPath(context: GeminiToolContext, targetPath: string): string {
-  return context.scope === 'global'
-    ? resolve(targetPath)
-    : toWorkspaceRelativePath(context.workspacePath || context.cwd, targetPath)
+  if (context.scope === 'global') return resolve(targetPath)
+  const workspaceRoot = resolve(context.workspacePath || context.cwd)
+  return isPathInsideWorkspace(workspaceRoot, targetPath)
+    ? toWorkspaceRelativePath(workspaceRoot, targetPath)
+    : resolve(targetPath)
 }
 
 function previewForGeminiMcpTool(
@@ -3053,8 +3125,7 @@ function previewForGeminiMcpTool(
 
   if (toolName === 'write_file' || toolName === 'replace') {
     const filePath = String(args.path || args.file_path || '')
-    const resolvedFilePath = filePath ? resolveGeminiMcpScopedPath(context, filePath) : ''
-    const previewPath = resolvedFilePath ? formatScopedPath(context, resolvedFilePath) : filePath
+    const previewPath = filePath ? previewGeminiMcpPath(context, filePath) : filePath
     return {
       title: toolName === 'write_file' ? 'Approve Gemini file write' : 'Approve Gemini file edit',
       body: previewPath || toolName,
@@ -7545,7 +7616,6 @@ function codexSandboxForMode(approvalMode?: string): 'read-only' | 'workspace-wr
 
 function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPathGrant[] {
   if (!Array.isArray(grants)) return []
-  const seen = new Set<string>()
   const normalized: ExternalPathGrant[] = []
   // Phase J1 composer-unification: accept grants for ANY known
   // provider (was previously codex-only). The signature check via
@@ -7560,9 +7630,6 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
     const grantPath = grant.path.trim()
     if (!grantPath || !isAbsolute(grantPath)) continue
     const resolvedPath = resolve(grantPath)
-    const key = `${grant.provider}:${grant.access}:${resolvedPath}`
-    if (seen.has(key)) continue
-    seen.add(key)
     normalized.push({
       ...grant,
       path: resolvedPath,
@@ -7571,19 +7638,11 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
       duration: grant.duration || 'thisThread'
     })
   }
-  return normalized
+  return coalesceExternalPathGrants(normalized)
 }
 
 function externalPathGrantMetadataLists(chat: ChatRecord | null | undefined): ExternalPathGrant[] {
-  const metadata = chat?.providerMetadata as Record<string, unknown> | undefined
-  if (!metadata) return []
-  return [
-    metadata.codexExternalPathGrants,
-    metadata.externalPathGrants,
-    metadata.claudeExternalPathGrants,
-    metadata.geminiExternalPathGrants,
-    metadata.kimiExternalPathGrants
-  ].flatMap((candidate) => (Array.isArray(candidate) ? (candidate as ExternalPathGrant[]) : []))
+  return collectExternalPathGrantsFromMetadata(chat?.providerMetadata)
 }
 
 function externalPathGrantsForProvider(
@@ -13650,6 +13709,14 @@ async function executeGeminiMcpTool(
     String(args.cwd || args.working_directory || args.workdir || '')
   )
   const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context)
+  const externalPathDetection = detectExternalPathForProviderApproval({
+    provider: parentProvider,
+    appChatId: context.appChatId,
+    toolName,
+    method: `${parentProvider}-mcp/${toolName}`,
+    params: args,
+    workspacePath: context.scope === 'global' ? undefined : workspacePath
+  })
   // Phase J3: delegate_to_subthread runs its OWN approval gate further
   // down (using the richer `subThreadDelegation` service with delegation
   // prompt + target provider in the preview). Without this short-circuit
@@ -13671,7 +13738,8 @@ async function executeGeminiMcpTool(
           body: approvalPreview.body,
           preview: approvalPreview.preview,
           runId: context.appRunId,
-          forcePrompt: context.scope === 'global'
+          forcePrompt: context.scope === 'global',
+          externalPathDetection
         }
       )
   const toolId = `${parentProvider}-mcp-${toolName}-${Date.now()}-${Math.random().toString(36).slice(2)}`
@@ -13870,9 +13938,11 @@ async function executeGeminiMcpTool(
     } else if (toolName === 'agent_delegation_role') {
       text = mcpJson(executeAgentDelegationRole(args, context, parentProvider))
     } else if (toolName === 'read_file') {
-      const targetPath = resolveGeminiMcpScopedPath(
+      const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
-        String(args.path || args.file_path || '')
+        parentProvider,
+        String(args.path || args.file_path || ''),
+        'read'
       )
       const stat = await fs.stat(targetPath)
       if (!stat.isFile()) throw new Error('Selected path is not a file.')
@@ -13882,9 +13952,11 @@ async function executeGeminiMcpTool(
       assertTextBuffer(buffer)
       text = buffer.toString('utf8')
     } else if (toolName === 'list_directory') {
-      const targetPath = resolveGeminiMcpScopedPath(
+      const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
-        String(args.path || args.directory || '.')
+        parentProvider,
+        String(args.path || args.directory || '.'),
+        'read'
       )
       const stat = await fs.stat(targetPath)
       if (!stat.isDirectory()) throw new Error('Selected path is not a directory.')
@@ -13898,18 +13970,22 @@ async function executeGeminiMcpTool(
         .map((entry) => `${entry.isDirectory() ? 'directory' : 'file'}\t${entry.name}`)
         .join('\n')
     } else if (toolName === 'write_file') {
-      const targetPath = resolveGeminiMcpScopedPath(
+      const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
-        String(args.path || args.file_path || '')
+        parentProvider,
+        String(args.path || args.file_path || ''),
+        'write'
       )
       const content = String(args.content ?? '')
       await fs.mkdir(dirname(targetPath), { recursive: true })
       await fs.writeFile(targetPath, content, 'utf8')
       text = `Wrote ${formatScopedPath(context, targetPath)} (${content.length} chars).`
     } else if (toolName === 'replace') {
-      const targetPath = resolveGeminiMcpScopedPath(
+      const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
-        String(args.path || args.file_path || '')
+        parentProvider,
+        String(args.path || args.file_path || ''),
+        'write'
       )
       const oldString = String(args.old_string ?? args.oldString ?? '')
       const newString = String(args.new_string ?? args.newString ?? '')
@@ -19412,15 +19488,12 @@ if (isGeminiMcpBridgeProcess) {
               })
               const chat = AppStore.getChat(detection.appChatId)
               if (chat) {
-                const existing = Array.isArray(chat.providerMetadata?.codexExternalPathGrants)
-                  ? (chat.providerMetadata!.codexExternalPathGrants as ExternalPathGrant[])
-                  : []
                 const updatedChat = {
                   ...chat,
-                  providerMetadata: {
-                    ...(chat.providerMetadata || {}),
-                    codexExternalPathGrants: [...existing, grant]
-                  },
+                  providerMetadata: canonicalizeExternalPathGrantMetadata(chat.providerMetadata, [
+                    ...collectExternalPathGrantsFromMetadata(chat.providerMetadata),
+                    grant
+                  ]),
                   updatedAt: Date.now()
                 }
                 AppStore.saveChat(updatedChat)
