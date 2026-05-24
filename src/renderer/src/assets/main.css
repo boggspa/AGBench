@@ -17327,3 +17327,126 @@ input:disabled, select:disabled, textarea:disabled {
 [data-theme="light"][data-interface-style="kimi"] .app-transcript {
   background: var(--content-bg);
 }
+
+/* ============================================================
+ * INLINE TOOL CALL LABEL — bold the "Used <tool>" text app-wide
+ * --------------------------------------------------------------
+ * The collapsed activity row used the same body-text weight as
+ * the assistant message above it, which made the row visually
+ * recede into the prose. Bumping the label to 600 anchors the
+ * row as a distinct event in the transcript while keeping the
+ * font scale unchanged (so the row footprint doesn't shift).
+ * Theme-agnostic: applies in dark + light, every shell.
+ * ============================================================ */
+
+.activity-row-inline .activity-label-main {
+  font-weight: 600;
+}
+
+/* ============================================================
+ * UNIFIED LIGHT-MODE SURFACE PALETTE
+ * --------------------------------------------------------------
+ * Light mode previously resolved several "card" surfaces to
+ * subtly different shades of grey:
+ *   - user message bubbles (#ffffff)
+ *   - provider run-id cards (~#eef2f7 via panel-bg)
+ *   - sidebar info cards / Inspector safety-cards
+ *     (~#eaf0f6 via panel-elevated-bg)
+ *   - composer surface (~#f8fafa via composer-bg @ 78%)
+ *
+ * That patchwork read as "everything is a slightly different
+ * gray." Per the request, unify around ONE soft-surface color
+ * (`--unified-soft-surface-bg`) and lighten the AGBench-native
+ * composer to a near-white so the composer reads as the
+ * lightest, freshest surface in the UI.
+ * ============================================================ */
+
+[data-theme="light"] {
+  --unified-soft-surface-bg: #f1f1f4;
+  --unified-soft-surface-border: rgba(0, 0, 0, 0.06);
+
+  /* AGBench-native composer reads as a fresh white sheet in
+   * light mode (the themed shells get their own override below
+   * so the composer hierarchy stays consistent across shells). */
+  --composer-bg: #ffffff;
+  --composer-bg-solid: #ffffff;
+}
+
+/* Transcript provider run-id card ("Codex unknown #17791113"). */
+[data-theme="light"] .run-card {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+/* User message bubble. Already #ffffff in light mode — settle it
+ * onto the same unified surface so all bubble-shaped chrome reads
+ * as the same card material. */
+[data-theme="light"] .message-bubble.user {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+/* Sidebar info cards (Run Summary + Model Usage list). */
+[data-theme="light"] .run-summary {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+/* Inspector / RunInspector "Codex safety" / "Codex usage import"
+ * / "Codex login" cards in the right panel. */
+[data-theme="light"] .safety-card {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+/* Composer-internal pills (picker buttons, chips, attach button)
+ * become a softer fill when sitting on a near-white composer,
+ * so the dark pill text doesn't fight the surface contrast. */
+[data-theme="light"] .composer-picker-label,
+[data-theme="light"] .composer-picker-command,
+[data-theme="light"] .composer-image-picker-btn,
+[data-theme="light"] .composer-control-button {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
+
+[data-theme="light"] .composer-picker-label:hover,
+[data-theme="light"] .composer-picker-command:hover:not(:disabled),
+[data-theme="light"] .composer-image-picker-btn:hover:not(:disabled),
+[data-theme="light"] .composer-control-button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--unified-soft-surface-bg) 70%, var(--text-primary) 6%);
+  border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* Themed-shell composer surfaces (codex / claude / kimi / gemini)
+ * — previously hardcoded to #f5f5f7 in light mode. Re-key them to
+ * the same unified card surface so all four shells + AGBench-native
+ * share the same light-mode palette family. */
+[data-theme="light"][data-composer-style="codex"] .composer-surface,
+[data-theme="light"][data-composer-style="claude"] .composer-surface,
+[data-theme="light"][data-composer-style="gemini"] .composer-surface,
+[data-theme="light"][data-composer-style="kimi"] .composer-surface {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+/* Above-bar pills (External path / Tool grants / files-changed /
+ * Worktree) inside themed shells — match the same unified fill so
+ * the pill row reads as a coherent strip rather than three slightly
+ * different greys. */
+[data-theme="light"][data-composer-style="codex"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="claude"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="gemini"] .composer-workspace-access-pill,
+[data-theme="light"][data-composer-style="kimi"] .composer-workspace-access-pill {
+  background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
+
+/* Claude composer-chip in light mode — same treatment. */
+[data-theme="light"][data-composer-style="claude"] .composer-chip {
+  background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
