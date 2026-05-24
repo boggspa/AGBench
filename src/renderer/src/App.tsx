@@ -1290,6 +1290,15 @@ const MIN_WORKSPACE_SIDEBAR_WIDTH = 220
 const MAX_WORKSPACE_SIDEBAR_WIDTH = 440
 const FX_BURST_DURATION_MS = 1150
 const GHOST_COMPANION_STORAGE_KEY = 'guiGemini.ghostCompanionEnabled'
+/**
+ * Set to `'true'` after the user explicitly dismisses the
+ * first-launch onboarding hint (the faint "Click + above to add
+ * your first workspace" card in the sidebar). Once set, the hint
+ * no longer auto-shows even when the workspace list is empty;
+ * the `?` button in the chat-corner-controls-left still manually
+ * re-opens it.
+ */
+const ONBOARDING_HINT_DISMISSED_STORAGE_KEY = 'guiGemini.onboardingHintDismissed'
 const RUN_WRITE_TOOLS = ['replace', 'write_file', 'create_file', 'edit_file']
 // Per-provider palette CORE constants moved to
 // src/renderer/src/lib/ComposerSlashCommands.ts. Imported under the
@@ -2816,6 +2825,14 @@ const getStoredGhostCompanionEnabled = (): boolean => {
   }
 }
 
+const getStoredOnboardingHintDismissed = (): boolean => {
+  try {
+    return window.localStorage.getItem(ONBOARDING_HINT_DISMISSED_STORAGE_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
 const SKY_VISUAL_FX_STORAGE_KEY = 'guiGemini.skyVisualFxEnabled'
 const SKY_WEATHER_REFRESH_MS = 30 * 60 * 1000
 const MIN_GEMINI_TERMINAL_HEIGHT = 150
@@ -4304,6 +4321,25 @@ function App(): React.JSX.Element {
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
+  /**
+   * First-launch onboarding hint visibility. Renders a faint
+   * "Click + above to add your first workspace" card under the
+   * sidebar's `+` button. Default: visible if the user hasn't
+   * explicitly dismissed it. The `?` button in the chat-corner-
+   * controls-left lets existing users manually re-open the hint
+   * for demo / testing purposes even after dismissal.
+   */
+  const [showOnboardingHint, setShowOnboardingHint] = useState<boolean>(
+    () => !getStoredOnboardingHintDismissed()
+  )
+  const handleDismissOnboardingHint = useCallback(() => {
+    setShowOnboardingHint(false)
+    try {
+      window.localStorage.setItem(ONBOARDING_HINT_DISMISSED_STORAGE_KEY, 'true')
+    } catch {
+      /* localStorage may be disabled — non-fatal */
+    }
+  }, [])
   const [showFileEditor, setShowFileEditor] = useState(false)
   const [showGeminiTerminal, setShowGeminiTerminal] = useState(false)
   const [geminiTerminalInputByChatId, setGeminiTerminalInputForChat] = usePerChatState('')
@@ -12237,6 +12273,8 @@ function App(): React.JSX.Element {
               currentRun={currentRun}
               usageSummary={usageSummary}
               runningChatIds={runningChatIdsArray}
+              showOnboardingHint={showOnboardingHint}
+              onDismissOnboardingHint={handleDismissOnboardingHint}
               onSelectWorkspace={handleSelectExistingWorkspace}
               onRemoveWorkspace={handleRemoveWorkspace}
               onSelectWorkspaceDialog={handleSelectWorkspace}
@@ -12326,6 +12364,25 @@ function App(): React.JSX.Element {
               disabled={!isFxEnabled}
             >
               <GhostCompanionIcon />
+            </button>
+            {/*
+              First-launch onboarding hint re-opener. The hint
+              auto-shows for fresh users with no workspaces; this
+              button lets existing users (or testers running
+              demos) flip it back on regardless of the dismissal
+              flag. Toggles purely visibility — does NOT touch
+              the persisted dismissal state, so re-opening here
+              doesn't make the hint auto-show again next launch.
+            */}
+            <button
+              className={`chat-corner-btn ${showOnboardingHint ? 'active' : ''}`}
+              type="button"
+              onClick={() => setShowOnboardingHint((current) => !current)}
+              title={showOnboardingHint ? 'Hide onboarding hint' : 'Show onboarding hint'}
+              aria-label="Toggle onboarding hint"
+              aria-pressed={showOnboardingHint}
+            >
+              <span className="chat-corner-symbol">?</span>
             </button>
           </div>
 

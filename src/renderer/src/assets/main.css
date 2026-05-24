@@ -640,6 +640,67 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+/* First-launch onboarding hint. Sits between the "Workspaces"
+ * section header and the (empty) workspace list when fresh
+ * users open the app. Faint so it doesn't compete visually
+ * with the rest of the sidebar — its job is to point an
+ * inexperienced user at the `+` button right above it. */
+.sidebar-onboarding-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
+  margin-bottom: var(--space-sm);
+  border-radius: var(--radius-md);
+  border: 1px dashed color-mix(in srgb, var(--sidebar-text) 22%, transparent);
+  background: color-mix(in srgb, var(--sidebar-bg, transparent) 60%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 72%, transparent);
+  font-size: var(--font-size-xs);
+  line-height: 1.42;
+}
+.sidebar-onboarding-hint-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1 1 auto;
+}
+.sidebar-onboarding-hint-body strong {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+  color: color-mix(in srgb, var(--sidebar-text) 92%, transparent);
+}
+.sidebar-onboarding-plus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.sidebar-onboarding-hint-dismiss {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--sidebar-text) 55%, transparent);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.sidebar-onboarding-hint-dismiss:hover {
+  background: color-mix(in srgb, var(--sidebar-text) 12%, transparent);
+  color: var(--sidebar-text);
+}
+
 .sidebar-item {
   display: flex;
   align-items: center;
