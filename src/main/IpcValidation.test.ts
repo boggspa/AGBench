@@ -161,4 +161,88 @@ describe('IpcValidation', () => {
     )
     expect(() => validateIpcArgs('save-run-queue-job', [{}])).toThrow(/No IPC schema/)
   })
+
+  // Tester-feedback intake (1.0.1) — the bugReportPayload guard pins
+  // the shape the renderer ships to `submit-bug-report`. Title must
+  // be a non-empty string; severity must be one of four; the context
+  // block has to carry the five auto-captured strings. Without these
+  // guards a malformed payload could slip past IpcValidation and
+  // break the markdown file the main process appends to.
+  it('accepts a well-formed submit-bug-report payload', () => {
+    expect(() => validateIpcArgs('get-app-version', [])).not.toThrow()
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: 'Composer freezes after Cmd+K',
+          description: 'Steps...',
+          expected: 'Composer accepts input.',
+          severity: 'major',
+          context: {
+            timestamp: '2026-05-24T19:10:00.000Z',
+            version: '1.0.1',
+            provider: 'codex',
+            workspace: '/Users/dev/projects/agbench',
+            shell: 'default'
+          }
+        }
+      ])
+    ).not.toThrow()
+  })
+
+  it('rejects bug-report payloads with bad severity / empty title / missing context', () => {
+    const goodContext = {
+      timestamp: '2026-05-24T19:10:00.000Z',
+      version: '1.0.1',
+      provider: 'codex',
+      workspace: '/tmp/ws',
+      shell: 'default'
+    }
+    // Bad severity.
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: 't',
+          description: '',
+          expected: '',
+          severity: 'critical',
+          context: goodContext
+        }
+      ])
+    ).toThrow(/severity/)
+    // Empty title.
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: '   ',
+          description: '',
+          expected: '',
+          severity: 'minor',
+          context: goodContext
+        }
+      ])
+    ).toThrow(/non-empty/)
+    // Missing context shape.
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: 't',
+          description: '',
+          expected: '',
+          severity: 'minor'
+        }
+      ])
+    ).toThrow(/context must be an object/)
+    // Context missing a required field.
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: 't',
+          description: '',
+          expected: '',
+          severity: 'minor',
+          context: { ...goodContext, shell: undefined as unknown as string }
+        }
+      ])
+    ).toThrow(/context\.shell/)
+  })
 })
