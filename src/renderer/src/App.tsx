@@ -6977,22 +6977,28 @@ function App(): React.JSX.Element {
 
   const handleNewEnsemble = async () => {
     if (settings?.ensembleModeEnabled === false) return
+    const workspace =
+      currentWorkspace ||
+      (currentChat?.scope === 'workspace' ? getWorkspaceForChat(currentChat) : null)
     const args =
-      currentWorkspace?.id && currentWorkspace.path
-        ? { workspaceId: currentWorkspace.id, workspacePath: currentWorkspace.path }
+      workspace?.id && workspace.path
+        ? { workspaceId: workspace.id, workspacePath: workspace.path }
         : undefined
     const newChat = await window.api.createEnsembleChat(args)
     const allChats = await window.api.getChats()
-    setChats(allChats)
+    const mergedChats = allChats.some((chat) => chat.appChatId === newChat.appChatId)
+      ? allChats
+      : [newChat, ...allChats]
+    setChats(mergedChats)
     chatByIdRef.current.set(newChat.appChatId, newChat)
     currentChatIdRef.current = newChat.appChatId
     if (newChat.scope === 'global') {
       await selectGlobalChat(newChat)
     } else {
-      const workspace = getWorkspaceForChat(newChat) || currentWorkspace
-      if (workspace) {
-        setCurrentWorkspace(workspace)
-        currentWorkspaceIdRef.current = workspace.id
+      const chatWorkspace = getWorkspaceForChat(newChat) || workspace
+      if (chatWorkspace) {
+        setCurrentWorkspace(chatWorkspace)
+        currentWorkspaceIdRef.current = chatWorkspace.id
       }
       setCurrentChat(newChat)
       applyChatComposerSelection(newChat, getChatProvider(newChat))

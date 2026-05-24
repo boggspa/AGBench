@@ -52,7 +52,7 @@ function stubSidebarStorage(values: Record<string, string>) {
   })
 }
 
-function renderSidebar(chats: ChatRecord[]) {
+function renderSidebar(chats: ChatRecord[], options: { ensembleModeEnabled?: boolean } = {}) {
   const workspace = makeWorkspace()
   return renderToStaticMarkup(
     <Sidebar
@@ -68,6 +68,7 @@ function renderSidebar(chats: ChatRecord[]) {
       onNewChat={() => {}}
       onNewGlobalChat={() => {}}
       onNewEnsemble={() => {}}
+      ensembleModeEnabled={options.ensembleModeEnabled}
       onSelectChat={() => {}}
       onOpenSettings={() => {}}
     />
@@ -120,5 +121,26 @@ describe('Sidebar sub-thread collapse', () => {
 
     expect(html).toContain('aria-expanded="false"')
     expect(html).not.toContain('sidebar-chat-children')
+  })
+})
+
+describe('Sidebar ensembles section', () => {
+  it('renders a quick-create button beside the Ensembles header', () => {
+    stubSidebarStorage({})
+
+    const html = renderSidebar([])
+
+    expect(html).toContain('sidebar-ensembles-section')
+    expect(html).toContain('sidebar-ensemble-create')
+    expect(html).toContain('aria-label="New Ensemble"')
+  })
+
+  it('hides the Ensembles section when Ensemble Mode is disabled', () => {
+    stubSidebarStorage({})
+
+    const html = renderSidebar([], { ensembleModeEnabled: false })
+
+    expect(html).not.toContain('sidebar-ensembles-section')
+    expect(html).not.toContain('sidebar-ensemble-create')
   })
 })

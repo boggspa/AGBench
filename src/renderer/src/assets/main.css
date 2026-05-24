@@ -640,6 +640,11 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+.sidebar-section-header-with-action {
+  justify-content: flex-start;
+  gap: 6px;
+}
+
 /* Section-header toggle button. Wraps `ChevronSymbolIcon` + the
  * `<h4>` title so the whole left-side cluster is a single click target
  * that collapses / expands the section. The `+` button on the
@@ -684,6 +689,33 @@ body {
 .sidebar-section-header-toggle:hover .sidebar-tree-chevron,
 .sidebar-section-header-toggle:focus-visible .sidebar-tree-chevron {
   color: color-mix(in srgb, var(--sidebar-text) 88%, transparent);
+}
+
+.sidebar-section-header-action {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--sidebar-border) 34%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sidebar-text) 6%, transparent);
+  color: color-mix(in srgb, var(--sidebar-text) 76%, transparent);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.sidebar-section-header-action .sf-symbol-icon {
+  width: 13px;
+  height: 13px;
+}
+
+.sidebar-section-header-action:hover,
+.sidebar-section-header-action:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--sidebar-text);
+  outline: 0;
 }
 
 /* First-launch onboarding hint. Sits between the "Workspaces"
@@ -22318,6 +22350,16 @@ input:disabled, select:disabled, textarea:disabled {
   transform-origin: top right;
 }
 
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu {
+  border-color: var(--surface-border);
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  color: var(--surface-text);
+  box-shadow:
+    0 1px 0 inset rgba(255, 255, 255, 0.72),
+    0 14px 38px rgba(0, 0, 0, 0.14),
+    0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 @keyframes sidebar-new-menu-fade-in {
   from {
     opacity: 0;
@@ -22346,6 +22388,10 @@ input:disabled, select:disabled, textarea:disabled {
   transition: background 100ms ease;
 }
 
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu-item {
+  color: var(--surface-text);
+}
+
 .sidebar-new-menu-item .sf-symbol-icon {
   flex: 0 0 auto;
   display: inline-flex;
@@ -22354,6 +22400,10 @@ input:disabled, select:disabled, textarea:disabled {
   width: 18px;
   height: 18px;
   color: color-mix(in srgb, var(--text-primary) 76%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu-item .sf-symbol-icon {
+  color: color-mix(in srgb, var(--surface-text) 68%, transparent);
 }
 
 .sidebar-new-menu-item:hover,
@@ -22365,6 +22415,11 @@ input:disabled, select:disabled, textarea:disabled {
 .sidebar-new-menu-item:hover .sf-symbol-icon,
 .sidebar-new-menu-item:focus-visible .sf-symbol-icon {
   color: var(--text-primary);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu-item:hover .sf-symbol-icon,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu-item:focus-visible .sf-symbol-icon {
+  color: var(--surface-text);
 }
 
 .sidebar-new-menu-item-label {
@@ -22387,6 +22442,10 @@ input:disabled, select:disabled, textarea:disabled {
   font: inherit;
   text-align: left;
   padding: 8px 10px;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .sidebar-new-menu > button:not(.sidebar-new-menu-item) {
+  color: var(--surface-text);
 }
 
 .sidebar-new-menu > button:not(.sidebar-new-menu-item):hover {

@@ -823,6 +823,7 @@ export function Sidebar({
   }
   const handleNewEnsemble = () => {
     setNewMenuOpen(false)
+    expandSidebarSection('ensembles')
     onNewEnsemble()
   }
 
@@ -954,6 +955,15 @@ export function Sidebar({
       } else {
         next.add(sectionId)
       }
+      return next
+    })
+  }
+
+  const expandSidebarSection = (sectionId: SidebarSectionId): void => {
+    setCollapsedSidebarSections((prev) => {
+      if (!prev.has(sectionId)) return prev
+      const next = new Set(prev)
+      next.delete(sectionId)
       return next
     })
   }
@@ -1418,7 +1428,7 @@ export function Sidebar({
 
         {ensembleModeEnabled && (
           <div className="sidebar-ensembles-section">
-            <div className="sidebar-section-header">
+            <div className="sidebar-section-header sidebar-section-header-with-action">
               <button
                 type="button"
                 className="sidebar-section-header-toggle"
@@ -1428,6 +1438,15 @@ export function Sidebar({
               >
                 <ChevronSymbolIcon isExpanded={!isSectionCollapsed('ensembles')} />
                 <h4 className="sidebar-section-title">Ensembles</h4>
+              </button>
+              <button
+                type="button"
+                className="sidebar-section-header-action sidebar-ensemble-create"
+                onClick={handleNewEnsemble}
+                title="New Ensemble"
+                aria-label="New Ensemble"
+              >
+                <PlusSymbolIcon />
               </button>
             </div>
             {!isSectionCollapsed('ensembles') && (
