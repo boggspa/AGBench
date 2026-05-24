@@ -18712,3 +18712,50 @@ input:disabled, select:disabled, textarea:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.6),
     0 6px 18px rgba(60, 60, 80, 0.06);
 }
+
+/* ============================================================
+ * WORKSPACE-ACCESS PILLS — LIGHT-MODE SHELL-AGNOSTIC FIX
+ * --------------------------------------------------------------
+ * The base `.composer-workspace-access-pill` at line 13880
+ * hardcodes `color: color-mix(#ffffff 78%, transparent)` — fine
+ * in dark mode, invisible in light mode. The earlier themed-shell
+ * light-mode overrides only covered codex / claude / gemini / kimi,
+ * leaving the satellite variant (welcome state) in default /
+ * modular / terminal / stub / satellite shells rendering with
+ * white labels on a light page.
+ *
+ * Override at the root `[data-theme="light"]` level so the pill
+ * is legible regardless of composer shell or variant
+ * (satellite above-the-composer vs inline in the above-bar).
+ * Themed-shell overrides above still tune the pill further per
+ * shell; this rule only ensures a sane default contrast.
+ * ============================================================ */
+
+[data-theme="light"] .composer-workspace-access-pill {
+  color: rgba(29, 29, 31, 0.84);
+  background: rgba(255, 255, 255, 0.74);
+  border-color: rgba(0, 0, 0, 0.10);
+}
+
+[data-theme="light"] .composer-workspace-access-pill:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.92);
+  color: rgba(29, 29, 31, 1);
+  border-color: rgba(0, 0, 0, 0.16);
+}
+
+/* Active / warning variants keep their accent fill but get a
+ * darker text tone so the colour reads against a light pill. */
+[data-theme="light"] .composer-workspace-access-pill.is-active {
+  color: color-mix(in srgb, #2a9468 92%, #1d1d1f);
+  border-color: color-mix(in srgb, #2a9468 36%, transparent);
+}
+
+[data-theme="light"] .composer-workspace-access-pill.is-warning {
+  color: color-mix(in srgb, #b07a18 90%, #1d1d1f);
+  border-color: color-mix(in srgb, #b07a18 36%, transparent);
+}
+
+/* Inner select (External path picker) inherits the same dark text. */
+[data-theme="light"] .composer-workspace-access-pill .composer-workspace-access-select {
+  color: rgba(29, 29, 31, 0.84);
+}
