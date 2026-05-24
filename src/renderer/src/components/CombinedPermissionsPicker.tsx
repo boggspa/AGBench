@@ -230,6 +230,7 @@ export function CombinedPermissionsPicker({
           <button
             key={option.value}
             type="button"
+            data-permission-value={option.value}
             className={`composer-combined-picker-row ${option.value === selectedPermission ? 'is-selected' : ''} ${idx === permissionHighlight && focusedColumn === 'permission' ? 'is-highlighted' : ''}`}
             onMouseEnter={() => {
               setFocusedColumn('permission')
@@ -294,6 +295,7 @@ export function CombinedPermissionsPicker({
         type="button"
         className="composer-combined-picker-trigger"
         data-composer-control="permission"
+        data-permission-value={selectedPermission}
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled}
         aria-haspopup="dialog"

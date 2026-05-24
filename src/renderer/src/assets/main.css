@@ -19153,16 +19153,32 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* -----------------------------------------------------------
- * 4) CODEX — tucked tab geometry
- *    Packs to content width, flattens the bottom, overlaps the
- *    composer-surface top edge so the tab reads as an extension
- *    of the composer rather than a separate strip.
+ * 4) CODEX — tucked tab geometry + real-Codex layout parity
+ *    Earlier shape: `width: fit-content` so the tab shrunk to
+ *    its label. That worked for a one-pill row but didn't read
+ *    as a real-Codex above-row, which spans the composer width
+ *    and partitions into three groups (workspace+branch left /
+ *    file-diff middle / Review-changes button right).
+ *
+ *    New shape (CX1):
+ *      - Width matches the composer-surface minus a small 24px
+ *        inset so the tab visually nests inside the composer.
+ *      - Background fill is a notch darker than the composer
+ *        body (CX2) — more "tray under the bar" than "extension
+ *        of the bar", which is what real Codex does.
+ *      - Children get explicit horizontal partitioning so
+ *        branch sits left, files+stats sit centre, and the
+ *        action button sits right. Auto-margins distribute the
+ *        free space; no JSX changes needed.
  * ---------------------------------------------------------- */
 
 [data-composer-style="codex"] .composer-above-bar {
-  width: fit-content;
-  max-width: 100%;
+  /* Match the composer-surface width minus a small inset so the
+   * tab reads as nested under the bar rather than packed-to-content. */
+  width: 100%;
+  max-width: min(100%, calc(var(--composer-content-max-width) - 24px));
   align-self: center;
+  /* Tucked-tab geometry retained from the earlier shape. */
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
   border-bottom: 0;
@@ -19171,9 +19187,10 @@ input:disabled, select:disabled, textarea:disabled {
   padding-bottom: 14px;
   position: relative;
   z-index: 3;
-  /* Match the codex composer-surface fill so the merge reads
-   * as one continuous tab + body. */
-  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%);
+  /* CX2: notch darker than the composer-surface body for visual
+   * depth — the tab now reads as a recessed tray rather than a
+   * continuous extension of the composer. */
+  background: color-mix(in srgb, #0f0f0f 92%, #756af4 8%);
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%);
 }
 
@@ -19184,22 +19201,108 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 
-/* The action button (margin-left: auto) becomes a no-op once
- * width is fit-content (no remaining space to distribute), so
- * children pack left-to-right with the action naturally on the
- * right. Add a small explicit left margin so it's not flush
- * against its left neighbour. */
+/* CX1: three-group horizontal partitioning. Workspace+branch
+ * stays in JSX position 0 (left); `margin-left: auto` on
+ * .composer-above-bar-files pushes the file-diff cluster to
+ * the centre-right; another `margin-left: auto` on the action
+ * button absorbs the remaining slack, parking it flush right.
+ * Two auto-margins split free space evenly enough that the
+ * file-diff cluster reads as visually centred at typical
+ * composer widths. */
+[data-composer-style="codex"] .composer-above-bar > .composer-above-bar-files {
+  margin-left: auto;
+}
 [data-composer-style="codex"] .composer-above-bar .composer-above-bar-action {
-  margin-left: 8px;
+  margin-left: auto;
+}
+
+/* CX3: halve the context-donut value text in Codex shell only.
+ * Real Codex packs the context indicator very small — just a
+ * percent or token count adjacent to the donut SVG. Our token
+ * tally span has the same job; pull its font + density inwards
+ * to match. */
+[data-composer-style="codex"] .composer-thread-token-tally {
+  font-size: calc(var(--font-size-xs) * 0.85);
+  opacity: 0.78;
+  letter-spacing: 0.01em;
 }
 
 /* Light-mode Codex tucked tab inherits the same dark fill since
  * the codex composer-surface itself stays dark in light mode
- * (intentional — matches real Codex). */
+ * (intentional — matches real Codex). The notch-darker CX2 fill
+ * applies in both modes. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar {
-  background: color-mix(in srgb, #1a1a1a 94%, #756af4 6%) !important;
+  background: color-mix(in srgb, #0f0f0f 92%, #756af4 8%) !important;
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
   color: rgba(255, 255, 255, 0.84) !important;
+}
+
+/* -----------------------------------------------------------
+ * CX4: Codex-shell colour-coded permission picker
+ *
+ * Real Codex's composer tints its permission chip per-mode:
+ *   - "Default permissions" — neutral.
+ *   - "Auto-review" — blue (informational; agent will pause).
+ *   - "Full access" — orange (elevated; agent acts without
+ *     asking).
+ *   - "Custom (config.toml)" — muted gray.
+ * AGBench's permission enum is `plan` / `default` / `auto_edit`
+ * so the mapping is semantic, not literal:
+ *   - `plan` (read-only — safest) → cool blue, matches real
+ *     Codex's "Auto-review" tone.
+ *   - `default` → neutral (unchanged from chip default).
+ *   - `auto_edit` (auto-applies edits) → warm orange, matches
+ *     real Codex's "Full access" tone.
+ *
+ * Targets both the chip trigger (closed state) and the popover
+ * rows (open state) via the `data-permission-value` attribute
+ * threaded through CombinedPermissionsPicker. Scoped to the
+ * Codex composer shell so the AGBench / Claude / Gemini / Kimi
+ * shells keep their neutral palette.
+ * ---------------------------------------------------------- */
+
+/* Chip trigger — outline + text colour shift per mode. The
+ * pill chrome stays the same; only the accent within it picks
+ * up the mode's hue. */
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="plan"] {
+  color: #6fb6ff;
+  border-color: color-mix(in srgb, #6fb6ff 36%, var(--composer-border));
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
+  color: #ffa45c;
+  border-color: color-mix(in srgb, #ffa45c 36%, var(--composer-border));
+}
+/* `default` intentionally has no override — it inherits the
+ * neutral chip palette, matching real Codex's untinted
+ * "Default permissions" chip. */
+
+/* Popover rows — same per-mode tinting so the dropdown reads
+ * as the legend for the chip's colour the user just saw. */
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="plan"]
+  .composer-combined-picker-row-label {
+  color: #6fb6ff;
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"]
+  .composer-combined-picker-row-label {
+  color: #ffa45c;
+}
+
+/* Selected-row checkmark adopts the same tint so the active
+ * mode's colour identity reads consistently across closed +
+ * open states. */
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="plan"].is-selected
+  .composer-combined-picker-check {
+  color: #6fb6ff;
+}
+[data-composer-style="codex"]
+  .composer-combined-picker-row[data-permission-value="auto_edit"].is-selected
+  .composer-combined-picker-check {
+  color: #ffa45c;
 }
 
 /* ============================================================

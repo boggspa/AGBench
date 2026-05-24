@@ -12903,7 +12903,24 @@ function App(): React.JSX.Element {
                     <circle cx="12" cy="7" r="1.6" />
                     <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
                   </svg>
-                  <span>{currentWorkspace?.branch || 'detached'}</span>
+                  {/*
+                    `displayName · branch` mirrors the secondary rows
+                    (`basename · branch` in ExternalPathAboveRow) so
+                    the stack reads as one consistent label family
+                    when a chat is touching multiple repos. Workspace
+                    name is the primary identifier (plain weight);
+                    branch is secondary (italic-stripped <em> with
+                    `.composer-above-bar-secondary-branch` opacity so
+                    it reads as metadata). The "·" lives outside both
+                    spans so it copy-pastes cleanly.
+                  */}
+                  <span>
+                    {currentWorkspace.displayName}
+                    {' · '}
+                    <em className="composer-above-bar-secondary-branch">
+                      {currentWorkspace?.branch || 'detached'}
+                    </em>
+                  </span>
                 </span>
                 {/*
                   Phase K-followup — files-changed pill is now
