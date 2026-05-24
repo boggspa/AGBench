@@ -17647,3 +17647,111 @@ input:disabled, select:disabled, textarea:disabled {
 [data-appearance="native_glass"][data-theme="light"] .app-transcript::after {
   opacity: 0.5;
 }
+
+/* ============================================================
+ * CODEX + CLAUDE COMPOSER SHELLS — LIGHT-MODE PARITY
+ * --------------------------------------------------------------
+ * Two structural reasons earlier light-mode overrides didn't
+ * land for these two shells:
+ *
+ * 1. CODEX shell — the rules at line 13617-13634
+ *    (`[data-composer-style="codex"] .app-transcript.provider-X
+ *      .composer-surface`) set `--composer-bg` inside a
+ *    higher-specificity selector (0, 4, 0) than our earlier
+ *    light override (0, 3, 0), so they win the cascade. Override
+ *    here at matching specificity, also setting the variable so
+ *    any descendant that pulls from it stays in light range.
+ *
+ * 2. CLAUDE shell — `.composer-surface` is intentionally
+ *    `background: transparent !important` (line 14033) so the
+ *    Claude shell can wrap a separate textarea bubble. The dark
+ *    bubble is `.composer-textarea` itself, not the surface.
+ *    The previous light-mode override targeted the wrong
+ *    element.
+ *
+ * Also: the `.composer-above-bar` chrome inherits `var(--composer-bg)`
+ * which the codex/claude shell rules darken — we re-tint it here
+ * too so the External path / Tool grants strip matches.
+ * ============================================================ */
+
+/* CODEX shell — composer surface + the per-provider variants
+ * that set --composer-bg dark. Specificity (0, 4, 0) matches
+ * the dark rule. */
+[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface,
+[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-codex .composer-surface,
+[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-claude .composer-surface,
+[data-theme="light"][data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface {
+  --composer-bg: var(--unified-soft-surface-bg);
+  --composer-border: var(--unified-soft-surface-border);
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-surface {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-surface:focus-within {
+  border-color: rgba(0, 0, 0, 0.22);
+  box-shadow: 0 4px 22px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-textarea {
+  color: var(--text-primary);
+  background: transparent;
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-textarea::placeholder {
+  color: rgba(29, 29, 31, 0.42);
+}
+
+/* CLAUDE shell — surface is transparent, the visible bubble is
+ * `.composer-textarea`. Light fill + dark border + dark text. */
+[data-theme="light"][data-composer-style="claude"] .composer-textarea {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+  border-color: rgba(0, 0, 0, 0.22);
+  box-shadow:
+    0 4px 22px rgba(0, 0, 0, 0.1),
+    0 0 0 1px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-textarea::placeholder {
+  color: rgba(29, 29, 31, 0.42);
+}
+
+/* Above-composer bar (Codex + Claude — both shells render it).
+ * The base rule at line 13667 sets `background: var(--composer-bg)`,
+ * and the codex/claude shell rules above darken --composer-bg.
+ * With our light override of --composer-bg, the above-bar already
+ * lightens to match. But the base rule also paints a dark glass
+ * gradient via ::before; tone that down in light mode so the bar
+ * doesn't carry residual navy at the corners. */
+[data-theme="light"][data-composer-style="codex"] .composer-above-bar,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="light"][data-composer-style="codex"] .composer-above-bar::before,
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar::before {
+  background: none;
+}
+
+/* Claude composer-chip in the above-bar — light fill, dark text. */
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-chip,
+[data-theme="light"][data-composer-style="codex"] .composer-codex-chip,
+[data-theme="light"][data-composer-style="claude"] .composer-claude-chip {
+  background: color-mix(in srgb, var(--unified-soft-surface-bg) 50%, var(--app-bg-elevated));
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-primary);
+}
