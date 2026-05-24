@@ -16949,7 +16949,6 @@ input:disabled, select:disabled, textarea:disabled {
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
-  padding-top: 6px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: 16px;
 }
