@@ -3110,6 +3110,7 @@ interface QueuedRunRequest {
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   scheduledTaskId?: string
   workspaceRecord?: WorkspaceRecord
@@ -4439,12 +4440,8 @@ function App(): React.JSX.Element {
   const [codexServiceTier, setCodexServiceTier] = useState<string>('')
   const [claudeReasoningEffort, setClaudeReasoningEffort] = useState<string>('off')
   /**
-   * Claude's paid Fast tier toggle. Mirrors Codex's `codexServiceTier`
-   * but only on the renderer side today — the Claude CLI flag /
-   * env var that this maps to is a backend follow-up. Capable
-   * models (per `additionalSpeedTiers: ['fast']`): claude-opus-4-7,
-   * claude-opus-4-6. Toggle is visible for every Claude model but
-   * disabled when the current one isn't capable.
+   * Claude's paid Fast tier toggle. Mirrors Codex's `codexServiceTier`;
+   * Claude runs receive it as `fastMode` settings for SDK and CLI paths.
    */
   const [claudeFastMode, setClaudeFastMode] = useState<boolean>(false)
   const [kimiThinkingEnabled, setKimiThinkingEnabled] = useState<boolean>(true)
@@ -8765,6 +8762,7 @@ function App(): React.JSX.Element {
     ...(request.codexServiceTier !== undefined
       ? { codexServiceTier: request.codexServiceTier }
       : {}),
+    ...(request.claudeFastMode !== undefined ? { claudeFastMode: request.claudeFastMode } : {}),
     ...(request.kimiThinkingEnabled !== undefined
       ? { kimiThinkingEnabled: request.kimiThinkingEnabled }
       : {}),
@@ -8866,6 +8864,7 @@ function App(): React.JSX.Element {
       codexNativeReview: request.codexNativeReview,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      claudeFastMode: request.claudeFastMode,
       kimiThinkingEnabled: request.kimiThinkingEnabled,
       scheduledTaskId: request.scheduledTaskId,
       runtimeProfileId: job.runtimeProfileId || request.runtimeProfileId,
@@ -9012,6 +9011,8 @@ function App(): React.JSX.Element {
       provider === 'claude'
         ? composerSelection?.claudeReasoningEffort || claudeReasoningEffort
         : claudeReasoningEffort
+    const requestClaudeFastMode =
+      provider === 'claude' ? (composerSelection?.claudeFastMode ?? claudeFastMode) : claudeFastMode
     const externalPathGrants =
       scope !== 'global'
         ? normalizeExternalPathGrants(
@@ -9037,6 +9038,7 @@ function App(): React.JSX.Element {
       codexReasoningEffort: requestReasoningEffort,
       codexServiceTier: requestServiceTier,
       claudeReasoningEffort: requestClaudeReasoningEffort,
+      claudeFastMode: requestClaudeFastMode,
       kimiThinkingEnabled: requestKimiThinkingEnabled,
       runtimeProfileId: getRuntimeProfileIdForChat(selectedChat, provider),
       geminiAuthProfileId:
@@ -9238,6 +9240,7 @@ function App(): React.JSX.Element {
           codexReasoningEffort: request.codexReasoningEffort,
           codexServiceTier: request.codexServiceTier,
           claudeReasoningEffort: request.claudeReasoningEffort,
+          claudeFastMode: request.claudeFastMode,
           kimiThinkingEnabled: request.kimiThinkingEnabled,
           runtimeProfileId: request.runtimeProfileId,
           geminiAuthProfileId: request.geminiAuthProfileId,
@@ -10346,6 +10349,7 @@ function App(): React.JSX.Element {
       geminiWorktree: request.geminiWorktree,
       codexReasoningEffort: request.codexReasoningEffort,
       codexServiceTier: request.codexServiceTier,
+      claudeFastMode: request.claudeFastMode,
       kimiThinkingEnabled: request.kimiThinkingEnabled,
       runtimeProfileId: request.runtimeProfileId,
       geminiAuthProfileId: request.geminiAuthProfileId,
@@ -10452,6 +10456,7 @@ function App(): React.JSX.Element {
           : resolveGeminiWorktreeConfig(workspace || null),
       codexReasoningEffort: selection.codexReasoningEffort,
       codexServiceTier: selection.codexServiceTier,
+      claudeFastMode: selection.claudeFastMode,
       kimiThinkingEnabled: selection.kimiThinkingEnabled,
       runtimeProfileId: lane.runtimeProfileId || getRuntimeProfileIdForChat(chat, provider),
       handoffSourceRunId: lane.handoffSourceRunId,
@@ -10625,6 +10630,9 @@ function App(): React.JSX.Element {
         setCodexReasoningEffort(task.codexReasoningEffort || 'medium')
         setCodexServiceTier(task.codexServiceTier || '')
       }
+      if (task.provider === 'claude') {
+        setClaudeFastMode(Boolean(task.claudeFastMode))
+      }
       if (task.provider === 'kimi') {
         setKimiThinkingEnabled(task.kimiThinkingEnabled !== false)
       }
@@ -10649,6 +10657,7 @@ function App(): React.JSX.Element {
         geminiWorktree: task.geminiWorktree,
         codexReasoningEffort: task.codexReasoningEffort,
         codexServiceTier: task.codexServiceTier,
+        claudeFastMode: task.claudeFastMode,
         kimiThinkingEnabled: task.kimiThinkingEnabled,
         runtimeProfileId: task.runtimeProfileId,
         geminiAuthProfileId: task.geminiAuthProfileId,

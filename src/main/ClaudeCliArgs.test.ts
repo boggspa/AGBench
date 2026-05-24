@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { buildClaudeCliArgs, normalizeClaudeEffortFlag } from './ClaudeCliArgs'
+import {
+  buildClaudeCliArgs,
+  claudeFastModeSettingsArg,
+  normalizeClaudeEffortFlag
+} from './ClaudeCliArgs'
 
 describe('normalizeClaudeEffortFlag', () => {
   it('returns null for nullish, empty, or off values', () => {
@@ -96,5 +100,36 @@ describe('buildClaudeCliArgs', () => {
     const args = buildClaudeCliArgs({ ...base, permissionMode: 'acceptEdits' })
     const modeIndex = args.indexOf('--permission-mode')
     expect(args[modeIndex + 1]).toBe('acceptEdits')
+  })
+
+  it('passes Claude fast mode through --settings when enabled', () => {
+    const args = buildClaudeCliArgs({ ...base, claudeFastMode: true })
+    const settingsIndex = args.indexOf('--settings')
+    expect(settingsIndex).toBeGreaterThan(-1)
+    expect(args[settingsIndex + 1]).toBe('{"fastMode":true}')
+  })
+
+  it('passes Claude fast mode through --settings when disabled', () => {
+    const args = buildClaudeCliArgs({ ...base, claudeFastMode: false })
+    const settingsIndex = args.indexOf('--settings')
+    expect(settingsIndex).toBeGreaterThan(-1)
+    expect(args[settingsIndex + 1]).toBe('{"fastMode":false}')
+  })
+
+  it('omits Claude fast-mode settings when the renderer did not choose a value', () => {
+    expect(buildClaudeCliArgs({ ...base })).not.toContain('--settings')
+    expect(buildClaudeCliArgs({ ...base, claudeFastMode: null })).not.toContain('--settings')
+  })
+})
+
+describe('claudeFastModeSettingsArg', () => {
+  it('serializes boolean fast-mode settings for Claude Code', () => {
+    expect(claudeFastModeSettingsArg(true)).toBe('{"fastMode":true}')
+    expect(claudeFastModeSettingsArg(false)).toBe('{"fastMode":false}')
+  })
+
+  it('returns null for unset values', () => {
+    expect(claudeFastModeSettingsArg(null)).toBeNull()
+    expect(claudeFastModeSettingsArg(undefined)).toBeNull()
   })
 })

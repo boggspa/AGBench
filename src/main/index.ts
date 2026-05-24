@@ -692,6 +692,7 @@ export interface AgentRunPayload {
   reasoningEffort?: string | null
   serviceTier?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   kimiThinking?: boolean | null
   approvalMode?: string
   imagePaths?: string[]
@@ -802,7 +803,8 @@ const CLAUDE_STATIC_MODELS = [
     id: 'claude-opus-4-7',
     label: 'Claude Opus 4.7',
     description: 'Most capable — extended thinking',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
   },
   {
     id: 'claude-opus-4-7-1m',
@@ -821,7 +823,8 @@ const CLAUDE_STATIC_MODELS = [
     id: 'claude-opus-4-6',
     label: 'Claude Opus 4.6 Legacy',
     description: 'Previous Opus generation',
-    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
   },
   { id: 'custom', label: 'Custom model ID' }
 ]
@@ -1165,6 +1168,8 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     reasoningEffort: optionalStringOrNull(payload.reasoningEffort),
     serviceTier: optionalStringOrNull(payload.serviceTier),
     claudeReasoningEffort: optionalStringOrNull(payload.claudeReasoningEffort),
+    claudeFastMode:
+      typeof payload.claudeFastMode === 'boolean' ? payload.claudeFastMode : undefined,
     kimiThinking: typeof payload.kimiThinking === 'boolean' ? payload.kimiThinking : undefined,
     approvalMode:
       scope === 'global'
@@ -1287,6 +1292,7 @@ function sanitizeScheduledTaskForSave(
     workspacePath: canonicalPath(workspace.path),
     provider: assertProviderId(input.provider),
     externalPathGrants: normalizeScheduledTaskExternalGrants(input.externalPathGrants),
+    claudeFastMode: typeof input.claudeFastMode === 'boolean' ? input.claudeFastMode : undefined,
     runtimeProfileId: optionalString(input.runtimeProfileId),
     geminiAuthProfileId: optionalStringOrNull(input.geminiAuthProfileId),
     handoffSourceRunId: optionalString(input.handoffSourceRunId)
@@ -1327,6 +1333,10 @@ function sanitizeScheduledTaskPatch(id: string, partial: unknown): Partial<Sched
   }
   if ('externalPathGrants' in input) {
     sanitized.externalPathGrants = normalizeScheduledTaskExternalGrants(input.externalPathGrants)
+  }
+  if ('claudeFastMode' in input) {
+    sanitized.claudeFastMode =
+      typeof input.claudeFastMode === 'boolean' ? input.claudeFastMode : undefined
   }
   if ('runtimeProfileId' in input) {
     sanitized.runtimeProfileId = optionalString(input.runtimeProfileId)
@@ -6447,6 +6457,8 @@ async function tryRunClaudeSdk(
   // pre-approval list closes the gap.
   const claudeSdkMcpServers = buildClaudeAgentbenchMcpServers(claudeAgentbenchMcpInput(route))
   const claudeSdkAllowedTools = claudeSdkMcpServers ? buildClaudeAgentbenchAllowedToolNames() : null
+  const claudeSdkSettings =
+    typeof payload.claudeFastMode === 'boolean' ? { fastMode: payload.claudeFastMode } : undefined
   // Belt-and-braces env stamp on the SDK process: in addition to the
   // per-server env block in the MCP config, set provider/run/chat route
   // stamps on the Claude CLI process itself. Some platforms / SDK code
@@ -6478,6 +6490,7 @@ async function tryRunClaudeSdk(
       ...(claudeSdkAllowedTools && claudeSdkAllowedTools.length > 0
         ? { allowedTools: claudeSdkAllowedTools }
         : {}),
+      ...(claudeSdkSettings ? { settings: claudeSdkSettings } : {}),
       env: claudeSdkEnv
     }
   })
@@ -6559,6 +6572,7 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       model,
       providerSessionId: payload.providerSessionId || null,
       claudeReasoningEffort: payload.claudeReasoningEffort || null,
+      claudeFastMode: payload.claudeFastMode,
       imagePaths: payload.imagePaths || null
     }),
     // Phase J1 composer-unification: External Path grants picked from

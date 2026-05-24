@@ -1209,6 +1209,7 @@ export interface ScheduledTask {
   geminiWorktree?: GeminiWorktreeConfig
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
+  claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
@@ -1262,6 +1263,7 @@ export interface RunQueueRequestSnapshot {
   codexNativeReview?: boolean
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
+  claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   scheduledTaskId?: string
   preserveComposer?: boolean

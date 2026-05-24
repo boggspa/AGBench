@@ -17,7 +17,12 @@ export interface BuildClaudeCliArgsInput {
   model: string
   providerSessionId?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   imagePaths?: string[] | null
+}
+
+export function claudeFastModeSettingsArg(value: boolean | null | undefined): string | null {
+  return typeof value === 'boolean' ? JSON.stringify({ fastMode: value }) : null
 }
 
 export function buildClaudeCliArgs(input: BuildClaudeCliArgsInput): string[] {
@@ -40,6 +45,10 @@ export function buildClaudeCliArgs(input: BuildClaudeCliArgsInput): string[] {
   const effort = normalizeClaudeEffortFlag(input.claudeReasoningEffort)
   if (effort) {
     args.push('--effort', effort)
+  }
+  const fastModeSettings = claudeFastModeSettingsArg(input.claudeFastMode)
+  if (fastModeSettings) {
+    args.push('--settings', fastModeSettings)
   }
   for (const imagePath of input.imagePaths || []) {
     args.push('--image', imagePath)

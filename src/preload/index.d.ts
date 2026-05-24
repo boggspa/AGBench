@@ -119,6 +119,7 @@ interface AgentRunPayload {
   reasoningEffort?: string | null
   serviceTier?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   kimiThinking?: boolean | null
   approvalMode?: string
   imagePaths?: string[]
@@ -157,6 +158,7 @@ interface ComposerRunInput {
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null

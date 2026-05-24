@@ -138,10 +138,10 @@ describe('defaultProviderDescriptor capabilities', () => {
     expect(cap.speedTiers.length).toBeGreaterThan(0)
   })
 
-  it('claude supports reasoning effort but not speed tiers', () => {
+  it('claude supports reasoning effort + fast mode', () => {
     const cap = defaultProviderDescriptor('claude').capabilities
     expect(cap.reasoningEffort).toBe(true)
-    expect(cap.speedTiers).toEqual([])
+    expect(cap.speedTiers).toEqual(['fast'])
   })
 
   it('kimi has the most restrictive capability set (default-only, no reasoning, no images)', () => {

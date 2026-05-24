@@ -414,10 +414,14 @@ describe('ComposerService', () => {
     expect(payload.composer.providerMetadataPatch).toBeUndefined()
   })
 
-  it('builds Claude payloads without generic context and includes Claude reasoning effort', () => {
+  it('builds Claude payloads without generic context and includes Claude reasoning/fast settings', () => {
     const payload = compose(
       { provider: 'claude', linkedProviderSessionId: 'claude-thread-1' },
-      { selectedModelType: 'claude-sonnet-4-6', claudeReasoningEffort: 'medium' }
+      {
+        selectedModelType: 'claude-sonnet-4-6',
+        claudeReasoningEffort: 'medium',
+        claudeFastMode: true
+      }
     )
     // Phase I3 (Claude initiator): workspace Claude runs outside plan
     // mode get a delegation preamble pointing at the AGBench MCP
@@ -433,6 +437,16 @@ describe('ComposerService', () => {
     expect(payload.prompt).not.toContain('AGBench MCP server')
     expect(payload.providerSessionId).toBe('claude-thread-1')
     expect(payload.claudeReasoningEffort).toBe('medium')
+    expect(payload.claudeFastMode).toBe(true)
+  })
+
+  it('falls back to chat metadata for Claude fast mode', () => {
+    const payload = compose(
+      { provider: 'claude', providerMetadata: { claudeFastMode: true } },
+      { selectedModelType: 'claude-opus-4-7' }
+    )
+
+    expect(payload.claudeFastMode).toBe(true)
   })
 
   it('teaches Claude about cross-provider delegate_to_subthread (Phase I3)', () => {

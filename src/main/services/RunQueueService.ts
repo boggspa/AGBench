@@ -213,6 +213,7 @@ export class RunQueueService {
       codexNativeReview: Boolean(value.codexNativeReview) || undefined,
       codexReasoningEffort: optionalStringOrNull(value.codexReasoningEffort),
       codexServiceTier: optionalStringOrNull(value.codexServiceTier),
+      claudeFastMode: typeof value.claudeFastMode === 'boolean' ? value.claudeFastMode : undefined,
       kimiThinkingEnabled:
         typeof value.kimiThinkingEnabled === 'boolean' ? value.kimiThinkingEnabled : undefined,
       scheduledTaskId: optionalString(value.scheduledTaskId),

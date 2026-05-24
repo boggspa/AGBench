@@ -39,6 +39,7 @@ export interface ComposerInput {
   codexReasoningEffort?: string | null
   codexServiceTier?: string | null
   claudeReasoningEffort?: string | null
+  claudeFastMode?: boolean | null
   kimiThinkingEnabled?: boolean
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
@@ -169,6 +170,10 @@ export class ComposerService {
         provider === 'codex' ? optionalStringOrNull(input.codexServiceTier) || null : null,
       claudeReasoningEffort:
         provider === 'claude' ? optionalStringOrNull(input.claudeReasoningEffort) || null : null,
+      claudeFastMode:
+        provider === 'claude'
+          ? (input.claudeFastMode ?? metadataBoolean(chat, 'claudeFastMode') ?? false)
+          : null,
       kimiThinking:
         provider === 'kimi'
           ? (input.kimiThinkingEnabled ?? metadataBoolean(chat, 'kimiThinkingEnabled') ?? true)
