@@ -17167,7 +17167,12 @@ input:disabled, select:disabled, textarea:disabled {
 }
 :root[data-theme='light'] .first-launch-sheet,
 .theme-light .first-launch-sheet {
-  background: var(--panel-bg, rgba(255, 255, 255, 0.98));
+  /* Opaque white — `var(--panel-bg)` resolves to rgba(.., 0.68)
+   * in light themes and made the sheet read as a frosted overlay
+   * even after the dark-mode rule was switched to surface-1. Pin
+   * to `--surface-1` (#ffffff) so the light-theme sheet is just
+   * as solid as the dark-theme one. */
+  background: var(--surface-1, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 32px 80px rgba(0, 0, 0, 0.18);
 }
