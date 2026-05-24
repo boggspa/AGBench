@@ -91,6 +91,11 @@ import {
   type CombinedModelPickerModelOption,
   type CombinedModelPickerReasoningOption
 } from './components/CombinedModelPicker'
+import {
+  CombinedPermissionsPicker,
+  type PermissionOption
+} from './components/CombinedPermissionsPicker'
+import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
 import { resolveRuntimeProfileIdForChat } from '../../main/RuntimeProfileResolution'
@@ -13539,36 +13544,70 @@ function App(): React.JSX.Element {
                       </span>
                     )}
 
-                    <label
-                      className="composer-picker-label"
-                      title="Permissions"
-                      data-composer-control="permission"
-                    >
-                      <PermissionSymbolIcon />
-                      <select
-                        className="composer-inline-picker"
-                        aria-label="Permission mode"
-                        value={approvalMode}
-                        onChange={(e) => {
-                          const nextApprovalMode = e.target.value
-                          setApprovalMode(nextApprovalMode)
-                          rememberCurrentChatComposerSelection({ approvalMode: nextApprovalMode })
-                          if (currentProvider === 'gemini' && nextApprovalMode !== approvalMode) {
-                            markPersistentSessionRestartNeeded(
-                              'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
+                    {(() => {
+                      // CombinedPermissionsPicker — replaces the
+                      // native <select> permission picker AND
+                      // absorbs the old "Tool Grants" pill from the
+                      // above-bar. Single chip, two-column popover
+                      // (Permissions | Tool Grants).
+                      const permissionPickerOptions: PermissionOption[] = [
+                        { value: 'plan', label: 'Plan / Read-only' },
+                        { value: 'default', label: 'Default approval' },
+                        { value: 'auto_edit', label: 'Edit files (auto_edit)' }
+                      ]
+                      const normalizedWorkspacePath = (currentWorkspace?.path || '').replace(
+                        /\/+$/,
+                        ''
+                      )
+                      const enabledGrantIds = new Set(
+                        agenticWorkspaceGrants
+                          .filter((grant) => {
+                            if (!grant || grant.provider !== currentProvider || !grant.workspacePath)
+                              return false
+                            return (
+                              grant.workspacePath.replace(/\/+$/, '') === normalizedWorkspacePath
                             )
+                          })
+                          .map((grant) => grant.service)
+                      )
+                      // Hide the Tool-Grants column when there's no
+                      // workspace path to scope grants to (global
+                      // chats or pre-workspace state).
+                      const grantServicesForPicker =
+                        currentWorkspace && !isCurrentGlobalChat ? WORKSPACE_POLICY_SERVICES : []
+                      return (
+                        <CombinedPermissionsPicker
+                          provider={currentProvider}
+                          composerStyle={appearance.composerStyle}
+                          permissionOptions={permissionPickerOptions}
+                          selectedPermission={approvalMode}
+                          onSelectPermission={(nextApprovalMode) => {
+                            setApprovalMode(nextApprovalMode)
+                            rememberCurrentChatComposerSelection({
+                              approvalMode: nextApprovalMode
+                            })
+                            if (
+                              currentProvider === 'gemini' &&
+                              nextApprovalMode !== approvalMode
+                            ) {
+                              markPersistentSessionRestartNeeded(
+                                'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
+                              )
+                            }
+                          }}
+                          grantServices={grantServicesForPicker}
+                          enabledGrantIds={enabledGrantIds}
+                          agenticServices={agenticServices}
+                          onToggleGrant={(service, enabled) =>
+                            void handleSetAgenticWorkspaceGrant(service, enabled)
                           }
-                        }}
-                        disabled={
-                          isCurrentComposerLocked ||
-                          (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
-                        }
-                      >
-                        <option value="plan">Plan / Read-only</option>
-                        <option value="default">Default approval</option>
-                        <option value="auto_edit">Edit files (auto_edit)</option>
-                      </select>
-                    </label>
+                          disabled={
+                            isCurrentComposerLocked ||
+                            (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
+                          }
+                        />
+                      )
+                    })()}
 
                     {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                       <label className="composer-picker-label" title="Workspace trust">

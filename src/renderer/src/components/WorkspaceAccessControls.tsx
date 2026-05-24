@@ -29,7 +29,6 @@
  *    runtimes; Kimi support is pending and would need its own toggle).
  */
 
-import { useMemo, useState } from 'react'
 import type {
   AgenticServiceId,
   AgenticServicesSettings,
@@ -40,32 +39,9 @@ import type {
   GeminiWorktreeConfig
 } from '../../../main/store/types'
 
-const WORKSPACE_POLICY_SERVICES: Array<{
-  id: AgenticServiceId
-  label: string
-  help: string
-}> = [
-  {
-    id: 'shellCommands',
-    label: 'Shell',
-    help: 'Run shell commands without asking again when global policy is Workspace grant.'
-  },
-  {
-    id: 'fileChanges',
-    label: 'Edit files',
-    help: 'Write or replace files without asking again when global policy is Workspace grant.'
-  },
-  {
-    id: 'mcpTools',
-    label: 'Read/search tools',
-    help: 'Use MCP tools such as read/list/search without asking again when global policy is Workspace grant.'
-  },
-  {
-    id: 'subThreadDelegation',
-    label: 'Delegate',
-    help: 'Spawn cross-provider sub-threads without asking again when global policy is Workspace grant.'
-  }
-]
+// `WORKSPACE_POLICY_SERVICES` lifted to `../lib/workspacePolicyServices`
+// — both this component and the new CombinedPermissionsPicker import
+// it from there now.
 
 interface WorkspaceAccessControlsProps {
   variant: 'satellite' | 'inline'
@@ -134,9 +110,10 @@ function WorktreeGlyph(): React.JSX.Element {
 // labels back, restore them from git history (the labels were
 // stable across providers, just rarely useful to the user).
 
-function normalizedWorkspacePath(path: string | undefined): string {
-  return (path || '').replace(/\/+$/, '')
-}
+// `normalizedWorkspacePath` was used by the Tool Grants pill's
+// workspace-grant filter (now gone). The same logic lives inside
+// the new CombinedPermissionsPicker call site in App.tsx — no
+// shared utility needed here anymore.
 
 export function WorkspaceAccessControls(
   props: WorkspaceAccessControlsProps
@@ -150,33 +127,20 @@ export function WorkspaceAccessControls(
     hasWorkspaceContext,
     externalPathGrants,
     onPickExternalPathGrant,
-    agenticServices,
-    agenticWorkspaceGrants,
-    onSetWorkspaceGrant,
+    // agenticServices / agenticWorkspaceGrants / onSetWorkspaceGrant
+    // were used by the in-component Tool Grants pill (now removed).
+    // They remain on the props interface for backwards compatibility
+    // — App.tsx still passes them, and they flow through to the new
+    // CombinedPermissionsPicker instead. Destructured-but-unused
+    // bindings would TS6133-fail, so we deliberately don't pull them
+    // out of props here.
     currentGeminiWorktree,
     onGeminiWorktreeToggle,
     worktreeToggleLabel,
     worktreeDiffUnavailable
   } = props
 
-  const [policyOpen, setPolicyOpen] = useState(false)
-  const workspacePath = normalizedWorkspacePath(currentWorkspace?.path)
-  const workspaceGrantServices = useMemo(
-    () =>
-      new Set(
-        agenticWorkspaceGrants
-          .filter((grant) => {
-            if (!grant || grant.provider !== provider || !grant.workspacePath) return false
-            return normalizedWorkspacePath(grant.workspacePath) === workspacePath
-          })
-          .map((grant) => grant.service)
-      ),
-    [agenticWorkspaceGrants, provider, workspacePath]
-  )
   const grantsCount = externalPathGrants.length
-  const enabledGrantCount = WORKSPACE_POLICY_SERVICES.filter((service) =>
-    workspaceGrantServices.has(service.id)
-  ).length
 
   // Hide entirely for global-scope chats: External Path and Worktree
   // are workspace-scoped concepts, no sense surfacing them when the
@@ -221,66 +185,18 @@ export function WorkspaceAccessControls(
           <option value="write">Grant edit…</option>
         </select>
       </label>
-      <div className="composer-workspace-policy">
-        <button
-          type="button"
-          className={`composer-workspace-access-pill composer-workspace-policy-trigger ${enabledGrantCount > 0 ? 'is-active' : ''}`}
-          onClick={() => setPolicyOpen((open) => !open)}
-          disabled={isCurrentComposerLocked || !currentWorkspace}
-          aria-expanded={policyOpen}
-          title="Workspace tool permission grants"
-        >
-          <PermissionGlyph />
-          <span>
-            {enabledGrantCount > 0 ? `Tool grants (${enabledGrantCount})` : 'Tool grants'}
-          </span>
-        </button>
-        {policyOpen && (
-          <div
-            className="composer-workspace-policy-popover"
-            role="dialog"
-            aria-label="Workspace tool permission grants"
-          >
-            <div className="composer-workspace-policy-header">
-              <strong>Workspace grants</strong>
-              <span>{provider}</span>
-            </div>
-            <p>
-              These toggles pre-authorize this provider in this workspace. Global{' '}
-              <strong>Deny</strong> still wins.
-            </p>
-            <div className="composer-workspace-policy-list">
-              {WORKSPACE_POLICY_SERVICES.map((service) => {
-                const checked = workspaceGrantServices.has(service.id)
-                const policy = agenticServices[service.id]
-                return (
-                  <label
-                    key={service.id}
-                    className="composer-workspace-policy-row"
-                    title={service.help}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(event) => onSetWorkspaceGrant(service.id, event.target.checked)}
-                    />
-                    <span>
-                      <strong>{service.label}</strong>
-                      <small>
-                        {policy === 'deny'
-                          ? 'Blocked globally'
-                          : checked
-                            ? 'Allowed for this workspace'
-                            : `Global policy: ${policy}`}
-                      </small>
-                    </span>
-                  </label>
-                )
-              })}
-            </div>
-          </div>
-        )}
-      </div>
+      {/*
+        Tool Grants pill removed — Phase J7-followup. The grant
+        toggles now live inside the CombinedPermissionsPicker
+        (composer footer), as the right column of its two-column
+        popover. Keeps the above-bar tidy and matches the
+        Permissions | Reasoning pattern of the new model picker.
+
+        Props `agenticServices`, `agenticWorkspaceGrants`,
+        `onSetWorkspaceGrant` are retained on this component for
+        backwards compatibility but no longer rendered here. They
+        flow through App.tsx to CombinedPermissionsPicker instead.
+      */}
       {worktreeInteractive && (
         <button
           type="button"
