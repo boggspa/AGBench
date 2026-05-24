@@ -1,0 +1,125 @@
+import { describe, expect, it } from 'vitest'
+import { resolveEffectiveRunPermissions } from './EffectiveRunPermissions'
+import type { AppSettings, ExternalPathGrant } from './store/types'
+
+function settings(overrides: Partial<AppSettings> = {}): AppSettings {
+  return {
+    storeLocalChatHistory: true,
+    storeRawEvents: true,
+    storePromptResponseInUsage: false,
+    ensembleModeEnabled: true,
+    geminiCheckpointingEnabled: false,
+    chatContextTurns: 8,
+    appearanceMode: 'solid',
+    visualEffectStyle: 'classic',
+    themeAppearance: 'system',
+    themeCornerStyle: 'rounded',
+    themeAccentStyle: 'system',
+    toolIconAccent: 'system',
+    promptSurfaceStyle: 'theme',
+    composerStyle: 'default',
+    funFxEnabled: false,
+    funFxMode: 'off',
+    advancedFx: {
+      agentAura: false,
+      livingWorkspace: false,
+      dataViz: false,
+      intensity: 'subtle'
+    },
+    reduceTransparency: false,
+    reduceMotion: false,
+    compactDensity: false,
+    showInspector: true,
+    inspectorWidth: 320,
+    sidebarWidth: 300,
+    agenticServices: {
+      shellCommands: 'ask',
+      fileChanges: 'ask',
+      mcpTools: 'ask',
+      subThreadDelegation: 'ask',
+      networkAccess: 'allow'
+    },
+    agenticWorkspaceGrants: [],
+    autoResumeParentOnSubThreadCompletion: true,
+    geminiMcpBridgeEnabled: true,
+    bridgeDaemonEnabled: false,
+    codexSandboxFallback: 'ask_rerun',
+    updateChannel: 'stable',
+    approvalTimeouts: {
+      enabled: true,
+      perProviderMs: { gemini: 120000, codex: 30000, claude: 120000, kimi: 60000 },
+      mainAuthorityMs: 120000
+    },
+    ...overrides
+  }
+}
+
+describe('resolveEffectiveRunPermissions', () => {
+  it('turns read-only presets into plan mode with write services denied', () => {
+    const resolved = resolveEffectiveRunPermissions({
+      provider: 'claude',
+      workspacePath: '/repo',
+      settings: settings(),
+      presetId: 'read_only'
+    })
+    expect(resolved.approvalMode).toBe('plan')
+    expect(resolved.readOnly).toBe(true)
+    expect(resolved.agenticServices.fileChanges).toBe('deny')
+    expect(resolved.agenticServices.shellCommands).toBe('deny')
+  })
+
+  it('keeps global deny stronger than participant overrides', () => {
+    const resolved = resolveEffectiveRunPermissions({
+      provider: 'codex',
+      workspacePath: '/repo',
+      settings: settings({
+        agenticServices: {
+          shellCommands: 'deny',
+          fileChanges: 'ask',
+          mcpTools: 'ask',
+          subThreadDelegation: 'ask',
+          networkAccess: 'deny'
+        }
+      }),
+      presetId: 'full_access'
+    })
+    expect(resolved.agenticServices.shellCommands).toBe('deny')
+    expect(resolved.networkAccess).toBe('deny')
+  })
+
+  it('merges workspace grants and provider-scoped external path grants', () => {
+    const grant: ExternalPathGrant = {
+      id: 'grant-1',
+      provider: 'codex',
+      path: '/outside',
+      kind: 'directory',
+      access: 'write',
+      duration: 'thisThread',
+      createdAt: new Date().toISOString()
+    }
+    const resolved = resolveEffectiveRunPermissions({
+      provider: 'codex',
+      workspacePath: '/repo',
+      settings: settings({
+        agenticWorkspaceGrants: [
+          {
+            id: 'workspace-grant-1',
+            provider: 'codex',
+            workspacePath: '/repo',
+            service: 'fileChanges',
+            createdAt: '2026-05-24T00:00:00.000Z',
+            updatedAt: '2026-05-24T00:00:00.000Z'
+          }
+        ]
+      }),
+      presetId: 'default',
+      explicitExternalPathGrants: [
+        grant,
+        { ...grant, id: 'grant-2', provider: 'claude', path: '/claude-only' }
+      ]
+    })
+    expect(resolved.workspaceGrantServiceIds).toEqual(['fileChanges'])
+    expect(resolved.agenticServices.fileChanges).toBe('workspace')
+    expect(resolved.externalPathGrants).toEqual([grant])
+  })
+})

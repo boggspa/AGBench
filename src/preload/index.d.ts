@@ -617,6 +617,16 @@ declare global {
       getChat: (chatId: string) => Promise<ChatRecord | null>
       createChat: (workspaceId: string, workspacePath: string) => Promise<ChatRecord>
       createGlobalChat: () => Promise<ChatRecord>
+      createEnsembleChat: (args?: {
+        workspaceId?: string
+        workspacePath?: string
+      }) => Promise<ChatRecord>
+      runEnsembleRound: (payload: {
+        chatId: string
+        prompt: string
+        mode?: 'normal' | 'queue' | 'steer'
+      }) => Promise<{ status: string; roundId?: string }>
+      cancelEnsembleRound: (chatId: string) => Promise<boolean>
       createSubThread: (args: {
         parentChatId: string
         provider: ProviderId

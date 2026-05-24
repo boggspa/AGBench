@@ -82,6 +82,8 @@ interface SidebarProps {
   onSelectWorkspaceDialog: () => void
   onNewChat: (wsId: string, wsPath: string) => void
   onNewGlobalChat: () => void
+  onNewEnsemble: () => void
+  ensembleModeEnabled?: boolean
   onSelectChat: (chat: ChatRecord) => void
   onOpenSettings: () => void
   /** Phase F1: open the SubThreadCreator with `parent` as the parent
@@ -563,6 +565,8 @@ export function Sidebar({
   onSelectWorkspaceDialog,
   onNewChat,
   onNewGlobalChat,
+  onNewEnsemble,
+  ensembleModeEnabled = true,
   onSelectChat,
   onOpenSettings,
   onCreateSubThread,
@@ -574,6 +578,7 @@ export function Sidebar({
   onShowPairingSheet
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
+  const [newMenuOpen, setNewMenuOpen] = useState(false)
   const [sidebarSearch, setSidebarSearch] = useState('')
   const [expandedWorkspaceIds, setExpandedWorkspaceIds] = useState<Set<string>>(() => {
     try {
@@ -603,8 +608,12 @@ export function Sidebar({
       }
     }
   )
-  const chatsByWorkspace = getChatsByWorkspace(chats)
-  const globalChats = chats.filter((chat) => !chat.archived && chat.scope === 'global')
+  const regularChats = chats.filter((chat) => chat.chatKind !== 'ensemble')
+  const ensembleChats = ensembleModeEnabled
+    ? chats.filter((chat) => chat.chatKind === 'ensemble' && !chat.archived)
+    : []
+  const chatsByWorkspace = getChatsByWorkspace(regularChats)
+  const globalChats = regularChats.filter((chat) => !chat.archived && chat.scope === 'global')
   const runningChatIdSet = new Set(runningChatIds)
   const sidebarSearchQuery = normalizeSearchText(sidebarSearch)
   const isSidebarSearchActive = sidebarSearchQuery.length > 0
@@ -643,10 +652,13 @@ export function Sidebar({
     [workspaces]
   )
   const pinnedChats = useMemo(
-    () => chats.filter((chat) => chat.pinned === true && !chat.archived),
-    [chats]
+    () => regularChats.filter((chat) => chat.pinned === true && !chat.archived),
+    [regularChats]
   )
-  const recentChats = useMemo(() => selectRecentChats(chats, { limit: 5 }), [chats])
+  const recentChats = useMemo(() => selectRecentChats(regularChats, { limit: 5 }), [regularChats])
+  const visibleEnsembleChats = isSidebarSearchActive
+    ? ensembleChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
+    : ensembleChats
 
   const visiblePinnedWorkspaces = isSidebarSearchActive
     ? pinnedWorkspaces.filter((workspace) => workspaceMatchesSearch(workspace, sidebarSearchQuery))
@@ -710,11 +722,16 @@ export function Sidebar({
     ? `New chat in ${currentWorkspace.displayName}`
     : 'New system chat'
   const handlePrimaryNewChat = () => {
+    setNewMenuOpen(false)
     if (currentWorkspace) {
       onNewChat(currentWorkspace.id, currentWorkspace.path)
       return
     }
     onNewGlobalChat()
+  }
+  const handleNewEnsemble = () => {
+    setNewMenuOpen(false)
+    onNewEnsemble()
   }
 
   useEffect(() => {
@@ -976,16 +993,41 @@ export function Sidebar({
             <strong title={currentWorkspace?.path || currentScopeTitle}>{currentScopeTitle}</strong>
             <span title={currentWorkspace?.path || currentScopeMeta}>{currentScopeMeta}</span>
           </div>
-          <button
-            type="button"
-            className="sidebar-primary-action"
-            onClick={handlePrimaryNewChat}
-            title={primaryNewTitle}
-            aria-label={primaryNewTitle}
-          >
-            <PlusSymbolIcon />
-            <span>New</span>
-          </button>
+          <div className="sidebar-new-menu-wrap">
+            <button
+              type="button"
+              className="sidebar-primary-action"
+              onClick={() => setNewMenuOpen((current) => !current)}
+              title="Create"
+              aria-label="Create"
+              aria-expanded={newMenuOpen}
+            >
+              <PlusSymbolIcon />
+              <span>New</span>
+            </button>
+            {newMenuOpen && (
+              <div className="sidebar-new-menu" role="menu">
+                <button type="button" role="menuitem" onClick={handlePrimaryNewChat} title={primaryNewTitle}>
+                  New Chat
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setNewMenuOpen(false)
+                    onSelectWorkspaceDialog()
+                  }}
+                >
+                  New Workspace
+                </button>
+                {ensembleModeEnabled && (
+                  <button type="button" role="menuitem" onClick={handleNewEnsemble}>
+                    New Ensemble
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         </div>
         <div className="sidebar-masthead-stats" aria-label="Sidebar summary">
           <span>
@@ -1175,6 +1217,64 @@ export function Sidebar({
                       items={buildChatMenuItems(chat)}
                     />
                   </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {visibleEnsembleChats.length > 0 && (
+          <div className="sidebar-ensembles-section">
+            <div className="sidebar-section-header">
+              <h4 className="sidebar-section-title">Ensembles</h4>
+            </div>
+            <div className="sidebar-chat-list sidebar-ensemble-list">
+              {visibleEnsembleChats.map((chat) => {
+                const activeRound = chat.ensemble?.activeRound
+                const activeParticipant = chat.ensemble?.participants.find(
+                  (participant) => participant.id === activeRound?.activeParticipantId
+                )
+                const isRunning = activeRound?.status === 'running'
+                const subtitle = activeParticipant
+                  ? `${getProviderName(activeParticipant.provider)} / ${activeParticipant.role}`
+                  : chat.scope === 'global'
+                    ? 'Global ensemble'
+                    : 'Workspace ensemble'
+                return (
+                  <button
+                    type="button"
+                    key={`ensemble-${chat.appChatId}`}
+                    className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
+                    onClick={() => onSelectChat(chat)}
+                  >
+                    <span className="sidebar-chat-copy" title={chat.title}>
+                      <span className="sidebar-chat-title-line">
+                        <span className="sidebar-provider-label provider-ensemble">
+                          <span>Ensemble</span>
+                        </span>
+                        <span className="sidebar-chat-title">
+                          <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
+                        </span>
+                      </span>
+                      <span className="sidebar-chat-subline">
+                        <span className={`sidebar-run-status tone-${isRunning ? 'warning' : 'muted'}`}>
+                          {isRunning ? `Speaking: ${subtitle}` : subtitle}
+                        </span>
+                      </span>
+                    </span>
+                    {isRunning && (
+                      <span
+                        className="sidebar-chat-busy"
+                        title="Ensemble round running"
+                        aria-label="Ensemble round running"
+                      />
+                    )}
+                    {!isRunning && <ChatAgeLabel timestamp={chat.updatedAt || chat.createdAt} />}
+                    <SidebarOverflowMenu
+                      triggerLabel="Ensemble actions"
+                      items={buildChatMenuItems(chat)}
+                    />
+                  </button>
                 )
               })}
             </div>

@@ -108,6 +108,7 @@ function makeDeps(overrides: {
     storeLocalChatHistory: true,
     storeRawEvents: false,
     storePromptResponseInUsage: false,
+    ensembleModeEnabled: true,
     geminiCheckpointingEnabled: false,
     chatContextTurns: 6,
     appearanceMode: 'soft_glass',

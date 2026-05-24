@@ -45,6 +45,7 @@ import {
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
+import { EnsembleOrchestrator } from './services/EnsembleOrchestrator'
 import {
   appendBugReport,
   type BugReportSubmission as BugReportSubmissionInput
@@ -111,7 +112,8 @@ import {
   GeminiAuthProfileSummary,
   GeminiAuthStatus,
   GeminiOAuthLoginStatus,
-  UsageRecord
+  UsageRecord,
+  EffectiveRunPermissions
 } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
@@ -404,6 +406,7 @@ let approvalService: ApprovalService | null = null
 // the newly-created sub-thread without going through the renderer.
 // Stays null until whenReady; the consumer null-checks.
 let runCoordinatorRef: RunCoordinator | null = null
+let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
@@ -704,6 +707,7 @@ export interface AgentRunPayload {
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
   runtimeProfile?: RuntimeProfile
+  effectivePermissions?: EffectiveRunPermissions
 }
 
 interface CodexRunState {
@@ -719,6 +723,7 @@ interface CodexRunState {
   sessionTrust?: boolean
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
   appRunId?: string
   appChatId?: string
   tokenUsage?: any
@@ -743,6 +748,7 @@ interface GeminiToolContext {
   sessionTrust?: boolean
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
 }
 
 // Phase B3: AgenticApprovalWaiter moved into
@@ -884,6 +890,7 @@ const SETTINGS_PATCH_KEYS = new Set<keyof AppSettings>([
   'storeLocalChatHistory',
   'storeRawEvents',
   'storePromptResponseInUsage',
+  'ensembleModeEnabled',
   'geminiCheckpointingEnabled',
   'chatContextTurns',
   'appearanceMode',
@@ -1184,7 +1191,10 @@ function normalizeAgentRunPayload(rawPayload: unknown): AgentRunPayload {
     geminiWorktree: (payload.geminiWorktree ?? null) as GeminiWorktreeLaunchOption,
     runtimeProfileId: optionalString(payload.runtimeProfileId),
     geminiAuthProfileId: optionalStringOrNull(payload.geminiAuthProfileId),
-    handoffSourceRunId: optionalString(payload.handoffSourceRunId)
+    handoffSourceRunId: optionalString(payload.handoffSourceRunId),
+    effectivePermissions: isRecord(payload.effectivePermissions)
+      ? (payload.effectivePermissions as unknown as EffectiveRunPermissions)
+      : undefined
   }
 }
 
@@ -1593,6 +1603,10 @@ function sanitizeSettingsPatch(partial: unknown): Partial<AppSettings> {
     const value = sanitized.bridgeDaemonEnabled
     sanitized.bridgeDaemonEnabled = typeof value === 'boolean' ? value : Boolean(value)
   }
+  if ('ensembleModeEnabled' in sanitized) {
+    const value = sanitized.ensembleModeEnabled
+    sanitized.ensembleModeEnabled = typeof value === 'boolean' ? value : Boolean(value)
+  }
   if ('funFxMode' in sanitized) {
     const value = sanitized.funFxMode
     if (value === 'off' || value === 'subtle' || value === 'cinematic' || value === 'epic') {
@@ -1626,6 +1640,7 @@ interface CliProviderStreamState {
   sessionTrust?: boolean
   externalPathGrants?: ExternalPathGrant[]
   runtimeProfileId?: string
+  effectivePermissions?: EffectiveRunPermissions
   runId?: string | null
   appRunId?: string
   appChatId?: string
@@ -2720,12 +2735,26 @@ async function requestAgenticServiceApproval(
   }
 ): Promise<boolean> {
   const settings = AppStore.getSettings()
+  const session = runManager.get(request.runId)
+  const effectivePermissions = session?.state?.effectivePermissions as
+    | EffectiveRunPermissions
+    | undefined
+  const effectiveSettings = effectivePermissions
+    ? {
+        ...settings,
+        agenticServices: {
+          ...settings.agenticServices,
+          ...effectivePermissions.agenticServices,
+          networkAccess: effectivePermissions.networkAccess
+        }
+      }
+    : settings
   const resolution = permissionService.resolvePermission(
     provider,
     service,
     workspacePath,
     request.runId,
-    settings
+    effectiveSettings
   )
   const { policy, workspaceGrantAllowed, sessionGrantAllowed, decision } = resolution
 
@@ -2813,7 +2842,6 @@ async function requestAgenticServiceApproval(
       route: { appRunId: request.runId, appChatId: runManager.get(request.runId)?.appChatId },
       kind: request.method
     })
-    const session = runManager.get(request.runId)
     const approvalPayload = {
       provider,
       appRunId: session?.runId,
@@ -5986,6 +6014,7 @@ function runCliProviderProcess(
     sessionTrust: Boolean(payload.sessionTrust),
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
+    effectivePermissions: payload.effectivePermissions,
     ...route
   }
   registerRunSession(
@@ -6392,6 +6421,7 @@ async function tryRunClaudeSdk(
     sessionTrust: Boolean(payload.sessionTrust),
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
+    effectivePermissions: payload.effectivePermissions,
     ...route
   }
   registerRunSession(
@@ -6793,6 +6823,7 @@ async function runKimiWireProvider(
     sessionTrust: Boolean(payload.sessionTrust),
     externalPathGrants: payload.externalPathGrants,
     runtimeProfileId: payload.runtimeProfileId,
+    effectivePermissions: payload.effectivePermissions,
     ...route
   }
   registerRunSession(
@@ -7522,6 +7553,7 @@ function sendAgentCompatLine(
     'provider'
   )
   materializeBackgroundSubThreadProviderOutput(provider, routed, payload)
+  ensembleOrchestratorRef?.handleProviderOutput(provider, routed, payload)
   const line = `${JSON.stringify(routed)}\n`
   const outputPayload = {
     provider,
@@ -7599,6 +7631,7 @@ function sendAgentCompatExit(
     { code },
     'provider'
   )
+  ensembleOrchestratorRef?.markRunExited(routed.appRunId, typeof code === 'number' ? code : -1)
   publishRunEvent('agent-exit', provider, routed, sender)
   if (provider === 'gemini') {
     publishRunEvent('gemini-exit', provider, routed, sender)
@@ -7817,6 +7850,7 @@ function createCodexRunState(
     sessionTrust: Boolean(payload?.sessionTrust),
     externalPathGrants: payload?.externalPathGrants,
     runtimeProfileId: payload?.runtimeProfileId,
+    effectivePermissions: payload?.effectivePermissions,
     ...normalizeRunRoute(route),
     assistantTextByItemId: new Map(),
     timelineStartedItemIds: new Set(),
@@ -10846,7 +10880,8 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'reveal_in_finder',
   'ide_app_status',
   'ide_app_capabilities',
-  'list_running_ides'
+  'list_running_ides',
+  'ensemble_yield'
 ])
 
 function mcpJson(value: unknown): string {
@@ -14074,6 +14109,17 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeSwitchAuthProfile(args))
     } else if (toolName === 'agent_delegation_role') {
       text = mcpJson(executeAgentDelegationRole(args, context, parentProvider))
+    } else if (toolName === 'ensemble_yield') {
+      const yielded = ensembleOrchestratorRef?.markYielded(
+        context.appRunId || '',
+        optionalString(args.reason) || optionalString(args.target)
+      )
+      text = mcpJson({
+        ok: Boolean(yielded),
+        tool: 'ensemble_yield',
+        reason: optionalString(args.reason),
+        target: optionalString(args.target)
+      })
     } else if (toolName === 'read_file') {
       const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
@@ -15762,6 +15808,24 @@ function mcpToolDefinitions() {
       }
     },
     {
+      name: 'ensemble_yield',
+      description:
+        'In Ensemble Mode, explicitly pass this participant turn to the next participant. Optional reason explains why; optional target names the participant/provider that should speak next.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          reason: { type: 'string' },
+          target: { type: 'string' }
+        }
+      }
+    },
+    {
       // Phase F3: agent-driven sub-thread delegation. Spawns a
       // sub-thread under the active parent thread, optionally on a
       // different provider, and (fire-and-forget) dispatches a run
@@ -16571,6 +16635,7 @@ function installGeminiToolContextForRun(
     sessionTrust: Boolean(options.runPayload?.sessionTrust ?? sessionTrust),
     externalPathGrants: options.runPayload?.externalPathGrants,
     runtimeProfileId: options.runPayload?.runtimeProfileId,
+    effectivePermissions: options.runPayload?.effectivePermissions,
     providerSessionId: options.providerSessionId ?? options.runPayload?.providerSessionId,
     ...routed
   }
@@ -18423,6 +18488,14 @@ if (isGeminiMcpBridgeProcess) {
       broadcastThreadUpdate(chat?.appChatId)
       return chat
     })
+    ipcMain.handle(
+      'create-ensemble-chat',
+      (_, args?: { workspaceId?: string; workspacePath?: string }) => {
+        const chat = chatService.createEnsembleChat(args)
+        broadcastThreadUpdate(chat?.appChatId)
+        return chat
+      }
+    )
     // Phase F1: sub-thread creation. The renderer passes the parent chat
     // id plus user choices (provider, delegation prompt, return-result
     // flag). AppStore enforces max-depth-1; we surface any error so the
@@ -19540,6 +19613,16 @@ if (isGeminiMcpBridgeProcess) {
     // (Phase F3) can dispatch agent-driven sub-thread runs without
     // requiring a Gemini-renderer round-trip.
     runCoordinatorRef = runCoordinator
+    ensembleOrchestratorRef = new EnsembleOrchestrator({
+      getChat: (chatId) => AppStore.getChat(chatId),
+      saveChat: saveAndBroadcastChat,
+      getSettings: () => AppStore.getSettings(),
+      dispatch: (payload, event) => runCoordinator.dispatch(payload, event),
+      cancelRun: (provider, runId) => providerAdapters.require(provider).cancel(runId),
+      createRunId: createFallbackRunId,
+      now: () => Date.now(),
+      nowIso: () => new Date().toISOString()
+    })
     const dispatchAgentRun = (
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent
@@ -19549,6 +19632,29 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle('run-agent', async (event, payload: AgentRunPayload) => {
       await dispatchAgentRun(payload, event)
+    })
+
+    ipcMain.handle(
+      'run-ensemble-round',
+      async (
+        event,
+        payload: { chatId?: string; prompt?: string; mode?: 'normal' | 'queue' | 'steer' }
+      ) => {
+        const chatId = requireNonEmptyString(payload?.chatId, 'Ensemble chat id')
+        const prompt = requireNonEmptyString(payload?.prompt, 'Ensemble prompt')
+        return ensembleOrchestratorRef?.startRound({
+          chatId,
+          prompt,
+          event,
+          mode: payload?.mode || 'normal'
+        })
+      }
+    )
+
+    ipcMain.handle('cancel-ensemble-round', async (_, chatId?: string) => {
+      return ensembleOrchestratorRef?.cancelRound(
+        requireNonEmptyString(chatId, 'Ensemble chat id')
+      )
     })
 
     ipcMain.handle(

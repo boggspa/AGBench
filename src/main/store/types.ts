@@ -64,9 +64,16 @@ export type ComposerStyle =
   | 'satellite'
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
 export type ChatScope = 'workspace' | 'global'
+export type ChatKind = 'single' | 'ensemble'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'
 export type AgenticServicePolicy = 'ask' | 'workspace' | 'allow' | 'deny'
 export type AgenticNetworkPolicy = 'allow' | 'deny'
+export type PermissionPresetId =
+  | 'read_only'
+  | 'default'
+  | 'workspace_write'
+  | 'full_access'
+  | 'custom'
 export type CodexSandboxFallbackMode = 'ask_rerun' | 'off'
 export type ProductUpdateChannel = 'debug' | 'stable' | 'nightly'
 /** Phase M1 — picks which runtime path AGBench uses for Gemini runs.
@@ -141,6 +148,92 @@ export interface AgenticWorkspaceGrant {
   updatedAt: string
   expiresAt?: string
   expiresOn?: 'workspace_revocation'
+}
+
+export interface PermissionPreset {
+  id: PermissionPresetId
+  label: string
+  approvalMode: string
+  agenticServices?: Partial<Record<AgenticServiceId, AgenticServicePolicy>>
+  networkAccess?: AgenticNetworkPolicy
+}
+
+export interface PermissionOverrides {
+  approvalMode?: string
+  agenticServices?: Partial<Record<AgenticServiceId, AgenticServicePolicy>>
+  networkAccess?: AgenticNetworkPolicy
+  externalPathGrants?: ExternalPathGrant[]
+}
+
+export interface EffectiveRunPermissions {
+  presetId: PermissionPresetId
+  approvalMode: string
+  agenticServices: Record<AgenticServiceId, AgenticServicePolicy>
+  networkAccess: AgenticNetworkPolicy
+  externalPathGrants: ExternalPathGrant[]
+  workspaceGrantServiceIds: AgenticServiceId[]
+  readOnly: boolean
+}
+
+export type EnsembleParticipantStatus =
+  | 'idle'
+  | 'running'
+  | 'answered'
+  | 'yielded'
+  | 'failed'
+  | 'skipped'
+  | 'cancelled'
+
+export interface EnsembleParticipant {
+  id: string
+  provider: ProviderId
+  enabled: boolean
+  role: string
+  instructions: string
+  order: number
+  model?: string
+  runtimeProfileId?: string
+  geminiAuthProfileId?: string | null
+  permissionPresetId?: PermissionPresetId
+  permissionOverrides?: PermissionOverrides
+  linkedProviderSessionId?: string | null
+  tokenTotals?: {
+    input_tokens?: number
+    output_tokens?: number
+    total_tokens?: number
+    duration_ms?: number
+  }
+}
+
+export interface EnsembleRoundParticipantState {
+  participantId: string
+  provider: ProviderId
+  role: string
+  order: number
+  status: EnsembleParticipantStatus
+  runId?: string
+  reason?: string
+  startedAt?: string
+  endedAt?: string
+}
+
+export interface EnsembleRoundState {
+  roundId: string
+  status: 'running' | 'completed' | 'cancelled' | 'failed'
+  prompt: string
+  startedAt: string
+  endedAt?: string
+  activeParticipantId?: string
+  queuedPrompt?: string
+  participants: EnsembleRoundParticipantState[]
+}
+
+export interface EnsembleConfig {
+  enabled: boolean
+  maxParticipants: number
+  participants: EnsembleParticipant[]
+  activeRound?: EnsembleRoundState
+  updatedAt?: string
 }
 
 export interface GeminiMcpBridgeStatus {
@@ -463,6 +556,7 @@ export interface AppSettings {
   storeLocalChatHistory: boolean
   storeRawEvents: boolean
   storePromptResponseInUsage: boolean
+  ensembleModeEnabled: boolean
   geminiCheckpointingEnabled: boolean
   chatContextTurns: number
   appearanceMode: AppearanceMode
@@ -826,11 +920,16 @@ export interface ChatRun {
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
+  ensembleRoundId?: string
+  ensembleParticipantId?: string
+  ensembleRole?: string
+  ensembleOrder?: number
 }
 
 export interface ChatRecord {
   appChatId: string
   scope?: ChatScope
+  chatKind?: ChatKind
   provider?: ProviderId
   title: string
   workspaceId?: string
@@ -845,6 +944,7 @@ export interface ChatRecord {
   linkedProviderSessionId?: string
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string
+  ensemble?: EnsembleConfig
   requestedModel?: string
   lastActualModel?: string
   messages: ChatMessage[]

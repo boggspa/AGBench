@@ -16,6 +16,7 @@ const settings: AppSettings = {
   storeLocalChatHistory: true,
   storeRawEvents: false,
   storePromptResponseInUsage: false,
+  ensembleModeEnabled: true,
   geminiCheckpointingEnabled: false,
   chatContextTurns: 6,
   appearanceMode: 'soft_glass',

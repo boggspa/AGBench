@@ -67,6 +67,7 @@ function renderSidebar(chats: ChatRecord[]) {
       onSelectWorkspaceDialog={() => {}}
       onNewChat={() => {}}
       onNewGlobalChat={() => {}}
+      onNewEnsemble={() => {}}
       onSelectChat={() => {}}
       onOpenSettings={() => {}}
     />

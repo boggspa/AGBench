@@ -41,6 +41,16 @@ function makeStore(overrides: Partial<ChatServiceStore> = {}): ChatServiceStore 
     createGlobalChat: vi.fn(() =>
       makeChat({ scope: 'global', workspaceId: undefined, workspacePath: undefined })
     ),
+    createEnsembleChat: vi.fn((args) =>
+      makeChat({
+        appChatId: 'ensemble-1',
+        chatKind: 'ensemble',
+        title: 'New Ensemble',
+        scope: args?.workspaceId ? 'workspace' : 'global',
+        workspaceId: args?.workspaceId,
+        workspacePath: args?.workspacePath
+      })
+    ),
     createSubThread: vi.fn((args) =>
       makeChat({
         appChatId: 'sub-thread-1',
@@ -146,6 +156,17 @@ describe('ChatService', () => {
         returnResultToParent: true
       }
     )
+  })
+
+  it('creates workspace ensemble chats only for a matching registered workspace', () => {
+    const { deps, store } = makeDeps()
+    const service = new ChatService(deps)
+    const chat = service.createEnsembleChat({ workspaceId: 'workspace-1', workspacePath: '/repo' })
+    expect(chat.chatKind).toBe('ensemble')
+    expect(store.createEnsembleChat).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      workspacePath: '/canonical/repo'
+    })
   })
 
   it('lets AppStore max-depth validation errors propagate without auditing', () => {

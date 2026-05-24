@@ -380,6 +380,11 @@ const api = {
   createChat: (workspaceId: string, workspacePath: string) =>
     ipcRenderer.invoke('create-chat', workspaceId, workspacePath),
   createGlobalChat: () => ipcRenderer.invoke('create-global-chat'),
+  createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }) =>
+    ipcRenderer.invoke('create-ensemble-chat', args),
+  runEnsembleRound: (payload: { chatId: string; prompt: string; mode?: string }) =>
+    ipcRenderer.invoke('run-ensemble-round', payload),
+  cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
   createSubThread: (args: {
     parentChatId: string
     provider: string

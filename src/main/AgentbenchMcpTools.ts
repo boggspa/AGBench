@@ -71,6 +71,7 @@ export const AGENTBENCH_MCP_TOOLS = [
   'create_handoff_card',
   'switch_auth_profile',
   'agent_delegation_role',
+  'ensemble_yield',
   'delegate_to_subthread'
 ] as const
 

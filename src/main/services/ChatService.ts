@@ -17,6 +17,7 @@ export interface ChatServiceStore {
   getChat: (chatId: string) => ChatRecord | null
   createChat: (workspaceId: string, workspacePath: string) => ChatRecord
   createGlobalChat: () => ChatRecord
+  createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }) => ChatRecord
   createSubThread: (args: CreateSubThreadInput) => ChatRecord
   getChildChats: (parentChatId: string) => ChatRecord[]
   saveChat: (chat: ChatRecord) => void
@@ -68,6 +69,22 @@ export class ChatService {
 
   createGlobalChat(): ChatRecord {
     return this.deps.appStore.createGlobalChat()
+  }
+
+  createEnsembleChat(args?: { workspaceId?: string; workspacePath?: string }): ChatRecord {
+    if (!args?.workspaceId && !args?.workspacePath) {
+      return this.deps.appStore.createEnsembleChat()
+    }
+    const workspaceId = requireNonEmptyString(args.workspaceId, 'Workspace id')
+    const workspacePath = requireNonEmptyString(args.workspacePath, 'Workspace path')
+    const registered = this.deps.findRegisteredWorkspace(workspacePath)
+    if (!registered || registered.id !== workspaceId) {
+      throw new Error('Ensemble workspace must be a registered AGBench workspace.')
+    }
+    return this.deps.appStore.createEnsembleChat({
+      workspaceId,
+      workspacePath: this.deps.canonicalPath(workspacePath)
+    })
   }
 
   createSubThread(args: CreateSubThreadInput | undefined): ChatRecord {

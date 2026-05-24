@@ -12,6 +12,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     storeLocalChatHistory: true,
     storeRawEvents: true,
     storePromptResponseInUsage: true,
+    ensembleModeEnabled: true,
     geminiCheckpointingEnabled: false,
     chatContextTurns: 6,
     appearanceMode: 'solid',

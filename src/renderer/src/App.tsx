@@ -89,6 +89,8 @@ import { MarkdownMessage } from './components/MarkdownMessage'
 import { RunCard } from './components/RunCard'
 import { RunInspector } from './components/RunInspector'
 import { PairingSheet } from './components/PairingSheet'
+import { EnsembleParticipantStrip } from './components/EnsembleParticipantStrip'
+import { EnsembleSetupSheet } from './components/EnsembleSetupSheet'
 import { SubThreadReturnCard } from './components/SubThreadReturnCard'
 import { isSubThreadReturnMessage } from './components/SubThreadReturnCardModel'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
@@ -3333,6 +3335,15 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'kimi') return 'Kimi'
   return 'Gemini'
 }
+const formatAssistantMessageLabel = (
+  message: ChatMessage,
+  fallbackLabel: string
+): string => {
+  const provider = message.metadata?.ensembleProvider as ProviderId | undefined
+  if (!provider) return fallbackLabel
+  const role = typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
+  return role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider)
+}
 const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
   return runs.reduce<ChatTokenTally>(
     (total, run) => {
@@ -4098,7 +4109,7 @@ const TranscriptPanel = memo(
                       {msg.role === 'user'
                         ? 'You'
                         : msg.role === 'assistant'
-                          ? currentProviderLabel
+                          ? formatAssistantMessageLabel(msg, currentProviderLabel)
                           : msg.role === 'error'
                             ? 'Error'
                             : 'System'}
@@ -4370,7 +4381,7 @@ type SettingsPanelUpdate = {
 }
 
 function App(): React.JSX.Element {
-  const [, setSettings] = useState<AppSettings | null>(null)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [chatContextTurns, setChatContextTurns] = useState<number>(DEFAULT_CONTEXT_TURNS)
   const [workspaces, setWorkspaces] = useState<WorkspaceRecord[]>([])
   const [workspacesHydrated, setWorkspacesHydrated] = useState(false)
@@ -4518,6 +4529,7 @@ function App(): React.JSX.Element {
   // Phase F1: sub-thread creator modal state. Null when closed; holds
   // the parent chat when open so the modal knows what to delegate from.
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
+  const [ensembleSetupChat, setEnsembleSetupChat] = useState<ChatRecord | null>(null)
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   /**
@@ -6949,6 +6961,35 @@ function App(): React.JSX.Element {
     await selectGlobalChat(newChat)
   }
 
+  const handleNewEnsemble = async () => {
+    if (settings?.ensembleModeEnabled === false) return
+    const args =
+      currentWorkspace?.id && currentWorkspace.path
+        ? { workspaceId: currentWorkspace.id, workspacePath: currentWorkspace.path }
+        : undefined
+    const newChat = await window.api.createEnsembleChat(args)
+    const allChats = await window.api.getChats()
+    setChats(allChats)
+    chatByIdRef.current.set(newChat.appChatId, newChat)
+    currentChatIdRef.current = newChat.appChatId
+    if (newChat.scope === 'global') {
+      await selectGlobalChat(newChat)
+    } else {
+      const workspace = getWorkspaceForChat(newChat) || currentWorkspace
+      if (workspace) {
+        setCurrentWorkspace(workspace)
+        currentWorkspaceIdRef.current = workspace.id
+      }
+      setCurrentChat(newChat)
+      applyChatComposerSelection(newChat, getChatProvider(newChat))
+    }
+    setRunDiff(null)
+    setRunCompleteNotice(null)
+    setRawLogs([])
+    setShowFallbackUX(false)
+    setEnsembleSetupChat(newChat)
+  }
+
   const handleWelcomeSuggestion = (suggestion: string) => {
     setPrompt(suggestion)
   }
@@ -9188,6 +9229,22 @@ function App(): React.JSX.Element {
       const runWorkspace = isGlobalRun ? null : request.workspaceRecord || currentWorkspace
       if (!runChat || (!isGlobalRun && !runWorkspace) || !request.prompt.trim()) return
       const runProvider = request.provider || currentProvider
+      if (runChat.chatKind === 'ensemble') {
+        const mode =
+          runChat.ensemble?.activeRound?.status === 'running' ? ('queue' as const) : ('normal' as const)
+        await window.api.runEnsembleRound({
+          chatId: runChat.appChatId,
+          prompt: request.prompt,
+          mode
+        })
+        if (!request.existingPrompt && !request.preserveComposer) {
+          setChatPromptDraft(runChat.appChatId, '')
+          clearComposerAttachmentsForSubmittedRequest(request)
+        }
+        setIsThinking(true)
+        setChats(await window.api.getChats())
+        return
+      }
       // Per-chat busy check: only queue when THIS chat has an active
       // run. Multiple chats can dispatch in parallel to the same
       // provider — the underlying runner (Codex app-server thread,
@@ -10102,6 +10159,22 @@ function App(): React.JSX.Element {
 
     const targetChatId = request.chatRecord?.appChatId || currentChat?.appChatId
     if (!targetChatId) {
+      return
+    }
+
+    const targetChat = request.chatRecord || currentChat
+    if (targetChat?.chatKind === 'ensemble') {
+      await window.api.runEnsembleRound({
+        chatId: targetChatId,
+        prompt: request.prompt,
+        mode: targetChat.ensemble?.activeRound?.status === 'running' ? 'steer' : 'normal'
+      })
+      clearComposerAttachmentsForSubmittedRequest(request)
+      if (!request.existingPrompt) {
+        setChatPromptDraft(targetChatId, '')
+      }
+      setIsThinking(true)
+      setChats(await window.api.getChats())
       return
     }
 
@@ -11307,6 +11380,12 @@ function App(): React.JSX.Element {
   }
 
   const handleCancel = async () => {
+    if (currentChat?.chatKind === 'ensemble') {
+      await window.api.cancelEnsembleRound(currentChat.appChatId)
+      setIsThinking(false)
+      setChats(await window.api.getChats())
+      return
+    }
     const runId = currentRun?.runId
     await window.api.cancelAgentRun(currentProvider, runId)
     syncRunningState()
@@ -11768,14 +11847,20 @@ function App(): React.JSX.Element {
     [runningChatIds, pendingAgentApprovalByChatId, chatsByAppChatIdForRunning]
   )
   const isCurrentChatRunning = Boolean(
-    currentChat?.appChatId && runningChatIds.has(currentChat.appChatId)
+    currentChat?.appChatId &&
+      (runningChatIds.has(currentChat.appChatId) ||
+        currentChat.ensemble?.activeRound?.status === 'running')
   )
-  const isCurrentComposerLocked = isCurrentChatRunning
+  const isCurrentEnsembleChat = currentChat?.chatKind === 'ensemble'
+  const isEnsembleModeEnabled = settings?.ensembleModeEnabled !== false
+  const isCurrentComposerLocked = isCurrentChatRunning && !isCurrentEnsembleChat
   // Phase J3 (steer): the composer Steer button is visible while the
   // current chat has an in-flight run. `isChatBusy` is the per-chat
   // busy predicate already used by every queue-decision site.
   const isCurrentChatBusyForSteer = Boolean(
-    currentChat?.appChatId && isChatBusy(currentChat.appChatId)
+    currentChat?.appChatId &&
+      (isChatBusy(currentChat.appChatId) ||
+        currentChat.ensemble?.activeRound?.status === 'running')
   )
   const steerIndicatorMessage = currentChat?.appChatId
     ? getSteerIndicatorMessage({
@@ -12628,6 +12713,8 @@ function App(): React.JSX.Element {
               onSelectWorkspaceDialog={handleSelectWorkspace}
               onNewChat={handleNewChat}
               onNewGlobalChat={handleNewGlobalChat}
+              onNewEnsemble={handleNewEnsemble}
+              ensembleModeEnabled={isEnsembleModeEnabled}
               onSelectChat={handleSelectChat}
               onOpenSettings={() => setShowSettings(true)}
               onCreateSubThread={(parent) => setSubThreadCreatorParent(parent)}
@@ -12895,6 +12982,14 @@ function App(): React.JSX.Element {
               }}
             />
           ) : (
+            <>
+              {currentChat?.chatKind === 'ensemble' && (
+                <EnsembleParticipantStrip
+                  chat={currentChat}
+                  onConfigure={() => setEnsembleSetupChat(currentChat)}
+                  onStop={() => void handleCancel()}
+                />
+              )}
             <TranscriptPanel
               key={currentChat?.appChatId || 'no-chat'}
               scrollRef={transcriptScrollRef}
@@ -12924,6 +13019,7 @@ function App(): React.JSX.Element {
               onInspectRun={(runId) => setInspectingRunId(runId)}
               compactDensity={appearance.compactDensity}
             />
+            </>
           )}
 
           {showGeminiTerminal && currentProvider === 'gemini' && hasWorkspaceContext && (
@@ -14901,6 +14997,25 @@ function App(): React.JSX.Element {
             void handleSubThreadCreated(subThread, delegationPrompt)
           }}
           onCancel={() => setSubThreadCreatorParent(null)}
+        />
+      )}
+      {ensembleSetupChat && (
+        <EnsembleSetupSheet
+          chat={
+            chats.find((chat) => chat.appChatId === ensembleSetupChat.appChatId) ||
+            ensembleSetupChat
+          }
+          onClose={() => setEnsembleSetupChat(null)}
+          onSave={(updatedChat) => {
+            chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
+            setCurrentChat((current) =>
+              current?.appChatId === updatedChat.appChatId ? updatedChat : current
+            )
+            setChats((prev) =>
+              prev.map((chat) => (chat.appChatId === updatedChat.appChatId ? updatedChat : chat))
+            )
+            void window.api.saveChat(updatedChat)
+          }}
         />
       )}
       {/* Phase K3 — creative-action approval modal. Mounts at app root

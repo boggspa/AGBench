@@ -34,6 +34,7 @@ import {
   HandoffCardFilter
 } from './types'
 import { canonicalizeExternalPathGrantMetadata } from './ExternalPathGrants'
+import { createDefaultEnsembleConfig } from '../EnsembleDefaults'
 import { createHash, randomUUID } from 'crypto'
 import {
   createRunQueueJob,
@@ -102,6 +103,7 @@ const defaultSettings: AppSettings = {
   storeLocalChatHistory: true,
   storeRawEvents: false,
   storePromptResponseInUsage: false,
+  ensembleModeEnabled: true,
   geminiCheckpointingEnabled: false,
   chatContextTurns: 6,
   appearanceMode: 'soft_glass',
@@ -586,20 +588,37 @@ export class AppStore {
   // Chats
   static normalizeChatRecord(chat: ChatRecord): ChatRecord {
     const scope = chat.scope === 'global' ? 'global' : 'workspace'
+    const chatKind = chat.chatKind === 'ensemble' ? 'ensemble' : 'single'
     const providerMetadata = chat.providerMetadata
       ? canonicalizeExternalPathGrantMetadata(chat.providerMetadata)
       : chat.providerMetadata
+    const ensemble =
+      chatKind === 'ensemble'
+        ? {
+            ...createDefaultEnsembleConfig(chat.provider || this.getSettings().activeProvider),
+            ...(chat.ensemble || {}),
+            participants:
+              Array.isArray(chat.ensemble?.participants) && chat.ensemble.participants.length > 0
+                ? chat.ensemble.participants
+                : createDefaultEnsembleConfig(chat.provider || this.getSettings().activeProvider)
+                    .participants
+          }
+        : undefined
     if (scope === 'global') {
       const { workspaceId: _workspaceId, workspacePath: _workspacePath, ...rest } = chat
       return {
         ...rest,
         scope,
+        chatKind,
+        ...(ensemble ? { ensemble } : {}),
         providerMetadata
       }
     }
     return {
       ...chat,
       scope,
+      chatKind,
+      ...(ensemble ? { ensemble } : {}),
       providerMetadata,
       workspaceId: chat.workspaceId || '',
       workspacePath: chat.workspacePath || ''
@@ -633,6 +652,7 @@ export class AppStore {
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       scope: 'workspace',
+      chatKind: 'single',
       provider: settings.activeProvider || 'gemini',
       title: 'New Chat',
       workspaceId,
@@ -654,6 +674,7 @@ export class AppStore {
     const chat: ChatRecord = {
       appChatId: randomUUID(),
       scope: 'global',
+      chatKind: 'single',
       provider: settings.activeProvider || 'gemini',
       title: 'New Chat',
       createdAt: Date.now(),
@@ -661,6 +682,32 @@ export class AppStore {
       archived: false,
       messages: [],
       runs: []
+    }
+    if (settings.storeLocalChatHistory) {
+      this.saveChat(chat)
+    }
+    return chat
+  }
+
+  static createEnsembleChat(args: { workspaceId?: string; workspacePath?: string } = {}): ChatRecord {
+    const settings = this.getSettings()
+    const activeProvider = settings.activeProvider || 'gemini'
+    const scope: ChatRecord['scope'] = args.workspaceId && args.workspacePath ? 'workspace' : 'global'
+    const chat: ChatRecord = {
+      appChatId: randomUUID(),
+      scope,
+      chatKind: 'ensemble',
+      provider: activeProvider,
+      title: 'New Ensemble',
+      ...(scope === 'workspace'
+        ? { workspaceId: args.workspaceId, workspacePath: args.workspacePath }
+        : {}),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      archived: false,
+      messages: [],
+      runs: [],
+      ensemble: createDefaultEnsembleConfig(activeProvider)
     }
     if (settings.storeLocalChatHistory) {
       this.saveChat(chat)
@@ -710,6 +757,7 @@ export class AppStore {
       // chat stays a workspace chat; a sub-thread of a global chat
       // stays global.
       scope: parent.scope ?? 'workspace',
+      chatKind: 'single',
       provider: args.provider,
       title: `Sub-thread (${args.provider})`,
       workspaceId,
