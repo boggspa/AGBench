@@ -6380,15 +6380,38 @@ button.sidebar-item {
   overflow: hidden;
 }
 
+/* CodeMirror's height chain inside the file editor.
+ *
+ * The wrapper `<div class="cm-theme">` rendered by @uiw/react-codemirror has
+ * no display rules of its own, so we explicitly turn the cm-theme + cm-editor
+ * chain into proper flex columns with `min-height: 0`. Without that, when the
+ * file content is taller than the viewport the wrapper happily grows to fit
+ * the content and the inner `.cm-scroller` never sees overflow — mouse-wheel
+ * and trackpad gestures bubble out to the page with nothing to scroll, while
+ * keyboard navigation still works because focus-following programmatically
+ * adjusts `scrollTop`.
+ */
 .file-editor-code-surface .cm-theme,
 .file-editor-code-surface .cm-editor {
+  display: flex;
+  flex-direction: column;
   height: 100%;
+  min-height: 0;
   background: transparent;
 }
 
 .file-editor-code-surface .cm-scroller {
+  /* Force vertical scroll on the actual scroll container. The CodeMirror
+   * base theme only sets `overflow-x: auto` and relies on inline user themes
+   * for vertical scroll — pin it here with `!important` so future theme
+   * tweaks can't accidentally turn it off. */
   font-family: var(--font-mono);
   background: transparent;
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  overscroll-behavior: contain;
 }
 
 .file-editor-code-surface .cm-content,
