@@ -1255,6 +1255,13 @@ type RunCompleteSummaryRow = {
   value: string
 }
 
+type ChatTokenTally = {
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  explicitCostUsd: number
+}
+
 type PersistentSessionStatus =
   | 'idle'
   | 'starting'
@@ -2742,6 +2749,22 @@ const extractUsageCountsFromCandidate = (
   }
 }
 
+const extractUsageCostUsd = (stats: any): number => {
+  const raw = extractNestedValue(stats, [
+    ['cost_usd'],
+    ['costUsd'],
+    ['total_cost_usd'],
+    ['totalCostUsd'],
+    ['usage', 'cost_usd'],
+    ['usage', 'costUsd'],
+    ['billing', 'cost_usd'],
+    ['billing', 'costUsd']
+  ])
+  if (raw === undefined || raw === null || raw === '') return 0
+  const parsed = typeof raw === 'string' ? Number(raw.trim()) : Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+}
+
 const isNonEmptyObject = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 
@@ -3246,6 +3269,31 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   return 'Gemini'
+}
+const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
+  return runs.reduce<ChatTokenTally>(
+    (total, run) => {
+      const counts = extractUsageCountsFromCandidate(run?.stats)
+      return {
+        inputTokens: total.inputTokens + counts.inputTokens,
+        outputTokens: total.outputTokens + counts.outputTokens,
+        totalTokens: total.totalTokens + counts.totalTokens,
+        explicitCostUsd: total.explicitCostUsd + extractUsageCostUsd(run?.stats)
+      }
+    },
+    { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0 }
+  )
+}
+const formatExplicitCostUsd = (costUsd: number): string => {
+  if (!Number.isFinite(costUsd) || costUsd <= 0) return ''
+  if (costUsd < 0.01) return '<$0.01'
+  if (costUsd < 1) return `$${costUsd.toFixed(2)}`
+  return `$${costUsd.toFixed(2)}`
+}
+const formatThreadTokenTally = (providerLabel: string, tally: ChatTokenTally): string | null => {
+  if (tally.totalTokens <= 0) return null
+  const cost = formatExplicitCostUsd(tally.explicitCostUsd)
+  return `${providerLabel} ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
 }
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean =>
@@ -11490,11 +11538,13 @@ function App(): React.JSX.Element {
     state: steerState,
     chatId: currentChat?.appChatId || null
   })
+  const currentProviderLabel = getProviderLabel(currentProvider)
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
-  const cumulativeChatTokens = (currentChat?.runs || []).reduce((sum, run) => {
-    const counts = extractUsageCountsFromCandidate(run?.stats)
-    return sum + (counts.totalTokens || 0)
-  }, 0)
+  const chatTokenTally = useMemo(
+    () => buildChatTokenTally(currentChat?.runs || []),
+    [currentChat?.runs]
+  )
+  const cumulativeChatTokens = chatTokenTally.totalTokens
   const latestRunLimits = extractUsageLimits(currentRun?.stats)
   const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
   const contextWindowSize = resolveContextWindow(
@@ -11505,6 +11555,7 @@ function App(): React.JSX.Element {
   const contextUsedPercent =
     contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
   const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
+  const threadTokenTallyLabel = formatThreadTokenTally(currentProviderLabel, chatTokenTally)
   const latestRunDiffStats = useMemo(() => {
     // Prefer a live aggregate from tool activities on the current run so the
     // above-composer bar updates mid-task rather than only after runDiff lands.
@@ -11622,7 +11673,6 @@ function App(): React.JSX.Element {
     codexExternalPathGrants,
     externalPathRepoMetadata
   ])
-  const currentProviderLabel = getProviderLabel(currentProvider)
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -14037,6 +14087,11 @@ function App(): React.JSX.Element {
                   </div>
                   <div className="composer-inline-actions">
                     <ContextWheel percent={contextUsedPercent} label={contextLabel} />
+                    {threadTokenTallyLabel && (
+                      <span className="composer-thread-token-tally" title={contextLabel}>
+                        {threadTokenTallyLabel}
+                      </span>
+                    )}
                     {steerIndicatorMessage && (
                       <span className="composer-steer-indicator" role="status" aria-live="polite">
                         <span className="composer-steer-indicator-dot" aria-hidden />

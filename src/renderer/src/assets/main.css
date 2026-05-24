@@ -5098,6 +5098,18 @@ button.sidebar-item {
   flex-shrink: 0;
 }
 
+.composer-thread-token-tally {
+  max-width: min(260px, 28vw);
+  color: color-mix(in srgb, var(--text-secondary) 82%, transparent);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 560;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .composer-scheduler-controls {
   display: inline-flex;
   align-items: center;
