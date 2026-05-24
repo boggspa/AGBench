@@ -13324,6 +13324,35 @@ input:disabled, select:disabled, textarea:disabled {
   background-color: rgba(0, 0, 0, 0.25);
 }
 
+/* Light-theme override for native_glass transcript + sidebar.
+ * The dark 25%-black overlay above was painted on top of the
+ * macOS vibrancy view, which in light mode renders as muddy
+ * gray. Switch to a 30% white overlay in light themes so the
+ * vibrancy reads as bright + frosted rather than darkened. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript {
+  background-color: rgba(255, 255, 255, 0.32) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
+  /* Lift the sidebar fill in light + native-glass to a brighter
+   * frosted white. The base native_glass sidebar rule layers a
+   * dark gradient on top of `--sidebar-glass-fill`; in light
+   * mode that gradient muddies the panel. Replace with a
+   * mostly-white gradient so the sidebar reads as a clean
+   * frosted surface, with `backdrop-filter` off (the macOS
+   * vibrancy already provides the blur). */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.22)) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-right-color: rgba(0, 0, 0, 0.08) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar::before {
+  /* The base ::before adds a darkening overlay — suppress it
+   * in light + native-glass so the brighter fill above shows
+   * through cleanly. */
+  display: none !important;
+}
+
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript::after,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-codex::after,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript.provider-claude::after,
@@ -15396,6 +15425,37 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: none;
 }
 
+/* Light-theme override for the Codex / Claude shell welcome
+ * suggestion cards. The shell-scoped rule above hardcodes a dark
+ * fill (`#151515 88%`) for every theme; in light themes that
+ * dark resting state surfaced regardless of the cards' hover
+ * state appearing correctly light. Cascade specificity (0,2,0)
+ * tied the hardcoded rule and our earlier `[data-theme="light"]`
+ * override at line 4110, with the later rule winning. This
+ * stacked-attribute selector lifts our specificity to (0,3,0)
+ * so the light fill sticks in both resting + hover states. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn {
+  background: var(--surface-1);
+  border-color: var(--surface-border);
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn:hover,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn:hover {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--surface-text, rgba(29, 29, 31, 0.86)) 22%, var(--surface-border));
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-label {
+  color: var(--surface-text, rgba(29, 29, 31, 0.86));
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .welcome-suggestion-btn .welcome-suggestion-description,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .welcome-suggestion-btn .welcome-suggestion-description {
+  color: var(--surface-text-muted, rgba(29, 29, 31, 0.62));
+}
+
 @media (max-width: 980px) {
   /* Composer-area width is now inherited from the default .composer-area
    * rule; we keep the narrow-viewport status-row tweaks because those are
@@ -16851,6 +16911,33 @@ input:disabled, select:disabled, textarea:disabled {
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+}
+
+/* Header text-cluster (ghost mascot + title + subtitle). Lays out
+ * the ghost glyph to the left of the heading so the sheet greets
+ * the user with the same mascot they'll see on the ghost-button
+ * in the chat-corner pill. */
+.first-launch-sheet-header-text {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+.first-launch-sheet-ghost {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+.first-launch-sheet-ghost svg {
+  width: 22px;
+  height: 22px;
 }
 .first-launch-sheet-header h2 {
   margin: 0 0 4px 0;
