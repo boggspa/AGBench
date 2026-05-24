@@ -97,6 +97,7 @@ import {
   CombinedPermissionsPicker,
   type PermissionOption
 } from './components/CombinedPermissionsPicker'
+import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
@@ -13610,17 +13611,113 @@ function App(): React.JSX.Element {
                 )}
                 <div className="composer-inline-pickers">
                   <div className="composer-inline-pickers-left">
-                    <button
-                      className="composer-image-picker-btn"
-                      type="button"
-                      title="Add attachment"
-                      aria-label="Add attachment"
-                      onClick={handlePickImages}
-                      disabled={isCurrentComposerLocked}
-                      data-composer-control="attach"
-                    >
-                      <PlusSymbolIcon />
-                    </button>
+                    {(() => {
+                      const workspaceActionDisabled = !currentWorkspace || !currentChat
+                      const plusSections: ComposerPlusPickerSection[] = [
+                        {
+                          id: 'add',
+                          title: 'Add',
+                          items: [
+                            {
+                              id: 'attachment',
+                              label: 'Attachment',
+                              description: 'Add files or images',
+                              icon: <PlusSymbolIcon />,
+                              disabled: isCurrentComposerLocked,
+                              onSelect: handlePickImages
+                            },
+                            {
+                              id: 'attached-window',
+                              label: attachedWindow ? 'Detach app' : 'Attach app',
+                              description: attachedWindow
+                                ? attachedWindow.streaming
+                                  ? 'Stop live capture and detach'
+                                  : 'Detach the picked window'
+                                : 'Pick a running app window',
+                              icon: <CommandSymbolIcon />,
+                              disabled:
+                                isCurrentComposerLocked ||
+                                (!attachedWindow && isAttachingWindow),
+                              onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
+                            }
+                          ]
+                        },
+                        {
+                          id: 'workspace',
+                          title: 'Workspace',
+                          items: isCurrentGlobalChat
+                            ? []
+                            : [
+                                {
+                                  id: 'safety',
+                                  label: 'Status',
+                                  description: `${currentProviderLabel} safety and setup`,
+                                  icon: <TrustSymbolIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('safety')
+                                },
+                                {
+                                  id: 'diff',
+                                  label: 'Diff Studio',
+                                  description: `${currentProviderLabel} workspace changes`,
+                                  icon: <FileMenuSelectionIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('diff')
+                                },
+                                {
+                                  id: 'capabilities',
+                                  label: 'Models',
+                                  description: `${currentProviderLabel} capability state`,
+                                  icon: <ModelSymbolIcon />,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () => setRightTab('capabilities')
+                                }
+                              ]
+                        },
+                        {
+                          id: 'commands',
+                          title: 'Commands',
+                          items: isCurrentGlobalChat
+                            ? []
+                            : [
+                                {
+                                  id: 'palette',
+                                  label:
+                                    currentProvider === 'gemini'
+                                      ? 'Slash commands'
+                                      : 'Command palette',
+                                  description:
+                                    currentProvider === 'gemini'
+                                      ? 'Gemini slash command palette'
+                                      : `${currentProviderLabel} command palette`,
+                                  icon: <CommandSymbolIcon />,
+                                  active: isCommandPaletteOpen,
+                                  disabled: workspaceActionDisabled,
+                                  onSelect: () =>
+                                    setIsCommandPaletteOpen((current) => !current)
+                                },
+                                {
+                                  id: 'review',
+                                  label: isPreparingDiffReview ? 'Preparing review' : 'Review diff',
+                                  description: 'Read-only plan-mode review',
+                                  icon: <ReviewSymbolIcon />,
+                                  disabled:
+                                    workspaceActionDisabled || isPreparingDiffReview,
+                                  onSelect: () => void handleReviewCurrentDiff()
+                                }
+                              ]
+                        }
+                      ]
+                      return (
+                        <ComposerPlusPicker
+                          provider={currentProvider}
+                          composerStyle={appearance.composerStyle}
+                          sections={plusSections}
+                          disabled={isCurrentComposerLocked}
+                          triggerIcon={<PlusSymbolIcon />}
+                        />
+                      )
+                    })()}
                     {attachedWindow ? (
                       <button
                         className={
@@ -13640,7 +13737,7 @@ function App(): React.JSX.Element {
                             : 'Detach attached window'
                         }
                         onClick={handleDetachWindow}
-                        data-composer-control="attached-window"
+                        data-composer-control="attach"
                         data-streaming={attachedWindow.streaming ? 'true' : 'false'}
                       >
                         {attachedWindow.streaming && (
@@ -13679,19 +13776,7 @@ function App(): React.JSX.Element {
                           ×
                         </span>
                       </button>
-                    ) : (
-                      <button
-                        className="composer-image-picker-btn"
-                        type="button"
-                        title="Attach a running app (pick a window via the macOS picker)"
-                        aria-label="Attach a running app"
-                        onClick={handleAttachWindow}
-                        disabled={isCurrentComposerLocked || isAttachingWindow}
-                        data-composer-control="attach-window"
-                      >
-                        {isAttachingWindow ? '…' : '⌘'}
-                      </button>
-                    )}
+                    ) : null}
                     <label
                       className="composer-picker-label"
                       title="Provider"
@@ -14009,93 +14094,6 @@ function App(): React.JSX.Element {
                           <option value="untrusted">Untrusted</option>
                         </select>
                       </label>
-                    )}
-                    {/*
-                      Composer-unification (Phase J1): the inline-pickers
-                      tail is now identical across providers:
-                        [safety] [diff] [models] [command-palette] [review]
-                      Previously Gemini had its own bonanza of standalone
-                      buttons (`/stats`, `/help`, `GEMINI.md`, `/restore`,
-                      palette) and other providers had the safety/diff/
-                      models/palette icons. Now everyone shares the same
-                      five icons; Gemini's bespoke commands live INSIDE the
-                      palette popover (see `geminiQuickToggleItems` in the
-                      palette items derivation) so they're still one click
-                      away but the row position stays predictable.
-                    */}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('safety')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Show ${currentProviderLabel} safety and setup state`}
-                        aria-label={`Show ${currentProviderLabel} status`}
-                      >
-                        <TrustSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('diff')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Open Diff Studio for ${currentProviderLabel} workspace changes`}
-                        aria-label={`Open ${currentProviderLabel} diff`}
-                      >
-                        <FileMenuSelectionIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command"
-                        type="button"
-                        onClick={() => setRightTab('capabilities')}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={`Show ${currentProviderLabel} models and capability state`}
-                        aria-label={`Show ${currentProviderLabel} models`}
-                      >
-                        <ModelSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className={`composer-picker-command composer-icon-command composer-command-palette-trigger ${isCommandPaletteOpen ? 'active' : ''}`}
-                        type="button"
-                        onClick={() => setIsCommandPaletteOpen((current) => !current)}
-                        disabled={!currentWorkspace || !currentChat}
-                        title={
-                          currentProvider === 'gemini'
-                            ? 'Open Gemini slash command palette'
-                            : `Open ${currentProviderLabel} command palette`
-                        }
-                        aria-label={
-                          currentProvider === 'gemini'
-                            ? 'Open Gemini slash command palette'
-                            : `Open ${currentProviderLabel} command palette`
-                        }
-                      >
-                        <CommandSymbolIcon />
-                      </button>
-                    )}
-                    {!isCurrentGlobalChat && (
-                      <button
-                        className="composer-picker-command composer-icon-command composer-review-command"
-                        type="button"
-                        onClick={() => void handleReviewCurrentDiff()}
-                        disabled={!currentWorkspace || !currentChat || isPreparingDiffReview}
-                        title={
-                          isPreparingDiffReview
-                            ? 'Preparing review...'
-                            : 'Review the current workspace diff in read-only plan mode'
-                        }
-                        aria-label={
-                          isPreparingDiffReview ? 'Preparing review' : 'Review current diff'
-                        }
-                      >
-                        <ReviewSymbolIcon />
-                      </button>
                     )}
                   </div>
                   <div className="composer-inline-actions">

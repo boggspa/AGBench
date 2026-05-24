@@ -19434,6 +19434,64 @@ input:disabled, select:disabled, textarea:disabled {
   margin-top: 1px;
 }
 
+/* Composer + picker ------------------------------------------ */
+
+.composer-plus-picker-trigger {
+  font-weight: 700;
+}
+
+.composer-plus-picker-popover {
+  flex-direction: column;
+  min-width: 280px;
+  max-width: min(340px, calc(100vw - 16px));
+  gap: 4px;
+}
+
+.composer-plus-picker-section {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0 4px;
+}
+
+.composer-plus-picker-section + .composer-plus-picker-section {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  padding-top: 6px;
+}
+
+.composer-plus-picker-row {
+  justify-content: flex-start;
+  align-items: flex-start;
+  padding: 7px 10px;
+}
+
+.composer-plus-picker-row:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.composer-plus-picker-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+
+.composer-plus-picker-row-icon svg,
+.composer-plus-picker-row-icon .sf-symbol-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.composer-plus-picker-row-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
 /* Per-shell trigger chrome ------------------------------------ */
 
 [data-composer-style="codex"] .composer-combined-picker-trigger {
