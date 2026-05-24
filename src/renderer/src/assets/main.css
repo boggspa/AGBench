@@ -17478,3 +17478,172 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: var(--unified-soft-surface-border);
   color: var(--text-primary);
 }
+
+/* ============================================================
+ * NATIVE GLASS · LIGHT-MODE OVERRIDE
+ * --------------------------------------------------------------
+ * The base `[data-appearance="native_glass"]` block in
+ * theme.css:314 hard-keys the glass tint to DARK
+ * (`--content-bg: rgba(22, 23, 27, 0.94)`,
+ *  `--composer-bg: rgba(34, 34, 40, 0.40)`, etc.) with no
+ * light-theme branch. macOS `NSVisualEffectMaterialSidebar` is
+ * itself theme-aware — on a Light-mode system the vibrancy
+ * material is frosty white — so the dark CSS tint fights the
+ * light vibrancy underneath and produces the murky look in the
+ * transcript pane.
+ *
+ * The Inspector "didn't suffer" because the cards inside it
+ * (.safety-card / .run-summary) were already light-unified by
+ * the block above — they cover the dark inspector chrome. The
+ * transcript pane has lots of empty surface, so the bug is
+ * loudest there.
+ *
+ * Strategy: keep the vibrancy alive (semi-transparent fills,
+ * no backdrop-filter — macOS does the blur) but flip every
+ * tint from "white on dark" to "black on white" so the light
+ * vibrancy reads through correctly.
+ * ============================================================ */
+
+[data-appearance="native_glass"][data-theme="light"] {
+  --app-bg-elevated: rgba(0, 0, 0, 0.04);
+  --panel-elevated-bg: rgba(0, 0, 0, 0.035);
+  --composer-bg: rgba(255, 255, 255, 0.56);
+  --content-bg: rgba(255, 255, 255, 0.72);
+  --composer-border: rgba(0, 0, 0, 0.12);
+  --sidebar-border: rgba(0, 0, 0, 0.10);
+  --panel-border: rgba(0, 0, 0, 0.10);
+}
+
+/* Sidebar glass-fill tokens — invert from dark-glass (rgba(24,25,24))
+ * to light-glass (rgba(255,255,255)) so the gradient + glass-fill
+ * composition reads as light frost. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] {
+  --sidebar-glass-fill: rgba(255, 255, 255, 0.32);
+  --sidebar-glass-fill-elevated: rgba(255, 255, 255, 0.44);
+  --sidebar-glass-fill-strong: rgba(255, 255, 255, 0.56);
+  --sidebar-glass-border: rgba(0, 0, 0, 0.10);
+  --sidebar-glass-border-strong: rgba(0, 0, 0, 0.16);
+  --sidebar-glass-highlight: rgba(255, 255, 255, 0.6);
+  --sidebar-glass-noise: rgba(0, 0, 0, 0.03);
+  --sidebar-glass-shadow: 18px 0 48px rgba(60, 60, 80, 0.10);
+  --sidebar-glass-inner-shadow:
+    inset -1px 0 0 rgba(0, 0, 0, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Sidebar background gradient — light frost over the
+ * (now-light-tokenised) sidebar-glass-fill. Overrides the
+ * dark gradient hardcoded at line 12870. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 248, 0.28), rgba(240, 240, 240, 0.14) 42%, rgba(255, 255, 255, 0.26)),
+    var(--sidebar-glass-fill) !important;
+  border-right-color: var(--sidebar-glass-border);
+  box-shadow: var(--sidebar-glass-inner-shadow), var(--sidebar-glass-shadow);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar::before {
+  background:
+    linear-gradient(120deg, transparent 0 18%, rgba(255, 255, 255, 0.34) 28%, transparent 42%),
+    radial-gradient(circle at 28% 0%, rgba(255, 255, 255, 0.4), transparent 34%),
+    repeating-linear-gradient(135deg, var(--sidebar-glass-noise) 0 1px, transparent 1px 7px);
+  mix-blend-mode: normal;
+  opacity: 0.4;
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar::after {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.42), transparent 2px, transparent calc(100% - 2px), rgba(255, 255, 255, 0.34));
+  opacity: 0.4;
+}
+
+/* Sidebar inner tile chrome (.sidebar-masthead, search field,
+ * Run Summary, Model Usage, footer button) — light frosted tiles. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+  .sidebar-masthead,
+  .sidebar-search-field,
+  .sidebar-empty-state,
+  .run-summary,
+  .model-usage-summary,
+  .sidebar-footer .btn
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.46), rgba(255, 255, 255, 0.22)),
+    var(--sidebar-glass-fill-elevated);
+  border-color: var(--sidebar-glass-border);
+  box-shadow:
+    inset 0 1px 0 var(--sidebar-glass-highlight),
+    0 8px 22px rgba(60, 60, 80, 0.08);
+}
+
+/* Section header badges. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+  .sidebar-section-header,
+  .sidebar-section-title,
+  .sidebar-masthead-stats span,
+  .sidebar-workspace-count-badge,
+  .sidebar-chat-age
+) {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-header {
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.04), rgba(0, 0, 0, 0.018)),
+    rgba(255, 255, 255, 0.34);
+}
+
+/* Active workspace / chat / global-chat item — soft accent on light glass. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(
+  .sidebar-workspace-item.active,
+  .sidebar-chat-item.active,
+  .sidebar-global-chat-item.active
+) {
+  background:
+    linear-gradient(135deg, rgba(98, 130, 176, 0.16), rgba(255, 255, 255, 0.32)),
+    var(--sidebar-glass-fill-strong);
+  border-color: var(--sidebar-glass-border-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 3px 0 0 rgba(74, 125, 200, 0.6),
+    0 8px 22px rgba(60, 60, 80, 0.10);
+}
+
+/* Drop the dark-mode text-shadow on sidebar inputs/buttons — the
+ * white halo is unnecessary against a light backdrop. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] .app-sidebar :is(input, button, .sidebar-search-hint) {
+  text-shadow: none;
+}
+
+/* Inspector / file editor / gemini terminal split / composer surface
+ * — the right-pane chrome + composer surface. Light frost over the
+ * macOS vibrancy. Replaces the dark glass at line 12972. */
+[data-appearance="native_glass"][data-reduce-transparency="false"][data-theme="light"] :is(
+  .app-inspector,
+  .app-file-editor,
+  .gemini-terminal-split,
+  .composer-surface
+) {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0.16)),
+    rgba(255, 255, 255, 0.38);
+  border-color: rgba(0, 0, 0, 0.10);
+  box-shadow: 0 16px 36px rgba(60, 60, 80, 0.10);
+}
+
+/* Transcript pane — the surface that was reading darkest. Use the
+ * now-light-tokenised --content-bg so the macOS vibrancy shows through
+ * a light frost. The provider tint (.app-transcript::after) still
+ * paints its accent gradient on top, just over a light base. */
+[data-appearance="native_glass"][data-theme="light"] .app-transcript {
+  background: var(--content-bg);
+}
+
+/* Tone down the provider tint overlay in light glass so it reads as
+ * a soft hue wash rather than a saturated dark gradient. The base
+ * ::after gradient uses dark provider colors (purple/orange/etc.)
+ * at ~16% alpha; in light glass mode we halve the opacity so the
+ * frost stays bright. */
+[data-appearance="native_glass"][data-theme="light"] .app-transcript::after {
+  opacity: 0.5;
+}
