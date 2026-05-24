@@ -18923,3 +18923,136 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #8c80ff 18%, #ffffff 8%) !important;
   color: rgba(255, 255, 255, 0.84) !important;
 }
+
+/* ============================================================
+ * CLAUDE SHELL — SLICE A REFINEMENTS
+ * --------------------------------------------------------------
+ * Five chrome-only tweaks pulling the Claude emulation closer
+ * to real Claude Code's actual two-rect/three-row layout:
+ *
+ *   1. Textarea rect (rect-2) reads as slightly lighter than the
+ *      above-bar (rect-1) with a more pronounced rim, so the
+ *      two rects are visually distinct surfaces (not one card).
+ *   2. Send/stop button anchors to bottom-right of the textarea
+ *      rect instead of top-right.
+ *   3. Diff stats `+136 -42` right-aligns next to the action
+ *      button and gets its own solid-gray button skin (mirrors
+ *      real Claude's `+100 -0` chip + Commit Changes pairing).
+ *   4. Permissions picker gets contained-button chrome matching
+ *      the "Auto" pill in real Claude.
+ *   5. ContextWheel donut switches from amber to Claude's blue
+ *      indicator hue.
+ * ============================================================ */
+
+/* 1) Textarea rect — lighter fill + more pronounced rim.
+ *    Beats the earlier `!important` rules at lines 14943 + 15045
+ *    by also using `!important`. */
+[data-composer-style="claude"] .composer-textarea {
+  background: #1e1e1e !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-textarea {
+  background: #f0f0f3 !important;
+  border-color: rgba(0, 0, 0, 0.14) !important;
+}
+
+/* Focus-within glow tunes up with the brighter rim. */
+[data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+  border-color: rgba(255, 255, 255, 0.30) !important;
+  box-shadow:
+    0 4px 22px rgba(0, 0, 0, 0.36),
+    0 0 0 1px rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-surface:focus-within .composer-textarea {
+  border-color: rgba(0, 0, 0, 0.26) !important;
+  box-shadow:
+    0 4px 22px rgba(0, 0, 0, 0.12),
+    0 0 0 1px rgba(0, 0, 0, 0.10) !important;
+}
+
+/* 2) Send / stop / queue / steer buttons → bottom-right of the
+ *    textarea rect instead of top-right. The earlier rule (line
+ *    14147-14152) anchored to top:12px; we override to land at
+ *    the bottom edge of the textarea rect by offsetting from
+ *    surface bottom enough to clear the control-footer. */
+[data-composer-style="claude"] .composer-action-btn.run-btn,
+[data-composer-style="claude"] .composer-action-btn.stop-btn,
+[data-composer-style="claude"] .composer-action-btn.steer-btn {
+  top: auto !important;
+  bottom: 56px !important;
+  right: 14px !important;
+}
+
+/* 3) Diff stats right-aligned + gray button skin.
+ *    Yesterday's Slice 1 rule forced `.composer-above-bar-stats`
+ *    transparent + bare text — this rule re-enables a contained
+ *    button look ONLY on the stats element, leaves branch/files
+ *    as bare text. `margin-left: auto` pushes the stats + action
+ *    pair to the row's right edge. */
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
+  margin-left: auto;
+  background: #3a3a3a !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: var(--radius-md, 10px) !important;
+  padding: 4px 10px !important;
+  color: rgba(255, 255, 255, 0.92) !important;
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
+  background: #e8e8ea !important;
+  border-color: rgba(0, 0, 0, 0.08) !important;
+  color: rgba(29, 29, 31, 0.92) !important;
+}
+
+/* Inner +/- spans keep their semantic green/red but lift contrast
+ * against the new gray button bg. */
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-add {
+  color: #6ddfa8;
+}
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-del {
+  color: #ff7d7d;
+}
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-add {
+  color: #1f9d6b;
+}
+[data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats .composer-diff-del {
+  color: #c44141;
+}
+
+/* 4) Permissions picker as a contained "Auto"-style button.
+ *    Replaces the earlier transparent-pill treatment (line 13540)
+ *    with a soft rounded-rect button matching real Claude's
+ *    permission-mode pill. */
+[data-composer-style="claude"] [data-composer-control="permission"] {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: var(--radius-md, 8px);
+  padding: 3px 10px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+[data-composer-style="claude"] [data-composer-control="permission"]:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+[data-theme="light"][data-composer-style="claude"] [data-composer-control="permission"] {
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.10);
+  color: rgba(29, 29, 31, 0.92);
+}
+
+[data-theme="light"][data-composer-style="claude"] [data-composer-control="permission"]:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.16);
+}
+
+/* 5) Context donut → Claude's blue indicator hue.
+ *    Was `color: #e6a960` (amber, line 14096) — real Claude
+ *    renders the context spinner in a soft cyan-blue. */
+[data-composer-style="claude"] .context-wheel {
+  color: #5d9eff;
+}
