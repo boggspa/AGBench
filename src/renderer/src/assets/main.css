@@ -18850,6 +18850,28 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: var(--unified-soft-surface-border);
 }
 
+/* Transcript completion card ("Task complete" + run details). Codex /
+ * Claude shells force this card dark for dark mode; restore the light
+ * card material only when a light theme is active. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .run-complete-card,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .run-complete-card {
+  background: var(--unified-soft-surface-bg);
+  border-color: var(--unified-soft-surface-border);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .run-complete-card :is(.run-complete-summary-card, .file-change-summary-card),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .run-complete-card :is(.run-complete-summary-card, .file-change-summary-card) {
+  background: color-mix(in srgb, var(--surface-1) 76%, var(--unified-soft-surface-bg));
+  border-color: var(--unified-soft-surface-border);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="codex"] .run-complete-card :is(.run-complete-summary-header, .run-complete-summary-item, .file-change-summary-header, .file-change-summary-item),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-interface-style="claude"] .run-complete-card :is(.run-complete-summary-header, .run-complete-summary-item, .file-change-summary-header, .file-change-summary-item) {
+  border-color: var(--unified-soft-surface-border);
+}
+
 /* User message bubble. Already #ffffff in light mode — settle it
  * onto the same unified surface so all bubble-shaped chrome reads
  * as the same card material. */
