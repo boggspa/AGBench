@@ -458,6 +458,11 @@ declare global {
       // presents the macOS system picker. Status events fire on
       // pick/detach and on daemon exit so the renderer can keep its
       // status pill in sync.
+      //
+      // Phase M1 — the snapshot can now carry an optional `streaming`
+      // block when Appwatch is running for the handle, so the pill can
+      // switch between its `attached` and `streaming` visual states
+      // without an extra IPC round-trip.
       attachWindowPick: () => Promise<{
         ok: boolean
         cancelled?: boolean
@@ -472,6 +477,12 @@ declare global {
             pid: number
           }
           attachedAt: string
+          streaming?: {
+            fps: number
+            bufferSeconds: number
+            frameCount: number
+            startedAt: string
+          }
         }
       }>
       attachWindowDetach: () => Promise<{ ok: boolean }>
@@ -486,6 +497,12 @@ declare global {
             pid: number
           }
           attachedAt: string
+          streaming?: {
+            fps: number
+            bufferSeconds: number
+            frameCount: number
+            startedAt: string
+          }
         } | null
       }>
       onAttachedWindowChanged: (
@@ -500,6 +517,12 @@ declare global {
               pid: number
             }
             attachedAt: string
+            streaming?: {
+              fps: number
+              bufferSeconds: number
+              frameCount: number
+              startedAt: string
+            }
           } | null
         ) => void
       ) => () => void

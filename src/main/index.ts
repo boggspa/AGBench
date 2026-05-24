@@ -416,6 +416,17 @@ let creativeApprovalGateRef: CreativeApprovalGate | null = null
 // Mirror of the most recent picker selection, kept on the main side so the
 // renderer can show a status pill and the AI can call `attached_window_status`
 // without re-hopping into the daemon. Cleared on detach / daemon exit.
+//
+// Phase M1 — `streaming` carries the live Appwatch stream config when
+// `appwatch.start` has been called against this handle. Set / cleared by the
+// `executeAppwatchStart` / `executeAppwatchStop` MCP tool wrappers so the
+// renderer pill can flip between "attached" and "streaming" without polling.
+type AttachedWindowStreamingSnapshot = {
+  fps: number
+  bufferSeconds: number
+  frameCount: number
+  startedAt: string
+}
 type AttachedWindowSnapshot = {
   handleID: string
   windowMeta: {
@@ -426,6 +437,7 @@ type AttachedWindowSnapshot = {
     pid: number
   }
   attachedAt: string
+  streaming?: AttachedWindowStreamingSnapshot
 }
 let attachedWindowSnapshot: AttachedWindowSnapshot | null = null
 
@@ -3080,6 +3092,40 @@ function previewForGeminiMcpTool(
       : 'no window attached'
     return {
       title: 'Capture attached window',
+      body: label,
+      service: 'mcpTools' as AgenticServiceId,
+      preview: {
+        kind: 'tool',
+        toolName,
+        params: { windowMeta: meta || null, args }
+      }
+    }
+  }
+
+  // Phase M1 — Appwatch approval prompts. The user already approved sharing
+  // the window at attach time, but Appwatch escalates from a one-shot
+  // snapshot to a continuous low-fps stream. Worth a fresh modal so the
+  // user can see the fps/buffer config the agent picked before it goes
+  // live. `appwatch_stop` doesn't strictly need approval (it's a teardown,
+  // and the user can always detach to abort), but keeping it gated mirrors
+  // the start path and makes the agent's intent legible.
+  if (
+    toolName === 'appwatch_start' ||
+    toolName === 'appwatch_stop' ||
+    toolName === 'appwatch_latest_frame'
+  ) {
+    const meta = attachedWindowSnapshot?.windowMeta
+    const label = meta
+      ? `${meta.applicationName || meta.bundleID || 'window'}: ${meta.title || '(untitled)'}`
+      : 'no window attached'
+    const title =
+      toolName === 'appwatch_start'
+        ? 'Start live window capture'
+        : toolName === 'appwatch_stop'
+          ? 'Stop live window capture'
+          : 'Pull latest live frame'
+    return {
+      title,
       body: label,
       service: 'mcpTools' as AgenticServiceId,
       preview: {
@@ -10621,6 +10667,10 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   // only the title/bundle the user already sees in the renderer pill.
   // Capture stays gated; status is a read of state the user already shared.
   'attached_window_status',
+  // appwatch_status is the same data class as attached_window_status: no
+  // pixel data, only stream-up/down + counts the renderer pill already
+  // shows. Start / stop / latest_frame stay gated.
+  'appwatch_status',
   // Phase L — Editor / IDE transport tools. Opening a file in the
   // user's editor of choice is a focus-change, not a state mutation.
   // No destructive surface beyond the agent's choice of editor (which
@@ -11716,8 +11766,331 @@ function executeAttachedWindowStatus(): McpToolExecutionResult {
     tool: 'attached_window_status',
     attached: true,
     windowMeta: attachedWindowSnapshot.windowMeta,
-    attachedAt: attachedWindowSnapshot.attachedAt
+    attachedAt: attachedWindowSnapshot.attachedAt,
+    // M1: surface the streaming block when Appwatch is running so an agent
+    // can decide between `attached_window_capture` (one-shot, slow) and
+    // `appwatch_latest_frame` (fast, requires a prior `appwatch_start`).
+    streaming: attachedWindowSnapshot.streaming ?? null
   })
+}
+
+// Phase M1 — Appwatch MVP. Four MCP-tool executors mapping 1:1 onto the
+// daemon's `appwatch.*` JSON-RPC surface. Pattern mirrors
+// `executeAttachedWindowCapture` above: self-heal on -32001 (window/stream
+// gone) by clearing the snapshot so the renderer pill drops to the bare
+// "attached" state on its next event. All four require a previously-
+// attached handle; none initiate a window pick.
+
+type AppwatchStartDaemonResult = {
+  ok?: boolean
+  handleID?: string
+  streaming?: {
+    fps?: number
+    bufferSeconds?: number
+    frameCount?: number
+    frameCapacity?: number
+    estimatedMemoryMB?: number
+    memoryBudgetMB?: number
+    startedAt?: string
+  }
+}
+type AppwatchStopDaemonResult = { ok?: boolean; handleID?: string; streaming?: false }
+type AppwatchStatusDaemonResult = {
+  ok?: boolean
+  handleID?: string
+  streaming?: boolean
+  fps?: number
+  bufferSeconds?: number
+  frameCount?: number
+  frameCapacity?: number
+  estimatedMemoryMB?: number
+  memoryBudgetMB?: number
+  oldestAt?: string
+  newestAt?: string
+  lastPullAt?: string
+  startedAt?: string
+}
+type AppwatchLatestFrameDaemonResult = {
+  ok?: boolean
+  handleID?: string
+  hasFrame?: boolean
+  pngBase64?: string
+  byteLength?: number
+  width?: number
+  height?: number
+  capturedAt?: string
+}
+
+/** Update `attachedWindowSnapshot.streaming` (or clear it) and broadcast the
+ *  refreshed snapshot to the renderer over the existing
+ *  `attached-window-changed` channel. Centralised so every Appwatch tool
+ *  call ends with the renderer's pill in the correct state. */
+function setAttachedWindowStreaming(
+  streaming: AttachedWindowStreamingSnapshot | null
+): void {
+  if (!attachedWindowSnapshot) return
+  const next: AttachedWindowSnapshot = {
+    ...attachedWindowSnapshot,
+    streaming: streaming ?? undefined
+  }
+  attachedWindowSnapshot = next
+  mainWindow?.webContents.send('attached-window-changed', next)
+}
+
+/** Self-heal when the daemon reports the window has gone away (-32001).
+ *  Mirrors the recovery path in `executeAttachedWindowCapture` so a single
+ *  stale handle clears everywhere — pill, snapshot, future MCP polls. */
+function handleAppwatchWindowGone(): void {
+  attachedWindowSnapshot = null
+  mainWindow?.webContents.send('attached-window-changed', null)
+}
+
+async function executeAppwatchStart(
+  args: Record<string, any>
+): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_start',
+      error:
+        'No window is attached. Ask the user to click "Attach app" so they can pick a window before starting Appwatch.'
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_start',
+      error: 'AGBench bridge daemon is not running. Enable it in Settings → Bridge Networking.'
+    })
+  }
+  // Defaults match the M1 design: 5fps × 8s × 1280px. The daemon enforces
+  // the memory cap; we just forward whatever the agent passes.
+  const fps = Number(args.fps) > 0 ? Math.trunc(Number(args.fps)) : 5
+  const bufferSeconds =
+    Number(args.buffer_seconds ?? args.bufferSeconds) > 0
+      ? Math.trunc(Number(args.buffer_seconds ?? args.bufferSeconds))
+      : 8
+  const maxDimensionPx =
+    Number(args.max_dimension_px ?? args.maxDimensionPx) > 0
+      ? Math.trunc(Number(args.max_dimension_px ?? args.maxDimensionPx))
+      : 1280
+  let result: AppwatchStartDaemonResult
+  try {
+    result = (await bridgeDaemonRef.request(
+      'appwatch.start',
+      {
+        handleID: snapshot.handleID,
+        fps,
+        bufferSeconds,
+        maxDimensionPx
+      },
+      { timeoutMs: 15_000 }
+    )) as AppwatchStartDaemonResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      handleAppwatchWindowGone()
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_start',
+      error: message
+    })
+  }
+  const streaming = result.streaming
+  if (!streaming) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_start',
+      error: 'Bridge daemon returned no streaming config.'
+    })
+  }
+  setAttachedWindowStreaming({
+    fps: streaming.fps ?? fps,
+    bufferSeconds: streaming.bufferSeconds ?? bufferSeconds,
+    frameCount: streaming.frameCount ?? 0,
+    startedAt: streaming.startedAt ?? new Date().toISOString()
+  })
+  return mcpStructuredJsonResult({
+    ok: true,
+    tool: 'appwatch_start',
+    handleID: result.handleID ?? snapshot.handleID,
+    fps: streaming.fps ?? fps,
+    bufferSeconds: streaming.bufferSeconds ?? bufferSeconds,
+    frameCapacity: streaming.frameCapacity ?? fps * bufferSeconds,
+    estimatedMemoryMB: streaming.estimatedMemoryMB ?? null,
+    memoryBudgetMB: streaming.memoryBudgetMB ?? null,
+    startedAt: streaming.startedAt ?? new Date().toISOString()
+  })
+}
+
+async function executeAppwatchStop(): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_stop',
+      error: 'No window is attached.'
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_stop',
+      error: 'AGBench bridge daemon is not running.'
+    })
+  }
+  try {
+    ;(await bridgeDaemonRef.request(
+      'appwatch.stop',
+      { handleID: snapshot.handleID },
+      { timeoutMs: 5_000 }
+    )) as AppwatchStopDaemonResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      handleAppwatchWindowGone()
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_stop',
+      error: message
+    })
+  }
+  setAttachedWindowStreaming(null)
+  return mcpStructuredJsonResult({
+    ok: true,
+    tool: 'appwatch_stop',
+    handleID: snapshot.handleID,
+    streaming: false
+  })
+}
+
+async function executeAppwatchStatus(): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: true,
+      tool: 'appwatch_status',
+      attached: false,
+      streaming: false
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_status',
+      error: 'AGBench bridge daemon is not running.'
+    })
+  }
+  let result: AppwatchStatusDaemonResult
+  try {
+    result = (await bridgeDaemonRef.request(
+      'appwatch.status',
+      { handleID: snapshot.handleID },
+      { timeoutMs: 5_000 }
+    )) as AppwatchStatusDaemonResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      handleAppwatchWindowGone()
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_status',
+      error: message
+    })
+  }
+  // Keep the local snapshot's frameCount in sync — the renderer pill reads
+  // it for its mini-readout, and a stale value would lag the daemon's truth
+  // by an entire poll interval otherwise.
+  if (result.streaming && snapshot.streaming) {
+    setAttachedWindowStreaming({
+      ...snapshot.streaming,
+      frameCount: result.frameCount ?? snapshot.streaming.frameCount
+    })
+  } else if (!result.streaming && snapshot.streaming) {
+    // Daemon auto-stopped (idle timeout) and we hadn't noticed. Clear locally
+    // so the pill stops claiming we're streaming.
+    setAttachedWindowStreaming(null)
+  }
+  return mcpStructuredJsonResult({
+    ok: true,
+    tool: 'appwatch_status',
+    attached: true,
+    handleID: snapshot.handleID,
+    streaming: Boolean(result.streaming),
+    fps: result.fps ?? 0,
+    bufferSeconds: result.bufferSeconds ?? 0,
+    frameCount: result.frameCount ?? 0,
+    frameCapacity: result.frameCapacity ?? 0,
+    oldestAt: result.oldestAt ?? null,
+    newestAt: result.newestAt ?? null,
+    lastPullAt: result.lastPullAt ?? null,
+    startedAt: result.startedAt ?? null,
+    estimatedMemoryMB: result.estimatedMemoryMB ?? null,
+    memoryBudgetMB: result.memoryBudgetMB ?? null
+  })
+}
+
+async function executeAppwatchLatestFrame(): Promise<McpToolExecutionResult> {
+  const snapshot = attachedWindowSnapshot
+  if (!snapshot) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_latest_frame',
+      error: 'No window is attached.'
+    })
+  }
+  if (!bridgeDaemonRef?.status().running) {
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_latest_frame',
+      error: 'AGBench bridge daemon is not running.'
+    })
+  }
+  let result: AppwatchLatestFrameDaemonResult
+  try {
+    result = (await bridgeDaemonRef.request(
+      'appwatch.latestFrame',
+      { handleID: snapshot.handleID },
+      { timeoutMs: 10_000 }
+    )) as AppwatchLatestFrameDaemonResult
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err instanceof BridgeDaemonError && err.code === -32001) {
+      handleAppwatchWindowGone()
+    }
+    return mcpStructuredJsonResult({
+      ok: false,
+      tool: 'appwatch_latest_frame',
+      error: message
+    })
+  }
+  if (!result.hasFrame || !result.pngBase64) {
+    return mcpStructuredJsonResult({
+      ok: true,
+      tool: 'appwatch_latest_frame',
+      hasFrame: false,
+      handleID: snapshot.handleID
+    })
+  }
+  return mcpStructuredJsonResult(
+    {
+      ok: true,
+      tool: 'appwatch_latest_frame',
+      hasFrame: true,
+      handleID: snapshot.handleID,
+      mimeType: 'image/png',
+      byteLength: result.byteLength ?? 0,
+      width: result.width ?? 0,
+      height: result.height ?? 0,
+      capturedAt: result.capturedAt ?? new Date().toISOString(),
+      windowMeta: snapshot.windowMeta
+    },
+    [{ type: 'image', mimeType: 'image/png', data: result.pngBase64 }]
+  )
 }
 
 function currentCreativeAttachedWindowMeta(): CreativeAttachedWindowMeta | null {
@@ -13354,6 +13727,14 @@ async function executeGeminiMcpTool(
       text = mcpJson(await executeAttachedWindowCapture(args))
     } else if (toolName === 'attached_window_status') {
       text = mcpJson(executeAttachedWindowStatus())
+    } else if (toolName === 'appwatch_start') {
+      text = mcpJson(await executeAppwatchStart(args))
+    } else if (toolName === 'appwatch_stop') {
+      text = mcpJson(await executeAppwatchStop())
+    } else if (toolName === 'appwatch_status') {
+      text = mcpJson(await executeAppwatchStatus())
+    } else if (toolName === 'appwatch_latest_frame') {
+      text = mcpJson(await executeAppwatchLatestFrame())
     } else if (toolName === 'approval_status') {
       text = mcpJson(executeApprovalStatus(context, args, parentProvider))
     } else if (toolName === 'provider_auth_status') {
@@ -14414,6 +14795,94 @@ function mcpToolDefinitions() {
         readOnlyHint: true,
         destructiveHint: false,
         idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    // Phase M1 — Appwatch MVP. Continuous low-fps capture of the attached
+    // window into a small ring buffer. `appwatch_start` spins up the stream,
+    // `appwatch_latest_frame` pulls the most recent frame without per-call
+    // ScreenCaptureKit overhead. Memory-budgeted at 350 MB (the daemon
+    // refuses oversized configs). Auto-stops after 60s with no
+    // `appwatch_latest_frame` pulls.
+    //
+    // Defaults: 5fps × 8s buffer × 1280px (longer side). Agents should
+    // think hard before raising any of these — buffer footprint scales
+    // quadratically with `max_dimension_px`.
+    //
+    // All four require a previously-attached window (user clicked Attach
+    // or invoked the hotkey). None of them initiate a pick.
+    {
+      name: 'appwatch_start',
+      description:
+        "Start a continuous low-fps capture stream of the attached window into a daemon-side ring buffer. Returns the resolved config. Idempotent: second call with same handle returns the existing config without restarting. Refuses if the configured buffer would exceed 350 MB — reduce fps/bufferSeconds/maxDimensionPx and retry. The user must have already attached a window via the picker; you cannot initiate the pick.",
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          fps: {
+            type: 'number',
+            description: 'Frames per second (1-30). Default 5.'
+          },
+          buffer_seconds: {
+            type: 'number',
+            description:
+              'How many seconds of frames to keep in the daemon-side ring (1-60). Default 8 (= 40-frame ring at 5fps).'
+          },
+          max_dimension_px: {
+            type: 'number',
+            description:
+              'Cap the longer side of each frame to this many pixels (240-4096). Default 1280. Smaller values keep the buffer well under the 350 MB cap.'
+          }
+        }
+      }
+    },
+    {
+      name: 'appwatch_stop',
+      description:
+        'Stop the Appwatch stream for the attached window and free the ring buffer. Safe to call when no stream is running. Detaching the window (or the daemon idling for 60s without a frame pull) also stops the stream.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'appwatch_status',
+      description:
+        'Read-only Appwatch stream status — fps, bufferSeconds, current frameCount, oldest/newest frame timestamps, memory footprint, idle-timeout pull clock. Does NOT bump the idle-timeout clock; safe to poll from a UI. Returns `streaming: false` when no stream is running or when the daemon auto-stopped on idle timeout.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'appwatch_latest_frame',
+      description:
+        'Return the most recent frame from the Appwatch ring buffer as a PNG (image content block). Bumps the idle-timeout pull clock so an active agent loop keeps the stream alive. Fails fast if `appwatch_start` has not been called for the current handle. Returns `hasFrame: false` when the stream is up but no frame has landed yet (first frame typically arrives within ~200 ms). M1 surface — batch/since retrieval lands in M2.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: false,
         openWorldHint: false
       },
       inputSchema: {

@@ -22,6 +22,14 @@ export const AGENTBENCH_MCP_TOOLS = [
   'browser_console',
   'attached_window_capture',
   'attached_window_status',
+  // Phase M1 — Appwatch MVP. Continuous low-fps ring buffer of the attached
+  // window. `start`/`stop` bracket the SCStream; `latest_frame` pulls the
+  // newest BGRA frame as PNG without per-call ScreenCaptureKit overhead.
+  // M2 will add batch since-T retrieval and per-frame OCR.
+  'appwatch_start',
+  'appwatch_stop',
+  'appwatch_status',
+  'appwatch_latest_frame',
   'approval_status',
   'provider_auth_status',
   'run_timeline',

@@ -256,6 +256,12 @@ const api = {
           pid: number
         }
         attachedAt: string
+        streaming?: {
+          fps: number
+          bufferSeconds: number
+          frameCount: number
+          startedAt: string
+        }
       }
     }>,
   attachWindowDetach: () => ipcRenderer.invoke('attach-window:detach') as Promise<{ ok: boolean }>,
@@ -271,6 +277,12 @@ const api = {
           pid: number
         }
         attachedAt: string
+        streaming?: {
+          fps: number
+          bufferSeconds: number
+          frameCount: number
+          startedAt: string
+        }
       } | null
     }>,
   onAttachedWindowChanged: (
@@ -285,6 +297,12 @@ const api = {
           pid: number
         }
         attachedAt: string
+        streaming?: {
+          fps: number
+          bufferSeconds: number
+          frameCount: number
+          startedAt: string
+        }
       } | null
     ) => void
   ) => {
