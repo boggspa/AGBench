@@ -15648,6 +15648,7 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 6px;
   cursor: pointer;
   color: var(--text-secondary);
+  min-width: 0;
 }
 .agent-mention-menu-item.is-highlighted {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -15660,11 +15661,31 @@ input:disabled, select:disabled, textarea:disabled {
   flex-shrink: 0;
   background: var(--text-tertiary);
 }
+.agent-mention-menu-dot.kind-workspace-file {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--accent) 68%, var(--text-tertiary));
+}
+.agent-mention-menu-dot.kind-external-grant {
+  background: color-mix(in srgb, var(--warning) 72%, var(--text-tertiary));
+}
+.agent-mention-menu-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 1px;
+}
 .agent-mention-menu-name {
   font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .agent-mention-menu-role {
   color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .agent-mention-menu-empty {
   padding: 10px 12px;

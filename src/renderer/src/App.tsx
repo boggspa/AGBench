@@ -89,6 +89,10 @@ import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCa
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import {
+  formatComposerPathMention,
+  parseComposerMentionTrigger
+} from './lib/ComposerMentionTrigger'
+import {
   CombinedModelPicker,
   type CombinedModelPickerModelOption,
   type CombinedModelPickerReasoningOption
@@ -4618,8 +4622,8 @@ function App(): React.JSX.Element {
   const rawEventsAutoFollowRef = useRef(true)
   const rawEventsUserScrolledAwayRef = useRef(false)
   const composerAreaRef = useRef<HTMLDivElement>(null)
-  // Composer textarea + @-mention popover state. AgentMentionMenu reads the
-  // anchor + query and inserts `[@Name](agent://uuid)` at the caret on select.
+  // Composer textarea + @-mention popover state. AgentMentionMenu can insert
+  // agent markdown mentions or plain path text at the caret.
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
@@ -13021,7 +13025,9 @@ function App(): React.JSX.Element {
                   const caret = e.target.selectionStart ?? nextValue.length
                   const before = nextValue.slice(0, caret)
                   const slashMatch = before.match(/(?:^|\s)\/([\w-]*)$/)
-                  const atMatch = !slashMatch ? before.match(/@([\w-]*)$/) : null
+                  const mentionTrigger = !slashMatch
+                    ? parseComposerMentionTrigger(nextValue, caret)
+                    : null
                   if (slashMatch) {
                     // The `/` itself sits at `caret - slashQueryLen - 1`.
                     const queryLen = slashMatch[1].length
@@ -13033,9 +13039,9 @@ function App(): React.JSX.Element {
                       setMentionQuery('')
                       mentionAnchorIndexRef.current = null
                     }
-                  } else if (atMatch) {
-                    mentionAnchorIndexRef.current = caret - atMatch[0].length
-                    setMentionQuery(atMatch[1] || '')
+                  } else if (mentionTrigger) {
+                    mentionAnchorIndexRef.current = mentionTrigger.anchorIndex
+                    setMentionQuery(mentionTrigger.query)
                     setMentionMenuOpen(true)
                     if (slashMenuOpen) {
                       setSlashMenuOpen(false)
@@ -13098,6 +13104,8 @@ function App(): React.JSX.Element {
               <AgentMentionMenu
                 chat={currentChat || undefined}
                 provider={currentProvider}
+                workspacePath={currentWorkspace?.path}
+                externalPathGrants={codexExternalPathGrants}
                 prompt={prompt}
                 open={mentionMenuOpen}
                 anchorRef={composerTextareaRef}
@@ -13107,7 +13115,7 @@ function App(): React.JSX.Element {
                   setMentionQuery('')
                   mentionAnchorIndexRef.current = null
                 }}
-                onPick={({ agentId, name }) => {
+                onPick={(mention) => {
                   const anchor = mentionAnchorIndexRef.current
                   if (anchor === null) {
                     setMentionMenuOpen(false)
@@ -13116,17 +13124,20 @@ function App(): React.JSX.Element {
                   }
                   const before = prompt.slice(0, anchor)
                   const afterQuery = prompt.slice(anchor + 1 + mentionQuery.length)
-                  const mentionMarkdown = `[@${name}](agent://${agentId}) `
-                  const next = `${before}${mentionMarkdown}${afterQuery}`
+                  const insertion =
+                    mention.kind === 'agent' && mention.agentId
+                      ? `[@${mention.name}](agent://${mention.agentId}) `
+                      : formatComposerPathMention(mention.path || mention.name)
+                  const next = `${before}${insertion}${afterQuery}`
                   setPrompt(next)
                   setMentionMenuOpen(false)
                   setMentionQuery('')
                   mentionAnchorIndexRef.current = null
-                  // Restore caret after the inserted mention.
+                  // Restore caret after the inserted mention/path.
                   requestAnimationFrame(() => {
                     const ta = composerTextareaRef.current
                     if (!ta) return
-                    const newCaret = before.length + mentionMarkdown.length
+                    const newCaret = before.length + insertion.length
                     ta.focus()
                     ta.setSelectionRange(newCaret, newCaret)
                   })
