@@ -18985,13 +18985,16 @@ input:disabled, select:disabled, textarea:disabled {
   right: 14px !important;
 }
 
-/* 3) Diff stats right-aligned + gray button skin.
+/* 3) Diff stats right-aligned + gray button skin, sitting
+ *    immediately next to the Create PR action.
  *    Yesterday's Slice 1 rule forced `.composer-above-bar-stats`
  *    transparent + bare text — this rule re-enables a contained
  *    button look ONLY on the stats element, leaves branch/files
- *    as bare text. `margin-left: auto` pushes the stats + action
- *    pair to the row's right edge. */
+ *    as bare text. Flex `order` re-positions stats from its
+ *    natural DOM position (between files and workspace pills)
+ *    to the row's far right, just before the action button. */
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {
+  order: 9;
   margin-left: auto;
   background: #3a3a3a !important;
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
@@ -18999,6 +19002,10 @@ input:disabled, select:disabled, textarea:disabled {
   padding: 4px 10px !important;
   color: rgba(255, 255, 255, 0.92) !important;
   font-variant-numeric: tabular-nums;
+}
+
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+  order: 10;
 }
 
 [data-theme="light"][data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats {

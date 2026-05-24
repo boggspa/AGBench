@@ -344,7 +344,7 @@ export function CombinedModelPicker({
         ref={triggerRef}
         type="button"
         className="composer-combined-picker-trigger"
-        data-composer-control="combined-model"
+        data-composer-control="model"
         onClick={() => setOpen((prev) => !prev)}
         disabled={disabled}
         aria-haspopup="dialog"
