@@ -12569,12 +12569,25 @@ function App(): React.JSX.Element {
                   </svg>
                   <span>{currentWorkspace?.branch || 'detached'}</span>
                 </span>
-                {latestRunDiffStats.filesChanged > 0 && (
-                  <span className="composer-above-bar-files">
-                    <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
-                    {latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}
-                  </span>
-                )}
+                {/*
+                  Phase K-followup — files-changed pill is now
+                  always rendered (with "0 files changed" when no
+                  diff yet). Fills the real-estate freed by removing
+                  the non-interactive "Worktree: managed by X" pill
+                  and gives the diff row a stable, predictable shape
+                  regardless of run state.
+                */}
+                <span
+                  className="composer-above-bar-files"
+                  title={
+                    latestRunDiffStats.filesChanged > 0
+                      ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
+                      : 'No file changes from the most recent run'
+                  }
+                >
+                  <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
+                  {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
+                </span>
                 {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
                   <span className="composer-above-bar-stats">
                     <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>

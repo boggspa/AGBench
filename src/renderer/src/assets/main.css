@@ -13572,17 +13572,33 @@ input:disabled, select:disabled, textarea:disabled {
  * Tool grants, Worktree…) live INSIDE .composer-above-bar in the
  * active-chat layout. They have their own dark fill from the shared
  * styles — override in claude shell so they match the surrounding
- * satellite chips instead of forming a darker sub-band. */
+ * satellite chips instead of forming a darker sub-band.
+ *
+ * Phase K-followup — In the Claude shell, the composer surface uses
+ * a rectangular-rounded corner shape rather than the default
+ * capsule pills. Apply the same shape-language to the pills:
+ * rounded-rectangle (~10px radius) instead of fully-rounded 999px.
+ * The branch + files + stats pills + Create PR all pick up the same
+ * radius so the whole above-bar row reads as ONE cohesive band
+ * matching the textarea below. Only applies to the Claude shell. */
 [data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill {
   background: transparent;
   border-color: color-mix(in srgb, #ffffff 9%, transparent);
   box-shadow: none;
   color: color-mix(in srgb, #ffffff 64%, transparent);
+  border-radius: var(--radius-md, 10px);
 }
 [data-composer-style="claude"] .composer-above-bar .composer-workspace-access-pill:hover:not(:disabled) {
   background: color-mix(in srgb, #ffffff 5%, transparent);
   border-color: color-mix(in srgb, #ffffff 20%, transparent);
   color: #ffffff;
+}
+/* Other pills in the same row inherit the same shape so the band reads cohesively. */
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-branch,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-files,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-stats,
+[data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
+  border-radius: var(--radius-md, 10px);
 }
 
 /* ============================================================
@@ -13598,13 +13614,21 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface,
 [data-composer-style="codex"] .app-transcript.provider-codex .composer-surface,
 [data-composer-style="codex"] .app-transcript.provider-claude .composer-surface,
-[data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface,
+[data-composer-style="codex"] .app-transcript.provider-kimi .composer-surface {
+  --composer-bg: color-mix(in srgb, #1a1a1a 92%, transparent);
+  --composer-border: color-mix(in srgb, #ffffff 10%, transparent);
+}
+/* Phase K-followup — Claude shell composer surface lifted a notch
+ * brighter than codex shell so the textarea sits more clearly against
+ * the page rather than melting into the surrounding dark band. The
+ * Claude-shell-specific value applies regardless of which provider
+ * is active; codex shell keeps its slightly darker palette above. */
 [data-composer-style="claude"] .app-transcript.provider-gemini .composer-surface,
 [data-composer-style="claude"] .app-transcript.provider-codex .composer-surface,
 [data-composer-style="claude"] .app-transcript.provider-claude .composer-surface,
 [data-composer-style="claude"] .app-transcript.provider-kimi .composer-surface {
-  --composer-bg: color-mix(in srgb, #1a1a1a 92%, transparent);
-  --composer-border: color-mix(in srgb, #ffffff 10%, transparent);
+  --composer-bg: color-mix(in srgb, #262626 92%, transparent);
+  --composer-border: color-mix(in srgb, #ffffff 12%, transparent);
 }
 [data-composer-style="codex"] .app-transcript.provider-gemini .composer-surface:focus-within,
 [data-composer-style="codex"] .app-transcript.provider-codex .composer-surface:focus-within,

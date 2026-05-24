@@ -126,31 +126,13 @@ function WorktreeGlyph(): React.JSX.Element {
   )
 }
 
-function WorktreeStatusLabel(provider: ProviderId): string {
-  switch (provider) {
-    case 'codex':
-      return 'Worktree: managed by Codex'
-    case 'claude':
-      return 'Worktree: managed by Claude'
-    case 'kimi':
-      return 'Worktree: per-run (Kimi)'
-    default:
-      return 'Worktree: per-run'
-  }
-}
-
-function WorktreeStatusTooltip(provider: ProviderId): string {
-  switch (provider) {
-    case 'codex':
-      return 'Codex manages worktree creation/cleanup itself via the app-server. AGBench surfaces the status here for parity; flip it in the Codex composer config when needed.'
-    case 'claude':
-      return 'Claude Code manages worktree mode internally and will ask permission when it needs to branch. AGBench surfaces the status here for parity.'
-    case 'kimi':
-      return 'Kimi worktree toggle is pending: ship the same UI affordance for parity but the interactive toggle wiring is staged for a follow-up.'
-    default:
-      return 'Worktree status display.'
-  }
-}
+// Phase K-followup — WorktreeStatusLabel + WorktreeStatusTooltip
+// removed alongside the non-interactive status pill they fed. The
+// strings ("Worktree: managed by Codex/Claude" / "Worktree: per-run")
+// only described which provider was active, presented as a button
+// but never reacted to clicks. If a future surface wants the same
+// labels back, restore them from git history (the labels were
+// stable across providers, just rarely useful to the user).
 
 function normalizedWorkspacePath(path: string | undefined): string {
   return (path || '').replace(/\/+$/, '')
@@ -299,7 +281,7 @@ export function WorkspaceAccessControls(
           </div>
         )}
       </div>
-      {worktreeInteractive ? (
+      {worktreeInteractive && (
         <button
           type="button"
           className={`composer-workspace-access-pill composer-workspace-access-worktree ${currentGeminiWorktree?.enabled ? 'is-active' : ''} ${worktreeDiffUnavailable ? 'is-warning' : ''}`}
@@ -314,16 +296,16 @@ export function WorkspaceAccessControls(
           <WorktreeGlyph />
           <span>{worktreeToggleLabel}</span>
         </button>
-      ) : (
-        <span
-          className={`composer-workspace-access-pill composer-workspace-access-worktree is-status provider-${provider}`}
-          title={WorktreeStatusTooltip(provider)}
-          aria-label={WorktreeStatusLabel(provider)}
-        >
-          <WorktreeGlyph />
-          <span>{WorktreeStatusLabel(provider)}</span>
-        </span>
       )}
+      {/*
+        Phase K-followup — Removed the non-interactive
+        "Worktree: managed by Codex/Claude" / "Worktree: per-run (Kimi)"
+        status pill. The label only told the user something they
+        already knew from picking the provider, presented as a
+        button but didn't react to clicks. Real estate freed for
+        the new files-changed pill on the diff stats row. The
+        interactive Gemini branch (worktreeInteractive=true) stays.
+      */}
     </div>
   )
 }
