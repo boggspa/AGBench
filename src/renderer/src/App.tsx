@@ -12742,23 +12742,65 @@ function App(): React.JSX.Element {
                   worktreeToggleLabel={worktreeToggleLabel}
                   worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
                 />
-                <button
-                  type="button"
-                  className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
-                  onClick={handleCreateGithubPr}
-                  disabled={createPrState.status === 'pending'}
-                  title={
-                    createPrState.message || 'Run `gh pr create --fill` against the current branch'
+                {(() => {
+                  /*
+                   * Phase J7-followup: state-aware Create PR / Review
+                   * Changes button.
+                   *
+                   * Real Codex shows `Review here` and opens the diff
+                   * viewer; real Claude Code shows `Commit changes` and
+                   * commits the dirty tree. AGBench's button used to
+                   * unconditionally say "Create PR" and call
+                   * `gh pr create --fill` regardless of state, which
+                   * felt wrong when the user had uncommitted changes
+                   * they wanted to review first.
+                   *
+                   * New behaviour:
+                   *  - Latest run touched files (latestRunDiffStats
+                   *    .filesChanged > 0) → label "Review changes",
+                   *    action: focus the Diff Studio in the right pane.
+                   *    No git mutation. (Mirrors real Codex.)
+                   *  - Clean tree (no recent diff to review) → label
+                   *    "Create PR", action: existing `gh pr create`
+                   *    flow. (Mirrors AGBench's pre-existing UX.)
+                   *
+                   * Per-state pending / success / error variants keep
+                   * the existing tone classes for the active action.
+                   */
+                  const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
+                  if (hasReviewableDiff) {
+                    return (
+                      <button
+                        type="button"
+                        className="composer-above-bar-action"
+                        onClick={() => setRightTab('diff')}
+                        title="Open Diff Studio to review the latest run's file changes"
+                      >
+                        Review changes
+                      </button>
+                    )
                   }
-                >
-                  {createPrState.status === 'pending'
-                    ? 'Creating…'
-                    : createPrState.status === 'success'
-                      ? 'PR opened'
-                      : createPrState.status === 'error'
-                        ? 'Retry PR'
-                        : 'Create PR'}
-                </button>
+                  return (
+                    <button
+                      type="button"
+                      className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
+                      onClick={handleCreateGithubPr}
+                      disabled={createPrState.status === 'pending'}
+                      title={
+                        createPrState.message ||
+                        'Run `gh pr create --fill` against the current branch'
+                      }
+                    >
+                      {createPrState.status === 'pending'
+                        ? 'Creating…'
+                        : createPrState.status === 'success'
+                          ? 'PR opened'
+                          : createPrState.status === 'error'
+                            ? 'Retry PR'
+                            : 'Create PR'}
+                    </button>
+                  )
+                })()}
               </div>
               {/* Slice 3 of the external-path-redesign arc. One stacked
                   row per external-path grant. Per-grant repo metadata
