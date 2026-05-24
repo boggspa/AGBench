@@ -19942,12 +19942,27 @@ input:disabled, select:disabled, textarea:disabled {
  * we only set color on the outer button. The deeper selector
  * below targets the primary span directly so the closed-state
  * chip actually visibly tints. */
+/*
+ * `!important` here is intentional. A later light-mode cleanup
+ * block (further down this file) carries `color: rgba(29,29,31,0.86) !important`
+ * on the generic `.composer-combined-picker-trigger` + its
+ * `-primary` span — that rule was added to fix white-on-white
+ * triggers in light themes but ALSO out-specifics these
+ * permission tints. Without `!important` here, the closed-state
+ * chip rendered as the neutral dark-text colour even when the
+ * user selected Plan / Full Workspace Access, breaking the
+ * colour-coded permission affordance from CX4. The cleanup
+ * rule's `!important` is itself necessary to beat other
+ * upstream `!important` declarations on the same selector, so
+ * raising the permission tint to `!important` is the cleanest
+ * way to restore the intended cascade.
+ */
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"],
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"]
   .composer-combined-picker-trigger-primary {
-  color: #6fb6ff;
+  color: #6fb6ff !important;
 }
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"] {
@@ -19958,7 +19973,7 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="auto_edit"]
   .composer-combined-picker-trigger-primary {
-  color: #ffa45c;
+  color: #ffa45c !important;
 }
 [data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="auto_edit"] {
@@ -20531,19 +20546,23 @@ input:disabled, select:disabled, textarea:disabled {
  * on the dark composer. The base CX4 colours (#6fb6ff / #ffa45c)
  * wash out on a light fill; pull them toward fully saturated
  * accent tones for light themes. */
+/* Same `!important` rationale as the dark-mode CX4 block above —
+ * the generic light-theme trigger cleanup carries
+ * `color: rgba(29,29,31,0.86) !important` which would otherwise
+ * paint over these per-mode tints. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"],
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="plan"]
   .composer-combined-picker-trigger-primary {
-  color: #1976d2;
+  color: #1976d2 !important;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="auto_edit"],
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"]
   .composer-combined-picker-trigger[data-permission-value="auto_edit"]
   .composer-combined-picker-trigger-primary {
-  color: #d97706;
+  color: #d97706 !important;
 }
 
 /* Codex bottom-row controls: model/permission/provider chip
