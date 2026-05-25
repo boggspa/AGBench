@@ -698,11 +698,148 @@ const MCP_TOOL_CATALOG = AGENTBENCH_MCP_TOOLS.map((name) => ({
   return groupDelta === 0 ? a.label.localeCompare(b.label) : groupDelta
 })
 
+type SettingsKeyCommandGroup = 'Global' | 'Composer' | 'Panels' | 'Pickers' | 'Editor'
+
+type SettingsKeyCommand = {
+  id: string
+  group: SettingsKeyCommandGroup
+  command: string
+  description: string
+  keys: string[]
+  status?: 'active' | 'planned'
+}
+
+const SETTINGS_KEY_COMMAND_GROUPS: SettingsKeyCommandGroup[] = [
+  'Global',
+  'Composer',
+  'Panels',
+  'Pickers',
+  'Editor'
+]
+
+const SETTINGS_KEY_COMMANDS: SettingsKeyCommand[] = [
+  {
+    id: 'command-palette',
+    group: 'Global',
+    command: 'Command palette',
+    description: 'Open the app-wide command palette.',
+    keys: ['Cmd/Ctrl', 'K']
+  },
+  {
+    id: 'settings',
+    group: 'Global',
+    command: 'Open Settings',
+    description: 'Open the Settings takeover from anywhere in the app.',
+    keys: ['Cmd/Ctrl', ',']
+  },
+  {
+    id: 'close-overlays',
+    group: 'Global',
+    command: 'Close overlay',
+    description:
+      'Close Settings, command palette, active modal, or dismiss a pending custom model edit.',
+    keys: ['Esc']
+  },
+  {
+    id: 'run-prompt',
+    group: 'Composer',
+    command: 'Run prompt',
+    description: 'Submit the current composer prompt even when focus is inside the composer.',
+    keys: ['Cmd/Ctrl', 'Enter']
+  },
+  {
+    id: 'send-composer',
+    group: 'Composer',
+    command: 'Send from composer',
+    description: 'Submit the focused composer prompt.',
+    keys: ['Enter']
+  },
+  {
+    id: 'composer-newline',
+    group: 'Composer',
+    command: 'New line',
+    description: 'Insert a new line without submitting the prompt.',
+    keys: ['Shift', 'Enter']
+  },
+  {
+    id: 'slash-menu',
+    group: 'Composer',
+    command: 'Slash menu',
+    description: 'Open slash command suggestions from the composer.',
+    keys: ['/']
+  },
+  {
+    id: 'mention-picker',
+    group: 'Composer',
+    command: 'Mention picker',
+    description: 'Open file, workspace, and agent mention suggestions from the composer.',
+    keys: ['@']
+  },
+  {
+    id: 'toggle-sidebar',
+    group: 'Panels',
+    command: 'Toggle sidebar',
+    description: 'Show or hide the workspace and thread sidebar.',
+    keys: ['Cmd/Ctrl', 'B']
+  },
+  {
+    id: 'toggle-inspector',
+    group: 'Panels',
+    command: 'Toggle inspector',
+    description: 'Show or hide the run inspector.',
+    keys: ['Cmd/Ctrl', 'I']
+  },
+  {
+    id: 'toggle-file-editor',
+    group: 'Panels',
+    command: 'Toggle file editor',
+    description: 'Show or hide the file editor panel.',
+    keys: ['Cmd/Ctrl', 'E']
+  },
+  {
+    id: 'picker-move',
+    group: 'Pickers',
+    command: 'Move selection',
+    description: 'Navigate model, permission, slash, and mention picker rows.',
+    keys: ['Arrow keys']
+  },
+  {
+    id: 'picker-select',
+    group: 'Pickers',
+    command: 'Choose highlighted item',
+    description: 'Select the highlighted picker row.',
+    keys: ['Enter']
+  },
+  {
+    id: 'picker-dismiss',
+    group: 'Pickers',
+    command: 'Dismiss picker',
+    description: 'Close the active picker without choosing an item.',
+    keys: ['Esc']
+  },
+  {
+    id: 'save-editor',
+    group: 'Editor',
+    command: 'Save file editor buffer',
+    description: 'Save the currently focused file editor buffer.',
+    keys: ['Cmd/Ctrl', 'S']
+  },
+  {
+    id: 'shortcut-remapping',
+    group: 'Global',
+    command: 'Customize bindings',
+    description: 'Editable shortcut recording, conflict detection, and persistence are planned.',
+    keys: ['Unassigned'],
+    status: 'planned'
+  }
+]
+
 export type SettingsTab =
   | 'appearance'
   | 'behavior'
   | 'providers'
   | 'mcp'
+  | 'key-commands'
   | 'system'
   | 'remote-workspaces'
   | 'approval-ledger'
@@ -756,6 +893,7 @@ export const SETTINGS_TABS: Array<{
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
   { id: 'mcp', label: 'MCP', group: 'settings' },
+  { id: 'key-commands', label: 'Key commands', group: 'settings' },
   // "Model usage" — richer cross-provider usage page. Reuses the
   // sidebar's ModelUsageCard (quota meters per provider + 30-day
   // heatmap) with extra context tiles on top (cumulative tokens,
@@ -992,6 +1130,7 @@ export function SettingsPanel({
   const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([])
   const [installedFontStatus, setInstalledFontStatus] = useState('')
   const [composerPreviewText, setComposerPreviewText] = useState('')
+  const [keyCommandQuery, setKeyCommandQuery] = useState('')
   const safeTurns = Number.isFinite(chatContextTurns)
     ? Math.max(0, Math.trunc(chatContextTurns))
     : 6
@@ -1080,6 +1219,17 @@ export function SettingsPanel({
           : 'MCP status is not available yet.')
     }
   })
+  const keyCommandSearch = keyCommandQuery.trim().toLowerCase()
+  const filteredKeyCommands = SETTINGS_KEY_COMMANDS.filter((command) => {
+    if (!keyCommandSearch) return true
+    const haystack = [command.group, command.command, command.description, command.keys.join(' ')]
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(keyCommandSearch)
+  })
+  const activeKeyCommandCount = SETTINGS_KEY_COMMANDS.filter(
+    (command) => command.status !== 'planned'
+  ).length
   const codexUsage = codexStatus?.codexUsage
   const codexUsageConfigured = Boolean(
     codexUsage?.configured ||
@@ -2931,6 +3081,100 @@ export function SettingsPanel({
                     Connector registry planned
                   </button>
                 </article>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Key Commands ─────────────────────────────── */}
+        {activeTab === 'key-commands' && (
+          <div className="settings-key-commands-page">
+            <div className="settings-group span-all settings-key-commands-overview">
+              <div className="settings-key-commands-header">
+                <div>
+                  <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                    Keyboard shortcuts
+                  </h4>
+                  <p className="settings-hint">
+                    A read-only command map for the shortcuts AGBench currently handles. Remapping
+                    will need conflict detection and persisted accelerator settings in a later pass.
+                  </p>
+                </div>
+              </div>
+
+              <div className="settings-key-commands-summary-grid">
+                <article className="settings-key-commands-summary-card">
+                  <span>Active bindings</span>
+                  <strong>{activeKeyCommandCount}</strong>
+                  <small>available now</small>
+                </article>
+                <article className="settings-key-commands-summary-card">
+                  <span>Command groups</span>
+                  <strong>{SETTINGS_KEY_COMMAND_GROUPS.length}</strong>
+                  <small>global, composer, panels, pickers, editor</small>
+                </article>
+                <article className="settings-key-commands-summary-card">
+                  <span>Customization</span>
+                  <strong>Planned</strong>
+                  <small>recording and conflict checks deferred</small>
+                </article>
+              </div>
+
+              <label className="settings-key-commands-search">
+                <input
+                  className="settings-select"
+                  value={keyCommandQuery}
+                  onChange={(event) => setKeyCommandQuery(event.target.value)}
+                  aria-label="Search key commands"
+                  placeholder="Search shortcuts"
+                />
+              </label>
+            </div>
+
+            <div className="settings-group span-all">
+              <div className="settings-key-command-groups">
+                {SETTINGS_KEY_COMMAND_GROUPS.map((group) => {
+                  const groupCommands = filteredKeyCommands.filter(
+                    (command) => command.group === group
+                  )
+                  if (groupCommands.length === 0) return null
+                  return (
+                    <section key={group} className="settings-key-command-group">
+                      <div className="settings-key-command-group-title">
+                        <strong>{group}</strong>
+                        <span>{groupCommands.length} commands</span>
+                      </div>
+                      <div className="settings-key-command-list">
+                        {groupCommands.map((command) => (
+                          <article key={command.id} className="settings-key-command-row">
+                            <div className="settings-key-command-main">
+                              <strong>{command.command}</strong>
+                              <p>{command.description}</p>
+                            </div>
+                            <div
+                              className="settings-key-command-keys"
+                              aria-label={`${command.command} shortcut`}
+                            >
+                              {command.keys.map((key) => (
+                                <kbd key={key} className="settings-key-command-keycap">
+                                  {key}
+                                </kbd>
+                              ))}
+                            </div>
+                            <span
+                              className={`settings-key-command-status settings-key-command-status-${command.status ?? 'active'}`}
+                            >
+                              {command.status === 'planned' ? 'Planned' : 'Active'}
+                            </span>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+                {filteredKeyCommands.length === 0 && (
+                  <div className="settings-key-command-empty">No shortcuts match that search.</div>
+                )}
               </div>
             </div>
           </div>

@@ -11946,6 +11946,12 @@ function App(): React.JSX.Element {
         return
       }
 
+      if (shortcutKey === ',') {
+        event.preventDefault()
+        setShowSettings(true)
+        return
+      }
+
       if (isEditableTarget) {
         return
       }

@@ -83,6 +83,8 @@ describe('IpcValidation', () => {
   })
 
   it('accepts ensemble and sub-thread chat IPC payloads', () => {
+    expect(() => validateIpcArgs('create-ensemble-chat', [])).not.toThrow()
+    expect(() => validateIpcArgs('create-ensemble-chat', [undefined])).not.toThrow()
     expect(() =>
       validateIpcArgs('create-ensemble-chat', [
         { workspaceId: 'workspace-1', workspacePath: '/tmp/workspace' }

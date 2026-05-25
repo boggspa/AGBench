@@ -9492,6 +9492,175 @@ button.diff-file-row {
   margin: 0;
 }
 
+.settings-key-commands-page {
+  column-span: all;
+  -webkit-column-span: all;
+}
+
+.settings-key-commands-overview {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--theme-chroma-1, var(--accent)) 9%, transparent),
+      color-mix(in srgb, var(--theme-chroma-3, var(--accent)) 5%, transparent)
+    ),
+    color-mix(in srgb, var(--panel-bg) 44%, transparent);
+}
+
+.settings-key-commands-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.settings-key-commands-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-key-commands-summary-card,
+.settings-key-command-group {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 54%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-bg) 38%, transparent);
+}
+
+.settings-key-commands-summary-card {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+}
+
+.settings-key-commands-summary-card span,
+.settings-key-commands-summary-card small,
+.settings-key-command-main p {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.settings-key-commands-summary-card strong {
+  color: var(--text-primary);
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.settings-key-commands-search {
+  display: block;
+}
+
+.settings-key-commands-search .settings-select {
+  width: 100%;
+  max-width: none;
+}
+
+.settings-key-command-groups {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-key-command-group {
+  overflow: hidden;
+}
+
+.settings-key-command-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 9px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 54%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.settings-key-command-group-title strong,
+.settings-key-command-main strong {
+  color: var(--text-primary);
+}
+
+.settings-key-command-group-title span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+}
+
+.settings-key-command-list {
+  display: grid;
+}
+
+.settings-key-command-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(170px, 0.55fr) max-content;
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 42%, transparent);
+}
+
+.settings-key-command-row:first-child {
+  border-top: 0;
+}
+
+.settings-key-command-main {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.settings-key-command-main p {
+  margin: 0;
+}
+
+.settings-key-command-keys {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.settings-key-command-keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 62%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.settings-key-command-status {
+  justify-self: end;
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, currentColor 32%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 9%, transparent);
+  color: var(--accent);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+.settings-key-command-status-planned {
+  color: var(--text-tertiary);
+}
+
+.settings-key-command-empty {
+  padding: 18px;
+  border: 1px dashed color-mix(in srgb, var(--panel-border) 68%, transparent);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
 .settings-label {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -9644,6 +9813,7 @@ button.diff-file-row {
   .settings-mcp-summary-grid,
   .settings-mcp-server-grid,
   .settings-mcp-management-grid,
+  .settings-key-commands-summary-grid,
   .settings-composer-preview-controls,
   .settings-effects-grid,
   .settings-effects-labs-grid {
@@ -9662,8 +9832,13 @@ button.diff-file-row {
   }
 
   .settings-mcp-tool-row,
-  .settings-mcp-tool-detail-grid {
+  .settings-mcp-tool-detail-grid,
+  .settings-key-command-row {
     grid-template-columns: 1fr;
+  }
+
+  .settings-key-command-status {
+    justify-self: start;
   }
 
   .settings-effects-radio-list {
