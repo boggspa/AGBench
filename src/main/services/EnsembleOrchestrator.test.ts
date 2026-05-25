@@ -315,6 +315,68 @@ describe('EnsembleOrchestrator', () => {
     )
   })
 
+  it('accumulates Gemini CLI message-shape deltas into the ensemble assistant message', async () => {
+    // Regression: pre-fix, `handleProviderOutput` only matched
+    // `{ type: 'content', text }` — Codex / Claude / Kimi shape. Gemini's
+    // CLI fallback path emits `{ type: 'message', role: 'assistant',
+    // delta: true, content }` so its deltas were silently dropped and
+    // `run.content` stayed empty, leaving the participant's bubble
+    // missing in the transcript. The shape branch in
+    // `EnsembleOrchestrator.handleProviderOutput()` now accepts both.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Gemini, what is the weather?',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('gemini')
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: 'Yo!'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: ' Doing great, honestly.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: ' Sunset is beautiful.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 47070 }
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe('Yo! Doing great, honestly. Sunset is beautiful.')
+  })
+
   it('skips a failed dispatch and advances the round', async () => {
     let calls = 0
     const harness = makeHarness({

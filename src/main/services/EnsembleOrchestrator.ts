@@ -219,6 +219,32 @@ export class EnsembleOrchestrator {
       }
       return true
     }
+    // Gemini CLI fallback path emits `{ type: 'message', role: 'assistant',
+    // delta: true, content }` events instead of `{ type: 'content', text }`.
+    // Without this branch the orchestrator never accumulates anything for
+    // Gemini participants in ensemble mode — `run.content` stays empty,
+    // `flushRun()` skips the assistant-message append (`if
+    // (run.content.trim())`), and the authoritative chat save clobbers
+    // whatever the renderer had locally appended from the same delta
+    // stream. Symptom: Gemini's turn appears as "still working…" forever,
+    // raw logs full of deltas, transcript empty. Codex / Claude / Kimi
+    // are unaffected — they all emit `type: 'content'`.
+    //
+    // A final non-delta `{ type: 'message', role: 'assistant', content }`
+    // is treated the same way (append). The trailing `type: 'result'`
+    // event still drives finalisation via the branch below.
+    if (
+      payload?.type === 'message' &&
+      payload?.role === 'assistant' &&
+      typeof payload.content === 'string'
+    ) {
+      const text = payload.content
+      if (text) {
+        run.content += text
+        this.scheduleFlush(run)
+      }
+      return true
+    }
     if (payload?.type === 'result') {
       run.stats = payload.stats
       const failed = payload.status === 'failed' || payload.subtype === 'error'
