@@ -75,7 +75,7 @@ import { UsageHeatmap } from './components/UsageHeatmap'
 import { useAppearance } from './hooks/useAppearance'
 import { useExternalPathRepoMetadata } from './hooks/useExternalPathRepoMetadata'
 import { ExternalPathAboveRow } from './components/ExternalPathAboveRow'
-import { Sidebar } from './components/Sidebar'
+import { ProviderBadgeIcon, Sidebar } from './components/Sidebar'
 import { Inspector } from './components/Inspector'
 import { SettingsPanel, type SettingsTab } from './components/SettingsPanel'
 import { SettingsSidebar } from './components/SettingsSidebar'
@@ -13516,7 +13516,96 @@ function App(): React.JSX.Element {
                 worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
               />
             )}
-            {isWelcomeChat && (
+            {isWelcomeChat && isCurrentEnsembleChat && (
+              /*
+                Ensemble welcome hero (1.0.3 Slice F follow-up). Replaces
+                the solo-provider "New Codex thread for ..." copy with
+                an ensemble-aware heading + a chevron-arrow chain
+                showing the orchestration order. Disabled participants
+                are skipped — the chain reflects the speaking sequence,
+                not the full roster. The user can still drag the chip
+                strip below to reorder.
+
+                Per Chris's ship-night call: no starter cards on the
+                ensemble welcome. Just hierarchy + textarea + the
+                editable chip strip in the composer above-row.
+              */
+              <div className="welcome-hero welcome-hero-ensemble">
+                <h1>
+                  {isCurrentGlobalChat ? (
+                    <>
+                      <span>New Ensemble chat in </span>
+                      <strong>global chat</strong>
+                      <span>.</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>New Ensemble chat in </span>
+                      <strong>{currentWorkspace?.displayName || 'GUIGemini'}</strong>
+                      <span> Workspace.</span>
+                    </>
+                  )}
+                </h1>
+                {(() => {
+                  const orderedEnabled = [...(currentChat?.ensemble?.participants || [])]
+                    .filter((participant) => participant.enabled)
+                    .sort((a, b) => a.order - b.order)
+                  if (orderedEnabled.length === 0) {
+                    return (
+                      <p className="welcome-hero-ensemble-empty">
+                        No providers enabled yet. Open any chip below to turn one back on, then
+                        describe the task.
+                      </p>
+                    )
+                  }
+                  return (
+                    <>
+                      <p>
+                        {orderedEnabled.length}{' '}
+                        {orderedEnabled.length === 1 ? 'provider' : 'providers'} will work through
+                        this in order. Each can{' '}
+                        <code>ensemble_yield(target:&nbsp;…)</code> to hand off, or return the
+                        round to you.
+                      </p>
+                      <div
+                        className="ensemble-hierarchy-chain"
+                        role="list"
+                        aria-label="Ensemble orchestration order"
+                      >
+                        {orderedEnabled.map((participant, idx) => (
+                          <div key={participant.id} className="ensemble-hierarchy-chain-step">
+                            <div
+                              className={`ensemble-hierarchy-tile provider-${participant.provider}`}
+                              role="listitem"
+                              title={`${participant.role || participant.provider} — speaks at position ${idx + 1}`}
+                            >
+                              <ProviderBadgeIcon provider={participant.provider} />
+                              <div className="ensemble-hierarchy-tile-text">
+                                <span className="ensemble-hierarchy-tile-role">
+                                  {participant.role || participant.provider}
+                                </span>
+                                <span className="ensemble-hierarchy-tile-provider">
+                                  {participant.provider}
+                                </span>
+                              </div>
+                            </div>
+                            {idx < orderedEnabled.length - 1 && (
+                              <span
+                                className="ensemble-hierarchy-arrow"
+                                aria-hidden
+                              >
+                                →
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )
+                })()}
+              </div>
+            )}
+            {isWelcomeChat && !isCurrentEnsembleChat && (
               <div className="welcome-hero">
                 <h1>
                   <span>{welcomeCopy.heading.beforeWorkspace}</span>
@@ -13536,8 +13625,24 @@ function App(): React.JSX.Element {
                 across all providers, so we drop the codex-style duplicate
                 button and keep Create PR as the above-bar action.
               */}
-            {!isWelcomeChat && !isCurrentGlobalChat && currentWorkspace && (
+            {/*
+              Slice F follow-up (1.0.3) — the stack renders not only
+              when there's diff/file/external-path context (the
+              original `!isWelcomeChat` rule) but also whenever the
+              chat is an ensemble, so the participant chip strip is
+              visible BEFORE the user sends their first prompt.
+              Configure-before-send is the entire point of the strip;
+              hiding it on welcome state defeated the rework.
+              Inner sections still gate on `!isWelcomeChat` so the
+              files / Create PR / external-path rows don't render
+              with empty data on a fresh ensemble chat.
+            */}
+            {!isCurrentGlobalChat &&
+              currentWorkspace &&
+              (!isWelcomeChat || isCurrentEnsembleChat) && (
               <div className="composer-above-bar-stack">
+                {!isWelcomeChat && (
+                <>
                 <div className="composer-above-bar style-unified">
                   <span className="composer-above-bar-branch">
                     <svg
@@ -13712,6 +13817,8 @@ function App(): React.JSX.Element {
                     onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
                   />
                 ))}
+                </>
+                )}
                 {/*
                   Slice F (1.0.3) — ensemble participants live in the
                   composer above-row stack now. Sits below the unified
@@ -13720,6 +13827,11 @@ function App(): React.JSX.Element {
                   textarea so the diff/PR signals read first. Returns
                   null for non-ensemble chats so single-provider chats
                   don't see an empty cell.
+
+                  Renders on welcome state too (no `!isWelcomeChat`
+                  gate) so the user can configure participants BEFORE
+                  the first prompt — configure-before-send is the
+                  entire point of the strip.
                 */}
                 {currentChat?.chatKind === 'ensemble' && (
                   <EnsembleParticipantsAboveRow
@@ -15153,7 +15265,14 @@ function App(): React.JSX.Element {
                 </div>
               )}
             </div>
-            {isWelcomeChat && (
+            {isWelcomeChat && !isCurrentEnsembleChat && (
+              /*
+                Solo-provider starter cards. Hidden on ensemble chats
+                per Chris's 1.0.3 ship-night call: the hierarchy chain
+                in the ensemble welcome hero teaches the orchestration
+                model, and the user types their own prompt rather than
+                picking from solo-shaped templates.
+              */
               <div className="welcome-suggestions">
                 {welcomeCopy.starters.map((starter) => (
                   <button

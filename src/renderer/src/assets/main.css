@@ -4187,6 +4187,82 @@ button.sidebar-item {
   font-size: var(--font-size-sm);
 }
 
+/* Slice F follow-up (1.0.3) — ensemble welcome variant. Renders the
+ * orchestration order as a chevron-arrow chain (Claude → Codex →
+ * Gemini → Kimi) so the user sees the speaking sequence at a glance.
+ * Tiles inherit per-provider theming via the standard `provider-*`
+ * class hooks the rest of the app uses. */
+.welcome-hero-ensemble code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  font-size: 0.85em;
+  font-family: var(--font-mono);
+}
+.ensemble-hierarchy-chain {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  align-items: center;
+  justify-content: center;
+  margin: 18px auto 0;
+  max-width: 720px;
+}
+.ensemble-hierarchy-chain-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.ensemble-hierarchy-tile {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 78%, transparent);
+  color: var(--text-primary);
+  min-width: 120px;
+}
+.ensemble-hierarchy-tile.provider-claude {
+  border-color: color-mix(in srgb, var(--provider-claude, #d68a4d) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile.provider-codex {
+  border-color: color-mix(in srgb, var(--provider-codex, #3b82f6) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile.provider-gemini {
+  border-color: color-mix(in srgb, var(--provider-gemini, #4d8edb) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile.provider-kimi {
+  border-color: color-mix(in srgb, var(--provider-kimi, #6fb04a) 48%, var(--panel-border));
+}
+.ensemble-hierarchy-tile-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+}
+.ensemble-hierarchy-tile-role {
+  font-size: var(--font-size-sm);
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.ensemble-hierarchy-tile-provider {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+.ensemble-hierarchy-arrow {
+  font-size: 18px;
+  color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+  user-select: none;
+}
+.welcome-hero-ensemble-empty {
+  margin-top: 18px !important;
+  color: color-mix(in srgb, var(--danger, #c44a4a) 60%, var(--text-secondary)) !important;
+}
+
 .welcome-suggestions {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));
