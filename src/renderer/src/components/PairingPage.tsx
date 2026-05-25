@@ -16,9 +16,11 @@
  *     "← Back to app" + the existing Escape-to-back handler handle
  *     dismissal.
  *   - No focus management on mount (no close button to focus).
- *   - Reuses the existing `.pairing-sheet__*` CSS for internal layout
- *     (form fields, QR pane sizing, etc.) — only the outer chrome
- *     differs, gated under the new `.pairing-page` wrapper.
+ *   - Internal layout classes use the `.pairing-page__*` namespace
+ *     (form fields, QR pane sizing, etc.) — renamed from the legacy
+ *     `.pairing-page__*` prefix once the modal-sheet form-factor was
+ *     retired in 1.0.2 + the page became the only consumer. The outer
+ *     chrome lives under the `.pairing-page` wrapper.
  *
  * The `IncomingPairingPrompt` modal that owns the 6-digit verification
  * step is unchanged and continues to layer on top of whatever screen
@@ -143,22 +145,22 @@ export function PairingPage(): JSX.Element {
 
   return (
     <div className="pairing-page" aria-label="iOS pairing">
-      <header className="pairing-sheet__header pairing-page__header">
-        <div className="pairing-sheet__header-titles">
-          <h2 className="pairing-sheet__title">Pair with iPhone / iPad</h2>
-          <p className="pairing-sheet__subtitle">
+      <header className="pairing-page__header pairing-page__header">
+        <div className="pairing-page__header-titles">
+          <h2 className="pairing-page__title">Pair with iPhone / iPad</h2>
+          <p className="pairing-page__subtitle">
             Open the AGBench app on your iOS device and scan this QR. The next screen will ask you
             to verify a 6-digit code.
           </p>
         </div>
       </header>
 
-      <form className="pairing-sheet__name-form" onSubmit={onDisplayNameSubmit} ref={formRef}>
-        <label className="pairing-sheet__name-label">
+      <form className="pairing-page__name-form" onSubmit={onDisplayNameSubmit} ref={formRef}>
+        <label className="pairing-page__name-label">
           <span>Device label</span>
           <input
             type="text"
-            className="pairing-sheet__name-input"
+            className="pairing-page__name-input"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             maxLength={48}
@@ -177,19 +179,19 @@ export function PairingPage(): JSX.Element {
         </button>
       </form>
 
-      {error && <div className="settings-error pairing-sheet__error">{error}</div>}
+      {error && <div className="settings-error pairing-page__error">{error}</div>}
 
       {!error && (
-        <div className="pairing-sheet__body">
-          <div className="pairing-sheet__qr-pane">
+        <div className="pairing-page__body">
+          <div className="pairing-page__qr-pane">
             {loading || !bootstrap ? (
-              <div className="pairing-sheet__qr-placeholder">
+              <div className="pairing-page__qr-placeholder">
                 {loading ? 'Generating QR…' : 'No QR available'}
               </div>
             ) : (
               <button
                 type="button"
-                className="pairing-sheet__qr pairing-sheet__qr--clickable"
+                className="pairing-page__qr pairing-page__qr--clickable"
                 onClick={() => setMaximised(true)}
                 title="Click to maximise for easier camera scanning"
                 // dangerouslySetInnerHTML is intentional — `qrcode`
@@ -198,23 +200,23 @@ export function PairingPage(): JSX.Element {
                 dangerouslySetInnerHTML={{ __html: bootstrap.qrSvg }}
               />
             )}
-            <div className="pairing-sheet__hint">
+            <div className="pairing-page__hint">
               Point the iOS camera here. <strong>Click the QR to maximise</strong> if the camera
               can&apos;t read it at this size. Pair expires in a few minutes — tap Refresh if
               scanning fails.
             </div>
           </div>
 
-          <div className="pairing-sheet__fallback-pane">
-            <div className="pairing-sheet__fallback-label">Or paste JSON into iOS</div>
+          <div className="pairing-page__fallback-pane">
+            <div className="pairing-page__fallback-label">Or paste JSON into iOS</div>
             <textarea
-              className="pairing-sheet__json"
+              className="pairing-page__json"
               readOnly
               value={bootstrap?.json ?? ''}
               spellCheck={false}
               onFocus={(e) => e.currentTarget.select()}
             />
-            <div className="pairing-sheet__fallback-actions">
+            <div className="pairing-page__fallback-actions">
               <button
                 type="button"
                 className="btn btn-sm"
@@ -223,7 +225,7 @@ export function PairingPage(): JSX.Element {
               >
                 {copied ? 'Copied' : 'Copy JSON'}
               </button>
-              <div className="pairing-sheet__hint pairing-sheet__hint--inline">
+              <div className="pairing-page__hint pairing-page__hint--inline">
                 iOS app → &quot;Paste JSON instead&quot; if the camera path doesn&apos;t work.
               </div>
             </div>
@@ -231,8 +233,8 @@ export function PairingPage(): JSX.Element {
         </div>
       )}
 
-      <footer className="pairing-sheet__footer pairing-page__footer">
-        <span className="pairing-sheet__footer-hint">
+      <footer className="pairing-page__footer pairing-page__footer">
+        <span className="pairing-page__footer-hint">
           After the iOS device confirms, you&apos;ll see a 6-digit verification code overlay — make
           sure it matches before tapping confirm on iOS.
         </span>
@@ -287,7 +289,7 @@ export function PairingPage(): JSX.Element {
           handler doesn't also kick the user out of Settings). */}
       {maximised && bootstrap && (
         <div
-          className="pairing-sheet__maximise"
+          className="pairing-page__maximise"
           role="button"
           tabIndex={0}
           aria-label="Minimise QR code"
@@ -300,10 +302,10 @@ export function PairingPage(): JSX.Element {
           }}
         >
           <div
-            className="pairing-sheet__maximise-qr"
+            className="pairing-page__maximise-qr"
             dangerouslySetInnerHTML={{ __html: bootstrap.qrSvg }}
           />
-          <div className="pairing-sheet__maximise-hint">
+          <div className="pairing-page__maximise-hint">
             Click anywhere to close · Point iPad camera at the QR
           </div>
         </div>

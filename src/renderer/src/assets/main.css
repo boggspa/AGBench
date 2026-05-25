@@ -20161,7 +20161,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* PairingPage — pairing flow rendered inside the Settings takeover
  * (post-1.0.2). Keeps the QR + JSON panes laid out side-by-side at
  * full width. The inner
- * `.pairing-sheet__*` rules below are shared with the (now-retired)
+ * `.pairing-page__*` rules below are shared with the (now-retired)
  * PairingSheet modal — kept verbatim because they describe content
  * layout, not chrome. */
 .pairing-page {
@@ -20209,7 +20209,7 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-primary);
 }
 
-.pairing-sheet__header {
+.pairing-page__header {
   display: flex;
   align-items: flex-start;
   gap: 16px;
@@ -20217,25 +20217,25 @@ input:disabled, select:disabled, textarea:disabled {
   border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
 }
 
-.pairing-sheet__header-titles {
+.pairing-page__header-titles {
   flex: 1 1 auto;
   min-width: 0;
 }
 
-.pairing-sheet__title {
+.pairing-page__title {
   margin: 0;
   font-size: 1.15rem;
   font-weight: 700;
   line-height: 1.2;
 }
 
-.pairing-sheet__subtitle {
+.pairing-page__subtitle {
   margin: 6px 0 0;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
 }
 
-.pairing-sheet__close {
+.pairing-page__close {
   appearance: none;
   border: 0;
   background: transparent;
@@ -20247,12 +20247,12 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 4px;
 }
 
-.pairing-sheet__close:hover {
+.pairing-page__close:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
-.pairing-sheet__name-form {
+.pairing-page__name-form {
   display: flex;
   align-items: flex-end;
   gap: 12px;
@@ -20260,7 +20260,7 @@ input:disabled, select:disabled, textarea:disabled {
   border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 40%, transparent);
 }
 
-.pairing-sheet__name-label {
+.pairing-page__name-label {
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -20271,7 +20271,7 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-secondary);
 }
 
-.pairing-sheet__name-input {
+.pairing-page__name-input {
   font: inherit;
   font-size: 13px;
   text-transform: none;
@@ -20283,11 +20283,11 @@ input:disabled, select:disabled, textarea:disabled {
   padding: 7px 10px;
 }
 
-.pairing-sheet__error {
+.pairing-page__error {
   margin: 14px 24px;
 }
 
-.pairing-sheet__body {
+.pairing-page__body {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 20px;
@@ -20295,15 +20295,15 @@ input:disabled, select:disabled, textarea:disabled {
   overflow-y: auto;
 }
 
-.pairing-sheet__qr-pane,
-.pairing-sheet__fallback-pane {
+.pairing-page__qr-pane,
+.pairing-page__fallback-pane {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
 }
 
-.pairing-sheet__qr-placeholder {
+.pairing-page__qr-placeholder {
   aspect-ratio: 1 / 1;
   display: flex;
   align-items: center;
@@ -20314,7 +20314,7 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: var(--font-size-sm);
 }
 
-.pairing-sheet__qr {
+.pairing-page__qr {
   background: #ffffff;
   padding: 14px;
   border-radius: var(--radius-md);
@@ -20331,16 +20331,16 @@ input:disabled, select:disabled, textarea:disabled {
   color: inherit;
 }
 
-.pairing-sheet__qr--clickable {
+.pairing-page__qr--clickable {
   cursor: zoom-in;
   transition: transform 120ms ease;
 }
 
-.pairing-sheet__qr--clickable:hover {
+.pairing-page__qr--clickable:hover {
   transform: scale(1.015);
 }
 
-.pairing-sheet__qr svg {
+.pairing-page__qr svg {
   width: 100%;
   height: 100%;
   display: block;
@@ -20349,7 +20349,7 @@ input:disabled, select:disabled, textarea:disabled {
 /* Fullscreen QR overlay — pops above the sheet so the iPad camera
    can comfortably scan from any reasonable distance. Click anywhere
    to dismiss. */
-.pairing-sheet__maximise {
+.pairing-page__maximise {
   position: fixed;
   inset: 0;
   z-index: 148; /* above the pairing-sheet backdrop (145) but still
@@ -20364,11 +20364,11 @@ input:disabled, select:disabled, textarea:disabled {
   cursor: zoom-out;
 }
 
-.pairing-sheet__maximise:focus-visible {
+.pairing-page__maximise:focus-visible {
   outline: none;
 }
 
-.pairing-sheet__maximise-qr {
+.pairing-page__maximise-qr {
   background: #ffffff;
   padding: 24px;
   border-radius: var(--radius-lg);
@@ -20382,29 +20382,29 @@ input:disabled, select:disabled, textarea:disabled {
   justify-content: center;
 }
 
-.pairing-sheet__maximise-qr svg {
+.pairing-page__maximise-qr svg {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.pairing-sheet__maximise-hint {
+.pairing-page__maximise-hint {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.85);
   text-align: center;
 }
 
-.pairing-sheet__hint {
+.pairing-page__hint {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.4;
 }
 
-.pairing-sheet__hint--inline {
+.pairing-page__hint--inline {
   flex: 1 1 auto;
 }
 
-.pairing-sheet__fallback-label {
+.pairing-page__fallback-label {
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -20412,7 +20412,7 @@ input:disabled, select:disabled, textarea:disabled {
   font-weight: 600;
 }
 
-.pairing-sheet__json {
+.pairing-page__json {
   flex: 1 1 auto;
   min-height: 200px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -20428,19 +20428,19 @@ input:disabled, select:disabled, textarea:disabled {
   overflow: auto;
 }
 
-.pairing-sheet__fallback-actions {
+.pairing-page__fallback-actions {
   display: flex;
   align-items: center;
   gap: 10px;
 }
 
-.pairing-sheet__footer {
+.pairing-page__footer {
   padding: 12px 24px 16px;
   border-top: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
   background: color-mix(in srgb, var(--text-primary) 3%, transparent);
 }
 
-.pairing-sheet__footer-hint {
+.pairing-page__footer-hint {
   font-size: 11px;
   color: var(--text-secondary);
   line-height: 1.4;
@@ -20448,7 +20448,7 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Tighter layout on narrow viewports — stack the two panes. */
 @media (max-width: 720px) {
-  .pairing-sheet__body {
+  .pairing-page__body {
     grid-template-columns: minmax(0, 1fr);
   }
 }
