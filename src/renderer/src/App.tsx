@@ -14969,7 +14969,10 @@ function App(): React.JSX.Element {
                     // Plain Enter with no mention + no modifier
                     // dispatches the full round.
                     const dmFromMention = isCurrentEnsembleChat
-                      ? extractFirstEnsembleDmTarget(prompt)
+                      ? extractFirstEnsembleDmTarget(
+                          prompt,
+                          currentChat?.ensemble?.participants
+                        )
                       : null
                     const dmTarget =
                       dmFromMention ||
@@ -15032,13 +15035,17 @@ function App(): React.JSX.Element {
                       return `[@${mention.name}](agent://${mention.agentId}) `
                     }
                     if (mention.kind === 'participant' && mention.participantId) {
-                      // Ensemble DM mention. The `ensemble-dm://`
-                      // scheme is intercepted by `StableMarkdownBlock`
-                      // for the inline transcript chip; on send,
-                      // `extractFirstEnsembleDmTarget` reads the
-                      // participant id back out to set the run's
-                      // `dmTargetParticipantId`.
-                      return `[@${mention.name}](ensemble-dm://${mention.participantId}) `
+                      // Ensemble DM mention. Insert PLAIN `@Role`
+                      // (no markdown link) so the composer textarea
+                      // shows a clean readable token instead of the
+                      // raw markdown URL. On send,
+                      // `extractFirstEnsembleDmTarget` resolves the
+                      // `@Role` against the chat's participants by
+                      // role (case-insensitive) → provider name and
+                      // produces the right `dmTargetParticipantId`.
+                      // This also means free-typed `@Gemini` or
+                      // `@Worker` works the same as a picker click.
+                      return `@${mention.name} `
                     }
                     return formatComposerPathMention(mention.path || mention.name)
                   })()
@@ -16324,7 +16331,10 @@ function App(): React.JSX.Element {
                           // to legacy Cmd/Ctrl-click on a selected
                           // chip; plain click = full round.
                           const dmFromMention = isCurrentEnsembleChat
-                            ? extractFirstEnsembleDmTarget(prompt)
+                            ? extractFirstEnsembleDmTarget(
+                                prompt,
+                                currentChat?.ensemble?.participants
+                              )
                             : null
                           const dmTarget =
                             dmFromMention ||

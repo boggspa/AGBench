@@ -78,17 +78,63 @@ export function formatComposerPathMention(path: string): string {
 }
 
 /**
+ * Resolver shape for the participant lookup. Keeps this module from
+ * importing the full `EnsembleParticipant` type — only the three
+ * fields the matcher actually reads.
+ */
+export interface EnsembleDmCandidate {
+  id: string
+  role?: string
+  provider: string
+}
+
+/**
  * Extract the first ensemble-dm participant id mentioned in a
  * composer prompt. Used on send to translate an `@participant`
  * mention into the `dmTargetParticipantId` field on the run
  * payload — the orchestrator scopes the round to just that
  * participant when set.
  *
- * Matches the markdown link form inserted by the participant
- * mention pick handler: `[@Role](ensemble-dm://participant-id)`.
- * Returns the first match only; if a user wrote `@A @B` we DM A.
+ * Two recognised forms (in priority order):
+ *
+ *   1. Markdown link form `[@Role](ensemble-dm://participant-id)`.
+ *      Legacy from the first pass of the @-mention work — kept so
+ *      historical prompts still route correctly.
+ *
+ *   2. Plain `@Token` (token = word chars + dashes). Resolved
+ *      against the supplied participants list, matching first by
+ *      role (case-insensitive, trimmed) then by provider name.
+ *      This is what the composer's mention picker now inserts —
+ *      readable in the textarea, no markdown noise, and free-typed
+ *      `@Gemini` works the same way as a picker click.
+ *
+ * Returns the FIRST match found. If a user wrote `@A @B` we DM A.
  */
-export function extractFirstEnsembleDmTarget(prompt: string): string | null {
-  const match = prompt.match(/\]\(ensemble-dm:\/\/([^)\s]+)\)/)
-  return match ? match[1] : null
+export function extractFirstEnsembleDmTarget(
+  prompt: string,
+  participants?: EnsembleDmCandidate[]
+): string | null {
+  // Markdown form — always wins because the link unambiguously
+  // carries the participant id.
+  const linkMatch = prompt.match(/\]\(ensemble-dm:\/\/([^)\s]+)\)/)
+  if (linkMatch) return linkMatch[1]
+
+  if (!participants || participants.length === 0) return null
+  // Plain `@Token` — match at word boundaries so emails like
+  // `chris@example.com` don't get picked up. Pattern mirrors the
+  // transcript-side `ParticipantMention` tokeniser in
+  // `StableMarkdownBlock`.
+  const re = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
+  let match: RegExpExecArray | null
+  while ((match = re.exec(prompt)) !== null) {
+    const token = match[2]
+    const lower = token.toLowerCase()
+    const byRole = participants.find(
+      (p) => (p.role || '').trim().toLowerCase() === lower
+    )
+    if (byRole) return byRole.id
+    const byProvider = participants.find((p) => p.provider.toLowerCase() === lower)
+    if (byProvider) return byProvider.id
+  }
+  return null
 }

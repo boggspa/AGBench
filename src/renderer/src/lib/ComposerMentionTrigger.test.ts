@@ -96,4 +96,54 @@ describe('extractFirstEnsembleDmTarget', () => {
       extractFirstEnsembleDmTarget('[@Helper](agent://thread-xyz) help')
     ).toBeNull()
   })
+
+  it('resolves plain @Role against participants by role (case-insensitive)', () => {
+    const participants = [
+      { id: 'ensemble-codex', role: 'Worker', provider: 'codex' },
+      { id: 'ensemble-gemini', role: 'Researcher', provider: 'gemini' }
+    ]
+    expect(extractFirstEnsembleDmTarget('@Researcher take a look', participants)).toBe(
+      'ensemble-gemini'
+    )
+    // Case-insensitive role match.
+    expect(extractFirstEnsembleDmTarget('please @worker do this', participants)).toBe(
+      'ensemble-codex'
+    )
+  })
+
+  it('falls back to provider name when role does not match', () => {
+    const participants = [
+      { id: 'ensemble-codex', role: 'Worker', provider: 'codex' },
+      { id: 'ensemble-gemini', role: 'Researcher', provider: 'gemini' }
+    ]
+    expect(extractFirstEnsembleDmTarget('hey @gemini check this', participants)).toBe(
+      'ensemble-gemini'
+    )
+  })
+
+  it('skips @-mentions that match no participant', () => {
+    const participants = [{ id: 'ensemble-codex', role: 'Worker', provider: 'codex' }]
+    expect(extractFirstEnsembleDmTarget('hello @ghost', participants)).toBeNull()
+  })
+
+  it('does not pick up @ inside email-like tokens', () => {
+    const participants = [{ id: 'ensemble-gemini', role: 'Researcher', provider: 'gemini' }]
+    // `@example.com` is preceded by `e` (not a boundary), so the
+    // tokeniser regex won't match — same defence as the transcript
+    // tokeniser.
+    expect(
+      extractFirstEnsembleDmTarget('contact me@example.com first', participants)
+    ).toBeNull()
+  })
+
+  it('prefers the markdown link over plain @Role when both are present', () => {
+    const participants = [{ id: 'ensemble-codex', role: 'Worker', provider: 'codex' }]
+    // Markdown link wins because it unambiguously carries the id.
+    expect(
+      extractFirstEnsembleDmTarget(
+        '@worker reminder: [@Override](ensemble-dm://forced-id)',
+        participants
+      )
+    ).toBe('forced-id')
+  })
 })
