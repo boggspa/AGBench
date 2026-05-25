@@ -42,7 +42,11 @@ describe('buildClaudeAgentbenchMcpServers', () => {
           '--token',
           'deadbeef'
         ],
-        env: { AGENTBENCH_PARENT_PROVIDER: 'claude' }
+        env: { AGENTBENCH_PARENT_PROVIDER: 'claude' },
+        // QMOD/1.0.3: alwaysLoad disables Claude SDK's tool-search
+        // deferral so MCP tools are visible turn-1 without a ToolSearch
+        // round-trip. See ClaudeAgentbenchMcp.ts doc for the why.
+        alwaysLoad: true
       }
     })
   })
@@ -99,7 +103,8 @@ describe('buildClaudeAgentbenchMcpConfigJson', () => {
             '--token',
             'cafebabe'
           ],
-          env: { AGENTBENCH_PARENT_PROVIDER: 'claude' }
+          env: { AGENTBENCH_PARENT_PROVIDER: 'claude' },
+          alwaysLoad: true
         }
       }
     })

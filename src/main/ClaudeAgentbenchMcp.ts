@@ -56,12 +56,26 @@ export interface ClaudeAgentbenchMcpInput {
  * from `@anthropic-ai/claude-agent-sdk` (sdk.d.ts) — `type: 'stdio'`,
  * `command`, `args`, `env`. Kept as a structural type so we don't have
  * to import the SDK's types in tests.
+ *
+ * `alwaysLoad: true` (1.0.3) disables tool-search deferral for this
+ * server. Without it, the Claude SDK puts MCP tools BEHIND a
+ * `ToolSearch` round-trip on first invocation: the agent has to call
+ * `ToolSearch` → discover `ensemble_yield` / `ask_user_question` /
+ * etc. → then call the actual tool, doubling the round-trips per
+ * delegation. Tester reported "Claude kept giving up" partly because
+ * the deferred call ate the 30s plan-mode budget. Always-load all
+ * AGBench tools at startup so the first turn already has them.
+ *
+ * Trade-off: the SDK blocks startup until the bridge connects (capped
+ * at 5s). For AGBench's stdio bridge that's a 50-200ms hit — fully
+ * worth it to remove the per-tool friction.
  */
 export interface ClaudeMcpStdioServerEntry {
   type: 'stdio'
   command: string
   args: string[]
   env: Record<string, string>
+  alwaysLoad?: boolean
 }
 
 export interface ClaudeAgentbenchMcpServers {
@@ -77,6 +91,10 @@ export interface ClaudeAgentbenchMcpServers {
  * subprocess inherits provider plus run/chat metadata and the broker uses
  * it to route approvals + audit events to the exact Claude run when
  * available.
+ *
+ * `alwaysLoad: true` is set so Claude's tool-search deferral doesn't
+ * make the first delegation pay a ToolSearch round-trip. See the
+ * `ClaudeMcpStdioServerEntry` doc comment for the why.
  */
 export function buildClaudeAgentbenchMcpServers(
   input: ClaudeAgentbenchMcpInput
@@ -87,7 +105,8 @@ export function buildClaudeAgentbenchMcpServers(
       type: 'stdio',
       command: input.bridgeBinaryPath,
       args: [...input.bridgeArgs],
-      env: buildClaudeAgentbenchMcpEnv(input)
+      env: buildClaudeAgentbenchMcpEnv(input),
+      alwaysLoad: true
     }
   }
 }
