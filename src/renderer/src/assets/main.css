@@ -23790,6 +23790,16 @@ input:disabled, select:disabled, textarea:disabled {
   flex: 1;
   gap: 6px;
   overflow-x: auto;
+  /* Centre-justify chips within their flex slot so the row reads
+   * as a balanced strip rather than left-pinned text. Works across
+   * every shell (default / codex / claude / gemini / kimi /
+   * modular / satellite / stub / terminal) because they all share
+   * this inner chip-container element. The optional
+   * `.ensemble-above-row-actions` sibling stays right-justified on
+   * the row, so when actions are present (running round + Stop
+   * Ensemble button) the layout reads as "chips centred, actions
+   * right" — same as the Codex CLI's stacked-row pattern. */
+  justify-content: center;
 }
 
 /* Slice F v2 (1.0.3) — the chip wrapper is now a `<div>` (not a
