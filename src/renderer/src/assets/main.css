@@ -4351,6 +4351,112 @@ button.sidebar-item {
   font-size: 0.85em;
   font-family: var(--font-mono);
 }
+
+/* AGBench 1.0.3 polish — provider-theme-aware ensemble welcome shell.
+ *
+ * The ensemble welcome screen receives a subtle hue gradient built
+ * from up to four participant colours (codex indigo, claude rust,
+ * gemini blue, kimi olive). React feeds the per-slot colours through
+ * `--ensemble-provider-1..4` custom properties on the wrapper; the
+ * rules below lerp them across the surface at low opacity so the
+ * gradient reads as a fingerprint, not a rainbow strip. A 1px tinted
+ * border accent + a soft inner glow round it off without competing
+ * with the orchestration chain underneath.
+ *
+ * The `.workspace-name-glow` class drives the workspace-name text
+ * shadow on both the ensemble + non-ensemble welcome variants, keyed
+ * off the dominant provider (= first speaker for ensembles, the
+ * chat's provider otherwise). Light + dark themes share the same
+ * `color-mix()` lerps so the glow stays legible without restating
+ * theme-specific shadows. */
+.welcome-ensemble-shell {
+  --ensemble-shell-tint-1: var(--ensemble-provider-1, var(--text-primary));
+  --ensemble-shell-tint-2: var(--ensemble-provider-2, var(--ensemble-shell-tint-1));
+  --ensemble-shell-tint-3: var(--ensemble-provider-3, var(--ensemble-shell-tint-2));
+  --ensemble-shell-tint-4: var(--ensemble-provider-4, var(--ensemble-shell-tint-3));
+  position: relative;
+  padding: 18px 22px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--ensemble-shell-tint-1) 22%, var(--panel-border));
+  background:
+    linear-gradient(
+      125deg,
+      color-mix(in srgb, var(--ensemble-shell-tint-1) 10%, transparent) 0%,
+      color-mix(in srgb, var(--ensemble-shell-tint-2) 8%, transparent) 38%,
+      color-mix(in srgb, var(--ensemble-shell-tint-3) 8%, transparent) 68%,
+      color-mix(in srgb, var(--ensemble-shell-tint-4) 10%, transparent) 100%
+    ),
+    color-mix(in srgb, var(--surface-elevated) 64%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ensemble-shell-tint-1) 12%, transparent),
+    0 1px 14px color-mix(in srgb, var(--ensemble-shell-tint-1) 14%, transparent);
+}
+
+/* Single-provider ensemble (rare but possible) — soften the gradient
+ * so it doesn't read as a flat colour wash. */
+.welcome-ensemble-shell-count-1 {
+  background:
+    radial-gradient(
+      ellipse at 50% 0%,
+      color-mix(in srgb, var(--ensemble-shell-tint-1) 10%, transparent) 0%,
+      transparent 70%
+    ),
+    color-mix(in srgb, var(--surface-elevated) 64%, transparent);
+}
+
+/* Light themes need a touch more saturation on the tint border + a
+ * slightly higher mix on the gradient stops to remain visible on a
+ * light surface. We don't restate the gradient — just nudge opacity
+ * via the inherited custom properties. */
+[data-theme="light"] .welcome-ensemble-shell,
+[data-theme="mist"] .welcome-ensemble-shell,
+[data-theme="sage"] .welcome-ensemble-shell {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 30%, var(--panel-border));
+  background:
+    linear-gradient(
+      125deg,
+      color-mix(in srgb, var(--ensemble-shell-tint-1) 13%, transparent) 0%,
+      color-mix(in srgb, var(--ensemble-shell-tint-2) 11%, transparent) 38%,
+      color-mix(in srgb, var(--ensemble-shell-tint-3) 11%, transparent) 68%,
+      color-mix(in srgb, var(--ensemble-shell-tint-4) 13%, transparent) 100%
+    ),
+    color-mix(in srgb, var(--surface-elevated) 80%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--ensemble-shell-tint-1) 18%, transparent),
+    0 1px 12px color-mix(in srgb, var(--ensemble-shell-tint-1) 10%, transparent);
+}
+
+/* Workspace-name glow — soft text-shadow in the dominant provider's
+ * colour. Sits ON TOP of the existing shell-scoped strong-color rules
+ * (see `.app-transcript.provider-{x} .welcome-hero h1 strong`), which
+ * still control the fill colour; this class only adds the halo. */
+.workspace-name-glow {
+  text-shadow:
+    0 0 12px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 38%, transparent),
+    0 0 24px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 22%, transparent);
+}
+.workspace-name-glow.provider-codex {
+  --workspace-name-glow-color: var(--provider-codex-color);
+}
+.workspace-name-glow.provider-claude {
+  --workspace-name-glow-color: var(--provider-claude-color);
+}
+.workspace-name-glow.provider-gemini {
+  --workspace-name-glow-color: var(--provider-gemini-color);
+}
+.workspace-name-glow.provider-kimi {
+  --workspace-name-glow-color: var(--provider-kimi-color);
+}
+
+/* Light themes get a tighter, slightly stronger glow so the workspace
+ * name still reads as accented without bleeding into the light surface. */
+[data-theme="light"] .workspace-name-glow,
+[data-theme="mist"] .workspace-name-glow,
+[data-theme="sage"] .workspace-name-glow {
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 30%, transparent),
+    0 0 18px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 16%, transparent);
+}
 .ensemble-hierarchy-chain {
   display: flex;
   flex-wrap: wrap;

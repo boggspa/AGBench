@@ -104,6 +104,7 @@ import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { MentionHighlightedText } from './components/MentionHighlightedText'
 import { hasResolvedMention } from './lib/mentionHighlight'
 import { shortModelName } from './lib/composerChipFormat'
+import { resolveEnsembleParticipantSettings } from './lib/ensembleProviderDefaults'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -14530,7 +14531,7 @@ function App(): React.JSX.Element {
                 worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
               />
             )}
-            {isWelcomeChat && isCurrentEnsembleChat && (
+            {isWelcomeChat && isCurrentEnsembleChat && (() => {
               /*
                 Ensemble welcome hero (1.0.3 Slice F follow-up). Replaces
                 the solo-provider "New Codex thread for ..." copy with
@@ -14543,36 +14544,66 @@ function App(): React.JSX.Element {
                 Per Chris's ship-night call: no starter cards on the
                 ensemble welcome. Just hierarchy + textarea + the
                 editable chip strip in the composer above-row.
+
+                1.0.3 polish — provider-theme-aware shell. We compute
+                the ordered-enabled participant list once and use it
+                both for the orchestration chain (existing behaviour)
+                and to drive a subtle hue-blend gradient on the
+                welcome surface. The dominant provider (first speaker)
+                also flavours the workspace-name glow via the
+                `workspace-name-glow provider-{dominant}` class. CSS
+                custom properties keep the gradient declarative and
+                themeable from main.css; both light + dark modes use
+                `color-mix()` against the surface so the blend stays
+                subtle at ~6-10% opacity.
               */
-              <div className="welcome-hero welcome-hero-ensemble">
-                <h1>
-                  {isCurrentGlobalChat ? (
-                    <>
-                      <span>New Ensemble chat in </span>
-                      <strong>global chat</strong>
-                      <span>.</span>
-                    </>
+              const orderedEnabled = [...(currentChat?.ensemble?.participants || [])]
+                .filter((participant) => participant.enabled)
+                .sort((a, b) => a.order - b.order)
+              const dominantProvider = orderedEnabled[0]?.provider
+              const ensembleShellStyle: CSSProperties = {}
+              orderedEnabled.slice(0, 4).forEach((participant, idx) => {
+                ;(ensembleShellStyle as Record<string, string>)[
+                  `--ensemble-provider-${idx + 1}`
+                ] = `var(--provider-${participant.provider}-color)`
+              })
+              const shellClassName = [
+                'welcome-hero',
+                'welcome-hero-ensemble',
+                `welcome-ensemble-shell`,
+                `welcome-ensemble-shell-count-${Math.min(orderedEnabled.length, 4)}`,
+                dominantProvider ? `welcome-ensemble-shell-dominant-${dominantProvider}` : ''
+              ]
+                .filter(Boolean)
+                .join(' ')
+              const workspaceNameClass = dominantProvider
+                ? `workspace-name-glow provider-${dominantProvider}`
+                : 'workspace-name-glow'
+              return (
+                <div className={shellClassName} style={ensembleShellStyle}>
+                  <h1>
+                    {isCurrentGlobalChat ? (
+                      <>
+                        <span>New Ensemble chat in </span>
+                        <strong className={workspaceNameClass}>global chat</strong>
+                        <span>.</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>New Ensemble chat in </span>
+                        <strong className={workspaceNameClass}>
+                          {currentWorkspace?.displayName || 'GUIGemini'}
+                        </strong>
+                        <span> Workspace.</span>
+                      </>
+                    )}
+                  </h1>
+                  {orderedEnabled.length === 0 ? (
+                    <p className="welcome-hero-ensemble-empty">
+                      No providers enabled yet. Open any chip below to turn one back on, then
+                      describe the task.
+                    </p>
                   ) : (
-                    <>
-                      <span>New Ensemble chat in </span>
-                      <strong>{currentWorkspace?.displayName || 'GUIGemini'}</strong>
-                      <span> Workspace.</span>
-                    </>
-                  )}
-                </h1>
-                {(() => {
-                  const orderedEnabled = [...(currentChat?.ensemble?.participants || [])]
-                    .filter((participant) => participant.enabled)
-                    .sort((a, b) => a.order - b.order)
-                  if (orderedEnabled.length === 0) {
-                    return (
-                      <p className="welcome-hero-ensemble-empty">
-                        No providers enabled yet. Open any chip below to turn one back on, then
-                        describe the task.
-                      </p>
-                    )
-                  }
-                  return (
                     <>
                       <p>
                         {orderedEnabled.length}{' '}
@@ -14615,15 +14646,17 @@ function App(): React.JSX.Element {
                         ))}
                       </div>
                     </>
-                  )
-                })()}
-              </div>
-            )}
+                  )}
+                </div>
+              )
+            })()}
             {isWelcomeChat && !isCurrentEnsembleChat && (
               <div className="welcome-hero">
                 <h1>
                   <span>{welcomeCopy.heading.beforeWorkspace}</span>
-                  <strong>{welcomeCopy.heading.workspaceName}</strong>
+                  <strong className={`workspace-name-glow provider-${currentProvider}`}>
+                    {welcomeCopy.heading.workspaceName}
+                  </strong>
                   <span>{welcomeCopy.heading.afterWorkspace}</span>
                 </h1>
                 <p>{welcomeCopy.subheading}</p>
@@ -15859,34 +15892,41 @@ function App(): React.JSX.Element {
                       // (ensemble + selected chip).
                       const ensembleBinding =
                         isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                      // Resolve the participant's effective settings via the
+                      // centralized helper so the per-provider fallbacks
+                      // (`'medium'` reasoning, fast-mode→serviceTier inference,
+                      // thinking off, etc.) live in one module. See
+                      // `src/renderer/src/lib/ensembleProviderDefaults.ts`.
+                      const ensembleResolved = ensembleBinding
+                        ? resolveEnsembleParticipantSettings(ensembleBinding)
+                        : null
                       const effectiveProvider: ProviderId =
                         ensembleBinding?.provider ?? currentProvider
                       const effectiveModelOptionsRaw = ensembleBinding
                         ? getProviderModelOptions(ensembleBinding.provider)
                         : currentProviderModelOptions
-                      const effectiveSelectedModel = ensembleBinding
-                        ? ensembleBinding.model || 'cli-default'
+                      const effectiveSelectedModel = ensembleResolved
+                        ? ensembleResolved.model
                         : selectedComposerModelType
                       const effectiveCodexReasoning =
-                        ensembleBinding?.provider === 'codex'
-                          ? ensembleBinding.reasoningEffort || 'medium'
+                        ensembleResolved?.provider === 'codex'
+                          ? ensembleResolved.reasoningEffort
                           : codexReasoningEffort
                       const effectiveClaudeReasoning =
-                        ensembleBinding?.provider === 'claude'
-                          ? ensembleBinding.reasoningEffort || 'medium'
+                        ensembleResolved?.provider === 'claude'
+                          ? ensembleResolved.reasoningEffort
                           : claudeReasoningEffort
                       const effectiveKimiThinking =
-                        ensembleBinding?.provider === 'kimi'
-                          ? Boolean(ensembleBinding.thinkingEnabled)
+                        ensembleResolved?.provider === 'kimi'
+                          ? ensembleResolved.thinkingEnabled
                           : kimiThinkingEnabled
                       const effectiveCodexServiceTier =
-                        ensembleBinding?.provider === 'codex'
-                          ? ensembleBinding.serviceTier ??
-                            (ensembleBinding.fastModeEnabled ? 'fast' : '')
+                        ensembleResolved?.provider === 'codex'
+                          ? ensembleResolved.serviceTier
                           : codexServiceTier
                       const effectiveClaudeFastMode =
-                        ensembleBinding?.provider === 'claude'
-                          ? Boolean(ensembleBinding.fastModeEnabled)
+                        ensembleResolved?.provider === 'claude'
+                          ? ensembleResolved.fastModeEnabled
                           : claudeFastMode
 
                       const combinedModelOptions: CombinedModelPickerModelOption[] = [
