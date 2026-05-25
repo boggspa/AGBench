@@ -14250,9 +14250,16 @@ async function executeGeminiMcpTool(
     } else if (toolName === 'agent_delegation_role') {
       text = mcpJson(executeAgentDelegationRole(args, context, parentProvider))
     } else if (toolName === 'ensemble_yield') {
+      // Slice C extension (1.0.3) — `target` is now passed to the
+      // orchestrator as its own argument, not collapsed into the
+      // reason fallback. The orchestrator records it on the round
+      // runtime and reorders the remaining participants so the
+      // named target speaks next. Unresolved targets fall through
+      // to default ordering — see EnsembleOrchestrator.runRound.
       const yielded = ensembleOrchestratorRef?.markYielded(
         context.appRunId || '',
-        optionalString(args.reason) || optionalString(args.target)
+        optionalString(args.reason),
+        optionalString(args.target)
       )
       text = mcpJson({
         ok: Boolean(yielded),

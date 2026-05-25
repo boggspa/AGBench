@@ -31,6 +31,12 @@ const ensemble: EnsembleConfig = {
 }
 
 function makeChat(): ChatRecord {
+  // Deep-clone the ensemble fixture per call. The previous shape
+  // returned the module-level `ensemble` reference, so tests that
+  // mutated `harness.chat.ensemble!.participants` leaked state into
+  // subsequent tests' default fixture. Slice C's 3-participant
+  // yield-target test surfaces this; the clone keeps every test
+  // independent.
   return {
     appChatId: 'ensemble-chat',
     chatKind: 'ensemble',
@@ -44,7 +50,7 @@ function makeChat(): ChatRecord {
     archived: false,
     messages: [],
     runs: [],
-    ensemble
+    ensemble: { ...ensemble, participants: ensemble.participants.map((p) => ({ ...p })) }
   }
 }
 
@@ -354,6 +360,85 @@ describe('EnsembleOrchestrator', () => {
     expect(codexPayload.serviceTier).toBe('fast')
     expect(codexPayload.claudeReasoningEffort).toBeUndefined()
     expect(codexPayload.claudeFastMode).toBeUndefined()
+  })
+
+  // Slice C extension (1.0.3) — ensemble_yield(target:) reorders the
+  // remaining participants so the named target speaks next.
+  it('yields to a named target, skipping intervening participants', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 3,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan then hand straight to Codex.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Claude (planner) goes first.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+    // Claude yields explicitly to Codex (skipping Gemini).
+    const claudeRunId = harness.dispatched[0].appRunId!
+    harness.orchestrator.markYielded(claudeRunId, 'Plan complete', 'codex')
+    // Next dispatch must be Codex, not Gemini.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+    // Codex finishes (no yield-target this time) → default ordering
+    // resumes with Gemini, who's still in the remaining queue.
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].provider).toBe('gemini')
+  })
+
+  it('falls through to default order when yield target is unresolved', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Yield to a phantom participant.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+    // Yield with a target string that matches nothing in the
+    // remaining queue — Codex is the only one left, so it should
+    // still come up next.
+    harness.orchestrator.markYielded(
+      harness.dispatched[0].appRunId!,
+      'Pass it on',
+      'NonExistentProvider'
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
   })
 
   it('threads kimi thinking flag through dispatch', async () => {

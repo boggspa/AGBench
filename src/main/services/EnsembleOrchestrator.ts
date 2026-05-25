@@ -62,6 +62,16 @@ interface ActiveRoundRuntime {
   cancelled: boolean
   queuedPrompt?: string
   activeRunId?: string
+  /**
+   * Slice C extension (1.0.3) — when a participant calls
+   * `ensemble_yield` with an explicit `target` argument, the
+   * orchestrator stashes the raw target string here. `runRound`'s
+   * loop consults it after each turn to reorder the remaining
+   * participants so the named target speaks next. Cleared after
+   * resolution (or ignored if the string doesn't resolve to a
+   * remaining participant).
+   */
+  yieldTarget?: string
 }
 
 export class EnsembleOrchestrator {
@@ -129,10 +139,20 @@ export class EnsembleOrchestrator {
     return true
   }
 
-  markYielded(runId: string, reason?: string): boolean {
+  markYielded(runId: string, reason?: string, target?: string): boolean {
     const run = this.runsByRunId.get(runId)
     if (!run) return false
     run.status = 'yielded'
+    // Slice C extension (1.0.3) — if the participant named a target,
+    // remember it on the round runtime so `runRound` can reorder
+    // remaining participants before the next turn. We always set
+    // runtime.yieldTarget on the round that owns this run, regardless
+    // of how the orchestrator's loop resolves it (resolution + clear
+    // happens in runRound after the current turn finalises).
+    if (target) {
+      const runtime = this.roundsByChatId.get(run.chatId)
+      if (runtime) runtime.yieldTarget = target
+    }
     this.finalizeRun(run, 'yielded', reason || 'Participant yielded.')
     return true
   }
@@ -236,10 +256,17 @@ export class EnsembleOrchestrator {
     runtime: ActiveRoundRuntime,
     participants: EnsembleParticipant[]
   ): Promise<void> {
-    for (const participant of participants) {
+    // Slice C extension (1.0.3) — convert the fixed for-loop into a
+    // mutable remaining-queue so `ensemble_yield(target:...)` can
+    // reorder upcoming turns after each completion. The original
+    // for-loop iterated `participants` directly; reordering required
+    // a queue + while-loop pattern.
+    const remaining: EnsembleParticipant[] = [...participants]
+    while (remaining.length > 0) {
       if (runtime.cancelled) break
       const chat = this.deps.getChat(runtime.chatId)
       if (!chat?.ensemble) break
+      const participant = remaining.shift()!
       const run = this.seedParticipantRun(chat, runtime, participant)
       runtime.activeRunId = run.runId
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
@@ -304,6 +331,29 @@ export class EnsembleOrchestrator {
       }
       runtime.activeRunId = undefined
       if (runtime.queuedPrompt) break
+      // Slice C extension (1.0.3) — if the just-finished participant
+      // yielded with `target`, find that target in `remaining` and
+      // shuffle it to the front so it speaks next. Resolution rules
+      // (first match wins):
+      //   1. exact match on participant.id (e.g. 'ensemble-codex')
+      //   2. case-insensitive provider name ('Codex' / 'codex')
+      //   3. case-insensitive role match ('Worker' / 'worker')
+      // Unresolved targets fall through to default ordering so a
+      // typo doesn't strand the round. Cleared regardless so a
+      // future yield without `target` reverts to default order.
+      if (runtime.yieldTarget) {
+        const idx = resolveYieldTargetIndex(remaining, runtime.yieldTarget)
+        if (idx > 0) {
+          const [moved] = remaining.splice(idx, 1)
+          remaining.unshift(moved)
+          this.appendRoundStatus(
+            runtime.chatId,
+            runtime.roundId,
+            `Yielded to ${moved.role || moved.provider} (${moved.provider}).`
+          )
+        }
+        runtime.yieldTarget = undefined
+      }
     }
 
     const queuedPrompt = runtime.queuedPrompt
@@ -649,4 +699,35 @@ function extractProviderSessionId(payload: any): string | undefined {
     payload?.thread_id ??
     payload?.threadId
   return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
+}
+
+/**
+ * Slice C extension (1.0.3) — resolve a free-form yield `target`
+ * string (as passed to `ensemble_yield`) against the round's remaining
+ * participants. Returns the index of the first match, or -1 if no
+ * remaining participant matches. Tries (in order):
+ *   1. exact participant.id ('ensemble-codex')
+ *   2. case-insensitive provider name ('codex')
+ *   3. case-insensitive role ('Worker')
+ *
+ * Only consults the `remaining` array — yielding to a participant
+ * who has already spoken in this round is a no-op (the round won't
+ * loop back). Whitespace + 'me' / 'self' targets are rejected so a
+ * model that mis-fills the field doesn't recurse onto itself.
+ */
+export function resolveYieldTargetIndex(
+  remaining: EnsembleParticipant[],
+  target: string
+): number {
+  const trimmed = target?.trim()
+  if (!trimmed) return -1
+  const lc = trimmed.toLowerCase()
+  if (lc === 'me' || lc === 'self' || lc === 'user' || lc === 'human') return -1
+  const byId = remaining.findIndex((p) => p.id === trimmed)
+  if (byId !== -1) return byId
+  const byProvider = remaining.findIndex((p) => p.provider.toLowerCase() === lc)
+  if (byProvider !== -1) return byProvider
+  const byRole = remaining.findIndex((p) => (p.role || '').toLowerCase() === lc)
+  if (byRole !== -1) return byRole
+  return -1
 }
