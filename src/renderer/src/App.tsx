@@ -101,6 +101,8 @@ import {
   type QueuedMessageRowEntry
 } from './components/QueuedMessagesAboveRow'
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
+import { MentionHighlightedText } from './components/MentionHighlightedText'
+import { hasResolvedMention } from './lib/mentionHighlight'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -4466,7 +4468,12 @@ const TranscriptPanel = memo(
                               collapsible ? ' is-collapsible' : ''
                             }${showCollapsed ? ' is-collapsed' : ''}`}
                           >
-                            <div className="user-message-content">{preview}</div>
+                            <div className="user-message-content">
+                              <MentionHighlightedText
+                                value={preview}
+                                participants={currentChat?.ensemble?.participants}
+                              />
+                            </div>
                             {collapsible && (
                               <button
                                 type="button"
@@ -14883,17 +14890,31 @@ function App(): React.JSX.Element {
                 </div>
               )}
 
-              <div className="composer-textarea-wrap">
-              {isCurrentEnsembleChat && (
-                <ComposerHighlightOverlay
-                  value={prompt}
-                  participants={currentChat?.ensemble?.participants}
-                />
-              )}
-              <textarea
-                className={`composer-textarea${isCurrentEnsembleChat ? ' has-mention-overlay' : ''}`}
-                ref={composerTextareaRef}
-                value={prompt}
+              {(() => {
+                // Gate the overlay activation: render the highlight
+                // layer only when the prompt contains at least one
+                // RESOLVED `@Token`. Without this, the textarea's
+                // `color: transparent` zeros out the text in shells
+                // where the overlay's font/padding drifts from the
+                // textarea (Claude / Codex / Kimi etc. each override
+                // base padding). Chris hit this on the ensemble
+                // welcome screen — text invisible in Claude shell,
+                // vertical sync issues in others.
+                const composerHasMention =
+                  isCurrentEnsembleChat &&
+                  hasResolvedMention(prompt, currentChat?.ensemble?.participants || [])
+                return (
+                  <div className="composer-textarea-wrap">
+                    {composerHasMention && (
+                      <ComposerHighlightOverlay
+                        value={prompt}
+                        participants={currentChat?.ensemble?.participants}
+                      />
+                    )}
+                    <textarea
+                      className={`composer-textarea${composerHasMention ? ' has-mention-overlay' : ''}`}
+                      ref={composerTextareaRef}
+                      value={prompt}
                 onChange={(e) => {
                   const nextValue = e.target.value
                   setPrompt(nextValue)
@@ -14994,6 +15015,8 @@ function App(): React.JSX.Element {
                 }}
               />
               </div>
+                )
+              })()}
               <ComposerSlashMenu
                 open={slashMenuOpen}
                 anchorRef={composerTextareaRef}
@@ -15718,6 +15741,16 @@ function App(): React.JSX.Element {
                         </span>
                       </button>
                     ) : null}
+                    {/* Provider picker — hidden on ensemble chats.
+                        Ensemble rounds dispatch each participant on
+                        their own provider (configured via the chip
+                        strip's per-participant settings), so the
+                        chat-level provider picker doesn't apply and
+                        switching it mid-round would cause undefined
+                        behaviour. The chip strip above already
+                        surfaces every participant's provider, so
+                        nothing's lost by hiding the picker here. */}
+                    {!isCurrentEnsembleChat && (
                     <label
                       className="composer-picker-label"
                       title="Provider"
@@ -15739,6 +15772,7 @@ function App(): React.JSX.Element {
                         <option value="kimi">Kimi</option>
                       </select>
                     </label>
+                    )}
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here

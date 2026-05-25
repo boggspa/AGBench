@@ -38,6 +38,7 @@
 import { useCallback, useRef, useState } from 'react'
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
 import { ProviderBadgeIcon, getProviderName } from './Sidebar'
+import { MentionHighlightedText } from './MentionHighlightedText'
 
 /**
  * Subset of `QueuedRunRequest` the row needs. Kept narrow so this
@@ -129,6 +130,7 @@ export function QueuedMessagesAboveRow({
             entry={entry}
             position={index + 1}
             total={entries.length}
+            participants={chat?.ensemble?.participants}
             dmRoleLabel={resolveDmRoleLabel(chat, entry.dmTargetParticipantId)}
             isDragOver={dragOverId === entry.id && dragId !== entry.id}
             isDragging={dragId === entry.id}
@@ -149,6 +151,11 @@ interface QueuedMessageRowProps {
   entry: QueuedMessageRowEntry
   position: number
   total: number
+  /** Ensemble participants for the chat — used to tokenise `@Role`
+   * mentions in the row's body text so the queued prompt shows
+   * the same provider-tinted highlights as the composer overlay
+   * and the user-bubble in the transcript. */
+  participants?: import('../../../main/store/types').EnsembleParticipant[]
   dmRoleLabel: string | null
   isDragOver: boolean
   isDragging: boolean
@@ -164,6 +171,7 @@ function QueuedMessageRow({
   entry,
   position,
   total,
+  participants,
   dmRoleLabel,
   isDragOver,
   isDragging,
@@ -250,7 +258,12 @@ function QueuedMessageRow({
           <span className="queued-messages-row-dm">→ {dmRoleLabel}</span>
         )}
       </span>
-      <span className="queued-messages-row-body">{truncatePrompt(entry.prompt)}</span>
+      <span className="queued-messages-row-body">
+        <MentionHighlightedText
+          value={truncatePrompt(entry.prompt)}
+          participants={participants}
+        />
+      </span>
       <span className="queued-messages-row-actions">
         <button
           type="button"

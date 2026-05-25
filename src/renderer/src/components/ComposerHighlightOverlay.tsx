@@ -1,5 +1,6 @@
 import { Fragment } from 'react'
-import type { EnsembleParticipant, ProviderId } from '../../../main/store/types'
+import type { EnsembleParticipant } from '../../../main/store/types'
+import { tokeniseMentions } from '../lib/mentionHighlight'
 
 interface ComposerHighlightOverlayProps {
   value: string
@@ -13,9 +14,14 @@ interface ComposerHighlightOverlayProps {
  * Visual layer that sits BEHIND the composer textarea and renders
  * the same prompt text, except `@Token` mentions that resolve to a
  * participant get wrapped in a bold, provider-tinted span. The
- * textarea itself stays as a plain `<textarea>` (transparent
- * `color`, visible `caret-color`) so input handling stays normal —
- * this component only owns the painted text.
+ * textarea itself stays as a plain `<textarea>` — only when an
+ * `@-mention` is actually resolved in the prompt does the parent
+ * apply the `has-mention-overlay` class to make the textarea text
+ * transparent so the overlay shows through. Without that gate, the
+ * overlay's slightly-different per-shell padding (Claude / Codex /
+ * Kimi / etc. each override padding) caused the text to drift away
+ * from the caret on the welcome screen — Chris's "user entry prompt
+ * text is invisible" / "vertical padding out of sync" report.
  *
  * Pattern is the standard syntax-highlight overlay used by code
  * editors that wrap a textarea: match font / padding / line-height
@@ -23,17 +29,15 @@ interface ComposerHighlightOverlayProps {
  * CSS in `main.css` for the `.composer-textarea-wrap` +
  * `.composer-textarea-highlight` rules.
  *
- * Resolution mirrors `extractFirstEnsembleDmTarget` (id → provider
- * name → role, case-insensitive). Skipped reserved tokens
- * (`me`/`self`/`user`/`human`) and any unresolved tokens render as
- * plain text — same fall-through pattern as the transcript-side
- * `ParticipantMention` chip.
+ * The actual tokenisation lives in `lib/mentionHighlight.ts` so the
+ * same logic powers the transcript user-message bubbles and the
+ * queued-messages above-row body text via `MentionHighlightedText`.
  */
 export function ComposerHighlightOverlay({
   value,
   participants
 }: ComposerHighlightOverlayProps): React.JSX.Element {
-  const segments = tokeniseForHighlight(value, participants || [])
+  const segments = tokeniseMentions(value, participants || [])
   return (
     <div className="composer-textarea-highlight" aria-hidden="true">
       {segments.map((segment, idx) => {
@@ -56,68 +60,5 @@ export function ComposerHighlightOverlay({
           collapse without this. */}
       {'\n'}
     </div>
-  )
-}
-
-interface HighlightSegment {
-  kind: 'text' | 'mention'
-  text: string
-  provider?: ProviderId
-}
-
-const MENTION_REGEX = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
-
-function tokeniseForHighlight(
-  value: string,
-  participants: EnsembleParticipant[]
-): HighlightSegment[] {
-  if (!value) return []
-  if (!value.includes('@') || participants.length === 0) {
-    return [{ kind: 'text', text: value }]
-  }
-  const segments: HighlightSegment[] = []
-  let lastIndex = 0
-  MENTION_REGEX.lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = MENTION_REGEX.exec(value)) !== null) {
-    const [whole, prefix, token] = match
-    const atIndex = match.index + prefix.length
-    const resolved = resolveParticipantToken(token, participants)
-    if (!resolved) continue
-    if (atIndex > lastIndex) {
-      segments.push({ kind: 'text', text: value.slice(lastIndex, atIndex) })
-    }
-    segments.push({
-      kind: 'mention',
-      text: `@${token}`,
-      provider: resolved.provider
-    })
-    lastIndex = atIndex + 1 + token.length
-    if (whole.length === 0) break
-  }
-  if (segments.length === 0) {
-    return [{ kind: 'text', text: value }]
-  }
-  if (lastIndex < value.length) {
-    segments.push({ kind: 'text', text: value.slice(lastIndex) })
-  }
-  return segments
-}
-
-function resolveParticipantToken(
-  token: string,
-  participants: EnsembleParticipant[]
-): EnsembleParticipant | null {
-  const trimmed = token.trim()
-  if (!trimmed) return null
-  const lower = trimmed.toLowerCase()
-  if (lower === 'me' || lower === 'self' || lower === 'user' || lower === 'human') {
-    return null
-  }
-  return (
-    participants.find((p) => p.id === trimmed) ||
-    participants.find((p) => p.provider.toLowerCase() === lower) ||
-    participants.find((p) => (p.role || '').trim().toLowerCase() === lower) ||
-    null
   )
 }
