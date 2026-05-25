@@ -393,6 +393,8 @@ const api = {
     dmTargetParticipantId?: string
   }) => ipcRenderer.invoke('run-ensemble-round', payload),
   cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
+  skipEnsembleParticipant: (chatId: string) =>
+    ipcRenderer.invoke('skip-ensemble-participant', chatId),
   createSubThread: (args: {
     parentChatId: string
     provider: string

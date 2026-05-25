@@ -43,7 +43,16 @@ interface EnsembleParticipantsAboveRowProps {
   selectedParticipantId: string | null
   onSelectParticipant: (id: string) => void
   onChatChange: (next: ChatRecord) => void
-  onStop?: () => void
+  /**
+   * "Skip" the currently-speaking participant. Cancels the active
+   * provider run and lets the orchestrator's round-loop advance to
+   * the next participant without restarting the round. The composer's
+   * existing Stop button (wired to `handleCancel` → `cancelEnsembleRound`)
+   * handles full-round cancellation, so the chip strip's previous
+   * "Stop Ensemble" button was redundant and got dropped in favour of
+   * this gentler Skip affordance.
+   */
+  onSkipActive?: () => void
 }
 
 export function EnsembleParticipantsAboveRow({
@@ -51,7 +60,7 @@ export function EnsembleParticipantsAboveRow({
   selectedParticipantId,
   onSelectParticipant,
   onChatChange,
-  onStop
+  onSkipActive
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
@@ -134,9 +143,14 @@ export function EnsembleParticipantsAboveRow({
             Queued next round
           </span>
         )}
-        {activeRound?.status === 'running' && onStop && (
-          <button type="button" className="btn btn-sm btn-ghost" onClick={onStop}>
-            Stop Ensemble
+        {activeRound?.status === 'running' && activeRound.activeParticipantId && onSkipActive && (
+          <button
+            type="button"
+            className="btn btn-sm btn-ghost ensemble-above-row-skip"
+            onClick={onSkipActive}
+            title="Skip the currently-speaking participant and let the round continue with the next one. The composer's Stop button still cancels the whole round."
+          >
+            Skip
           </button>
         )}
       </div>

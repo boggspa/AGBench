@@ -377,6 +377,49 @@ describe('EnsembleOrchestrator', () => {
     expect(geminiMessage?.content).toBe('Yo! Doing great, honestly. Sunset is beautiful.')
   })
 
+  it('skipActiveParticipant cancels the active run and advances to the next participant', async () => {
+    // Post-ship UX: replaces the redundant "Stop Ensemble" button with
+    // a per-participant Skip affordance. Skip must:
+    //   1. Call `cancelRun` so the provider stream stops
+    //   2. Finalise the active run as `'skipped'` (not `'yielded'`,
+    //      which implies the model voluntarily passed)
+    //   3. Let `runRound`'s while-loop advance naturally to the next
+    //      participant without restarting the round (unlike Steer,
+    //      which cancels + re-dispatches the same participant)
+    //   4. Drop a system message announcing the skip
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and execute.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+
+    const skipped = await harness.orchestrator.skipActiveParticipant('ensemble-chat')
+    expect(skipped).toBe(true)
+    expect(harness.cancelRun).toHaveBeenCalledWith('claude', harness.dispatched[0].appRunId)
+
+    // Round continues — next participant dispatched without restart.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+
+    // System message announcing the skip.
+    const skipMessage = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' && message.metadata?.ensembleStatus === 'skipped'
+    )
+    expect(skipMessage?.content).toContain('Reviewer skipped.')
+    expect(skipMessage?.metadata?.ensembleProvider).toBe('claude')
+  })
+
+  it('skipActiveParticipant returns false when no round is active', async () => {
+    const harness = makeHarness()
+    const skipped = await harness.orchestrator.skipActiveParticipant('ensemble-chat')
+    expect(skipped).toBe(false)
+    expect(harness.cancelRun).not.toHaveBeenCalled()
+  })
+
   it('skips a failed dispatch and advances the round', async () => {
     let calls = 0
     const harness = makeHarness({

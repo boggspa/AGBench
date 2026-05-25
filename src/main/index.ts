@@ -19979,6 +19979,12 @@ if (isGeminiMcpBridgeProcess) {
       )
     })
 
+    ipcMain.handle('skip-ensemble-participant', async (_, chatId?: string) => {
+      return ensembleOrchestratorRef?.skipActiveParticipant(
+        requireNonEmptyString(chatId, 'Ensemble chat id')
+      )
+    })
+
     ipcMain.handle(
       'cancel-agent-run',
       async (_, provider: ProviderId = 'gemini', runId?: string) => {

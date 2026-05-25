@@ -160,6 +160,40 @@ export class EnsembleOrchestrator {
     return true
   }
 
+  /**
+   * User-driven mid-round skip (1.0.3 post-ship).
+   *
+   * Cancels the active participant's provider run and finalises them
+   * as `'skipped'`. The orchestrator's `runRound` while-loop sees the
+   * completion promise resolve and naturally advances to the next
+   * participant — so the round continues without restart, unlike the
+   * existing Steer pattern (which cancels + re-dispatches the same
+   * participant). Returns `true` if a skip was applied, `false` if
+   * there's no active run for this chat (e.g. the user clicked Skip
+   * after the round already moved on).
+   *
+   * Distinct from `markYielded` (participant-driven, "I voluntarily
+   * pass") and from `cancelRound` (user-driven, "stop the entire
+   * ensemble"). The composer's existing Stop button still handles
+   * full-round cancellation via `cancelRound`.
+   */
+  async skipActiveParticipant(chatId: string): Promise<boolean> {
+    const runtime = this.roundsByChatId.get(chatId)
+    if (!runtime) return false
+    const activeRunId = runtime.activeRunId
+    if (!activeRunId) return false
+    const active = this.runsByRunId.get(activeRunId)
+    if (!active) return false
+    // Stop the provider stream first so we don't accumulate any more
+    // content after the skip lands. The cancel call is best-effort —
+    // some providers may have already finished mid-network.
+    await this.deps
+      .cancelRun(active.participant.provider, active.runId)
+      .catch(() => undefined)
+    this.finalizeRun(active, 'skipped', 'Skipped by user.')
+    return true
+  }
+
   markYielded(runId: string, reason?: string, target?: string): boolean {
     const run = this.runsByRunId.get(runId)
     if (!run) return false
@@ -540,16 +574,23 @@ export class EnsembleOrchestrator {
       }
       if (assistantIndex >= 0) messages[assistantIndex] = assistantMessage
       else messages = [...messages, assistantMessage]
-    } else if (final && (run.status === 'yielded' || run.status === 'failed')) {
+    } else if (
+      final &&
+      (run.status === 'yielded' || run.status === 'failed' || run.status === 'skipped')
+    ) {
+      const statusLine = (() => {
+        const who = run.participant.role || run.participant.provider
+        const suffix = reason ? ` ${reason}` : ''
+        if (run.status === 'yielded') return `${who} yielded.${suffix}`
+        if (run.status === 'failed') return `${who} failed.${suffix}`
+        return `${who} skipped.${suffix}`
+      })()
       messages = [
         ...messages,
         {
           id: `ensemble-status-${run.runId}`,
           role: 'system',
-          content:
-            run.status === 'yielded'
-              ? `${run.participant.role || run.participant.provider} yielded.${reason ? ` ${reason}` : ''}`
-              : `${run.participant.role || run.participant.provider} failed.${reason ? ` ${reason}` : ''}`,
+          content: statusLine,
           timestamp,
           runId: run.runId,
           metadata: {

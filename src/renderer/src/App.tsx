@@ -14181,7 +14181,14 @@ function App(): React.JSX.Element {
                       )
                       void window.api.saveChat(updatedChat)
                     }}
-                    onStop={() => void handleCancel()}
+                    onSkipActive={() => {
+                      // Skip only the currently-speaking participant.
+                      // The composer's existing Stop button (wired to
+                      // `handleCancel` → `cancelEnsembleRound`) keeps
+                      // its role as the full-round abort affordance.
+                      if (!currentChat) return
+                      void window.api.skipEnsembleParticipant(currentChat.appChatId)
+                    }}
                   />
                 )}
               </div>
