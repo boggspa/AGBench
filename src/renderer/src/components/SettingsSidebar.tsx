@@ -21,6 +21,7 @@ interface SettingsSidebarProps {
   activeTab: SettingsTab
   onTabChange: (tab: SettingsTab) => void
   onBackToApp: () => void
+  appVersion?: string
 }
 
 function ArrowLeftSymbolIcon() {
@@ -44,8 +45,11 @@ function ArrowLeftSymbolIcon() {
 export function SettingsSidebar({
   activeTab,
   onTabChange,
-  onBackToApp
+  onBackToApp,
+  appVersion
 }: SettingsSidebarProps) {
+  const visibleVersion = appVersion && appVersion !== 'unknown' ? appVersion : null
+
   return (
     <aside className="app-sidebar settings-sidebar" aria-label="Settings navigation">
       <div className="settings-sidebar-inner">
@@ -85,6 +89,11 @@ export function SettingsSidebar({
             )
           })}
         </nav>
+        {visibleVersion && (
+          <div className="settings-sidebar-version" aria-label={`AGBench version ${visibleVersion}`}>
+            AGBench v{visibleVersion}
+          </div>
+        )}
       </div>
     </aside>
   )

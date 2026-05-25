@@ -12731,6 +12731,7 @@ function App(): React.JSX.Element {
                 activeTab={settingsActiveTab}
                 onTabChange={setSettingsActiveTab}
                 onBackToApp={() => setShowSettings(false)}
+                appVersion={appVersion}
               />
             ) : (
               <Sidebar

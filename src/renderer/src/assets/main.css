@@ -8112,14 +8112,6 @@ button.diff-file-row {
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-lg) var(--space-lg) var(--space-xl);
-  column-count: 2;
-  column-gap: var(--space-lg);
-}
-
-@media (max-width: 720px) {
-  .settings-panel-content {
-    column-count: 1;
-  }
 }
 
 /* ── Settings full-app takeover (Phase post-1.0.2) ────────────────────
@@ -8796,6 +8788,17 @@ button.diff-file-row {
 .settings-sidebar-tab:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 56%, transparent);
   outline-offset: -2px;
+}
+
+.settings-sidebar-version {
+  margin: auto 8px 2px;
+  padding-top: 12px;
+  border-top: 1px solid color-mix(in srgb, var(--sidebar-border) 50%, transparent);
+  color: var(--sidebar-text-secondary, var(--text-secondary));
+  font-size: 11px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: 0;
 }
 
 .settings-group {
@@ -19079,8 +19082,8 @@ input:disabled, select:disabled, textarea:disabled {
    responds. */
 
 /* PairingPage — pairing flow rendered inside the Settings takeover
- * (post-1.0.2). Breaks out of the panel's `column-count: 2` flow so
- * the QR + JSON panes lay out side-by-side at full width. The inner
+ * (post-1.0.2). Keeps the QR + JSON panes laid out side-by-side at
+ * full width. The inner
  * `.pairing-sheet__*` rules below are shared with the (now-retired)
  * PairingSheet modal — kept verbatim because they describe content
  * layout, not chrome. */
