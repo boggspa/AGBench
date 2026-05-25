@@ -18087,6 +18087,36 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: var(--text-tertiary);
 }
 
+/* Inline ensemble-participant mention chip. Drives the per-provider
+ * tint for `@Role` references — both the markdown-link form
+ * (`[@Role](ensemble-dm://id)` inserted by the composer's mention
+ * picker) and the plain-text tokeniser pass in `StableMarkdownBlock`
+ * (for `@Role` written by LLM participants in their replies). Renders
+ * as a span (not a button) since it's a presence marker, not an
+ * action — no click handler at this layer; if we ever want one,
+ * scroll-to-chip on click would be the natural extension. Colour is
+ * applied inline by the React component via `style={{ color, border-
+ * color }}` reading the `--provider-{name}-color` token, so this
+ * rule just owns shape + hover. */
+.participant-mention {
+  display: inline-flex;
+  align-items: baseline;
+  padding: 1px 7px;
+  margin: 0 1px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  background: transparent;
+  font: inherit;
+  font-size: 0.95em;
+  font-weight: 600;
+  line-height: 1.4;
+  vertical-align: baseline;
+  transition: background 120ms ease;
+}
+.participant-mention:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+
 /* ----- AgentMentionMenu autocomplete popover ----- */
 .agent-mention-menu {
   background: color-mix(in srgb, var(--panel-elevated-bg) 96%, transparent);

@@ -1,8 +1,9 @@
-import { memo, useState, type MouseEvent } from 'react'
+import { Fragment, memo, useState, type MouseEvent, type ReactNode } from 'react'
 import ReactMarkdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { HighlightedCodeBlock } from './HighlightedCodeBlock'
 import { AgentMention } from './AgentMention'
+import { ParticipantMention } from './ParticipantMention'
 import { classifyMarkdownLink } from '../lib/classifyMarkdownLink'
 import type { ChatRecord } from '../../../main/store/types'
 
@@ -76,11 +77,91 @@ function MarkdownCodeBlock({ content, language }: { content: string; language?: 
  *   - `input` is forced read-only so transcript checkboxes can't be
  *     ticked by the user.
  */
+/**
+ * Tokenise a plain-text node into a mix of text and
+ * `<ParticipantMention>` chips. The regex matches `@<name>` at word
+ * boundaries with letters/digits/dashes — narrow enough to skip
+ * common false positives like `email@example.com` (the `@` there is
+ * preceded by `l`, not a boundary).
+ *
+ * Returns the input wrapped in a fragment of strings + chips. The
+ * chip itself decides whether the reference resolves to a participant
+ * — unresolved references render as raw text via the chip's
+ * fallback, so a stray `@somethingelse` in an LLM reply never
+ * vanishes.
+ *
+ * Only runs against `text` nodes whose host message is in an
+ * ensemble chat (gated by the chat's `chatKind` via the
+ * `AgentIdentityContext` — but ParticipantMention itself is the
+ * gate; this tokeniser is cheap enough to always run, the chip
+ * collapses to text when no participants exist).
+ */
+const PARTICIPANT_MENTION_REGEX = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
+
+function tokeniseParticipantMentions(value: string): ReactNode {
+  if (!value || !value.includes('@')) return value
+  const parts: ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  PARTICIPANT_MENTION_REGEX.lastIndex = 0
+  while ((match = PARTICIPANT_MENTION_REGEX.exec(value)) !== null) {
+    const [whole, prefix, reference] = match
+    // Position of the `@` (skip the boundary char).
+    const atIndex = match.index + prefix.length
+    if (atIndex > lastIndex) {
+      parts.push(value.slice(lastIndex, atIndex))
+    }
+    parts.push(
+      <ParticipantMention key={`pm-${atIndex}-${reference}`} reference={reference}>
+        @{reference}
+      </ParticipantMention>
+    )
+    lastIndex = atIndex + 1 + reference.length
+    // Guard against zero-length matches (shouldn't happen with this
+    // pattern but cheap insurance against infinite loops).
+    if (whole.length === 0) break
+  }
+  if (parts.length === 0) return value
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex))
+  return (
+    <>
+      {parts.map((part, idx) => (
+        <Fragment key={idx}>{part}</Fragment>
+      ))}
+    </>
+  )
+}
+
+/**
+ * Walk the children handed to a ReactMarkdown component override and
+ * tokenise every string child against `tokeniseParticipantMentions`.
+ * Non-string children (other chips, code, links) pass through
+ * untouched so we don't double-tokenise.
+ */
+function processChildren(children: ReactNode): ReactNode {
+  if (children === null || children === undefined) return children
+  if (typeof children === 'string') return tokeniseParticipantMentions(children)
+  if (Array.isArray(children)) {
+    return children.map((child, idx) =>
+      typeof child === 'string' ? (
+        <Fragment key={idx}>{tokeniseParticipantMentions(child)}</Fragment>
+      ) : (
+        <Fragment key={idx}>{child}</Fragment>
+      )
+    )
+  }
+  return children
+}
+
 const MARKDOWN_COMPONENTS: Components = {
   a({ href, children }) {
     if (typeof href === 'string' && href.startsWith('agent://')) {
       const agentId = href.slice('agent://'.length).trim()
       return <AgentMention agentId={agentId}>{children}</AgentMention>
+    }
+    if (typeof href === 'string' && href.startsWith('ensemble-dm://')) {
+      const participantId = href.slice('ensemble-dm://'.length).trim()
+      return <ParticipantMention reference={participantId}>{children}</ParticipantMention>
     }
     const classification = classifyMarkdownLink(href)
     const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
@@ -123,6 +204,23 @@ const MARKDOWN_COMPONENTS: Components = {
   },
   input({ checked, disabled, type }) {
     return <input type={type} checked={checked} disabled={disabled ?? true} readOnly />
+  },
+  // Plain-text containers — tokenise `@Role` in their string children
+  // against the current ensemble's participant list so cross-
+  // participant tags in transcript bodies render with the matching
+  // provider tint. Unresolved references fall through to plain text
+  // (the chip's own fallback) so non-ensemble content is unaffected.
+  p({ children }) {
+    return <p>{processChildren(children)}</p>
+  },
+  li({ children }) {
+    return <li>{processChildren(children)}</li>
+  },
+  td({ children }) {
+    return <td>{processChildren(children)}</td>
+  },
+  th({ children }) {
+    return <th>{processChildren(children)}</th>
   }
 }
 
