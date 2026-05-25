@@ -204,17 +204,17 @@ function ParticipantChip({
   return (
     <div
       ref={chipRef}
-      draggable
       data-participant-id={participant.id}
-      onDragStart={(event) => {
-        event.dataTransfer.effectAllowed = 'move'
-        event.dataTransfer.setData('text/plain', participant.id)
-        onDragStart()
-      }}
+      // Click-fix (1.0.3 follow-up): wrapper div is DROP-TARGET only,
+      // not drag-SOURCE. Putting `draggable` on the wrapper around a
+      // child <button> suppresses the button's click event in Electron's
+      // Chromium — the mousedown→drag pipeline beats the button's
+      // mousedown→click handler, so taps on the chip body silently
+      // never fire onClick. Drag-source attributes move down to the
+      // body <button> below where they don't compete with click.
       onDragEnter={onDragEnter}
       onDragOver={onDragOver}
       onDrop={onDrop}
-      onDragEnd={onDragEnd}
       className={`ensemble-above-chip provider-${participant.provider} ${isSelected ? 'is-selected' : ''} ${dimmed ? 'is-dimmed' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
       title={`${getProviderName(participant.provider)} — ${participant.role || 'Participant'}`}
     >
@@ -223,6 +223,17 @@ function ParticipantChip({
         className="ensemble-above-chip-body"
         onClick={onClick}
         aria-pressed={isSelected}
+        // The body <button> is the drag-source. Buttons can be
+        // draggable in HTML5; the click handler still fires on a
+        // pure tap because the drag-start fires only after the
+        // mouse actually moves while pressed.
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = 'move'
+          event.dataTransfer.setData('text/plain', participant.id)
+          onDragStart()
+        }}
+        onDragEnd={onDragEnd}
       >
         <ProviderBadgeIcon provider={participant.provider} />
         <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
