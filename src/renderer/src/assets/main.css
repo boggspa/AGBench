@@ -24005,34 +24005,46 @@ input:disabled, select:disabled, textarea:disabled {
  * Default / Codex / AGBench shells inherit the boxed `.composer-above-bar`
  * look already declared on `.ensemble-above-row` above (the shared
  * `--composer-bg` / `--composer-border` / `--composer-shadow` family).
- * The Claude shell flattens the strip to match its hairline-outline
- * satellite-chip treatment of the regular above-bar. */
+ * The Claude shell's matching-container treatment is declared further
+ * down (next to the Gemini override) — see comments there. The A1
+ * flat treatment that lived here was wrong: Claude shell's
+ * `.composer-above-bar` actually does carry a visible container
+ * (rule at line 17333 with `!important`s overriding the earlier
+ * flat declaration), so the ensemble row needs a matching container
+ * not a flattening. */
+
+/* Codex / Default shells: no override needed. Both render
+ * `.composer-above-bar` with the base styling (no shell-specific
+ * override exists in dark mode), so the chip strip's base rule
+ * already matches the Create-PR sibling exactly. */
+
+/* Claude shell — match the Create-PR row container styling from
+ * line 17333 (`#151515` fill / hairline `9%` outline / 14px radius
+ * / `0 4px 20px` drop shadow) so the chip strip reads as a
+ * sibling container in the same Claude family. My earlier flat
+ * override was wrong: Claude shell's `.composer-above-bar` DOES
+ * have a visible container in current builds — the original
+ * transparent rule at line 15906 is overridden by the rule at
+ * 17333 for the interface-style scope. Mirror the same container
+ * styling here so the ensemble row matches.
+ *
+ * Padding stays at the base `8px 16px` (Chris's instruction) — a
+ * touch more inset than the Create-PR row's `8px 14px` because
+ * the chip strip's content is denser than a single branch label
+ * + Create PR button. */
 [data-composer-style="claude"] .ensemble-above-row {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  padding: 0 4px;
+  background: #151515;
+  border: 1px solid color-mix(in srgb, #ffffff 9%, transparent);
+  border-radius: 14px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.32);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
-}
-/* In the Claude shell the chips themselves carry the visual weight
- * since there's no container around them. Sharpen the chip hairline
- * to match the other satellite chips (`.composer-above-bar-files`
- * etc.) the Claude shell already styles. */
-[data-composer-style="claude"] .ensemble-above-chip {
-  border-color: color-mix(in srgb, #ffffff 12%, transparent);
-  background: transparent;
 }
 [data-composer-style="claude"] .ensemble-above-chip.is-selected {
   border-color: color-mix(in srgb, var(--accent-color) 65%, transparent);
   background: color-mix(in srgb, var(--accent-color) 16%, transparent);
   box-shadow: none;
 }
-
-/* Codex / Default shells: no override needed. Both render
- * `.composer-above-bar` with the base styling (no shell-specific
- * override exists in dark mode), so the chip strip's base rule
- * already matches the Create-PR sibling exactly. */
 
 /* Gemini shell — `.composer-above-bar` is `display: none` in this
  * shell, so the chip strip is the SOLE above-row element. Flatten
