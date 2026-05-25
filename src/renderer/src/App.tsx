@@ -12989,6 +12989,13 @@ function App(): React.JSX.Element {
               agenticWorkspaceGrants={agenticWorkspaceGrants}
               activeProvider={currentProvider}
               providerCapabilities={currentProviderCapabilities}
+              providerCapabilitiesByProvider={providerCapabilitiesByProvider}
+              mcpStatusByProvider={{
+                codex: codexMcpStatus,
+                gemini: agentMcpStatusByProvider.gemini,
+                claude: agentMcpStatusByProvider.claude,
+                kimi: agentMcpStatusByProvider.kimi
+              }}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
               geminiMcpBridgeStatus={geminiMcpBridgeStatus}
               codexSandboxFallback={codexSandboxFallback}
@@ -13025,6 +13032,7 @@ function App(): React.JSX.Element {
               }
               onInstallGeminiMcpBridge={() => void installGeminiMcpBridge()}
               onRefreshGeminiMcpBridgeStatus={() => void refreshGeminiMcpBridgeStatus()}
+              onRefreshProviderMcpStatus={(provider) => void refreshProviderMetadata(provider)}
               onRefreshProductOperationsStatus={() => void refreshProductOperationsStatus()}
               onExportProductDiagnostics={() => void exportProductDiagnostics()}
               onRepairProductInstall={() => void repairProductInstall()}

@@ -61,6 +61,7 @@ import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import type { ModelUsageAggregate } from '../App'
+import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../../../main/AgentbenchMcpTools'
 
 interface SettingsPanelProps {
   mode: AppearanceMode
@@ -93,6 +94,8 @@ interface SettingsPanelProps {
   agenticWorkspaceGrants: AgenticWorkspaceGrant[]
   activeProvider: ProviderId
   providerCapabilities?: ProviderCapabilityContract | null
+  providerCapabilitiesByProvider?: Partial<Record<ProviderId, ProviderCapabilityContract | null>>
+  mcpStatusByProvider?: Partial<Record<ProviderId, any>>
   geminiMcpBridgeEnabled: boolean
   geminiMcpBridgeStatus: GeminiMcpBridgeStatus | null
   codexSandboxFallback: CodexSandboxFallbackMode
@@ -139,6 +142,7 @@ interface SettingsPanelProps {
   ) => Promise<void> | void
   onInstallGeminiMcpBridge: () => void
   onRefreshGeminiMcpBridgeStatus: () => void
+  onRefreshProviderMcpStatus?: (provider: ProviderId) => void
   onRefreshProductOperationsStatus: () => void
   onExportProductDiagnostics: () => void
   onRepairProductInstall: () => void
@@ -422,10 +426,283 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ]
 
+const SETTINGS_PROVIDER_ORDER: ProviderId[] = ['codex', 'claude', 'gemini', 'kimi']
+
+const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
+  codex: 'Codex',
+  claude: 'Claude',
+  gemini: 'Gemini',
+  kimi: 'Kimi'
+}
+
+type McpToolGroup =
+  | 'workspace'
+  | 'files'
+  | 'git'
+  | 'runtime'
+  | 'subthreads'
+  | 'browser'
+  | 'appwatch'
+  | 'creative'
+  | 'ide'
+  | 'auth'
+  | 'ensemble'
+  | 'diagnostics'
+
+type McpToolPolicyKey = keyof AgenticServicesSettings
+
+const MCP_TOOL_GROUP_LABELS: Record<McpToolGroup, string> = {
+  workspace: 'Workspace intelligence',
+  files: 'Files and diffs',
+  git: 'Git',
+  runtime: 'Runtime and tasks',
+  subthreads: 'Sub-threads',
+  browser: 'Browser and screenshots',
+  appwatch: 'Appwatch',
+  creative: 'Creative apps',
+  ide: 'IDE handoff',
+  auth: 'Auth and approvals',
+  ensemble: 'Ensemble',
+  diagnostics: 'Diagnostics'
+}
+
+const MCP_TOOL_GROUP_ORDER: McpToolGroup[] = [
+  'workspace',
+  'files',
+  'git',
+  'runtime',
+  'subthreads',
+  'browser',
+  'appwatch',
+  'creative',
+  'ide',
+  'auth',
+  'ensemble',
+  'diagnostics'
+]
+
+const MCP_TOOL_OVERRIDES: Partial<
+  Record<
+    AGBenchMcpToolName,
+    {
+      label: string
+      transcript: string
+      group: McpToolGroup
+      iconRef: string
+      policyKey: McpToolPolicyKey
+      description: string
+    }
+  >
+> = {
+  run_shell_command: {
+    label: 'Run shell command',
+    transcript: 'Ran shell command',
+    group: 'runtime',
+    iconRef: 'tool:terminal',
+    policyKey: 'shellCommands',
+    description: 'Executes workspace-scoped shell commands with approval and audit capture.'
+  },
+  write_file: {
+    label: 'Write file',
+    transcript: 'Wrote file',
+    group: 'files',
+    iconRef: 'tool:file-write',
+    policyKey: 'fileChanges',
+    description: 'Writes a workspace file and records the resulting change summary.'
+  },
+  replace: {
+    label: 'Replace text',
+    transcript: 'Edited file',
+    group: 'files',
+    iconRef: 'tool:replace',
+    policyKey: 'fileChanges',
+    description: 'Applies a targeted replacement inside a workspace file.'
+  },
+  read_file: {
+    label: 'Read file',
+    transcript: 'Read file',
+    group: 'files',
+    iconRef: 'tool:file-read',
+    policyKey: 'mcpTools',
+    description: 'Reads a workspace file for provider context.'
+  },
+  list_directory: {
+    label: 'List directory',
+    transcript: 'Listed directory',
+    group: 'workspace',
+    iconRef: 'tool:folder',
+    policyKey: 'mcpTools',
+    description: 'Lists workspace folders without leaving the project boundary.'
+  },
+  workspace_search: {
+    label: 'Workspace search',
+    transcript: 'Searched workspace',
+    group: 'workspace',
+    iconRef: 'tool:search',
+    policyKey: 'mcpTools',
+    description: 'Searches project text and file names for provider grounding.'
+  },
+  apply_patch: {
+    label: 'Apply patch',
+    transcript: 'Applied patch',
+    group: 'files',
+    iconRef: 'tool:patch',
+    policyKey: 'fileChanges',
+    description: 'Applies a structured patch with file-change audit output.'
+  },
+  delegate_to_subthread: {
+    label: 'Delegate to sub-thread',
+    transcript: 'Delegated sub-thread',
+    group: 'subthreads',
+    iconRef: 'tool:delegate',
+    policyKey: 'subThreadDelegation',
+    description: 'Starts or continues a linked provider sub-thread after policy checks.'
+  },
+  ensemble_yield: {
+    label: 'Yield ensemble turn',
+    transcript: 'Yielded ensemble turn',
+    group: 'ensemble',
+    iconRef: 'tool:yield',
+    policyKey: 'mcpTools',
+    description: 'Lets an Ensemble participant pass control to the next speaker.'
+  },
+  appwatch_latest_frame: {
+    label: 'Latest Appwatch frame',
+    transcript: 'Captured latest frame',
+    group: 'appwatch',
+    iconRef: 'tool:image',
+    policyKey: 'mcpTools',
+    description: 'Returns metadata plus the newest attached-window image frame.'
+  },
+  appwatch_frames: {
+    label: 'Appwatch frame batch',
+    transcript: 'Captured frame batch',
+    group: 'appwatch',
+    iconRef: 'tool:frames',
+    policyKey: 'mcpTools',
+    description: 'Returns a bounded batch of recent attached-window frames.'
+  }
+}
+
+function titleFromSnake(value: string): string {
+  return value
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function inferMcpToolGroup(tool: AGBenchMcpToolName): McpToolGroup {
+  if (tool.startsWith('git_')) return 'git'
+  if (
+    tool.includes('file') ||
+    tool === 'replace' ||
+    tool === 'apply_patch' ||
+    tool === 'open_workspace_file'
+  ) {
+    return 'files'
+  }
+  if (tool.startsWith('workspace_') || tool === 'list_directory') return 'workspace'
+  if (tool.includes('subthread') || tool === 'delegate_to_subthread') return 'subthreads'
+  if (tool.startsWith('browser_') || tool.startsWith('attached_window_')) return 'browser'
+  if (tool.startsWith('appwatch_')) return 'appwatch'
+  if (tool.startsWith('creative_')) return 'creative'
+  if (tool.includes('ide') || tool === 'reveal_in_finder' || tool === 'create_handoff_card') {
+    return 'ide'
+  }
+  if (tool.includes('auth') || tool.startsWith('approval_') || tool === 'agent_delegation_role') {
+    return 'auth'
+  }
+  if (tool.startsWith('run_') || tool.includes('timeline') || tool.includes('events')) {
+    return 'runtime'
+  }
+  if (tool.includes('summary') || tool.includes('status') || tool.includes('capabilities')) {
+    return 'diagnostics'
+  }
+  return 'workspace'
+}
+
+function inferMcpPolicyKey(tool: AGBenchMcpToolName): McpToolPolicyKey {
+  if (tool === 'run_shell_command' || tool === 'run_task') return 'shellCommands'
+  if (tool.startsWith('creative_')) return 'mcpTools'
+  if (
+    tool === 'write_file' ||
+    tool === 'replace' ||
+    tool === 'apply_patch' ||
+    tool.includes('import') ||
+    tool.includes('dispatch')
+  ) {
+    return 'fileChanges'
+  }
+  if (tool.includes('subthread') || tool === 'delegate_to_subthread') return 'subThreadDelegation'
+  return 'mcpTools'
+}
+
+function getMcpToolMeta(tool: AGBenchMcpToolName): {
+  label: string
+  transcript: string
+  group: McpToolGroup
+  iconRef: string
+  policyKey: McpToolPolicyKey
+  description: string
+} {
+  const override = MCP_TOOL_OVERRIDES[tool]
+  if (override) return override
+  const group = inferMcpToolGroup(tool)
+  return {
+    label: titleFromSnake(tool),
+    transcript: titleFromSnake(tool.replace(/^creative_/, '').replace(/^appwatch_/, 'Appwatch ')),
+    group,
+    iconRef: `tool:${group}`,
+    policyKey: inferMcpPolicyKey(tool),
+    description: `${MCP_TOOL_GROUP_LABELS[group]} tool exposed through the AGBench MCP bridge.`
+  }
+}
+
+function formatMcpInvocation(provider: ProviderId, tool: AGBenchMcpToolName): string {
+  if (provider === 'claude') return `mcp__AGBench__${tool}`
+  return `AGBench__${tool}`
+}
+
+function getMcpPolicyLabel(
+  agenticServices: AgenticServicesSettings,
+  policyKey: McpToolPolicyKey
+): string {
+  const value = agenticServices[policyKey]
+  if (policyKey === 'networkAccess') {
+    return NETWORK_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? value
+  }
+  return AGENTIC_SERVICE_POLICY_OPTIONS.find((option) => option.value === value)?.label ?? value
+}
+
+function countMcpStatusTools(status: any): number {
+  if (!status) return 0
+  if (Array.isArray(status.tools)) return status.tools.length
+  if (status.tools && typeof status.tools === 'object') return Object.keys(status.tools).length
+  if (Array.isArray(status.data)) {
+    return status.data.reduce((total: number, server: any) => {
+      if (Array.isArray(server?.tools)) return total + server.tools.length
+      if (server?.tools && typeof server.tools === 'object')
+        return total + Object.keys(server.tools).length
+      return total
+    }, 0)
+  }
+  return 0
+}
+
+const MCP_TOOL_CATALOG = AGENTBENCH_MCP_TOOLS.map((name) => ({
+  name,
+  ...getMcpToolMeta(name)
+})).sort((a, b) => {
+  const groupDelta = MCP_TOOL_GROUP_ORDER.indexOf(a.group) - MCP_TOOL_GROUP_ORDER.indexOf(b.group)
+  return groupDelta === 0 ? a.label.localeCompare(b.label) : groupDelta
+})
+
 export type SettingsTab =
   | 'appearance'
   | 'behavior'
   | 'providers'
+  | 'mcp'
   | 'system'
   | 'remote-workspaces'
   | 'approval-ledger'
@@ -478,6 +755,7 @@ export const SETTINGS_TABS: Array<{
   // re-open page.
   { id: 'workspaces', label: 'Workspaces', group: 'settings' },
   { id: 'providers', label: 'Providers', group: 'settings' },
+  { id: 'mcp', label: 'MCP', group: 'settings' },
   // "Model usage" — richer cross-provider usage page. Reuses the
   // sidebar's ModelUsageCard (quota meters per provider + 30-day
   // heatmap) with extra context tiles on top (cumulative tokens,
@@ -647,6 +925,8 @@ export function SettingsPanel({
   agenticWorkspaceGrants,
   activeProvider,
   providerCapabilities,
+  providerCapabilitiesByProvider,
+  mcpStatusByProvider,
   geminiMcpBridgeEnabled,
   geminiMcpBridgeStatus,
   codexSandboxFallback,
@@ -677,6 +957,7 @@ export function SettingsPanel({
   onRemoveAgenticWorkspaceGrant,
   onInstallGeminiMcpBridge,
   onRefreshGeminiMcpBridgeStatus,
+  onRefreshProviderMcpStatus,
   onRefreshProductOperationsStatus,
   onExportProductDiagnostics,
   onRepairProductInstall,
@@ -749,6 +1030,56 @@ export function SettingsPanel({
   const claudeAuthSummary = summariseProviderApiKeyStatus(claudeAuthStatus ?? null, 'Claude')
   const geminiSetupSummary = summariseGeminiStatus(geminiAuthStatus ?? null)
   const kimiSetupSummary = summariseProviderApiKeyStatus(kimiAuthStatus ?? null, 'Kimi')
+  const providerMcpSummaries = SETTINGS_PROVIDER_ORDER.map((provider) => {
+    const contract =
+      providerCapabilitiesByProvider?.[provider] ??
+      (provider === activeProvider ? providerCapabilities : null)
+    const status = mcpStatusByProvider?.[provider]
+    const bridge =
+      provider === 'gemini'
+        ? {
+            available: geminiMcpBridgeStatus?.available,
+            enabled: geminiMcpBridgeEnabled,
+            installed: geminiMcpBridgeStatus?.installed,
+            serverName: geminiMcpBridgeStatus?.serverName,
+            message: geminiMcpBridgeStatus?.message || geminiMcpBridgeStatus?.error
+          }
+        : null
+    const mcp = contract?.mcp
+    const available = Boolean(mcp?.available ?? status?.available ?? bridge?.available)
+    const enabled = Boolean(mcp?.enabled ?? bridge?.enabled ?? available)
+    const installed = Boolean(mcp?.installed ?? bridge?.installed ?? available)
+    const state =
+      mcp?.state ?? (available ? 'available' : enabled || installed ? 'gated' : 'unavailable')
+    const rawToolCount = countMcpStatusTools(status)
+    const toolCount = Math.max(
+      rawToolCount,
+      Array.isArray(mcp?.tools) ? mcp.tools.length : 0,
+      provider === 'gemini' && available ? AGENTBENCH_MCP_TOOLS.length : 0
+    )
+    return {
+      provider,
+      label: SETTINGS_PROVIDER_LABELS[provider],
+      available,
+      enabled,
+      installed,
+      state,
+      source:
+        mcp?.source ||
+        (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'agentbench'),
+      serverName:
+        mcp?.serverName || bridge?.serverName || (available ? 'AGBench' : 'not connected'),
+      toolCount,
+      message:
+        mcp?.message ||
+        bridge?.message ||
+        status?.message ||
+        status?.error ||
+        (available
+          ? 'MCP surface is available for this provider.'
+          : 'MCP status is not available yet.')
+    }
+  })
   const codexUsage = codexStatus?.codexUsage
   const codexUsageConfigured = Boolean(
     codexUsage?.configured ||
@@ -2360,6 +2691,250 @@ export function SettingsPanel({
             </>
           ) /* end providers */
         }
+
+        {/* ── MCP ───────────────────────────────────────── */}
+        {activeTab === 'mcp' && (
+          <div className="settings-mcp-page">
+            <div className="settings-group span-all settings-mcp-overview">
+              <div className="settings-mcp-header">
+                <div>
+                  <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                    MCP servers and AGBench tools
+                  </h4>
+                  <p className="settings-hint">
+                    Audit the tool surface agents can see, the transcript labels users see, and the
+                    policy gate attached to each capability. Custom server editing stays provider
+                    owned until AGBench has safe config-writing plumbing.
+                  </p>
+                </div>
+                <div className="settings-mcp-header-actions">
+                  <button
+                    type="button"
+                    className="btn btn-sm"
+                    onClick={() => {
+                      SETTINGS_PROVIDER_ORDER.forEach((provider) =>
+                        onRefreshProviderMcpStatus?.(provider)
+                      )
+                      onRefreshGeminiMcpBridgeStatus()
+                    }}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    disabled
+                    title="Custom MCP server editing is not wired yet."
+                  >
+                    Add server
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-mcp-summary-grid">
+                <article className="settings-mcp-summary-card">
+                  <span>Built-in tools</span>
+                  <strong>{AGENTBENCH_MCP_TOOLS.length}</strong>
+                  <small>AGBench MCP bridge catalog</small>
+                </article>
+                <article className="settings-mcp-summary-card">
+                  <span>Providers</span>
+                  <strong>
+                    {
+                      providerMcpSummaries.filter((entry) => entry.available || entry.enabled)
+                        .length
+                    }
+                    /{providerMcpSummaries.length}
+                  </strong>
+                  <small>report MCP or bridge status</small>
+                </article>
+                <article className="settings-mcp-summary-card">
+                  <span>Primary policy</span>
+                  <strong>{getMcpPolicyLabel(agenticServices, 'mcpTools')}</strong>
+                  <small>MCP and tools gate</small>
+                </article>
+              </div>
+            </div>
+
+            <div className="settings-group span-all">
+              <div className="settings-mcp-section-title">
+                <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                  Connected surfaces
+                </h4>
+                <p className="settings-hint">
+                  Provider status comes from existing runtime discovery. Gemini also has an
+                  installable AGBench MCP bridge for CLI/OAuth runs.
+                </p>
+              </div>
+              <div className="settings-mcp-server-grid">
+                {providerMcpSummaries.map((entry) => (
+                  <article
+                    key={entry.provider}
+                    className={`settings-mcp-server-card provider-${entry.provider}`}
+                    data-state={entry.state}
+                  >
+                    <div className="settings-mcp-server-header">
+                      <ProviderLogoTile provider={entry.provider} />
+                      <div>
+                        <strong>{entry.label}</strong>
+                        <span>{entry.serverName}</span>
+                      </div>
+                      <span className="settings-mcp-state-pill">{entry.state}</span>
+                    </div>
+                    <div className="settings-mcp-server-meta">
+                      <span>{entry.source}</span>
+                      <span>{entry.toolCount} tools</span>
+                      <span>{entry.installed ? 'installed' : 'not installed'}</span>
+                    </div>
+                    <p className="settings-hint">{entry.message}</p>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => onRefreshProviderMcpStatus?.(entry.provider)}
+                      disabled={!onRefreshProviderMcpStatus}
+                    >
+                      Refresh provider
+                    </button>
+                  </article>
+                ))}
+              </div>
+
+              <div className="settings-mcp-bridge-card">
+                <label className="settings-effects-check-row">
+                  <input
+                    type="checkbox"
+                    checked={geminiMcpBridgeEnabled}
+                    onChange={(e) => onChange({ geminiMcpBridgeEnabled: e.target.checked })}
+                  />
+                  <span>
+                    Gemini AGBench MCP bridge
+                    <small>
+                      Enables the bundled AGBench MCP server for Gemini CLI profiles. API-key Gemini
+                      runs call the same host tools directly.
+                    </small>
+                  </span>
+                </label>
+                <div className="settings-mcp-bridge-actions">
+                  <button type="button" className="btn btn-sm" onClick={onInstallGeminiMcpBridge}>
+                    Install / repair
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-sm btn-ghost"
+                    onClick={onRefreshGeminiMcpBridgeStatus}
+                  >
+                    Test
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="settings-group span-all">
+              <div className="settings-mcp-section-title">
+                <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                  AGBench environment tools
+                </h4>
+                <p className="settings-hint">
+                  Each row shows the transcript-facing label, icon reference, provider invocation
+                  names, and the current approval policy.
+                </p>
+              </div>
+              <div className="settings-mcp-tool-groups">
+                {MCP_TOOL_GROUP_ORDER.map((group) => {
+                  const tools = MCP_TOOL_CATALOG.filter((tool) => tool.group === group)
+                  if (tools.length === 0) return null
+                  return (
+                    <section key={group} className="settings-mcp-tool-group">
+                      <div className="settings-mcp-tool-group-title">
+                        <strong>{MCP_TOOL_GROUP_LABELS[group]}</strong>
+                        <span>{tools.length} tools</span>
+                      </div>
+                      <div className="settings-mcp-tool-list">
+                        {tools.map((tool) => (
+                          <article key={tool.name} className="settings-mcp-tool-row">
+                            <div className="settings-mcp-tool-main">
+                              <span
+                                className="settings-mcp-tool-icon"
+                                title={`Icon ref: ${tool.iconRef}`}
+                                aria-hidden
+                              >
+                                {tool.iconRef
+                                  .replace(/^tool:/, '')
+                                  .slice(0, 2)
+                                  .toUpperCase()}
+                              </span>
+                              <div>
+                                <strong>{tool.label}</strong>
+                                <p>{tool.description}</p>
+                              </div>
+                            </div>
+                            <div className="settings-mcp-tool-detail-grid">
+                              <span>
+                                Transcript
+                                <code>{tool.transcript}</code>
+                              </span>
+                              <span>
+                                Icon ref
+                                <code>{tool.iconRef}</code>
+                              </span>
+                              <span>
+                                Codex / Gemini / Kimi
+                                <code>{formatMcpInvocation('codex', tool.name)}</code>
+                              </span>
+                              <span>
+                                Claude
+                                <code>{formatMcpInvocation('claude', tool.name)}</code>
+                              </span>
+                              <span>
+                                Policy
+                                <code>{getMcpPolicyLabel(agenticServices, tool.policyKey)}</code>
+                              </span>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="settings-group span-all">
+              <div className="settings-mcp-section-title">
+                <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                  Extensions, skills, and connectors
+                </h4>
+                <p className="settings-hint">
+                  These surfaces are intentionally audit-first here. Add/remove needs a separate
+                  config-writing slice so AGBench never mutates provider MCP files by accident.
+                </p>
+              </div>
+              <div className="settings-mcp-management-grid">
+                <article className="settings-mcp-management-card">
+                  <strong>Custom MCP servers</strong>
+                  <p>External server discovery and toggles will live here once config editing lands.</p>
+                  <button type="button" className="btn btn-sm btn-ghost" disabled>
+                    Managed in provider config
+                  </button>
+                </article>
+                <article className="settings-mcp-management-card">
+                  <strong>Skills</strong>
+                  <p>Provider-owned skills should be visible here with their enabled state and tool names.</p>
+                  <button type="button" className="btn btn-sm btn-ghost" disabled>
+                    Audit surface planned
+                  </button>
+                </article>
+                <article className="settings-mcp-management-card">
+                  <strong>Connectors</strong>
+                  <p>Connector availability should be listed beside the MCP tools they expose.</p>
+                  <button type="button" className="btn btn-sm btn-ghost" disabled>
+                    Connector registry planned
+                  </button>
+                </article>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── System (merged into the General tab — same `behavior` id) ── */}
         {/*
