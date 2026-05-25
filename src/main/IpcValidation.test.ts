@@ -82,6 +82,34 @@ describe('IpcValidation', () => {
     expect(() => validateIpcArgs('compose-run', ['just a string'])).toThrow()
   })
 
+  it('accepts ensemble and sub-thread chat IPC payloads', () => {
+    expect(() =>
+      validateIpcArgs('create-ensemble-chat', [
+        { workspaceId: 'workspace-1', workspacePath: '/tmp/workspace' }
+      ])
+    ).not.toThrow()
+    expect(() =>
+      validateIpcArgs('run-ensemble-round', [
+        { chatId: 'ensemble-1', prompt: 'Review this change', mode: 'normal' }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('cancel-ensemble-round', ['ensemble-1'])).not.toThrow()
+    expect(() =>
+      validateIpcArgs('create-sub-thread', [
+        {
+          parentChatId: 'parent-1',
+          provider: 'claude',
+          delegationPrompt: 'Read this module and report risks.',
+          returnResultToParent: true,
+          workspaceId: 'workspace-1',
+          workspacePath: '/tmp/workspace'
+        }
+      ])
+    ).not.toThrow()
+    expect(() => validateIpcArgs('get-sub-threads', ['parent-1'])).not.toThrow()
+    expect(() => validateIpcArgs('cancel-ensemble-round', [''])).toThrow(/non-empty/)
+  })
+
   it('does not expose renderer-written durable run events', () => {
     expect(() => validateIpcArgs('append-run-event', [{ runId: 'run-1' }])).toThrow(/No IPC schema/)
     expect(() => validateIpcArgs('append-run-events', [[]])).toThrow(/No IPC schema/)
