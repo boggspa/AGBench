@@ -23448,10 +23448,28 @@ input:disabled, select:disabled, textarea:disabled {
  * row's tucked-bottom merge should sit ABOVE the composer-surface;
  * intermediate rows lose their bottom radius so they read as one
  * continuous stack rather than discrete tabs. */
-[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:last-child) {
+[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:last-child),
+[data-composer-style="codex"] .composer-above-bar-stack > .ensemble-above-row:not(:last-child) {
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
   margin-bottom: 0;
+}
+
+/* Slice F follow-up (1.0.3) — when the chip strip stacks below the
+ * branch / Create-PR row inside the Codex shell, its TOP corners
+ * should also be reduced so the seam between the two rows reads as
+ * one stacked container rather than two abutting pills. Matches
+ * the Codex CLI's "queued-items inside one bordered box" pattern
+ * (see screenshot reference: 3 files changed + 3 queued tasks).
+ *
+ * `:not(:first-child)` covers any non-leading row: external-path
+ * rows, the chip strip, etc. Symmetric with the bottom-radius
+ * reduction on `:not(:last-child)` above. */
+[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:first-child),
+[data-composer-style="codex"] .composer-above-bar-stack > .ensemble-above-row:not(:first-child) {
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  margin-top: 0;
 }
 
 /* ============================================================
