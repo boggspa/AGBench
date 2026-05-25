@@ -18149,7 +18149,17 @@ if (isGeminiMcpBridgeProcess) {
       if (bridgeDaemonRef === daemon) {
         bridgeDaemonRef = null
         attachedWindowSnapshot = null
-        mainWindow?.webContents.send('attached-window-changed', null)
+        // Guard against the destroyed-during-quit case: when this runs
+        // from the `will-quit` handler below, Electron has already
+        // begun tearing down `mainWindow`'s webContents — the bare
+        // optional chain on `mainWindow` passes because the JS ref is
+        // still bound, but calling `.send()` on the destroyed contents
+        // throws "Object has been destroyed" and bubbles up as a
+        // uncaught-exception dialog on quit. `isDestroyed()` is the
+        // canonical Electron way to skip post-teardown IPC dispatch.
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send('attached-window-changed', null)
+        }
       }
       daemon?.dispose()
     }
