@@ -1210,6 +1210,12 @@ export interface ModelUsageAggregate {
   resetAt?: string
   resetText?: string
   windows?: UsageWindowAggregate[]
+  balances?: UsageBalanceAggregate[]
+  quotaSource?: string
+  quotaFetchedAt?: string
+  quotaConfigured?: boolean
+  quotaError?: string
+  quotaStale?: boolean
 }
 
 export interface UsageWindowAggregate {
@@ -1223,6 +1229,15 @@ export interface UsageWindowAggregate {
   trackingOnly?: boolean
   usedPercent?: number
   remainingPercent?: number
+}
+
+export interface UsageBalanceAggregate {
+  id: string
+  label: string
+  amount: number
+  unit: string
+  subtitle?: string
+  resetAt?: string
 }
 
 interface CodexModelOption {
@@ -6696,9 +6711,45 @@ function App(): React.JSX.Element {
       }
     }
 
+    const normalizeUsageBalances = (
+      provider: ProviderId,
+      balances: unknown
+    ): UsageBalanceAggregate[] => {
+      if (!Array.isArray(balances)) return []
+      return balances
+        .map((balance: any, index): UsageBalanceAggregate | null => {
+          const label = String(balance?.label || '').trim()
+          const amount = Number(balance?.amount)
+          if (!label || !Number.isFinite(amount)) return null
+          const unit = String(balance?.unit || '').trim()
+          const resetAt =
+            typeof balance?.resetAt === 'string'
+              ? balance.resetAt
+              : typeof balance?.resetDate === 'string'
+                ? balance.resetDate
+                : undefined
+          return {
+            id: String(balance?.id || `${provider}-balance-${index}`),
+            label,
+            amount,
+            unit,
+            subtitle: typeof balance?.subtitle === 'string' ? balance.subtitle : undefined,
+            resetAt
+          }
+        })
+        .filter((balance): balance is UsageBalanceAggregate => Boolean(balance))
+    }
+    const hasUsageBalances = (balances: unknown): boolean =>
+      Array.isArray(balances) && balances.some((balance: any) => {
+        const label = String(balance?.label || '').trim()
+        const amount = Number(balance?.amount)
+        return Boolean(label) && Number.isFinite(amount)
+      })
+
     const buildQuotaAggregate = (
       provider: ProviderId,
-      windows: UsageWindowAggregate[]
+      windows: UsageWindowAggregate[],
+      snapshot?: any
     ): ModelUsageAggregate => ({
       provider,
       model: 'usage limits',
@@ -6707,7 +6758,14 @@ function App(): React.JSX.Element {
       outputTokens: 0,
       totalTokens: 0,
       durationMs: 0,
-      windows
+      windows,
+      balances: normalizeUsageBalances(provider, snapshot?.balances),
+      quotaSource: typeof snapshot?.source === 'string' ? snapshot.source : undefined,
+      quotaFetchedAt: typeof snapshot?.fetchedAt === 'string' ? snapshot.fetchedAt : undefined,
+      quotaConfigured:
+        typeof snapshot?.configured === 'boolean' ? Boolean(snapshot.configured) : undefined,
+      quotaError: typeof snapshot?.error === 'string' ? snapshot.error : undefined,
+      quotaStale: Boolean(snapshot?.stale)
     })
 
     const ordered: ModelUsageAggregate[] = []
@@ -6734,8 +6792,8 @@ function App(): React.JSX.Element {
       .map((w: any, i: number) => normalizeQuotaWindow('gemini', w, `gemini-quota-${i}`))
       .filter((w): w is UsageWindowAggregate => Boolean(w))
     const geminiWindows = resolveWithCache('gemini', geminiFresh)
-    if (geminiWindows.length > 0) {
-      ordered.push(buildQuotaAggregate('gemini', geminiWindows))
+    if (geminiWindows.length > 0 || hasUsageBalances(geminiSnap?.balances)) {
+      ordered.push(buildQuotaAggregate('gemini', geminiWindows, geminiSnap))
     }
 
     // Codex — 5H + weekly + (Pro only) GPT-5.3-Codex-Spark windows, real quotas only
@@ -6748,8 +6806,11 @@ function App(): React.JSX.Element {
     )
     const codexFresh = codexWindowsRaw.filter((w) => w.usedPercent !== undefined)
     const codexWindows = resolveWithCache('codex', codexFresh)
-    if (codexWindows.length > 0) {
-      ordered.push(buildQuotaAggregate('codex', codexWindows))
+    if (
+      codexWindows.length > 0 ||
+      hasUsageBalances(effectiveCodexStatus?.codexUsage?.balances)
+    ) {
+      ordered.push(buildQuotaAggregate('codex', codexWindows, effectiveCodexStatus?.codexUsage))
     }
 
     // Claude — 5H (Session), Weekly, (Max-gated) Sonnet Weekly, (Max20x) Opus Weekly
@@ -6757,8 +6818,8 @@ function App(): React.JSX.Element {
       .map((w: any, i: number) => normalizeQuotaWindow('claude', w, `claude-quota-${i}`))
       .filter((w): w is UsageWindowAggregate => Boolean(w))
     const claudeWindows = resolveWithCache('claude', claudeFresh)
-    if (claudeWindows.length > 0) {
-      ordered.push(buildQuotaAggregate('claude', claudeWindows))
+    if (claudeWindows.length > 0 || hasUsageBalances(claudeSnap?.balances)) {
+      ordered.push(buildQuotaAggregate('claude', claudeWindows, claudeSnap))
     }
 
     // Kimi — only 5H and Weekly
@@ -6768,14 +6829,100 @@ function App(): React.JSX.Element {
       .map((w: any, i: number) => normalizeQuotaWindow('kimi', w, `kimi-quota-${i}`))
       .filter((w): w is UsageWindowAggregate => Boolean(w))
     const kimiWindows = resolveWithCache('kimi', kimiFresh)
-    if (kimiWindows.length > 0) {
-      ordered.push(buildQuotaAggregate('kimi', kimiWindows))
+    if (kimiWindows.length > 0 || hasUsageBalances(kimiSnap?.balances)) {
+      ordered.push(buildQuotaAggregate('kimi', kimiWindows, kimiSnap))
     }
+
+    const inferUsageProvider = (model: string): ProviderId => {
+      const normalized = model.toLowerCase()
+      if (
+        normalized.includes('claude') ||
+        normalized.includes('opus') ||
+        normalized.includes('sonnet') ||
+        normalized.includes('haiku')
+      )
+        return 'claude'
+      if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2'))
+        return 'kimi'
+      if (
+        normalized.includes('codex') ||
+        normalized.includes('gpt') ||
+        normalized.includes('o3') ||
+        normalized.includes('o4') ||
+        normalized.includes('o5')
+      )
+        return 'codex'
+      return 'gemini'
+    }
+
+    const isKnownProvider = (provider: unknown): provider is ProviderId =>
+      provider === 'gemini' || provider === 'codex' || provider === 'claude' || provider === 'kimi'
+
+    const runAggregateMap = new Map<string, ModelUsageAggregate>()
+    const modelComparisonCutoff = now - 30 * 24 * 60 * 60 * 1000
+    for (const record of normalizedUsageRecords) {
+      if (record?.usageKind === 'reset_hint') continue
+      if (Number(record?.timestamp || 0) < modelComparisonCutoff) continue
+      const model = String(record?.model || '').trim() || 'unknown'
+      const provider = isKnownProvider(record?.provider)
+        ? record.provider
+        : inferUsageProvider(model)
+      const key = `${provider}:${model}`
+      const inputTokens = Math.max(0, Number(record?.inputTokens || 0))
+      const outputTokens = Math.max(0, Number(record?.outputTokens || 0))
+      const totalTokens = Math.max(
+        0,
+        Number(record?.totalTokens || inputTokens + outputTokens || 0)
+      )
+      const durationMs = Math.max(0, Number(record?.durationMs || 0))
+      const existing =
+        runAggregateMap.get(key) ||
+        ({
+          provider,
+          model,
+          runs: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          durationMs: 0
+        } satisfies ModelUsageAggregate)
+      existing.runs += 1
+      existing.inputTokens += inputTokens
+      existing.outputTokens += outputTokens
+      existing.totalTokens += totalTokens
+      existing.durationMs += durationMs
+      existing.inputTokenLimit = Math.max(
+        existing.inputTokenLimit || 0,
+        Number(record?.inputTokenLimit || 0)
+      )
+      existing.outputTokenLimit = Math.max(
+        existing.outputTokenLimit || 0,
+        Number(record?.outputTokenLimit || 0)
+      )
+      existing.totalTokenLimit = Math.max(
+        existing.totalTokenLimit || 0,
+        Number(record?.totalTokenLimit || 0)
+      )
+      if (typeof record?.resetAt === 'string') existing.resetAt = record.resetAt
+      if (typeof record?.resetText === 'string') existing.resetText = record.resetText
+      runAggregateMap.set(key, existing)
+    }
+
+    ordered.push(
+      ...Array.from(runAggregateMap.values()).sort(
+        (a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs
+      )
+    )
 
     const nextUsageSignature = JSON.stringify(
       ordered.map((entry) => ({
         provider: entry.provider,
         model: entry.model,
+        runs: entry.runs,
+        inputTokens: entry.inputTokens,
+        outputTokens: entry.outputTokens,
+        totalTokens: entry.totalTokens,
+        durationMs: entry.durationMs,
         windows: (entry.windows || []).map((windowEntry) => ({
           id: windowEntry.id,
           label: windowEntry.label,
@@ -6783,7 +6930,18 @@ function App(): React.JSX.Element {
           resetAt: windowEntry.resetAt || '',
           usedPercent: windowEntry.usedPercent ?? null,
           remainingPercent: windowEntry.remainingPercent ?? null
-        }))
+        })),
+        balances: (entry.balances || []).map((balance) => ({
+          id: balance.id,
+          label: balance.label,
+          amount: balance.amount,
+          unit: balance.unit,
+          resetAt: balance.resetAt || ''
+        })),
+        quotaSource: entry.quotaSource || '',
+        quotaFetchedAt: entry.quotaFetchedAt || '',
+        quotaError: entry.quotaError || '',
+        quotaStale: entry.quotaStale || false
       }))
     )
     if (usageSummarySignatureRef.current !== nextUsageSignature) {

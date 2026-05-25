@@ -2386,6 +2386,23 @@ export function SettingsPanel({
           )
           const providerCount = new Set(allRunEntries.map((entry) => entry.provider)).size
           const modelCount = allRunEntries.length
+          const comparisonEntries = [...allRunEntries].sort(
+            (a, b) => b.totalTokens - a.totalTokens || b.runs - a.runs
+          )
+          const comparisonTokenTotal = comparisonEntries.reduce(
+            (sum, entry) => sum + (entry.totalTokens || 0),
+            0
+          )
+          const quotaEntries = usageSummary.filter((entry) => entry.model === 'usage limits')
+          const telemetryEntries = quotaEntries.filter(
+            (entry) => (entry.windows?.length || 0) > 0 || (entry.balances?.length || 0) > 0
+          )
+          const providerLabel = (provider: ProviderId): string => {
+            if (provider === 'codex') return 'Codex'
+            if (provider === 'claude') return 'Claude'
+            if (provider === 'kimi') return 'Kimi'
+            return 'Gemini'
+          }
           // Rough cost estimate gated on whether the per-row stats
           // carried explicit cost data. Skipped for v1 — keep the
           // tile set focused on counts the user can verify against
@@ -2395,6 +2412,38 @@ export function SettingsPanel({
             if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
             if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
             return String(Math.round(value))
+          }
+          const formatBalanceValue = (
+            amount: number,
+            unit: string | undefined
+          ): string => {
+            const cleanUnit = String(unit || '').trim()
+            if (cleanUnit === '$' || cleanUnit.toLowerCase() === 'usd') {
+              return `$${amount.toLocaleString(undefined, {
+                minimumFractionDigits: amount % 1 === 0 ? 0 : 2,
+                maximumFractionDigits: 2
+              })}`
+            }
+            const value =
+              Math.abs(amount) >= 1000
+                ? formatLargeNumber(amount)
+                : amount.toLocaleString(undefined, {
+                    maximumFractionDigits: amount % 1 === 0 ? 0 : 2
+                  })
+            return cleanUnit ? `${value} ${cleanUnit}` : value
+          }
+          const formatQuotaSource = (source: string | undefined): string =>
+            source ? source.replace(/[-_]/g, ' ') : 'live snapshot'
+          const formatFetchedAt = (timestamp: string | undefined): string => {
+            if (!timestamp) return ''
+            const date = new Date(timestamp)
+            if (!Number.isFinite(date.getTime())) return ''
+            return date.toLocaleString([], {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
           }
           return (
             <div className="settings-model-usage">
@@ -2440,6 +2489,113 @@ export function SettingsPanel({
               <div className="settings-model-usage-card">
                 <ModelUsageCard usageSummary={usageSummary} />
               </div>
+
+              {comparisonEntries.length > 0 && (
+                <section className="settings-model-comparisons" aria-label="Model comparisons">
+                  <div className="settings-model-comparisons-header">
+                    <span>Model Comparisons</span>
+                    <span>Last 30 days</span>
+                  </div>
+                  <div className="settings-model-comparison-list">
+                    {comparisonEntries.map((entry) => {
+                      const percent =
+                        comparisonTokenTotal > 0
+                          ? Math.max(0, Math.min(100, (entry.totalTokens / comparisonTokenTotal) * 100))
+                          : 0
+                      const fillWidth = `${Math.max(2, percent)}%`
+                      return (
+                        <div
+                          key={`${entry.provider}-${entry.model}`}
+                          className={`settings-model-comparison-row provider-${entry.provider}`}
+                        >
+                          <div className="settings-model-comparison-header">
+                            <span
+                              className={`settings-model-comparison-dot provider-${entry.provider}`}
+                              aria-hidden
+                            />
+                            <span className="settings-model-comparison-name" title={entry.model}>
+                              {entry.model}
+                            </span>
+                            <span className="settings-model-comparison-tokens">
+                              {formatLargeNumber(entry.inputTokens)} in ·{' '}
+                              {formatLargeNumber(entry.outputTokens)} out
+                            </span>
+                            <strong className="settings-model-comparison-percent">
+                              {percent.toFixed(1)}%
+                            </strong>
+                          </div>
+                          <div
+                            className="settings-model-comparison-track"
+                            role="progressbar"
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                            aria-valuenow={percent}
+                            aria-label={`${entry.model} accounts for ${percent.toFixed(1)}% of model usage in the last 30 days`}
+                          >
+                            <span
+                              className={`settings-model-comparison-fill provider-${entry.provider}`}
+                              style={{ width: fillWidth }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
+
+              {telemetryEntries.length > 0 && (
+                <section
+                  className="settings-provider-telemetry"
+                  aria-label="Provider quota and balance telemetry"
+                >
+                  <div className="settings-provider-telemetry-header">
+                    <span>Provider Telemetry</span>
+                    <span>Quota windows · balances</span>
+                  </div>
+                  <div className="settings-provider-telemetry-grid">
+                    {telemetryEntries.map((entry) => {
+                      const fetchedAt = formatFetchedAt(entry.quotaFetchedAt)
+                      return (
+                        <article
+                          key={`${entry.provider}-telemetry`}
+                          className={`settings-provider-telemetry-card provider-${entry.provider}`}
+                        >
+                          <div className="settings-provider-telemetry-title">
+                            <span
+                              className={`settings-model-comparison-dot provider-${entry.provider}`}
+                              aria-hidden
+                            />
+                            <strong>{providerLabel(entry.provider)}</strong>
+                            {entry.quotaStale && <span>Stale</span>}
+                          </div>
+                          <div className="settings-provider-telemetry-meta">
+                            <span>{entry.windows?.length || 0} quota windows</span>
+                            <span>{formatQuotaSource(entry.quotaSource)}</span>
+                            {fetchedAt && <span>{fetchedAt}</span>}
+                          </div>
+                          {(entry.balances?.length || 0) > 0 ? (
+                            <div className="settings-provider-balance-list">
+                              {entry.balances?.map((balance) => (
+                                <div key={balance.id} className="settings-provider-balance">
+                                  <span>{balance.label}</span>
+                                  <strong>{formatBalanceValue(balance.amount, balance.unit)}</strong>
+                                  {balance.subtitle && <small>{balance.subtitle}</small>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="settings-provider-balance settings-provider-balance-empty">
+                              <span>Balance</span>
+                              <strong>Unavailable</strong>
+                            </div>
+                          )}
+                        </article>
+                      )
+                    })}
+                  </div>
+                </section>
+              )}
 
               {usageSummary.length === 0 && (
                 <div className="settings-model-usage-empty" role="note">

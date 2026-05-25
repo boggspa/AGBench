@@ -5238,6 +5238,13 @@ interface NormalizedProviderUsageSnapshot {
   configured: boolean
   fetchedAt?: string
   windows?: NormalizedProviderUsageWindow[]
+  balances?: Array<{
+    label: string
+    amount: number
+    unit: string
+    subtitle?: string
+    resetAt?: string
+  }>
   stale?: boolean
   error?: string
 }
@@ -5339,6 +5346,7 @@ function kimiQuotaWindow(
 function normalizeKimiUsageSnapshot(payload: unknown): NormalizedProviderUsageSnapshot {
   const record = usageRecord(payload)
   const windows: NormalizedProviderUsageWindow[] = []
+  const balances: NormalizedProviderUsageSnapshot['balances'] = []
   const rawLimits = record?.limits
   const limits: unknown[] = Array.isArray(rawLimits) ? rawLimits : []
   limits.forEach((limit, index) => {
@@ -5356,12 +5364,27 @@ function normalizeKimiUsageSnapshot(payload: unknown): NormalizedProviderUsageSn
     const weekly = kimiQuotaWindow('kimi-weekly', 'Weekly', usage)
     if (weekly) windows.push(weekly)
   }
+  const totalQuota = usageRecord(record?.totalQuota ?? record?.total_quota)
+  const totalRemaining = numericUsageValue(totalQuota?.remaining)
+  if (totalRemaining !== undefined) {
+    const totalLimit = numericUsageValue(totalQuota?.limit)
+    balances.push({
+      label: 'Total Quota',
+      amount: totalRemaining,
+      unit: 'quota',
+      subtitle:
+        totalLimit !== undefined
+          ? `${Math.round(totalLimit).toLocaleString()} total membership quota`
+          : undefined
+    })
+  }
   return {
     provider: 'kimi',
     source: 'kimi-live-usage',
     configured: true,
     fetchedAt: new Date().toISOString(),
-    windows
+    windows,
+    balances
   }
 }
 
@@ -5546,6 +5569,7 @@ function claudeUsageWindow(id: string, label: string, payload: any): any | null 
 
 function normalizeClaudeUsageSnapshot(payload: any, credential: ClaudeOAuthCredential): any {
   const windows: any[] = []
+  const balances: NormalizedProviderUsageSnapshot['balances'] = []
   const fiveHour = claudeUsageWindow(
     'claude-5h',
     'Session',
@@ -5568,13 +5592,35 @@ function normalizeClaudeUsageSnapshot(payload: any, credential: ClaudeOAuthCrede
     const opusWindow = claudeUsageWindow('claude-weekly-opus', 'Opus Weekly', sevenDayOpus)
     if (opusWindow) windows.push(opusWindow)
   }
+  const extraUsage = payload?.extraUsage ?? payload?.extra_usage
+  if (extraUsage?.isEnabled ?? extraUsage?.is_enabled) {
+    const unit = String(extraUsage?.currency || 'credits')
+    const usedCredits = numericUsageValue(extraUsage?.usedCredits ?? extraUsage?.used_credits)
+    const monthlyLimit = numericUsageValue(extraUsage?.monthlyLimit ?? extraUsage?.monthly_limit)
+    if (usedCredits !== undefined && monthlyLimit !== undefined) {
+      balances.push({
+        label: 'Extra Usage',
+        amount: Math.max(0, monthlyLimit - usedCredits),
+        unit,
+        subtitle: `${usedCredits.toLocaleString()} of ${monthlyLimit.toLocaleString()} ${unit} used this month`
+      })
+    } else if (usedCredits !== undefined) {
+      balances.push({
+        label: 'Extra Usage',
+        amount: usedCredits,
+        unit,
+        subtitle: 'Additional usage this month'
+      })
+    }
+  }
   return {
     provider: 'claude',
     source: 'claude-oauth-usage',
     configured: true,
     subscriptionType: credential.subscriptionType,
     fetchedAt: new Date().toISOString(),
-    windows
+    windows,
+    balances
   }
 }
 
