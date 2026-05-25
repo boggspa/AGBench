@@ -58,17 +58,33 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 export interface ApprovalLedgerPanelProps {
   workspaceGrants?: AgenticWorkspaceGrant[]
   onRevokeWorkspaceGrant?: (grant: AgenticWorkspaceGrant) => Promise<void> | void
+  /**
+   * Path of the workspace the user is currently viewing. Used by the
+   * "Forget all sub-thread delegations for this workspace" affordance:
+   * we filter `workspaceGrants` to the matching subset and bulk-revoke
+   * via repeated `onRevokeWorkspaceGrant` calls. When omitted (global
+   * scope, or the host doesn't pass it) the button stays hidden.
+   */
+  currentWorkspacePath?: string | null
 }
 
 export function ApprovalLedgerPanel({
   workspaceGrants = [],
-  onRevokeWorkspaceGrant
+  onRevokeWorkspaceGrant,
+  currentWorkspacePath
 }: ApprovalLedgerPanelProps): React.JSX.Element {
   const [records, setRecords] = useState<ApprovalLedgerRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [revokeError, setRevokeError] = useState<string | null>(null)
   const [revokingGrantId, setRevokingGrantId] = useState<string | null>(null)
+  // Slice (1.0.3) — bulk-revoke confirmation state for the
+  // "Forget all sub-thread delegations for this workspace" button.
+  // `pending` holds the grants the modal is about to revoke;
+  // `bulkRevoking` blocks both the button + the modal while the
+  // sequential revoke loop runs.
+  const [bulkForgetPending, setBulkForgetPending] = useState<AgenticWorkspaceGrant[] | null>(null)
+  const [bulkRevoking, setBulkRevoking] = useState(false)
   const [providerFilter, setProviderFilter] = useState<ProviderId | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<Set<ApprovalLedgerStatus>>(new Set(ALL_STATUSES))
   const [dateRange, setDateRange] = useState<DateRangeId>('7d')
@@ -208,6 +224,39 @@ export function ApprovalLedgerPanel({
     [onRevokeWorkspaceGrant]
   )
 
+  // Slice (1.0.3) — set of sub-thread delegation grants scoped to the
+  // workspace the user is currently viewing. Only populated when the
+  // host passes `currentWorkspacePath`; otherwise stays empty (and the
+  // "Forget all" button stays hidden).
+  const subThreadGrantsHere = useMemo<AgenticWorkspaceGrant[]>(() => {
+    if (!currentWorkspacePath) return []
+    return workspaceGrants.filter(
+      (grant) =>
+        grant.service === 'subThreadDelegation' && grant.workspacePath === currentWorkspacePath
+    )
+  }, [workspaceGrants, currentWorkspacePath])
+
+  const handleConfirmBulkForget = useCallback(async (): Promise<void> => {
+    if (!bulkForgetPending || !onRevokeWorkspaceGrant) return
+    setRevokeError(null)
+    setBulkRevoking(true)
+    try {
+      // Sequential rather than parallel — the underlying IPC writes
+      // to disk through AppStore; serialising keeps the audit log
+      // ordered and avoids racy partial updates. If one grant fails
+      // we stop and surface the error so the user can retry rather
+      // than silently leaving some intact.
+      for (const grant of bulkForgetPending) {
+        await onRevokeWorkspaceGrant(grant)
+      }
+      setBulkForgetPending(null)
+    } catch (err) {
+      setRevokeError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setBulkRevoking(false)
+    }
+  }, [bulkForgetPending, onRevokeWorkspaceGrant])
+
   return (
     <div className="approval-ledger-panel">
       <div className="approval-ledger-header">
@@ -232,6 +281,28 @@ export function ApprovalLedgerPanel({
           </div>
           <span className="approval-grant-admin-count">{sortedWorkspaceGrants.length}</span>
         </div>
+        {/*
+          Slice (1.0.3) — one-click bulk revoke for sub-thread
+          delegation grants in the workspace the user is currently
+          viewing. Only shown when there's at least one matching
+          grant (and the host passed a workspace path). Opens a
+          confirmation modal so the user sees what'll go before any
+          IPC fires.
+        */}
+        {subThreadGrantsHere.length > 0 && (
+          <div className="approval-grant-bulk-actions">
+            <button
+              type="button"
+              className="btn btn-sm btn-ghost approval-grant-bulk-forget"
+              onClick={() => setBulkForgetPending(subThreadGrantsHere)}
+              disabled={!onRevokeWorkspaceGrant || bulkRevoking}
+              title="Revoke every sub-thread delegation grant in this workspace"
+            >
+              Forget all sub-thread delegations for this workspace (
+              {subThreadGrantsHere.length})
+            </button>
+          </div>
+        )}
         {sortedWorkspaceGrants.length === 0 ? (
           <div className="settings-hint approval-grant-empty">No active workspace grants.</div>
         ) : (
@@ -358,6 +429,72 @@ export function ApprovalLedgerPanel({
           </ul>
         )}
       </div>
+
+      {/*
+        Slice (1.0.3) — confirmation modal for the bulk-forget action.
+        Lists exactly which grants are about to be revoked so the user
+        can audit the list before committing. Renders inline (no
+        portal) since the Settings panel already establishes its own
+        stacking context.
+      */}
+      {bulkForgetPending && (
+        <div
+          className="modal-overlay approval-grant-bulk-modal-overlay"
+          role="presentation"
+          onClick={() => {
+            if (!bulkRevoking) setBulkForgetPending(null)
+          }}
+        >
+          <div
+            className="modal-card approval-grant-bulk-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approval-grant-bulk-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="modal-header">
+              <div>
+                <h2 id="approval-grant-bulk-modal-title">Forget sub-thread delegations?</h2>
+                <p>
+                  Revoke every sub-thread delegation grant in this workspace. Future delegations
+                  will prompt for approval again.
+                </p>
+              </div>
+            </div>
+            <ul className="approval-grant-bulk-list">
+              {bulkForgetPending.map((grant) => (
+                <li key={grant.id} className="approval-grant-bulk-list-row">
+                  <span className="approval-grant-bulk-list-provider">
+                    {PROVIDER_LABELS[grant.provider]}
+                  </span>
+                  <span className="approval-grant-bulk-list-meta" title={grant.workspacePath}>
+                    {workspaceBasename(grant.workspacePath)} · Granted{' '}
+                    {formatTimestamp(grant.createdAt)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setBulkForgetPending(null)}
+                disabled={bulkRevoking}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary approval-grant-bulk-confirm"
+                onClick={() => void handleConfirmBulkForget()}
+                disabled={bulkRevoking}
+              >
+                {bulkRevoking ? 'Revoking…' : `Forget ${bulkForgetPending.length}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

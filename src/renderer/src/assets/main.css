@@ -18166,6 +18166,66 @@ input:disabled, select:disabled, textarea:disabled {
 .approval-grant-empty {
   margin: 2px 0 0;
 }
+/* Slice (1.0.3) — bulk-forget affordance for sub-thread delegations
+ * scoped to the current workspace. Sits between the section header
+ * and the per-grant list, with a warning-tinted button so the
+ * destructive nature reads at a glance. */
+.approval-grant-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.approval-grant-bulk-forget {
+  color: color-mix(in srgb, var(--danger) 75%, var(--text-primary));
+  border-color: color-mix(in srgb, var(--danger) 32%, var(--panel-border));
+}
+.approval-grant-bulk-forget:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.approval-grant-bulk-modal-overlay {
+  z-index: 9200;
+}
+.approval-grant-bulk-modal {
+  width: min(560px, calc(100vw - 40px));
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.approval-grant-bulk-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
+  border-radius: 8px;
+}
+.approval-grant-bulk-list-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--panel-border) 40%, transparent);
+}
+.approval-grant-bulk-list-row:last-child {
+  border-bottom: none;
+}
+.approval-grant-bulk-list-provider {
+  font-weight: 650;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.approval-grant-bulk-list-meta {
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+.approval-grant-bulk-confirm {
+  background: color-mix(in srgb, var(--danger) 80%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+.approval-grant-bulk-confirm:hover:not(:disabled) {
+  background: var(--danger);
+}
+
 .approval-grant-admin-count {
   min-width: 24px;
   padding: 2px 8px;

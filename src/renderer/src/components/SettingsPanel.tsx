@@ -3632,6 +3632,7 @@ export function SettingsPanel({
             onRevokeWorkspaceGrant={(grant) =>
               onRemoveAgenticWorkspaceGrant?.(grant.provider, grant.workspacePath, grant.service)
             }
+            currentWorkspacePath={currentWorkspace?.path ?? null}
           />
         )}
 

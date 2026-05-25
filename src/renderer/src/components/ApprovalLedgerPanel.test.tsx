@@ -36,4 +36,57 @@ describe('ApprovalLedgerPanel', () => {
 
     expect(html).toContain('No active workspace grants.')
   })
+
+  // Slice (1.0.3) — bulk-forget affordance. The button surfaces only
+  // when there's at least one sub-thread delegation grant scoped to
+  // the current workspace.
+  it('surfaces the bulk forget button when sub-thread delegation grants exist here', () => {
+    const grants = [
+      makeGrant({ id: 'g1', provider: 'codex', service: 'subThreadDelegation' }),
+      makeGrant({ id: 'g2', provider: 'claude', service: 'subThreadDelegation' }),
+      // Unrelated service in same workspace — must not be counted.
+      makeGrant({ id: 'g3', provider: 'codex', service: 'fileChanges' }),
+      // Sub-thread grant in a different workspace — must not be counted.
+      makeGrant({
+        id: 'g4',
+        provider: 'gemini',
+        service: 'subThreadDelegation',
+        workspacePath: '/Users/dev/Documents/Other'
+      })
+    ]
+    const html = renderToStaticMarkup(
+      <ApprovalLedgerPanel
+        workspaceGrants={grants}
+        currentWorkspacePath="/Users/dev/Documents/GUIGemini"
+        onRevokeWorkspaceGrant={() => undefined}
+      />
+    )
+
+    expect(html).toContain('Forget all sub-thread delegations for this workspace (2)')
+  })
+
+  it('hides the bulk forget button when no matching grants exist', () => {
+    const html = renderToStaticMarkup(
+      <ApprovalLedgerPanel
+        workspaceGrants={[makeGrant({ service: 'fileChanges' })]}
+        currentWorkspacePath="/Users/dev/Documents/GUIGemini"
+        onRevokeWorkspaceGrant={() => undefined}
+      />
+    )
+
+    expect(html).not.toContain('Forget all sub-thread delegations')
+  })
+
+  it('hides the bulk forget button when no workspace path is provided', () => {
+    const html = renderToStaticMarkup(
+      <ApprovalLedgerPanel
+        workspaceGrants={[
+          makeGrant({ service: 'subThreadDelegation' })
+        ]}
+        onRevokeWorkspaceGrant={() => undefined}
+      />
+    )
+
+    expect(html).not.toContain('Forget all sub-thread delegations')
+  })
 })
