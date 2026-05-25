@@ -24,6 +24,13 @@ files:
   # Plan files / claude code agent worktrees from the dev loop.
   - '!.claude/**'
   - '!docs/**'
+  # Native/mobile source trees are development inputs only. The mac app
+  # receives the release GuiGeminiBridgeDaemon via `mac.extraResources`
+  # below; packaging the full Swift/iOS `.build` trees into app.asar
+  # bloated debug builds by hundreds of megabytes.
+  - '!swift/**'
+  - '!ios/**'
+  - '!design-assets/**'
 asarUnpack:
   - resources/**
   - node_modules/node-pty/**
