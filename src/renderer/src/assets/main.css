@@ -23448,25 +23448,62 @@ input:disabled, select:disabled, textarea:disabled {
  * row's tucked-bottom merge should sit ABOVE the composer-surface;
  * intermediate rows lose their bottom radius so they read as one
  * continuous stack rather than discrete tabs. */
-[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:last-child),
-[data-composer-style="codex"] .composer-above-bar-stack > .ensemble-above-row:not(:last-child) {
+/* Codex shell — the chip strip JOINS the branch/Create-PR row in
+ * one bordered container matching the Codex CLI's stacked-items
+ * pattern (Chris's reference screenshot: `3 files changed` + 3
+ * queued tasks inside one bordered box with hairline separators
+ * between rows). Achieved by:
+ *   1. Collapsing the parent's flex `gap` to 0 so siblings abut
+ *   2. Stripping individual borders + radii from inner rows so
+ *      only the outer outline remains visible
+ *   3. Adding a hairline `border-top` on non-leading rows to mimic
+ *      the Codex CLI's row separators
+ *   4. Putting the visible container chrome on the FIRST row
+ *      (since it spans top to start) and giving subsequent rows
+ *      transparent backgrounds
+ *
+ * Falls back to per-row pills on other shells (where the parent
+ * keeps its 4px gap + each row keeps its own chrome). */
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) {
+  gap: 0;
+  border: 1px solid var(--composer-border);
+  border-radius: calc(var(--radius-lg) * 1.6);
+  background: var(--composer-bg);
+  box-shadow: var(--composer-shadow);
+  overflow: hidden;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .composer-above-bar,
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > .ensemble-above-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  margin: 0;
+}
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child) {
+  border-top: 1px solid color-mix(in srgb, var(--composer-border) 60%, transparent);
+}
+/*
+ * Without an ensemble (no chip strip), the legacy stacked-rounded-
+ * corners pattern still applies — branch row pill alone keeps its
+ * full chrome, external-path rows use the reduced 14px joints.
+ * This preserves the existing solo-Codex appearance.
+ */
+[data-composer-style="codex"]
+  .composer-above-bar-stack:not(:has(.ensemble-above-row))
+  > .composer-above-bar:not(:last-child) {
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
   margin-bottom: 0;
 }
-
-/* Slice F follow-up (1.0.3) — when the chip strip stacks below the
- * branch / Create-PR row inside the Codex shell, its TOP corners
- * should also be reduced so the seam between the two rows reads as
- * one stacked container rather than two abutting pills. Matches
- * the Codex CLI's "queued-items inside one bordered box" pattern
- * (see screenshot reference: 3 files changed + 3 queued tasks).
- *
- * `:not(:first-child)` covers any non-leading row: external-path
- * rows, the chip strip, etc. Symmetric with the bottom-radius
- * reduction on `:not(:last-child)` above. */
-[data-composer-style="codex"] .composer-above-bar-stack > .composer-above-bar:not(:first-child),
-[data-composer-style="codex"] .composer-above-bar-stack > .ensemble-above-row:not(:first-child) {
+[data-composer-style="codex"]
+  .composer-above-bar-stack:not(:has(.ensemble-above-row))
+  > .composer-above-bar:not(:first-child) {
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
   margin-top: 0;
