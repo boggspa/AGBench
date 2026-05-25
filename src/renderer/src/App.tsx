@@ -923,6 +923,25 @@ function SteerSymbolIcon() {
 }
 
 function ThinkingIndicator() {
+  // Slice A4 (1.0.3) — elapsed-time tick + "still working" sub-label.
+  // The "I stopped Gemini thinking it hung" issue Chris flagged during
+  // the Ensemble walkthrough: the dots animate identically whether 2s
+  // or 60s have passed, so users can't tell a slow response from a
+  // dead one. Solution: a `· 12s` suffix appears once elapsed ≥ 5s
+  // so users see the counter incrementing (proof the UI is alive). A
+  // second-tier "still working…" reassurance fades in past 30s for
+  // genuinely long thinking (Gemini hard prompts hit this).
+  //
+  // The indicator mounts/unmounts with `isThinking` at the call site
+  // so internal state resets cleanly on each new thinking phase —
+  // no parent-side timer plumbing required.
+  const [elapsedSec, setElapsedSec] = useState(0)
+  useEffect(() => {
+    const start = Date.now()
+    const tick = (): void => setElapsedSec(Math.floor((Date.now() - start) / 1000))
+    const interval = setInterval(tick, 1000)
+    return () => clearInterval(interval)
+  }, [])
   return (
     <div className="message-bubble assistant message-thinking">
       <span>Thinking</span>
@@ -931,6 +950,16 @@ function ThinkingIndicator() {
         <span className="thinking-dot" />
         <span className="thinking-dot" />
       </span>
+      {elapsedSec >= 5 && (
+        <span className="thinking-elapsed" aria-live="polite">
+          · {elapsedSec}s
+        </span>
+      )}
+      {elapsedSec >= 30 && (
+        <span className="thinking-still-working" aria-live="polite">
+          still working…
+        </span>
+      )}
     </div>
   )
 }
