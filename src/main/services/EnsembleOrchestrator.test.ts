@@ -294,4 +294,95 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.chat.ensemble?.activeRound?.queuedPrompt).toBeUndefined()
     expect(harness.cancelRun).toHaveBeenCalledWith('claude', harness.dispatched[0].appRunId)
   })
+
+  // Slice D (1.0.3) — per-participant reasoning + fast-mode + thinking
+  // flow through the dispatch payload so each provider adapter sees
+  // its own settings. Verifies the orchestrator-side wiring.
+  it('threads per-participant model + reasoning + fast-mode through dispatch', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        model: 'claude-opus-4-7',
+        permissionPresetId: 'read_only',
+        reasoningEffort: 'high',
+        fastModeEnabled: true
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        model: 'gpt-5.5',
+        permissionPresetId: 'workspace_write',
+        reasoningEffort: 'xhigh',
+        fastModeEnabled: true
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Tune per-participant settings.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const claudePayload = harness.dispatched[0]
+    expect(claudePayload.provider).toBe('claude')
+    expect(claudePayload.model).toBe('claude-opus-4-7')
+    expect(claudePayload.claudeReasoningEffort).toBe('high')
+    expect(claudePayload.claudeFastMode).toBe(true)
+    // Claude run should NOT carry Codex-only fields.
+    expect(claudePayload.reasoningEffort).toBeUndefined()
+    expect(claudePayload.serviceTier).toBeUndefined()
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: claudePayload.appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    const codexPayload = harness.dispatched[1]
+    expect(codexPayload.provider).toBe('codex')
+    expect(codexPayload.model).toBe('gpt-5.5')
+    expect(codexPayload.reasoningEffort).toBe('xhigh')
+    expect(codexPayload.serviceTier).toBe('fast')
+    expect(codexPayload.claudeReasoningEffort).toBeUndefined()
+    expect(codexPayload.claudeFastMode).toBeUndefined()
+  })
+
+  it('threads kimi thinking flag through dispatch', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'kimi',
+        provider: 'kimi',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        model: 'kimi-k2.6',
+        permissionPresetId: 'read_only',
+        thinkingEnabled: true
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Think hard.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const kimiPayload = harness.dispatched[0]
+    expect(kimiPayload.provider).toBe('kimi')
+    expect(kimiPayload.kimiThinking).toBe(true)
+    // Kimi runs should NOT carry reasoning or fast-mode fields.
+    expect(kimiPayload.reasoningEffort).toBeUndefined()
+    expect(kimiPayload.serviceTier).toBeUndefined()
+    expect(kimiPayload.claudeFastMode).toBeUndefined()
+  })
 })

@@ -6,6 +6,9 @@ import type {
   ProviderId
 } from '../../../main/store/types'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
+import { CombinedModelPicker } from './CombinedModelPicker'
+import { CombinedPermissionsPicker } from './CombinedPermissionsPicker'
+import { getEnsembleModelDefaults } from '../lib/ensembleProviderDefaults'
 
 const PROVIDERS: ProviderId[] = ['claude', 'codex', 'gemini', 'kimi']
 const PRESETS: Array<{ id: PermissionPresetId; label: string }> = [
@@ -65,62 +68,143 @@ export function EnsembleSetupSheet({ chat, onClose, onSave }: EnsembleSetupSheet
           </button>
         </div>
         <div className="ensemble-setup-table">
-          {participants.map((participant) => (
-            <div key={participant.provider} className="ensemble-setup-row">
-              <label className="ensemble-provider-toggle">
-                <input
-                  type="checkbox"
-                  checked={participant.enabled}
-                  onChange={(event) =>
-                    updateParticipant(participant.provider, { enabled: event.target.checked })
+          {participants.map((participant) => {
+            const defaults = getEnsembleModelDefaults(participant.provider)
+            const selectedModelId = participant.model || defaults.defaultModelId
+            const selectedReasoning =
+              participant.provider === 'kimi'
+                ? participant.thinkingEnabled
+                  ? 'on'
+                  : 'off'
+                : participant.reasoningEffort || defaults.defaultReasoning
+
+            const handleModelSelect = (modelId: string) =>
+              updateParticipant(participant.provider, {
+                model: modelId,
+                // Drop fast-mode if the new model doesn't support it,
+                // so the persisted flag never outlives applicability.
+                ...(defaults.fastModeCapableModelIds.has(modelId)
+                  ? {}
+                  : { fastModeEnabled: false, serviceTier: '' })
+              })
+
+            const handleReasoningSelect = (value: string) => {
+              if (participant.provider === 'kimi') {
+                updateParticipant(participant.provider, { thinkingEnabled: value !== 'off' })
+              } else {
+                updateParticipant(participant.provider, { reasoningEffort: value })
+              }
+            }
+
+            const handleToggleFast =
+              participant.provider === 'codex' || participant.provider === 'claude'
+                ? () => {
+                    const next = !participant.fastModeEnabled
+                    updateParticipant(participant.provider, {
+                      fastModeEnabled: next,
+                      ...(participant.provider === 'codex'
+                        ? { serviceTier: next ? 'fast' : '' }
+                        : {})
+                    })
                   }
+                : undefined
+
+            const permissionOptions = PRESETS.map((preset) => ({
+              value: preset.id,
+              label: preset.label
+            }))
+
+            return (
+              <div key={participant.provider} className="ensemble-setup-row">
+                <label className="ensemble-provider-toggle">
+                  <input
+                    type="checkbox"
+                    checked={participant.enabled}
+                    onChange={(event) =>
+                      updateParticipant(participant.provider, { enabled: event.target.checked })
+                    }
+                  />
+                  <ProviderBadgeIcon provider={participant.provider} />
+                  <span>{getProviderName(participant.provider)}</span>
+                </label>
+                <input
+                  className="ensemble-setup-role-input"
+                  value={participant.role}
+                  onChange={(event) =>
+                    updateParticipant(participant.provider, { role: event.target.value })
+                  }
+                  aria-label={`${getProviderName(participant.provider)} role`}
+                  placeholder="Role"
                 />
-                <ProviderBadgeIcon provider={participant.provider} />
-                <span>{getProviderName(participant.provider)}</span>
-              </label>
-              <input
-                value={participant.role}
-                onChange={(event) =>
-                  updateParticipant(participant.provider, { role: event.target.value })
-                }
-                aria-label={`${getProviderName(participant.provider)} role`}
-              />
-              <input
-                value={participant.model || 'cli-default'}
-                onChange={(event) =>
-                  updateParticipant(participant.provider, { model: event.target.value })
-                }
-                aria-label={`${getProviderName(participant.provider)} model`}
-              />
-              <input
-                type="number"
-                min={1}
-                max={4}
-                value={participant.order}
-                onChange={(event) =>
-                  updateParticipant(participant.provider, {
-                    order: Number.parseInt(event.target.value, 10) || participant.order
-                  })
-                }
-                aria-label={`${getProviderName(participant.provider)} order`}
-              />
-              <select
-                value={participant.permissionPresetId || 'default'}
-                onChange={(event) =>
-                  updateParticipant(participant.provider, {
-                    permissionPresetId: event.target.value as PermissionPresetId
-                  })
-                }
-                aria-label={`${getProviderName(participant.provider)} permissions`}
-              >
-                {PRESETS.map((preset) => (
-                  <option key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
+                <div className="ensemble-setup-picker-cell">
+                  <CombinedModelPicker
+                    provider={participant.provider}
+                    composerStyle="modular"
+                    modelOptions={defaults.modelOptions}
+                    selectedModelId={selectedModelId}
+                    onSelectModel={handleModelSelect}
+                    reasoningOptions={defaults.reasoningOptions}
+                    selectedReasoning={selectedReasoning}
+                    onSelectReasoning={handleReasoningSelect}
+                    codexReasoningEffort={
+                      participant.provider === 'codex'
+                        ? participant.reasoningEffort || defaults.defaultReasoning
+                        : undefined
+                    }
+                    claudeReasoningEffort={
+                      participant.provider === 'claude'
+                        ? participant.reasoningEffort || defaults.defaultReasoning
+                        : undefined
+                    }
+                    kimiThinkingEnabled={
+                      participant.provider === 'kimi' ? Boolean(participant.thinkingEnabled) : undefined
+                    }
+                    fastModeCapableModelIds={defaults.fastModeCapableModelIds}
+                    fastModeEnabled={Boolean(participant.fastModeEnabled)}
+                    onToggleFastMode={handleToggleFast}
+                    disabled={!participant.enabled}
+                  />
+                </div>
+                <div className="ensemble-setup-picker-cell">
+                  <CombinedPermissionsPicker
+                    provider={participant.provider}
+                    composerStyle="modular"
+                    permissionOptions={permissionOptions}
+                    selectedPermission={participant.permissionPresetId || 'default'}
+                    onSelectPermission={(value) =>
+                      updateParticipant(participant.provider, {
+                        permissionPresetId: value as PermissionPresetId
+                      })
+                    }
+                    grantServices={[]}
+                    enabledGrantIds={new Set()}
+                    agenticServices={{
+                      shellCommands: 'ask',
+                      fileChanges: 'ask',
+                      mcpTools: 'ask',
+                      subThreadDelegation: 'ask',
+                      networkAccess: 'allow'
+                    }}
+                    onToggleGrant={() => {}}
+                    disabled={!participant.enabled}
+                  />
+                </div>
+                <input
+                  className="ensemble-setup-order-input"
+                  type="number"
+                  min={1}
+                  max={4}
+                  value={participant.order}
+                  onChange={(event) =>
+                    updateParticipant(participant.provider, {
+                      order: Number.parseInt(event.target.value, 10) || participant.order
+                    })
+                  }
+                  aria-label={`${getProviderName(participant.provider)} order`}
+                />
+              </div>
+            )
+          })}
         </div>
         <div className="modal-actions">
           <button type="button" className="btn btn-ghost" onClick={onClose}>
@@ -137,17 +221,20 @@ export function EnsembleSetupSheet({ chat, onClose, onSave }: EnsembleSetupSheet
 
 function normalizeParticipants(participants: EnsembleParticipant[]): EnsembleParticipant[] {
   const byProvider = new Map(participants.map((participant) => [participant.provider, participant]))
-  return PROVIDERS.map((provider, index) => ({
-    id: `ensemble-${provider}`,
-    provider,
-    enabled: provider === 'claude' || provider === 'codex',
-    role: defaultRole(provider),
-    instructions: '',
-    order: index + 1,
-    model: 'cli-default',
-    permissionPresetId: provider === 'codex' ? 'workspace_write' : 'read_only',
-    ...byProvider.get(provider)
-  }))
+  return PROVIDERS.map((provider, index) => {
+    const defaults = getEnsembleModelDefaults(provider)
+    return {
+      id: `ensemble-${provider}`,
+      provider,
+      enabled: provider === 'claude' || provider === 'codex',
+      role: defaultRole(provider),
+      instructions: '',
+      order: index + 1,
+      model: defaults.defaultModelId,
+      permissionPresetId: provider === 'codex' ? 'workspace_write' : 'read_only',
+      ...byProvider.get(provider)
+    }
+  })
 }
 
 function normalizeOrder(order: number, fallbackIndex: number): number {
@@ -160,4 +247,3 @@ function defaultRole(provider: ProviderId): string {
   if (provider === 'kimi') return 'Reviewer'
   return 'Explorer'
 }
-

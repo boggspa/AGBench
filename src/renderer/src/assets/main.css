@@ -23602,19 +23602,24 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .ensemble-setup-sheet {
-  width: min(820px, calc(100vw - 40px));
+  width: min(920px, calc(100vw - 40px));
 }
 
 .ensemble-setup-table {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   margin-top: 12px;
 }
 
+/* Slice D (1.0.3) — replaced free-text model + permission inputs with
+ * CombinedModelPicker / CombinedPermissionsPicker chips so each row
+ * looks like a miniature composer above-bar. Columns:
+ *   [provider toggle] [role] [model chip] [permission chip] [order]
+ */
 .ensemble-setup-row {
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1.1fr 72px 1.1fr;
-  gap: 8px;
+  grid-template-columns: 1.3fr 1fr 1.2fr 1.2fr 64px;
+  gap: 10px;
   align-items: center;
 }
 
@@ -23625,14 +23630,25 @@ input:disabled, select:disabled, textarea:disabled {
   min-width: 0;
 }
 
-.ensemble-setup-row input,
-.ensemble-setup-row select {
+.ensemble-setup-row input.ensemble-setup-role-input,
+.ensemble-setup-row input.ensemble-setup-order-input {
   min-width: 0;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--input-bg);
   color: var(--text-primary);
   padding: 7px 8px;
+}
+
+.ensemble-setup-picker-cell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ensemble-setup-picker-cell .composer-combined-picker-trigger {
+  width: 100%;
+  justify-content: flex-start;
 }
 
 @media (max-width: 760px) {

@@ -254,6 +254,26 @@ export class EnsembleOrchestrator {
         roundId: runtime.roundId,
         chatContextTurns: this.deps.getSettings().chatContextTurns
       })
+      // Slice D (1.0.3) — per-participant reasoning + speed + thinking
+      // settings flow through the same AgentRunPayload fields the
+      // composer uses for solo runs. Provider adapters already accept
+      // these at the per-run level; we only fill the field that
+      // matches the participant's provider so adapters don't see
+      // cross-provider noise. Falls back silently when a participant
+      // pre-dates the setup-sheet picker rework.
+      const codexReasoning =
+        participant.provider === 'codex' ? participant.reasoningEffort : undefined
+      const codexServiceTier =
+        participant.provider === 'codex'
+          ? participant.serviceTier ?? (participant.fastModeEnabled ? 'fast' : '')
+          : undefined
+      const claudeReasoning =
+        participant.provider === 'claude' ? participant.reasoningEffort : undefined
+      const claudeFastMode =
+        participant.provider === 'claude' ? Boolean(participant.fastModeEnabled) : undefined
+      const kimiThinking =
+        participant.provider === 'kimi' ? Boolean(participant.thinkingEnabled) : undefined
+
       const payload: AgentRunPayload = {
         provider: participant.provider,
         scope: chat.scope === 'global' ? 'global' : 'workspace',
@@ -269,7 +289,12 @@ export class EnsembleOrchestrator {
         providerSessionId: participant.linkedProviderSessionId || null,
         externalPathGrants: permissions.externalPathGrants,
         effectivePermissions: permissions,
-        ensembleRun: ensembleRunIdentity(runtime.roundId, participant)
+        ensembleRun: ensembleRunIdentity(runtime.roundId, participant),
+        ...(codexReasoning !== undefined ? { reasoningEffort: codexReasoning } : {}),
+        ...(codexServiceTier !== undefined ? { serviceTier: codexServiceTier } : {}),
+        ...(claudeReasoning !== undefined ? { claudeReasoningEffort: claudeReasoning } : {}),
+        ...(claudeFastMode !== undefined ? { claudeFastMode } : {}),
+        ...(kimiThinking !== undefined ? { kimiThinking } : {})
       }
       const dispatched = await this.deps.dispatch(payload, { sender: runtime.sender })
       if (!dispatched.dispatched) {

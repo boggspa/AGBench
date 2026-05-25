@@ -197,6 +197,22 @@ export interface EnsembleParticipant {
   permissionPresetId?: PermissionPresetId
   permissionOverrides?: PermissionOverrides
   linkedProviderSessionId?: string | null
+  /**
+   * Slice D — per-participant reasoning + speed + thinking settings.
+   * All optional; orchestrator dispatch falls back to provider
+   * defaults when absent so existing ensemble chats remain valid.
+   *
+   *   reasoningEffort  Codex: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+   *                    Claude: 'off' | 'low' | 'medium' | 'high'
+   *   fastModeEnabled  Codex (serviceTier=fast) + Claude (claudeFastMode)
+   *   thinkingEnabled  Kimi only — toggles k2.6 thinking mode
+   *   serviceTier      Reserved for explicit Codex tier overrides if
+   *                    we ever expose more than the fast toggle.
+   */
+  reasoningEffort?: string
+  fastModeEnabled?: boolean
+  thinkingEnabled?: boolean
+  serviceTier?: string
   tokenTotals?: {
     input_tokens?: number
     output_tokens?: number
