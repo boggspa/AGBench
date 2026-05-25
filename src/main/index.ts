@@ -9947,6 +9947,42 @@ async function runGeminiProvider(
   geminiProcess = child
   runManager.attachProcess(route.appRunId!, child)
 
+  // Ensemble-mode orchestrator bridge for Gemini CLI events.
+  //
+  // The other providers (Codex/Claude/Kimi + the Gemini API runtime)
+  // emit their events through `sendAgentCompatLine`, which calls
+  // `ensembleOrchestratorRef.handleProviderOutput(...)` so the
+  // orchestrator can accumulate `run.content` and persist the
+  // assistant message via `flushRun`. The Gemini *CLI* path is a
+  // legacy spawn that pipes raw JSON-lines stdout straight to the
+  // renderer via `publishRunEvent('gemini-output', ...)` — it never
+  // touches `sendAgentCompatLine`, so the orchestrator never sees
+  // Gemini's deltas in ensemble mode. Result: `run.content` stays
+  // empty, the assistant message append at `flushRun()` skips,
+  // Gemini's bubble never lands. (Renderer-side display still
+  // works because GeminiStreamAdapter parses the same stdout.)
+  //
+  // Gate strictly on `payload.ensembleRun` so solo Gemini chats
+  // pay no extra cost. Mirrors the line-buffer pattern in the
+  // renderer's `GeminiStreamAdapter.appendChunk`.
+  let ensembleLineBuffer = ''
+  const feedOrchestrator = payload.ensembleRun ? (chunk: string): void => {
+    ensembleLineBuffer += chunk
+    const lines = ensembleLineBuffer.split('\n')
+    ensembleLineBuffer = lines.pop() || ''
+    for (const line of lines) {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('{')) continue
+      try {
+        const parsed = JSON.parse(trimmed)
+        ensembleOrchestratorRef?.handleProviderOutput('gemini', route, parsed)
+      } catch {
+        // Not parseable JSON (e.g. a stray log line) — skip silently;
+        // the orchestrator only needs the structured events.
+      }
+    }
+  } : null
+
   child.stdout?.on('data', (data) => {
     const text = data.toString()
     appendDurableRunEventForRoute(
@@ -9964,6 +10000,7 @@ async function runGeminiProvider(
       { provider: 'gemini', data: text, ...route },
       event.sender
     )
+    feedOrchestrator?.(text)
     // Phase I3.x — detect-and-redirect heuristic. If Gemini emits an
     // invoke_agent tool_call when the user asked for cross-provider
     // delegation, surface a single non-blocking warning chip so the
@@ -9986,6 +10023,13 @@ async function runGeminiProvider(
   })
 
   child.on('close', (code) => {
+    // Drain any partial-line tail through the ensemble bridge before
+    // we tear down — guards against a final JSON event that lacks a
+    // trailing newline (rare, but the renderer's adapter handles the
+    // same case via its `end()` method).
+    if (feedOrchestrator && ensembleLineBuffer.trim()) {
+      feedOrchestrator('\n')
+    }
     appendDurableRunEventForRoute(
       'gemini',
       route,
