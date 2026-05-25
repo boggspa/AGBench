@@ -310,6 +310,58 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     helper: 'All containers invisible — every element floats freely on the page.'
   }
 ]
+
+function getComposerPreviewMeta(style: ComposerStyle): {
+  providerLabel: string
+  modelLabel: string
+  permissionLabel: string
+  placeholder: string
+} {
+  switch (style) {
+    case 'codex':
+      return {
+        providerLabel: 'Codex',
+        modelLabel: 'GPT-5.5',
+        permissionLabel: 'Full Workspace Access',
+        placeholder: 'Ask Codex anything. @ to use plugins or mention files'
+      }
+    case 'claude':
+      return {
+        providerLabel: 'Claude',
+        modelLabel: 'Opus 4.7',
+        permissionLabel: 'Plan / Read-only',
+        placeholder: 'Describe a task or ask a question'
+      }
+    case 'gemini':
+      return {
+        providerLabel: 'Gemini',
+        modelLabel: 'Pro 3.1',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Ask Gemini'
+      }
+    case 'kimi':
+      return {
+        providerLabel: 'Kimi',
+        modelLabel: 'K2 Thinking',
+        permissionLabel: 'Read workspace',
+        placeholder: 'Type "/" to quickly access skills'
+      }
+    case 'terminal':
+      return {
+        providerLabel: 'Terminal',
+        modelLabel: 'Shell',
+        permissionLabel: 'Ask before tools',
+        placeholder: 'run task --describe'
+      }
+    default:
+      return {
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Ask anything...'
+      }
+  }
+}
 const AGENTIC_SERVICE_POLICY_OPTIONS: Array<{ value: AgenticServicePolicy; label: string }> = [
   { value: 'workspace', label: 'Ask, then allow workspace' },
   { value: 'ask', label: 'Ask every time' },
@@ -606,6 +658,7 @@ export function SettingsPanel({
   }
   const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([])
   const [installedFontStatus, setInstalledFontStatus] = useState('')
+  const [composerPreviewText, setComposerPreviewText] = useState('')
   const safeTurns = Number.isFinite(chatContextTurns)
     ? Math.max(0, Math.trunc(chatContextTurns))
     : 6
@@ -624,6 +677,7 @@ export function SettingsPanel({
     composerFontFamily,
     transcriptFontFamily
   )
+  const composerPreviewMeta = getComposerPreviewMeta(composerStyle)
   const selectedGeminiAuthProfile = geminiAuthProfiles.find(
     (profile) => profile.id === geminiAuthStatus?.activeProfileId
   )
@@ -826,60 +880,30 @@ export function SettingsPanel({
                 </select>
               </div>
 
-              <div className="settings-group">
-                <label className="settings-label">Interface shell</label>
-                <select
-                  className="settings-select"
-                  value={composerStyle}
-                  onChange={(e) => onChange({ composerStyle: e.target.value as ComposerStyle })}
-                >
-                  {COMPOSER_STYLE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <p className="settings-hint">
-                  {COMPOSER_STYLE_OPTIONS.find((option) => option.value === composerStyle)?.helper}
-                </p>
-                {/*
-                  Composer preview — generic layout mockup that flips
-                  visual identity (border-radius, padding, chip
-                  layout) based on the selected shell. Not a 1:1
-                  reproduction of the real composer; intent is "show
-                  me at a glance what each shell's chrome feels like"
-                  before I commit to it from this dropdown.
-                */}
-                <div className="shell-preview-card">
-                  <span className="shell-preview-card-label">Preview</span>
-                  <div className="shell-preview-stage" data-shell-preview-style={composerStyle}>
-                    <div className="shell-preview-above-row">
-                      <span className="shell-preview-pill">workspace</span>
-                      <span className="shell-preview-pill">main · 2 files</span>
-                    </div>
-                    <div className="shell-preview-composer">
-                      <span className="shell-preview-placeholder">
-                        Ask anything…
-                      </span>
-                      <div className="shell-preview-action-row">
-                        <span className="shell-preview-model-chip">
-                          <span className="shell-preview-dot" aria-hidden />
-                          Codex · GPT-5
-                        </span>
-                        <span className="shell-preview-grant-chip">Auto edit</span>
-                        <span className="shell-preview-spacer" aria-hidden />
-                        <span className="shell-preview-send" aria-hidden>
-                          →
-                        </span>
-                      </div>
-                    </div>
+              <div className="settings-group settings-composer-preview-group">
+                <label className="settings-label">Composer Preview</label>
+                <div className="settings-composer-preview-controls">
+                  <div className="settings-field">
+                    <span className="settings-field-label">Interface shell</span>
+                    <select
+                      className="settings-select"
+                      value={composerStyle}
+                      onChange={(e) => onChange({ composerStyle: e.target.value as ComposerStyle })}
+                    >
+                      {COMPOSER_STYLE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="settings-hint">
+                      {
+                        COMPOSER_STYLE_OPTIONS.find((option) => option.value === composerStyle)
+                          ?.helper
+                      }
+                    </p>
                   </div>
-                </div>
-              </div>
 
-              <div className="settings-group settings-typography-group">
-                <label className="settings-label">Typography</label>
-                <div className="settings-typography-grid">
                   <div className="settings-field">
                     <span className="settings-field-label">Transcript font</span>
                     <select
@@ -982,18 +1006,155 @@ export function SettingsPanel({
                         : 'Installed font discovery unavailable; custom CSS font-family still works.')}
                   </span>
                 </div>
-                <div className="settings-typography-preview">
+
+                <div
+                  className="settings-composer-preview-card"
+                  data-composer-style={composerStyle}
+                  data-interface-style={composerStyle}
+                >
                   <div
-                    className="settings-typography-preview-text"
+                    className="settings-composer-preview-transcript"
                     style={{ fontFamily: transcriptFontFamily || FONT_STACKS.agbench }}
                   >
-                    Assistant transcript text uses this typeface.
+                    <span className="settings-composer-preview-speaker">
+                      {composerPreviewMeta.providerLabel}
+                    </span>
+                    <p>
+                      Assistant transcript text uses this typeface, including inline code, file
+                      names, and longer status lines.
+                    </p>
+                    <div className="settings-composer-preview-tool-row" aria-hidden="true">
+                      <span>Edited</span>
+                      <code>src/renderer/src/App.tsx</code>
+                      <strong>+42</strong>
+                      <em>-8</em>
+                    </div>
                   </div>
                   <div
-                    className="settings-typography-preview-composer"
-                    style={{ fontFamily: previewComposerFontFamily }}
+                    className={`composer-area settings-composer-preview-area interface-${composerStyle}`}
+                    aria-label={`${composerPreviewMeta.providerLabel} composer preview`}
                   >
-                    Composer prompt placeholder preview
+                    <div className="composer-above-bar-stack">
+                      <div className="composer-above-bar style-unified">
+                        <span className="composer-above-bar-branch">
+                          <svg
+                            width="13"
+                            height="13"
+                            viewBox="0 0 16 16"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.4"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <circle cx="4" cy="3.5" r="1.6" />
+                            <circle cx="4" cy="12.5" r="1.6" />
+                            <circle cx="12" cy="7" r="1.6" />
+                            <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
+                          </svg>
+                          <span>
+                            Preview workspace ·{' '}
+                            <em className="composer-above-bar-secondary-branch">main</em>
+                          </span>
+                        </span>
+                        <span className="composer-above-bar-files-cluster">
+                          <span className="composer-above-bar-files">
+                            <strong>2</strong> files changed
+                          </span>
+                          <span className="composer-above-bar-stats">
+                            <span className="composer-diff-add">+42</span>
+                            <span className="composer-diff-del">-8</span>
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="composer-above-bar-action"
+                          tabIndex={-1}
+                          aria-hidden="true"
+                        >
+                          Review changes
+                        </button>
+                      </div>
+                    </div>
+                    <div className="composer-surface settings-composer-preview-surface">
+                      <div className="composer-chips" aria-hidden="true">
+                        <span className="composer-chip">Branch: main</span>
+                        <span className="composer-chip accent">Preview only</span>
+                      </div>
+                      <textarea
+                        className="composer-textarea settings-composer-preview-textarea"
+                        value={composerPreviewText}
+                        onChange={(e) => setComposerPreviewText(e.target.value)}
+                        placeholder={composerPreviewMeta.placeholder}
+                        rows={3}
+                        aria-label="Composer font preview text"
+                        style={{ fontFamily: previewComposerFontFamily }}
+                      />
+                      <div className="composer-control-footer settings-composer-preview-footer">
+                        <div className="composer-inline-pickers">
+                          <div className="composer-inline-pickers-left" aria-hidden="true">
+                            <button
+                              type="button"
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="attach"
+                              tabIndex={-1}
+                            >
+                              +
+                            </button>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="provider"
+                            >
+                              {composerPreviewMeta.providerLabel}
+                            </span>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="permission"
+                            >
+                              {composerPreviewMeta.permissionLabel}
+                            </span>
+                            <span
+                              className="composer-picker-label settings-composer-preview-control"
+                              data-composer-control="model"
+                            >
+                              {composerPreviewMeta.modelLabel}
+                            </span>
+                          </div>
+                          <div className="composer-inline-actions" aria-hidden="true">
+                            <span className="context-wheel settings-composer-preview-context">
+                              <svg viewBox="0 0 18 18" width="18" height="18">
+                                <circle
+                                  cx="9"
+                                  cy="9"
+                                  r="6.6"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  opacity="0.22"
+                                />
+                                <path
+                                  d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                />
+                              </svg>
+                            </span>
+                            <span className="composer-thread-token-tally">44%</span>
+                            <button
+                              type="button"
+                              className="composer-action-btn run-btn"
+                              tabIndex={-1}
+                              aria-label="Preview send button"
+                            >
+                              ↑
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>

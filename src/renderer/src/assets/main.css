@@ -8192,197 +8192,190 @@ button.diff-file-row {
   padding-bottom: 4px;
 }
 
-/* Composer preview — shows under the "Interface shell" picker in the
- * Appearance tab so users can see at a glance what each shell's
- * chrome feels like before committing. Generic placeholder content
- * (workspace pill, model chip, send button) under a stylised
- * composer surface that flips its visual identity via the
- * `data-shell-preview-style` attribute. Not a 1:1 reproduction of
- * each shell — intent is "layout context", not "full fidelity". */
-.shell-preview-card {
-  display: flex;
-  flex-direction: column;
+/* Settings composer preview — an inert, editable sample that reuses
+ * the live composer class names under a scoped wrapper. The wrapper
+ * carries `data-composer-style` so the same shell-specific rules that
+ * style the real composer can style this sample too. */
+.settings-composer-preview-card {
+  display: grid;
+  gap: 12px;
+  padding: var(--space-md);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 76%, transparent);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 36%),
+    color-mix(in srgb, var(--app-bg-sunken) 52%, transparent);
+  overflow: hidden;
+}
+
+.settings-composer-preview-transcript {
+  display: grid;
   gap: 6px;
-  margin-top: 6px;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
 }
 
-.shell-preview-card-label {
-  font-size: var(--font-size-xs, 11px);
-  font-weight: 620;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
-}
-
-.shell-preview-stage {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
-}
-
-.shell-preview-above-row {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.shell-preview-pill {
-  display: inline-flex;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent);
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+.settings-composer-preview-speaker {
   color: var(--text-secondary);
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  font-size: var(--font-size-xs);
+  font-weight: 620;
 }
 
-.shell-preview-composer {
+.settings-composer-preview-transcript p {
+  margin: 0;
+}
+
+.settings-composer-preview-tool-row {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 10px 12px 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 20%, transparent);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--app-bg-elevated, var(--text-primary)) 6%, transparent);
+  min-width: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
 }
 
-.shell-preview-placeholder {
-  font-size: var(--font-size-sm, 13px);
-  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
-  font-style: italic;
-}
-
-.shell-preview-action-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.shell-preview-spacer {
-  flex: 1;
-}
-
-.shell-preview-model-chip,
-.shell-preview-grant-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+.settings-composer-preview-tool-row code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 7%, transparent);
   color: var(--text-primary);
-  font-size: 10.5px;
-  font-weight: 600;
 }
 
-.shell-preview-grant-chip {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  color: color-mix(in srgb, var(--accent) 90%, var(--text-primary) 10%);
+.settings-composer-preview-tool-row strong {
+  color: var(--success);
+  font-weight: 650;
 }
 
-.shell-preview-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
-.shell-preview-send {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: var(--accent);
-  color: var(--accent-contrast, #fff);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-/* Per-shell visual identity tweaks. Each shell flips a small set of
- * tokens so the preview reads visibly different — not a faithful
- * reproduction, just a layout-context tell. */
-.shell-preview-stage[data-shell-preview-style="gemini"] .shell-preview-composer {
-  border-radius: 999px;
-  padding: 8px 16px;
-  border-color: color-mix(in srgb, #5a8cff 36%, transparent);
-  background: color-mix(in srgb, #5a8cff 6%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="gemini"] .shell-preview-above-row {
-  justify-content: center;
-}
-.shell-preview-stage[data-shell-preview-style="codex"] .shell-preview-composer {
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="codex"] .shell-preview-above-row {
-  padding: 4px 6px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="claude"] .shell-preview-composer {
-  border-radius: 14px;
-  border-color: color-mix(in srgb, #d97706 30%, transparent);
-  background: color-mix(in srgb, #d97706 5%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="kimi"] .shell-preview-composer {
-  border-radius: 18px;
-  border-color: color-mix(in srgb, #84a33b 40%, transparent);
-  background: color-mix(in srgb, #84a33b 8%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="modular"] {
-  background: transparent;
-  border-color: transparent;
-}
-.shell-preview-stage[data-shell-preview-style="modular"] .shell-preview-composer {
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="modular"] .shell-preview-pill {
-  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
-  border-radius: 999px;
-}
-.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-composer {
-  border-radius: 4px;
-  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
-  background: color-mix(in srgb, #000 56%, transparent);
-  color: var(--text-primary);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-placeholder {
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+.settings-composer-preview-tool-row em {
+  color: var(--danger);
   font-style: normal;
+  font-weight: 650;
 }
-.shell-preview-stage[data-shell-preview-style="terminal"] .shell-preview-placeholder::before {
-  content: "> ";
-  color: var(--accent);
-}
-.shell-preview-stage[data-shell-preview-style="stub"] .shell-preview-composer {
-  border-radius: 6px;
-  border-style: dashed;
-  background: color-mix(in srgb, #f8e0a1 10%, transparent);
-}
-.shell-preview-stage[data-shell-preview-style="satellite"] {
-  background: transparent;
-  border-color: transparent;
-}
-.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-composer {
-  border: 0;
-  background: transparent;
+
+.settings-composer-preview-area.composer-area {
+  position: relative;
+  inset: auto;
+  z-index: 1;
+  width: 100%;
+  max-width: none;
   padding: 0;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  pointer-events: auto;
+  transform: none;
 }
-.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-pill,
-.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-model-chip,
-.shell-preview-stage[data-shell-preview-style="satellite"] .shell-preview-grant-chip {
-  background: transparent;
-  border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
+
+.settings-composer-preview-area .composer-above-bar-stack {
+  width: 100%;
+}
+
+.settings-composer-preview-area .composer-above-bar {
+  margin-bottom: 6px;
+  min-width: 0;
+}
+
+.settings-composer-preview-area .composer-above-bar-branch,
+.settings-composer-preview-area .composer-above-bar-files,
+.settings-composer-preview-area .composer-above-bar-stats,
+.settings-composer-preview-area .composer-above-bar-action {
+  white-space: nowrap;
+}
+
+.settings-composer-preview-area .composer-above-bar-branch {
+  min-width: 0;
+}
+
+.settings-composer-preview-area .composer-above-bar-branch > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-composer-preview-area .composer-surface {
+  max-width: none;
+}
+
+.settings-composer-preview-area .composer-textarea {
+  min-height: 76px;
+}
+
+.settings-composer-preview-area .composer-inline-pickers-left {
+  min-width: 0;
+}
+
+.settings-composer-preview-control {
+  user-select: none;
+}
+
+.settings-composer-preview-area .composer-action-btn {
+  flex-shrink: 0;
+}
+
+.settings-composer-preview-area .composer-action-btn,
+.settings-composer-preview-area .composer-above-bar-action,
+.settings-composer-preview-area .composer-picker-label {
+  cursor: default;
+}
+
+.settings-composer-preview-area .composer-action-btn:hover,
+.settings-composer-preview-area .composer-above-bar-action:hover,
+.settings-composer-preview-area .composer-picker-label:hover {
+  transform: none;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-composer-style="codex"]
+  .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-composer-style="claude"]
+  .composer-above-bar {
+  background: var(--unified-soft-surface-bg) !important;
+  border-color: var(--unified-soft-surface-border) !important;
+  color: var(--text-primary) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06) !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-composer-style="codex"]
+  .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-composer-style="claude"]
+  .composer-above-bar::before {
+  background: none !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-interface-style="codex"]
+  .composer-surface {
+  background: var(--surface-3) !important;
+  border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card[data-interface-style="claude"]
+  .composer-textarea {
+  background: var(--surface-3) !important;
+  border-color: color-mix(in srgb, var(--surface-border) 70%, var(--surface-text) 8%) !important;
+  color: var(--text-primary) !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card
+  .composer-picker-label,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .settings-composer-preview-card
+  .composer-above-bar-action {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--surface-border, var(--panel-border)) 78%, transparent);
 }
 
 /* Model usage tab — cross-provider quota dashboard.
@@ -8833,14 +8826,14 @@ button.diff-file-row {
   padding: 3px 6px;
 }
 
-.settings-typography-group {
+.settings-composer-preview-group {
   column-span: all;
   -webkit-column-span: all;
 }
 
-.settings-typography-grid {
+.settings-composer-preview-controls {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-md);
 }
 
@@ -8874,33 +8867,8 @@ button.diff-file-row {
   font-size: var(--font-size-xs);
 }
 
-.settings-typography-preview {
-  display: grid;
-  gap: 8px;
-  padding: var(--space-sm);
-  border: 1px solid color-mix(in srgb, var(--panel-border) 74%, transparent);
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--app-bg-sunken) 48%, transparent);
-}
-
-.settings-typography-preview-text {
-  color: var(--text-primary);
-  font-size: var(--font-size-sm);
-  line-height: 1.5;
-}
-
-.settings-typography-preview-composer {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  line-height: 1.35;
-  padding: 9px 10px;
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--composer-bg-solid) 56%, transparent);
-  border: 1px solid color-mix(in srgb, var(--composer-border) 72%, transparent);
-}
-
 @media (max-width: 720px) {
-  .settings-typography-grid {
+  .settings-composer-preview-controls {
     grid-template-columns: 1fr;
   }
 }
