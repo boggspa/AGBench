@@ -2065,7 +2065,7 @@ export function Sidebar({
          * visual identity to match the another-project compact card
          * (provider logos + warning gradient + pace tick + heatmap)
          * inside the new component, leaving Sidebar untouched. */}
-        <ModelUsageCard usageSummary={usageSummary} />
+        <ModelUsageCard usageSummary={usageSummary} variant="sidebar" />
       </div>
 
       {/* Footer */}

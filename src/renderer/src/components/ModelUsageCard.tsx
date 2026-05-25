@@ -18,6 +18,7 @@
  * summaries) and sort by the canonical provider order for stable
  * visual ordering.
  */
+import { useId, useState } from 'react'
 import type { ProviderId } from '../../../main/store/types'
 import type { ModelUsageAggregate, UsageWindowAggregate } from '../App'
 import { computeQuotaPace } from '../lib/QuotaPace'
@@ -26,9 +27,11 @@ import { getProviderName } from './Sidebar'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { QuotaProgressBar } from './QuotaProgressBar'
 import { UsageHeatmap } from './UsageHeatmap'
+import './ModelUsageCard.css'
 
 interface ModelUsageCardProps {
   usageSummary: ModelUsageAggregate[]
+  variant?: 'card' | 'sidebar'
 }
 
 const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
@@ -95,16 +98,10 @@ function UsageWindowRow({
   // variable name matches the token set defined in theme.css.
   const accent = `var(--provider-${provider}-color)`
   return (
-    <div
-      key={`${provider}-${windowEntry.id}`}
-      className="model-usage-window"
-      title={title}
-    >
+    <div key={`${provider}-${windowEntry.id}`} className="model-usage-window" title={title}>
       <div className="model-usage-window-row">
         <span className="model-usage-window-label">{windowEntry.label}</span>
-        {windowReset && (
-          <span className="model-usage-window-reset">resets {windowReset}</span>
-        )}
+        {windowReset && <span className="model-usage-window-reset">resets {windowReset}</span>}
         <span className="model-usage-window-percent">{percentText}</span>
       </div>
       <QuotaProgressBar
@@ -144,20 +141,70 @@ function ProviderUsageBlock({ entry }: { entry: ModelUsageAggregate }) {
   )
 }
 
-export function ModelUsageCard({ usageSummary }: ModelUsageCardProps) {
+function ModelUsageDisclosureIcon({ isExpanded }: { isExpanded: boolean }) {
+  return (
+    <span className={`model-usage-toggle-icon ${isExpanded ? 'is-expanded' : ''}`} aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6.2 4.7 10 8.1 6.2 11.5" />
+      </svg>
+    </span>
+  )
+}
+
+export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCardProps) {
+  const quotaContentId = useId()
+  const [sidebarExpanded, setSidebarExpanded] = useState(true)
   if (usageSummary.length === 0) return null
   const quotaEntries = sortByProvider(usageSummary).filter(
     (entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
   )
   if (quotaEntries.length === 0) return null
 
+  const isSidebarVariant = variant === 'sidebar'
+  const showQuotaEntries = !isSidebarVariant || sidebarExpanded
+  const title = sidebarExpanded ? 'Collapse provider usage' : 'Expand provider usage'
+  const rootClassName = [
+    'run-summary',
+    'model-usage-summary',
+    isSidebarVariant ? 'model-usage-summary--sidebar' : '',
+    isSidebarVariant && !sidebarExpanded ? 'is-collapsed' : ''
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
-    <div className="run-summary model-usage-summary">
-      <div className="run-summary-title">Model Usage</div>
-      <div className="model-usage-list">
-        {quotaEntries.map((entry) => (
-          <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
-        ))}
+    <div className={rootClassName}>
+      <div className="model-usage-summary-header">
+        <div className="run-summary-title">Model Usage</div>
+        {isSidebarVariant && (
+          <button
+            type="button"
+            className="model-usage-toggle"
+            onClick={() => setSidebarExpanded((current) => !current)}
+            aria-expanded={sidebarExpanded}
+            aria-controls={quotaContentId}
+            aria-label={title}
+            title={title}
+          >
+            <ModelUsageDisclosureIcon isExpanded={sidebarExpanded} />
+          </button>
+        )}
+      </div>
+      <div id={quotaContentId} className="model-usage-collapsible" aria-hidden={!showQuotaEntries}>
+        <div className="model-usage-collapsible-inner">
+          <div className="model-usage-list">
+            {quotaEntries.map((entry) => (
+              <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
+            ))}
+          </div>
+        </div>
       </div>
       {/* Phase L6 slice 5 — activity heatmap. Renders the last 30
        * days of usage as a 30×12 grid (12 × 2h buckets per day),
