@@ -106,6 +106,16 @@
 
   /* Accents */
   --accent: #5a8cff;
+  /* Alias: `--accent-color` was referenced from 30+ component
+   * stylesheets that pre-date the `--accent` token rename. Those
+   * callers were silently resolving to the CSS-undefined default
+   * (nothing) for ages — including the ensemble chip strip's
+   * `.is-selected` state, which is why the selected-chip
+   * indicator was invisible. Defining as an alias here is a
+   * single-source-of-truth fix that lights up every broken
+   * caller at once with no migration burden. Per-theme blocks
+   * below inherit this alias because they only override `--accent`. */
+  --accent-color: var(--accent);
   --accent-hover: #3a72f0;
   --warning: #f5a623;
   --success: #4cc38a;

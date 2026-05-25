@@ -22532,9 +22532,33 @@ input:disabled, select:disabled, textarea:disabled {
  * keeps the tab consistent with other depth surfaces in light
  * themes (sheets, popovers, etc.). */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar {
-  background: color-mix(in srgb, var(--surface-3) 80%, var(--surface-2) 20%) !important;
+  /* Chris's call — match the white composer-surface family the
+   * chip strip below already uses. The previous `surface-3 80% /
+   * surface-2 20%` mix produced a visibly darker pill that broke
+   * the "matching siblings" read of the stacked rows. */
+  background: var(--surface-2) !important;
   border-color: var(--surface-border) !important;
   color: rgba(29, 29, 31, 0.84) !important;
+}
+
+/* AGBench / default shell — same fix for the same reason. The
+ * default shell's `.composer-above-bar` in light mode was picking
+ * up the base-rule navy gradient `::before` overlay which read as
+ * a gray-white tint. Match the chip strip's `surface-2` pill so
+ * the two stack as identical sibling chrome. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .composer-above-bar {
+  background: var(--surface-2);
+  border-color: var(--surface-border);
+  color: rgba(29, 29, 31, 0.84);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .composer-above-bar::before {
+  display: none;
+}
+/* Mirror the suppression on Codex shell too — the same per-provider
+ * gradient `::before` overlay was painting on top of the white
+ * surface-2 fill and producing the gray-white look Chris flagged. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar::before {
+  display: none;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar .composer-above-bar-secondary-branch {
   color: rgba(29, 29, 31, 0.62) !important;
