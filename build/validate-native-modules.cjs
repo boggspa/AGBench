@@ -3,6 +3,7 @@ const path = require('node:path')
 
 async function validateNativeModules(context) {
   const resourcesDir = resolveResourcesDir(context)
+  validateAppAsarSize(resourcesDir)
   const unpackedDir = path.join(resourcesDir, 'app.asar.unpacked')
   const platform = context.electronPlatformName || process.platform
   const arch = context.arch || process.arch
@@ -45,6 +46,30 @@ async function validateNativeModules(context) {
   }
 
   await hardenElectronFuses(context, resourcesDir)
+}
+
+function validateAppAsarSize(resourcesDir) {
+  if (process.env.AGBENCH_DISABLE_BUNDLE_SIZE_GUARD === '1') {
+    console.log('Skipped app.asar size guard via AGBENCH_DISABLE_BUNDLE_SIZE_GUARD=1')
+    return
+  }
+
+  const appAsarPath = path.join(resourcesDir, 'app.asar')
+  if (!fs.existsSync(appAsarPath)) {
+    throw new Error(`app.asar was not packaged at ${appAsarPath}.`)
+  }
+
+  const maxBytes = readMegabyteLimit('AGBENCH_MAX_ASAR_MB', 500)
+  const stat = fs.statSync(appAsarPath)
+  if (!stat.isFile()) {
+    throw new Error(`app.asar path is not a file: ${appAsarPath}`)
+  }
+  if (stat.size > maxBytes) {
+    throw new Error(
+      `app.asar exceeds size limit: ${appAsarPath} is ${formatBytes(stat.size)}; limit is ${formatBytes(maxBytes)}.`
+    )
+  }
+  console.log(`Validated app.asar size: ${formatBytes(stat.size)} <= ${formatBytes(maxBytes)}`)
 }
 
 async function hardenElectronFuses(context, resourcesDir) {
@@ -155,6 +180,21 @@ function safeReadDir(dirPath) {
   } catch {
     return []
   }
+}
+
+function readMegabyteLimit(envName, defaultMb) {
+  const raw = process.env[envName]
+  if (!raw) return defaultMb * 1024 * 1024
+  const value = Number(raw)
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${envName} must be a positive number of megabytes.`)
+  }
+  return Math.floor(value * 1024 * 1024)
+}
+
+function formatBytes(bytes) {
+  const mb = bytes / (1024 * 1024)
+  return `${mb.toFixed(1)} MB`
 }
 
 module.exports = validateNativeModules
