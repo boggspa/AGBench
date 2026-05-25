@@ -4292,6 +4292,37 @@ const TranscriptPanel = memo(
                           </div>
                         )
                       }
+                      // Ensemble status messages (`yielded` / `failed` /
+                      // `skipped`) currently arrive with `role: 'system'`
+                      // because the orchestrator emits them as system-
+                      // origin chrome. They carry the participant's
+                      // identity in metadata though — so render them as
+                      // the participant (with provider tint) rather than
+                      // a generic "System" label. Reads more naturally
+                      // for users (e.g. the reason text on a yield is
+                      // really the participant's voice, not the app's).
+                      const statusMeta =
+                        msg.metadata?.kind === 'ensembleParticipantStatus'
+                          ? {
+                              provider: msg.metadata?.ensembleProvider as
+                                | ProviderId
+                                | undefined,
+                              role:
+                                typeof msg.metadata?.ensembleRole === 'string'
+                                  ? msg.metadata.ensembleRole
+                                  : ''
+                            }
+                          : null
+                      if (statusMeta?.provider) {
+                        const label = statusMeta.role
+                          ? `${getProviderLabel(statusMeta.provider)} / ${statusMeta.role}`
+                          : getProviderLabel(statusMeta.provider)
+                        return (
+                          <div className={`message-meta provider-${statusMeta.provider}`}>
+                            {label}
+                          </div>
+                        )
+                      }
                       return <div className="message-meta">System</div>
                     })()}
                     {msg.role === 'user' ? (

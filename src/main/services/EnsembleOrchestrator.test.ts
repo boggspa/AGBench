@@ -413,6 +413,74 @@ describe('EnsembleOrchestrator', () => {
     expect(skipMessage?.metadata?.ensembleProvider).toBe('claude')
   })
 
+  it('persists tool calls used by ensemble participants into a role:tool message', async () => {
+    // Regression: tool calls used by ensemble participants weren't
+    // showing in the transcript. Root cause: the renderer-side tool
+    // accumulator (App.tsx:10292+) requires an active run context in
+    // `activeRunsRef`, which only gets registered by `executeRun` on
+    // the solo-chat path. Ensemble runs are dispatched from main, so
+    // the renderer is a passive observer of the orchestrator's chat
+    // saves — meaning the orchestrator has to persist tool messages
+    // directly. This test exercises the tool_use → tool_result pairing
+    // and asserts the resulting message lands in `chat.messages` with
+    // ensemble metadata + ordering before the assistant message.
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Use a tool and tell me what you found.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    // Tool use → tool result pairing.
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_use',
+      tool_id: 'call-1',
+      tool_name: 'read_file',
+      parameters: { file_path: '/tmp/notes.md' }
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_result',
+      tool_id: 'call-1',
+      content: 'File contents...'
+    })
+    // Content + final result so the assistant message also lands.
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'content',
+      text: 'I read the file.'
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    const toolMessage = harness.chat.messages.find(
+      (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+    )
+    expect(toolMessage).toBeDefined()
+    expect(toolMessage?.toolActivities).toHaveLength(1)
+    expect(toolMessage?.toolActivities?.[0].toolName).toBe('read_file')
+    expect(toolMessage?.toolActivities?.[0].status).toBe('success')
+    expect(toolMessage?.toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
+
+    // Tool message must appear BEFORE the assistant message so the
+    // transcript reads tool-calls-then-final-answer.
+    const toolIdx = harness.chat.messages.findIndex(
+      (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+    )
+    const assistantIdx = harness.chat.messages.findIndex(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'claude'
+    )
+    expect(toolIdx).toBeGreaterThanOrEqual(0)
+    expect(assistantIdx).toBeGreaterThan(toolIdx)
+  })
+
   it('skipActiveParticipant returns false when no round is active', async () => {
     const harness = makeHarness()
     const skipped = await harness.orchestrator.skipActiveParticipant('ensemble-chat')

@@ -6125,6 +6125,32 @@ button.sidebar-item {
   background: rgba(91, 119, 33, 0.08);
 }
 
+/* Light-mode awareness for the composer-area approval card.
+ *
+ * The default rules above are tuned for dark surfaces — the
+ * low-alpha amber + per-provider tints rely on a dark backdrop to
+ * read as "warm caution". On light surfaces they wash out into
+ * near-invisible tints, and the card loses its caution affordance.
+ * Re-tune with slightly higher opacity + a faint surface fill so the
+ * card remains legible without breaking the warm/per-provider
+ * vocabulary that's already wired across the rest of the app. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-permission-card {
+  border-color: rgba(196, 110, 0, 0.42);
+  background: rgba(255, 213, 130, 0.22);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-permission-card.provider-codex {
+  border-color: rgba(72, 58, 190, 0.42);
+  background: rgba(132, 118, 255, 0.18);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-permission-card.provider-claude {
+  border-color: rgba(176, 79, 18, 0.42);
+  background: rgba(255, 151, 58, 0.22);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-permission-card.provider-kimi {
+  border-color: rgba(91, 119, 33, 0.45);
+  background: rgba(164, 190, 74, 0.22);
+}
+
 .composer-permission-title {
   font-size: var(--font-size-xs);
   color: var(--warning);
@@ -18252,6 +18278,19 @@ input:disabled, select:disabled, textarea:disabled {
     inset 0 1px 0 color-mix(in srgb, var(--text-primary) 14%, transparent);
   color: var(--text-primary);
 }
+
+/* In light themes the elevated panel token resolves to a translucent
+ * white that lets the transcript bleed through the modal — readability
+ * suffers and the modal stops feeling like a stop-the-world surface.
+ * Force an opaque surface for approval-class modals where decision
+ * legibility matters more than the glass effect. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .creative-approval-modal {
+  background: color-mix(in srgb, var(--panel-elevated-bg) 98%, #ffffff);
+  border-color: color-mix(in srgb, var(--panel-border) 92%, transparent);
+  box-shadow:
+    0 30px 80px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
 .creative-approval-modal-eyebrow {
   font-size: 10px;
   text-transform: uppercase;
@@ -18312,7 +18351,15 @@ input:disabled, select:disabled, textarea:disabled {
 .creative-approval-modal-preview pre {
   margin: 8px 0 0;
   padding: 10px 12px;
-  background: color-mix(in srgb, #000000 35%, transparent);
+  /* Theme-aware preview background. Original was a fixed dark
+   * `color-mix(in srgb, #000000 35%, transparent)` that produced a
+   * translucent black over light surfaces — text was unreadable. Use
+   * a token-driven fill that adapts: dark themes still get the
+   * inset-darker look via `--panel-elevated-bg` being already-dark;
+   * light themes get a faint cool gray inset that reads as a code
+   * block over the modal surface. */
+  background: color-mix(in srgb, var(--text-primary) 8%, var(--panel-elevated-bg));
+  border: 1px solid color-mix(in srgb, var(--panel-border) 38%, transparent);
   border-radius: 6px;
   font-family: var(--font-family-mono);
   font-size: calc(var(--font-size-xs) + 1px);
@@ -18320,6 +18367,7 @@ input:disabled, select:disabled, textarea:disabled {
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-all;
+  color: var(--text-primary);
 }
 .creative-approval-modal-actions {
   display: flex;

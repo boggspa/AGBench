@@ -14,7 +14,9 @@ import type {
   EnsembleParticipantStatus,
   EnsembleRunIdentity,
   EnsembleRoundState,
-  ProviderId
+  ProviderId,
+  ToolActivity,
+  ToolActivityStatus
 } from '../store/types'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
@@ -44,6 +46,23 @@ interface ActiveParticipantRun {
   participant: EnsembleParticipant
   promptMessageId: string
   assistantMessageId: string
+  /**
+   * Stable id for the `role: 'tool'` message this run accumulates tool
+   * activities into. Set lazily on the first `tool_use` event so runs
+   * without tool calls never produce a message.
+   */
+  toolMessageId?: string
+  /**
+   * Per-run tool-activity accumulator. Mirrors the renderer's
+   * per-message `toolActivities` shape (tool_use → push; tool_result
+   * → find-by-id and pair). The orchestrator owns this in ensemble
+   * mode because the renderer-side accumulator only runs for solo
+   * chats where it can register an active run context; ensemble runs
+   * are dispatched from main and the renderer sees only the
+   * authoritative chat saves, so the orchestrator has to persist tool
+   * messages directly.
+   */
+  toolActivities?: ToolActivity[]
   startedAt: string
   content: string
   status: EnsembleParticipantStatus
@@ -53,6 +72,112 @@ interface ActiveParticipantRun {
   stats?: any
   completion?: (status: EnsembleParticipantStatus) => void
   flushTimer?: ReturnType<typeof setTimeout>
+}
+
+/**
+ * Minimal tool-activity builders for the orchestrator. The renderer's
+ * `ToolParser.ts` has richer extraction (file-path heuristics, diff
+ * summaries, display-name humanising) but lives under `src/renderer/`
+ * which `tsconfig.node.json` doesn't include. For ensemble tool
+ * messages the basics are enough — the renderer's display layer can
+ * still humanise on read by inspecting `rawUseEvent` / `rawResultEvent`.
+ */
+function extractToolId(event: any): string {
+  if (!event || typeof event !== 'object') {
+    return `ensemble-tool-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  }
+  return (
+    event.tool_id ||
+    event.toolId ||
+    event.id ||
+    event.call_id ||
+    event.tool_call_id ||
+    `ensemble-tool-${Date.now()}-${Math.random().toString(36).slice(2)}`
+  )
+}
+
+function extractToolName(event: any): string {
+  if (!event || typeof event !== 'object') return 'unknown'
+  return (
+    event.tool_name ||
+    event.toolName ||
+    event.name ||
+    event.function?.name ||
+    event.tool ||
+    'unknown'
+  )
+}
+
+function extractToolParameters(event: any): Record<string, unknown> {
+  if (!event || typeof event !== 'object') return {}
+  const raw =
+    event.parameters ||
+    event.params ||
+    event.arguments ||
+    event.input ||
+    event.function?.arguments ||
+    {}
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw)
+      return parsed && typeof parsed === 'object' ? parsed : {}
+    } catch {
+      return {}
+    }
+  }
+  return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+}
+
+function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity {
+  const toolName = extractToolName(event)
+  const parameters = extractToolParameters(event)
+  const filePath =
+    typeof parameters.file_path === 'string'
+      ? (parameters.file_path as string)
+      : typeof parameters.path === 'string'
+        ? (parameters.path as string)
+        : undefined
+  return {
+    id: extractToolId(event),
+    toolName,
+    displayName: toolName,
+    category: 'unknown',
+    status: 'running',
+    startedAt,
+    parameters,
+    filePath,
+    rawUseEvent: event
+  }
+}
+
+function pairEnsembleToolResult(
+  activity: ToolActivity,
+  event: any,
+  endedAt: string
+): ToolActivity {
+  const status: ToolActivityStatus =
+    event?.success === false || event?.error || event?.is_error ? 'error' : 'success'
+  const durationMs = activity.startedAt
+    ? new Date(endedAt).getTime() - new Date(activity.startedAt).getTime()
+    : undefined
+  const output =
+    typeof event?.content === 'string'
+      ? event.content
+      : typeof event?.output === 'string'
+        ? event.output
+        : typeof event?.result === 'string'
+          ? event.result
+          : ''
+  const truncated = output.length > 500 ? `${output.substring(0, 500)}...` : output
+  return {
+    ...activity,
+    status,
+    endedAt,
+    durationMs,
+    resultSummary: truncated,
+    outputPreview: truncated,
+    rawResultEvent: event
+  }
 }
 
 interface ActiveRoundRuntime {
@@ -277,6 +402,51 @@ export class EnsembleOrchestrator {
         run.content += text
         this.scheduleFlush(run)
       }
+      return true
+    }
+    if (payload?.type === 'tool_use' || payload?.type === 'tool_call') {
+      // Tool calls in ensemble mode previously vanished — the renderer-
+      // side tool accumulator (App.tsx:10292+) only runs for solo runs
+      // (the active-run-context registry is populated by `executeRun`
+      // which ensemble doesn't go through). Without an orchestrator-
+      // side persist, tool messages never landed in the authoritative
+      // chat.messages, so the transcript stayed silent even when
+      // participants used tools. Build the activity here, accumulate
+      // per-run, and let `flushRun` materialise a `role: 'tool'`
+      // message ordered before the assistant message.
+      if (!run.toolActivities) run.toolActivities = []
+      const activity = buildEnsembleToolActivity(payload, this.deps.nowIso())
+      run.toolActivities.push(activity)
+      this.scheduleFlush(run)
+      return true
+    }
+    if (
+      payload?.type === 'tool_result' ||
+      payload?.type === 'tool_output' ||
+      payload?.type === 'tool_response'
+    ) {
+      if (!run.toolActivities || run.toolActivities.length === 0) return true
+      const id = extractToolId(payload)
+      const idx = run.toolActivities.findIndex((a) => a.id === id)
+      if (idx >= 0) {
+        run.toolActivities[idx] = pairEnsembleToolResult(
+          run.toolActivities[idx],
+          payload,
+          this.deps.nowIso()
+        )
+      } else {
+        // Orphan result — pair with a synthetic activity so the
+        // outcome still surfaces. Same pattern as the renderer's
+        // fallback at App.tsx:10336.
+        const orphan = buildEnsembleToolActivity(
+          { ...payload, type: 'tool_use', tool_id: id },
+          this.deps.nowIso()
+        )
+        run.toolActivities.push(
+          pairEnsembleToolResult(orphan, payload, this.deps.nowIso())
+        )
+      }
+      this.scheduleFlush(run)
       return true
     }
     if (payload?.type === 'result') {
@@ -553,6 +723,55 @@ export class EnsembleOrchestrator {
     if (!chat?.ensemble) return
     const timestamp = this.deps.nowIso()
     let messages = [...chat.messages]
+    // Materialise the per-participant tool message (if this run has any
+    // tool activities) BEFORE the assistant message in the transcript.
+    // Insert lazily so participants that never call tools never produce
+    // a stray empty tool bubble. Subsequent flushes replace the message
+    // in place via its stable id so activity status updates land.
+    if (run.toolActivities && run.toolActivities.length > 0) {
+      if (!run.toolMessageId) {
+        run.toolMessageId = `ensemble-tool-${run.runId}`
+      }
+      const toolMessageId = run.toolMessageId
+      const existingToolIdx = messages.findIndex((message) => message.id === toolMessageId)
+      const toolMsg: ChatMessage = {
+        id: toolMessageId,
+        role: 'tool',
+        content: '',
+        timestamp,
+        runId: run.runId,
+        toolActivities: [...run.toolActivities],
+        metadata: {
+          kind: 'ensembleParticipantTools',
+          ensembleRoundId: run.roundId,
+          ensembleParticipantId: run.participant.id,
+          ensembleProvider: run.participant.provider,
+          ensembleRole: run.participant.role,
+          ensembleOrder: run.participant.order
+        }
+      }
+      if (existingToolIdx >= 0) {
+        messages[existingToolIdx] = toolMsg
+      } else {
+        // First insertion — place before the assistant message slot
+        // (if it already exists) so transcript order reads
+        // tool-calls-then-final-answer. Otherwise append; the
+        // assistant message will be added after in this same flush
+        // pass and naturally lands after the tool message.
+        const assistantSlot = messages.findIndex(
+          (message) => message.id === run.assistantMessageId
+        )
+        if (assistantSlot >= 0) {
+          messages = [
+            ...messages.slice(0, assistantSlot),
+            toolMsg,
+            ...messages.slice(assistantSlot)
+          ]
+        } else {
+          messages = [...messages, toolMsg]
+        }
+      }
+    }
     const assistantIndex = messages.findIndex((message) => message.id === run.assistantMessageId)
     if (run.content.trim()) {
       const assistantMessage: ChatMessage = {
