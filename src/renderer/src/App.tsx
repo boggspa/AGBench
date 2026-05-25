@@ -109,6 +109,7 @@ import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCa
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import {
+  extractFirstEnsembleDmTarget,
   formatComposerPathMention,
   parseComposerMentionTrigger
 } from './lib/ComposerMentionTrigger'
@@ -5095,8 +5096,18 @@ function App(): React.JSX.Element {
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [mentionMenuOpen, setMentionMenuOpen] = useState(false)
   const [mentionQuery, setMentionQuery] = useState('')
-  // Caret position of the `@` that opened the menu (so we know what to replace).
+  // Caret position of the `@` (or `-` of `-@`) that opened the menu —
+  // used to splice the picked mention back over the trigger.
   const mentionAnchorIndexRef = useRef<number | null>(null)
+  // Which trigger fired the popover. `'mention'` (`@`) → sub-agents
+  // (normal chats) or participants (ensemble); `'file-mention'`
+  // (`-@`) → workspace files + external grants. Tracked alongside
+  // the anchor so the pick handler knows how many characters to
+  // strip (1 for `@`, 2 for `-@`).
+  const [mentionTriggerKind, setMentionTriggerKind] = useState<
+    'mention' | 'file-mention'
+  >('mention')
+  const mentionTriggerLengthRef = useRef<number>(1)
   // Slash-command picker state. Same shape as the mention menu — visibility
   // flag, current filter substring (what comes after the leading `/`), and
   // an anchor index pointing at the `/` we'll later replace on pick.
@@ -14320,6 +14331,8 @@ function App(): React.JSX.Element {
                     }
                   } else if (mentionTrigger) {
                     mentionAnchorIndexRef.current = mentionTrigger.anchorIndex
+                    mentionTriggerLengthRef.current = mentionTrigger.triggerLength
+                    setMentionTriggerKind(mentionTrigger.kind)
                     setMentionQuery(mentionTrigger.query)
                     setMentionMenuOpen(true)
                     if (slashMenuOpen) {
@@ -14364,16 +14377,26 @@ function App(): React.JSX.Element {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
                     triggerSendConfirmation()
-                    // A2 (1.0.3) — Cmd/Ctrl+Enter on an ensemble chat
-                    // with a selected chip = DM that participant only.
-                    // Plain Enter dispatches the full round.
+                    // DM target resolution order (first match wins):
+                    //   1. An explicit `@participant` mention in the
+                    //      prompt body (`ensemble-dm://` markdown link
+                    //      inserted by the mention picker).
+                    //   2. Legacy Cmd/Ctrl+Enter on a selected chip
+                    //      (A2 from 1.0.3 — kept so muscle memory
+                    //      still works).
+                    // Plain Enter with no mention + no modifier
+                    // dispatches the full round.
+                    const dmFromMention = isCurrentEnsembleChat
+                      ? extractFirstEnsembleDmTarget(prompt)
+                      : null
                     const dmTarget =
-                      isCurrentEnsembleChat &&
+                      dmFromMention ||
+                      (isCurrentEnsembleChat &&
                       effectiveSelectedParticipantId &&
                       (e.metaKey || e.ctrlKey)
                         ? effectiveSelectedParticipantId
-                        : undefined
-                    handleRun(undefined, undefined, dmTarget)
+                        : undefined)
+                    handleRun(undefined, undefined, dmTarget || undefined)
                   }
                 }}
               />
@@ -14398,6 +14421,12 @@ function App(): React.JSX.Element {
                 open={mentionMenuOpen}
                 anchorRef={composerTextareaRef}
                 query={mentionQuery}
+                triggerKind={mentionTriggerKind}
+                ensembleParticipants={
+                  isCurrentEnsembleChat
+                    ? currentChat?.ensemble?.participants
+                    : undefined
+                }
                 onDismiss={() => {
                   setMentionMenuOpen(false)
                   setMentionQuery('')
@@ -14410,12 +14439,27 @@ function App(): React.JSX.Element {
                     setMentionQuery('')
                     return
                   }
+                  // The trigger characters (`@` or `-@`) + the live
+                  // query string need to be stripped — replace them
+                  // wholesale with the chosen mention's insertion.
+                  const triggerLen = mentionTriggerLengthRef.current
                   const before = prompt.slice(0, anchor)
-                  const afterQuery = prompt.slice(anchor + 1 + mentionQuery.length)
-                  const insertion =
-                    mention.kind === 'agent' && mention.agentId
-                      ? `[@${mention.name}](agent://${mention.agentId}) `
-                      : formatComposerPathMention(mention.path || mention.name)
+                  const afterQuery = prompt.slice(anchor + triggerLen + mentionQuery.length)
+                  const insertion = (() => {
+                    if (mention.kind === 'agent' && mention.agentId) {
+                      return `[@${mention.name}](agent://${mention.agentId}) `
+                    }
+                    if (mention.kind === 'participant' && mention.participantId) {
+                      // Ensemble DM mention. The `ensemble-dm://`
+                      // scheme is intercepted by `StableMarkdownBlock`
+                      // for the inline transcript chip; on send,
+                      // `extractFirstEnsembleDmTarget` reads the
+                      // participant id back out to set the run's
+                      // `dmTargetParticipantId`.
+                      return `[@${mention.name}](ensemble-dm://${mention.participantId}) `
+                    }
+                    return formatComposerPathMention(mention.path || mention.name)
+                  })()
                   const next = `${before}${insertion}${afterQuery}`
                   setPrompt(next)
                   setMentionMenuOpen(false)
@@ -15692,17 +15736,22 @@ function App(): React.JSX.Element {
                         className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
                         onClick={(event) => {
                           triggerSendConfirmation()
-                          // A2 (1.0.3) — Cmd/Ctrl-click on send while
-                          // an ensemble chip is selected = DM that
-                          // participant only. Plain click dispatches
-                          // a full round.
+                          // DM target resolution (same precedence as
+                          // the Enter handler above): explicit
+                          // `@participant` mention wins; falls back
+                          // to legacy Cmd/Ctrl-click on a selected
+                          // chip; plain click = full round.
+                          const dmFromMention = isCurrentEnsembleChat
+                            ? extractFirstEnsembleDmTarget(prompt)
+                            : null
                           const dmTarget =
-                            isCurrentEnsembleChat &&
+                            dmFromMention ||
+                            (isCurrentEnsembleChat &&
                             effectiveSelectedParticipantId &&
                             (event.metaKey || event.ctrlKey)
                               ? effectiveSelectedParticipantId
-                              : undefined
-                          handleRun(undefined, undefined, dmTarget)
+                              : undefined)
+                          handleRun(undefined, undefined, dmTarget || undefined)
                         }}
                         disabled={
                           !currentChat ||

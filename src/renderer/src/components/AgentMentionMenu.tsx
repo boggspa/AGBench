@@ -3,18 +3,32 @@ import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
   ChildAgentThread,
+  EnsembleParticipant,
   ExternalPathGrant,
   ProviderId,
   WorkspaceFileEntry
 } from '../../../main/store/types'
 import { deriveChildAgentThreads } from '../lib/ChildAgentThreads'
+import { getProviderName } from './Sidebar'
+import type { ComposerMentionTriggerKind } from '../lib/ComposerMentionTrigger'
 
-export type ComposerMentionKind = 'agent' | 'workspace-file' | 'external-grant'
+export type ComposerMentionKind =
+  | 'agent'
+  | 'participant'
+  | 'workspace-file'
+  | 'external-grant'
 
 export interface ComposerMentionPick {
   kind: ComposerMentionKind
   name: string
   agentId?: string
+  /** Ensemble participant id when `kind === 'participant'`. Routes
+   * the next run as a DM via `dmTargetParticipantId`. */
+  participantId?: string
+  /** Provider id for participant mentions, used by the renderer to
+   * apply the matching `--provider-{name}-color` tint on the inserted
+   * chip and the inline transcript token. */
+  provider?: ProviderId
   path?: string
   isDirectory?: boolean
   access?: ExternalPathGrant['access']
@@ -39,6 +53,17 @@ interface AgentMentionMenuProps {
   anchorRef: React.RefObject<HTMLElement | null>
   /** Filter substring (what comes after the trailing `@`). */
   query: string
+  /** Which trigger fired the popover. `'mention'` (`@`) surfaces
+   * sub-agents in normal chats or participants in ensemble chats;
+   * `'file-mention'` (`-@`) surfaces workspace files + external
+   * path grants. Defaults to `'mention'` for compatibility with
+   * existing callers that pre-date the trigger split. */
+  triggerKind?: ComposerMentionTriggerKind
+  /** Ensemble participants currently in the chat. Only consulted
+   * when `triggerKind === 'mention'` AND `chat.chatKind === 'ensemble'`.
+   * The pick handler turns one of these into an `ensemble-dm://`
+   * markdown chip. */
+  ensembleParticipants?: EnsembleParticipant[]
   /** Replace the `@<query>` token in the prompt with the selected mention target. */
   onPick: (mention: ComposerMentionPick) => void
   /** Dismiss without picking. */
@@ -87,6 +112,8 @@ export function AgentMentionMenu({
   open,
   anchorRef,
   query,
+  triggerKind = 'mention',
+  ensembleParticipants,
   onPick,
   onDismiss
 }: AgentMentionMenuProps): React.JSX.Element | null {
@@ -98,7 +125,11 @@ export function AgentMentionMenu({
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
 
   useEffect(() => {
-    if (!open || !workspacePath) {
+    // File listing is only relevant for the `-@` file trigger. The
+    // plain `@` mention popover renders sub-agents or participants
+    // and never consumes the workspace-file list, so skip the IPC
+    // call when the trigger doesn't need it.
+    if (!open || !workspacePath || triggerKind !== 'file-mention') {
       setWorkspaceFiles([])
       return
     }
@@ -125,7 +156,7 @@ export function AgentMentionMenu({
     return () => {
       cancelled = true
     }
-  }, [open, workspacePath])
+  }, [open, workspacePath, triggerKind])
 
   const activeSubagents = useMemo<ChildAgentThread[]>(() => {
     if (!chat || !provider) return []
@@ -134,7 +165,65 @@ export function AgentMentionMenu({
   }, [chat, provider])
 
   const candidates = useMemo<ComposerMentionCandidate[]>(() => {
-    const agentItems = activeSubagents.map<ComposerMentionCandidate>((thread) => {
+    // `-@` file trigger surfaces workspace files + external grants
+    // only. Sub-agents / participants are never in scope here — they
+    // need `@`.
+    if (triggerKind === 'file-mention') {
+      const workspaceItems = workspaceFiles.map<ComposerMentionCandidate>((entry) => ({
+        id: `workspace:${entry.path}`,
+        kind: 'workspace-file',
+        name: entry.path,
+        path: entry.path,
+        isDirectory: entry.isDirectory,
+        detail: entry.isDirectory ? 'Workspace folder' : 'Workspace file'
+      }))
+      const externalItems = externalPathGrants.map<ComposerMentionCandidate>((grant) => ({
+        id: `external:${grant.id || grant.path}`,
+        kind: 'external-grant',
+        name: nameFromPath(grant.path),
+        path: grant.path,
+        isDirectory: grant.kind === 'directory',
+        access: grant.access,
+        detail: `${grant.access === 'write' ? 'Editable' : 'Readable'} external path`
+      }))
+      return [...workspaceItems, ...externalItems]
+    }
+
+    // `@` trigger in ensemble chats: list participants so the user
+    // can DM-target a specific provider. The pick handler wraps the
+    // choice in an `ensemble-dm://participant-id` markdown link that
+    // (a) renders inline as a provider-tinted chip and (b) on send,
+    // gets extracted into `dmTargetParticipantId` so the orchestrator
+    // routes the round to just that participant.
+    if (chat?.chatKind === 'ensemble' && ensembleParticipants) {
+      return ensembleParticipants
+        .filter((participant) => participant.enabled)
+        .sort((a, b) => a.order - b.order)
+        .map<ComposerMentionCandidate>((participant) => {
+          const role = participant.role?.trim() || ''
+          const providerName = getProviderName(participant.provider)
+          // Display name: prefer the user-set role (e.g. "Worker"),
+          // fall back to the provider name. The detail line always
+          // shows the provider so the user can disambiguate by
+          // role-alone in a busy ensemble.
+          const name = role || providerName
+          return {
+            id: `participant:${participant.id}`,
+            kind: 'participant',
+            participantId: participant.id,
+            provider: participant.provider,
+            name,
+            detail: role ? providerName : participant.provider,
+            // Resolve to the theme's `--provider-{name}-color` CSS
+            // variable at popover-render time. Falls back to the
+            // accent if the var isn't defined.
+            color: `var(--provider-${participant.provider}-color, var(--accent))`
+          }
+        })
+    }
+
+    // `@` trigger in normal chats: list active sub-agents only.
+    return activeSubagents.map<ComposerMentionCandidate>((thread) => {
       const identity = thread.identity
       const name = identity?.name || thread.name
       return {
@@ -146,25 +235,14 @@ export function AgentMentionMenu({
         color: identity?.color
       }
     })
-    const workspaceItems = workspaceFiles.map<ComposerMentionCandidate>((entry) => ({
-      id: `workspace:${entry.path}`,
-      kind: 'workspace-file',
-      name: entry.path,
-      path: entry.path,
-      isDirectory: entry.isDirectory,
-      detail: entry.isDirectory ? 'Workspace folder' : 'Workspace file'
-    }))
-    const externalItems = externalPathGrants.map<ComposerMentionCandidate>((grant) => ({
-      id: `external:${grant.id || grant.path}`,
-      kind: 'external-grant',
-      name: nameFromPath(grant.path),
-      path: grant.path,
-      isDirectory: grant.kind === 'directory',
-      access: grant.access,
-      detail: `${grant.access === 'write' ? 'Editable' : 'Readable'} external path`
-    }))
-    return [...agentItems, ...workspaceItems, ...externalItems]
-  }, [activeSubagents, externalPathGrants, workspaceFiles])
+  }, [
+    triggerKind,
+    chat?.chatKind,
+    ensembleParticipants,
+    activeSubagents,
+    externalPathGrants,
+    workspaceFiles
+  ])
 
   const filtered = useMemo(
     () => filterComposerMentionCandidates(candidates, query),
@@ -257,7 +335,11 @@ export function AgentMentionMenu({
       {filtered.length === 0 ? (
         <div className="agent-mention-menu-empty">
           {candidates.length === 0
-            ? 'No agents or files available'
+            ? triggerKind === 'file-mention'
+              ? 'No workspace files or external paths available'
+              : chat?.chatKind === 'ensemble'
+                ? 'No ensemble participants available'
+                : 'No active sub-agents — type `-@` to mention files'
             : `No matches for "${query}"`}
         </div>
       ) : (
