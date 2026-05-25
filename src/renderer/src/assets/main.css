@@ -16653,7 +16653,25 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
+/* Gemini shell — historically hid `.composer-above-bar` entirely
+ * because solo Gemini chats didn't have anything to surface there
+ * (no PR flow, no Create-PR-relevant workflow). Now that ensemble
+ * chats added the chip strip to the same stack — and Chris wants
+ * Create-PR parity across all shells — we re-enable the above-bar
+ * with the same composer-surface chrome the ensemble chip strip
+ * uses (28px radius / `#0e1218 94%` / `#5a8cff 18%` border /
+ * `0 4px 28px` shadow) so both rows in the stack read as siblings
+ * of the Gemini composer below. */
 [data-composer-style="gemini"] .composer-above-bar {
+  border-radius: 28px;
+  background: color-mix(in srgb, #0e1218 94%, transparent);
+  border: 1px solid color-mix(in srgb, #5a8cff 18%, transparent);
+  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.42);
+}
+/* Per-provider ::before gradient is too busy on the cleaner Gemini
+ * surface treatment — keep it suppressed (the base rule paints a
+ * navy gradient that fights the #0e1218 base + blue accent). */
+[data-composer-style="gemini"] .composer-above-bar::before {
   display: none;
 }
 
@@ -16785,7 +16803,19 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
+/* Kimi shell — same parity move as Gemini above. Was hidden
+ * historically; now re-enabled with the Kimi composer-surface
+ * chrome (18px radius / `#0a0a0c 96%` / `#ffffff 8%` border /
+ * `0 4px 16px` shadow) so the Create-PR row matches the chip
+ * strip below it and both look like siblings of the Kimi
+ * composer textarea. */
 [data-composer-style="kimi"] .composer-above-bar {
+  border-radius: 18px;
+  background: color-mix(in srgb, #0a0a0c 96%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+[data-composer-style="kimi"] .composer-above-bar::before {
   display: none;
 }
 
