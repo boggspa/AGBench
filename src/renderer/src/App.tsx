@@ -3968,6 +3968,13 @@ type TranscriptPanelProps = {
   currentRun?: ChatRun | null
   currentWorkspacePath?: string
   currentProviderLabel: string
+  /**
+   * Slice B (1.0.3) — ensemble-aware "Thinking…" label. When an
+   * ensemble round is mid-flight, this resolves to the active
+   * participant's provider label (e.g. "Kimi" while Kimi is speaking);
+   * otherwise it equals `currentProviderLabel`.
+   */
+  thinkingProviderLabel?: string
   displayFileChangeSummaries: DiffFileSummary[]
   fileChangeSummaryText: string
   fileChangeShouldShowStats: boolean
@@ -4007,6 +4014,7 @@ const TranscriptPanel = memo(
     currentRun,
     currentWorkspacePath,
     currentProviderLabel,
+    thinkingProviderLabel,
     displayFileChangeSummaries,
     fileChangeSummaryText,
     fileChangeShouldShowStats,
@@ -4200,7 +4208,7 @@ const TranscriptPanel = memo(
           })}
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
-              <div className="message-meta">{currentProviderLabel}</div>
+              <div className="message-meta">{thinkingProviderLabel || currentProviderLabel}</div>
               <ThinkingIndicator />
             </div>
           )}
@@ -4358,6 +4366,7 @@ const TranscriptPanel = memo(
     previous.currentChat === next.currentChat &&
     previous.currentWorkspacePath === next.currentWorkspacePath &&
     previous.currentProviderLabel === next.currentProviderLabel &&
+    previous.thinkingProviderLabel === next.thinkingProviderLabel &&
     previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
     previous.fileChangeSummaryText === next.fileChangeSummaryText &&
     previous.fileChangeShouldShowStats === next.fileChangeShouldShowStats &&
@@ -12076,6 +12085,28 @@ function App(): React.JSX.Element {
     chatId: currentChat?.appChatId || null
   })
   const currentProviderLabel = getProviderLabel(currentProvider)
+  // Slice B: in an ensemble round, the "Thinking…" label should track the
+  // actually-speaking participant — not the chat's base provider, which is
+  // always "Codex" for ensemble chats. Falls back to the chat's provider
+  // label for non-ensemble chats.
+  const thinkingProviderLabel = (() => {
+    const activeRound = currentChat?.ensemble?.activeRound
+    if (activeRound?.activeParticipantId) {
+      const participant = currentChat?.ensemble?.participants.find(
+        (p) => p.id === activeRound.activeParticipantId
+      )
+      if (participant) return getProviderLabel(participant.provider)
+    }
+    return currentProviderLabel
+  })()
+  // Slice C (revised): clear the "Thinking…" indicator when the ensemble
+  // round has already finished. Otherwise the indicator persists after the
+  // last participant yields and the user sees stale "Codex Thinking…" even
+  // though the round is over and the surface is back to "awaiting input".
+  // For non-ensemble chats this passes through `isThinking` unchanged.
+  const ensembleRoundStatus = currentChat?.ensemble?.activeRound?.status
+  const effectiveIsThinking =
+    isThinking && ensembleRoundStatus !== 'completed' && ensembleRoundStatus !== 'cancelled'
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
   const chatTokenTally = useMemo(
     () => buildChatTokenTally(currentChat?.runs || []),
@@ -13329,7 +13360,7 @@ function App(): React.JSX.Element {
               endRef={logsEndRef}
               messages={transcriptMessages}
               isWelcomeChat={isWelcomeChat}
-              isThinking={isThinking}
+              isThinking={effectiveIsThinking}
               showFallbackUX={showFallbackUX}
               pendingPlanChoice={pendingPlanChoice}
               runCompleteNotice={runCompleteNotice}
@@ -13338,6 +13369,7 @@ function App(): React.JSX.Element {
               currentRun={currentRun}
               currentWorkspacePath={currentWorkspace?.path}
               currentProviderLabel={currentProviderLabel}
+              thinkingProviderLabel={thinkingProviderLabel}
               displayFileChangeSummaries={displayFileChangeSummaries}
               fileChangeSummaryText={fileChangeSummaryText}
               fileChangeShouldShowStats={fileChangeShouldShowStats}
