@@ -12908,24 +12908,30 @@ function App(): React.JSX.Element {
         prompt: request.displayPrompt || request.prompt,
         dmTargetParticipantId: request.dmTargetParticipantId
       }))
-    // Append the ensemble-round queued prompt if one exists. There's
-    // exactly one at a time in the current orchestrator design — if
-    // we ever support a multi-entry ensemble queue, expand here.
+    // Append every ensemble-round queued prompt. The orchestrator
+    // now supports a FIFO queue (`activeRound.queuedPrompts`); the
+    // legacy `queuedPrompt` field stays in sync with the head for
+    // back-compat readers. Iterate the array so the stack shows
+    // every pending entry with its own Edit / Delete / Steer.
     const ensembleRound = currentChat.ensemble?.activeRound
-    if (ensembleRound?.queuedPrompt && ensembleRound.status === 'running') {
-      entries.push({
-        id: `ensemble-queued-${ensembleRound.roundId}`,
-        // Ensemble queue dispatches a fresh round — use the chat's
-        // top-level provider as the chip indicator, since the round
-        // itself is multi-provider. Fall back to the first enabled
-        // participant's provider if `chat.provider` is missing
-        // (ensemble chats may not set it).
-        provider:
-          currentChat.provider ||
-          currentChat.ensemble?.participants.find((p) => p.enabled)?.provider ||
-          'codex',
-        prompt: ensembleRound.queuedPrompt
-      })
+    if (ensembleRound?.status === 'running') {
+      const prompts =
+        Array.isArray(ensembleRound.queuedPrompts) && ensembleRound.queuedPrompts.length > 0
+          ? ensembleRound.queuedPrompts
+          : ensembleRound.queuedPrompt
+            ? [ensembleRound.queuedPrompt]
+            : []
+      const ensembleProvider: ProviderId =
+        currentChat.provider ||
+        currentChat.ensemble?.participants.find((p) => p.enabled)?.provider ||
+        'codex'
+      for (let idx = 0; idx < prompts.length; idx += 1) {
+        entries.push({
+          id: `ensemble-queued-${ensembleRound.roundId}-${idx}`,
+          provider: ensembleProvider,
+          prompt: prompts[idx]
+        })
+      }
     }
     return entries
   }, [currentChat, queuedRuns])
@@ -12936,20 +12942,35 @@ function App(): React.JSX.Element {
   // mutator.
   const handleEditQueuedMessage = useCallback(
     (entryId: string) => {
-      // Ensemble-queued entry: synthetic id `ensemble-queued-<roundId>`.
-      // Hoist the round's `queuedPrompt` into the composer draft and
-      // clear it on the chat so the orchestrator stops queueing it.
-      if (entryId.startsWith('ensemble-queued-')) {
+      // Ensemble-queued entry: synthetic id
+      // `ensemble-queued-<roundId>-<idx>`. The trailing `<idx>` is the
+      // FIFO position in `activeRound.queuedPrompts`. Edit hoists THAT
+      // index's prompt into the composer and splices the same index
+      // out of the array so the chain continues with the rest.
+      const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
+      if (ensembleMatch) {
+        const idx = Number(ensembleMatch[2])
         const chat = currentChat
-        if (!chat?.ensemble?.activeRound?.queuedPrompt) return
-        setChatPromptDraft(chat.appChatId, chat.ensemble.activeRound.queuedPrompt)
+        const round = chat?.ensemble?.activeRound
+        if (!chat || !round) return
+        const currentQueue =
+          Array.isArray(round.queuedPrompts) && round.queuedPrompts.length > 0
+            ? round.queuedPrompts
+            : round.queuedPrompt
+              ? [round.queuedPrompt]
+              : []
+        const target = currentQueue[idx]
+        if (!target) return
+        setChatPromptDraft(chat.appChatId, target)
+        const nextQueue = [...currentQueue.slice(0, idx), ...currentQueue.slice(idx + 1)]
         const nextChat: ChatRecord = {
           ...chat,
           ensemble: {
-            ...chat.ensemble,
+            ...chat.ensemble!,
             activeRound: {
-              ...chat.ensemble.activeRound,
-              queuedPrompt: undefined
+              ...round,
+              queuedPrompt: nextQueue[0],
+              queuedPrompts: nextQueue
             },
             updatedAt: new Date().toISOString()
           }
@@ -12994,19 +13015,31 @@ function App(): React.JSX.Element {
   // on the next sync.
   const handleDeleteQueuedMessage = useCallback(
     (entryId: string) => {
-      // Ensemble-queued: clear `queuedPrompt` on the active round so
-      // the orchestrator doesn't start a new round when the current
-      // one finishes.
-      if (entryId.startsWith('ensemble-queued-')) {
+      // Ensemble-queued: splice the targeted index out of the queue
+      // and persist. The orchestrator's next round-end dispatch
+      // reads from the front, so future entries remain in order.
+      const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
+      if (ensembleMatch) {
+        const idx = Number(ensembleMatch[2])
         const chat = currentChat
-        if (!chat?.ensemble?.activeRound) return
+        const round = chat?.ensemble?.activeRound
+        if (!chat || !round) return
+        const currentQueue =
+          Array.isArray(round.queuedPrompts) && round.queuedPrompts.length > 0
+            ? round.queuedPrompts
+            : round.queuedPrompt
+              ? [round.queuedPrompt]
+              : []
+        if (idx < 0 || idx >= currentQueue.length) return
+        const nextQueue = [...currentQueue.slice(0, idx), ...currentQueue.slice(idx + 1)]
         const nextChat: ChatRecord = {
           ...chat,
           ensemble: {
-            ...chat.ensemble,
+            ...chat.ensemble!,
             activeRound: {
-              ...chat.ensemble.activeRound,
-              queuedPrompt: undefined
+              ...round,
+              queuedPrompt: nextQueue[0],
+              queuedPrompts: nextQueue
             },
             updatedAt: new Date().toISOString()
           }
@@ -13047,25 +13080,42 @@ function App(): React.JSX.Element {
   // as the composer's Steer button — no restart of unrelated state.
   const handleSteerToQueuedMessage = useCallback(
     (entryId: string) => {
-      // Ensemble-queued: cancel the current round (so the orchestrator
-      // drops the queuedPrompt as part of the cancel flow) then
-      // dispatch a fresh ensemble round with the queued prompt as the
-      // input. The orchestrator's `runEnsembleRound` mode='steer' or
-      // 'normal' handles the cancel-and-restart pattern when needed.
-      if (entryId.startsWith('ensemble-queued-')) {
+      // Ensemble-queued: cancel the current round and dispatch the
+      // targeted queued prompt as a fresh round (mode='steer'). The
+      // orchestrator's cancelRound clears `runtime.queuedPrompts`,
+      // so we need to re-stage the remaining queue entries on the
+      // NEW round after dispatch. For ship-night simplicity we only
+      // promote the targeted index immediately; entries after it
+      // get lost on the steer (a known trade-off — drag-to-reorder
+      // gives the user a way to bring something else to the front
+      // first if they prefer).
+      const ensembleMatch = entryId.match(/^ensemble-queued-(.+)-(\d+)$/)
+      if (ensembleMatch) {
+        const idx = Number(ensembleMatch[2])
         const chat = currentChat
-        const prompt = chat?.ensemble?.activeRound?.queuedPrompt
-        if (!chat || !prompt) return
-        // Optimistically clear the queuedPrompt so the row updates
-        // immediately; the dispatch path below will overwrite the
-        // chat state on the next save anyway.
+        const round = chat?.ensemble?.activeRound
+        if (!chat || !round) return
+        const currentQueue =
+          Array.isArray(round.queuedPrompts) && round.queuedPrompts.length > 0
+            ? round.queuedPrompts
+            : round.queuedPrompt
+              ? [round.queuedPrompt]
+              : []
+        const prompt = currentQueue[idx]
+        if (!prompt) return
+        // Optimistically remove the targeted entry from the local
+        // chat record so the row updates immediately; the
+        // orchestrator's steer flow rebuilds round state on
+        // dispatch.
+        const nextQueue = [...currentQueue.slice(0, idx), ...currentQueue.slice(idx + 1)]
         const nextChat: ChatRecord = {
           ...chat,
           ensemble: {
             ...chat.ensemble!,
             activeRound: {
-              ...chat.ensemble!.activeRound!,
-              queuedPrompt: undefined
+              ...round,
+              queuedPrompt: nextQueue[0],
+              queuedPrompts: nextQueue
             }
           }
         }

@@ -259,7 +259,21 @@ export interface EnsembleRoundState {
   startedAt: string
   endedAt?: string
   activeParticipantId?: string
+  /**
+   * Legacy single-prompt queue (1.0.3 ship). Kept for back-compat
+   * with persisted round records — the orchestrator's new path uses
+   * `queuedPrompts` (array) to accumulate multiple queued sends.
+   * Reads in the renderer should prefer `queuedPrompts` and fall
+   * back to this field only when migrating an older record.
+   */
   queuedPrompt?: string
+  /**
+   * Multi-entry queue of prompts to dispatch as fresh rounds once
+   * the current round finishes (or on Steer). Each entry becomes a
+   * new round, processed in order. Defaults to an empty array so
+   * existing code that checks length doesn't need null guards.
+   */
+  queuedPrompts?: string[]
   participants: EnsembleRoundParticipantState[]
 }
 

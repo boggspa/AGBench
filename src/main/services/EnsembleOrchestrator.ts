@@ -230,7 +230,17 @@ interface ActiveRoundRuntime {
   sender: Electron.WebContents
   prompt: string
   cancelled: boolean
-  queuedPrompt?: string
+  /**
+   * FIFO queue of prompts to dispatch as fresh rounds after the
+   * current round finishes. The user can stack multiple sends
+   * during a running round; each lands here in order. Earlier
+   * iterations used a single `queuedPrompt: string` which silently
+   * overwrote when the user queued a second message — Chris hit
+   * that limit during the 1.0.3 smoke and confirmed the
+   * accidental-steer caused a parallel Codex run that broke MCP
+   * routing. Accumulating instead of overwriting fixes both.
+   */
+  queuedPrompts: string[]
   activeRunId?: string
   /**
    * Slice C extension (1.0.3) — when a participant calls
@@ -285,9 +295,22 @@ export class EnsembleOrchestrator {
         )
         return { status: 'steered', roundId }
       }
-      existing.queuedPrompt = prompt
+      // Multi-entry queue: append rather than overwrite. The
+      // chat-round state mirrors the runtime's `queuedPrompts` so the
+      // renderer's stack picks up every entry.
+      existing.queuedPrompts.push(prompt)
+      const nextQueuedPrompts = [...existing.queuedPrompts]
       this.updateChatRound(input.chatId, (round) =>
-        round ? { ...round, queuedPrompt: prompt } : round
+        round
+          ? {
+              ...round,
+              // Keep legacy `queuedPrompt` in sync with the head of
+              // the array so back-compat readers still see the next
+              // one. New readers should iterate `queuedPrompts`.
+              queuedPrompt: nextQueuedPrompts[0],
+              queuedPrompts: nextQueuedPrompts
+            }
+          : round
       )
       return { status: 'queued', roundId: existing.roundId }
     }
@@ -304,7 +327,7 @@ export class EnsembleOrchestrator {
     const runtime = this.roundsByChatId.get(chatId)
     if (!runtime) return false
     runtime.cancelled = true
-    runtime.queuedPrompt = undefined
+    runtime.queuedPrompts = []
     const roundId = runtime.roundId
     const active = runtime.activeRunId ? this.runsByRunId.get(runtime.activeRunId) : undefined
     if (active) {
@@ -317,6 +340,7 @@ export class EnsembleOrchestrator {
             ...round,
             status: 'cancelled',
             queuedPrompt: undefined,
+            queuedPrompts: [],
             activeParticipantId: undefined,
             endedAt: this.deps.nowIso()
           }
@@ -516,7 +540,13 @@ export class EnsembleOrchestrator {
     chatId: string,
     prompt: string,
     sender: Electron.WebContents,
-    dmTargetParticipantId?: string
+    dmTargetParticipantId?: string,
+    /**
+     * Carry-over queue from a previous round's `queuedPrompts` (FIFO
+     * after we shifted off `prompt`). Lets the chain continue
+     * through every queued message until the queue drains.
+     */
+    carryOverQueue: string[] = []
   ): string {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) throw new Error('Ensemble chat not found.')
@@ -547,7 +577,13 @@ export class EnsembleOrchestrator {
         role: participant.role,
         order: participant.order,
         status: 'idle'
-      }))
+      })),
+      // Surface any carry-over queue on the chat record so the
+      // renderer's queued-messages above-row reflects everything
+      // still pending. Mirrors `runtime.queuedPrompts` below.
+      ...(carryOverQueue.length > 0
+        ? { queuedPrompt: carryOverQueue[0], queuedPrompts: [...carryOverQueue] }
+        : {})
     }
     const userMessage: ChatMessage = {
       id: `ensemble-user-${roundId}`,
@@ -581,7 +617,8 @@ export class EnsembleOrchestrator {
       roundId,
       sender,
       prompt,
-      cancelled: false
+      cancelled: false,
+      queuedPrompts: [...carryOverQueue]
     }
     this.roundsByChatId.set(chatId, runtime)
     void this.runRound(runtime, ordered)
@@ -666,7 +703,12 @@ export class EnsembleOrchestrator {
         await completion
       }
       runtime.activeRunId = undefined
-      if (runtime.queuedPrompt) break
+      // Short-circuit the for-loop once anything is queued — the
+      // round-end handler below picks the next prompt off the array
+      // and starts a fresh round. The remaining unspoken participants
+      // of this round are dropped intentionally: queued sends imply
+      // the user wants a new turn, not the leftover of this one.
+      if (runtime.queuedPrompts.length > 0) break
       // Slice C extension (1.0.3) — if the just-finished participant
       // yielded with `target`, find that target in `remaining` and
       // shuffle it to the front so it speaks next. Resolution rules
@@ -692,11 +734,15 @@ export class EnsembleOrchestrator {
       }
     }
 
-    const queuedPrompt = runtime.queuedPrompt
+    // Dequeue the next prompt (FIFO) for the follow-up round. Anything
+    // remaining stays in `runtime.queuedPrompts` and gets transferred
+    // to the new runtime in `beginRound` so the chain continues
+    // through every queued message until the queue drains.
+    const [nextPrompt, ...remainingQueue] = runtime.queuedPrompts
     this.finishRound(runtime.chatId, runtime.roundId, runtime.cancelled ? 'cancelled' : 'completed')
     this.clearRuntimeIfCurrent(runtime)
-    if (queuedPrompt && !runtime.cancelled) {
-      this.beginRound(runtime.chatId, queuedPrompt, runtime.sender)
+    if (nextPrompt && !runtime.cancelled) {
+      this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, remainingQueue)
     }
   }
 
