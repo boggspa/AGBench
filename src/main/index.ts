@@ -6476,6 +6476,23 @@ async function canUseClaudeSdkTool(
     !Array.isArray(normalizedInput)
       ? (normalizedInput as Record<string, unknown>)
       : {}
+  // Auto-allow side-effect-free AGBench tools before the agentic-
+  // service gate. The MCP dispatcher already skips approval for
+  // these (line ~14078), but Claude's `canUseTool` callback fires
+  // FIRST — without this, the user gets prompted to approve
+  // harmless signals like `ensemble_yield`. Claude sees MCP tools
+  // with their full prefix (e.g. `mcp__agbench__ensemble_yield`),
+  // so strip any namespace before checking the allowlist.
+  const unprefixedToolName = toolName
+    .replace(/^mcp__/, '')
+    .replace(/^agbench__/, '')
+    .replace(/^agentbench__/, '')
+  if (
+    isAGBenchMcpToolName(unprefixedToolName) &&
+    MCP_AUTO_ALLOWED_TOOLS.has(unprefixedToolName as AGBenchMcpToolName)
+  ) {
+    return { behavior: 'allow', updatedInput }
+  }
   const service = claudeAgenticServiceForTool(toolName)
   if (!service) {
     return { behavior: 'allow', updatedInput }
@@ -7176,6 +7193,27 @@ async function runKimiWireProvider(
               const kimiToolName = String(
                 message.params?.payload?.sender || message.params?.payload?.action || 'kimi_action'
               )
+              // Auto-approve side-effect-free tools at the Kimi wire-
+              // protocol layer. The generic MCP-level gate (line ~14078)
+              // already skips these for the dispatch path, but Kimi
+              // surfaces a separate provider-level approval BEFORE the
+              // tool call reaches the MCP server — without this short-
+              // circuit, the user gets prompted to approve harmless
+              // signals like `ensemble_yield` (which only tells the
+              // orchestrator the participant is passing their turn —
+              // no files, no shell, no network). Reuses the same
+              // `MCP_AUTO_ALLOWED_TOOLS` set so the two layers stay in
+              // sync as we expand or contract the allowlist.
+              if (
+                isAGBenchMcpToolName(kimiToolName) &&
+                MCP_AUTO_ALLOWED_TOOLS.has(kimiToolName as AGBenchMcpToolName)
+              ) {
+                respondToKimiWireRequest(child, message.id, {
+                  request_id: message.params?.payload?.id || message.id,
+                  response: 'approve'
+                })
+                continue
+              }
               const externalPathDetection = detectExternalPathForProviderApproval({
                 provider: 'kimi',
                 appChatId: route.appChatId,
