@@ -12676,15 +12676,32 @@ function App(): React.JSX.Element {
     // bar updates mid-task rather than only after runDiff lands.
     //
     // Solo chats: filter to the single current run.
-    // Ensemble chats: aggregate across every run that belongs to the
-    // current round. Without this, the counter would only reflect the
-    // last-speaking participant's edits — wrong for a round-level
-    // affordance, and zero whenever no participant happens to be
-    // running right now (between turns).
+    // Ensemble chats: aggregate across every tool activity from every
+    // participant whose message is tagged with the current round id.
+    // The simpler "any tool activity belonging to a known round run"
+    // pass mirrors how `getLiveToolFileDiffSummaries` (which drives
+    // the Task Complete card's File changes list) works. Filtering
+    // by `runId` alone would only catch the last speaker's writes,
+    // which is what gave us the "0 files changed" pill mismatch in
+    // the screenshot — the Task Complete card listed four files but
+    // this pill showed zero.
     const runId = currentRun?.runId
     const ensembleRoundId = isCurrentEnsembleChat
       ? currentChat?.ensemble?.activeRound?.roundId
       : undefined
+    // Collect the set of run ids that belong to the current ensemble
+    // round so we can match by participant runId (matches my
+    // orchestrator's per-participant tool messages whose `runId`
+    // field is the participant's run, not the round). The metadata
+    // path stays as a belt-and-braces.
+    const ensembleRunIds = new Set<string>()
+    if (ensembleRoundId && currentChat) {
+      for (const chatRun of currentChat.runs || []) {
+        if (chatRun.ensembleRoundId === ensembleRoundId && chatRun.runId) {
+          ensembleRunIds.add(chatRun.runId)
+        }
+      }
+    }
     if (currentChat && (runId || ensembleRoundId)) {
       let liveAdditions = 0
       let liveDeletions = 0
@@ -12695,12 +12712,22 @@ function App(): React.JSX.Element {
           typeof message.metadata?.ensembleRoundId === 'string'
             ? (message.metadata.ensembleRoundId as string)
             : undefined
-        const matchesEnsembleRound =
+        const matchesEnsembleRoundMeta =
           Boolean(ensembleRoundId) && messageRoundId === ensembleRoundId
+        const matchesEnsembleRoundByRun =
+          message.runId !== undefined && ensembleRunIds.has(message.runId)
         const matchesCurrentRun = Boolean(runId) && message.runId === runId
-        // Skip messages tagged with a different run id when neither the
-        // round-level NOR the run-level match applies.
-        if (message.runId && !matchesCurrentRun && !matchesEnsembleRound) continue
+        // Skip messages tagged with a different run id when none of
+        // the per-run / per-round matches apply. Untagged messages
+        // (no `runId`) always pass through.
+        if (
+          message.runId &&
+          !matchesCurrentRun &&
+          !matchesEnsembleRoundMeta &&
+          !matchesEnsembleRoundByRun
+        ) {
+          continue
+        }
         for (const activity of message.toolActivities || []) {
           const diff = activity.diffSummary
           if (!diff) continue
@@ -12734,7 +12761,8 @@ function App(): React.JSX.Element {
     currentRun?.runId,
     runDiff,
     isCurrentEnsembleChat,
-    currentChat?.ensemble?.activeRound?.roundId
+    currentChat?.ensemble?.activeRound?.roundId,
+    currentChat?.runs
   ])
   // Slice 6 of the external-path-redesign arc: partition diff stats
   // by which grant's repoRoot each tool activity's file path falls
