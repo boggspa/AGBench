@@ -128,6 +128,25 @@ function extractToolParameters(event: any): Record<string, unknown> {
   return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
 }
 
+/** File-write tool names that should populate a `diffSummary` so the
+ * renderer's `latestRunDiffStats` useMemo counts the file. Mirrors
+ * the canonical names recognised by the renderer's solo-path
+ * `ToolParser.deriveToolDiffSummary`. */
+const FILE_WRITE_TOOL_NAMES = new Set([
+  'edit_file',
+  'write_file',
+  'create_file',
+  'apply_patch',
+  'patch_file',
+  'str_replace',
+  'str_replace_editor',
+  'multiedit',
+  'fs_write',
+  'fs_edit',
+  'fs_patch',
+  'create_directory'
+])
+
 function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity {
   const toolName = extractToolName(event)
   const parameters = extractToolParameters(event)
@@ -137,6 +156,30 @@ function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity 
       : typeof parameters.path === 'string'
         ? (parameters.path as string)
         : undefined
+  // Seed a minimal `diffSummary` for known file-write tool names so
+  // the renderer's files-changed counter picks them up. The orchestrator
+  // doesn't try to compute actual additions/deletions (that lives in
+  // the renderer's richer `ToolParser`) — but emitting a `files: [...]`
+  // entry is enough for the counter (which only counts unique paths).
+  // Without this, even when tool messages persist correctly, the
+  // counter would still read zero for ensemble runs.
+  const diffSummary =
+    filePath && FILE_WRITE_TOOL_NAMES.has(toolName.toLowerCase())
+      ? {
+          files: [
+            {
+              path: filePath,
+              status: 'modified' as const,
+              additions: 0,
+              deletions: 0
+            }
+          ],
+          additions: 0,
+          deletions: 0,
+          source: 'unknown' as const,
+          confidence: 'estimated' as const
+        }
+      : undefined
   return {
     id: extractToolId(event),
     toolName,
@@ -146,6 +189,7 @@ function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity 
     startedAt,
     parameters,
     filePath,
+    ...(diffSummary ? { diffSummary } : {}),
     rawUseEvent: event
   }
 }
@@ -417,6 +461,16 @@ export class EnsembleOrchestrator {
       if (!run.toolActivities) run.toolActivities = []
       const activity = buildEnsembleToolActivity(payload, this.deps.nowIso())
       run.toolActivities.push(activity)
+      // Diagnostic for the 1.0.3 ship-night investigation. Chris is
+      // seeing successful tool execution (files actually get written)
+      // but no tool bubbles in the ensemble transcript. This log
+      // confirms whether the events reach the orchestrator at all.
+      // Visible to `npm run dev` terminal output. Safe to leave in —
+      // single line per event, low volume.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ensemble:tool_use] provider=${provider} run=${run.runId} tool=${activity.toolName} id=${activity.id}`
+      )
       this.scheduleFlush(run)
       return true
     }
@@ -734,6 +788,14 @@ export class EnsembleOrchestrator {
       }
       const toolMessageId = run.toolMessageId
       const existingToolIdx = messages.findIndex((message) => message.id === toolMessageId)
+      // Diagnostic counterpart to the tool_use receive log. Tells us
+      // whether the orchestrator's flush actually emits the tool
+      // message into the chat record. Pair this with the receive log
+      // to see receive → persist round-trip.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ensemble:flush_tool_message] run=${run.runId} id=${toolMessageId} activities=${run.toolActivities.length} insert=${existingToolIdx >= 0 ? 'replace' : 'append'}`
+      )
       const toolMsg: ChatMessage = {
         id: toolMessageId,
         role: 'tool',

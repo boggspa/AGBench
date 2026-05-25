@@ -1804,6 +1804,90 @@ const buildRunCompleteSummaryRows = (run?: ChatRun | null): RunCompleteSummaryRo
   return rows
 }
 
+/**
+ * Ensemble variant of {@link buildRunCompleteSummaryRows}. Aggregates
+ * across every participant run that belongs to the round so the user
+ * sees ALL models that contributed, not just the last speaker's.
+ *
+ * Model list: each participant's model joined by `·` for compact
+ * single-line display. Status: 'Complete' if every run reports
+ * success (and the round itself completed), else the worst-case
+ * status. Tokens sum across all runs. Duration uses the round's
+ * `startedAt` → `endedAt` envelope rather than any individual run's
+ * timing.
+ */
+const buildEnsembleRoundSummaryRows = (
+  chat: ChatRecord | null,
+  cancelled: boolean
+): RunCompleteSummaryRow[] => {
+  const round = chat?.ensemble?.activeRound
+  if (!round) return []
+  const roundRuns = (chat?.runs || []).filter((run) => run.ensembleRoundId === round.roundId)
+  const rows: RunCompleteSummaryRow[] = []
+
+  // Collect each participant's actual (or requested) model, dedup +
+  // preserve insertion order so the display follows speaker order.
+  const seenModels = new Set<string>()
+  const models: string[] = []
+  for (const run of roundRuns) {
+    const model = run.actualModel || run.requestedModel
+    if (model && !seenModels.has(model)) {
+      seenModels.add(model)
+      models.push(model)
+    }
+  }
+  if (models.length > 0) {
+    rows.push({
+      label: models.length === 1 ? 'Model' : 'Models',
+      value: models.join(' · ')
+    })
+  }
+
+  // Mode: take from the first run with an approval mode — every
+  // participant in a round currently shares the chat-level preset, so
+  // varying values would indicate per-participant overrides worth
+  // surfacing too. Keep it simple for now and show the first.
+  const firstApprovalMode = roundRuns.find((run) => run.approvalMode)?.approvalMode
+  if (firstApprovalMode) {
+    rows.push({ label: 'Mode', value: formatApprovalModeLabel(firstApprovalMode) })
+  }
+
+  rows.push({
+    label: 'Status',
+    value: cancelled ? 'Cancelled' : 'Complete'
+  })
+
+  // Round-envelope duration.
+  const startedAtMs = round.startedAt ? new Date(round.startedAt).getTime() : NaN
+  const endedAtMs = round.endedAt ? new Date(round.endedAt).getTime() : Date.now()
+  if (Number.isFinite(startedAtMs) && endedAtMs > startedAtMs) {
+    rows.push({
+      label: 'Duration',
+      value: formatCompactDurationMs(endedAtMs - startedAtMs)
+    })
+  }
+
+  // Token totals — sum across all participant runs.
+  let inputTokens = 0
+  let outputTokens = 0
+  let totalTokens = 0
+  for (const run of roundRuns) {
+    const counts = extractUsageCountsFromCandidate(run.stats)
+    inputTokens += counts.inputTokens
+    outputTokens += counts.outputTokens
+    totalTokens += counts.totalTokens
+  }
+  if (totalTokens > 0) {
+    rows.push({
+      label: 'Tokens',
+      value: `${formatContextTokens(inputTokens)} in / ${formatContextTokens(outputTokens)} out`
+    })
+    rows.push({ label: 'Total', value: `${formatContextTokens(totalTokens)} tokens` })
+  }
+
+  return rows
+}
+
 const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
   const heading: WelcomeHeadingCopy = context.isGlobalChat
     ? {
@@ -4159,10 +4243,23 @@ const TranscriptPanel = memo(
       [isWelcomeChat, messages]
     )
     const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
-    const runCompleteSummaryRows = useMemo(
-      () => buildRunCompleteSummaryRows(currentRun),
-      [currentRun]
-    )
+    const runCompleteSummaryRows = useMemo(() => {
+      // Ensemble chats: aggregate across every participant in the
+      // round so the user sees ALL contributing models (not just the
+      // last speaker's), round-envelope duration, and summed tokens.
+      // Solo chats: the original single-run summary.
+      if (currentChat?.chatKind === 'ensemble' && currentChat.ensemble?.activeRound) {
+        return buildEnsembleRoundSummaryRows(
+          currentChat,
+          runCompleteNotice?.exitCode !== 0
+        )
+      }
+      return buildRunCompleteSummaryRows(currentRun)
+    }, [
+      currentChat,
+      currentRun,
+      runCompleteNotice?.exitCode
+    ])
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
       const runById = new Map<string, ChatRun>()
@@ -12384,14 +12481,30 @@ function App(): React.JSX.Element {
   // transitions to `completed` (or `cancelled`). Solo chats use the
   // per-run-exit notice path; for ensemble we suppress that and
   // emit here instead, so the card reflects round-level metadata
-  // rather than the last participant's individual run. The ref
-  // prevents re-fires if the same round-end is observed multiple
-  // times (chat broadcasts can land in pairs during rapid IPC).
+  // rather than the last participant's individual run.
+  //
+  // Lifecycle:
+  //   - `completed` / `cancelled` → emit the notice (once per round).
+  //   - `running` (new round started) → CLEAR any stale notice from
+  //     a previous round so the user doesn't see a stale "Task
+  //     complete" card overlapping a live run.
+  //   - The ref dedupes within a single round so chat broadcasts
+  //     landing in pairs (debounce + finalise) don't refire.
   const lastEnsembleRoundCompleteRef = useRef<string | null>(null)
   useEffect(() => {
     if (!isCurrentEnsembleChat) return
     const round = currentChat?.ensemble?.activeRound
     if (!round) return
+    if (round.status === 'running') {
+      // A new round (or a round-restart) is live — wipe any notice
+      // left from a previous round. The dedupe ref also resets so
+      // the upcoming round-end CAN fire a fresh notice.
+      if (lastEnsembleRoundCompleteRef.current !== round.roundId) {
+        lastEnsembleRoundCompleteRef.current = null
+        setRunCompleteNotice(null)
+      }
+      return
+    }
     if (round.status !== 'completed' && round.status !== 'cancelled') return
     if (lastEnsembleRoundCompleteRef.current === round.roundId) return
     lastEnsembleRoundCompleteRef.current = round.roundId
