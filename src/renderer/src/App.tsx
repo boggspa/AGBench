@@ -3427,6 +3427,56 @@ const formatThreadTokenTally = (_providerLabel: string, tally: ChatTokenTally): 
   // kept as a positional arg so the call site doesn't change shape.
   return `${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
 }
+
+/**
+ * B1 (1.0.3) — per-participant breakdown for the ensemble tally
+ * footer's hover tooltip. The footer chip itself keeps the compact
+ * aggregate format (`Σin / Σout · $total`) so the visual budget
+ * stays tight; the breakdown surfaces on hover via the `title`
+ * attribute for users who want to see "where did the cost come
+ * from?" without leaving the composer.
+ *
+ * Groups `runs` by `ensembleParticipantId` and matches each group
+ * to the participant's role for the tooltip label. Participants
+ * with no runs are omitted so the tooltip doesn't list zeros.
+ */
+const formatEnsembleTokenBreakdown = (
+  runs: ChatRun[],
+  participants: EnsembleParticipant[]
+): string | null => {
+  if (!runs.length || !participants.length) return null
+  const byParticipant = new Map<string, ChatTokenTally>()
+  for (const run of runs) {
+    const pid = run.ensembleParticipantId
+    if (!pid) continue
+    const counts = extractUsageCountsFromCandidate(run.stats)
+    const cost = extractUsageCostUsd(run.stats)
+    const existing = byParticipant.get(pid) || {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      explicitCostUsd: 0
+    }
+    byParticipant.set(pid, {
+      inputTokens: existing.inputTokens + counts.inputTokens,
+      outputTokens: existing.outputTokens + counts.outputTokens,
+      totalTokens: existing.totalTokens + counts.totalTokens,
+      explicitCostUsd: existing.explicitCostUsd + cost
+    })
+  }
+  if (byParticipant.size === 0) return null
+  const lines: string[] = []
+  for (const participant of participants) {
+    const tally = byParticipant.get(participant.id)
+    if (!tally || tally.totalTokens <= 0) continue
+    const label = participant.role || participant.provider
+    const cost = formatExplicitCostUsd(tally.explicitCostUsd)
+    lines.push(
+      `${label}: ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
+    )
+  }
+  return lines.length > 0 ? lines.join('\n') : null
+}
 const isGeminiModelId = (modelId: string): boolean => GEMINI_MODEL_IDS.has(modelId)
 const isCodexModelId = (modelId: string): boolean =>
   modelId.startsWith('gpt-') || modelId.includes('codex')
@@ -12251,6 +12301,24 @@ function App(): React.JSX.Element {
     contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
   const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
   const threadTokenTallyLabel = formatThreadTokenTally(currentProviderLabel, chatTokenTally)
+  // B1 (1.0.3) — per-participant breakdown for the ensemble tally
+  // footer's hover tooltip. Solo chats: `null` (the existing
+  // `contextLabel` stays as the tooltip). Ensemble chats: a
+  // multi-line breakdown like
+  //   "Explorer: 1.2k in / 0.5k out · $0.02
+  //    Worker:   3.0k in / 1.2k out · $0.04"
+  // so users can see where the cumulative cost came from without
+  // leaving the composer surface.
+  const ensembleTallyBreakdown = useMemo(() => {
+    if (!isCurrentEnsembleChat) return null
+    return formatEnsembleTokenBreakdown(
+      currentChat?.runs || [],
+      currentChat?.ensemble?.participants || []
+    )
+  }, [isCurrentEnsembleChat, currentChat?.runs, currentChat?.ensemble?.participants])
+  const threadTokenTallyTooltip = ensembleTallyBreakdown
+    ? `${contextLabel}\n\n${ensembleTallyBreakdown}`
+    : contextLabel
   const latestRunDiffStats = useMemo(() => {
     // Prefer a live aggregate from tool activities on the current run so the
     // above-composer bar updates mid-task rather than only after runDiff lands.
@@ -15348,7 +15416,10 @@ function App(): React.JSX.Element {
                   <div className="composer-inline-actions">
                     <ContextWheel percent={contextUsedPercent} label={contextLabel} />
                     {threadTokenTallyLabel && (
-                      <span className="composer-thread-token-tally" title={contextLabel}>
+                      <span
+                        className="composer-thread-token-tally"
+                        title={threadTokenTallyTooltip}
+                      >
                         {threadTokenTallyLabel}
                       </span>
                     )}
