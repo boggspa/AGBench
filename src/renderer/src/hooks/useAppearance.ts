@@ -8,6 +8,7 @@ import type {
   ThemeAppearance,
   ThemeCornerStyle,
   ToolIconAccent,
+  UserBubbleColor,
   VisualEffectStyle
 } from '../../../main/store/types'
 import {
@@ -32,6 +33,7 @@ export interface AppearanceState {
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
   toolIconAccent: ToolIconAccent
+  userBubbleColor: UserBubbleColor
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily: string
@@ -89,6 +91,7 @@ function getInitialState(): AppearanceState {
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
     toolIconAccent: 'system',
+    userBubbleColor: 'system',
     promptSurfaceStyle: 'liquid_glass',
     composerStyle: 'default',
     transcriptFontFamily: FONT_STACKS.agbench,
@@ -144,6 +147,7 @@ export function useAppearance() {
           themeCornerStyle: settings.themeCornerStyle || 'rounded',
           themeAccentStyle: settings.themeAccentStyle || 'system',
           toolIconAccent: settings.toolIconAccent || 'system',
+          userBubbleColor: settings.userBubbleColor || 'system',
           promptSurfaceStyle: settings.promptSurfaceStyle || 'liquid_glass',
           composerStyle: settings.composerStyle || 'default',
           transcriptFontFamily: normalizeFontFamily(
@@ -190,6 +194,7 @@ export function useAppearance() {
     root.setAttribute('data-corners', next.themeCornerStyle)
     root.setAttribute('data-accent', next.themeAccentStyle)
     root.setAttribute('data-tool-icon-accent', next.toolIconAccent)
+    root.setAttribute('data-user-bubble-color', next.userBubbleColor)
     root.setAttribute('data-prompt-surface', next.promptSurfaceStyle)
     root.setAttribute('data-composer-style', next.composerStyle)
     root.setAttribute('data-interface-style', next.composerStyle)
@@ -259,6 +264,7 @@ export function useAppearance() {
             themeCornerStyle: next.themeCornerStyle,
             themeAccentStyle: next.themeAccentStyle,
             toolIconAccent: next.toolIconAccent,
+            userBubbleColor: next.userBubbleColor,
             promptSurfaceStyle: next.promptSurfaceStyle,
             composerStyle: next.composerStyle,
             transcriptFontFamily: next.transcriptFontFamily,

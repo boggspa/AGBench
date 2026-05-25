@@ -4260,7 +4260,12 @@ const TranscriptPanel = memo(
                       // on `.message-meta` to tint with
                       // `--provider-{name}-color`.
                       if (msg.role === 'user') {
-                        return <div className="message-meta">You</div>
+                        // `user-meta` class is the seam the per-user
+                        // `userBubbleColor` appearance setting hooks
+                        // into to tint the "You" label with the same
+                        // hue as the bubble. See `[data-user-bubble-
+                        // color]` rules in `main.css`.
+                        return <div className="message-meta user-meta">You</div>
                       }
                       if (msg.role === 'error') {
                         return <div className="message-meta">Error</div>
@@ -4524,6 +4529,7 @@ type SettingsPanelUpdate = {
   themeCornerStyle?: AppSettings['themeCornerStyle']
   themeAccentStyle?: AppSettings['themeAccentStyle']
   toolIconAccent?: AppSettings['toolIconAccent']
+  userBubbleColor?: AppSettings['userBubbleColor']
   promptSurfaceStyle?: AppSettings['promptSurfaceStyle']
   composerStyle?: AppSettings['composerStyle']
   transcriptFontFamily?: AppSettings['transcriptFontFamily']
@@ -6202,6 +6208,10 @@ function App(): React.JSX.Element {
     if (next.toolIconAccent !== undefined) {
       settingsPatch.toolIconAccent = next.toolIconAccent
       appearance.update({ toolIconAccent: next.toolIconAccent })
+    }
+    if (next.userBubbleColor !== undefined) {
+      settingsPatch.userBubbleColor = next.userBubbleColor
+      appearance.update({ userBubbleColor: next.userBubbleColor })
     }
     if (next.promptSurfaceStyle !== undefined) {
       settingsPatch.promptSurfaceStyle = next.promptSurfaceStyle
@@ -13297,6 +13307,7 @@ function App(): React.JSX.Element {
               themeCornerStyle={appearance.themeCornerStyle}
               themeAccentStyle={appearance.themeAccentStyle}
               toolIconAccent={appearance.toolIconAccent}
+              userBubbleColor={appearance.userBubbleColor}
               promptSurfaceStyle={appearance.promptSurfaceStyle}
               composerStyle={appearance.composerStyle}
               transcriptFontFamily={appearance.transcriptFontFamily}

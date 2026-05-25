@@ -25,6 +25,7 @@ const settings: AppSettings = {
   themeCornerStyle: 'rounded',
   themeAccentStyle: 'system',
   toolIconAccent: 'system',
+  userBubbleColor: 'system',
   promptSurfaceStyle: 'liquid_glass',
   composerStyle: 'default',
   funFxEnabled: true,

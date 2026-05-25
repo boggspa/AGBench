@@ -16,6 +16,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
     toolIconAccent: 'system',
+    userBubbleColor: 'system',
     promptSurfaceStyle: 'theme',
     composerStyle: 'default',
     funFxEnabled: false,

@@ -5,6 +5,7 @@ import type {
   ThemeAccentStyle,
   ThemeAppearance,
   ThemeCornerStyle,
+  UserBubbleColor,
   VisualEffectStyle
 } from '../../../main/store/types'
 
@@ -23,6 +24,7 @@ describe('Appearance settings validation', () => {
       themeAppearance: 'system' as ThemeAppearance,
       themeCornerStyle: 'rounded' as ThemeCornerStyle,
       themeAccentStyle: 'system' as ThemeAccentStyle,
+      userBubbleColor: 'system' as UserBubbleColor,
       promptSurfaceStyle: 'liquid_glass' as PromptSurfaceStyle,
       reduceTransparency: false,
       reduceMotion: false,

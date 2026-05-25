@@ -3418,6 +3418,44 @@ button.sidebar-item {
   overflow: hidden;
 }
 
+/* Per-user bubble colour. Driven by the Settings → Appearance →
+ * "Your chat bubble" picker. The `--user-bubble-base` token is only
+ * set when the user picked a named colour (the `'system'` default
+ * leaves it unset, so the rule above wins via fallthrough).
+ *
+ * We use `[data-user-bubble-color]:not([data-user-bubble-color="system"])`
+ * rather than a wildcard so the `system` value is a true no-op even
+ * if Chromium ever changes how unset custom properties cascade.
+ *
+ * Mix percentage (20% on dark, ~32% on light below) is tuned to feel
+ * like a tint rather than a fill — the text still reads against the
+ * surface, the bubble just gets a visible identity. Border tracks
+ * at a higher mix so the silhouette stays crisp. */
+[data-user-bubble-color]:not([data-user-bubble-color="system"]) .message-bubble.user {
+  background: color-mix(in srgb, var(--user-bubble-base) 20%, var(--app-bg-elevated));
+  border-color: color-mix(in srgb, var(--user-bubble-base) 38%, var(--sidebar-border));
+}
+
+/* Light themes need a slightly stronger tint to read on the bright
+ * elevated surface — 20% gets washed out against `#f4f6fa`-ish bg. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-user-bubble-color]:not([data-user-bubble-color="system"]) .message-bubble.user {
+  background: color-mix(in srgb, var(--user-bubble-base) 30%, var(--app-bg-elevated));
+  border-color: color-mix(in srgb, var(--user-bubble-base) 48%, var(--sidebar-border));
+}
+
+/* "You" label colour for user messages. The matching JSX adds the
+ * `user-meta` class only on the user-side `.message-meta` (the
+ * assistant-side one carries `provider-{name}` classes instead).
+ *
+ * `!important` because the `[data-interface-style="codex|claude"]
+ * .message-meta` rule at line ~17296 forces a translucent white at
+ * the same specificity (0,2,0) and appears later in source. The
+ * provider-tinted assistant labels needed the same treatment (see
+ * lines 3378-3398). */
+[data-user-bubble-color]:not([data-user-bubble-color="system"]) .message-meta.user-meta {
+  color: var(--user-bubble-base) !important;
+}
+
 .message-bubble.user::after {
   content: "";
   position: absolute;
@@ -10087,7 +10125,8 @@ button.diff-file-row {
 }
 
 .settings-radio-option.active .theme-dot,
-.settings-radio-option.active .accent-dot {
+.settings-radio-option.active .accent-dot,
+.settings-radio-option.active .user-bubble-color-dot {
   background: var(--dot-color, var(--accent));
   border-color: var(--accent);
   box-shadow:
@@ -10096,7 +10135,8 @@ button.diff-file-row {
 }
 
 .theme-dot,
-.accent-dot {
+.accent-dot,
+.user-bubble-color-dot {
   background: var(--dot-color, rgba(255,255,255,0.22));
 }
 
@@ -10158,6 +10198,22 @@ button.diff-file-row {
 .accent-green { --dot-color: #4cc38a; }
 .accent-red { --dot-color: #e65b62; }
 .accent-yellow { --dot-color: #f2c94c; }
+
+/* User chat-bubble colour swatches in the Settings radio. `system`
+ * uses the neutral gradient (same look as `theme-system`) to read
+ * as "stay on the default neutral bubble"; the named values mirror
+ * the accent palette so users get a consistent vocabulary across
+ * Accent / Tool-icon / Chat bubble pickers. Hooked via the
+ * `.user-bubble-color-dot` class set in `SettingsPanel.tsx`. */
+.user-bubble-color-system   { --dot-color: linear-gradient(135deg, #dfe5ee, #363b45); }
+.user-bubble-color-blue     { --dot-color: #5a8cff; }
+.user-bubble-color-purple   { --dot-color: #bf7cff; }
+.user-bubble-color-pink     { --dot-color: #ff5fa2; }
+.user-bubble-color-orange   { --dot-color: #ff9b54; }
+.user-bubble-color-green    { --dot-color: #4cc38a; }
+.user-bubble-color-red      { --dot-color: #e65b62; }
+.user-bubble-color-yellow   { --dot-color: #f2c94c; }
+.user-bubble-color-graphite { --dot-color: #9da6b8; }
 
 /* Tool-icon accent swatches in the Settings radio. The "system"
  * swatch mirrors the user's chosen accent so the preview reads
@@ -17331,6 +17387,17 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, #ffffff 8%, transparent);
   border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
   box-shadow: none;
+}
+
+/* Codex / Claude shells force a translucent-white bubble on top of
+ * their dark-glass composer chrome — that wins over the generic
+ * `.message-bubble.user` rule. Re-apply the user-bubble-base tint
+ * here so the picker also takes effect inside these shells. Mix
+ * directly into the translucent-white spec rather than the elevated
+ * surface to preserve the shell's signature look. */
+:is([data-interface-style="codex"], [data-interface-style="claude"])[data-user-bubble-color]:not([data-user-bubble-color="system"]) .message-bubble.user {
+  background: color-mix(in srgb, var(--user-bubble-base) 18%, color-mix(in srgb, #ffffff 8%, transparent));
+  border-color: color-mix(in srgb, var(--user-bubble-base) 34%, color-mix(in srgb, #ffffff 12%, transparent));
 }
 
 [data-interface-style="codex"] .activity-stack,

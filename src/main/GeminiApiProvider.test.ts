@@ -116,6 +116,7 @@ function makeDeps(overrides: {
     themeAppearance: 'system',
     themeCornerStyle: 'rounded',
     themeAccentStyle: 'system',
+    userBubbleColor: 'system',
     promptSurfaceStyle: 'liquid_glass',
     composerStyle: 'default',
     funFxEnabled: false,

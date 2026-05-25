@@ -532,6 +532,22 @@
 [data-tool-icon-accent="cyan"]   { --tool-call-icon-accent: #4cb8d0; }
 [data-tool-icon-accent="violet"] { --tool-call-icon-accent: #bf7cff; }
 
+/* User chat-bubble colour overrides. `system` doesn't appear here —
+ * the default fallback in `.message-bubble.user` is `--app-bg-elevated`
+ * + `--text-muted` for the "You" label, so leaving the var unset is
+ * exactly the "stay neutral" behaviour. The named values set a
+ * single `--user-bubble-base` hue that `main.css` mixes into both
+ * the bubble background and the matching `.message-meta.user-meta`
+ * label so they read as one theme. */
+[data-user-bubble-color="blue"]     { --user-bubble-base: #5a8cff; }
+[data-user-bubble-color="purple"]   { --user-bubble-base: #bf7cff; }
+[data-user-bubble-color="pink"]     { --user-bubble-base: #ff5fa2; }
+[data-user-bubble-color="orange"]   { --user-bubble-base: #ff9b54; }
+[data-user-bubble-color="green"]    { --user-bubble-base: #4cc38a; }
+[data-user-bubble-color="red"]      { --user-bubble-base: #e65b62; }
+[data-user-bubble-color="yellow"]   { --user-bubble-base: #f2c94c; }
+[data-user-bubble-color="graphite"] { --user-bubble-base: #9da6b8; }
+
 [data-corners="hard"] {
   --radius-sm: 3px;
   --radius-md: 5px;

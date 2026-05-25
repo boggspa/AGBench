@@ -42,6 +42,25 @@ export type ThemeAccentStyle =
  * + `[data-tool-icon-accent="X"]` rules in `theme.css`.
  */
 export type ToolIconAccent = 'system' | 'red' | 'amber' | 'cyan' | 'violet'
+/**
+ * User chat-bubble colour. `system` (default) keeps the current
+ * neutral elevated-surface look. The named overrides tint both the
+ * `.message-bubble.user` background AND the matching `.message-meta`
+ * "You" label with the same hue — the bubble gets a soft mix into
+ * the elevated surface for legibility, the label uses the saturated
+ * colour for the typographic accent. CSS seam: `--user-bubble-base`
+ * + `[data-user-bubble-color="X"]` rules in `theme.css`.
+ */
+export type UserBubbleColor =
+  | 'system'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'orange'
+  | 'green'
+  | 'red'
+  | 'yellow'
+  | 'graphite'
 export type PromptSurfaceStyle = 'theme' | 'solid' | 'liquid_glass' | 'classic'
 export type ComposerStyle =
   | 'default'
@@ -589,6 +608,7 @@ export interface AppSettings {
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
   toolIconAccent: ToolIconAccent
+  userBubbleColor: UserBubbleColor
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily?: string

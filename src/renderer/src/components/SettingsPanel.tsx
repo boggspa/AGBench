@@ -23,6 +23,7 @@ import type {
   ThemeAppearance,
   ThemeCornerStyle,
   ToolIconAccent,
+  UserBubbleColor,
   VisualEffectStyle,
   WorkspaceRecord
 } from '../../../main/store/types'
@@ -69,6 +70,7 @@ interface SettingsPanelProps {
   themeCornerStyle: ThemeCornerStyle
   themeAccentStyle: ThemeAccentStyle
   toolIconAccent: ToolIconAccent
+  userBubbleColor: UserBubbleColor
   promptSurfaceStyle: PromptSurfaceStyle
   composerStyle: ComposerStyle
   transcriptFontFamily: string
@@ -152,6 +154,7 @@ interface SettingsPanelProps {
     themeCornerStyle?: ThemeCornerStyle
     themeAccentStyle?: ThemeAccentStyle
     toolIconAccent?: ToolIconAccent
+    userBubbleColor?: UserBubbleColor
     promptSurfaceStyle?: PromptSurfaceStyle
     composerStyle?: ComposerStyle
     transcriptFontFamily?: string
@@ -269,6 +272,30 @@ const TOOL_ICON_ACCENT_OPTIONS: Array<{ value: ToolIconAccent; label: string }> 
   { value: 'amber', label: 'Amber' },
   { value: 'cyan', label: 'Cyan' },
   { value: 'violet', label: 'Violet' }
+]
+/**
+ * User chat-bubble colour palette. `system` (default) keeps the
+ * existing neutral elevated-surface look so users who don't care
+ * never see a change. The named options mix the chosen hue into
+ * the elevated surface for the bubble background AND apply the
+ * same hue (saturated) to the matching "You" label — so the user-
+ * side of the transcript reads with a single coherent theme colour
+ * rather than diverging between label and bubble. CSS seam:
+ * `--user-bubble-base` + `[data-user-bubble-color="X"]` rules in
+ * `theme.css`; the swatch dots reuse the same `.accent-*` palette
+ * via a dedicated `.user-bubble-color-*` class so the picker
+ * preview matches the live result.
+ */
+const USER_BUBBLE_COLOR_OPTIONS: Array<{ value: UserBubbleColor; label: string }> = [
+  { value: 'system', label: 'Default' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'pink', label: 'Pink' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'green', label: 'Green' },
+  { value: 'red', label: 'Red' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'graphite', label: 'Graphite' }
 ]
 const PROMPT_SURFACE_OPTIONS: Array<{ value: PromptSurfaceStyle; label: string }> = [
   { value: 'theme', label: 'Follow theme' },
@@ -1042,6 +1069,7 @@ export function SettingsPanel({
   themeCornerStyle,
   themeAccentStyle,
   toolIconAccent,
+  userBubbleColor,
   promptSurfaceStyle,
   composerStyle,
   transcriptFontFamily,
@@ -1387,6 +1415,27 @@ export function SettingsPanel({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="settings-group">
+                <label className="settings-label">Your chat bubble</label>
+                <div className="settings-option-grid">
+                  {USER_BUBBLE_COLOR_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      className={`settings-radio-option ${userBubbleColor === option.value ? 'active' : ''}`}
+                      onClick={() => onChange({ userBubbleColor: option.value })}
+                    >
+                      <span
+                        className={`settings-radio-dot user-bubble-color-dot user-bubble-color-${option.value}`}
+                      />
+                      <span>{option.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="settings-hint">
+                  Tints your message bubble and the "You" label with the same hue.
+                </p>
               </div>
 
               <div className="settings-group">
