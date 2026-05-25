@@ -5,6 +5,7 @@ import { Sidebar } from './Sidebar'
 
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
+const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sections'
 
 function makeWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
   return {
@@ -142,5 +143,27 @@ describe('Sidebar ensembles section', () => {
 
     expect(html).not.toContain('sidebar-ensembles-section')
     expect(html).not.toContain('sidebar-ensemble-create')
+  })
+})
+
+describe('Sidebar Chats section', () => {
+  it('keeps the Chats header visible while hiding global chats when collapsed', () => {
+    stubSidebarStorage({
+      [COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY]: JSON.stringify(['chats', 'recents'])
+    })
+
+    const html = renderSidebar([
+      makeChat({
+        appChatId: 'global-1',
+        scope: 'global',
+        title: 'Global thread',
+        workspaceId: undefined,
+        workspacePath: undefined
+      })
+    ])
+
+    expect(html).toContain('Expand Chats')
+    expect(html).toContain('New system chat')
+    expect(html).not.toContain('Global thread')
   })
 })

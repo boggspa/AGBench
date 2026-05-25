@@ -118,8 +118,8 @@ interface SidebarProps {
 const EXPANDED_WORKSPACES_STORAGE_KEY = 'guigemini-sidebar-expanded-workspace-ids'
 const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sub-thread-parent-ids'
 /**
- * Collapsed-section memory for the four top-level sidebar lists
- * (Pinned / Recents / Ensembles / Workspaces). Set semantics: an id
+ * Collapsed-section memory for the top-level sidebar lists
+ * (Pinned / Recents / Ensembles / Workspaces / Chats). Set semantics: an id
  * present in the set means the user has explicitly collapsed that
  * section. Default is empty (all expanded) for new users.
  *
@@ -128,12 +128,13 @@ const COLLAPSED_SUB_THREAD_PARENTS_STORAGE_KEY = 'guigemini-sidebar-collapsed-su
  * this one tracks the section header itself.
  */
 const COLLAPSED_SIDEBAR_SECTIONS_STORAGE_KEY = 'guigemini-sidebar-collapsed-sections'
-type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces'
+type SidebarSectionId = 'pinned' | 'recents' | 'ensembles' | 'workspaces' | 'chats'
 const SIDEBAR_SECTION_IDS: readonly SidebarSectionId[] = [
   'pinned',
   'recents',
   'ensembles',
-  'workspaces'
+  'workspaces',
+  'chats'
 ] as const
 
 function FolderSymbolIcon() {
@@ -678,7 +679,7 @@ export function Sidebar({
       }
     }
   )
-  // Section-level collapse state for the four top-level sidebar lists.
+  // Section-level collapse state for the top-level sidebar lists.
   // Default empty (all expanded). `isSectionCollapsed` below applies a
   // search-active override so a filter pass forces every section open
   // — otherwise a user with all sections collapsed would see no
@@ -1616,11 +1617,9 @@ export function Sidebar({
             {/*
               Workspace entries — gated on the Workspaces section's
               collapse state. The "No matches" search empty-state and
-              the global "Chats" section below stay visible regardless
-              so the user can still find / open global chats with the
-              Workspaces list folded away. (Chats is a separate concept
-              and the user only asked for four sections to be made
-              collapsible: Pinned / Recents / Ensembles / Workspaces.)
+              the global "Chats" section below has its own collapse
+              state, so workspace folding never hides the top-level
+              global-chat controls.
             */}
             {!isSectionCollapsed('workspaces') &&
               visibleWorkspaceEntries.map(({ workspace: ws, visibleChats, totalChats }) => {
@@ -1965,7 +1964,16 @@ export function Sidebar({
                 </div>
               )}
             <div className="sidebar-section-header sidebar-chats-header">
-              <h4 className="sidebar-section-title">Chats</h4>
+              <button
+                type="button"
+                className="sidebar-section-header-toggle"
+                onClick={() => toggleSidebarSection('chats')}
+                aria-expanded={!isSectionCollapsed('chats')}
+                title={isSectionCollapsed('chats') ? 'Expand Chats' : 'Collapse Chats'}
+              >
+                <ChevronSymbolIcon isExpanded={!isSectionCollapsed('chats')} />
+                <h4 className="sidebar-section-title">Chats</h4>
+              </button>
               <button
                 className="btn btn-sm btn-ghost"
                 onClick={onNewGlobalChat}
@@ -1975,6 +1983,7 @@ export function Sidebar({
                 <PlusSymbolIcon />
               </button>
             </div>
+            {!isSectionCollapsed('chats') && (
             <div className="sidebar-chat-list sidebar-global-chat-list">
               {visibleGlobalChats.map((chat) => {
                 const chatAgeTimestamp = chat.updatedAt || chat.createdAt
@@ -2047,6 +2056,7 @@ export function Sidebar({
                 <div className="sidebar-empty-state">No chats yet.</div>
               )}
             </div>
+            )}
           </div>
         </div>
 
