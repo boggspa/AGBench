@@ -16421,6 +16421,43 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, #f4b56c 10%, transparent);
 }
 
+/* YOLO/Trust-mode chip — collapsed state of the dismissed
+ * .provider-yolo banner. Sits inline in the composer's action
+ * row so the user has a persistent reminder that auto-approve
+ * is on, without the full banner shoving the composer down. */
+.composer-yolo-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, #f4a261 60%, transparent);
+  background: color-mix(in srgb, #f4a261 14%, transparent);
+  color: color-mix(in srgb, #f4a261 88%, var(--text-primary) 12%);
+  font-size: var(--font-size-xs, 11px);
+  font-weight: 620;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 100ms ease, border-color 100ms ease;
+}
+
+.composer-yolo-chip:hover,
+.composer-yolo-chip:focus-visible {
+  background: color-mix(in srgb, #f4a261 22%, transparent);
+  border-color: color-mix(in srgb, #f4a261 80%, transparent);
+  outline: 0;
+}
+
+.composer-yolo-chip-icon {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.composer-yolo-banner-dismiss {
+  margin-left: auto;
+}
+
 /* Inside provider chips, the leading icon may be wrapped in
  * <span class="sf-symbol-icon">. Sync its opacity + size with the
  * raw-svg icons used by the other chips so all chip glyphs match. */

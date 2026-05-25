@@ -4419,6 +4419,24 @@ function App(): React.JSX.Element {
     enabledAt: null
   })
 
+  // Slice A: full YOLO banner is dismissible. When dismissed, a compact
+  // inline chip replaces it in the composer's action row so the user
+  // still has a persistent reminder that auto-approve is on. Toggling
+  // YOLO off and back on resets the dismissed flag so the user
+  // re-acknowledges the warning each fresh activation.
+  const [yoloBannerDismissed, setYoloBannerDismissed] = useState(false)
+  const previousYoloEnabledRef = useRef(sessionYoloMode.enabled)
+  useEffect(() => {
+    const wasEnabled = previousYoloEnabledRef.current
+    const isEnabled = sessionYoloMode.enabled
+    if (!wasEnabled && isEnabled) {
+      // Fresh enable — show the full banner again so the user
+      // re-acknowledges the trust mode.
+      setYoloBannerDismissed(false)
+    }
+    previousYoloEnabledRef.current = isEnabled
+  }, [sessionYoloMode.enabled])
+
   const [composerDraftsByChatId, setComposerDraftForChat] = usePerChatState('')
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
@@ -13955,8 +13973,11 @@ function App(): React.JSX.Element {
                 )}
                 {/* Phase J3: session-scoped YOLO indicator. Visible when the
                     user has clicked "Trust this session" — every subsequent
-                    approval auto-allows. Includes a one-click disable. */}
-                {sessionYoloMode.enabled && (
+                    approval auto-allows. Includes a one-click disable.
+                    Slice A: dismissible via the inline ✕ button; the
+                    collapsed state is represented by `.composer-yolo-chip`
+                    in the action row below. */}
+                {sessionYoloMode.enabled && !yoloBannerDismissed && (
                   <div
                     className="composer-permission-card provider-yolo"
                     style={{
@@ -13985,6 +14006,15 @@ function App(): React.JSX.Element {
                         }}
                       >
                         Disable trust mode
+                      </button>
+                      <button
+                        className="btn btn-sm btn-ghost composer-yolo-banner-dismiss"
+                        type="button"
+                        onClick={() => setYoloBannerDismissed(true)}
+                        title="Hide this banner (trust mode stays on)"
+                        aria-label="Dismiss trust mode banner"
+                      >
+                        ✕ Dismiss
                       </button>
                     </div>
                   </div>
@@ -14848,6 +14878,25 @@ function App(): React.JSX.Element {
                         />
                       )
                     })()}
+
+                    {/* Slice A: collapsed-state chip for the dismissed
+                        YOLO banner. Sits adjacent to the permissions
+                        picker because YOLO is conceptually a permission
+                        override. Clicking re-summons the full banner. */}
+                    {sessionYoloMode.enabled && yoloBannerDismissed && (
+                      <button
+                        type="button"
+                        className="composer-yolo-chip"
+                        onClick={() => setYoloBannerDismissed(false)}
+                        title="Trust mode is active — every approval auto-allowed. Click to show details."
+                        aria-label="Trust mode active — show details"
+                      >
+                        <span className="composer-yolo-chip-icon" aria-hidden>
+                          ⚠
+                        </span>
+                        <span className="composer-yolo-chip-label">YOLO</span>
+                      </button>
+                    )}
 
                     {currentProvider === 'gemini' && !isCurrentGlobalChat && (
                       <label className="composer-picker-label" title="Workspace trust">
