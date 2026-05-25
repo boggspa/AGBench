@@ -54,8 +54,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 // under the "Bridge Networking" tab. They now live inside `PairingPage`
 // (the "Devices" tab) so the iOS pair flow + workspace allowlist +
 // daemon/APNs configuration sit together as a single device-management
-// page. The original tab branch below is kept defensively so a stale
-// `bridge-networking` tab id falls through to no render.
+// page.
 import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
@@ -840,10 +839,7 @@ export type SettingsTab =
   | 'providers'
   | 'mcp'
   | 'key-commands'
-  | 'system'
-  | 'remote-workspaces'
   | 'approval-ledger'
-  | 'bridge-networking'
   | 'pairing'
   | 'workspaces'
   | 'model-usage'
@@ -879,10 +875,9 @@ export const SETTINGS_TABS: Array<{
   // "General" merges the legacy "Behavior" + "System" tabs. Both
   // covered operational defaults (chat behaviour, approval timeouts,
   // product update channel, diagnostics) — splitting them across two
-  // tabs was always arbitrary. The `behavior` id is preserved so any
-  // existing tab-restore path still lands here; `system` falls
-  // through to no render (defensive guard until the type union sheds
-  // the id).
+  // tabs was always arbitrary. The `system` id has been dropped from
+  // the SettingsTab union now that the post-1.0.2 build is in the
+  // wild; the canonical id is `behavior`.
   { id: 'behavior', label: 'General', group: 'settings' },
   // "Workspaces" — Codex Environments-style page that lists every
   // workspace the user has loaded into AGBench. Clicking a row opens
@@ -906,7 +901,9 @@ export const SETTINGS_TABS: Array<{
   // fresh iPhone / iPad at the top, manage its workspace allowlist
   // in the middle, configure the daemon + APNs at the bottom — all
   // the same conceptual workflow (LAN / off-LAN reach to paired iOS
-  // devices). The `pairing` id is preserved for settings-tab restore.
+  // devices). The `remote-workspaces` + `bridge-networking` ids have
+  // been dropped from the SettingsTab union now that the post-1.0.2
+  // build is in the wild; the canonical id is `pairing`.
   { id: 'pairing', label: 'Devices', group: 'devices' }
 ]
 
@@ -3635,14 +3632,6 @@ export function SettingsPanel({
             currentWorkspacePath={currentWorkspace?.path ?? null}
           />
         )}
-
-        {/*
-          Bridge Networking + APNs moved into the Devices tab below —
-          both are paired-device infrastructure (Bonjour for LAN,
-          APNs for off-LAN wake). The legacy `bridge-networking` tab
-          id no longer surfaces in the sidebar; this guard is dead
-          but kept until the type union sheds the id.
-        */}
 
         {/* ── Pairing (post-1.0.2: folded in from the legacy modal sheet) ── */}
         {activeTab === 'pairing' && <PairingPage />}
