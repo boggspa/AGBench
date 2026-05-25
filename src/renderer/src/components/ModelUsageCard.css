@@ -55,6 +55,65 @@
   height: 100%;
 }
 
+.model-usage-resize-handle {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  height: 12px;
+  cursor: ns-resize;
+  touch-action: none;
+  -webkit-app-region: no-drag;
+}
+
+.model-usage-resize-handle::before {
+  content: '';
+  position: absolute;
+  left: var(--space-md);
+  right: var(--space-md);
+  top: 5px;
+  height: 1px;
+  background: color-mix(in srgb, var(--sidebar-border) 68%, transparent);
+}
+
+.model-usage-resize-handle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 3px;
+  width: 34px;
+  height: 5px;
+  border-radius: 999px;
+  background: color-mix(
+    in srgb,
+    var(--sidebar-text-secondary, var(--text-secondary)) 24%,
+    transparent
+  );
+  opacity: 0;
+  transform: translateX(-50%);
+  transition:
+    opacity 140ms ease,
+    background-color 140ms ease;
+}
+
+.model-usage-resize-handle:hover::before,
+.model-usage-resize-handle:focus-visible::before,
+.model-usage-summary--sidebar.is-resizing .model-usage-resize-handle::before {
+  background: color-mix(in srgb, var(--accent) 52%, var(--sidebar-border));
+}
+
+.model-usage-resize-handle:hover::after,
+.model-usage-resize-handle:focus-visible::after,
+.model-usage-summary--sidebar.is-resizing .model-usage-resize-handle::after {
+  opacity: 1;
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.model-usage-resize-handle:focus-visible {
+  outline: 0;
+}
+
 .model-usage-collapsible {
   display: grid;
   grid-template-rows: 1fr;
@@ -69,9 +128,12 @@
 .app-sidebar .model-usage-summary--sidebar {
   margin: auto calc(var(--space-md) * -1) calc(var(--space-sm) * -1);
   padding: 10px var(--space-md) 12px;
-  max-height: clamp(380px, 46vh, 680px);
+  height: min(var(--model-usage-sidebar-height, clamp(380px, 46vh, 680px)), calc(100vh - 180px));
+  max-height: none;
   min-height: 0;
+  flex: 0 0 auto;
   overflow-y: auto;
+  position: relative;
   border-radius: 0;
   border-width: 1px 0;
   border-style: solid;
@@ -98,7 +160,14 @@
 }
 
 .app-sidebar .model-usage-summary--sidebar.is-collapsed {
+  height: auto;
   max-height: none;
+  overflow-y: visible;
+}
+
+.app-sidebar .model-usage-summary--sidebar.is-resizing {
+  cursor: ns-resize;
+  user-select: none;
 }
 
 .app-sidebar .model-usage-summary--sidebar.is-collapsed .model-usage-collapsible {

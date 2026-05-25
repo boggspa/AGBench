@@ -18,7 +18,14 @@
  * summaries) and sort by the canonical provider order for stable
  * visual ordering.
  */
-import { useId, useState } from 'react'
+import {
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent
+} from 'react'
 import type { ProviderId } from '../../../main/store/types'
 import type { ModelUsageAggregate, UsageWindowAggregate } from '../App'
 import { computeQuotaPace } from '../lib/QuotaPace'
@@ -35,6 +42,29 @@ interface ModelUsageCardProps {
 }
 
 const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'guigemini-sidebar-model-usage-height'
+const SIDEBAR_USAGE_DEFAULT_HEIGHT = 420
+const SIDEBAR_USAGE_MIN_HEIGHT = 220
+const SIDEBAR_USAGE_MAX_HEIGHT = 720
+const SIDEBAR_USAGE_RESIZE_STEP = 24
+
+function clampSidebarUsageHeight(height: number, maxHeight = SIDEBAR_USAGE_MAX_HEIGHT): number {
+  return Math.max(SIDEBAR_USAGE_MIN_HEIGHT, Math.min(maxHeight, height))
+}
+
+function readSidebarUsageHeight(): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage?.getItem(SIDEBAR_USAGE_HEIGHT_STORAGE_KEY)
+  if (!raw) return null
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) return null
+  return clampSidebarUsageHeight(parsed)
+}
+
+function persistSidebarUsageHeight(height: number): void {
+  if (typeof window === 'undefined') return
+  window.localStorage?.setItem(SIDEBAR_USAGE_HEIGHT_STORAGE_KEY, String(Math.round(height)))
+}
 
 function sortByProvider(entries: ModelUsageAggregate[]): ModelUsageAggregate[] {
   return [...entries].sort((a, b) => {
@@ -160,7 +190,19 @@ function ModelUsageDisclosureIcon({ isExpanded }: { isExpanded: boolean }) {
 
 export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCardProps) {
   const quotaContentId = useId()
+  const summaryRef = useRef<HTMLDivElement | null>(null)
+  const resizeStartRef = useRef<{
+    height: number
+    maxHeight: number
+    pointerId: number
+    y: number
+  } | null>(null)
+  const [sidebarHeightPx, setSidebarHeightPx] = useState<number | null>(() =>
+    readSidebarUsageHeight()
+  )
+  const sidebarHeightRef = useRef<number | null>(sidebarHeightPx)
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const [sidebarResizing, setSidebarResizing] = useState(false)
   if (usageSummary.length === 0) return null
   const quotaEntries = sortByProvider(usageSummary).filter(
     (entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
@@ -170,17 +212,116 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
   const isSidebarVariant = variant === 'sidebar'
   const showQuotaEntries = !isSidebarVariant || sidebarExpanded
   const title = sidebarExpanded ? 'Collapse provider usage' : 'Expand provider usage'
+  const ariaHeight = Math.round(sidebarHeightPx ?? SIDEBAR_USAGE_DEFAULT_HEIGHT)
   const rootClassName = [
     'run-summary',
     'model-usage-summary',
     isSidebarVariant ? 'model-usage-summary--sidebar' : '',
-    isSidebarVariant && !sidebarExpanded ? 'is-collapsed' : ''
+    isSidebarVariant && sidebarExpanded ? 'is-resizable' : '',
+    isSidebarVariant && !sidebarExpanded ? 'is-collapsed' : '',
+    sidebarResizing ? 'is-resizing' : ''
   ]
     .filter(Boolean)
     .join(' ')
+  const rootStyle =
+    isSidebarVariant && sidebarExpanded && sidebarHeightPx
+      ? ({ '--model-usage-sidebar-height': `${sidebarHeightPx}px` } as CSSProperties)
+      : undefined
+
+  const getSidebarResizeMaxHeight = (): number => {
+    if (typeof window === 'undefined') return SIDEBAR_USAGE_MAX_HEIGHT
+    const parentHeight = summaryRef.current?.parentElement?.getBoundingClientRect().height
+    const viewportMax = window.innerHeight - 180
+    const parentMax = parentHeight ? parentHeight - 140 : SIDEBAR_USAGE_MAX_HEIGHT
+    return Math.max(
+      SIDEBAR_USAGE_MIN_HEIGHT,
+      Math.min(SIDEBAR_USAGE_MAX_HEIGHT, viewportMax, parentMax)
+    )
+  }
+
+  const updateSidebarHeight = (height: number, maxHeight = getSidebarResizeMaxHeight()): number => {
+    const nextHeight = clampSidebarUsageHeight(height, maxHeight)
+    sidebarHeightRef.current = nextHeight
+    setSidebarHeightPx(nextHeight)
+    return nextHeight
+  }
+
+  const startSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!isSidebarVariant || !sidebarExpanded || event.button !== 0) return
+    const currentHeight =
+      sidebarHeightRef.current ?? summaryRef.current?.getBoundingClientRect().height ?? 0
+    const maxHeight = getSidebarResizeMaxHeight()
+    resizeStartRef.current = {
+      height: clampSidebarUsageHeight(currentHeight || SIDEBAR_USAGE_DEFAULT_HEIGHT, maxHeight),
+      maxHeight,
+      pointerId: event.pointerId,
+      y: event.clientY
+    }
+    setSidebarResizing(true)
+    event.currentTarget.setPointerCapture(event.pointerId)
+    event.preventDefault()
+  }
+
+  const moveSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = resizeStartRef.current
+    if (!start || start.pointerId !== event.pointerId) return
+    const delta = start.y - event.clientY
+    updateSidebarHeight(start.height + delta, start.maxHeight)
+  }
+
+  const endSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const start = resizeStartRef.current
+    if (!start || start.pointerId !== event.pointerId) return
+    resizeStartRef.current = null
+    setSidebarResizing(false)
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+    const finalHeight = sidebarHeightRef.current
+    if (finalHeight) persistSidebarUsageHeight(finalHeight)
+  }
+
+  const resizeSidebarWithKeyboard = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!isSidebarVariant || !sidebarExpanded) return
+    const maxHeight = getSidebarResizeMaxHeight()
+    const currentHeight =
+      sidebarHeightRef.current ??
+      summaryRef.current?.getBoundingClientRect().height ??
+      SIDEBAR_USAGE_DEFAULT_HEIGHT
+    const step = event.shiftKey ? SIDEBAR_USAGE_RESIZE_STEP * 2 : SIDEBAR_USAGE_RESIZE_STEP
+    let nextHeight: number | null = null
+
+    if (event.key === 'ArrowUp') nextHeight = currentHeight + step
+    if (event.key === 'ArrowDown') nextHeight = currentHeight - step
+    if (event.key === 'Home') nextHeight = SIDEBAR_USAGE_MIN_HEIGHT
+    if (event.key === 'End') nextHeight = maxHeight
+    if (nextHeight === null) return
+
+    event.preventDefault()
+    persistSidebarUsageHeight(updateSidebarHeight(nextHeight, maxHeight))
+  }
 
   return (
-    <div className={rootClassName}>
+    <div ref={summaryRef} className={rootClassName} style={rootStyle}>
+      {isSidebarVariant && sidebarExpanded && (
+        <div
+          role="separator"
+          tabIndex={0}
+          className="model-usage-resize-handle"
+          aria-label="Resize model usage panel"
+          aria-orientation="horizontal"
+          aria-valuemin={SIDEBAR_USAGE_MIN_HEIGHT}
+          aria-valuemax={getSidebarResizeMaxHeight()}
+          aria-valuenow={ariaHeight}
+          aria-valuetext={`${ariaHeight}px tall`}
+          title="Drag to resize Model Usage"
+          onPointerDown={startSidebarResize}
+          onPointerMove={moveSidebarResize}
+          onPointerUp={endSidebarResize}
+          onPointerCancel={endSidebarResize}
+          onKeyDown={resizeSidebarWithKeyboard}
+        />
+      )}
       <div className="model-usage-summary-header">
         <div className="run-summary-title">Model Usage</div>
         {isSidebarVariant && (
