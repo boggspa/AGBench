@@ -813,6 +813,19 @@ export class EnsembleOrchestrator {
       // mentions that match no participant. First match wins per
       // turn — multiple `@A @B @C` mentions only promote A.
       const taggedTarget = extractFirstAtMentionTarget(run.content)
+      // Diagnostic for the 1.0.3 ship-night investigation. Chris saw
+      // Claude tag @codex in its reply but the round still ended
+      // without Codex re-entering. Tests pass in isolation; logging
+      // here proves whether the code path actually fires in
+      // production and what run.content looks like at the moment.
+      // Visible in `npm run dev` terminal output.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ensemble:@-mention check] speaker=${participant.provider}(${participant.role || participant.id}) ` +
+          `taggedTarget=${taggedTarget || 'null'} ` +
+          `contentLen=${run.content.length} ` +
+          `contentHead=${JSON.stringify(run.content.slice(0, 80))}`
+      )
       if (taggedTarget) {
         const chat = this.deps.getChat(runtime.chatId)
         const allParticipants = chat?.ensemble?.participants || []
@@ -820,6 +833,11 @@ export class EnsembleOrchestrator {
           taggedTarget,
           allParticipants,
           participant
+        )
+        // eslint-disable-next-line no-console
+        console.log(
+          `[ensemble:@-mention resolve] taggedTarget=${taggedTarget} resolved=${tagged ? `${tagged.provider}(${tagged.role || tagged.id})` : 'null'} ` +
+            `remaining=${remaining.map((p) => p.id).join(',') || '<empty>'}`
         )
         if (tagged) {
           const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
@@ -842,6 +860,10 @@ export class EnsembleOrchestrator {
               runtime.chatId,
               runtime.roundId,
               `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
+            )
+            // eslint-disable-next-line no-console
+            console.log(
+              `[ensemble:@-mention appended] ${tagged.provider}(${tagged.role || tagged.id}) added to remaining for an extra turn`
             )
           }
           // existingIdx === 0 → already at front, nothing to do.

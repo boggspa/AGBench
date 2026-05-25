@@ -719,6 +719,79 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.dispatched[1].provider).toBe('gemini')
   })
 
+  it('promotes a participant tagged via @mention even when the speaker yields with the same target', async () => {
+    // Production path Chris hit: Claude streams content with @codex,
+    // then calls `ensemble_yield(target='codex')` via the MCP tool.
+    // The yieldTarget branch fires FIRST after completion resolves,
+    // but resolveYieldTargetIndex returns -1 because Codex isn't in
+    // `remaining` (Codex already spoke). The yield branch silently
+    // no-ops. My @-mention code should then fire and re-promote
+    // Codex via the `remaining.unshift(tagged)` path.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 1,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Call and response.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('codex')
+
+    // Codex speaks (with @claude in content) then yields via tool.
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: '@claude, what is 2+3?' }
+    )
+    harness.orchestrator.markYielded(
+      harness.dispatched[0].appRunId!,
+      'Passing to Claude',
+      'claude'
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('claude')
+
+    // Claude speaks (with @codex in content) then yields via tool to
+    // codex. By the time the yieldTarget branch runs, `remaining` is
+    // empty (Claude was the last in the round) — so the yield branch
+    // no-ops. The @-mention branch should fire next and re-promote
+    // Codex for a follow-up turn.
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      {
+        type: 'content',
+        text: '@codex 2+3=5. Your turn — what is 7-4?'
+      }
+    )
+    harness.orchestrator.markYielded(
+      harness.dispatched[1].appRunId!,
+      'Passing to Codex',
+      'codex'
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].provider).toBe('codex')
+  })
+
   it('appends an extra turn when @-tagging a participant who already spoke', async () => {
     // After-round agent-loop: Claude speaks first, then Codex speaks
     // and mentions @Planner — Claude (role 'Planner') gets an extra
