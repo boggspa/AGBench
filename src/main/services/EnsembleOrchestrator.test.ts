@@ -255,6 +255,65 @@ describe('EnsembleOrchestrator', () => {
     )
   })
 
+  it('separates Codex ensemble assistant items instead of collapsing them into one wall', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Codex should execute this.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.markYielded(harness.dispatched[0].appRunId!, 'Passing to worker.')
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      {
+        appRunId: harness.dispatched[1].appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'content',
+        text: 'Baselines are captured.',
+        itemId: 'codex-agent-message-1'
+      }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      {
+        appRunId: harness.dispatched[1].appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'content',
+        text: 'The bulk replacement path changed all markers.',
+        itemId: 'codex-agent-message-2'
+      }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      {
+        appRunId: harness.dispatched[1].appRunId,
+        appChatId: 'ensemble-chat'
+      },
+      {
+        type: 'result',
+        status: 'success'
+      }
+    )
+
+    const codexMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'codex'
+    )
+    expect(codexMessage?.content).toContain(
+      'Baselines are captured.\n\n---\n\nThe bulk replacement path changed all markers.'
+    )
+    expect(codexMessage?.content).not.toContain(
+      'Baselines are captured.The bulk replacement path changed all markers.'
+    )
+  })
+
   it('skips a failed dispatch and advances the round', async () => {
     let calls = 0
     const harness = makeHarness({

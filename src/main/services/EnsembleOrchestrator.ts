@@ -47,6 +47,7 @@ interface ActiveParticipantRun {
   startedAt: string
   content: string
   status: EnsembleParticipantStatus
+  lastContentItemId?: string
   actualModel?: string
   providerSessionId?: string
   stats?: any
@@ -181,8 +182,21 @@ export class EnsembleOrchestrator {
       return true
     }
     if (payload?.type === 'content' && typeof payload.text === 'string') {
-      run.content += payload.text
-      this.scheduleFlush(run)
+      const itemId =
+        typeof payload.itemId === 'string' && payload.itemId ? payload.itemId : undefined
+      const text = payload.text
+      if (text) {
+        const itemTransition =
+          itemId !== undefined &&
+          run.lastContentItemId !== undefined &&
+          itemId !== run.lastContentItemId &&
+          run.content.length > 0
+        run.content += `${itemTransition ? '\n\n---\n\n' : ''}${text}`
+        if (itemId) run.lastContentItemId = itemId
+        this.scheduleFlush(run)
+      } else if (itemId) {
+        run.lastContentItemId = itemId
+      }
       return true
     }
     if (payload?.type === 'result') {
