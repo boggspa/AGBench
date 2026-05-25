@@ -93,8 +93,12 @@ import { RunInspector } from './components/RunInspector'
 // The pairing flow now lives as a Settings tab (`PairingPage` mounted
 // inside SettingsPanel). Triggers route through `setShowSettings(true)
 // + setSettingsActiveTab('pairing')`.
-import { EnsembleParticipantStrip } from './components/EnsembleParticipantStrip'
-import { EnsembleSetupSheet } from './components/EnsembleSetupSheet'
+import { EnsembleParticipantsAboveRow } from './components/EnsembleParticipantsAboveRow'
+// EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
+// z-index race with the picker popovers and the form felt foreign. All
+// per-participant config now lives inline in the composer above-row
+// (EnsembleParticipantsAboveRow) where each chip opens a flyout in the
+// same visual language as the rest of the composer pickers.
 import { SubThreadReturnCard } from './components/SubThreadReturnCard'
 import { isSubThreadReturnMessage } from './components/SubThreadReturnCardModel'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
@@ -4585,7 +4589,8 @@ function App(): React.JSX.Element {
   // Phase F1: sub-thread creator modal state. Null when closed; holds
   // the parent chat when open so the modal knows what to delegate from.
   const [subThreadCreatorParent, setSubThreadCreatorParent] = useState<ChatRecord | null>(null)
-  const [ensembleSetupChat, setEnsembleSetupChat] = useState<ChatRecord | null>(null)
+  // EnsembleSetupSheet retired in 1.0.3 — no modal state required.
+  // EnsembleParticipantsAboveRow handles configuration inline.
   const [showWorkspaceSidebar, setShowWorkspaceSidebar] = useState(true)
   const [workspaceSidebarWidth, setWorkspaceSidebarWidth] = useState(getStoredWorkspaceSidebarWidth)
   /**
@@ -7192,7 +7197,9 @@ function App(): React.JSX.Element {
     setRunCompleteNotice(null)
     setRawLogs([])
     setShowFallbackUX(false)
-    setEnsembleSetupChat(newChat)
+    // 1.0.3 — no setup modal. EnsembleParticipantsAboveRow renders
+    // inline once `setCurrentChat(newChat)` above lands the chat in
+    // view; the user edits per-participant settings via chip flyouts.
   }
 
   const handleWelcomeSuggestion = (suggestion: string) => {
@@ -13346,13 +13353,13 @@ function App(): React.JSX.Element {
             />
           ) : (
             <>
-              {currentChat?.chatKind === 'ensemble' && (
-                <EnsembleParticipantStrip
-                  chat={currentChat}
-                  onConfigure={() => setEnsembleSetupChat(currentChat)}
-                  onStop={() => void handleCancel()}
-                />
-              )}
+              {/*
+                EnsembleParticipantStrip retired in 1.0.3 — its
+                contents (per-participant status pills) merged into
+                the new EnsembleParticipantsAboveRow that sits in
+                the composer above-row stack, alongside the chip
+                flyout that replaced the EnsembleSetupSheet modal.
+              */}
             <TranscriptPanel
               key={currentChat?.appChatId || 'no-chat'}
               scrollRef={transcriptScrollRef}
@@ -13705,6 +13712,33 @@ function App(): React.JSX.Element {
                     onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
                   />
                 ))}
+                {/*
+                  Slice F (1.0.3) — ensemble participants live in the
+                  composer above-row stack now. Sits below the unified
+                  branch / files-changed / Create PR row and any
+                  external-path rows, but stays above the composer
+                  textarea so the diff/PR signals read first. Returns
+                  null for non-ensemble chats so single-provider chats
+                  don't see an empty cell.
+                */}
+                {currentChat?.chatKind === 'ensemble' && (
+                  <EnsembleParticipantsAboveRow
+                    chat={currentChat}
+                    onChatChange={(updatedChat) => {
+                      chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
+                      setCurrentChat((prev) =>
+                        prev?.appChatId === updatedChat.appChatId ? updatedChat : prev
+                      )
+                      setChats((prev) =>
+                        prev.map((c) =>
+                          c.appChatId === updatedChat.appChatId ? updatedChat : c
+                        )
+                      )
+                      void window.api.saveChat(updatedChat)
+                    }}
+                    onStop={() => void handleCancel()}
+                  />
+                )}
               </div>
             )}
             <div
@@ -15301,25 +15335,14 @@ function App(): React.JSX.Element {
           onCancel={() => setSubThreadCreatorParent(null)}
         />
       )}
-      {ensembleSetupChat && (
-        <EnsembleSetupSheet
-          chat={
-            chats.find((chat) => chat.appChatId === ensembleSetupChat.appChatId) ||
-            ensembleSetupChat
-          }
-          onClose={() => setEnsembleSetupChat(null)}
-          onSave={(updatedChat) => {
-            chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
-            setCurrentChat((current) =>
-              current?.appChatId === updatedChat.appChatId ? updatedChat : current
-            )
-            setChats((prev) =>
-              prev.map((chat) => (chat.appChatId === updatedChat.appChatId ? updatedChat : chat))
-            )
-            void window.api.saveChat(updatedChat)
-          }}
-        />
-      )}
+      {/*
+        Slice F (1.0.3) — EnsembleSetupSheet retired. The bottom-pinned
+        modal had a z-index race with the picker popovers (popovers
+        rendered under the modal so clicks fell through to the sheet
+        rows). All per-participant configuration now lives inline in
+        the EnsembleParticipantsAboveRow chip flyouts, rendered up in
+        the composer above-row stack.
+      */}
       {/* Phase K3 — creative-action approval modal. Mounts at app root
         so it overlays any view. Subscribes to main-process broadcasts
         the first time it mounts; renders the queue of pending

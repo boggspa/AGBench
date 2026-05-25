@@ -38,10 +38,15 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
     activeProvider
   )
   const orderByProvider = new Map(orderedProviders.map((provider, index) => [provider, index + 1]))
+  // Slice F (1.0.3) — every provider is enabled by default now that
+  // the in-composer chip strip + flyout let the user disable them
+  // inline with one click. Previously we only enabled `activeProvider`
+  // + claude + codex, which left Gemini / Kimi feeling like
+  // second-class members of the ensemble surface.
   const participants: EnsembleParticipant[] = DEFAULT_ENSEMBLE_ROLES.map((entry) => ({
     id: `ensemble-${entry.provider}`,
     provider: entry.provider,
-    enabled: entry.provider === activeProvider || entry.provider === 'claude' || entry.provider === 'codex',
+    enabled: true,
     role: entry.role,
     instructions: entry.instructions,
     order: orderByProvider.get(entry.provider) || 99,

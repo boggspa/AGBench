@@ -23572,81 +23572,117 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-secondary);
 }
 
-.ensemble-strip {
+/*
+ * Slice F (1.0.3) — EnsembleParticipantsAboveRow.
+ *
+ * Sits inside `.composer-above-bar-stack` as a sibling of the unified
+ * branch / files-changed / Create PR row. Replaces the legacy
+ * top-of-chat `.ensemble-strip` (which has been deleted) AND the
+ * bottom-pinned `.ensemble-setup-overlay` modal (also retired). Per
+ * participant: a draggable chip with provider icon + role + status,
+ * and a portaled flyout for per-participant configuration.
+ */
+.ensemble-above-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border-color);
-  background: var(--surface);
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel-bg) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-color) 40%, transparent);
 }
 
-.ensemble-strip-list {
+.ensemble-above-row-chips {
   display: flex;
   min-width: 0;
-  gap: 8px;
+  flex: 1;
+  gap: 6px;
   overflow-x: auto;
 }
 
-.ensemble-participant-chip {
+.ensemble-above-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 142px;
-  max-width: 220px;
-  padding: 7px 9px;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: var(--surface-elevated);
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated) 65%, transparent);
   color: var(--text-primary);
+  cursor: grab;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
 }
 
-.ensemble-participant-chip.is-active {
+.ensemble-above-chip:hover {
+  border-color: color-mix(in srgb, var(--accent-color) 50%, var(--border-color));
+}
+
+.ensemble-above-chip.is-dimmed {
+  opacity: 0.45;
+}
+
+.ensemble-above-chip.is-dragging {
+  cursor: grabbing;
+  opacity: 0.4;
+}
+
+.ensemble-above-chip.is-drag-over {
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 45%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 60%, transparent);
 }
 
-.ensemble-participant-main {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  line-height: 1.15;
+.ensemble-above-chip-role {
+  font-weight: 600;
 }
 
-.ensemble-participant-main span,
-.ensemble-participant-main small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ensemble-participant-main small {
+.ensemble-above-chip-status {
+  margin-left: 4px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: color-mix(in srgb, var(--panel-border) 45%, transparent);
   color: var(--text-secondary);
-  font-size: 11px;
 }
 
-.ensemble-participant-status {
-  margin-left: auto;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.ensemble-participant-status.status-running {
+.ensemble-above-chip-status.status-speaking,
+.ensemble-above-chip-status.status-running {
+  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
   color: var(--accent-color);
 }
 
-.ensemble-strip-actions {
+.ensemble-above-chip-status.status-yielded {
+  background: color-mix(in srgb, #d6a23a 28%, transparent);
+  color: color-mix(in srgb, #d6a23a 80%, var(--text-primary));
+}
+
+.ensemble-above-chip-status.status-answered {
+  background: color-mix(in srgb, var(--success, #41a26b) 24%, transparent);
+  color: color-mix(in srgb, var(--success, #41a26b) 80%, var(--text-primary));
+}
+
+.ensemble-above-chip-status.status-failed,
+.ensemble-above-chip-status.status-cancelled {
+  background: color-mix(in srgb, var(--danger, #c44a4a) 24%, transparent);
+  color: color-mix(in srgb, var(--danger, #c44a4a) 80%, var(--text-primary));
+}
+
+.ensemble-above-row-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
 }
 
-.ensemble-strip-queued {
-  max-width: 150px;
+.ensemble-above-row-queued {
+  max-width: 160px;
   overflow: hidden;
-  padding: 4px 8px;
+  padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--accent-color) 35%, var(--border-color));
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent-color) 11%, var(--surface));
@@ -23657,68 +23693,110 @@ input:disabled, select:disabled, textarea:disabled {
   white-space: nowrap;
 }
 
-.ensemble-setup-overlay {
-  z-index: 9180;
-}
-
-.ensemble-setup-sheet {
-  width: min(920px, calc(100vw - 40px));
-}
-
-.ensemble-setup-table {
-  display: grid;
+/* Portaled per-chip flyout. Visual language mirrors
+ * `.composer-combined-picker-popover` so the surface reads as part of
+ * the same picker family. */
+.ensemble-above-flyout {
+  width: 320px;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  background: var(--surface-elevated);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--panel-border));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  z-index: 9500;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
-  margin-top: 12px;
 }
 
-/* Slice D (1.0.3) — replaced free-text model + permission inputs with
- * CombinedModelPicker / CombinedPermissionsPicker chips so each row
- * looks like a miniature composer above-bar. Columns:
- *   [provider toggle] [role] [model chip] [permission chip] [order]
- */
-.ensemble-setup-row {
-  display: grid;
-  grid-template-columns: 1.3fr 1fr 1.2fr 1.2fr 64px;
-  gap: 10px;
+.ensemble-above-flyout-header {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
 }
 
-.ensemble-provider-toggle {
+.ensemble-above-flyout-title {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-width: 0;
+  gap: 6px;
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
 }
 
-.ensemble-setup-row input.ensemble-setup-role-input,
-.ensemble-setup-row input.ensemble-setup-order-input {
-  min-width: 0;
+.ensemble-above-flyout-enable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ensemble-above-flyout-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ensemble-above-flyout-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.ensemble-above-flyout-field input[type='text'],
+.ensemble-above-flyout-field select {
+  width: 100%;
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: var(--input-bg);
   color: var(--text-primary);
-  padding: 7px 8px;
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
 }
 
-.ensemble-setup-picker-cell {
-  display: flex;
+.ensemble-above-flyout-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.ensemble-above-flyout-fast {
+  display: inline-flex;
   align-items: center;
-  min-width: 0;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 20%, var(--border-color));
+  cursor: pointer;
+  font-size: 12px;
 }
 
-.ensemble-setup-picker-cell .composer-combined-picker-trigger {
-  width: 100%;
-  justify-content: flex-start;
+.ensemble-above-flyout-fast.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
+
+.ensemble-above-flyout-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* Slice F (1.0.3) — `.ensemble-setup-*` and `.ensemble-provider-toggle`
+ * deleted alongside EnsembleSetupSheet. The composer above-row chip
+ * strip + per-chip flyout are the only configuration surface now. */
 
 @media (max-width: 760px) {
-  .ensemble-strip {
+  .ensemble-above-row {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .ensemble-setup-row {
-    grid-template-columns: 1fr;
   }
 }
 
