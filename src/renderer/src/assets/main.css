@@ -8831,6 +8831,99 @@ button.diff-file-row {
   -webkit-column-span: all;
 }
 
+.settings-effects-material {
+  column-span: all;
+  -webkit-column-span: all;
+}
+
+.settings-effects-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.settings-effects-card {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 54%, transparent);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--theme-chroma-1, var(--accent)) 7%, transparent), transparent 68%),
+    color-mix(in srgb, var(--panel-bg) 38%, transparent);
+}
+
+.settings-effects-card .settings-option-list-inline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.settings-effects-radio-list {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.settings-effects-toggle-list {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-effects-check-row {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.settings-effects-check-row input {
+  margin-top: 2px;
+}
+
+.settings-effects-check-row > span,
+.settings-effects-section-header {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settings-effects-check-row small {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+.settings-effects-primary-toggle {
+  margin-bottom: 2px;
+}
+
+.settings-effects-labs {
+  grid-column: 1 / -1;
+}
+
+.settings-effects-labs-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-effects-labs .settings-fx-toggle {
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 44%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-bg) 32%, transparent);
+}
+
 .settings-composer-preview-controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -8868,7 +8961,13 @@ button.diff-file-row {
 }
 
 @media (max-width: 720px) {
-  .settings-composer-preview-controls {
+  .settings-composer-preview-controls,
+  .settings-effects-grid,
+  .settings-effects-labs-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-effects-radio-list {
     grid-template-columns: 1fr;
   }
 }

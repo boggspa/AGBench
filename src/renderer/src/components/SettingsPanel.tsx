@@ -782,22 +782,6 @@ export function SettingsPanel({
           activeTab === 'appearance' && (
             <>
               <div className="settings-group">
-                <label className="settings-label">Glass</label>
-                <div className="settings-option-list">
-                  {VISUAL_EFFECT_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      className={`settings-radio-option ${visualEffectStyle === option.value ? 'active' : ''}`}
-                      onClick={() => onChange({ visualEffectStyle: option.value })}
-                    >
-                      <span className="settings-radio-dot" />
-                      <span>{option.label}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="settings-group">
                 <label className="settings-label">System theme</label>
                 <div className="settings-option-grid">
                   {THEME_OPTIONS.map((option) => (
@@ -1159,197 +1143,197 @@ export function SettingsPanel({
                 </div>
               </div>
 
-              <div className="settings-group">
-                <label className="settings-label">Window material</label>
-                <div className="settings-option-list settings-option-list-inline">
-                  {(['solid', 'soft_glass', 'native_glass'] as AppearanceMode[]).map((m) => (
-                    <button
-                      key={m}
-                      className={`btn btn-sm ${mode === m ? '' : 'btn-ghost'}`}
-                      onClick={() => onChange({ mode: m })}
-                    >
-                      {m === 'soft_glass'
-                        ? 'Soft Glass'
-                        : m === 'native_glass'
-                          ? 'Native Glass'
-                          : 'Solid'}
-                    </button>
-                  ))}
+              <div className="settings-group settings-effects-material span-all">
+                <label className="settings-label">Effects &amp; Material</label>
+                <div className="settings-effects-grid">
+                  <section className="settings-effects-card">
+                    <span className="settings-field-label">Window material</span>
+                    <div className="settings-option-list settings-option-list-inline">
+                      {(['solid', 'soft_glass', 'native_glass'] as AppearanceMode[]).map((m) => (
+                        <button
+                          key={m}
+                          className={`btn btn-sm ${mode === m ? '' : 'btn-ghost'}`}
+                          onClick={() => onChange({ mode: m })}
+                        >
+                          {m === 'soft_glass'
+                            ? 'Soft Glass'
+                            : m === 'native_glass'
+                              ? 'Native Glass'
+                              : 'Solid'}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="settings-effects-card">
+                    <span className="settings-field-label">Glass style</span>
+                    <div className="settings-option-list settings-effects-radio-list">
+                      {VISUAL_EFFECT_OPTIONS.map((option) => (
+                        <button
+                          key={option.value}
+                          className={`settings-radio-option ${visualEffectStyle === option.value ? 'active' : ''}`}
+                          onClick={() => onChange({ visualEffectStyle: option.value })}
+                        >
+                          <span className="settings-radio-dot" />
+                          <span>{option.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="settings-effects-card">
+                    <span className="settings-field-label">Accessibility</span>
+                    <div className="settings-effects-toggle-list">
+                      <label className="settings-effects-check-row">
+                        <input
+                          type="checkbox"
+                          checked={reduceTransparency}
+                          onChange={(e) => onChange({ reduceTransparency: e.target.checked })}
+                        />
+                        <span>
+                          Reduce transparency
+                          <small>Disables glass effects for better readability and battery life.</small>
+                        </span>
+                      </label>
+                      <label className="settings-effects-check-row">
+                        <input
+                          type="checkbox"
+                          checked={reduceMotion}
+                          onChange={(e) => onChange({ reduceMotion: e.target.checked })}
+                        />
+                        <span>
+                          Reduce motion
+                          <small>Minimizes animations for accessibility.</small>
+                        </span>
+                      </label>
+                    </div>
+                  </section>
+
+                  <section className="settings-effects-card">
+                    <span className="settings-field-label">Density</span>
+                    <label className="settings-effects-check-row">
+                      <input
+                        type="checkbox"
+                        checked={compactDensity}
+                        onChange={(e) => onChange({ compactDensity: e.target.checked })}
+                      />
+                      <span>
+                        Compact density
+                        <small>Tighter spacing throughout the interface.</small>
+                      </span>
+                    </label>
+                  </section>
+
+                  <section className="settings-effects-card">
+                    <label className="settings-effects-check-row settings-effects-primary-toggle">
+                      <input
+                        type="checkbox"
+                        checked={funFxEnabled}
+                        onChange={(e) => onChange({ funFxEnabled: e.target.checked })}
+                      />
+                      <span>
+                        Epic FX
+                        <small>
+                          {funFxMode === 'off'
+                            ? 'Epic FX disabled.'
+                            : FUN_FX_MODES.find((option) => option.value === funFxMode)?.helper ||
+                              FUN_FX_MODES[2].helper}
+                        </small>
+                      </span>
+                    </label>
+                    <div className="settings-option-list settings-option-list-inline">
+                      {FUN_FX_MODES.map((option) => (
+                        <button
+                          key={option.value}
+                          className={`btn btn-sm ${funFxMode === option.value ? '' : 'btn-ghost'}`}
+                          onClick={() => onChange({ funFxMode: option.value })}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section className="settings-effects-card settings-fx-labs settings-effects-labs">
+                    <div className="settings-effects-section-header">
+                      <span className="settings-field-label">FX Labs</span>
+                      <p className="settings-hint">
+                        Opt-in visual layers for agent ambience, workspace atmosphere, and live run
+                        telemetry. Disabled automatically when Reduce motion is enabled.
+                      </p>
+                    </div>
+                    <div className="settings-effects-labs-grid">
+                      <label className="settings-service-row settings-fx-toggle">
+                        <span>
+                          Agent Aura
+                          <small>
+                            Provider-colored backgrounds, composer rims, inspector edges, and
+                            run-state bursts.
+                          </small>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!reduceMotion && funFxEnabled && advancedFx.agentAura}
+                          disabled={reduceMotion || !funFxEnabled}
+                          onChange={(e) => updateAdvancedFx({ agentAura: e.target.checked })}
+                        />
+                      </label>
+                      <label className="settings-service-row settings-fx-toggle">
+                        <span>
+                          Living Workspace
+                          <small>
+                            Extends Sky/Weather with parallax depth, motes, weather particles, and
+                            room-light glow.
+                          </small>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!reduceMotion && funFxEnabled && advancedFx.livingWorkspace}
+                          disabled={reduceMotion || !funFxEnabled}
+                          onChange={(e) => updateAdvancedFx({ livingWorkspace: e.target.checked })}
+                        />
+                      </label>
+                      <label className="settings-service-row settings-fx-toggle">
+                        <span>
+                          Data Viz FX
+                          <small>
+                            Lightweight SVG overlays for token flow, queue lanes, tool pulses,
+                            approvals, and progress.
+                          </small>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={!reduceMotion && funFxEnabled && advancedFx.dataViz}
+                          disabled={reduceMotion || !funFxEnabled}
+                          onChange={(e) => updateAdvancedFx({ dataViz: e.target.checked })}
+                        />
+                      </label>
+                    </div>
+                    <div className="settings-option-list settings-option-list-inline">
+                      {FUN_FX_MODES.filter((option) => option.value !== 'off').map((option) => (
+                        <button
+                          key={option.value}
+                          className={`btn btn-sm ${advancedFx.intensity === option.value ? '' : 'btn-ghost'}`}
+                          disabled={reduceMotion || !funFxEnabled}
+                          onClick={() =>
+                            updateAdvancedFx({
+                              intensity: option.value as AppSettings['advancedFx']['intensity']
+                            })
+                          }
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="settings-hint">
+                      {reduceMotion
+                        ? 'Reduce motion is active, so FX Labs animations stay off.'
+                        : funFxEnabled
+                          ? `${advancedFx.intensity} intensity; subtle favors CSS-only ambience, epic adds denser particles and telemetry.`
+                          : 'Turn on Epic FX to enable FX Labs layers.'}
+                    </p>
+                  </section>
                 </div>
-              </div>
-
-              <div className="settings-group">
-                <label
-                  className="settings-label"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-sm)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={reduceTransparency}
-                    onChange={(e) => onChange({ reduceTransparency: e.target.checked })}
-                  />
-                  Reduce transparency
-                </label>
-                <p className="settings-hint">
-                  Disables glass effects for better readability and battery life.
-                </p>
-              </div>
-
-              <div className="settings-group">
-                <label
-                  className="settings-label"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-sm)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={reduceMotion}
-                    onChange={(e) => onChange({ reduceMotion: e.target.checked })}
-                  />
-                  Reduce motion
-                </label>
-                <p className="settings-hint">Minimizes animations for accessibility.</p>
-              </div>
-
-              <div className="settings-group">
-                <label
-                  className="settings-label"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-sm)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={funFxEnabled}
-                    onChange={(e) => onChange({ funFxEnabled: e.target.checked })}
-                  />
-                  Epic FX
-                </label>
-                <div className="settings-option-list settings-option-list-inline">
-                  {FUN_FX_MODES.map((option) => (
-                    <button
-                      key={option.value}
-                      className={`btn btn-sm ${funFxMode === option.value ? '' : 'btn-ghost'}`}
-                      onClick={() => onChange({ funFxMode: option.value })}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="settings-hint">
-                  {funFxMode === 'off'
-                    ? 'Epic FX disabled.'
-                    : FUN_FX_MODES.find((option) => option.value === funFxMode)?.helper ||
-                      FUN_FX_MODES[2].helper}
-                </p>
-              </div>
-
-              <div className="settings-group settings-fx-labs span-all">
-                <label className="settings-label">FX Labs</label>
-                <p className="settings-hint">
-                  Opt-in visual layers for agent ambience, workspace atmosphere, and live run
-                  telemetry. Disabled automatically when Reduce motion is enabled.
-                </p>
-                <label className="settings-service-row settings-fx-toggle">
-                  <span>
-                    Agent Aura
-                    <small>
-                      Provider-colored backgrounds, composer rims, inspector edges, and run-state
-                      bursts.
-                    </small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={!reduceMotion && funFxEnabled && advancedFx.agentAura}
-                    disabled={reduceMotion || !funFxEnabled}
-                    onChange={(e) => updateAdvancedFx({ agentAura: e.target.checked })}
-                  />
-                </label>
-                <label className="settings-service-row settings-fx-toggle">
-                  <span>
-                    Living Workspace
-                    <small>
-                      Extends Sky/Weather with parallax depth, motes, weather particles, and
-                      room-light glow.
-                    </small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={!reduceMotion && funFxEnabled && advancedFx.livingWorkspace}
-                    disabled={reduceMotion || !funFxEnabled}
-                    onChange={(e) => updateAdvancedFx({ livingWorkspace: e.target.checked })}
-                  />
-                </label>
-                <label className="settings-service-row settings-fx-toggle">
-                  <span>
-                    Data Viz FX
-                    <small>
-                      Lightweight SVG overlays for token flow, queue lanes, tool pulses, approvals,
-                      and progress.
-                    </small>
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={!reduceMotion && funFxEnabled && advancedFx.dataViz}
-                    disabled={reduceMotion || !funFxEnabled}
-                    onChange={(e) => updateAdvancedFx({ dataViz: e.target.checked })}
-                  />
-                </label>
-                <div className="settings-option-list settings-option-list-inline">
-                  {FUN_FX_MODES.filter((option) => option.value !== 'off').map((option) => (
-                    <button
-                      key={option.value}
-                      className={`btn btn-sm ${advancedFx.intensity === option.value ? '' : 'btn-ghost'}`}
-                      disabled={reduceMotion || !funFxEnabled}
-                      onClick={() =>
-                        updateAdvancedFx({
-                          intensity: option.value as AppSettings['advancedFx']['intensity']
-                        })
-                      }
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="settings-hint">
-                  {reduceMotion
-                    ? 'Reduce motion is active, so FX Labs animations stay off.'
-                    : funFxEnabled
-                      ? `${advancedFx.intensity} intensity; subtle favors CSS-only ambience, epic adds denser particles and telemetry.`
-                      : 'Turn on Epic FX to enable FX Labs layers.'}
-                </p>
-              </div>
-
-              <div className="settings-group">
-                <label
-                  className="settings-label"
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 'var(--space-sm)',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={compactDensity}
-                    onChange={(e) => onChange({ compactDensity: e.target.checked })}
-                  />
-                  Compact density
-                </label>
-                <p className="settings-hint">Tighter spacing throughout the interface.</p>
               </div>
             </>
           ) /* end appearance */
