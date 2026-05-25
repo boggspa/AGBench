@@ -20259,31 +20259,12 @@ input:disabled, select:disabled, textarea:disabled {
   margin-top: var(--space-md, 12px);
 }
 
-.pairing-sheet-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 145; /* below IncomingPairingPrompt (150) so the 6-digit code overlays cleanly */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(0, 0, 0, 0.48);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.pairing-sheet {
-  width: min(720px, calc(100vw - 48px));
-  max-height: calc(100vh - 48px);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--panel-border);
-  border-radius: var(--radius-lg);
-  background: var(--panel-bg-solid);
-  box-shadow: var(--shadow-lg);
-  color: var(--text-primary);
-}
+/* `.pairing-sheet-backdrop` + `.pairing-sheet` removed in 1.0.3.
+ * Both were leftover from the modal sheet that got retired in 1.0.2
+ * when the pair flow folded into the Settings Devices tab. The
+ * renderer has no consumers anywhere — A4 (`6b3fd5c`) renamed the
+ * `__*` BEM children to `.pairing-page__*` but left the outer
+ * container selectors as dead code. Now gone. */
 
 .pairing-page__header {
   display: flex;
@@ -20428,8 +20409,11 @@ input:disabled, select:disabled, textarea:disabled {
 .pairing-page__maximise {
   position: fixed;
   inset: 0;
-  z-index: 148; /* above the pairing-sheet backdrop (145) but still
-                   under IncomingPairingPrompt (150). */
+  z-index: 148; /* under IncomingPairingPrompt (150). The original
+                   sibling at 145 (`.pairing-sheet-backdrop`) was
+                   removed in 1.0.3 when the modal-sheet form-factor
+                   retired; kept the 148 value to avoid disturbing
+                   any other stacking math that relied on it. */
   display: flex;
   flex-direction: column;
   align-items: center;

@@ -349,29 +349,12 @@ function OverflowPopover({
   return createPortal(content, document.body)
 }
 
-/**
- * Default-populate every ensemble chat with all four providers
- * enabled. Slice F (1.0.3) — previously only Claude + Codex were
- * default-on; Chris's ship-night locked rule is "all four on, user
- * disables via the chip overflow if they want a subset."
+/*
+ * `defaultEnsembleParticipants()` + `defaultRole()` deleted in 1.0.3.
+ * The main process owns ensemble defaults via `EnsembleDefaults.ts` —
+ * the renderer had a parallel implementation here from Slice D when
+ * the setup-sheet modal seeded its own state, but with that modal
+ * retired in Slice F there are no consumers in the renderer. Default
+ * shape is whatever `chatService.createEnsembleChat()` returns from
+ * the main process.
  */
-export function defaultEnsembleParticipants(): EnsembleParticipant[] {
-  const PROVIDERS = ['claude', 'codex', 'gemini', 'kimi'] as const
-  return PROVIDERS.map((provider, index) => ({
-    id: `ensemble-${provider}`,
-    provider,
-    enabled: true,
-    role: defaultRole(provider),
-    instructions: '',
-    order: index + 1,
-    model: 'cli-default',
-    permissionPresetId: provider === 'codex' ? 'workspace_write' : 'read_only'
-  }))
-}
-
-function defaultRole(provider: string): string {
-  if (provider === 'codex') return 'Worker'
-  if (provider === 'gemini') return 'Researcher'
-  if (provider === 'kimi') return 'Reviewer'
-  return 'Explorer'
-}
