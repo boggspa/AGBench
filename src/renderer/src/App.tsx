@@ -4091,6 +4091,13 @@ type TranscriptPanelProps = {
    * otherwise it equals `currentProviderLabel`.
    */
   thinkingProviderLabel?: string
+  /**
+   * Companion provider id for {@link thinkingProviderLabel}. Drives
+   * the `.message-meta.provider-{name}` class on the live thinking
+   * indicator so the per-provider tint applies there too — same
+   * treatment as completed assistant messages.
+   */
+  thinkingProvider?: ProviderId | null
   displayFileChangeSummaries: DiffFileSummary[]
   fileChangeSummaryText: string
   fileChangeShouldShowStats: boolean
@@ -4132,6 +4139,7 @@ const TranscriptPanel = memo(
     currentProviderLabel,
     currentProvider,
     thinkingProviderLabel,
+    thinkingProvider,
     displayFileChangeSummaries,
     fileChangeSummaryText,
     fileChangeShouldShowStats,
@@ -4353,7 +4361,13 @@ const TranscriptPanel = memo(
           })}
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
-              <div className="message-meta">{thinkingProviderLabel || currentProviderLabel}</div>
+              <div
+                className={`message-meta${
+                  thinkingProvider ? ` provider-${thinkingProvider}` : ''
+                }`}
+              >
+                {thinkingProviderLabel || currentProviderLabel}
+              </div>
               <ThinkingIndicator />
             </div>
           )}
@@ -4513,6 +4527,7 @@ const TranscriptPanel = memo(
     previous.currentProviderLabel === next.currentProviderLabel &&
     previous.currentProvider === next.currentProvider &&
     previous.thinkingProviderLabel === next.thinkingProviderLabel &&
+    previous.thinkingProvider === next.thinkingProvider &&
     previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
     previous.fileChangeSummaryText === next.fileChangeSummaryText &&
     previous.fileChangeShouldShowStats === next.fileChangeShouldShowStats &&
@@ -12314,10 +12329,24 @@ function App(): React.JSX.Element {
   // Auto-follow the active speaker during a running round so the
   // composer pickers always reflect who's speaking. When the round
   // isn't running, the selection is purely user-driven.
+  //
+  // Override path (1.0.3, post-ship-night UX fix): if the user
+  // explicitly clicks a chip mid-round, auto-follow yields to user
+  // intent so they can adjust a non-speaking participant's settings
+  // without the next speaker-change clobbering their selection.
+  // The override resets when the round transitions out of `running`
+  // — the next round starts with fresh auto-follow behaviour.
+  const userOverrodeSelectionRef = useRef(false)
   useEffect(() => {
     if (!isCurrentEnsembleChat) return
     const round = currentChat?.ensemble?.activeRound
-    if (round?.status !== 'running') return
+    if (round?.status !== 'running') {
+      // Round not running → drop any override so the next round
+      // resumes auto-follow from a clean state.
+      userOverrodeSelectionRef.current = false
+      return
+    }
+    if (userOverrodeSelectionRef.current) return
     const activeId = round?.activeParticipantId
     if (!activeId) return
     if (activeId === selectedParticipantId) return
@@ -12328,6 +12357,18 @@ function App(): React.JSX.Element {
     currentChat?.ensemble?.activeRound?.status,
     selectedParticipantId
   ])
+  // Click handler that records the override before applying the
+  // selection. Passed to the chip strip as `onSelectParticipant`.
+  const handleSelectParticipant = useCallback(
+    (id: string) => {
+      const status = currentChat?.ensemble?.activeRound?.status
+      if (status === 'running') {
+        userOverrodeSelectionRef.current = true
+      }
+      setSelectedParticipantId(id)
+    },
+    [currentChat?.ensemble?.activeRound?.status]
+  )
   // Phase J3 (steer): the composer Steer button is visible while the
   // current chat has an in-flight run. `isChatBusy` is the per-chat
   // busy predicate already used by every queue-decision site.
@@ -12352,15 +12393,28 @@ function App(): React.JSX.Element {
   // actually-speaking participant — not the chat's base provider, which is
   // always "Codex" for ensemble chats. Falls back to the chat's provider
   // label for non-ensemble chats.
-  const thinkingProviderLabel = (() => {
+  //
+  // Also derive the provider ID alongside the label so the renderer can
+  // apply the matching `.provider-{name}` class to the thinking-indicator's
+  // message-meta — same provider-tint treatment as the assistant labels
+  // in the rest of the transcript.
+  const { thinkingProviderLabel, thinkingProvider } = (() => {
     const activeRound = currentChat?.ensemble?.activeRound
     if (activeRound?.activeParticipantId) {
       const participant = currentChat?.ensemble?.participants.find(
         (p) => p.id === activeRound.activeParticipantId
       )
-      if (participant) return getProviderLabel(participant.provider)
+      if (participant) {
+        return {
+          thinkingProviderLabel: getProviderLabel(participant.provider),
+          thinkingProvider: participant.provider
+        }
+      }
     }
-    return currentProviderLabel
+    return {
+      thinkingProviderLabel: currentProviderLabel,
+      thinkingProvider: currentProvider
+    }
   })()
   // Slice C (revised): clear the "Thinking…" indicator when the ensemble
   // round has already finished. Otherwise the indicator persists after the
@@ -13653,6 +13707,7 @@ function App(): React.JSX.Element {
               currentProviderLabel={currentProviderLabel}
               currentProvider={currentProvider}
               thinkingProviderLabel={thinkingProviderLabel}
+              thinkingProvider={thinkingProvider}
               displayFileChangeSummaries={displayFileChangeSummaries}
               fileChangeSummaryText={fileChangeSummaryText}
               fileChangeShouldShowStats={fileChangeShouldShowStats}
@@ -14113,7 +14168,7 @@ function App(): React.JSX.Element {
                   <EnsembleParticipantsAboveRow
                     chat={currentChat}
                     selectedParticipantId={effectiveSelectedParticipantId}
-                    onSelectParticipant={(id) => setSelectedParticipantId(id)}
+                    onSelectParticipant={handleSelectParticipant}
                     onChatChange={(updatedChat) => {
                       chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
                       setCurrentChat((prev) =>
