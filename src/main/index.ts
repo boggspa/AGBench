@@ -215,6 +215,68 @@ const rendererConsoleBuffer: Array<{
   line?: number
 }> = []
 
+/**
+ * QMOD (1.0.3): pending `ask_user_question` MCP tool invocations.
+ *
+ * When an agent calls `ask_user_question`, the dispatcher emits an
+ * `agent-question-requested` IPC event to the renderer and parks the
+ * tool call on a Promise. The Promise resolves when the renderer
+ * sends back `answer-agent-question` (user clicked a button or typed
+ * a free-text reply) or `cancel-agent-question` (user dismissed). A
+ * 10-minute timeout falls back to `cancelled: true` so a stale
+ * question can't pin a run forever.
+ *
+ * Indexed by `questionId` (uuid-ish), keyed for quick lookup. The
+ * `appRunId` lets us bulk-cancel a run's outstanding questions when
+ * the run itself is cancelled (otherwise the agent never sees the
+ * answer and the orchestrator hangs).
+ */
+interface PendingAgentQuestion {
+  questionId: string
+  appRunId: string
+  appChatId: string
+  startedAt: number
+  resolve: (result: AgentQuestionResult) => void
+  timeoutHandle: ReturnType<typeof setTimeout>
+}
+
+interface AgentQuestionResult {
+  answer: string
+  is_custom: boolean
+  cancelled?: boolean
+  cancellation_reason?: string
+}
+
+const pendingAgentQuestions = new Map<string, PendingAgentQuestion>()
+const AGENT_QUESTION_TIMEOUT_MS = 10 * 60 * 1000
+
+/**
+ * Cancel every outstanding question tied to a run. Called when the
+ * orchestrator finalises a run (success / failure / cancellation) so
+ * a leftover question modal can't keep the user confused after the
+ * agent has moved on.
+ */
+function cancelPendingAgentQuestionsForRun(appRunId: string, reason: string): void {
+  if (!appRunId) return
+  for (const [id, pending] of pendingAgentQuestions.entries()) {
+    if (pending.appRunId !== appRunId) continue
+    clearTimeout(pending.timeoutHandle)
+    pendingAgentQuestions.delete(id)
+    pending.resolve({ answer: '', is_custom: false, cancelled: true, cancellation_reason: reason })
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      // appChatId carried back so the renderer can clear the per-chat
+      // pending-question state without having to maintain its own
+      // questionId → chatId map. Keeps the renderer cancel listener
+      // dumb: just clear the slot for this chat.
+      mainWindow.webContents.send('agent-question-cancelled', {
+        questionId: id,
+        appChatId: pending.appChatId,
+        reason
+      })
+    }
+  }
+}
+
 async function openSafeShellTarget(hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> {
   const decision = classifyShellOpenTarget(hrefRaw)
   try {
@@ -11102,7 +11164,12 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'ide_app_status',
   'ide_app_capabilities',
   'list_running_ides',
-  'ensemble_yield'
+  'ensemble_yield',
+  // QMOD (1.0.3): asking the user a question is the inverse of the
+  // user prompting the agent — it's a focus-shift, not a state mutation.
+  // The renderer modal IS the approval surface, so a second confirm
+  // step would be silly. Universally auto-allowed.
+  'ask_user_question'
 ])
 
 function mcpJson(value: unknown): string {
@@ -14354,6 +14421,97 @@ async function executeGeminiMcpTool(
         reason: optionalString(args.reason),
         target: optionalString(args.target)
       })
+    } else if (toolName === 'ask_user_question') {
+      // QMOD (1.0.3) — pause the agent on a modal question and resume
+      // it with the user's answer as the tool result. The renderer
+      // owns the surface; main just bridges via `pendingAgentQuestions`
+      // and the `agent-question-requested` / `answer-agent-question`
+      // IPC pair. See `pendingAgentQuestions` declaration up top for
+      // the lifecycle + cancellation contract.
+      const question = String(args.question || '').trim()
+      if (!question) {
+        text = mcpJson({
+          ok: false,
+          error: 'ask_user_question requires a non-empty `question` string.'
+        })
+      } else {
+        const rawOptions = Array.isArray(args.options) ? args.options : []
+        const options = rawOptions
+          .map((opt: unknown) => (typeof opt === 'string' ? opt.trim() : ''))
+          .filter((opt: string) => opt.length > 0)
+          .slice(0, 8)
+        const contextNote = optionalString(args.context)
+        const questionId = `q-${context.appRunId || 'no-run'}-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 8)}`
+        const result = await new Promise<AgentQuestionResult>((resolve) => {
+          const timeoutHandle = setTimeout(() => {
+            const pending = pendingAgentQuestions.get(questionId)
+            if (!pending) return
+            pendingAgentQuestions.delete(questionId)
+            pending.resolve({
+              answer: '',
+              is_custom: false,
+              cancelled: true,
+              cancellation_reason: 'timeout'
+            })
+            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+              mainWindow.webContents.send('agent-question-cancelled', {
+                questionId,
+                appChatId: context.appChatId || '',
+                reason: 'timeout'
+              })
+            }
+          }, AGENT_QUESTION_TIMEOUT_MS)
+
+          pendingAgentQuestions.set(questionId, {
+            questionId,
+            appRunId: context.appRunId || '',
+            appChatId: context.appChatId || '',
+            startedAt: Date.now(),
+            resolve,
+            timeoutHandle
+          })
+
+          // Emit the request to the renderer. The renderer modal
+          // listens on `agent-question-requested` and shows the card.
+          if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+            mainWindow.webContents.send('agent-question-requested', {
+              questionId,
+              appRunId: context.appRunId || '',
+              appChatId: context.appChatId || '',
+              provider: parentProvider,
+              question,
+              options: options.length > 0 ? options : undefined,
+              context: contextNote
+            })
+          } else {
+            // No renderer to display the question — resolve immediately
+            // with cancellation so the agent isn't pinned waiting for a
+            // surface that doesn't exist (headless runs / window-closed
+            // edge case).
+            clearTimeout(timeoutHandle)
+            pendingAgentQuestions.delete(questionId)
+            resolve({
+              answer: '',
+              is_custom: false,
+              cancelled: true,
+              cancellation_reason: 'no-renderer'
+            })
+          }
+        })
+
+        text = mcpJson({
+          ok: !result.cancelled,
+          tool: 'ask_user_question',
+          questionId,
+          answer: result.answer,
+          is_custom: result.is_custom,
+          ...(result.cancelled
+            ? { cancelled: true, cancellation_reason: result.cancellation_reason }
+            : {})
+        })
+      }
     } else if (toolName === 'read_file') {
       const targetPath = resolveGeminiMcpGrantAwarePath(
         context,
@@ -16057,6 +16215,55 @@ function mcpToolDefinitions() {
           reason: { type: 'string' },
           target: { type: 'string' }
         }
+      }
+    },
+    {
+      // QMOD (1.0.3) — ask the user a question and pause the agent's
+      // turn until they respond. Returns the user's answer as the tool
+      // result so the agent can continue. CRITICAL fix for plan mode:
+      // before this tool existed, agents asking questions in plan
+      // mode would emit the question as text, the user wouldn't see
+      // it as actionable, the agent would time out / exit plan mode.
+      //
+      // Usage pattern: agent prefers this tool over inline "What
+      // should I…?" prose whenever they need a clarification before
+      // proceeding. Renderer shows a modal card with the question +
+      // option buttons + free-text fallback ("Other"). Universally
+      // auto-allowed because the renderer modal IS the gate.
+      name: 'ask_user_question',
+      description:
+        'Pause the turn and surface a question to the user via a modal card. ' +
+        'Use this whenever you need the user to make a decision before you can proceed — for plan-mode clarifications, design choices, or any other branch point that depends on user intent. ' +
+        'Preferable to emitting the question as inline prose because the user gets a focused modal with buttons instead of having to type back. ' +
+        'Provide 2-4 concise option strings if the answer is multiple-choice; otherwise omit `options` to ask a free-text question. ' +
+        '`context` may carry a sub-paragraph of explanation shown beneath the question. ' +
+        'Returns the user\'s `answer` string. If the user dismissed the modal (cancelled), the tool returns `cancelled: true` and the agent should treat that as "skip this step".',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          question: {
+            type: 'string',
+            description: 'The question to ask the user. One sentence; ends with a question mark.'
+          },
+          options: {
+            type: 'array',
+            items: { type: 'string' },
+            description:
+              'Optional 2-4 pre-set answer choices. The renderer renders each as a button. Omit for free-text questions.'
+          },
+          context: {
+            type: 'string',
+            description:
+              'Optional sub-paragraph (≤ 240 chars) of additional context shown beneath the question. Use for "why I\'m asking" framing.'
+          }
+        },
+        required: ['question']
       }
     },
     {
@@ -18656,6 +18863,46 @@ if (isGeminiMcpBridgeProcess) {
       return { snapshot: attachedWindowSnapshot }
     })
 
+    // QMOD (1.0.3) — receive the user's answer to an `ask_user_question`
+    // tool call. Resolves the parked Promise so the MCP handler can
+    // return the answer to the agent. Validates that the questionId
+    // is still pending — stale answers from a previously-cancelled
+    // question quietly no-op.
+    ipcMain.handle(
+      'answer-agent-question',
+      (_event, payload: { questionId: string; answer: string; isCustom?: boolean }) => {
+        const pending = pendingAgentQuestions.get(payload.questionId)
+        if (!pending) return { ok: false, error: 'no-such-question' }
+        clearTimeout(pending.timeoutHandle)
+        pendingAgentQuestions.delete(payload.questionId)
+        pending.resolve({
+          answer: String(payload.answer || ''),
+          is_custom: Boolean(payload.isCustom)
+        })
+        return { ok: true }
+      }
+    )
+
+    // QMOD (1.0.3) — user dismissed the question modal. Resolves with
+    // `cancelled: true` so the agent can treat it as "skip this step"
+    // and continue gracefully instead of timing out at 10 min.
+    ipcMain.handle(
+      'cancel-agent-question',
+      (_event, payload: { questionId: string; reason?: string }) => {
+        const pending = pendingAgentQuestions.get(payload.questionId)
+        if (!pending) return { ok: false, error: 'no-such-question' }
+        clearTimeout(pending.timeoutHandle)
+        pendingAgentQuestions.delete(payload.questionId)
+        pending.resolve({
+          answer: '',
+          is_custom: false,
+          cancelled: true,
+          cancellation_reason: payload.reason || 'user-dismissed'
+        })
+        return { ok: true }
+      }
+    )
+
     // Settings
     ipcMain.handle('get-settings', () => settingsService.getSettings())
     ipcMain.handle('update-settings', (_, partial: Partial<AppSettings>) =>
@@ -20027,7 +20274,16 @@ if (isGeminiMcpBridgeProcess) {
       'cancel-agent-run',
       async (_, provider: ProviderId = 'gemini', runId?: string) => {
         const normalizedProvider = assertProviderId(provider || 'gemini')
-        return providerAdapters.require(normalizedProvider).cancel(optionalString(runId))
+        // QMOD (1.0.3): if the user cancels a run while an
+        // `ask_user_question` modal is open for that run, the parked
+        // Promise must resolve too — otherwise the agent process
+        // exits but the modal sticks around in the renderer waiting
+        // for an answer that will never get back to anyone.
+        const runIdString = optionalString(runId)
+        if (runIdString) {
+          cancelPendingAgentQuestionsForRun(runIdString, 'run-cancelled')
+        }
+        return providerAdapters.require(normalizedProvider).cancel(runIdString)
       }
     )
 

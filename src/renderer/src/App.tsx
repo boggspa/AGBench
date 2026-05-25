@@ -2292,6 +2292,33 @@ type PlanChoiceState = {
   options: string[]
 }
 
+/**
+ * QMOD (1.0.3) — state for an in-flight `ask_user_question` MCP tool
+ * invocation. The agent's tool call parks main-process-side; main fires
+ * `agent-question-requested` IPC with the question payload + a
+ * `questionId` opaque to the renderer. We surface a card in the
+ * transcript and on submit/dismiss, post the answer back via
+ * `answerAgentQuestion` / `cancelAgentQuestion`. The parked Promise
+ * resolves and the agent's tool call returns the answer as its result.
+ *
+ * Per-chat state because two chats could each have an open question
+ * simultaneously and they shouldn't bleed into each other.
+ *
+ * `messageId` is the synthetic system-message inserted into the chat
+ * transcript at question time — the card renders adjacent to that
+ * message so it's anchored in the conversation flow.
+ */
+type AgentQuestionState = {
+  questionId: string
+  appRunId: string
+  messageId: string
+  provider: ProviderId | null
+  question: string
+  options?: string[]
+  context?: string
+  askedAt: number
+}
+
 const parsePlanModeChoice = (text: string): { question: string; options: string[] } | null => {
   const lines = text
     .replace(/```[\s\S]*?```/g, '')
@@ -4172,6 +4199,9 @@ type TranscriptPanelProps = {
   isThinking: boolean
   showFallbackUX: boolean
   pendingPlanChoice: PlanChoiceState | null
+  pendingAgentQuestion: AgentQuestionState | null
+  onAgentQuestionSubmit: (questionId: string, answer: string, isCustom: boolean) => void
+  onAgentQuestionDismiss: (questionId: string) => void
   runCompleteNotice: RunCompleteNotice | null
   runCompleteDurationText: string | null
   currentChat: ChatRecord | null
@@ -4240,6 +4270,138 @@ type TranscriptPanelProps = {
   pendingQueuedAppRunIds?: Set<string>
 }
 
+/**
+ * QMOD (1.0.3) — modal card rendered next to a synthetic system
+ * message when an agent calls the `ask_user_question` MCP tool.
+ * Reuses `.plan-choice-card` visual surface for parity with the
+ * (parser-based) plan-mode picker so users have ONE mental model
+ * for "agent wants my decision".
+ *
+ * Two paths:
+ *   - Pre-set options → render each as a button. First button is
+ *     focused on mount so Enter submits the first option (mirrors
+ *     the AskUserQuestion UX in Claude Code).
+ *   - Free-text (no options OR user clicks "Type your own answer"):
+ *     surface a textarea; Cmd/Ctrl+Enter submits.
+ *
+ * Dismiss button always present — user can bail out and the parked
+ * MCP tool call resolves with `cancelled: true`, letting the agent
+ * handle "skip" semantics gracefully.
+ */
+interface AgentQuestionCardProps {
+  state: AgentQuestionState
+  onAnswer: (answer: string, isCustom: boolean) => void
+  onDismiss: () => void
+}
+
+function AgentQuestionCard({
+  state,
+  onAnswer,
+  onDismiss
+}: AgentQuestionCardProps): React.JSX.Element {
+  const hasOptions = (state.options?.length ?? 0) > 0
+  const [showFreeText, setShowFreeText] = useState(!hasOptions)
+  const [freeText, setFreeText] = useState('')
+  const providerClass = state.provider ? ` provider-${state.provider}` : ''
+
+  const submitFreeText = (): void => {
+    if (!freeText.trim()) return
+    onAnswer(freeText.trim(), true)
+  }
+
+  return (
+    <div className={`plan-choice-card agent-question-card${providerClass}`}>
+      <div className="plan-choice-question agent-question-card-question">
+        {state.question}
+      </div>
+      {state.context && (
+        <div className="agent-question-card-context">{state.context}</div>
+      )}
+      {hasOptions && !showFreeText && (
+        <div className="plan-choice-actions">
+          {state.options!.map((option) => (
+            <button
+              key={option}
+              type="button"
+              className="plan-choice-action-btn"
+              onClick={() => onAnswer(option, false)}
+              title={`Answer: ${option}`}
+            >
+              {option}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="plan-choice-action-btn agent-question-card-other"
+            onClick={() => setShowFreeText(true)}
+            title="Type your own answer instead"
+          >
+            Other…
+          </button>
+        </div>
+      )}
+      {showFreeText && (
+        <div className="agent-question-card-freetext">
+          <textarea
+            className="agent-question-card-input"
+            value={freeText}
+            onChange={(event) => setFreeText(event.target.value)}
+            placeholder="Type your answer… (⌘/Ctrl+Enter to submit)"
+            rows={3}
+            autoFocus
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+                event.preventDefault()
+                submitFreeText()
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault()
+                if (hasOptions) {
+                  setShowFreeText(false)
+                  setFreeText('')
+                } else {
+                  onDismiss()
+                }
+              }
+            }}
+          />
+          <div className="agent-question-card-freetext-actions">
+            {hasOptions && (
+              <button
+                type="button"
+                className="plan-choice-action-btn agent-question-card-cancel"
+                onClick={() => {
+                  setShowFreeText(false)
+                  setFreeText('')
+                }}
+              >
+                Back to options
+              </button>
+            )}
+            <button
+              type="button"
+              className="plan-choice-action-btn agent-question-card-submit"
+              onClick={submitFreeText}
+              disabled={!freeText.trim()}
+            >
+              Send answer
+            </button>
+          </div>
+        </div>
+      )}
+      <button
+        type="button"
+        className="agent-question-card-dismiss"
+        onClick={onDismiss}
+        title="Dismiss without answering (agent receives `cancelled: true`)"
+        aria-label="Dismiss question"
+      >
+        ×
+      </button>
+    </div>
+  )
+}
+
 const TranscriptPanel = memo(
   function TranscriptPanel({
     scrollRef,
@@ -4250,6 +4412,9 @@ const TranscriptPanel = memo(
     isThinking,
     showFallbackUX,
     pendingPlanChoice,
+    pendingAgentQuestion,
+    onAgentQuestionSubmit,
+    onAgentQuestionDismiss,
     runCompleteNotice,
     runCompleteDurationText,
     currentChat,
@@ -4561,6 +4726,17 @@ const TranscriptPanel = memo(
                         </div>
                       </div>
                     )}
+                    {pendingAgentQuestion && pendingAgentQuestion.messageId === msg.id && (
+                      <AgentQuestionCard
+                        state={pendingAgentQuestion}
+                        onAnswer={(answer, isCustom) =>
+                          onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
+                        }
+                        onDismiss={() =>
+                          onAgentQuestionDismiss(pendingAgentQuestion.questionId)
+                        }
+                      />
+                    )}
                   </div>
                 )}
               </div>
@@ -4737,6 +4913,9 @@ const TranscriptPanel = memo(
     previous.isThinking === next.isThinking &&
     previous.showFallbackUX === next.showFallbackUX &&
     previous.pendingPlanChoice === next.pendingPlanChoice &&
+    previous.pendingAgentQuestion === next.pendingAgentQuestion &&
+    previous.onAgentQuestionSubmit === next.onAgentQuestionSubmit &&
+    previous.onAgentQuestionDismiss === next.onAgentQuestionDismiss &&
     previous.runCompleteNotice === next.runCompleteNotice &&
     previous.runCompleteDurationText === next.runCompleteDurationText &&
     previous.currentRun === next.currentRun &&
@@ -5196,6 +5375,11 @@ function App(): React.JSX.Element {
   const [isAttachingWindow, setIsAttachingWindow] = useState(false)
   const [pendingPlanChoiceByChatId, setPendingPlanChoiceForChat] =
     usePerChatState<PlanChoiceState | null>(null)
+  // QMOD (1.0.3) — per-chat pending agent question state. Driven by the
+  // `agent-question-requested` IPC event from main. Cleared on submit /
+  // dismiss / cancellation. See AgentQuestionState type for shape.
+  const [pendingAgentQuestionByChatId, setPendingAgentQuestionForChat] =
+    usePerChatState<AgentQuestionState | null>(null)
   const [commandPaletteOpenByChatId, setCommandPaletteOpenForChat] = usePerChatState(false)
   const [commandPaletteQueryByChatId, setCommandPaletteQueryForChat] = usePerChatState('')
   const [discoveredCommands, setDiscoveredCommands] = useState<CommandPaletteItem[]>([])
@@ -5413,6 +5597,9 @@ function App(): React.JSX.Element {
     : null
   const pendingPlanChoice = currentComposerChatId
     ? pendingPlanChoiceByChatId[currentComposerChatId] || null
+    : null
+  const pendingAgentQuestion = currentComposerChatId
+    ? pendingAgentQuestionByChatId[currentComposerChatId] || null
     : null
   const isCommandPaletteOpen = currentComposerChatId
     ? Boolean(commandPaletteOpenByChatId[currentComposerChatId])
@@ -9385,9 +9572,79 @@ function App(): React.JSX.Element {
       yoloUnsubscribe = window.api.onAgenticYoloState((state) => setSessionYoloModeState(state))
     }
 
+    // QMOD (1.0.3) — listen for `ask_user_question` MCP-driven question
+    // requests from main. When an agent calls the tool, main fires this
+    // event with the question payload; we materialise a synthetic
+    // system message in the chat (so the question appears in-line with
+    // the conversation) and stash the metadata in per-chat state so the
+    // transcript renderer can show the modal card next to it.
+    let agentQuestionUnsubscribe: (() => void) | null = null
+    let agentQuestionCancelUnsubscribe: (() => void) | null = null
+    if (typeof window.api.onAgentQuestionRequested === 'function') {
+      agentQuestionUnsubscribe = window.api.onAgentQuestionRequested((request) => {
+        const messageId = `agent-question-${request.questionId}`
+        // Insert a synthetic system message into the chat's transcript
+        // marking the question. Persisted in `chat.messages` so the
+        // question + answer trail survives chat reloads. The transcript
+        // renderer keys off `metadata.kind === 'agentQuestion'` to
+        // render the modal card next to this message.
+        updateChatById(request.appChatId, (prev) => {
+          // Avoid duplicating the marker on re-fires (e.g. main retries
+          // an event after a renderer reload). We key on questionId.
+          if (prev.messages?.some((msg) => msg.id === messageId)) return prev
+          const askedAt = new Date().toISOString()
+          const provider = (request.provider as ProviderId | undefined) ?? null
+          const headerProvider = provider ? getProviderLabel(provider) : 'Agent'
+          const headerLine = request.options?.length
+            ? `${headerProvider} asked you to pick an option:`
+            : `${headerProvider} asked you a question:`
+          const next: ChatMessage = {
+            id: messageId,
+            role: 'system',
+            content: headerLine,
+            timestamp: askedAt,
+            ...(request.appRunId ? { runId: request.appRunId } : {}),
+            metadata: {
+              kind: 'agentQuestion',
+              questionId: request.questionId,
+              ensembleProvider: provider || undefined,
+              agentQuestion: request.question,
+              agentQuestionOptions: request.options,
+              agentQuestionContext: request.context
+            }
+          }
+          return { ...prev, messages: [...(prev.messages || []), next] }
+        })
+        setPendingAgentQuestionForChat(request.appChatId, {
+          questionId: request.questionId,
+          appRunId: request.appRunId,
+          messageId,
+          provider: (request.provider as ProviderId | undefined) ?? null,
+          question: request.question,
+          options: request.options,
+          context: request.context,
+          askedAt: Date.now()
+        })
+      })
+    }
+    if (typeof window.api.onAgentQuestionCancelled === 'function') {
+      agentQuestionCancelUnsubscribe = window.api.onAgentQuestionCancelled((info) => {
+        // Clear the pending-question slot for the chat that owned the
+        // question. appChatId comes back on the cancellation payload so
+        // we don't have to maintain our own questionId → chatId map.
+        if (info.appChatId) {
+          setPendingAgentQuestionForChat(info.appChatId, (prev) =>
+            prev?.questionId === info.questionId ? null : prev
+          )
+        }
+      })
+    }
+
     return () => {
       window.api.removeListeners()
       yoloUnsubscribe?.()
+      agentQuestionUnsubscribe?.()
+      agentQuestionCancelUnsubscribe?.()
     }
   }, [])
 
@@ -11865,6 +12122,74 @@ function App(): React.JSX.Element {
     setPendingPlanChoice((prev) => (prev?.messageId === messageId ? null : prev))
     handleRun(undefined, option)
   }
+
+  // QMOD (1.0.3) — user picked an answer (or typed free-text) for an
+  // `ask_user_question` modal. Forward to main via IPC so the parked
+  // MCP tool call resolves with the answer; also append a user-reply
+  // message into the chat for transcript continuity so the trail of
+  // "agent asked, user said X" stays visible after the modal closes.
+  const handleAgentQuestionSubmit = useCallback(
+    (questionId: string, answer: string, isCustom: boolean) => {
+      const trimmed = answer.trim()
+      if (!trimmed) return
+      const targetChatId = currentChat?.appChatId
+      const pending = targetChatId
+        ? pendingAgentQuestionByChatId[targetChatId] || null
+        : null
+      if (pending && targetChatId) {
+        updateChatById(targetChatId, (prev) => {
+          const replyMsg: ChatMessage = {
+            id: `agent-question-reply-${questionId}`,
+            role: 'user',
+            content: trimmed,
+            timestamp: new Date().toISOString(),
+            metadata: {
+              kind: 'agentQuestionReply',
+              questionId,
+              respondedToMessageId: pending.messageId,
+              isCustomAnswer: isCustom
+            }
+          }
+          // Idempotent: don't append a duplicate if the user double-
+          // clicked the button before state updates settle.
+          if (prev.messages?.some((m) => m.id === replyMsg.id)) return prev
+          return { ...prev, messages: [...(prev.messages || []), replyMsg] }
+        })
+      }
+      if (targetChatId) {
+        setPendingAgentQuestionForChat(targetChatId, (prev) =>
+          prev?.questionId === questionId ? null : prev
+        )
+      }
+      // Fire-and-forget — the parked Promise on main resolves and the
+      // tool call returns to the agent. Errors here are benign (e.g.
+      // the question already timed out) so we don't surface them.
+      void window.api.answerAgentQuestion({ questionId, answer: trimmed, isCustom })
+    },
+    [
+      currentChat?.appChatId,
+      pendingAgentQuestionByChatId,
+      updateChatById,
+      setPendingAgentQuestionForChat
+    ]
+  )
+
+  // QMOD (1.0.3) — user dismissed the modal without answering. The
+  // agent's tool call resolves with `cancelled: true`; agent should
+  // treat that as "skip / continue without answer" so the run isn't
+  // pinned waiting forever (the 10-min timeout is the safety net).
+  const handleAgentQuestionDismiss = useCallback(
+    (questionId: string) => {
+      const targetChatId = currentChat?.appChatId
+      if (targetChatId) {
+        setPendingAgentQuestionForChat(targetChatId, (prev) =>
+          prev?.questionId === questionId ? null : prev
+        )
+      }
+      void window.api.cancelAgentQuestion({ questionId, reason: 'user-dismissed' })
+    },
+    [currentChat?.appChatId, setPendingAgentQuestionForChat]
+  )
 
   const handleRunFallback = async (fallbackModel: string) => {
     const capacityContext = getActiveRunContextForProvider('gemini')
@@ -14381,6 +14706,9 @@ function App(): React.JSX.Element {
               isThinking={effectiveIsThinking}
               showFallbackUX={showFallbackUX}
               pendingPlanChoice={pendingPlanChoice}
+              pendingAgentQuestion={pendingAgentQuestion}
+              onAgentQuestionSubmit={handleAgentQuestionSubmit}
+              onAgentQuestionDismiss={handleAgentQuestionDismiss}
               runCompleteNotice={runCompleteNotice}
               runCompleteDurationText={runCompleteDurationText}
               currentChat={currentChat}

@@ -72,6 +72,14 @@ export const AGENTBENCH_MCP_TOOLS = [
   'switch_auth_profile',
   'agent_delegation_role',
   'ensemble_yield',
+  // QMOD (1.0.3): universal "ask the user" tool. Agents call this when
+  // they need clarification mid-plan instead of trying to emit a
+  // question into the chat stream and hoping the user notices. Renderer
+  // shows a modal card (reuses .plan-choice-card surface) and the
+  // tool's response is the user's selected option or free-text reply.
+  // Critical fix for plan-mode where Claude was silently exiting after
+  // its questions went unanswered. Universally auto-allowed.
+  'ask_user_question',
   'delegate_to_subthread'
 ] as const
 

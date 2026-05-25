@@ -362,6 +362,29 @@ declare global {
       onAgenticYoloState: (
         handler: (state: { enabled: boolean; enabledAt: string | null }) => void
       ) => () => void
+      onAgentQuestionRequested: (
+        handler: (request: {
+          questionId: string
+          appRunId: string
+          appChatId: string
+          provider?: string | null
+          question: string
+          options?: string[]
+          context?: string
+        }) => void
+      ) => () => void
+      onAgentQuestionCancelled: (
+        handler: (info: { questionId: string; appChatId: string; reason: string }) => void
+      ) => () => void
+      answerAgentQuestion: (payload: {
+        questionId: string
+        answer: string
+        isCustom?: boolean
+      }) => Promise<{ ok: boolean; error?: string }>
+      cancelAgentQuestion: (payload: {
+        questionId: string
+        reason?: string
+      }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>

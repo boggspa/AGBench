@@ -4212,6 +4212,101 @@ button.sidebar-item {
   cursor: not-allowed;
 }
 
+/* QMOD (1.0.3) — `ask_user_question` MCP tool surface. Extends the
+ * existing .plan-choice-card visual; only adds the bits that diverge:
+ *   - Context sub-paragraph beneath the question.
+ *   - Provider-tinted left border so the user sees who's asking.
+ *   - Free-text textarea path (Cmd/Ctrl+Enter submits, Esc dismisses).
+ *   - Dismiss × in the top-right that cancels the parked tool call.
+ */
+.agent-question-card {
+  position: relative;
+  border-left-width: 3px;
+}
+.agent-question-card.provider-codex {
+  border-left-color: var(--provider-codex-color);
+}
+.agent-question-card.provider-claude {
+  border-left-color: var(--provider-claude-color);
+}
+.agent-question-card.provider-gemini {
+  border-left-color: var(--provider-gemini-color);
+}
+.agent-question-card.provider-kimi {
+  border-left-color: var(--provider-kimi-color);
+}
+.agent-question-card-question {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.agent-question-card-context {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.agent-question-card-other {
+  font-style: italic;
+  opacity: 0.85;
+}
+.agent-question-card-freetext {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+}
+.agent-question-card-input {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-sm);
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 64px;
+  outline: none;
+}
+.agent-question-card-input:focus {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.agent-question-card-freetext-actions {
+  display: flex;
+  gap: var(--space-sm);
+  justify-content: flex-end;
+}
+.agent-question-card-submit {
+  width: auto !important;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 32%, rgba(255, 255, 255, 0.16));
+}
+.agent-question-card-submit:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.agent-question-card-cancel {
+  width: auto !important;
+  opacity: 0.7;
+}
+.agent-question-card-dismiss {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+.agent-question-card-dismiss:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
 /* Composer */
 .composer-area {
   position: absolute;

@@ -162,6 +162,50 @@ const api = {
     return () => ipcRenderer.removeListener('agentic-yolo-state', wrapped)
   },
 
+  // QMOD (1.0.3) — `ask_user_question` MCP tool bridge. Main fires
+  // `agent-question-requested` when an agent calls the tool; renderer
+  // responds via `answer-agent-question` (with the user's pick) or
+  // `cancel-agent-question` (user dismissed). Main also emits
+  // `agent-question-cancelled` if the question times out or the run
+  // gets cancelled — renderer uses that to dismiss the modal on its
+  // side so we don't leave stale cards in the transcript.
+  onAgentQuestionRequested: (
+    handler: (request: {
+      questionId: string
+      appRunId: string
+      appChatId: string
+      provider?: string | null
+      question: string
+      options?: string[]
+      context?: string
+    }) => void
+  ) => {
+    const wrapped = (_event: unknown, request: Parameters<typeof handler>[0]) =>
+      handler(request)
+    ipcRenderer.on('agent-question-requested', wrapped)
+    return () => ipcRenderer.removeListener('agent-question-requested', wrapped)
+  },
+  onAgentQuestionCancelled: (
+    handler: (info: { questionId: string; appChatId: string; reason: string }) => void
+  ) => {
+    const wrapped = (
+      _event: unknown,
+      info: { questionId: string; appChatId: string; reason: string }
+    ) => handler(info)
+    ipcRenderer.on('agent-question-cancelled', wrapped)
+    return () => ipcRenderer.removeListener('agent-question-cancelled', wrapped)
+  },
+  answerAgentQuestion: (payload: { questionId: string; answer: string; isCustom?: boolean }) =>
+    ipcRenderer.invoke('answer-agent-question', payload) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
+  cancelAgentQuestion: (payload: { questionId: string; reason?: string }) =>
+    ipcRenderer.invoke('cancel-agent-question', payload) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
+
   // Phase K1: open external URLs / file paths from transcript markdown
   // clicks. Replaces the bare `<a href>` flow that would otherwise let
   // Electron navigate the BrowserWindow itself, unloading the bundled
