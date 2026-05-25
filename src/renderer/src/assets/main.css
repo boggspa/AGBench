@@ -24097,6 +24097,43 @@ input:disabled, select:disabled, textarea:disabled {
  * light mode — they're deliberately stylised surfaces, not
  * theme-responsive ones. */
 
+/* Light-mode `.is-selected` restoration. The general light-mode
+ * `.ensemble-above-chip` background rule above has the same
+ * specificity as the dark-mode `.is-selected` rule (both 0,2,0)
+ * and comes later in source order, so it accidentally clobbers
+ * the accent fill on selected chips. Re-state the selected
+ * treatment here with light-mode tokens so the focus indicator
+ * survives. Same logic for `.is-drag-over` since it shares the
+ * accent ring pattern. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-chip.is-selected {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 14%, var(--surface-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 70%, transparent);
+  color: rgba(29, 29, 31, 0.92);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-chip.is-drag-over {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 10%, var(--surface-2));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 60%, transparent);
+}
+
+/* Codex unified-container light-mode strip-children rule. The
+ * existing `:is([data-theme="light"])[data-composer-style="codex"]
+ * .composer-above-bar` rule at line 22509 uses `!important` on
+ * background + border-color, which beats the dark-mode unified-
+ * container "child stays transparent" rule even though that rule
+ * has higher specificity. Need to use `!important` here too to
+ * win the cascade, mirroring the same pattern. The chip-strip
+ * also gets the same strip so the unified container is the only
+ * visible chrome (matches the dark-mode unified treatment). */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) > .composer-above-bar,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) > .ensemble-above-row {
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
 .ensemble-above-chip-status {
   margin-left: 4px;
   padding: 2px 7px;
