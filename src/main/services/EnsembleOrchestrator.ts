@@ -794,6 +794,59 @@ export class EnsembleOrchestrator {
         }
         runtime.yieldTarget = undefined
       }
+      // @-mention auto-promotion (1.0.3 post-ship).
+      //
+      // When a participant tags another participant in their reply
+      // ("Yielding to @Researcher for fact-check"), promote that
+      // tagged participant to the front of the remaining queue OR
+      // append them if they've already had their turn in this
+      // round. The result: collaborative back-and-forth doesn't
+      // stall at the round boundary — agents can call each other
+      // by name and the orchestrator routes the next turn there.
+      //
+      // Resolution rules mirror `resolveYieldTargetIndex`:
+      //   - exact participant.id
+      //   - case-insensitive provider name
+      //   - case-insensitive role match
+      //
+      // Skips self-mentions (agents talking about themselves) and
+      // mentions that match no participant. First match wins per
+      // turn — multiple `@A @B @C` mentions only promote A.
+      const taggedTarget = extractFirstAtMentionTarget(run.content)
+      if (taggedTarget) {
+        const chat = this.deps.getChat(runtime.chatId)
+        const allParticipants = chat?.ensemble?.participants || []
+        const tagged = resolveAtMentionTarget(
+          taggedTarget,
+          allParticipants,
+          participant
+        )
+        if (tagged) {
+          const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
+          if (existingIdx > 0) {
+            // Already queued for this round — bring them forward.
+            const [moved] = remaining.splice(existingIdx, 1)
+            remaining.unshift(moved)
+            this.appendRoundStatus(
+              runtime.chatId,
+              runtime.roundId,
+              `@-mention: ${moved.role || moved.provider} promoted to speak next.`
+            )
+          } else if (existingIdx === -1) {
+            // Already spoke this round (or never on the roster) — append
+            // an extra turn at the FRONT so the back-and-forth continues
+            // immediately. The participant gets a fresh `seedParticipantRun`
+            // with a new runId, so no state collides.
+            remaining.unshift(tagged)
+            this.appendRoundStatus(
+              runtime.chatId,
+              runtime.roundId,
+              `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
+            )
+          }
+          // existingIdx === 0 → already at front, nothing to do.
+        }
+      }
     }
 
     // Dequeue the next prompt (FIFO) for the follow-up round. Anything
@@ -1259,4 +1312,50 @@ export function resolveYieldTargetIndex(
   const byRole = remaining.findIndex((p) => (p.role || '').toLowerCase() === lc)
   if (byRole !== -1) return byRole
   return -1
+}
+
+/**
+ * Scan a participant's emitted content for `@Token` mentions.
+ * Returns the first matched token (without the `@`) so the caller
+ * can resolve against the ensemble's participant list.
+ *
+ * Pattern mirrors the transcript-side tokeniser in
+ * `StableMarkdownBlock.tsx` so coverage stays aligned: word
+ * boundary before `@`, letter-led identifier, max 33 chars. The
+ * boundary check skips email-style tokens like `chris@example.com`
+ * (the `@` there is preceded by a letter, not a boundary char).
+ */
+export function extractFirstAtMentionTarget(content: string): string | null {
+  if (!content || !content.includes('@')) return null
+  const re = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
+  const match = re.exec(content)
+  return match ? match[2] : null
+}
+
+/**
+ * Resolve an `@Token` mention against a participant list. Same
+ * priority order as `resolveYieldTargetIndex` (id → provider →
+ * role), but filters out the speaker themself so agents that
+ * happen to reference their own role in narration don't get
+ * promoted into an infinite self-loop.
+ */
+export function resolveAtMentionTarget(
+  token: string,
+  participants: EnsembleParticipant[],
+  speaker?: EnsembleParticipant
+): EnsembleParticipant | null {
+  const trimmed = token?.trim()
+  if (!trimmed) return null
+  const lc = trimmed.toLowerCase()
+  if (lc === 'me' || lc === 'self' || lc === 'user' || lc === 'human') return null
+  const eligible = speaker
+    ? participants.filter((p) => p.id !== speaker.id)
+    : participants
+  const byId = eligible.find((p) => p.id === trimmed)
+  if (byId) return byId
+  const byProvider = eligible.find((p) => p.provider.toLowerCase() === lc)
+  if (byProvider) return byProvider
+  const byRole = eligible.find((p) => (p.role || '').trim().toLowerCase() === lc)
+  if (byRole) return byRole
+  return null
 }

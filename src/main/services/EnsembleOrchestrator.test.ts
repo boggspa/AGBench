@@ -654,6 +654,180 @@ describe('EnsembleOrchestrator', () => {
 
   // Slice C extension (1.0.3) — ensemble_yield(target:) reorders the
   // remaining participants so the named target speaks next.
+  it('promotes a participant tagged via @mention to speak next', async () => {
+    // Collaborative back-and-forth: Claude finishes its turn, mentions
+    // @Researcher in its content, and the orchestrator promotes
+    // Gemini (role 'Researcher') ahead of Codex even though Codex is
+    // next in default order. Resolution mirrors `resolveYieldTargetIndex`
+    // (id → provider → role).
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 3,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and hand off.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+
+    // Claude emits content containing an @Researcher mention then
+    // finishes naturally (result event drives finalize).
+    const claudeRoute = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'content',
+      text: 'Plan ready. Yielding to @Researcher for a fact-check.'
+    })
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    // Default order would be Codex next; @Researcher should override.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('gemini')
+  })
+
+  it('appends an extra turn when @-tagging a participant who already spoke', async () => {
+    // After-round agent-loop: Claude speaks first, then Codex speaks
+    // and mentions @Planner — Claude (role 'Planner') gets an extra
+    // turn appended so the back-and-forth can continue.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Quick back and forth.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+
+    // Claude finishes without an @-mention.
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+
+    // Codex finishes and mentions @Planner — Claude should re-enter.
+    const codexRoute = {
+      appRunId: harness.dispatched[1].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('codex', codexRoute, {
+      type: 'content',
+      text: 'Need clarification, calling on @Planner.'
+    })
+    harness.orchestrator.handleProviderOutput('codex', codexRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].provider).toBe('claude')
+  })
+
+  it('does not promote on self-mention (speaker referencing their own role)', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and execute.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Claude narrates its own role in its reply — should NOT loop
+    // back to Claude.
+    const claudeRoute = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'content',
+      text: "As @Planner I'd suggest the following…"
+    })
+    harness.orchestrator.handleProviderOutput('claude', claudeRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    // Default order resumes with Codex; no infinite Claude→Claude loop.
+    expect(harness.dispatched[1].provider).toBe('codex')
+  })
+
   it('yields to a named target, skipping intervening participants', async () => {
     const harness = makeHarness()
     harness.chat.ensemble!.participants = [
