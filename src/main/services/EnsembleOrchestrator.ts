@@ -18,6 +18,10 @@ import type {
   ToolActivity,
   ToolActivityStatus
 } from '../store/types'
+import {
+  findFirstMention,
+  resolvePhraseToParticipant
+} from './EnsembleMentionAlias'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -797,77 +801,60 @@ export class EnsembleOrchestrator {
       // @-mention auto-promotion (1.0.3 post-ship).
       //
       // When a participant tags another participant in their reply
-      // ("Yielding to @Researcher for fact-check"), promote that
-      // tagged participant to the front of the remaining queue OR
-      // append them if they've already had their turn in this
-      // round. The result: collaborative back-and-forth doesn't
-      // stall at the round boundary — agents can call each other
-      // by name and the orchestrator routes the next turn there.
+      // ("Yielding to @Researcher for fact-check", "@GPT 5.5 take a
+      // look"), promote that tagged participant to the front of the
+      // remaining queue OR append them if they've already had their
+      // turn in this round. The result: collaborative back-and-forth
+      // doesn't stall at the round boundary — agents can call each
+      // other by name and the orchestrator routes the next turn
+      // there.
       //
-      // Resolution rules mirror `resolveYieldTargetIndex`:
-      //   - exact participant.id
-      //   - case-insensitive provider name
-      //   - case-insensitive role match
+      // Resolution lives in `EnsembleMentionAlias.findFirstMention`,
+      // shared with the renderer-side composer overlay + DM router so
+      // tagging behaves identically across the three surfaces. New in
+      // 1.0.3: multi-word model-name aliases (`@GPT 5.5`,
+      // `@Sonnet 4.7`, `@Flash Lite`, `@Kimi K2.6`) for the 1.0.4
+      // same-provider-multiple-models case.
       //
-      // Skips self-mentions (agents talking about themselves) and
-      // mentions that match no participant. First match wins per
-      // turn — multiple `@A @B @C` mentions only promote A.
-      const taggedTarget = extractFirstAtMentionTarget(run.content)
-      // Diagnostic for the 1.0.3 ship-night investigation. Chris saw
-      // Claude tag @codex in its reply but the round still ended
-      // without Codex re-entering. Tests pass in isolation; logging
-      // here proves whether the code path actually fires in
-      // production and what run.content looks like at the moment.
-      // Visible in `npm run dev` terminal output.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[ensemble:@-mention check] speaker=${participant.provider}(${participant.role || participant.id}) ` +
-          `taggedTarget=${taggedTarget || 'null'} ` +
-          `contentLen=${run.content.length} ` +
-          `contentHead=${JSON.stringify(run.content.slice(0, 80))}`
+      // Skips self-mentions (agents talking about themselves) — the
+      // `excludeIds` arg drops the speaker from the alias-map result
+      // so an agent narrating its own role can't promote itself into
+      // an infinite loop. First match wins per turn — multiple
+      // `@A @B @C` mentions only promote A.
+      //
+      // `chat` is already in scope from the top of the while loop —
+      // no need to re-fetch.
+      const allParticipants = chat?.ensemble?.participants || []
+      const tagMatch = findFirstMention(
+        run.content,
+        allParticipants,
+        new Set([participant.id])
       )
-      if (taggedTarget) {
-        const chat = this.deps.getChat(runtime.chatId)
-        const allParticipants = chat?.ensemble?.participants || []
-        const tagged = resolveAtMentionTarget(
-          taggedTarget,
-          allParticipants,
-          participant
-        )
-        // eslint-disable-next-line no-console
-        console.log(
-          `[ensemble:@-mention resolve] taggedTarget=${taggedTarget} resolved=${tagged ? `${tagged.provider}(${tagged.role || tagged.id})` : 'null'} ` +
-            `remaining=${remaining.map((p) => p.id).join(',') || '<empty>'}`
-        )
-        if (tagged) {
-          const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
-          if (existingIdx > 0) {
-            // Already queued for this round — bring them forward.
-            const [moved] = remaining.splice(existingIdx, 1)
-            remaining.unshift(moved)
-            this.appendRoundStatus(
-              runtime.chatId,
-              runtime.roundId,
-              `@-mention: ${moved.role || moved.provider} promoted to speak next.`
-            )
-          } else if (existingIdx === -1) {
-            // Already spoke this round (or never on the roster) — append
-            // an extra turn at the FRONT so the back-and-forth continues
-            // immediately. The participant gets a fresh `seedParticipantRun`
-            // with a new runId, so no state collides.
-            remaining.unshift(tagged)
-            this.appendRoundStatus(
-              runtime.chatId,
-              runtime.roundId,
-              `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
-            )
-            // eslint-disable-next-line no-console
-            console.log(
-              `[ensemble:@-mention appended] ${tagged.provider}(${tagged.role || tagged.id}) added to remaining for an extra turn`
-            )
-          }
-          // existingIdx === 0 → already at front, nothing to do.
+      if (tagMatch) {
+        const tagged = tagMatch.participant
+        const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
+        if (existingIdx > 0) {
+          // Already queued for this round — bring them forward.
+          const [moved] = remaining.splice(existingIdx, 1)
+          remaining.unshift(moved)
+          this.appendRoundStatus(
+            runtime.chatId,
+            runtime.roundId,
+            `@-mention: ${moved.role || moved.provider} promoted to speak next.`
+          )
+        } else if (existingIdx === -1) {
+          // Already spoke this round (or never on the roster) — append
+          // an extra turn at the FRONT so the back-and-forth continues
+          // immediately. The participant gets a fresh `seedParticipantRun`
+          // with a new runId, so no state collides.
+          remaining.unshift(tagged)
+          this.appendRoundStatus(
+            runtime.chatId,
+            runtime.roundId,
+            `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
+          )
         }
+        // existingIdx === 0 → already at front, nothing to do.
       }
     }
 
@@ -997,7 +984,13 @@ export class EnsembleOrchestrator {
             ensembleRole: run.participant.role,
             ensembleOrder: run.participant.order,
             ensembleStatus: run.status,
-            ensembleTimelineIndex: i
+            ensembleTimelineIndex: i,
+            // Model preview: pass the participant's configured model so
+            // the renderer can show e.g. "Codex / GPT 5.5" next to the
+            // bubble. Crucial preview for 1.0.4's same-provider
+            // ensembles where the role+provider alone won't tell the
+            // user which Claude/Codex is speaking.
+            ensembleModel: run.participant.model
           }
         })
       } else {
@@ -1019,7 +1012,8 @@ export class EnsembleOrchestrator {
             ensembleProvider: run.participant.provider,
             ensembleRole: run.participant.role,
             ensembleOrder: run.participant.order,
-            ensembleTimelineIndex: i
+            ensembleTimelineIndex: i,
+            ensembleModel: run.participant.model
           }
         })
       }
@@ -1081,7 +1075,8 @@ export class EnsembleOrchestrator {
           ensembleProvider: run.participant.provider,
           ensembleRole: run.participant.role,
           ensembleOrder: run.participant.order,
-          ensembleStatus: run.status
+          ensembleStatus: run.status,
+          ensembleModel: run.participant.model
         }
       }
       if (existingStatusIdx >= 0) {
@@ -1338,27 +1333,35 @@ export function resolveYieldTargetIndex(
 
 /**
  * Scan a participant's emitted content for `@Token` mentions.
- * Returns the first matched token (without the `@`) so the caller
+ * Returns the first matched phrase (without the `@`) so the caller
  * can resolve against the ensemble's participant list.
  *
- * Pattern mirrors the transcript-side tokeniser in
- * `StableMarkdownBlock.tsx` so coverage stays aligned: word
- * boundary before `@`, letter-led identifier, max 33 chars. The
- * boundary check skips email-style tokens like `chris@example.com`
- * (the `@` there is preceded by a letter, not a boundary char).
+ * NOTE: legacy export kept so older tests + any plugin code that
+ * imports it stays working. The runtime call path (`runRound`'s
+ * auto-promotion) now uses `findFirstMention` directly so it can
+ * resolve multi-word model aliases (`@GPT 5.5`, `@Sonnet 4.7`,
+ * `@Flash Lite`, `@Kimi K2.6`) without losing the trailing words.
+ *
+ * Pattern mirrors the renderer-side composer overlay tokeniser via
+ * the shared `EnsembleMentionAlias` module so coverage stays aligned:
+ * word boundary before `@`, letter-led identifier, max 33 chars per
+ * chunk, up to 4 chunks total. The boundary check skips email-style
+ * tokens like `chris@example.com` (the `@` there is preceded by a
+ * letter, not a boundary char).
  */
 export function extractFirstAtMentionTarget(content: string): string | null {
   if (!content || !content.includes('@')) return null
-  const re = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
+  const re = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9._-]{0,32}(?:\s+[A-Za-z0-9][A-Za-z0-9._-]{0,32}){0,3})/g
   const match = re.exec(content)
   return match ? match[2] : null
 }
 
 /**
- * Resolve an `@Token` mention against a participant list. Same
- * priority order as `resolveYieldTargetIndex` (id → provider →
- * role), but filters out the speaker themself so agents that
- * happen to reference their own role in narration don't get
+ * Resolve an `@Token` (or `@Multi-Word`) mention against a participant
+ * list. Delegates to the shared `EnsembleMentionAlias` resolver so the
+ * orchestrator's auto-promotion path and the renderer-side surfaces
+ * see identical results. Filters out the speaker themself so agents
+ * that happen to reference their own role in narration don't get
  * promoted into an infinite self-loop.
  */
 export function resolveAtMentionTarget(
@@ -1368,16 +1371,6 @@ export function resolveAtMentionTarget(
 ): EnsembleParticipant | null {
   const trimmed = token?.trim()
   if (!trimmed) return null
-  const lc = trimmed.toLowerCase()
-  if (lc === 'me' || lc === 'self' || lc === 'user' || lc === 'human') return null
-  const eligible = speaker
-    ? participants.filter((p) => p.id !== speaker.id)
-    : participants
-  const byId = eligible.find((p) => p.id === trimmed)
-  if (byId) return byId
-  const byProvider = eligible.find((p) => p.provider.toLowerCase() === lc)
-  if (byProvider) return byProvider
-  const byRole = eligible.find((p) => (p.role || '').trim().toLowerCase() === lc)
-  if (byRole) return byRole
-  return null
+  const excludeIds = speaker ? new Set([speaker.id]) : undefined
+  return resolvePhraseToParticipant(trimmed, participants, excludeIds)
 }

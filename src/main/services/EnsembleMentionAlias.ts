@@ -1,0 +1,472 @@
+/**
+ * Shared @-mention alias resolver for ensemble chats.
+ *
+ * Used by:
+ *   - `src/renderer/src/lib/mentionHighlight.ts` — composer overlay,
+ *     transcript user-bubble, queued-row body tokenisation.
+ *   - `src/renderer/src/lib/ComposerMentionTrigger.ts` — send-side
+ *     `dmTargetParticipantId` resolution.
+ *   - `src/main/services/EnsembleOrchestrator.ts` — auto-promotion
+ *     in `runRound` when one participant tags another mid-round.
+ *
+ * Three independent files used to keep their own copies of a single-
+ * word regex and a tiny `id → provider → role` resolver. That was
+ * fine while the only mention forms were `@codex` / `@Planner` /
+ * `@ensemble-codex` — short, single-token. Once the user asked for
+ * model-name tagging (`@GPT 5.5`, `@Sonnet 4.7`, `@Flash Lite`,
+ * `@Kimi K2.6`), the resolver needed to support **multi-word
+ * mentions**, which is too much logic to duplicate three ways
+ * without drifting.
+ *
+ * This module owns:
+ *   1. The canonical regex that picks `@` plus up to 4 whitespace-
+ *      separated word chunks. Each chunk allows letters / digits /
+ *      `._-` so dots in version numbers (`5.5`, `4.7`, `K2.6`) and
+ *      hyphens in model ids (`gpt-5.5-mini`) both flow through.
+ *   2. Alias generation per participant — id, provider, role, plus
+ *      pretty model forms in spaced + hyphenated + concat variants.
+ *      The model-name parsing replicates the per-provider rules from
+ *      `composerChipFormat.shortModelName` inline so this module
+ *      doesn't have to cross the renderer process boundary (main
+ *      can't safely import from renderer-only files at runtime, and
+ *      both processes need to call this).
+ *   3. Longest-prefix matching — when a user writes `@GPT 5.5 mini
+ *      can you`, we want the resolver to consume "gpt 5.5 mini"
+ *      (3 words) before falling back to "gpt 5.5" (2) and finally
+ *      "gpt" (1). Whichever participant's alias set is the longest
+ *      that matches the prefix wins.
+ *
+ * Boundary rules match the pre-existing renderer + orchestrator
+ * tokenisers so coverage stays aligned: word boundary before `@`
+ * (start-of-string OR whitespace OR a small set of punctuation),
+ * letter-led first chunk, so email addresses like `chris@example.com`
+ * don't fire false positives.
+ *
+ * Reserved tokens (me/self/user/human) always fail resolution so
+ * agents that say "no @me, I won't" don't get treated as a self-
+ * mention that promotes the speaker.
+ */
+
+import type { EnsembleParticipant, ProviderId } from '../store/types'
+
+/**
+ * Word-boundary characters that can immediately precede `@` for a
+ * mention to count. Start-of-string counts too. Punctuation includes
+ * the common sentence-tail and bracket forms an agent might emit.
+ *
+ * `.` is in here so `Note. @codex` resolves cleanly, but the per-
+ * chunk regex below allows `.` *inside* the token too — so `@GPT-5.5`
+ * resolves as a single token, not `@GPT-5` + `.5`.
+ */
+const BOUNDARY_CHARS = `\\s(\\[{<>"'\`!?,;:.`
+
+/**
+ * Multi-word mention regex. Matches:
+ *   - A boundary (start-of-string OR one of BOUNDARY_CHARS)
+ *   - `@`
+ *   - First chunk: letter-led, then letters/digits/dot/underscore/dash, max 33 chars
+ *   - Up to 3 additional chunks, each preceded by whitespace, allowing
+ *     letters/digits/dot/underscore/dash; max 33 chars each.
+ *
+ * 4 chunks total covers the longest realistic alias ("gpt 5 codex
+ * spark" = 4) without being so greedy that it eats normal prose.
+ * After the regex matches, `resolveMentionMatch` decides how many of
+ * the captured chunks actually resolve to a participant.
+ */
+const MENTION_REGEX = new RegExp(
+  `(^|[${BOUNDARY_CHARS}])@([A-Za-z][A-Za-z0-9._-]{0,32}(?:\\s+[A-Za-z0-9][A-Za-z0-9._-]{0,32}){0,3})`,
+  'g'
+)
+
+const RESERVED_TOKENS = new Set(['me', 'self', 'user', 'human'])
+
+/**
+ * Normalise a candidate alias string for case-insensitive matching.
+ * Lowercase, trim, collapse runs of whitespace + hyphen + underscore
+ * to a single space. So "GPT-5.5", "gpt 5.5", "gpt_5.5", "GPT  5.5"
+ * all normalise to "gpt 5.5".
+ */
+export function normalizeAlias(s: string): string {
+  return s
+    .toLowerCase()
+    .trim()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+}
+
+/**
+ * Generate the lowercase alias strings that resolve to a participant
+ * by model identity. The rules mirror `shortModelName` in
+ * `composerChipFormat.ts` per provider:
+ *
+ *   - Codex (`gpt-5.5`, `gpt-5.4-mini`): aliases include the bare
+ *     version (`5.5`), the family + version (`gpt 5.5`), and any
+ *     suffix joined back in (`gpt 5.4 mini`, `5.4 mini`).
+ *   - Claude (`claude-opus-4-7`): aliases include `opus 4.7`,
+ *     `claude opus 4.7`, plus the family alone (`opus`) — useful for
+ *     same-provider 1.0.4 where two Claudes might differ only by
+ *     family.
+ *   - Gemini (`gemini-2.5-flash-lite`): aliases include the parts
+ *     space-joined (`2.5 flash lite`, `flash lite`), with + without
+ *     the `gemini` prefix.
+ *   - Kimi (`kimi-k2.6`, `kimi-k2-thinking`): aliases include the
+ *     compact form (`k2.6`, `k2 thinking`) with + without `kimi`.
+ *
+ * Each generated alias is also added in "concat" form (whitespace
+ * stripped) so users can type `@gpt5.5` and `@flashlite` without
+ * spaces and still match.
+ */
+export function generateModelAliases(
+  provider: ProviderId,
+  model: string | undefined
+): string[] {
+  if (!model) return []
+  const id = model.toLowerCase()
+  const out = new Set<string>()
+  const push = (s: string): void => {
+    const n = normalizeAlias(s)
+    if (n && n.length >= 2) {
+      out.add(n)
+      // Concat form (no spaces) — `@gpt5.5`, `@flashlite`. Helps
+      // mobile-style fast typists who don't want to space-separate.
+      const concat = n.replace(/\s+/g, '')
+      if (concat !== n && concat.length >= 3) out.add(concat)
+    }
+  }
+
+  // Always include the raw model id and a space-form of it.
+  push(id)
+
+  if (provider === 'codex') {
+    // gpt-5.5 → 5.5 / gpt 5.5; gpt-5.4-mini → 5.4 mini / gpt 5.4 mini
+    const match = id.match(/^gpt-([\d.]+)(.*)$/)
+    if (match) {
+      const version = match[1]
+      const suffix = match[2]
+        .replace(/^-/, '')
+        .split('-')
+        .filter(Boolean)
+        .join(' ')
+      push(version)
+      push(`gpt ${version}`)
+      if (suffix) {
+        push(`${version} ${suffix}`)
+        push(`gpt ${version} ${suffix}`)
+        push(suffix)
+      }
+    }
+  } else if (provider === 'claude') {
+    // claude-opus-4-7, claude-sonnet-4-6-thinking → Opus 4.7, Sonnet 4.6
+    const match = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)(.*)$/)
+    if (match) {
+      const family = match[1]
+      const version = `${match[2]}.${match[3]}`
+      const suffix = match[4]
+        .replace(/^-/, '')
+        .split('-')
+        .filter(Boolean)
+        .join(' ')
+      push(family)
+      push(`${family} ${version}`)
+      push(`claude ${family} ${version}`)
+      if (suffix) {
+        push(`${family} ${version} ${suffix}`)
+        push(`claude ${family} ${version} ${suffix}`)
+      }
+    }
+  } else if (provider === 'kimi') {
+    // kimi-k2.6, kimi-k2.6-thinking, kimi-k2-thinking
+    const match = id.match(/^kimi-(k[\d.]+)(.*)$/)
+    if (match) {
+      const ver = match[1]
+      const suffix = match[2]
+        .replace(/^-/, '')
+        .split('-')
+        .filter(Boolean)
+        .join(' ')
+      push(ver)
+      push(`kimi ${ver}`)
+      if (suffix) {
+        push(`${ver} ${suffix}`)
+        push(`kimi ${ver} ${suffix}`)
+      }
+    }
+  } else if (provider === 'gemini') {
+    // gemini-2.5-pro, gemini-flash-lite, gemini-2.5-flash-lite, gemini-1.5-flash
+    const match = id.match(/^gemini-(.+)$/)
+    if (match) {
+      const parts = match[1].split('-').filter(Boolean)
+      const joined = parts.join(' ')
+      push(joined)
+      push(`gemini ${joined}`)
+      // Drop leading version if it looks like a version (e.g.
+      // "2.5 flash" → also accept "flash" alone). Two Geminis in a
+      // 1.0.4 ensemble might share the version digits and differ
+      // only by Flash / Pro / Flash Lite.
+      if (parts.length > 1 && /^[\d.]+$/.test(parts[0])) {
+        const tail = parts.slice(1).join(' ')
+        push(tail)
+        push(`gemini ${tail}`)
+      }
+      // Final tail word (Pro / Flash / Lite) is often diagnostic on
+      // its own — accept it as a single-word alias.
+      if (parts.length >= 1) {
+        push(parts[parts.length - 1])
+      }
+    }
+  }
+
+  return Array.from(out)
+}
+
+/**
+ * Lowercase normalised aliases that resolve to this participant. Covers
+ * id, provider, role, and all model-name variants from
+ * `generateModelAliases`.
+ */
+export function getParticipantAliases(p: EnsembleParticipant): string[] {
+  const out = new Set<string>()
+  const push = (s: string | undefined): void => {
+    if (!s) return
+    const n = normalizeAlias(s)
+    if (n && n.length >= 2 && !RESERVED_TOKENS.has(n)) {
+      out.add(n)
+      const concat = n.replace(/\s+/g, '')
+      if (concat !== n && concat.length >= 3) out.add(concat)
+    }
+  }
+  push(p.id)
+  push(p.provider)
+  push(p.role)
+  for (const m of generateModelAliases(p.provider, p.model)) {
+    out.add(m)
+  }
+  return Array.from(out)
+}
+
+/**
+ * Reverse alias map: normalised alias → participants that claim it.
+ * A single alias can be claimed by multiple participants in 1.0.4
+ * (e.g. two Codex participants both claim `codex`); we keep all of
+ * them and rank by **alias specificity** at resolution time —
+ * longer aliases (more words) win over shorter ones, and aliases
+ * unique to one participant win over shared ones.
+ */
+export interface ParticipantAliasMap {
+  /** alias → participants ordered by ensemble order. */
+  byAlias: Map<string, EnsembleParticipant[]>
+  /** Per-participant alias word counts, used to score longest match. */
+  aliasWordCount: Map<string, number>
+}
+
+export function buildParticipantAliasMap(
+  participants: EnsembleParticipant[]
+): ParticipantAliasMap {
+  const byAlias = new Map<string, EnsembleParticipant[]>()
+  const aliasWordCount = new Map<string, number>()
+  for (const p of participants) {
+    for (const alias of getParticipantAliases(p)) {
+      const list = byAlias.get(alias)
+      if (list) {
+        if (!list.includes(p)) list.push(p)
+      } else {
+        byAlias.set(alias, [p])
+      }
+      if (!aliasWordCount.has(alias)) {
+        aliasWordCount.set(alias, alias.split(' ').length)
+      }
+    }
+  }
+  return { byAlias, aliasWordCount }
+}
+
+export interface MentionMatch {
+  /** Index in the source string where `@` sits. */
+  atIndex: number
+  /** Total characters consumed by the match, including `@` and any
+   * trailing words. Used by the tokeniser to advance past the match. */
+  consumedLength: number
+  /** The matched phrase WITHOUT the leading `@`. e.g. "GPT 5.5". */
+  text: string
+  /** Resolved participant. */
+  participant: EnsembleParticipant
+}
+
+/**
+ * Walk the input string and yield every resolved mention, longest-
+ * match first per anchor `@`. Mentions whose resolved participant is
+ * in `excludeIds` are skipped (used by the orchestrator to filter out
+ * self-mentions when promoting).
+ */
+export function findAllMentions(
+  text: string,
+  participants: EnsembleParticipant[],
+  excludeIds?: ReadonlySet<string>
+): MentionMatch[] {
+  if (!text || !text.includes('@') || participants.length === 0) return []
+  const aliasMap = buildParticipantAliasMap(participants)
+  const matches: MentionMatch[] = []
+  MENTION_REGEX.lastIndex = 0
+  let regexMatch: RegExpExecArray | null
+  while ((regexMatch = MENTION_REGEX.exec(text)) !== null) {
+    const prefix = regexMatch[1]
+    const phrase = regexMatch[2]
+    const atIndex = regexMatch.index + prefix.length
+    const resolved = resolveMentionPhrase(phrase, aliasMap, excludeIds)
+    if (!resolved) {
+      // Don't advance lastIndex artificially — the regex's own forward
+      // movement is sufficient (it consumed at least the `@` + first
+      // chunk). The next iteration will pick up further candidates.
+      continue
+    }
+    matches.push({
+      atIndex,
+      consumedLength: 1 + resolved.consumedText.length, // `@` + phrase
+      text: resolved.consumedText,
+      participant: resolved.participant
+    })
+    // Walk regex lastIndex back so it picks up text right after our
+    // resolved consumption, not after the (potentially-longer) regex
+    // capture. The regex may have consumed "GPT 5.5 mini and then" but
+    // we may have resolved only "GPT 5.5" — the "mini and then" should
+    // remain available for further tokenisation.
+    MENTION_REGEX.lastIndex = atIndex + 1 + resolved.consumedText.length
+  }
+  return matches
+}
+
+/**
+ * Trailing-sentence-punctuation we strip from the LAST word of a
+ * candidate prefix before matching it against the alias map. The
+ * per-chunk regex allows `.` inside the chunk so model versions
+ * like `5.5` or `K2.6` survive — but that means a normal sentence
+ * `Calling @Planner.` captures `Planner.` (trailing dot). The
+ * alias map has `planner`, not `planner.`, so the match would
+ * silently fail. Strip these post-capture instead of complicating
+ * the regex further.
+ */
+const TRAILING_PUNCT_RE = /[.,!?;:]+$/
+
+/**
+ * Resolve a single captured phrase against the alias map using
+ * longest-prefix matching. Returns the resolved participant and the
+ * exact substring of `phrase` that was consumed.
+ */
+function resolveMentionPhrase(
+  phrase: string,
+  aliasMap: ParticipantAliasMap,
+  excludeIds?: ReadonlySet<string>
+): { participant: EnsembleParticipant; consumedText: string } | null {
+  const rawWords = phrase.split(/\s+/).filter(Boolean)
+  if (rawWords.length === 0) return null
+  // Try longest-first: 4-word, 3-word, 2-word, 1-word prefixes. For
+  // each candidate prefix, also try a punctuation-trimmed variant on
+  // the LAST word so `Planner.` and `Planner` both resolve. We try
+  // raw first so model strings that genuinely contain trailing dots
+  // (none in the current line-up, but future-proof) get a shot.
+  for (let len = Math.min(rawWords.length, 4); len >= 1; len -= 1) {
+    const prefix = rawWords.slice(0, len)
+    const raw = normalizeAlias(prefix.join(' '))
+    const trimmedLast = prefix.slice()
+    trimmedLast[len - 1] = trimmedLast[len - 1].replace(TRAILING_PUNCT_RE, '')
+    const trimmed = normalizeAlias(trimmedLast.join(' '))
+    for (const key of trimmed === raw ? [raw] : [raw, trimmed]) {
+      if (!key || RESERVED_TOKENS.has(key)) continue
+      const candidates = aliasMap.byAlias.get(key)
+      if (!candidates || candidates.length === 0) continue
+      const eligible = excludeIds
+        ? candidates.filter((p) => !excludeIds.has(p.id))
+        : candidates
+      if (eligible.length === 0) continue
+      // Take the first (preserves ensemble order). Same-alias ties
+      // (two participants both named "codex") fall back to the first
+      // participant declared in the ensemble.
+      // Reconstruct the consumed text from the original `phrase`
+      // (preserving the user's original casing / spacing) by taking
+      // the first `len` words from it. Trailing sentence punctuation
+      // on the final word is dropped so the consumed length matches
+      // the *meaningful* mention boundary — the `.` after `Planner`
+      // stays in the surrounding text where it belongs.
+      const consumedText = reconstructPrefix(phrase, len).replace(
+        TRAILING_PUNCT_RE,
+        ''
+      )
+      return { participant: eligible[0], consumedText }
+    }
+  }
+  return null
+}
+
+/**
+ * Take the first `wordCount` whitespace-separated words from `phrase`,
+ * preserving the original spacing between them. Used so the consumed
+ * mention text retains the user's casing for display.
+ */
+function reconstructPrefix(phrase: string, wordCount: number): string {
+  let consumed = 0
+  let inWord = false
+  for (let i = 0; i < phrase.length; i += 1) {
+    const ch = phrase[i]
+    const isSpace = /\s/.test(ch)
+    if (!isSpace && !inWord) {
+      consumed += 1
+      inWord = true
+      if (consumed > wordCount) {
+        // Trim trailing whitespace from the cut point so we don't
+        // hold onto a dangling space.
+        return phrase.slice(0, i).replace(/\s+$/, '')
+      }
+    } else if (isSpace) {
+      inWord = false
+    }
+  }
+  return phrase
+}
+
+/**
+ * Convenience: find the first mention in `text` that doesn't resolve
+ * to a participant in `excludeIds`. Used by the orchestrator's auto-
+ * promotion path where the speaker is filtered out to avoid self-
+ * loops.
+ */
+export function findFirstMention(
+  text: string,
+  participants: EnsembleParticipant[],
+  excludeIds?: ReadonlySet<string>
+): MentionMatch | null {
+  const all = findAllMentions(text, participants, excludeIds)
+  return all[0] ?? null
+}
+
+/**
+ * Predicate: does this text contain at least one resolved mention?
+ * Faster than `findAllMentions` because it short-circuits on the
+ * first hit. Used by the composer overlay to decide whether to
+ * activate the transparent-textarea overlay layer.
+ */
+export function hasMention(text: string, participants: EnsembleParticipant[]): boolean {
+  if (!text || !text.includes('@') || participants.length === 0) return false
+  return findFirstMention(text, participants) !== null
+}
+
+/**
+ * Resolve a plain phrase (no leading `@`) against the participant
+ * alias set. Used by callers that have already stripped the `@`
+ * (e.g. the legacy single-token `resolveParticipantToken` path).
+ */
+export function resolvePhraseToParticipant(
+  phrase: string,
+  participants: EnsembleParticipant[],
+  excludeIds?: ReadonlySet<string>
+): EnsembleParticipant | null {
+  if (!phrase || participants.length === 0) return null
+  const aliasMap = buildParticipantAliasMap(participants)
+  const resolved = resolveMentionPhrase(phrase, aliasMap, excludeIds)
+  return resolved?.participant ?? null
+}
+
+/** Mirror of the orchestrator's reserved-token gate so legacy
+ * single-token callers stay in sync. Exported for tests. */
+export function isReservedMentionToken(token: string): boolean {
+  return RESERVED_TOKENS.has(token.trim().toLowerCase())
+}

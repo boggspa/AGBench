@@ -1,20 +1,26 @@
 import type { EnsembleParticipant, ProviderId } from '../../../main/store/types'
+import {
+  findAllMentions,
+  findFirstMention,
+  resolvePhraseToParticipant
+} from '../../../main/services/EnsembleMentionAlias'
 
 /**
  * Shared `@Token` mention tokeniser. Used by:
  *   - `ComposerHighlightOverlay` (composer textarea overlay)
  *   - `MentionHighlightedText` (user message bubbles + queued rows)
  *
- * Same boundary rules as the transcript-side tokeniser in
- * `StableMarkdownBlock.tsx` so coverage stays aligned — `@email.com`
- * style false-positives are filtered by requiring a word boundary
- * (start of string OR a whitespace / punctuation char) before `@`.
+ * Boundary + alias rules now live in
+ * `src/main/services/EnsembleMentionAlias.ts` so the same logic
+ * powers the renderer-side overlay AND the orchestrator's auto-
+ * promotion path — no more drift between the two when we extend
+ * the matcher (e.g. multi-word model aliases).
  *
- * Resolution priority mirrors `resolveYieldTargetIndex` /
- * `extractFirstEnsembleDmTarget`:
- *   1. exact participant.id
- *   2. case-insensitive provider name
- *   3. case-insensitive role match
+ * Resolution priority (longest-prefix wins):
+ *   1. 4-word phrase ("gpt 5 codex spark")
+ *   2. 3-word phrase ("kimi k2 thinking")
+ *   3. 2-word phrase ("gpt 5.5", "sonnet 4.7", "flash lite")
+ *   4. 1-word phrase ("codex", "claude", "planner", "5.5")
  *
  * Reserved words (me/self/user/human) never resolve — agents
  * referencing the user shouldn't paint as a participant.
@@ -28,24 +34,17 @@ export interface MentionTokenSegment {
   provider?: ProviderId
 }
 
-const MENTION_REGEX = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
-
-const RESERVED_TOKENS = new Set(['me', 'self', 'user', 'human'])
-
+/**
+ * Legacy single-token resolver. Kept for callers that already
+ * extracted the bare token (no leading `@`, no multi-word phrase).
+ * New code should prefer the multi-word `findFirstMention` /
+ * `findAllMentions` path via this module's higher-level functions.
+ */
 export function resolveParticipantToken(
   token: string,
   participants: EnsembleParticipant[]
 ): EnsembleParticipant | null {
-  const trimmed = token.trim()
-  if (!trimmed) return null
-  const lower = trimmed.toLowerCase()
-  if (RESERVED_TOKENS.has(lower)) return null
-  return (
-    participants.find((p) => p.id === trimmed) ||
-    participants.find((p) => p.provider.toLowerCase() === lower) ||
-    participants.find((p) => (p.role || '').trim().toLowerCase() === lower) ||
-    null
-  )
+  return resolvePhraseToParticipant(token, participants)
 }
 
 export function tokeniseMentions(
@@ -56,28 +55,22 @@ export function tokeniseMentions(
   if (!value.includes('@') || participants.length === 0) {
     return [{ kind: 'text', text: value }]
   }
+  const mentions = findAllMentions(value, participants)
+  if (mentions.length === 0) {
+    return [{ kind: 'text', text: value }]
+  }
   const segments: MentionTokenSegment[] = []
   let lastIndex = 0
-  MENTION_REGEX.lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = MENTION_REGEX.exec(value)) !== null) {
-    const [whole, prefix, token] = match
-    const atIndex = match.index + prefix.length
-    const resolved = resolveParticipantToken(token, participants)
-    if (!resolved) continue
-    if (atIndex > lastIndex) {
-      segments.push({ kind: 'text', text: value.slice(lastIndex, atIndex) })
+  for (const match of mentions) {
+    if (match.atIndex > lastIndex) {
+      segments.push({ kind: 'text', text: value.slice(lastIndex, match.atIndex) })
     }
     segments.push({
       kind: 'mention',
-      text: `@${token}`,
-      provider: resolved.provider
+      text: `@${match.text}`,
+      provider: match.participant.provider
     })
-    lastIndex = atIndex + 1 + token.length
-    if (whole.length === 0) break
-  }
-  if (segments.length === 0) {
-    return [{ kind: 'text', text: value }]
+    lastIndex = match.atIndex + match.consumedLength
   }
   if (lastIndex < value.length) {
     segments.push({ kind: 'text', text: value.slice(lastIndex) })
@@ -95,10 +88,5 @@ export function hasResolvedMention(
   participants: EnsembleParticipant[]
 ): boolean {
   if (!value || !value.includes('@') || participants.length === 0) return false
-  MENTION_REGEX.lastIndex = 0
-  let match: RegExpExecArray | null
-  while ((match = MENTION_REGEX.exec(value)) !== null) {
-    if (resolveParticipantToken(match[2], participants)) return true
-  }
-  return false
+  return findFirstMention(value, participants) !== null
 }

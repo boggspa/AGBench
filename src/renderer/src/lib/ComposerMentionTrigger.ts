@@ -22,6 +22,8 @@
  * silent overlap).
  */
 
+import { findFirstMention } from '../../../main/services/EnsembleMentionAlias'
+
 export type ComposerMentionTriggerKind = 'mention' | 'file-mention'
 
 export interface ComposerMentionTrigger {
@@ -78,14 +80,18 @@ export function formatComposerPathMention(path: string): string {
 }
 
 /**
- * Resolver shape for the participant lookup. Keeps this module from
- * importing the full `EnsembleParticipant` type — only the three
- * fields the matcher actually reads.
+ * Resolver shape for the participant lookup. Mirrors the subset of
+ * `EnsembleParticipant` the matcher actually reads. Now includes
+ * `model` so the shared mention-alias resolver can match `@GPT 5.5`,
+ * `@Sonnet 4.7`, `@Flash Lite`, etc. — useful when 1.0.4 introduces
+ * same-provider ensembles where role/provider alone won't
+ * disambiguate.
  */
 export interface EnsembleDmCandidate {
   id: string
   role?: string
   provider: string
+  model?: string
 }
 
 /**
@@ -101,12 +107,13 @@ export interface EnsembleDmCandidate {
  *      Legacy from the first pass of the @-mention work — kept so
  *      historical prompts still route correctly.
  *
- *   2. Plain `@Token` (token = word chars + dashes). Resolved
- *      against the supplied participants list, matching first by
- *      role (case-insensitive, trimmed) then by provider name.
- *      This is what the composer's mention picker now inserts —
- *      readable in the textarea, no markdown noise, and free-typed
- *      `@Gemini` works the same way as a picker click.
+ *   2. Plain `@Token` (multi-word + model-name aliases supported).
+ *      Resolved via the shared `EnsembleMentionAlias` module so the
+ *      composer's DM routing stays in lockstep with the orchestrator's
+ *      auto-promotion path and the overlay tokeniser. Recognises
+ *      `@codex` / `@Planner` (legacy single-token), plus the new
+ *      `@GPT 5.5` / `@Sonnet 4.7` / `@Flash Lite` / `@Kimi K2.6`
+ *      model-name forms.
  *
  * Returns the FIRST match found. If a user wrote `@A @B` we DM A.
  */
@@ -120,21 +127,16 @@ export function extractFirstEnsembleDmTarget(
   if (linkMatch) return linkMatch[1]
 
   if (!participants || participants.length === 0) return null
-  // Plain `@Token` — match at word boundaries so emails like
-  // `chris@example.com` don't get picked up. Pattern mirrors the
-  // transcript-side `ParticipantMention` tokeniser in
-  // `StableMarkdownBlock`.
-  const re = /(^|[\s(\[{<>"'`!?,;:.])@([A-Za-z][A-Za-z0-9_-]{0,32})/g
-  let match: RegExpExecArray | null
-  while ((match = re.exec(prompt)) !== null) {
-    const token = match[2]
-    const lower = token.toLowerCase()
-    const byRole = participants.find(
-      (p) => (p.role || '').trim().toLowerCase() === lower
-    )
-    if (byRole) return byRole.id
-    const byProvider = participants.find((p) => p.provider.toLowerCase() === lower)
-    if (byProvider) return byProvider.id
-  }
-  return null
+  // Shared multi-word matcher — same logic that powers the composer
+  // overlay tokeniser AND the orchestrator's auto-promotion path, so
+  // a prompt that says `@GPT 5.5 take a look` routes identically
+  // whether the renderer or the main process is doing the resolving.
+  // EnsembleDmCandidate is a structural subset of EnsembleParticipant;
+  // cast through unknown because the matcher only reads id /
+  // provider / role / model.
+  const match = findFirstMention(
+    prompt,
+    participants as unknown as Parameters<typeof findFirstMention>[1]
+  )
+  return match?.participant.id ?? null
 }

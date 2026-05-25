@@ -3358,6 +3358,45 @@ button.sidebar-item {
   gap: var(--space-sm);
 }
 
+/* Slice M4 (1.0.3 ship-night): show the participant's short model name
+ * as a dim chip after the "Codex / Planner" label. The chip is the
+ * preview of what 1.0.4's same-provider ensembles will rely on — once
+ * two Claudes (or two Codexes) can share a chat, the model is the
+ * only thing that disambiguates them in the transcript.
+ *
+ * Visual notes:
+ *   - Inherits the provider tint via the parent `.message-meta.provider-{name}`
+ *     class (the chip's `color: inherit` picks up the bold provider colour).
+ *   - Slight transparency + thinner weight so it reads as a *modifier*
+ *     to the main label, not a primary label itself.
+ *   - The leading `·` divider matches the existing composer-chip
+ *     convention (`Opus 4.7 · Max`) so the model badge feels native
+ *     instead of bolted-on. */
+.message-meta-label {
+  /* Reset — the parent's flex gap already provides spacing to the
+   * model badge sibling. Keeps single-label rows visually identical
+   * to the pre-M4 layout. */
+  display: inline-flex;
+  align-items: center;
+}
+
+.message-meta-model-badge {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  opacity: 0.72;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  /* "·" separator before the chip — pure typography, no border. */
+  position: relative;
+}
+.message-meta-model-badge::before {
+  content: '·';
+  display: inline-block;
+  margin-right: var(--space-sm);
+  opacity: 0.6;
+}
+
 /* Provider-tinted assistant message labels. Each assistant message
  * gets a `.provider-{name}` class hook on its `.message-meta`
  * element so the per-message speaker label ("Codex" / "Claude /

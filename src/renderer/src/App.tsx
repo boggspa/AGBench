@@ -103,6 +103,7 @@ import {
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { MentionHighlightedText } from './components/MentionHighlightedText'
 import { hasResolvedMention } from './lib/mentionHighlight'
+import { shortModelName } from './lib/composerChipFormat'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -3497,18 +3498,28 @@ const formatAssistantMessageLabel = (
   message: ChatMessage,
   fallbackLabel: string,
   fallbackProvider: ProviderId | null
-): { label: string; provider: ProviderId | null } => {
+): { label: string; provider: ProviderId | null; modelBadge: string | null } => {
   const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
   if (!provider) {
     // Solo chats: use the chat-level provider as the colouring hook.
     // The label is still the plain provider name (no role suffix
-    // since there's no ensemble context).
-    return { label: fallbackLabel, provider: fallbackProvider }
+    // since there's no ensemble context). The composer chip already
+    // shows the model in solo chats — no need to duplicate it here.
+    return { label: fallbackLabel, provider: fallbackProvider, modelBadge: null }
   }
   const role = typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
+  // Ensemble preview: surface the participant's short model name as a
+  // dim badge appended to "Provider / Role". Prep work for 1.0.4 where
+  // two Claudes or two Codexes will share a provider — the model is
+  // the only thing that visually distinguishes them in the transcript.
+  // Falls back to no badge when the participant doesn't carry a model
+  // (legacy ensemble chats from before this metadata existed).
+  const ensembleModel = typeof message.metadata?.ensembleModel === 'string' ? message.metadata.ensembleModel : ''
+  const modelBadge = ensembleModel ? shortModelName(provider, '', ensembleModel) : null
   return {
     label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
-    provider
+    provider,
+    modelBadge: modelBadge || null
   }
 }
 const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
@@ -4190,6 +4201,14 @@ type TranscriptPanelProps = {
    * treatment as completed assistant messages.
    */
   thinkingProvider?: ProviderId | null
+  /**
+   * Short model name (e.g. "5.5", "Opus 4.7", "K2.6", "2.5 Pro") for
+   * the in-flight ensemble participant. Rendered as a dim chip after
+   * the "Codex Thinking…" label so the user knows *which configured
+   * model* is producing the live output. Null for solo chats and
+   * legacy ensembles without per-participant model data.
+   */
+  thinkingModelBadge?: string | null
   displayFileChangeSummaries: DiffFileSummary[]
   fileChangeSummaryText: string
   fileChangeShouldShowStats: boolean
@@ -4239,6 +4258,7 @@ const TranscriptPanel = memo(
     currentProvider,
     thinkingProviderLabel,
     thinkingProvider,
+    thinkingModelBadge,
     displayFileChangeSummaries,
     fileChangeSummaryText,
     fileChangeShouldShowStats,
@@ -4404,7 +4424,7 @@ const TranscriptPanel = memo(
                         return <div className="message-meta">Error</div>
                       }
                       if (msg.role === 'assistant') {
-                        const { label, provider } = formatAssistantMessageLabel(
+                        const { label, provider, modelBadge } = formatAssistantMessageLabel(
                           msg,
                           currentProviderLabel,
                           currentProvider
@@ -4413,7 +4433,16 @@ const TranscriptPanel = memo(
                           <div
                             className={`message-meta${provider ? ` provider-${provider}` : ''}`}
                           >
-                            {label}
+                            <span className="message-meta-label">{label}</span>
+                            {modelBadge && (
+                              <span
+                                className="message-meta-model-badge"
+                                title={`Model: ${modelBadge}`}
+                                aria-label={`Model ${modelBadge}`}
+                              >
+                                {modelBadge}
+                              </span>
+                            )}
                           </div>
                         )
                       }
@@ -4435,6 +4464,10 @@ const TranscriptPanel = memo(
                               role:
                                 typeof msg.metadata?.ensembleRole === 'string'
                                   ? msg.metadata.ensembleRole
+                                  : '',
+                              model:
+                                typeof msg.metadata?.ensembleModel === 'string'
+                                  ? msg.metadata.ensembleModel
                                   : ''
                             }
                           : null
@@ -4442,9 +4475,21 @@ const TranscriptPanel = memo(
                         const label = statusMeta.role
                           ? `${getProviderLabel(statusMeta.provider)} / ${statusMeta.role}`
                           : getProviderLabel(statusMeta.provider)
+                        const statusModelBadge = statusMeta.model
+                          ? shortModelName(statusMeta.provider, '', statusMeta.model)
+                          : ''
                         return (
                           <div className={`message-meta provider-${statusMeta.provider}`}>
-                            {label}
+                            <span className="message-meta-label">{label}</span>
+                            {statusModelBadge && (
+                              <span
+                                className="message-meta-model-badge"
+                                title={`Model: ${statusModelBadge}`}
+                                aria-label={`Model ${statusModelBadge}`}
+                              >
+                                {statusModelBadge}
+                              </span>
+                            )}
                           </div>
                         )
                       }
@@ -4527,7 +4572,18 @@ const TranscriptPanel = memo(
                   thinkingProvider ? ` provider-${thinkingProvider}` : ''
                 }`}
               >
-                {thinkingProviderLabel || currentProviderLabel}
+                <span className="message-meta-label">
+                  {thinkingProviderLabel || currentProviderLabel}
+                </span>
+                {thinkingModelBadge && (
+                  <span
+                    className="message-meta-model-badge"
+                    title={`Model: ${thinkingModelBadge}`}
+                    aria-label={`Model ${thinkingModelBadge}`}
+                  >
+                    {thinkingModelBadge}
+                  </span>
+                )}
               </div>
               <ThinkingIndicator />
             </div>
@@ -4689,6 +4745,7 @@ const TranscriptPanel = memo(
     previous.currentProvider === next.currentProvider &&
     previous.thinkingProviderLabel === next.thinkingProviderLabel &&
     previous.thinkingProvider === next.thinkingProvider &&
+    previous.thinkingModelBadge === next.thinkingModelBadge &&
     previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
     previous.fileChangeSummaryText === next.fileChangeSummaryText &&
     previous.fileChangeShouldShowStats === next.fileChangeShouldShowStats &&
@@ -12636,7 +12693,7 @@ function App(): React.JSX.Element {
   // apply the matching `.provider-{name}` class to the thinking-indicator's
   // message-meta — same provider-tint treatment as the assistant labels
   // in the rest of the transcript.
-  const { thinkingProviderLabel, thinkingProvider } = (() => {
+  const { thinkingProviderLabel, thinkingProvider, thinkingModelBadge } = (() => {
     const activeRound = currentChat?.ensemble?.activeRound
     if (activeRound?.activeParticipantId) {
       const participant = currentChat?.ensemble?.participants.find(
@@ -12645,7 +12702,14 @@ function App(): React.JSX.Element {
       if (participant) {
         return {
           thinkingProviderLabel: getProviderLabel(participant.provider),
-          thinkingProvider: participant.provider as ProviderId | null
+          thinkingProvider: participant.provider as ProviderId | null,
+          // Show the short model name alongside the "Codex Thinking…"
+          // chip so the user can see at a glance which configured
+          // model is actually producing the in-flight output. Empty
+          // for participants without a custom model (legacy chats).
+          thinkingModelBadge: participant.model
+            ? shortModelName(participant.provider, '', participant.model)
+            : null
         }
       }
     }
@@ -12660,12 +12724,14 @@ function App(): React.JSX.Element {
     if (currentChat?.chatKind === 'ensemble') {
       return {
         thinkingProviderLabel: 'Ensemble',
-        thinkingProvider: null as ProviderId | null
+        thinkingProvider: null as ProviderId | null,
+        thinkingModelBadge: null as string | null
       }
     }
     return {
       thinkingProviderLabel: currentProviderLabel,
-      thinkingProvider: currentProvider as ProviderId | null
+      thinkingProvider: currentProvider as ProviderId | null,
+      thinkingModelBadge: null as string | null
     }
   })()
   // Slice C (revised): clear the "Thinking…" indicator when the ensemble
@@ -14323,6 +14389,7 @@ function App(): React.JSX.Element {
               currentProvider={currentProvider}
               thinkingProviderLabel={thinkingProviderLabel}
               thinkingProvider={thinkingProvider}
+              thinkingModelBadge={thinkingModelBadge}
               displayFileChangeSummaries={displayFileChangeSummaries}
               fileChangeSummaryText={fileChangeSummaryText}
               fileChangeShouldShowStats={fileChangeShouldShowStats}
