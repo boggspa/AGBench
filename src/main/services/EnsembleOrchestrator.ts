@@ -39,31 +39,62 @@ export interface EnsembleOrchestratorDeps {
   nowIso: () => string
 }
 
+/**
+ * Per-run chronological event log. Each entry preserves the order
+ * the orchestrator observed content / tool events, so the flush
+ * pass can materialise the participant's turn as a sequence of
+ * interleaved messages (the natural "speak, do, speak, do" flow
+ * most agents follow). Pre-1.0.3-post-ship the orchestrator
+ * batched all content into one assistant message + all tool calls
+ * into one tool message, which read as "wall of text, then wall
+ * of operations" — not the inline experience Chris wanted.
+ *
+ *   - `{ kind: 'content', text }` — accumulated content for this
+ *     chunk. Consecutive content events without an intervening tool
+ *     concatenate into the SAME entry. New content after a tool
+ *     event opens a fresh entry.
+ *   - `{ kind: 'tool', toolId }` — references the tool activity by
+ *     id (stored in `run.toolActivities`). Tool results pair back
+ *     into the activity but don't add a new timeline entry — the
+ *     existing tool entry's activity gets updated in place.
+ */
+type ParticipantTimelineEntry =
+  | { kind: 'content'; text: string }
+  | { kind: 'tool'; toolId: string }
+
 interface ActiveParticipantRun {
   chatId: string
   roundId: string
   runId: string
   participant: EnsembleParticipant
   promptMessageId: string
+  /**
+   * Legacy single-slot id, kept so existing code that references
+   * `run.assistantMessageId` still compiles. The timeline-based
+   * flush below now generates per-entry ids via `timelineMessageId`,
+   * but the legacy id is still set on `seedParticipantRun` for any
+   * back-compat consumers (none remain in this file).
+   */
   assistantMessageId: string
   /**
-   * Stable id for the `role: 'tool'` message this run accumulates tool
-   * activities into. Set lazily on the first `tool_use` event so runs
-   * without tool calls never produce a message.
-   */
-  toolMessageId?: string
-  /**
-   * Per-run tool-activity accumulator. Mirrors the renderer's
-   * per-message `toolActivities` shape (tool_use → push; tool_result
-   * → find-by-id and pair). The orchestrator owns this in ensemble
-   * mode because the renderer-side accumulator only runs for solo
-   * chats where it can register an active run context; ensemble runs
-   * are dispatched from main and the renderer sees only the
-   * authoritative chat saves, so the orchestrator has to persist tool
-   * messages directly.
+   * Per-run tool-activity accumulator. The renderer-side activity
+   * objects (toolName, status, params, etc.) live here; the
+   * timeline references them by id.
    */
   toolActivities?: ToolActivity[]
+  /**
+   * Ordered list of message-materialisation entries. Content + tool
+   * entries are interleaved as the orchestrator observes them, so
+   * `flushRun` can emit a sequence of messages that mirrors the
+   * actual turn chronology.
+   */
+  timeline?: ParticipantTimelineEntry[]
   startedAt: string
+  /**
+   * Aggregate text for back-compat consumers (per-run token stats,
+   * "did this run produce any output" checks, etc.). Stays in sync
+   * with the concatenation of every content timeline entry.
+   */
   content: string
   status: EnsembleParticipantStatus
   lastContentItemId?: string
@@ -72,6 +103,37 @@ interface ActiveParticipantRun {
   stats?: any
   completion?: (status: EnsembleParticipantStatus) => void
   flushTimer?: ReturnType<typeof setTimeout>
+}
+
+/** Stable per-timeline-entry message id. Includes the runId + the
+ * entry's ordinal so the same entry always resolves to the same id
+ * across flush passes, letting `flushRun` replace-in-place rather
+ * than emit duplicates. */
+function timelineMessageId(runId: string, index: number, kind: 'content' | 'tool'): string {
+  return `ensemble-${kind}-${runId}-${index}`
+}
+
+/** Push a content fragment into the run's timeline, merging into
+ * the last entry if it's also content. This is how the "speak,
+ * tool, speak, tool" interleaving emerges — tools break the chunk;
+ * consecutive content stays in one entry. */
+function appendTimelineContent(run: ActiveParticipantRun, text: string): void {
+  if (!run.timeline) run.timeline = []
+  const last = run.timeline[run.timeline.length - 1]
+  if (last && last.kind === 'content') {
+    last.text += text
+    return
+  }
+  run.timeline.push({ kind: 'content', text })
+}
+
+/** Push a tool entry into the timeline. The toolActivities array
+ * has been updated by the caller; this just records the position
+ * where the activity falls in the chronology so the flush can
+ * materialise the matching `role: 'tool'` message inline. */
+function appendTimelineTool(run: ActiveParticipantRun, toolId: string): void {
+  if (!run.timeline) run.timeline = []
+  run.timeline.push({ kind: 'tool', toolId })
 }
 
 /**
@@ -438,7 +500,9 @@ export class EnsembleOrchestrator {
           run.lastContentItemId !== undefined &&
           itemId !== run.lastContentItemId &&
           run.content.length > 0
-        run.content += `${itemTransition ? '\n\n---\n\n' : ''}${text}`
+        const chunk = `${itemTransition ? '\n\n---\n\n' : ''}${text}`
+        run.content += chunk
+        appendTimelineContent(run, chunk)
         if (itemId) run.lastContentItemId = itemId
         this.scheduleFlush(run)
       } else if (itemId) {
@@ -468,6 +532,7 @@ export class EnsembleOrchestrator {
       const text = payload.content
       if (text) {
         run.content += text
+        appendTimelineContent(run, text)
         this.scheduleFlush(run)
       }
       return true
@@ -479,18 +544,15 @@ export class EnsembleOrchestrator {
       // which ensemble doesn't go through). Without an orchestrator-
       // side persist, tool messages never landed in the authoritative
       // chat.messages, so the transcript stayed silent even when
-      // participants used tools. Build the activity here, accumulate
-      // per-run, and let `flushRun` materialise a `role: 'tool'`
-      // message ordered before the assistant message.
+      // participants used tools. Build the activity, push it into
+      // the run's timeline at the current position so flushRun can
+      // emit it inline between content chunks.
       if (!run.toolActivities) run.toolActivities = []
       const activity = buildEnsembleToolActivity(payload, this.deps.nowIso())
       run.toolActivities.push(activity)
-      // Diagnostic for the 1.0.3 ship-night investigation. Chris is
-      // seeing successful tool execution (files actually get written)
-      // but no tool bubbles in the ensemble transcript. This log
-      // confirms whether the events reach the orchestrator at all.
-      // Visible to `npm run dev` terminal output. Safe to leave in —
-      // single line per event, low volume.
+      appendTimelineTool(run, activity.id)
+      // Diagnostic for the 1.0.3 ship-night investigation — single
+      // line per event, low volume, safe to leave in.
       // eslint-disable-next-line no-console
       console.log(
         `[ensemble:tool_use] provider=${provider} run=${run.runId} tool=${activity.toolName} id=${activity.id}`
@@ -823,44 +885,99 @@ export class EnsembleOrchestrator {
     if (!chat?.ensemble) return
     const timestamp = this.deps.nowIso()
     let messages = [...chat.messages]
-    // Materialise the per-participant tool message (if this run has any
-    // tool activities) BEFORE the assistant message in the transcript.
-    // Insert lazily so participants that never call tools never produce
-    // a stray empty tool bubble. Subsequent flushes replace the message
-    // in place via its stable id so activity status updates land.
-    // Tool-message handling moved AFTER the assistant-message
-    // insertion below. Tool calls feel "inline with the response"
-    // when they appear directly under the participant's text — the
-    // chronology most LLMs follow is "I'll do X" then doing X.
-    // Putting the tool block above the text inverted that order
-    // and felt like a stack of cold operations preceding the
-    // explanation.
+
+    // Timeline-driven materialisation. Each entry in `run.timeline`
+    // becomes a message in the transcript, preserving the speak →
+    // do → speak → do chronology agents naturally follow. Each
+    // message id is deterministic on (runId, ordinal, kind) so
+    // subsequent flushes replace in place — no message duplication
+    // even across many delta events.
     //
-    // The actual tool-message creation lives below; we still
-    // accumulate per-flush so the activity status (running →
-    // success/error) lands when results pair up.
-    const assistantIndex = messages.findIndex((message) => message.id === run.assistantMessageId)
-    if (run.content.trim()) {
-      const assistantMessage: ChatMessage = {
-        ...(assistantIndex >= 0 ? messages[assistantIndex] : {}),
-        id: run.assistantMessageId,
-        role: 'assistant',
-        content: run.content,
-        timestamp,
-        runId: run.runId,
-        metadata: {
-          kind: 'ensembleParticipant',
-          ensembleRoundId: run.roundId,
-          ensembleParticipantId: run.participant.id,
-          ensembleProvider: run.participant.provider,
-          ensembleRole: run.participant.role,
-          ensembleOrder: run.participant.order,
-          ensembleStatus: run.status
-        }
+    // Per-run cleanup: any previously-emitted timeline messages
+    // for this run whose ids are no longer present in the current
+    // timeline get removed (defends against the rare case where
+    // the orchestrator decides to collapse adjacent entries on a
+    // later flush — currently we always preserve order, but the
+    // cleanup makes the rebuild idempotent regardless).
+    const timeline = run.timeline || []
+    const desiredIds = new Set<string>()
+    const desiredMessages: ChatMessage[] = []
+    for (let i = 0; i < timeline.length; i += 1) {
+      const entry = timeline[i]
+      if (entry.kind === 'content') {
+        const id = timelineMessageId(run.runId, i, 'content')
+        desiredIds.add(id)
+        if (!entry.text.trim()) continue
+        desiredMessages.push({
+          id,
+          role: 'assistant',
+          content: entry.text,
+          timestamp,
+          runId: run.runId,
+          metadata: {
+            kind: 'ensembleParticipant',
+            ensembleRoundId: run.roundId,
+            ensembleParticipantId: run.participant.id,
+            ensembleProvider: run.participant.provider,
+            ensembleRole: run.participant.role,
+            ensembleOrder: run.participant.order,
+            ensembleStatus: run.status,
+            ensembleTimelineIndex: i
+          }
+        })
+      } else {
+        const id = timelineMessageId(run.runId, i, 'tool')
+        desiredIds.add(id)
+        const activity = run.toolActivities?.find((a) => a.id === entry.toolId)
+        if (!activity) continue
+        desiredMessages.push({
+          id,
+          role: 'tool',
+          content: '',
+          timestamp,
+          runId: run.runId,
+          toolActivities: [activity],
+          metadata: {
+            kind: 'ensembleParticipantTools',
+            ensembleRoundId: run.roundId,
+            ensembleParticipantId: run.participant.id,
+            ensembleProvider: run.participant.provider,
+            ensembleRole: run.participant.role,
+            ensembleOrder: run.participant.order,
+            ensembleTimelineIndex: i
+          }
+        })
       }
-      if (assistantIndex >= 0) messages[assistantIndex] = assistantMessage
-      else messages = [...messages, assistantMessage]
-    } else if (
+    }
+
+    // Strip any prior timeline messages for this run from the chat
+    // (other messages — round-prompt user msgs, status cards from
+    // OTHER runs, etc. — stay untouched). Then re-insert the fresh
+    // ordered sequence at the end. Insertion-at-end is correct here
+    // because the orchestrator flushes participants in turn order
+    // and each participant's content is contiguous within the
+    // transcript anyway.
+    messages = messages.filter((message) => {
+      if (message.runId !== run.runId) return true
+      if (message.role !== 'assistant' && message.role !== 'tool') return true
+      // Only filter our own timeline-ids; non-timeline assistant
+      // messages from older code paths (none remain in this file
+      // but defending in depth) stay.
+      const stableId = typeof message.id === 'string' ? message.id : ''
+      return !stableId.startsWith(`ensemble-content-${run.runId}-`) &&
+        !stableId.startsWith(`ensemble-tool-${run.runId}-`) &&
+        // Legacy single-id flush from earlier 1.0.3 builds — also
+        // remove so migrated chats don't show stale duplicates.
+        message.id !== run.assistantMessageId &&
+        !stableId.startsWith(`ensemble-tool-${run.runId}`)
+    })
+    messages = [...messages, ...desiredMessages]
+
+    // Status card for yielded / failed / skipped, appended after
+    // the timeline messages so it reads as a coda. Unchanged from
+    // the pre-timeline version aside from running after the new
+    // messages are materialised.
+    if (
       final &&
       (run.status === 'yielded' || run.status === 'failed' || run.status === 'skipped')
     ) {
@@ -871,85 +988,31 @@ export class EnsembleOrchestrator {
         if (run.status === 'failed') return `${who} failed.${suffix}`
         return `${who} skipped.${suffix}`
       })()
-      messages = [
-        ...messages,
-        {
-          id: `ensemble-status-${run.runId}`,
-          role: 'system',
-          content: statusLine,
-          timestamp,
-          runId: run.runId,
-          metadata: {
-            kind: 'ensembleParticipantStatus',
-            ensembleRoundId: run.roundId,
-            ensembleParticipantId: run.participant.id,
-            ensembleProvider: run.participant.provider,
-            ensembleRole: run.participant.role,
-            ensembleOrder: run.participant.order,
-            ensembleStatus: run.status
-          }
-        }
-      ]
-    }
-
-    // Tool-message materialisation — AFTER the assistant message so
-    // transcript order reads "assistant said X, then used tools Y/Z".
-    // Chronologically the assistant typically narrates intent before
-    // tool execution; putting tool rows above the text inverted that
-    // and felt wrong to Chris. The renderer's existing ActivityStack
-    // doesn't care about position — it just renders whatever tool
-    // message it sees as a `role: 'tool'` entry with the activities.
-    if (run.toolActivities && run.toolActivities.length > 0) {
-      if (!run.toolMessageId) {
-        run.toolMessageId = `ensemble-tool-${run.runId}`
-      }
-      const toolMessageId = run.toolMessageId
-      const existingToolIdx = messages.findIndex((message) => message.id === toolMessageId)
-      // Diagnostic counterpart to the tool_use receive log. Tells us
-      // whether the orchestrator's flush actually emits the tool
-      // message into the chat record.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[ensemble:flush_tool_message] run=${run.runId} id=${toolMessageId} activities=${run.toolActivities.length} insert=${existingToolIdx >= 0 ? 'replace' : 'append'}`
-      )
-      const toolMsg: ChatMessage = {
-        id: toolMessageId,
-        role: 'tool',
-        content: '',
+      const statusId = `ensemble-status-${run.runId}`
+      // Replace existing status card if one is already in messages
+      // (defensive — we filtered timeline messages above but the
+      // status card has its own id namespace).
+      const existingStatusIdx = messages.findIndex((m) => m.id === statusId)
+      const statusMsg: ChatMessage = {
+        id: statusId,
+        role: 'system',
+        content: statusLine,
         timestamp,
         runId: run.runId,
-        toolActivities: [...run.toolActivities],
         metadata: {
-          kind: 'ensembleParticipantTools',
+          kind: 'ensembleParticipantStatus',
           ensembleRoundId: run.roundId,
           ensembleParticipantId: run.participant.id,
           ensembleProvider: run.participant.provider,
           ensembleRole: run.participant.role,
-          ensembleOrder: run.participant.order
+          ensembleOrder: run.participant.order,
+          ensembleStatus: run.status
         }
       }
-      if (existingToolIdx >= 0) {
-        messages[existingToolIdx] = toolMsg
+      if (existingStatusIdx >= 0) {
+        messages[existingStatusIdx] = statusMsg
       } else {
-        // Place AFTER the assistant message if one exists, else
-        // append (in which case the assistant message will land
-        // below the tool message on a subsequent flush — but
-        // because we now do tool-handling AFTER assistant
-        // insertion, that's only the case when content is empty,
-        // and the existing tool message will then be relocated on
-        // the next pass once content arrives).
-        const assistantSlot = messages.findIndex(
-          (message) => message.id === run.assistantMessageId
-        )
-        if (assistantSlot >= 0) {
-          messages = [
-            ...messages.slice(0, assistantSlot + 1),
-            toolMsg,
-            ...messages.slice(assistantSlot + 1)
-          ]
-        } else {
-          messages = [...messages, toolMsg]
-        }
+        messages = [...messages, statusMsg]
       }
     }
 

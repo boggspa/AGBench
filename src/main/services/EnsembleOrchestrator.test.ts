@@ -437,7 +437,15 @@ describe('EnsembleOrchestrator', () => {
       appRunId: harness.dispatched[0].appRunId,
       appChatId: 'ensemble-chat'
     }
-    // Tool use → tool result pairing.
+    // Realistic chronology: agent narrates intent, calls a tool,
+    // receives the result, then summarises. The timeline-driven
+    // flush should produce three messages interleaved in this
+    // order: assistant("Let me read…"), tool(read_file),
+    // assistant("Found it.").
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'content',
+      text: "Let me read the file first."
+    })
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'tool_use',
       tool_id: 'call-1',
@@ -449,10 +457,9 @@ describe('EnsembleOrchestrator', () => {
       tool_id: 'call-1',
       content: 'File contents...'
     })
-    // Content + final result so the assistant message also lands.
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'content',
-      text: 'I read the file.'
+      text: 'Found it — those are the notes.'
     })
     harness.orchestrator.handleProviderOutput('claude', route, {
       type: 'result',
@@ -460,29 +467,27 @@ describe('EnsembleOrchestrator', () => {
       stats: { total_tokens: 10 }
     })
 
-    const toolMessage = harness.chat.messages.find(
+    const toolMessages = harness.chat.messages.filter(
       (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
     )
-    expect(toolMessage).toBeDefined()
-    expect(toolMessage?.toolActivities).toHaveLength(1)
-    expect(toolMessage?.toolActivities?.[0].toolName).toBe('read_file')
-    expect(toolMessage?.toolActivities?.[0].status).toBe('success')
-    expect(toolMessage?.toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
+    expect(toolMessages).toHaveLength(1)
+    expect(toolMessages[0].toolActivities).toHaveLength(1)
+    expect(toolMessages[0].toolActivities?.[0].toolName).toBe('read_file')
+    expect(toolMessages[0].toolActivities?.[0].status).toBe('success')
+    expect(toolMessages[0].toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
 
-    // Tool message must appear AFTER the assistant message so the
-    // transcript reads "assistant narrates intent, then tools fire" —
-    // the chronological order most LLM responses follow. Earlier
-    // versions placed tools above the assistant text which felt
-    // wrong (Chris's "weirdly the tool calls sit separately, above
-    // the agent response" feedback from the 1.0.3 smoke pass).
-    const toolIdx = harness.chat.messages.findIndex(
-      (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+    // Interleaved ordering: the participant's transcript slice
+    // should read assistant → tool → assistant. The flushRun
+    // pass walks the timeline and emits one message per entry, so
+    // a two-content + one-tool timeline produces three messages.
+    const participantMessages = harness.chat.messages.filter(
+      (message) =>
+        message.runId === harness.dispatched[0].appRunId &&
+        (message.role === 'assistant' || message.role === 'tool')
     )
-    const assistantIdx = harness.chat.messages.findIndex(
-      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'claude'
-    )
-    expect(assistantIdx).toBeGreaterThanOrEqual(0)
-    expect(toolIdx).toBeGreaterThan(assistantIdx)
+    expect(participantMessages.map((m) => m.role)).toEqual(['assistant', 'tool', 'assistant'])
+    expect(participantMessages[0].content).toContain('Let me read the file first.')
+    expect(participantMessages[2].content).toContain('Found it')
   })
 
   it('skipActiveParticipant returns false when no round is active', async () => {
