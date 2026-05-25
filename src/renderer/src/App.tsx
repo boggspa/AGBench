@@ -8802,7 +8802,13 @@ function App(): React.JSX.Element {
 
         const completedAt = new Date().toISOString()
         if (exitCode === 0) {
-          if (isVisibleCompletedRun()) {
+          // Skip the per-participant run-complete notice for ensemble
+          // chats — each participant's exit would clobber the card
+          // with that participant's metadata. The notice fires once
+          // per ROUND via the dedicated `activeRound.status` effect
+          // below.
+          const isEnsembleChat = updated.chatKind === 'ensemble'
+          if (!isEnsembleChat && isVisibleCompletedRun()) {
             setRunCompleteNotice({
               timestamp: completedAt,
               exitCode,
@@ -10011,11 +10017,17 @@ function App(): React.JSX.Element {
           if (exitMatch) {
             const exitCode = Number(exitMatch[1])
             if (exitCode === 0 && isVisibleRunChat()) {
-              setRunCompleteNotice({
-                timestamp: new Date().toISOString(),
-                exitCode,
-                startedAt: runContext.startedAt || undefined
-              })
+              // Skip per-participant notice for ensemble (round-level
+              // effect handles it). Same reasoning as the main exit
+              // handler above.
+              const runChat = chatByIdRef.current.get(runChatId)
+              if (runChat?.chatKind !== 'ensemble') {
+                setRunCompleteNotice({
+                  timestamp: new Date().toISOString(),
+                  exitCode,
+                  startedAt: runContext.startedAt || undefined
+                })
+              }
               return
             }
           }
@@ -12368,6 +12380,37 @@ function App(): React.JSX.Element {
     },
     [isCurrentEnsembleChat, selectedParticipant, currentChat]
   )
+  // Ensemble round-complete notice — fires once when the round
+  // transitions to `completed` (or `cancelled`). Solo chats use the
+  // per-run-exit notice path; for ensemble we suppress that and
+  // emit here instead, so the card reflects round-level metadata
+  // rather than the last participant's individual run. The ref
+  // prevents re-fires if the same round-end is observed multiple
+  // times (chat broadcasts can land in pairs during rapid IPC).
+  const lastEnsembleRoundCompleteRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!isCurrentEnsembleChat) return
+    const round = currentChat?.ensemble?.activeRound
+    if (!round) return
+    if (round.status !== 'completed' && round.status !== 'cancelled') return
+    if (lastEnsembleRoundCompleteRef.current === round.roundId) return
+    lastEnsembleRoundCompleteRef.current = round.roundId
+    setIsThinking(false)
+    setRunCompleteNotice({
+      timestamp: round.endedAt || new Date().toISOString(),
+      // Treat `cancelled` like a non-zero exit so the card surfaces
+      // the cancellation outcome via the existing copy.
+      exitCode: round.status === 'cancelled' ? 130 : 0,
+      startedAt: round.startedAt || undefined
+    })
+  }, [
+    isCurrentEnsembleChat,
+    currentChat?.ensemble?.activeRound?.roundId,
+    currentChat?.ensemble?.activeRound?.status,
+    currentChat?.ensemble?.activeRound?.startedAt,
+    currentChat?.ensemble?.activeRound?.endedAt
+  ])
+
   // Auto-follow the active speaker during a running round so the
   // composer pickers always reflect who's speaking. When the round
   // isn't running, the selection is purely user-driven.
@@ -12449,13 +12492,27 @@ function App(): React.JSX.Element {
       if (participant) {
         return {
           thinkingProviderLabel: getProviderLabel(participant.provider),
-          thinkingProvider: participant.provider
+          thinkingProvider: participant.provider as ProviderId | null
         }
+      }
+    }
+    // Ensemble fallback: when `activeParticipantId` is briefly cleared
+    // (between one participant finalising and the next being seeded),
+    // do NOT fall back to the chat's base provider. That field is the
+    // user's last-active provider when the ensemble chat was created
+    // (commonly 'codex'), so the indicator would show "Codex
+    // Thinking…" for ~50-200ms even when Kimi or Gemini is about to
+    // speak — confusing and wrong. Show a neutral "Ensemble" label
+    // with no provider tint instead.
+    if (currentChat?.chatKind === 'ensemble') {
+      return {
+        thinkingProviderLabel: 'Ensemble',
+        thinkingProvider: null as ProviderId | null
       }
     }
     return {
       thinkingProviderLabel: currentProviderLabel,
-      thinkingProvider: currentProvider
+      thinkingProvider: currentProvider as ProviderId | null
     }
   })()
   // Slice C (revised): clear the "Thinking…" indicator when the ensemble
@@ -12502,16 +12559,35 @@ function App(): React.JSX.Element {
     ? `${contextLabel}\n\n${ensembleTallyBreakdown}`
     : contextLabel
   const latestRunDiffStats = useMemo(() => {
-    // Prefer a live aggregate from tool activities on the current run so the
-    // above-composer bar updates mid-task rather than only after runDiff lands.
+    // Prefer a live aggregate from tool activities so the above-composer
+    // bar updates mid-task rather than only after runDiff lands.
+    //
+    // Solo chats: filter to the single current run.
+    // Ensemble chats: aggregate across every run that belongs to the
+    // current round. Without this, the counter would only reflect the
+    // last-speaking participant's edits — wrong for a round-level
+    // affordance, and zero whenever no participant happens to be
+    // running right now (between turns).
     const runId = currentRun?.runId
-    if (currentChat && runId) {
+    const ensembleRoundId = isCurrentEnsembleChat
+      ? currentChat?.ensemble?.activeRound?.roundId
+      : undefined
+    if (currentChat && (runId || ensembleRoundId)) {
       let liveAdditions = 0
       let liveDeletions = 0
       const liveFiles = new Set<string>()
       let hasAnyDiff = false
       for (const message of currentChat.messages || []) {
-        if (message.runId && message.runId !== runId) continue
+        const messageRoundId =
+          typeof message.metadata?.ensembleRoundId === 'string'
+            ? (message.metadata.ensembleRoundId as string)
+            : undefined
+        const matchesEnsembleRound =
+          Boolean(ensembleRoundId) && messageRoundId === ensembleRoundId
+        const matchesCurrentRun = Boolean(runId) && message.runId === runId
+        // Skip messages tagged with a different run id when neither the
+        // round-level NOR the run-level match applies.
+        if (message.runId && !matchesCurrentRun && !matchesEnsembleRound) continue
         for (const activity of message.toolActivities || []) {
           const diff = activity.diffSummary
           if (!diff) continue
@@ -12540,7 +12616,13 @@ function App(): React.JSX.Element {
       deletions,
       filesChanged: files.length
     }
-  }, [currentChat, currentRun?.runId, runDiff])
+  }, [
+    currentChat,
+    currentRun?.runId,
+    runDiff,
+    isCurrentEnsembleChat,
+    currentChat?.ensemble?.activeRound?.roundId
+  ])
   // Slice 6 of the external-path-redesign arc: partition diff stats
   // by which grant's repoRoot each tool activity's file path falls
   // under. Secondary above-rows read their entry to display per-repo
