@@ -19799,7 +19799,12 @@ if (isGeminiMcpBridgeProcess) {
       'run-ensemble-round',
       async (
         event,
-        payload: { chatId?: string; prompt?: string; mode?: 'normal' | 'queue' | 'steer' }
+        payload: {
+          chatId?: string
+          prompt?: string
+          mode?: 'normal' | 'queue' | 'steer'
+          dmTargetParticipantId?: string
+        }
       ) => {
         if (AppStore.getSettings().ensembleModeEnabled === false) {
           throw new Error('Ensemble Mode is disabled.')
@@ -19810,7 +19815,10 @@ if (isGeminiMcpBridgeProcess) {
           chatId,
           prompt,
           event,
-          mode: payload?.mode || 'normal'
+          mode: payload?.mode || 'normal',
+          ...(payload?.dmTargetParticipantId
+            ? { dmTargetParticipantId: payload.dmTargetParticipantId }
+            : {})
         })
       }
     )

@@ -382,8 +382,16 @@ const api = {
   createGlobalChat: () => ipcRenderer.invoke('create-global-chat'),
   createEnsembleChat: (args?: { workspaceId?: string; workspacePath?: string }) =>
     ipcRenderer.invoke('create-ensemble-chat', args),
-  runEnsembleRound: (payload: { chatId: string; prompt: string; mode?: string }) =>
-    ipcRenderer.invoke('run-ensemble-round', payload),
+  runEnsembleRound: (payload: {
+    chatId: string
+    prompt: string
+    mode?: string
+    /** A2 (1.0.3) — DM routing: scope this "round" to a single
+     * participant chip. The orchestrator's machinery still drives
+     * the run (so status pills + per-participant tally still update)
+     * but iterates a one-element participant list. */
+    dmTargetParticipantId?: string
+  }) => ipcRenderer.invoke('run-ensemble-round', payload),
   cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
   createSubThread: (args: {
     parentChatId: string

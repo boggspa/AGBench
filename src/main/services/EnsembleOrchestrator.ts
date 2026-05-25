@@ -86,6 +86,16 @@ export class EnsembleOrchestrator {
     prompt: string
     event: EnsembleDispatchEvent
     mode?: EnsembleRunMode
+    /**
+     * A2 (1.0.3) — when set, scope the round to just this participant
+     * (the "DM" routing the chip strip + composer pickers feed when
+     * the user holds Cmd while sending). The round still flows through
+     * the orchestrator's machinery (so per-participant status pills +
+     * activeRound state + the per-participant token tally all keep
+     * working), it just iterates a one-element participant list
+     * instead of the full enabled set.
+     */
+    dmTargetParticipantId?: string
   }): { status: 'started' | 'queued' | 'steered' | 'ignored'; roundId?: string } {
     const prompt = input.prompt.trim()
     if (!prompt) return { status: 'ignored' }
@@ -93,7 +103,12 @@ export class EnsembleOrchestrator {
     if (existing && !existing.cancelled) {
       if (input.mode === 'steer') {
         void this.cancelRound(input.chatId, 'steered')
-        const roundId = this.beginRound(input.chatId, prompt, input.event.sender)
+        const roundId = this.beginRound(
+          input.chatId,
+          prompt,
+          input.event.sender,
+          input.dmTargetParticipantId
+        )
         this.appendRoundStatus(
           input.chatId,
           roundId,
@@ -107,7 +122,12 @@ export class EnsembleOrchestrator {
       )
       return { status: 'queued', roundId: existing.roundId }
     }
-    const roundId = this.beginRound(input.chatId, prompt, input.event.sender)
+    const roundId = this.beginRound(
+      input.chatId,
+      prompt,
+      input.event.sender,
+      input.dmTargetParticipantId
+    )
     return { status: 'started', roundId }
   }
 
@@ -208,11 +228,29 @@ export class EnsembleOrchestrator {
     return true
   }
 
-  private beginRound(chatId: string, prompt: string, sender: Electron.WebContents): string {
+  private beginRound(
+    chatId: string,
+    prompt: string,
+    sender: Electron.WebContents,
+    dmTargetParticipantId?: string
+  ): string {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) throw new Error('Ensemble chat not found.')
     const roundId = `ensemble-${this.deps.now()}-${Math.random().toString(36).slice(2)}`
-    const ordered = getOrderedEnsembleParticipants(chat.ensemble, prompt)
+    const orderedFull = getOrderedEnsembleParticipants(chat.ensemble, prompt)
+    // A2 (1.0.3) — when DM, filter to just the targeted participant.
+    // We still allow disabled participants when explicitly targeted —
+    // the user clicked their chip and held Cmd, that's an unambiguous
+    // intent. The filter falls back to the full ordered set if the
+    // id doesn't match (safety net; should never hit in practice).
+    const ordered = dmTargetParticipantId
+      ? (() => {
+          const target = chat.ensemble.participants.find(
+            (p) => p.id === dmTargetParticipantId
+          )
+          return target ? [target] : orderedFull
+        })()
+      : orderedFull
     const startedAt = this.deps.nowIso()
     const round: EnsembleRoundState = {
       roundId,

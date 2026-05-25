@@ -3175,6 +3175,14 @@ interface QueuedRunRequest {
   runtimeProfileId?: string
   geminiAuthProfileId?: string | null
   handoffSourceRunId?: string
+  /**
+   * A2 (1.0.3) — DM routing through the ensemble orchestrator. When
+   * set on an ensemble chat dispatch, the resulting round contains
+   * just this one participant. Ignored on solo chats. Held on the
+   * request envelope (not chat-level state) because each dispatch is
+   * an independent decision — the next send might be a full round.
+   */
+  dmTargetParticipantId?: string
 }
 
 interface ComposerPermissionState {
@@ -9538,7 +9546,13 @@ function App(): React.JSX.Element {
         await window.api.runEnsembleRound({
           chatId: runChat.appChatId,
           prompt: request.prompt,
-          mode
+          mode,
+          // A2 (1.0.3) — DM the selected chip only when the user
+          // sent with Cmd/Ctrl held. The orchestrator filters
+          // participants to just this one for the round.
+          ...(request.dmTargetParticipantId
+            ? { dmTargetParticipantId: request.dmTargetParticipantId }
+            : {})
         })
         if (!request.existingPrompt && !request.preserveComposer) {
           setChatPromptDraft(runChat.appChatId, '')
@@ -10420,8 +10434,22 @@ function App(): React.JSX.Element {
     }
   }
 
-  const handleRun = (overrideModel?: string, existingPrompt?: string) => {
-    const request = buildRunRequest(overrideModel, existingPrompt)
+  const handleRun = (
+    overrideModel?: string,
+    existingPrompt?: string,
+    /**
+     * A2 (1.0.3) — DM routing. When set, the resulting dispatch
+     * scopes the ensemble round to just this participant via the
+     * orchestrator's `dmTargetParticipantId`. Ignored on solo chats.
+     * Plumbed onto the request envelope (not chat-level state)
+     * because each dispatch is an independent decision.
+     */
+    dmTargetParticipantId?: string
+  ) => {
+    const baseRequest = buildRunRequest(overrideModel, existingPrompt)
+    const request = dmTargetParticipantId
+      ? { ...baseRequest, dmTargetParticipantId }
+      : baseRequest
     if (!request.prompt.trim()) {
       return
     }
@@ -14183,7 +14211,16 @@ function App(): React.JSX.Element {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                     e.preventDefault()
                     triggerSendConfirmation()
-                    handleRun()
+                    // A2 (1.0.3) — Cmd/Ctrl+Enter on an ensemble chat
+                    // with a selected chip = DM that participant only.
+                    // Plain Enter dispatches the full round.
+                    const dmTarget =
+                      isCurrentEnsembleChat &&
+                      effectiveSelectedParticipantId &&
+                      (e.metaKey || e.ctrlKey)
+                        ? effectiveSelectedParticipantId
+                        : undefined
+                    handleRun(undefined, undefined, dmTarget)
                   }
                 }}
               />
@@ -15491,9 +15528,19 @@ function App(): React.JSX.Element {
                     ) : (
                       <button
                         className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
-                        onClick={() => {
+                        onClick={(event) => {
                           triggerSendConfirmation()
-                          handleRun()
+                          // A2 (1.0.3) — Cmd/Ctrl-click on send while
+                          // an ensemble chip is selected = DM that
+                          // participant only. Plain click dispatches
+                          // a full round.
+                          const dmTarget =
+                            isCurrentEnsembleChat &&
+                            effectiveSelectedParticipantId &&
+                            (event.metaKey || event.ctrlKey)
+                              ? effectiveSelectedParticipantId
+                              : undefined
+                          handleRun(undefined, undefined, dmTarget)
                         }}
                         disabled={
                           !currentChat ||
@@ -15501,7 +15548,11 @@ function App(): React.JSX.Element {
                           !prompt.trim() ||
                           (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
                         }
-                        title="Run"
+                        title={
+                          isCurrentEnsembleChat && effectiveSelectedParticipantId
+                            ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
+                            : 'Run'
+                        }
                         aria-label="Run prompt"
                         aria-keyshortcuts="Meta+Enter Control+Enter"
                         type="button"

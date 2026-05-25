@@ -529,4 +529,54 @@ describe('EnsembleOrchestrator', () => {
     expect(kimiPayload.serviceTier).toBeUndefined()
     expect(kimiPayload.claudeFastMode).toBeUndefined()
   })
+
+  // A2 (1.0.3) — `dmTargetParticipantId` scopes the round to a
+  // single chip. The orchestrator's machinery still drives the run
+  // (so per-participant status pills + activeRound state stay
+  // coherent), it just iterates a one-element participant list.
+  it('scopes the round to a single participant when dmTargetParticipantId is set', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'DM Codex only.',
+      event: { sender: {} as Electron.WebContents },
+      dmTargetParticipantId: 'codex'
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Codex runs, not Claude (which would normally be first per
+    // the default fixture order).
+    expect(harness.dispatched[0].provider).toBe('codex')
+    // Round's activeRound participant list reflects the filter — the
+    // single targeted chip, not the full enabled set.
+    expect(harness.chat.ensemble?.activeRound?.participants.map((p) => p.participantId)).toEqual([
+      'codex'
+    ])
+
+    // Codex finishes → no further dispatch (no Claude/Gemini/Kimi
+    // follow-up), because DM is single-participant.
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 5 } }
+    )
+    // Give the orchestrator a microtask to settle and confirm no new
+    // dispatch lands.
+    await new Promise((resolve) => setTimeout(resolve, 30))
+    expect(harness.dispatched).toHaveLength(1)
+  })
+
+  it('falls through to the full round when dmTargetParticipantId points at a non-existent id', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'DM phantom.',
+      event: { sender: {} as Electron.WebContents },
+      dmTargetParticipantId: 'phantom-participant'
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // First in default fixture order = Claude. The unknown DM target
+    // is silently ignored; the orchestrator runs the full ordered
+    // participant list (safety net for typo / racy IPC).
+    expect(harness.dispatched[0].provider).toBe('claude')
+  })
 })

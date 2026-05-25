@@ -625,6 +625,8 @@ declare global {
         chatId: string
         prompt: string
         mode?: 'normal' | 'queue' | 'steer'
+        /** A2 (1.0.3) — DM routing: scope the round to a single chip. */
+        dmTargetParticipantId?: string
       }) => Promise<{ status: string; roundId?: string }>
       cancelEnsembleRound: (chatId: string) => Promise<boolean>
       createSubThread: (args: {
