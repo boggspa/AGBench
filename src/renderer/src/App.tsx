@@ -96,6 +96,10 @@ import { RunInspector } from './components/RunInspector'
 // inside SettingsPanel). Triggers route through `setShowSettings(true)
 // + setSettingsActiveTab('pairing')`.
 import { EnsembleParticipantsAboveRow } from './components/EnsembleParticipantsAboveRow'
+import {
+  QueuedMessagesAboveRow,
+  type QueuedMessageRowEntry
+} from './components/QueuedMessagesAboveRow'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -4204,6 +4208,13 @@ type TranscriptPanelProps = {
    * every `ActivityStack` inside the transcript renders in the same
    * density as the rest of the chat. */
   compactDensity: boolean
+  /** Set of `appRunId`s whose run-queue job is still in `'queued'`
+   * status. Used to hide the in-transcript "Queued (#N): …" system
+   * card while the queued-messages above-row is showing the same
+   * item live. Once the job dispatches (status leaves `'queued'`),
+   * the appRunId drops from this set and the transcript card
+   * reappears as the historical "this run was queued" record. */
+  pendingQueuedAppRunIds?: Set<string>
 }
 
 const TranscriptPanel = memo(
@@ -4236,12 +4247,25 @@ const TranscriptPanel = memo(
     onRunFallback,
     onOpenSubThread,
     onInspectRun,
-    compactDensity
+    compactDensity,
+    pendingQueuedAppRunIds
   }: TranscriptPanelProps) {
-    const visibleMessages = useMemo(
-      () => (isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages),
-      [isWelcomeChat, messages]
-    )
+    const visibleMessages = useMemo(() => {
+      const source = isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages
+      // Dedup: when a queued-message system card's job is still in
+      // the `queued` set, suppress the card here — the queued-
+      // messages above-row is the live representation. Once the job
+      // dispatches, the card resurfaces as a historical "this was
+      // queued" record. Untagged messages always pass through.
+      if (!pendingQueuedAppRunIds || pendingQueuedAppRunIds.size === 0) return source
+      return source.filter((msg) => {
+        if (msg.metadata?.kind !== 'queuedRunRequest') return true
+        const appRunId =
+          typeof msg.metadata?.appRunId === 'string' ? msg.metadata.appRunId : null
+        if (!appRunId) return true
+        return !pendingQueuedAppRunIds.has(appRunId)
+      })
+    }, [isWelcomeChat, messages, pendingQueuedAppRunIds])
     const shouldShowRunCompleteNotice = Boolean(runCompleteNotice && !isWelcomeChat)
     const runCompleteSummaryRows = useMemo(() => {
       // Ensemble chats: aggregate across every participant in the
@@ -4663,7 +4687,8 @@ const TranscriptPanel = memo(
     previous.fileChangeDisplayAdds === next.fileChangeDisplayAdds &&
     previous.fileChangeDisplayDels === next.fileChangeDisplayDels &&
     previous.chats === next.chats &&
-    previous.runningChatIds === next.runningChatIds
+    previous.runningChatIds === next.runningChatIds &&
+    previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds
 )
 
 type SettingsPanelUpdate = {
@@ -4740,6 +4765,13 @@ function App(): React.JSX.Element {
   const [composerDraftsByChatId, setComposerDraftForChat] = usePerChatState('')
   const [isRunning, setIsRunning] = useState(false)
   const [queuedRuns, setQueuedRuns] = useState<QueuedRunRequest[]>([])
+  // Mirror of `queuedRuns` for handlers that need synchronous
+  // access without re-reading React state (esp. edit/delete/steer
+  // on the queued-messages above-row).
+  const queuedRunsRef = useRef<QueuedRunRequest[]>([])
+  useEffect(() => {
+    queuedRunsRef.current = queuedRuns
+  }, [queuedRuns])
   // Phase J3 (steer): the composer's "Steer" action — interrupt the
   // active turn in this chat and dispatch a new prompt immediately.
   // Sibling of Queue (which waits passively). At most one steer flight
@@ -12850,6 +12882,160 @@ function App(): React.JSX.Element {
   const currentChatQueuedRunCount = runQueueJobs.filter(
     (job) => job.chatId === currentChat?.appChatId && job.status === 'queued'
   ).length
+  // Set of `appRunId`s whose run-queue job is still in `'queued'`
+  // status. Used by the transcript dedup filter to suppress the
+  // in-transcript "Queued (#N): …" system card while the queued-
+  // messages above-row is showing it live. Once the job dispatches
+  // (status leaves `'queued'`), the card resurfaces as the
+  // historical "this run was queued" record.
+  const pendingQueuedAppRunIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const job of runQueueJobs) {
+      if (job.status !== 'queued') continue
+      if (typeof job.runId === 'string' && job.runId) set.add(job.runId)
+    }
+    return set
+  }, [runQueueJobs])
+  // Composer above-row stack input: queued requests targeting the
+  // active chat, projected to the row component's narrow display
+  // shape. `queuedRuns` is the renderer-local source of truth for
+  // dispatch order (see the schedule loop at line ~12020), so a
+  // direct map preserves the visible-and-dispatch order.
+  const queuedMessagesAboveRowEntries: QueuedMessageRowEntry[] = useMemo(() => {
+    if (!currentChat) return []
+    const chatId = currentChat.appChatId
+    return queuedRuns
+      .filter((request) => request.chatRecord?.appChatId === chatId)
+      .map((request) => ({
+        id: request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`,
+        provider: request.provider,
+        prompt: request.displayPrompt || request.prompt,
+        dmTargetParticipantId: request.dmTargetParticipantId
+      }))
+  }, [currentChat, queuedRuns])
+  // Edit: hoist the queued prompt into the composer textarea and
+  // remove the queue entry. Most chat apps do this when the user
+  // clicks "Edit" on a queued message — the result is a fresh
+  // draft the user can revise + resend, not a magical in-place
+  // mutator.
+  const handleEditQueuedMessage = useCallback(
+    (entryId: string) => {
+      const match = queuedRunsRef.current.find(
+        (request) =>
+          (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
+      )
+      if (!match) return
+      const targetChatId = match.chatRecord?.appChatId || currentChat?.appChatId
+      if (targetChatId) {
+        setChatPromptDraft(targetChatId, match.displayPrompt || match.prompt)
+      }
+      setQueuedRuns((prev) =>
+        prev.filter(
+          (request) =>
+            (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) !== entryId
+        )
+      )
+      if (match.appRunId) {
+        void window.api
+          .transitionRunQueueJob(match.appRunId, 'cancelled', {
+            statusReason: 'Edited; returned to composer for revision.'
+          })
+          .catch(() => {})
+      }
+    },
+    [currentChat]
+  )
+  // Delete: drop from local queue + transition the persistent job
+  // to 'cancelled' so the store-backed listing doesn't resurrect it
+  // on the next sync.
+  const handleDeleteQueuedMessage = useCallback((entryId: string) => {
+    const match = queuedRunsRef.current.find(
+      (request) =>
+        (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
+    )
+    if (!match) return
+    setQueuedRuns((prev) =>
+      prev.filter(
+        (request) =>
+          (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) !== entryId
+      )
+    )
+    if (match.appRunId) {
+      void window.api
+        .transitionRunQueueJob(match.appRunId, 'cancelled', {
+          statusReason: 'Cancelled from the queued-messages above-row.'
+        })
+        .catch(() => {})
+    }
+  }, [])
+  // Steer to a queued item: cancel the chat's active run, then
+  // dispatch this queued request immediately. Same gentle handoff
+  // as the composer's Steer button — no restart of unrelated state.
+  const handleSteerToQueuedMessage = useCallback(
+    (entryId: string) => {
+      const match = queuedRunsRef.current.find(
+        (request) =>
+          (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
+      )
+      if (!match) return
+      const targetChatId = match.chatRecord?.appChatId || currentChat?.appChatId
+      // Remove from queue first so the schedule loop doesn't race
+      // and dispatch it again from the queue.
+      setQueuedRuns((prev) =>
+        prev.filter(
+          (request) =>
+            (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) !== entryId
+        )
+      )
+      // Cancel current run if one is in flight, then dispatch this
+      // request. `handleCancel` handles ensemble vs solo internally.
+      const dispatchSteered = (): void => {
+        if (match.appRunId) {
+          void window.api
+            .transitionRunQueueJob(match.appRunId, 'cancelled', {
+              statusReason: 'Promoted via Steer; running now.'
+            })
+            .catch(() => {})
+        }
+        void executeRunRef.current({ ...match })
+      }
+      if (targetChatId && isChatBusy(targetChatId)) {
+        void handleCancel().then(dispatchSteered)
+      } else {
+        dispatchSteered()
+      }
+    },
+    [currentChat]
+  )
+  // Local reorder — updates `queuedRuns` array order so the schedule
+  // loop dispatches in the new order. Persisting the order across
+  // restarts would need a new IPC; deferred until it's wanted.
+  const handleReorderQueuedMessages = useCallback((orderedIds: string[]) => {
+    setQueuedRuns((prev) => {
+      const byId = new Map<string, (typeof prev)[number]>()
+      for (const request of prev) {
+        const id = request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`
+        byId.set(id, request)
+      }
+      const next: typeof prev = []
+      // First: the explicitly-ordered IDs from the drag.
+      for (const id of orderedIds) {
+        const entry = byId.get(id)
+        if (entry) {
+          next.push(entry)
+          byId.delete(id)
+        }
+      }
+      // Then: anything that wasn't in the drag scope (e.g. queue
+      // items for OTHER chats, or items added while the drag was in
+      // flight). Preserves their original order.
+      for (const entry of prev) {
+        const id = entry.appRunId || `${entry.provider}-${entry.prompt.slice(0, 16)}`
+        if (byId.has(id)) next.push(entry)
+      }
+      return next
+    })
+  }, [])
   const hasCurrentHandoffDraft = Boolean(
     currentChat?.appChatId &&
     handoffCards.some(
@@ -13985,6 +14171,7 @@ function App(): React.JSX.Element {
               onOpenSubThread={handleOpenCockpitThread}
               onInspectRun={(runId) => setInspectingRunId(runId)}
               compactDensity={appearance.compactDensity}
+              pendingQueuedAppRunIds={pendingQueuedAppRunIds}
             />
             </>
           )}
@@ -14456,6 +14643,22 @@ function App(): React.JSX.Element {
                     }}
                   />
                 )}
+                {/*
+                  Queued-messages above-row. Renders the chat's pending
+                  run-queue jobs as a stack of bubbles with per-row
+                  Edit / Delete / Steer actions, drag-to-reorder, and
+                  scroll past 5 entries. Returns null when empty so
+                  it adds nothing to the stack for chats without
+                  queued work. See `QueuedMessagesAboveRow.tsx`.
+                */}
+                <QueuedMessagesAboveRow
+                  chat={currentChat}
+                  entries={queuedMessagesAboveRowEntries}
+                  onEdit={handleEditQueuedMessage}
+                  onDelete={handleDeleteQueuedMessage}
+                  onSteer={handleSteerToQueuedMessage}
+                  onReorder={handleReorderQueuedMessages}
+                />
               </div>
             )}
             <div

@@ -1,0 +1,297 @@
+/*
+ * QueuedMessagesAboveRow — 1.0.3 ship-night.
+ *
+ * Renders the chat's pending run-queue jobs as a stack of bubbles
+ * inside the composer's `.composer-above-bar-stack` (the same
+ * container that holds the Ensemble chip strip and the Create-PR
+ * row). Auto-joins Codex's unified-container via the existing
+ * `> *:not(:first-child)` divider rule; in other shells it
+ * renders as its own pill.
+ *
+ * Replaces the in-transcript "Queued (#2): …" system-card UX:
+ * those cards remain in `chat.messages` for historical record
+ * once the job actually dispatches, but while a job is still
+ * `queued` the renderer hides the transcript card and shows it
+ * here instead. See the dedup filter in `App.tsx:TranscriptPanel`.
+ *
+ * Per-row actions:
+ *   - Edit  → hoist the queued prompt into the composer and remove
+ *             the queue entry. Mirrors what most other ensemble-
+ *             style chat apps do for the queue: edits become a
+ *             fresh draft the user can revise.
+ *   - Delete → cancel the queue job (status: 'cancelled') and drop
+ *             it from the visible stack.
+ *   - Steer  → cancel the chat's active run, then dispatch this
+ *             queued item immediately. Same gentle handoff as
+ *             clicking the composer's Steer button.
+ *
+ * Drag-to-reorder: pointer-based (same pattern as
+ * EnsembleParticipantsAboveRow — HTML5 native drag suppresses
+ * click events in Electron's Chromium, see that file's comment
+ * for the history). Reorder is local-only for now; persisting
+ * the order across restarts is a follow-up if it becomes worth
+ * the IPC churn.
+ *
+ * Max 5 visible before scroll (overflow: auto on the inner list).
+ */
+
+import { useCallback, useRef, useState } from 'react'
+import type { ChatRecord, ProviderId } from '../../../main/store/types'
+import { ProviderBadgeIcon, getProviderName } from './Sidebar'
+
+/**
+ * Subset of `QueuedRunRequest` the row needs. Kept narrow so this
+ * component doesn't depend on App.tsx-local types. The full request
+ * envelope flows through the parent handlers — this component is
+ * display + action plumbing only.
+ */
+export interface QueuedMessageRowEntry {
+  /** Stable id used as the key for React and the target id for the
+   * parent's action handlers. Backed by `appRunId` on the request. */
+  id: string
+  provider: ProviderId
+  /** What the user typed (or the display variant if the prompt was
+   * collapsed for readability). Truncated below for display. */
+  prompt: string
+  /** Optional DM target participant id if this is an ensemble-chat
+   * direct-message dispatch. Drives a tiny "→ Role" hint next to
+   * the provider chip. */
+  dmTargetParticipantId?: string
+}
+
+interface QueuedMessagesAboveRowProps {
+  chat: ChatRecord | null
+  entries: QueuedMessageRowEntry[]
+  onEdit: (id: string) => void
+  onDelete: (id: string) => void
+  onSteer: (id: string) => void
+  onReorder: (orderedIds: string[]) => void
+}
+
+const PROMPT_PREVIEW_LIMIT = 220
+
+function truncatePrompt(prompt: string): string {
+  const trimmed = prompt.trim().replace(/\s+/g, ' ')
+  if (trimmed.length <= PROMPT_PREVIEW_LIMIT) return trimmed
+  return `${trimmed.slice(0, PROMPT_PREVIEW_LIMIT)}…`
+}
+
+function resolveDmRoleLabel(
+  chat: ChatRecord | null,
+  participantId: string | undefined
+): string | null {
+  if (!participantId || !chat?.ensemble?.participants) return null
+  const participant = chat.ensemble.participants.find((p) => p.id === participantId)
+  if (!participant) return null
+  return participant.role?.trim() || getProviderName(participant.provider)
+}
+
+export function QueuedMessagesAboveRow({
+  chat,
+  entries,
+  onEdit,
+  onDelete,
+  onSteer,
+  onReorder
+}: QueuedMessagesAboveRowProps): React.JSX.Element | null {
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const listRef = useRef<HTMLDivElement | null>(null)
+
+  const handleReorder = useCallback(
+    (sourceId: string, targetId: string | null) => {
+      setDragId(null)
+      setDragOverId(null)
+      if (!targetId || sourceId === targetId) return
+      const fromIdx = entries.findIndex((entry) => entry.id === sourceId)
+      const toIdx = entries.findIndex((entry) => entry.id === targetId)
+      if (fromIdx === -1 || toIdx === -1) return
+      const next = [...entries]
+      const [moved] = next.splice(fromIdx, 1)
+      next.splice(toIdx, 0, moved)
+      onReorder(next.map((entry) => entry.id))
+    },
+    [entries, onReorder]
+  )
+
+  if (!entries.length) return null
+
+  return (
+    <div
+      className="queued-messages-above-row"
+      role="region"
+      aria-label="Queued messages"
+    >
+      <div className="queued-messages-above-row-list" ref={listRef}>
+        {entries.map((entry, index) => (
+          <QueuedMessageRow
+            key={entry.id}
+            entry={entry}
+            position={index + 1}
+            total={entries.length}
+            dmRoleLabel={resolveDmRoleLabel(chat, entry.dmTargetParticipantId)}
+            isDragOver={dragOverId === entry.id && dragId !== entry.id}
+            isDragging={dragId === entry.id}
+            onEdit={() => onEdit(entry.id)}
+            onDelete={() => onDelete(entry.id)}
+            onSteer={() => onSteer(entry.id)}
+            onDragStart={() => setDragId(entry.id)}
+            onDragHover={(overId) => setDragOverId(overId)}
+            onDragEnd={(droppedOnId) => handleReorder(entry.id, droppedOnId)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+interface QueuedMessageRowProps {
+  entry: QueuedMessageRowEntry
+  position: number
+  total: number
+  dmRoleLabel: string | null
+  isDragOver: boolean
+  isDragging: boolean
+  onEdit: () => void
+  onDelete: () => void
+  onSteer: () => void
+  onDragStart: () => void
+  onDragHover: (overId: string | null) => void
+  onDragEnd: (droppedOnId: string | null) => void
+}
+
+function QueuedMessageRow({
+  entry,
+  position,
+  total,
+  dmRoleLabel,
+  isDragOver,
+  isDragging,
+  onEdit,
+  onDelete,
+  onSteer,
+  onDragStart,
+  onDragHover,
+  onDragEnd
+}: QueuedMessageRowProps): React.JSX.Element {
+  const rowRef = useRef<HTMLDivElement | null>(null)
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      // Left-click only — right/middle clicks pass through.
+      if (event.button !== 0) return
+      // Skip drag-init if the user is clicking one of the action
+      // buttons; those have their own click handlers and shouldn't
+      // also trigger the pointer-drag path.
+      const target = event.target as HTMLElement
+      if (target.closest('.queued-messages-row-action')) return
+
+      const startX = event.clientX
+      const startY = event.clientY
+      let dragged = false
+      let lastHoverId: string | null = null
+
+      const findRowUnderPointer = (x: number, y: number): string | null => {
+        const el = document.elementFromPoint(x, y) as HTMLElement | null
+        const row = el?.closest('.queued-messages-row[data-queued-id]') as HTMLElement | null
+        return row?.getAttribute('data-queued-id') || null
+      }
+
+      const handleMove = (moveEvent: PointerEvent): void => {
+        const dx = Math.abs(moveEvent.clientX - startX)
+        const dy = Math.abs(moveEvent.clientY - startY)
+        // 6px movement threshold — matches the ensemble chip drag.
+        // Below this is a missed-tap; above is a real drag.
+        if (!dragged && (dx > 6 || dy > 6)) {
+          dragged = true
+          onDragStart()
+        }
+        if (dragged) {
+          const overId = findRowUnderPointer(moveEvent.clientX, moveEvent.clientY)
+          if (overId !== lastHoverId) {
+            lastHoverId = overId
+            onDragHover(overId)
+          }
+        }
+      }
+
+      const handleUp = (upEvent: PointerEvent): void => {
+        document.removeEventListener('pointermove', handleMove)
+        document.removeEventListener('pointerup', handleUp)
+        document.removeEventListener('pointercancel', handleUp)
+        if (dragged) {
+          const dropId = findRowUnderPointer(upEvent.clientX, upEvent.clientY)
+          onDragEnd(dropId && dropId !== entry.id ? dropId : null)
+        }
+        // Pure-tap on the body is a no-op — the row body has no click
+        // affordance beyond the explicit action buttons. Edit / Delete
+        // / Steer have their own handlers and don't reach here.
+      }
+
+      document.addEventListener('pointermove', handleMove)
+      document.addEventListener('pointerup', handleUp)
+      document.addEventListener('pointercancel', handleUp)
+    },
+    [entry.id, onDragStart, onDragHover, onDragEnd]
+  )
+
+  return (
+    <div
+      ref={rowRef}
+      data-queued-id={entry.id}
+      onPointerDown={handlePointerDown}
+      className={`queued-messages-row provider-${entry.provider} ${isDragging ? 'is-dragging' : ''} ${isDragOver ? 'is-drag-over' : ''}`}
+      title={`Queued message ${position} of ${total}. Drag to reorder.`}
+    >
+      <span className="queued-messages-row-meta" aria-hidden>
+        <ProviderBadgeIcon provider={entry.provider} />
+        <span className="queued-messages-row-position">#{position}</span>
+        {dmRoleLabel && (
+          <span className="queued-messages-row-dm">→ {dmRoleLabel}</span>
+        )}
+      </span>
+      <span className="queued-messages-row-body">{truncatePrompt(entry.prompt)}</span>
+      <span className="queued-messages-row-actions">
+        <button
+          type="button"
+          className="queued-messages-row-action queued-messages-row-action-steer"
+          onClick={(event) => {
+            event.stopPropagation()
+            onSteer()
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          title="Steer: cancel the active run and dispatch this message now."
+          aria-label="Steer queued message"
+        >
+          ↳ Steer
+        </button>
+        <button
+          type="button"
+          className="queued-messages-row-action queued-messages-row-action-edit"
+          onClick={(event) => {
+            event.stopPropagation()
+            onEdit()
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          title="Edit: load this prompt into the composer for revision."
+          aria-label="Edit queued message"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          className="queued-messages-row-action queued-messages-row-action-delete"
+          onClick={(event) => {
+            event.stopPropagation()
+            onDelete()
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+          title="Delete this queued message."
+          aria-label="Delete queued message"
+        >
+          ✕
+        </button>
+      </span>
+    </div>
+  )
+}
