@@ -30,7 +30,7 @@
  * drag + the overflow editor.
  */
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
@@ -78,25 +78,17 @@ export function EnsembleParticipantsAboveRow({
     })
   }
 
-  const handleDrop = (targetId: string): void => {
-    if (!dragId || dragId === targetId) {
-      setDragId(null)
-      setDragOverId(null)
-      return
-    }
-    const fromIdx = participants.findIndex((p) => p.id === dragId)
+  const handleReorder = (sourceId: string, targetId: string | null): void => {
+    setDragId(null)
+    setDragOverId(null)
+    if (!targetId || sourceId === targetId) return
+    const fromIdx = participants.findIndex((p) => p.id === sourceId)
     const toIdx = participants.findIndex((p) => p.id === targetId)
-    if (fromIdx === -1 || toIdx === -1) {
-      setDragId(null)
-      setDragOverId(null)
-      return
-    }
+    if (fromIdx === -1 || toIdx === -1) return
     const next = [...participants]
     const [moved] = next.splice(fromIdx, 1)
     next.splice(toIdx, 0, moved)
     persist(next)
-    setDragId(null)
-    setDragOverId(null)
   }
 
   return (
@@ -130,16 +122,8 @@ export function EnsembleParticipantsAboveRow({
               onCloseOverflow={() => setOverflowOpenId(null)}
               onPatch={(patch) => updateParticipant(participant.id, patch)}
               onDragStart={() => setDragId(participant.id)}
-              onDragEnter={() => setDragOverId(participant.id)}
-              onDragOver={(event) => {
-                event.preventDefault()
-                event.dataTransfer.dropEffect = 'move'
-              }}
-              onDrop={() => handleDrop(participant.id)}
-              onDragEnd={() => {
-                setDragId(null)
-                setDragOverId(null)
-              }}
+              onDragHover={(overId) => setDragOverId(overId)}
+              onDragEnd={(droppedOnId) => handleReorder(participant.id, droppedOnId)}
             />
           )
         })}
@@ -172,11 +156,28 @@ interface ParticipantChipProps {
   onToggleOverflow: () => void
   onCloseOverflow: () => void
   onPatch: (patch: Partial<EnsembleParticipant>) => void
+  /**
+   * Pointer-based drag callbacks (replaces HTML5 native drag).
+   *
+   * The HTML5 `draggable` attribute on a button — even one with a
+   * working onClick handler — suppresses click events in Electron's
+   * Chromium build. Tried wrapper-only draggable + button-only
+   * draggable across two commits; both kept the symptom. Switched
+   * to pointer events:
+   *   - `pointerdown` on the chip starts a potential drag
+   *   - if the pointer moves > 6px while held, it becomes a real
+   *     drag (`onDragStart` fires)
+   *   - `pointermove` updates the hover target via
+   *     `document.elementFromPoint`
+   *   - `pointerup` either fires `onClick` (pure tap, no movement)
+   *     or `onDragEnd` with the chip id under the release point
+   *     (a real drop)
+   * Click events on the chip body now land reliably because no
+   * native drag is competing for the pointer stream.
+   */
   onDragStart: () => void
-  onDragEnter: () => void
-  onDragOver: (event: React.DragEvent) => void
-  onDrop: () => void
-  onDragEnd: () => void
+  onDragHover: (overParticipantId: string | null) => void
+  onDragEnd: (droppedOnParticipantId: string | null) => void
 }
 
 function ParticipantChip({
@@ -192,58 +193,121 @@ function ParticipantChip({
   onCloseOverflow,
   onPatch,
   onDragStart,
-  onDragEnter,
-  onDragOver,
-  onDrop,
+  onDragHover,
   onDragEnd
 }: ParticipantChipProps): React.JSX.Element {
   const chipRef = useRef<HTMLDivElement | null>(null)
   // Slug the status onto the class so CSS can colour-code the pill
   // (running=warm, yielded=amber, answered=green, cancelled=muted, etc.).
   const statusClass = `status-${statusLabel.toLowerCase().replace(/\s+/g, '-')}`
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent) => {
+      // Left-click only. Right-click / middle-click fall through to
+      // the browser default — no drag, no select.
+      if (event.button !== 0) return
+      // Don't start a drag when the user is clicking the overflow
+      // affordance — the ⋯ button stops propagation on its own
+      // pointerdown too, but a defensive check here keeps the drag
+      // logic robust if anything between us mishandles the event.
+      const target = event.target as HTMLElement
+      if (target.closest('.ensemble-above-chip-overflow')) return
+
+      const startX = event.clientX
+      const startY = event.clientY
+      let dragged = false
+      let lastHoverId: string | null = null
+
+      const findChipUnderPointer = (x: number, y: number): string | null => {
+        const el = document.elementFromPoint(x, y) as HTMLElement | null
+        const chip = el?.closest(
+          '.ensemble-above-chip[data-participant-id]'
+        ) as HTMLElement | null
+        return chip?.getAttribute('data-participant-id') || null
+      }
+
+      const handleMove = (moveEvent: PointerEvent): void => {
+        const dx = Math.abs(moveEvent.clientX - startX)
+        const dy = Math.abs(moveEvent.clientY - startY)
+        // 6px movement threshold — under this is a tap, over is a drag.
+        // Same magnitude HTML5 native drag uses; feels right on a
+        // trackpad without making intentional drags feel sluggish.
+        if (!dragged && (dx > 6 || dy > 6)) {
+          dragged = true
+          onDragStart()
+        }
+        if (dragged) {
+          const overId = findChipUnderPointer(moveEvent.clientX, moveEvent.clientY)
+          if (overId !== lastHoverId) {
+            lastHoverId = overId
+            onDragHover(overId)
+          }
+        }
+      }
+
+      const handleUp = (upEvent: PointerEvent): void => {
+        document.removeEventListener('pointermove', handleMove)
+        document.removeEventListener('pointerup', handleUp)
+        document.removeEventListener('pointercancel', handleUp)
+        if (dragged) {
+          const dropId = findChipUnderPointer(upEvent.clientX, upEvent.clientY)
+          onDragEnd(dropId && dropId !== participant.id ? dropId : null)
+        } else {
+          // Pure tap: no significant movement → fire the click handler.
+          onClick()
+        }
+      }
+
+      document.addEventListener('pointermove', handleMove)
+      document.addEventListener('pointerup', handleUp)
+      document.addEventListener('pointercancel', handleUp)
+    },
+    [participant.id, onClick, onDragStart, onDragHover, onDragEnd]
+  )
+
   return (
     <div
       ref={chipRef}
       data-participant-id={participant.id}
-      // Click-fix (1.0.3 follow-up): wrapper div is DROP-TARGET only,
-      // not drag-SOURCE. Putting `draggable` on the wrapper around a
-      // child <button> suppresses the button's click event in Electron's
-      // Chromium — the mousedown→drag pipeline beats the button's
-      // mousedown→click handler, so taps on the chip body silently
-      // never fire onClick. Drag-source attributes move down to the
-      // body <button> below where they don't compete with click.
-      onDragEnter={onDragEnter}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
+      onPointerDown={handlePointerDown}
       className={`ensemble-above-chip provider-${participant.provider} ${isSelected ? 'is-selected' : ''} ${dimmed ? 'is-dimmed' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
       title={`${getProviderName(participant.provider)} — ${participant.role || 'Participant'}`}
     >
-      <button
-        type="button"
+      {/*
+        Body is a `<div role="button">`, not a `<button>` element.
+        Buttons + the surrounding pointerdown-based drag detection
+        had subtle interactions (browser default mousedown handling
+        on a button can interfere with capture-phase listeners),
+        and a role-button div behaves identically for screen
+        readers + keyboard while keeping the pointer pipeline
+        completely under our control.
+      */}
+      <div
         className="ensemble-above-chip-body"
-        onClick={onClick}
+        role="button"
+        tabIndex={0}
         aria-pressed={isSelected}
-        // The body <button> is the drag-source. Buttons can be
-        // draggable in HTML5; the click handler still fires on a
-        // pure tap because the drag-start fires only after the
-        // mouse actually moves while pressed.
-        draggable
-        onDragStart={(event) => {
-          event.dataTransfer.effectAllowed = 'move'
-          event.dataTransfer.setData('text/plain', participant.id)
-          onDragStart()
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            onClick()
+          }
         }}
-        onDragEnd={onDragEnd}
       >
         <ProviderBadgeIcon provider={participant.provider} />
         <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
         <span className={`ensemble-above-chip-status ${statusClass}`}>{statusLabel}</span>
-      </button>
+      </div>
       {isSelected && (
         <button
           type="button"
           className="ensemble-above-chip-overflow"
-          onClick={onToggleOverflow}
+          // Stop pointerdown propagation so the parent chip's drag
+          // detection doesn't fire when the user is clicking ⋯.
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation()
+            onToggleOverflow()
+          }}
           aria-haspopup="dialog"
           aria-expanded={overflowOpen}
           aria-label={`More options for ${getProviderName(participant.provider)}`}
