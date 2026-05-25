@@ -87,6 +87,53 @@ describe('resolveEffectiveRunPermissions', () => {
     expect(resolved.networkAccess).toBe('deny')
   })
 
+  it('applies participant-scoped tool grant overrides without requiring workspace grants', () => {
+    const resolved = resolveEffectiveRunPermissions({
+      provider: 'codex',
+      workspacePath: '/repo',
+      settings: settings(),
+      presetId: 'default',
+      overrides: {
+        agenticServices: {
+          shellCommands: 'allow',
+          fileChanges: 'allow'
+        }
+      }
+    })
+
+    expect(resolved.agenticServices.shellCommands).toBe('allow')
+    expect(resolved.agenticServices.fileChanges).toBe('allow')
+    expect(resolved.workspaceGrantServiceIds).toEqual([])
+  })
+
+  it('lets participant denies override workspace grants', () => {
+    const resolved = resolveEffectiveRunPermissions({
+      provider: 'codex',
+      workspacePath: '/repo',
+      settings: settings({
+        agenticWorkspaceGrants: [
+          {
+            id: 'workspace-grant-1',
+            provider: 'codex',
+            workspacePath: '/repo',
+            service: 'shellCommands',
+            createdAt: '2026-05-24T00:00:00.000Z',
+            updatedAt: '2026-05-24T00:00:00.000Z'
+          }
+        ]
+      }),
+      presetId: 'default',
+      overrides: {
+        agenticServices: {
+          shellCommands: 'deny'
+        }
+      }
+    })
+
+    expect(resolved.workspaceGrantServiceIds).toEqual(['shellCommands'])
+    expect(resolved.agenticServices.shellCommands).toBe('deny')
+  })
+
   it('merges workspace grants and provider-scoped external path grants', () => {
     const grant: ExternalPathGrant = {
       id: 'grant-1',

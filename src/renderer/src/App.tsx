@@ -162,6 +162,10 @@ import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
 import {
+  buildParticipantToolGrantPatch,
+  getParticipantToolGrantIds
+} from './lib/ensembleParticipantToolGrants'
+import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
   mixProviderColors,
@@ -15307,9 +15311,9 @@ function App(): React.JSX.Element {
                       // Workspace Access) but we translate
                       // bidirectionally to the preset vocabulary
                       // (`read_only` / `default` / `workspace_write`).
-                      // Tool grants remain per-workspace + per-provider
-                      // (not per-participant) — we just retarget which
-                      // provider the grants column scopes to.
+                      // Slice A3 — in Ensemble Mode, Tool Grants are
+                      // participant-scoped overrides. Solo chats keep
+                      // using provider+workspace grants.
                       const ensembleBinding =
                         isCurrentEnsembleChat && selectedParticipant
                           ? selectedParticipant
@@ -15341,21 +15345,23 @@ function App(): React.JSX.Element {
                         /\/+$/,
                         ''
                       )
-                      const enabledGrantIds = new Set(
-                        agenticWorkspaceGrants
-                          .filter((grant) => {
-                            if (
-                              !grant ||
-                              grant.provider !== effectiveProvider ||
-                              !grant.workspacePath
-                            )
-                              return false
-                            return (
-                              grant.workspacePath.replace(/\/+$/, '') === normalizedWorkspacePath
-                            )
-                          })
-                          .map((grant) => grant.service)
-                      )
+                      const enabledGrantIds = ensembleBinding
+                        ? getParticipantToolGrantIds(ensembleBinding)
+                        : new Set(
+                            agenticWorkspaceGrants
+                              .filter((grant) => {
+                                if (
+                                  !grant ||
+                                  grant.provider !== effectiveProvider ||
+                                  !grant.workspacePath
+                                )
+                                  return false
+                                return (
+                                  grant.workspacePath.replace(/\/+$/, '') === normalizedWorkspacePath
+                                )
+                              })
+                              .map((grant) => grant.service)
+                          )
                       // Hide the Tool-Grants column when there's no
                       // workspace path to scope grants to (global
                       // chats or pre-workspace state).
@@ -15387,9 +15393,16 @@ function App(): React.JSX.Element {
                           grantServices={grantServicesForPicker}
                           enabledGrantIds={enabledGrantIds}
                           agenticServices={agenticServices}
-                          onToggleGrant={(service, enabled) =>
+                          onToggleGrant={(service, enabled) => {
+                            if (ensembleBinding) {
+                              updateSelectedParticipant(
+                                buildParticipantToolGrantPatch(ensembleBinding, service, enabled)
+                              )
+                              return
+                            }
                             void handleSetAgenticWorkspaceGrant(service, enabled, effectiveProvider)
-                          }
+                          }}
+                          grantScopeLabel={ensembleBinding ? 'participant' : 'workspace'}
                           disabled={
                             isCurrentComposerLocked ||
                             (effectiveProvider === 'gemini' && !geminiWorkspaceTrustReady)

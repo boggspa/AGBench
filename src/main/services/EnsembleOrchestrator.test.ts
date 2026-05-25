@@ -421,6 +421,54 @@ describe('EnsembleOrchestrator', () => {
     expect(codexPayload.claudeFastMode).toBeUndefined()
   })
 
+  it('threads participant-scoped tool grants through effective permissions', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        model: 'claude-model',
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        model: 'codex-model',
+        permissionPresetId: 'default',
+        permissionOverrides: {
+          agenticServices: {
+            shellCommands: 'allow',
+            fileChanges: 'allow'
+          }
+        }
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Check participant grants.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].effectivePermissions?.agenticServices.shellCommands).toBe('deny')
+    expect(harness.dispatched[0].effectivePermissions?.agenticServices.fileChanges).toBe('deny')
+
+    harness.orchestrator.markYielded(harness.dispatched[0].appRunId!, 'Passing to worker.')
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    const codexPayload = harness.dispatched[1]
+    expect(codexPayload.effectivePermissions?.agenticServices.shellCommands).toBe('allow')
+    expect(codexPayload.effectivePermissions?.agenticServices.fileChanges).toBe('allow')
+    expect(codexPayload.effectivePermissions?.workspaceGrantServiceIds).toEqual([])
+  })
+
   // Slice C extension (1.0.3) — ensemble_yield(target:) reorders the
   // remaining participants so the named target speaks next.
   it('yields to a named target, skipping intervening participants', async () => {

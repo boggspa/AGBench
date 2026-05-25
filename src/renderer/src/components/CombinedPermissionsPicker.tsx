@@ -54,6 +54,7 @@ interface CombinedPermissionsPickerProps {
   /** Global agentic-service policy — used to render row sub-labels. */
   agenticServices: AgenticServicesSettings
   onToggleGrant: (service: AgenticServiceId, enabled: boolean) => void
+  grantScopeLabel?: 'workspace' | 'participant'
   disabled?: boolean
 }
 
@@ -67,6 +68,7 @@ export function CombinedPermissionsPicker({
   enabledGrantIds,
   agenticServices,
   onToggleGrant,
+  grantScopeLabel = 'workspace',
   disabled
 }: CombinedPermissionsPickerProps): React.JSX.Element {
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -259,7 +261,7 @@ export function CombinedPermissionsPicker({
               policy === 'deny'
                 ? 'Blocked globally'
                 : checked
-                  ? 'Allowed for this workspace'
+                  ? `Allowed for this ${grantScopeLabel}`
                   : `Global policy: ${policy}`
             return (
               <button
