@@ -9062,6 +9062,164 @@ button.diff-file-row {
   -webkit-column-span: all;
 }
 
+.settings-provider-auth-overview {
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--theme-chroma-1, var(--accent)) 9%, transparent),
+      color-mix(in srgb, var(--panel-bg) 48%, transparent)
+    ),
+    color-mix(in srgb, var(--panel-bg) 50%, transparent);
+}
+
+.settings-provider-auth-overview-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.settings-provider-auth-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.settings-provider-auth-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, var(--panel-border) 58%);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, currentColor 6%, var(--panel-bg) 45%);
+  color: var(--text-primary);
+}
+
+.settings-provider-auth-card.provider-gemini {
+  color: var(--provider-gemini-color);
+}
+
+.settings-provider-auth-card.provider-codex {
+  color: var(--provider-codex-color);
+}
+
+.settings-provider-auth-card.provider-claude {
+  color: var(--provider-claude-color);
+}
+
+.settings-provider-auth-card.provider-kimi {
+  color: var(--provider-kimi-color);
+}
+
+.settings-provider-auth-card-header,
+.settings-provider-auth-status,
+.settings-provider-auth-action-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.settings-provider-auth-card-header strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.settings-provider-auth-optional {
+  padding: 2px 7px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.settings-provider-auth-status {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.settings-provider-auth-status-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-primary) 30%, transparent);
+}
+
+.settings-provider-auth-status-dot-signed-in {
+  background: var(--color-success, #3fb950);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-success, #3fb950) 18%, transparent);
+}
+
+.settings-provider-auth-status-dot-partial {
+  background: var(--color-warning, #d29922);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-warning, #d29922) 18%, transparent);
+}
+
+.settings-provider-auth-status-dot-not-available {
+  background: var(--color-danger, #f85149);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger, #f85149) 16%, transparent);
+}
+
+.settings-provider-auth-card p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  line-height: 1.4;
+}
+
+.settings-provider-auth-card .settings-provider-auth-hint,
+.settings-provider-auth-footnote {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.settings-provider-auth-command {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--text-primary) 4%, transparent);
+}
+
+.settings-provider-auth-command code {
+  width: max-content;
+  max-width: 100%;
+  padding: 2px 7px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--font-size-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-provider-auth-command span {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  line-height: 1.35;
+}
+
+.settings-provider-auth-actions {
+  display: grid;
+  gap: 8px;
+  margin-top: auto;
+}
+
 .settings-label {
   font-size: var(--font-size-sm);
   color: var(--text-primary);
@@ -9210,6 +9368,7 @@ button.diff-file-row {
 }
 
 @media (max-width: 720px) {
+  .settings-provider-auth-grid,
   .settings-composer-preview-controls,
   .settings-effects-grid,
   .settings-effects-labs-grid {
@@ -9253,6 +9412,19 @@ button.diff-file-row {
   color: var(--text-primary);
   font-size: var(--font-size-sm);
   font-weight: 600;
+}
+
+.settings-service-row > span {
+  min-width: 0;
+}
+
+.settings-service-row > span small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  line-height: 1.35;
 }
 
 .settings-service-row .settings-select {

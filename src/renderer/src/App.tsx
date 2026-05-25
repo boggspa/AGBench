@@ -13000,9 +13000,12 @@ function App(): React.JSX.Element {
               productOperationsStatus={productOperationsStatus}
               geminiAuthStatus={geminiAuthStatus}
               geminiAuthProfiles={geminiAuthProfiles}
+              codexStatus={codexStatus}
               claudeAuthStatus={claudeAuthStatus}
               kimiAuthStatus={kimiAuthStatus}
               claudeLoginState={claudeLoginState}
+              onImportCodexUsageCredential={() => void handleImportCodexUsageCredential()}
+              onClearCodexUsageCredential={() => void handleClearCodexUsageCredential()}
               onTriggerClaudeLogin={() => void handleTriggerClaudeLogin()}
               onStoreClaudeApiKey={(key) => void handleStoreClaudeApiKey(key)}
               onClearClaudeApiKey={() => void handleClearClaudeApiKey()}

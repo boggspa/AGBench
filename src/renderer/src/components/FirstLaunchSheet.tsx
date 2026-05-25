@@ -1,5 +1,11 @@
 import React, { useEffect, useRef } from 'react'
 import type { ProviderApiKeyStatus, GeminiAuthStatus } from '../../../main/store/types'
+import {
+  summariseCodexStatus,
+  summariseGeminiStatus,
+  summariseProviderApiKeyStatus,
+  type ProviderAuthVariant
+} from '../lib/providerAuthSummary'
 import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
 import codexLogo from '../assets/provider-logos/codex.png'
 import claudeLogo from '../assets/provider-logos/claude.png'
@@ -77,7 +83,7 @@ export interface FirstLaunchSheetProps {
   geminiAuthStatus: GeminiAuthStatus | null
 }
 
-type ProviderRowVariant = 'signed-in' | 'partial' | 'not-signed-in' | 'not-available'
+type ProviderRowVariant = ProviderAuthVariant
 
 interface ProviderRowSpec {
   id: 'codex' | 'claude' | 'gemini' | 'kimi'
@@ -92,135 +98,6 @@ interface ProviderRowSpec {
   deemphasised?: boolean
   /** When true, the card is marked optional but still actionable. */
   optional?: boolean
-}
-
-/** Maps a Claude/Kimi auth status to a normalised variant + label. */
-function summariseProviderApiKeyStatus(
-  status: ProviderApiKeyStatus | null,
-  providerLabel: string
-): { variant: ProviderRowVariant; statusText: string; hint: string } {
-  if (!status) {
-    return {
-      variant: 'not-signed-in',
-      statusText: 'Not checked yet',
-      hint: `Open Settings → ${providerLabel} to authenticate.`
-    }
-  }
-  if (!status.available) {
-    return {
-      variant: 'not-available',
-      statusText: 'CLI not found',
-      hint: `Install the ${providerLabel} CLI first, then return here.`
-    }
-  }
-  if (status.apiKeyConfigured) {
-    return {
-      variant: 'signed-in',
-      statusText: 'API key saved',
-      hint: 'You can launch runs against this provider.'
-    }
-  }
-  const authState = (status.authState || '').toLowerCase()
-  const looksAuthed =
-    authState &&
-    !['not logged in', 'not authenticated', 'unauthenticated', 'error'].some((p) =>
-      authState.includes(p)
-    )
-  if (looksAuthed) {
-    return {
-      variant: 'signed-in',
-      statusText: 'Signed in',
-      hint: 'You can launch runs against this provider.'
-    }
-  }
-  return {
-    variant: 'not-signed-in',
-    statusText: 'Not authenticated',
-    hint: `Open Settings → ${providerLabel} to sign in or paste an API key.`
-  }
-}
-
-function summariseGeminiStatus(
-  status: GeminiAuthStatus | null
-): { variant: ProviderRowVariant; statusText: string; hint: string } {
-  if (!status) {
-    return {
-      variant: 'not-signed-in',
-      statusText: 'Not checked yet',
-      hint: 'Open Settings → Gemini to add an OAuth profile or API key.'
-    }
-  }
-  if (!status.available) {
-    return {
-      variant: 'not-available',
-      statusText: 'Gemini CLI not found',
-      hint: 'Install the Gemini CLI first, then return here.'
-    }
-  }
-  if (status.activeProfileId) {
-    return {
-      variant: 'signed-in',
-      statusText: status.activeProfileLabel
-        ? `Active profile: ${status.activeProfileLabel}`
-        : 'Profile active',
-      hint: 'You can launch runs against Gemini.'
-    }
-  }
-  return {
-    variant: 'not-signed-in',
-    statusText: 'No active profile',
-    hint: 'Open Settings → Gemini to authenticate via Google OAuth or paste an API key.'
-  }
-}
-
-function summariseCodexStatus(
-  status: any
-): { variant: ProviderRowVariant; statusText: string; hint: string } {
-  // codexStatus is a loose any shape — guard everything.
-  if (!status || typeof status !== 'object') {
-    return {
-      variant: 'not-signed-in',
-      statusText: 'Status not loaded yet',
-      hint: 'Make sure the codex CLI is installed and run `codex login` in your shell.'
-    }
-  }
-  // The store reports `available: false` if the binary isn't on PATH.
-  if (status.available === false) {
-    return {
-      variant: 'not-available',
-      statusText: 'Codex CLI not found',
-      hint: 'Install Codex first (`brew install openai/codex/codex` or upstream installer).'
-    }
-  }
-  // codexUsage is the canonical "signed in + entitled to a plan" signal.
-  const usage = status.codexUsage
-  if (usage && (usage.planType || usage.userId)) {
-    const plan = String(usage.planType || '').toLowerCase()
-    if (plan) {
-      return {
-        variant: 'signed-in',
-        statusText: `Signed in (${plan})`,
-        hint: 'You can launch Codex runs.'
-      }
-    }
-    return {
-      variant: 'signed-in',
-      statusText: 'Signed in',
-      hint: 'You can launch Codex runs.'
-    }
-  }
-  if (usage && usage.error) {
-    return {
-      variant: 'partial',
-      statusText: 'Usage credential missing',
-      hint: 'Run `codex login` in your shell to authenticate the OS-level Codex CLI.'
-    }
-  }
-  return {
-    variant: 'not-signed-in',
-    statusText: 'Not signed in',
-    hint: 'Run `codex login` in your shell to authenticate the OS-level Codex CLI.'
-  }
 }
 
 const SHEET_TITLE_ID = 'first-launch-sheet-title'

@@ -28,6 +28,12 @@ import type {
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
 import {
+  summariseCodexStatus,
+  summariseGeminiStatus,
+  summariseProviderApiKeyStatus,
+  type ProviderAuthSummary
+} from '../lib/providerAuthSummary'
+import {
   COMPOSER_FONT_MATCH_TRANSCRIPT,
   COMPOSER_FONT_OPTIONS,
   CUSTOM_FONT_FALLBACK,
@@ -53,6 +59,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
+import { ProviderLogoTile } from './ProviderLogoTile'
 import type { ModelUsageAggregate } from '../App'
 
 interface SettingsPanelProps {
@@ -97,9 +104,12 @@ interface SettingsPanelProps {
   productOperationsStatus: ProductOperationsStatus | null
   geminiAuthStatus?: GeminiAuthStatus | null
   geminiAuthProfiles?: GeminiAuthProfileSummary[]
+  codexStatus?: any
   claudeAuthStatus?: ProviderApiKeyStatus | null
   kimiAuthStatus?: ProviderApiKeyStatus | null
   claudeLoginState?: 'idle' | 'loading' | 'success' | 'error'
+  onImportCodexUsageCredential?: () => void
+  onClearCodexUsageCredential?: () => void
   onTriggerClaudeLogin?: () => void
   onStoreClaudeApiKey?: (key: string) => void
   onClearClaudeApiKey?: () => void
@@ -573,6 +583,45 @@ export function GeminiRuntimePicker({
   )
 }
 
+function SettingsProviderAuthCard({
+  provider,
+  label,
+  summary,
+  description,
+  optional,
+  children
+}: {
+  provider: ProviderId
+  label: string
+  summary: ProviderAuthSummary
+  description: string
+  optional?: boolean
+  children?: React.ReactNode
+}): React.JSX.Element {
+  return (
+    <article
+      className={`settings-provider-auth-card settings-provider-auth-card-${summary.variant} provider-${provider}`}
+      data-provider={provider}
+    >
+      <div className="settings-provider-auth-card-header">
+        <ProviderLogoTile provider={provider} />
+        <strong>{label}</strong>
+        {optional && <span className="settings-provider-auth-optional">Optional</span>}
+      </div>
+      <div className="settings-provider-auth-status">
+        <span
+          className={`settings-provider-auth-status-dot settings-provider-auth-status-dot-${summary.variant}`}
+          aria-hidden
+        />
+        <span>{summary.statusText}</span>
+      </div>
+      <p>{description}</p>
+      <p className="settings-provider-auth-hint">{summary.hint}</p>
+      {children && <div className="settings-provider-auth-actions">{children}</div>}
+    </article>
+  )
+}
+
 export function SettingsPanel({
   mode,
   visualEffectStyle,
@@ -609,9 +658,12 @@ export function SettingsPanel({
   productOperationsStatus,
   geminiAuthStatus,
   geminiAuthProfiles = [],
+  codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
   claudeLoginState = 'idle',
+  onImportCodexUsageCredential,
+  onClearCodexUsageCredential,
   onTriggerClaudeLogin,
   onStoreClaudeApiKey,
   onClearClaudeApiKey,
@@ -693,6 +745,18 @@ export function SettingsPanel({
   ): void => {
     onChange({ agenticServices: { ...agenticServices, [key]: value } })
   }
+  const codexAuthSummary = summariseCodexStatus(codexStatus)
+  const claudeAuthSummary = summariseProviderApiKeyStatus(claudeAuthStatus ?? null, 'Claude')
+  const geminiSetupSummary = summariseGeminiStatus(geminiAuthStatus ?? null)
+  const kimiSetupSummary = summariseProviderApiKeyStatus(kimiAuthStatus ?? null, 'Kimi')
+  const codexUsage = codexStatus?.codexUsage
+  const codexUsageConfigured = Boolean(
+    codexUsage?.configured ||
+      codexUsage?.planType ||
+      codexUsage?.userId ||
+      (Array.isArray(codexUsage?.windows) && codexUsage.windows.length > 0) ||
+      (Array.isArray(codexUsage?.balances) && codexUsage.balances.length > 0)
+  )
   const handleLoadInstalledFonts = async (): Promise<void> => {
     const queryLocalFonts = (window as LocalFontWindow).queryLocalFonts
     if (!queryLocalFonts) {
@@ -1493,6 +1557,138 @@ export function SettingsPanel({
         {
           activeTab === 'providers' && (
             <>
+              <div className="settings-group settings-provider-auth-overview span-all">
+                <div className="settings-provider-auth-overview-header">
+                  <div>
+                    <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                      Provider sign-in
+                    </h4>
+                    <p className="settings-hint">
+                      Same provider checklist as first launch. Runtime auth stays with each
+                      provider; AGBench stores only explicit API keys or usage sessions you add
+                      here.
+                    </p>
+                  </div>
+                </div>
+                <div className="settings-provider-auth-grid">
+                  <SettingsProviderAuthCard
+                    provider="codex"
+                    label="Codex"
+                    summary={codexAuthSummary}
+                    description="OpenAI Codex CLI for fast shell and agentic work."
+                  >
+                    <div className="settings-provider-auth-command">
+                      <code>codex login</code>
+                      <span>Run once in Terminal for official Codex CLI runtime auth.</span>
+                    </div>
+                    <div className="settings-provider-auth-action-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        onClick={onImportCodexUsageCredential}
+                      >
+                        Import usage session
+                      </button>
+                      {codexUsageConfigured && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={onClearCodexUsageCredential}
+                        >
+                          Clear usage session
+                        </button>
+                      )}
+                    </div>
+                    <p className="settings-provider-auth-footnote">
+                      Usage import powers quota and credit meters only; Codex runs still use the
+                      official CLI login.
+                    </p>
+                  </SettingsProviderAuthCard>
+
+                  <SettingsProviderAuthCard
+                    provider="claude"
+                    label="Claude"
+                    summary={claudeAuthSummary}
+                    description="Claude Code / Anthropic API for careful edits and long reasoning."
+                  >
+                    <div className="settings-provider-auth-action-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={claudeLoginState === 'loading'}
+                        onClick={onTriggerClaudeLogin}
+                      >
+                        {claudeLoginState === 'loading' ? 'Opening browser...' : 'Login with Claude'}
+                      </button>
+                    </div>
+                    <p className="settings-provider-auth-footnote">
+                      API key and CLI path controls are below.
+                    </p>
+                  </SettingsProviderAuthCard>
+
+                  <SettingsProviderAuthCard
+                    provider="gemini"
+                    label="Gemini"
+                    summary={geminiSetupSummary}
+                    description="Google Gemini profiles for OAuth, API-key, or Vertex-backed runs."
+                    optional
+                  >
+                    <div className="settings-provider-auth-action-row">
+                      <button
+                        type="button"
+                        className="btn btn-sm"
+                        disabled={isGeminiOAuthLoginRunning}
+                        onClick={() => {
+                          onStartGeminiOAuthLogin?.({
+                            profileId:
+                              selectedGeminiAuthProfile?.kind === 'google-oauth'
+                                ? selectedGeminiAuthProfile.id
+                                : undefined,
+                            label: geminiProfileLabel.trim() || 'Google login',
+                            makeDefault: true
+                          })
+                          setGeminiProfileLabel('')
+                        }}
+                      >
+                        {selectedGeminiAuthProfile?.kind === 'google-oauth'
+                          ? 'Refresh Google login'
+                          : 'Add Google login'}
+                      </button>
+                      {isGeminiOAuthLoginRunning && (
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-ghost"
+                          onClick={() =>
+                            onCancelGeminiOAuthLogin?.(
+                              selectedGeminiAuthProfile?.id ||
+                                geminiAuthStatus?.activeProfileId ||
+                                null
+                            )
+                          }
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                    <p className="settings-provider-auth-footnote">
+                      API key, Vertex, and runtime controls are below.
+                    </p>
+                  </SettingsProviderAuthCard>
+
+                  <SettingsProviderAuthCard
+                    provider="kimi"
+                    label="Kimi"
+                    summary={kimiSetupSummary}
+                    description="Moonshot Kimi for wire-protocol runs and structured tool calls."
+                    optional
+                  >
+                    <p className="settings-provider-auth-footnote">
+                      Paste a Moonshot API key in the Kimi section below.
+                    </p>
+                  </SettingsProviderAuthCard>
+                </div>
+              </div>
+
               <div className="settings-group span-all">
                 <h4 className="sidebar-section-title" style={{ margin: 0 }}>
                   Agentic services
