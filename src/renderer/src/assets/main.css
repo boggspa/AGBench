@@ -5439,6 +5439,67 @@ button.sidebar-item {
   padding: 22px 6px 0;
 }
 
+/* Composer textarea + highlight overlay wrapper (ensemble chats).
+ *
+ * The overlay is a `<div>` that renders the same text as the
+ * textarea but with `@Role` tokens wrapped in provider-tinted
+ * spans. The textarea sits ON TOP and is made colour-transparent so
+ * the user sees the overlay's painted text while still typing into
+ * a normal textarea. Caret-colour stays visible via `caret-color`
+ * so the cursor reads as the accent.
+ *
+ * Match font, padding, line-height EXACTLY between the overlay and
+ * the textarea, otherwise the painted characters drift away from
+ * the caret/selection positions. */
+.composer-textarea-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.composer-textarea-highlight {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+  overflow: hidden;
+  font-family: var(--composer-font-family);
+  font-size: calc(var(--font-size-md) + 2px);
+  line-height: 1.55;
+  padding: 22px 6px 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: var(--text-primary);
+  /* Render below the textarea but above the composer background.
+   * The textarea's transparent text doesn't occlude us, so the
+   * highlight reads as the visible layer. */
+  z-index: 0;
+}
+
+.composer-textarea-highlight .composer-mention-token {
+  font-weight: 700;
+  /* Subtle outline matches the transcript chip's pill shape without
+   * paying the cost of a real box (would break textarea alignment). */
+  text-shadow: 0 0 1px currentColor;
+}
+
+/* When the highlight overlay is active, mute the textarea's own
+ * text colour so only the overlay paints visible characters. Caret
+ * stays a visible accent so the user always knows where they're
+ * typing. */
+.composer-textarea.has-mention-overlay {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text-primary);
+  /* Native selection highlight still works fine — browsers paint
+   * the selection box independently of `color: transparent`. */
+}
+.composer-textarea.has-mention-overlay::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+  color: var(--text-primary);
+}
+
 .composer-textarea:focus,
 .composer-textarea:focus-visible {
   border-color: transparent;

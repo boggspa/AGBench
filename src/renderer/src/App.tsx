@@ -100,6 +100,7 @@ import {
   QueuedMessagesAboveRow,
   type QueuedMessageRowEntry
 } from './components/QueuedMessagesAboveRow'
+import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -14882,8 +14883,15 @@ function App(): React.JSX.Element {
                 </div>
               )}
 
+              <div className="composer-textarea-wrap">
+              {isCurrentEnsembleChat && (
+                <ComposerHighlightOverlay
+                  value={prompt}
+                  participants={currentChat?.ensemble?.participants}
+                />
+              )}
               <textarea
-                className="composer-textarea"
+                className={`composer-textarea${isCurrentEnsembleChat ? ' has-mention-overlay' : ''}`}
                 ref={composerTextareaRef}
                 value={prompt}
                 onChange={(e) => {
@@ -14985,6 +14993,7 @@ function App(): React.JSX.Element {
                   }
                 }}
               />
+              </div>
               <ComposerSlashMenu
                 open={slashMenuOpen}
                 anchorRef={composerTextareaRef}
