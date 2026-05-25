@@ -3403,12 +3403,21 @@ const getProviderLabel = (provider: ProviderId): string => {
 }
 const formatAssistantMessageLabel = (
   message: ChatMessage,
-  fallbackLabel: string
-): string => {
-  const provider = message.metadata?.ensembleProvider as ProviderId | undefined
-  if (!provider) return fallbackLabel
+  fallbackLabel: string,
+  fallbackProvider: ProviderId | null
+): { label: string; provider: ProviderId | null } => {
+  const provider = (message.metadata?.ensembleProvider as ProviderId | undefined) ?? null
+  if (!provider) {
+    // Solo chats: use the chat-level provider as the colouring hook.
+    // The label is still the plain provider name (no role suffix
+    // since there's no ensemble context).
+    return { label: fallbackLabel, provider: fallbackProvider }
+  }
   const role = typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
-  return role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider)
+  return {
+    label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
+    provider
+  }
 }
 const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
   return runs.reduce<ChatTokenTally>(
@@ -4066,6 +4075,16 @@ type TranscriptPanelProps = {
   currentWorkspacePath?: string
   currentProviderLabel: string
   /**
+   * Provider id for the chat's primary speaker. Forwarded to the
+   * assistant-message label so each message's `.message-meta` gets
+   * a `provider-{name}` class hook — that lets the CSS colour the
+   * "Codex" / "Claude" / "Gemini" / "Kimi" label in the provider's
+   * theme tint without needing a separate JSX rewrite per provider.
+   * Falls back to the chat-level provider when the message itself
+   * doesn't carry an ensembleProvider in its metadata.
+   */
+  currentProvider: ProviderId
+  /**
    * Slice B (1.0.3) — ensemble-aware "Thinking…" label. When an
    * ensemble round is mid-flight, this resolves to the active
    * participant's provider label (e.g. "Kimi" while Kimi is speaking);
@@ -4111,6 +4130,7 @@ const TranscriptPanel = memo(
     currentRun,
     currentWorkspacePath,
     currentProviderLabel,
+    currentProvider,
     thinkingProviderLabel,
     displayFileChangeSummaries,
     fileChangeSummaryText,
@@ -4229,15 +4249,38 @@ const TranscriptPanel = memo(
                       isReturnCard ? 'subthread-return-message' : ''
                     } ${isDelegationCard ? 'subthread-delegation-message' : ''}`}
                   >
-                    <div className="message-meta">
-                      {msg.role === 'user'
-                        ? 'You'
-                        : msg.role === 'assistant'
-                          ? formatAssistantMessageLabel(msg, currentProviderLabel)
-                          : msg.role === 'error'
-                            ? 'Error'
-                            : 'System'}
-                    </div>
+                    {(() => {
+                      // Provider-aware label rendering. Solo chats: the
+                      // chat-level provider colours the whole label.
+                      // Ensemble chats: each message carries its own
+                      // `ensembleProvider` metadata so each assistant
+                      // message gets coloured by *who actually spoke*
+                      // even when the chat-level provider differs.
+                      // CSS in `main.css` keys off `.provider-{name}`
+                      // on `.message-meta` to tint with
+                      // `--provider-{name}-color`.
+                      if (msg.role === 'user') {
+                        return <div className="message-meta">You</div>
+                      }
+                      if (msg.role === 'error') {
+                        return <div className="message-meta">Error</div>
+                      }
+                      if (msg.role === 'assistant') {
+                        const { label, provider } = formatAssistantMessageLabel(
+                          msg,
+                          currentProviderLabel,
+                          currentProvider
+                        )
+                        return (
+                          <div
+                            className={`message-meta${provider ? ` provider-${provider}` : ''}`}
+                          >
+                            {label}
+                          </div>
+                        )
+                      }
+                      return <div className="message-meta">System</div>
+                    })()}
                     {msg.role === 'user' ? (
                       (() => {
                         // Long pasted briefs would otherwise dominate the scroll
@@ -4463,6 +4506,7 @@ const TranscriptPanel = memo(
     previous.currentChat === next.currentChat &&
     previous.currentWorkspacePath === next.currentWorkspacePath &&
     previous.currentProviderLabel === next.currentProviderLabel &&
+    previous.currentProvider === next.currentProvider &&
     previous.thinkingProviderLabel === next.thinkingProviderLabel &&
     previous.displayFileChangeSummaries === next.displayFileChangeSummaries &&
     previous.fileChangeSummaryText === next.fileChangeSummaryText &&
@@ -13596,6 +13640,7 @@ function App(): React.JSX.Element {
               currentRun={currentRun}
               currentWorkspacePath={currentWorkspace?.path}
               currentProviderLabel={currentProviderLabel}
+              currentProvider={currentProvider}
               thinkingProviderLabel={thinkingProviderLabel}
               displayFileChangeSummaries={displayFileChangeSummaries}
               fileChangeSummaryText={fileChangeSummaryText}
