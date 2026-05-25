@@ -70,6 +70,8 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
   return {
     enabled: true,
     maxParticipants: 4,
+    orchestrationMode: 'turn_bound',
+    maxContinuationHops: 6,
     participants,
     updatedAt: new Date().toISOString()
   }
@@ -79,4 +81,3 @@ function rotateProviderFirst(providers: ProviderId[], activeProvider?: ProviderI
   if (!activeProvider || !providers.includes(activeProvider)) return providers
   return [activeProvider, ...providers.filter((provider) => provider !== activeProvider)]
 }
-

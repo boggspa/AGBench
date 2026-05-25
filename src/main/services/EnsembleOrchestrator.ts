@@ -10,6 +10,8 @@ import type {
   ChatRecord,
   ChatRun,
   EffectiveRunPermissions,
+  EnsembleConfig,
+  EnsembleOrchestrationMode,
   EnsembleParticipant,
   EnsembleParticipantStatus,
   EnsembleRunIdentity,
@@ -24,6 +26,9 @@ import {
 } from './EnsembleMentionAlias'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
+
+const DEFAULT_CONTINUATION_HOP_LIMIT = 6
+const MAX_CONTINUATION_HOP_LIMIT = 12
 
 export interface EnsembleDispatchEvent {
   sender: Electron.WebContents
@@ -308,6 +313,10 @@ interface ActiveRoundRuntime {
    */
   queuedPrompts: string[]
   activeRunId?: string
+  orchestrationMode: EnsembleOrchestrationMode
+  continuationHops: number
+  maxContinuationHops: number
+  continuationLimitNotified?: boolean
   /**
    * Slice C extension (1.0.3) — when a participant calls
    * `ensemble_yield` with an explicit `target` argument, the
@@ -632,11 +641,16 @@ export class EnsembleOrchestrator {
         })()
       : orderedFull
     const startedAt = this.deps.nowIso()
+    const orchestrationMode = resolveEnsembleOrchestrationMode(chat.ensemble)
+    const maxContinuationHops = resolveMaxContinuationHops(chat.ensemble)
     const round: EnsembleRoundState = {
       roundId,
       status: 'running',
       prompt,
       startedAt,
+      orchestrationMode,
+      continuationHops: 0,
+      maxContinuationHops,
       participants: ordered.map((participant) => ({
         participantId: participant.id,
         provider: participant.provider,
@@ -684,7 +698,10 @@ export class EnsembleOrchestrator {
       sender,
       prompt,
       cancelled: false,
-      queuedPrompts: [...carryOverQueue]
+      queuedPrompts: [...carryOverQueue],
+      orchestrationMode,
+      continuationHops: 0,
+      maxContinuationHops
     }
     this.roundsByChatId.set(chatId, runtime)
     void this.runRound(runtime, ordered)
@@ -785,16 +802,34 @@ export class EnsembleOrchestrator {
       // Unresolved targets fall through to default ordering so a
       // typo doesn't strand the round. Cleared regardless so a
       // future yield without `target` reverts to default order.
+      let routedByYieldTarget = false
       if (runtime.yieldTarget) {
         const idx = resolveYieldTargetIndex(remaining, runtime.yieldTarget)
         if (idx > 0) {
           const [moved] = remaining.splice(idx, 1)
           remaining.unshift(moved)
+          routedByYieldTarget = true
           this.appendRoundStatus(
             runtime.chatId,
             runtime.roundId,
             `Yielded to ${moved.role || moved.provider} (${moved.provider}).`
           )
+        } else if (idx === 0) {
+          routedByYieldTarget = true
+        } else if (runtime.orchestrationMode === 'continuous') {
+          const target = resolveYieldTargetParticipant(
+            chat.ensemble.participants || [],
+            runtime.yieldTarget,
+            participant
+          )
+          if (target?.enabled) {
+            routedByYieldTarget = this.tryAppendContinuationTurn(
+              runtime,
+              remaining,
+              target,
+              `Yielded back to ${target.role || target.provider} (${target.provider}).`
+            )
+          }
         }
         runtime.yieldTarget = undefined
       }
@@ -825,12 +860,10 @@ export class EnsembleOrchestrator {
       // `chat` is already in scope from the top of the while loop —
       // no need to re-fetch.
       const allParticipants = chat?.ensemble?.participants || []
-      const tagMatch = findFirstMention(
-        run.content,
-        allParticipants,
-        new Set([participant.id])
-      )
-      if (tagMatch) {
+      const tagMatch = routedByYieldTarget
+        ? null
+        : findFirstMention(run.content, allParticipants, new Set([participant.id]))
+      if (tagMatch && tagMatch.participant.enabled) {
         const tagged = tagMatch.participant
         const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
         if (existingIdx > 0) {
@@ -842,15 +875,18 @@ export class EnsembleOrchestrator {
             runtime.roundId,
             `@-mention: ${moved.role || moved.provider} promoted to speak next.`
           )
-        } else if (existingIdx === -1) {
+        } else if (existingIdx === -1 && runtime.orchestrationMode === 'continuous') {
           // Already spoke this round (or never on the roster) — append
           // an extra turn at the FRONT so the back-and-forth continues
           // immediately. The participant gets a fresh `seedParticipantRun`
-          // with a new runId, so no state collides.
-          remaining.unshift(tagged)
-          this.appendRoundStatus(
-            runtime.chatId,
-            runtime.roundId,
+          // with a new runId, so no state collides. This extra-turn
+          // path is only available in explicit Continuous mode; the
+          // default Turn-bound mode treats @mentions as routing hints
+          // for still-unspoken participants only.
+          this.tryAppendContinuationTurn(
+            runtime,
+            remaining,
+            tagged,
             `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
           )
         }
@@ -925,6 +961,43 @@ export class EnsembleOrchestrator {
       updatedAt: this.deps.now()
     })
     return activeRun
+  }
+
+  private tryAppendContinuationTurn(
+    runtime: ActiveRoundRuntime,
+    remaining: EnsembleParticipant[],
+    participant: EnsembleParticipant,
+    statusMessage: string
+  ): boolean {
+    if (runtime.orchestrationMode !== 'continuous') return false
+    if (runtime.continuationHops >= runtime.maxContinuationHops) {
+      if (!runtime.continuationLimitNotified) {
+        runtime.continuationLimitNotified = true
+        this.appendRoundStatus(
+          runtime.chatId,
+          runtime.roundId,
+          `Continuous handoff limit reached (${runtime.continuationHops}/${runtime.maxContinuationHops}); returning control to the user.`
+        )
+      }
+      return false
+    }
+    runtime.continuationHops += 1
+    remaining.unshift(participant)
+    this.updateChatRound(runtime.chatId, (round) =>
+      round?.roundId === runtime.roundId
+        ? {
+            ...round,
+            continuationHops: runtime.continuationHops,
+            maxContinuationHops: runtime.maxContinuationHops
+          }
+        : round
+    )
+    this.appendRoundStatus(
+      runtime.chatId,
+      runtime.roundId,
+      `${statusMessage} Continuous handoff ${runtime.continuationHops}/${runtime.maxContinuationHops}.`
+    )
+    return true
   }
 
   private finalizeRun(
@@ -1300,6 +1373,20 @@ function extractProviderSessionId(payload: any): string | undefined {
   return typeof raw === 'string' && raw.trim() ? raw.trim() : undefined
 }
 
+function resolveEnsembleOrchestrationMode(
+  config: Pick<EnsembleConfig, 'orchestrationMode'> | null | undefined
+): EnsembleOrchestrationMode {
+  return config?.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
+}
+
+function resolveMaxContinuationHops(
+  config: Pick<EnsembleConfig, 'maxContinuationHops'> | null | undefined
+): number {
+  const raw = Number(config?.maxContinuationHops)
+  if (!Number.isFinite(raw)) return DEFAULT_CONTINUATION_HOP_LIMIT
+  return Math.max(1, Math.min(MAX_CONTINUATION_HOP_LIMIT, Math.floor(raw)))
+}
+
 /**
  * Slice C extension (1.0.3) — resolve a free-form yield `target`
  * string (as passed to `ensemble_yield`) against the round's remaining
@@ -1311,8 +1398,10 @@ function extractProviderSessionId(payload: any): string | undefined {
  *
  * Only consults the `remaining` array — yielding to a participant
  * who has already spoken in this round is a no-op (the round won't
- * loop back). Whitespace + 'me' / 'self' targets are rejected so a
- * model that mis-fills the field doesn't recurse onto itself.
+ * loop back through this helper). Continuous-mode loop-back is handled
+ * separately after the remaining-queue lookup fails. Whitespace +
+ * 'me' / 'self' targets are rejected so a model that mis-fills the
+ * field doesn't recurse onto itself.
  */
 export function resolveYieldTargetIndex(
   remaining: EnsembleParticipant[],
@@ -1329,6 +1418,25 @@ export function resolveYieldTargetIndex(
   const byRole = remaining.findIndex((p) => (p.role || '').toLowerCase() === lc)
   if (byRole !== -1) return byRole
   return -1
+}
+
+function resolveYieldTargetParticipant(
+  participants: EnsembleParticipant[],
+  target: string,
+  speaker?: EnsembleParticipant
+): EnsembleParticipant | null {
+  const trimmed = target?.trim()
+  if (!trimmed) return null
+  const lc = trimmed.toLowerCase()
+  if (lc === 'me' || lc === 'self' || lc === 'user' || lc === 'human') return null
+  const byId = participants.find((p) => p.id === trimmed)
+  if (byId && byId.id !== speaker?.id) return byId
+  const resolved = resolvePhraseToParticipant(
+    trimmed,
+    participants,
+    speaker ? new Set([speaker.id]) : undefined
+  )
+  return resolved || null
 }
 
 /**

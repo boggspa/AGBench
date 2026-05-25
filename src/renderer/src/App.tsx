@@ -14957,6 +14957,10 @@ function App(): React.JSX.Element {
               const orderedEnabled = [...(currentChat?.ensemble?.participants || [])]
                 .filter((participant) => participant.enabled)
                 .sort((a, b) => a.order - b.order)
+              const ensembleIsContinuous =
+                currentChat?.ensemble?.orchestrationMode === 'continuous'
+              const ensembleContinuationLimit =
+                currentChat?.ensemble?.maxContinuationHops || 6
               const dominantProvider = orderedEnabled[0]?.provider
               const ensembleShellStyle: CSSProperties = {}
               orderedEnabled.slice(0, 4).forEach((participant, idx) => {
@@ -15005,9 +15009,18 @@ function App(): React.JSX.Element {
                       <p>
                         {orderedEnabled.length}{' '}
                         {orderedEnabled.length === 1 ? 'provider' : 'providers'} will work through
-                        this in order. Each can{' '}
-                        <code>ensemble_yield(target:&nbsp;…)</code> to hand off, or return the
-                        round to you.
+                        this in order.{' '}
+                        {ensembleIsContinuous ? (
+                          <>
+                            Continuous mode lets them hand work back and forth with{' '}
+                            <code>@mentions</code> or <code>ensemble_yield(target:&nbsp;…)</code>,
+                            capped at {ensembleContinuationLimit} extra handoffs.
+                          </>
+                        ) : (
+                          <>
+                            Each speaks once unless you switch the chip strip to Continuous mode.
+                          </>
+                        )}
                       </p>
                       <div
                         className="ensemble-hierarchy-chain"

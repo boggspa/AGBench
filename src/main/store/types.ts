@@ -203,6 +203,8 @@ export type EnsembleParticipantStatus =
   | 'skipped'
   | 'cancelled'
 
+export type EnsembleOrchestrationMode = 'turn_bound' | 'continuous'
+
 export interface EnsembleParticipant {
   id: string
   provider: ProviderId
@@ -259,6 +261,9 @@ export interface EnsembleRoundState {
   startedAt: string
   endedAt?: string
   activeParticipantId?: string
+  orchestrationMode?: EnsembleOrchestrationMode
+  continuationHops?: number
+  maxContinuationHops?: number
   /**
    * Legacy single-prompt queue (1.0.3 ship). Kept for back-compat
    * with persisted round records — the orchestrator's new path uses
@@ -288,6 +293,8 @@ export interface EnsembleRunIdentity {
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
+  orchestrationMode?: EnsembleOrchestrationMode
+  maxContinuationHops?: number
   participants: EnsembleParticipant[]
   activeRound?: EnsembleRoundState
   updatedAt?: string

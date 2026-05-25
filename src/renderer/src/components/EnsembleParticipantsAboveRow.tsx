@@ -34,9 +34,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
+  EnsembleOrchestrationMode,
   EnsembleParticipant
 } from '../../../main/store/types'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
+
+const DEFAULT_CONTINUATION_HOP_LIMIT = 6
 
 interface EnsembleParticipantsAboveRowProps {
   chat: ChatRecord
@@ -66,6 +69,15 @@ export function EnsembleParticipantsAboveRow({
 
   const participants = [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
   const activeRound = chat.ensemble.activeRound
+  const orchestrationMode: EnsembleOrchestrationMode =
+    chat.ensemble.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
+  const activeOrchestrationMode =
+    activeRound?.orchestrationMode === 'continuous' ? 'continuous' : orchestrationMode
+  const maxContinuationHops =
+    activeRound?.maxContinuationHops ||
+    chat.ensemble.maxContinuationHops ||
+    DEFAULT_CONTINUATION_HOP_LIMIT
+  const continuationHops = activeRound?.continuationHops || 0
 
   const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -82,6 +94,19 @@ export function EnsembleParticipantsAboveRow({
       ensemble: {
         ...chat.ensemble!,
         participants: nextParticipants.map((p, idx) => ({ ...p, order: idx + 1 })),
+        updatedAt: new Date().toISOString()
+      }
+    })
+  }
+
+  const updateOrchestrationMode = (mode: EnsembleOrchestrationMode): void => {
+    onChatChange({
+      ...chat,
+      ensemble: {
+        ...chat.ensemble!,
+        orchestrationMode: mode,
+        maxContinuationHops:
+          chat.ensemble!.maxContinuationHops || DEFAULT_CONTINUATION_HOP_LIMIT,
         updatedAt: new Date().toISOString()
       }
     })
@@ -138,6 +163,39 @@ export function EnsembleParticipantsAboveRow({
         })}
       </div>
       <div className="ensemble-above-row-actions">
+        <div
+          className="ensemble-above-mode"
+          role="group"
+          aria-label="Ensemble orchestration mode"
+          title={
+            activeRound?.status === 'running'
+              ? `Current round: ${activeOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
+              : 'Choose whether agents speak once per round or can hand work back and forth.'
+          }
+        >
+          <button
+            type="button"
+            className={`ensemble-above-mode-button ${orchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
+            onClick={() => updateOrchestrationMode('turn_bound')}
+          >
+            Turn
+          </button>
+          <button
+            type="button"
+            className={`ensemble-above-mode-button ${orchestrationMode === 'continuous' ? 'is-active' : ''}`}
+            onClick={() => updateOrchestrationMode('continuous')}
+          >
+            Continuous
+          </button>
+        </div>
+        {activeOrchestrationMode === 'continuous' && (
+          <span
+            className="ensemble-above-hop-meter"
+            title="Extra handoff turns used by this continuous round."
+          >
+            {continuationHops}/{maxContinuationHops} hops
+          </span>
+        )}
         {/* "Queued next round" label intentionally not rendered here —
             the queued-messages above-row (sibling in the composer
             above-bar stack) now surfaces ensemble `queuedPrompt`

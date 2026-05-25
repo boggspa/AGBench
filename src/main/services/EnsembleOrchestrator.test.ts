@@ -728,6 +728,7 @@ describe('EnsembleOrchestrator', () => {
     // no-ops. My @-mention code should then fire and re-promote
     // Codex via the `remaining.unshift(tagged)` path.
     const harness = makeHarness()
+    harness.chat.ensemble!.orchestrationMode = 'continuous'
     harness.chat.ensemble!.participants = [
       {
         id: 'ensemble-codex',
@@ -797,6 +798,7 @@ describe('EnsembleOrchestrator', () => {
     // and mentions @Planner — Claude (role 'Planner') gets an extra
     // turn appended so the back-and-forth can continue.
     const harness = makeHarness()
+    harness.chat.ensemble!.orchestrationMode = 'continuous'
     harness.chat.ensemble!.participants = [
       {
         id: 'ensemble-claude',
@@ -851,6 +853,132 @@ describe('EnsembleOrchestrator', () => {
 
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
     expect(harness.dispatched[2].provider).toBe('claude')
+    expect(harness.chat.ensemble?.activeRound?.continuationHops).toBe(1)
+  })
+
+  it('keeps default turn-bound rounds from looping back to already-spoken participants', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'One pass only.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Need clarification, calling on @Planner.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    expect(harness.dispatched).toHaveLength(2)
+    expect(harness.chat.ensemble?.activeRound?.continuationHops || 0).toBe(0)
+  })
+
+  it('caps continuous back-and-forth at the configured handoff limit', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.orchestrationMode = 'continuous'
+    harness.chat.ensemble!.maxContinuationHops = 1
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Back and forth, but bounded.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: '@Planner please review my implementation.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[2].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: '@Worker one more pass would help.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[2].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 10 } }
+    )
+
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    expect(harness.dispatched).toHaveLength(3)
+    expect(harness.chat.ensemble?.activeRound?.continuationHops).toBe(1)
+    expect(harness.chat.messages.map((message) => message.content)).toContain(
+      'Continuous handoff limit reached (1/1); returning control to the user.'
+    )
   })
 
   it('does not promote on self-mention (speaker referencing their own role)', async () => {

@@ -53,6 +53,10 @@ export function getOrderedEnsembleParticipants(
 export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput): string {
   const orderedParticipants = getOrderedEnsembleParticipants(input.config, input.currentPrompt)
   const participantLabel = `${providerLabel(input.participant.provider)} / ${input.participant.role || 'Participant'}`
+  const orchestrationMode =
+    input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
+  const maxContinuationHops = input.config.maxContinuationHops || 6
+  const continuationHops = input.config.activeRound?.continuationHops || 0
   const roster = orderedParticipants
     .map((participant) => {
       const marker = participant.id === input.participant.id ? ' (you)' : ''
@@ -66,6 +70,11 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '',
     `You are ${participantLabel} in a serial moderated panel. One participant speaks at a time.`,
     `Round id: ${input.roundId}`,
+    `Round policy: ${
+      orchestrationMode === 'continuous'
+        ? `Continuous. You may hand work to another participant with @mentions or ensemble_yield(target), capped at ${continuationHops}/${maxContinuationHops} extra handoffs this round.`
+        : 'Turn-bound. Each participant speaks at most once; @mentions and ensemble_yield(target) only reorder participants who have not spoken yet.'
+    }`,
     '',
     'Participant roster:',
     roster || '- No other enabled participants.',
@@ -75,7 +84,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '',
     'Rules:',
     '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages.',
-    '- If another participant should handle this turn, call ensemble_yield with a short reason.',
+    '- If another participant should handle this turn, call ensemble_yield with a short reason and optional target.',
+    '- In Continuous mode, only request another handoff when more agent work is genuinely useful; otherwise return control to the user.',
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
     '',
@@ -128,4 +138,3 @@ export function providerLabel(provider: ProviderId): string {
 function sanitizeText(value: unknown): string {
   return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
 }
-

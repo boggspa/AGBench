@@ -173,4 +173,51 @@ describe('EnsembleParticipantsAboveRow', () => {
     const selectedHits = html.match(/class="ensemble-above-chip[^"]*is-selected/g) || []
     expect(selectedHits.length).toBe(1)
   })
+
+  it('renders the orchestration mode control and continuous hop meter', () => {
+    const chat = makeChat([
+      makeParticipant({ id: 'ensemble-claude', provider: 'claude', role: 'Explorer', order: 1 }),
+      makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
+    ])
+    chat.ensemble!.orchestrationMode = 'continuous'
+    chat.ensemble!.maxContinuationHops = 6
+    chat.ensemble!.activeRound = {
+      roundId: 'round-1',
+      status: 'running',
+      prompt: 'Keep going.',
+      startedAt: '2026-05-25T15:00:00.000Z',
+      orchestrationMode: 'continuous',
+      continuationHops: 2,
+      maxContinuationHops: 6,
+      participants: [
+        {
+          participantId: 'ensemble-claude',
+          provider: 'claude',
+          role: 'Explorer',
+          order: 1,
+          status: 'answered'
+        },
+        {
+          participantId: 'ensemble-codex',
+          provider: 'codex',
+          role: 'Worker',
+          order: 2,
+          status: 'running'
+        }
+      ]
+    }
+
+    const html = renderToStaticMarkup(
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId="ensemble-codex"
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
+    )
+
+    expect(html).toContain('Continuous')
+    expect(html).toContain('2/6 hops')
+    expect(html).toContain('ensemble-above-mode-button is-active')
+  })
 })
