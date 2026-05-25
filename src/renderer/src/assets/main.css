@@ -3361,26 +3361,31 @@ button.sidebar-item {
 /* Provider-tinted assistant message labels. Each assistant message
  * gets a `.provider-{name}` class hook on its `.message-meta`
  * element so the per-message speaker label ("Codex" / "Claude /
- * Explorer" / etc.) reads in the provider's theme colour. Helpful
- * for solo chats (one consistent tint), MUCH more helpful for
- * ensemble chats where each message can come from a different
- * provider and the colour fingerprint makes scrolling through
- * mixed-author transcripts easier.
+ * Explorer" / etc.) reads in the provider's theme colour.
  *
- * Tokens live in `src/renderer/src/styles/theme.css`. Mix with
- * surface text so the labels stay readable in both dark + light
- * themes without saturating. */
+ * Tokens live in `src/renderer/src/styles/theme.css`:
+ *   - Gemini: #2563EB (blue)
+ *   - Codex:  #6366F1 (saturated indigo)
+ *   - Claude: #D97706 (rust orange / brown)
+ *   - Kimi:   #84A33B (olive green)
+ *
+ * Earlier draft mixed these with `--text-muted` (a low-opacity
+ * white/black gray) at 22%. That dropped both saturation AND
+ * opacity to the point the colours read as one consistent muted
+ * gray across providers — defeating the fingerprint we wanted.
+ * Pure provider colour reads clearly on both dark + light surfaces
+ * and matches what Chris asked for. */
 .message-meta.provider-codex {
-  color: color-mix(in srgb, var(--provider-codex-color) 78%, var(--text-muted));
+  color: var(--provider-codex-color);
 }
 .message-meta.provider-claude {
-  color: color-mix(in srgb, var(--provider-claude-color) 78%, var(--text-muted));
+  color: var(--provider-claude-color);
 }
 .message-meta.provider-gemini {
-  color: color-mix(in srgb, var(--provider-gemini-color) 78%, var(--text-muted));
+  color: var(--provider-gemini-color);
 }
 .message-meta.provider-kimi {
-  color: color-mix(in srgb, var(--provider-kimi-color) 78%, var(--text-muted));
+  color: var(--provider-kimi-color);
 }
 
 .message-bubble {
@@ -24188,7 +24193,12 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) > *:not(:first-child) {
-  border-top-color: color-mix(in srgb, var(--surface-border) 60%, transparent);
+  /* Light-mode divider needs more presence than dark mode — the
+   * white surface-2 base + faint hairline meant the seam between
+   * the Create-PR row and the chip strip was barely visible.
+   * Darker rgba (rather than mixed `surface-border`) reads as a
+   * crisp black hairline against the white surface. */
+  border-top: 1px solid rgba(18, 21, 27, 0.22) !important;
 }
 /* Terminal + Stub shells keep their dark / paper aesthetics in
  * light mode — they're deliberately stylised surfaces, not
