@@ -45,7 +45,7 @@ const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
 const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'guigemini-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 420
 const SIDEBAR_USAGE_MIN_HEIGHT = 220
-const SIDEBAR_USAGE_MAX_HEIGHT = 720
+const SIDEBAR_USAGE_MAX_HEIGHT = 960
 const SIDEBAR_USAGE_RESIZE_STEP = 24
 
 function clampSidebarUsageHeight(height: number, maxHeight = SIDEBAR_USAGE_MAX_HEIGHT): number {
@@ -231,8 +231,8 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
   const getSidebarResizeMaxHeight = (): number => {
     if (typeof window === 'undefined') return SIDEBAR_USAGE_MAX_HEIGHT
     const parentHeight = summaryRef.current?.parentElement?.getBoundingClientRect().height
-    const viewportMax = window.innerHeight - 180
-    const parentMax = parentHeight ? parentHeight - 140 : SIDEBAR_USAGE_MAX_HEIGHT
+    const viewportMax = window.innerHeight - 56
+    const parentMax = parentHeight ? parentHeight - 24 : SIDEBAR_USAGE_MAX_HEIGHT
     return Math.max(
       SIDEBAR_USAGE_MIN_HEIGHT,
       Math.min(SIDEBAR_USAGE_MAX_HEIGHT, viewportMax, parentMax)
