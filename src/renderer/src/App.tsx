@@ -40,7 +40,9 @@ import {
   ProductUpdateChannel,
   ChatScope,
   RuntimeProfile,
-  HandoffCard
+  HandoffCard,
+  EnsembleParticipant,
+  PermissionPresetId
 } from '../../main/store/types'
 import {
   canonicalizeExternalPathGrantMetadata,
@@ -6217,16 +6219,26 @@ function App(): React.JSX.Element {
     void refreshProviderMetadata(currentProvider)
   }
 
-  const handleSetAgenticWorkspaceGrant = async (service: AgenticServiceId, enabled: boolean) => {
+  const handleSetAgenticWorkspaceGrant = async (
+    service: AgenticServiceId,
+    enabled: boolean,
+    providerOverride?: ProviderId
+  ) => {
     if (!currentWorkspace?.path || isCurrentGlobalChat) return
+    // Slice F v2 (1.0.3) — when toggling grants from the composer
+    // pickers on an ensemble chat with a participant selected, the
+    // grant should target THAT participant's provider, not the chat's
+    // default. providerOverride threads it through; falls back to the
+    // chat-level currentProvider when not specified (the solo path).
+    const targetProvider = providerOverride ?? currentProvider
     const nextSettings = enabled
       ? await window.api.upsertAgenticWorkspaceGrant(
-          currentProvider,
+          targetProvider,
           currentWorkspace.path,
           service
         )
       : await window.api.removeAgenticWorkspaceGrant(
-          currentProvider,
+          targetProvider,
           currentWorkspace.path,
           service
         )
@@ -12072,6 +12084,85 @@ function App(): React.JSX.Element {
   const isCurrentEnsembleChat = currentChat?.chatKind === 'ensemble'
   const isEnsembleModeEnabled = settings?.ensembleModeEnabled !== false
   const isCurrentComposerLocked = isCurrentChatRunning && !isCurrentEnsembleChat
+  // Slice F v2 (1.0.3) — which participant chip the composer pickers
+  // currently target. Lives in App.tsx (not the chip-strip component)
+  // because the composer's existing CombinedModelPicker /
+  // CombinedPermissionsPicker read this to decide whether they're
+  // editing the chat or the selected participant.
+  //
+  // Default selection: first enabled participant in `order`. On chat
+  // switch the useMemo below picks a fresh default. During a running
+  // round, an effect lower in the render syncs the selection to
+  // `activeRound.activeParticipantId` so the user sees the speaker's
+  // settings live.
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null)
+  const ensembleParticipantsForCurrent = useMemo(
+    () =>
+      [...(currentChat?.ensemble?.participants || [])].sort((a, b) => a.order - b.order),
+    [currentChat?.ensemble?.participants]
+  )
+  const effectiveSelectedParticipantId = useMemo(() => {
+    if (!isCurrentEnsembleChat) return null
+    const explicit = ensembleParticipantsForCurrent.find((p) => p.id === selectedParticipantId)
+    if (explicit) return explicit.id
+    const firstEnabled = ensembleParticipantsForCurrent.find((p) => p.enabled)
+    return firstEnabled?.id || ensembleParticipantsForCurrent[0]?.id || null
+  }, [isCurrentEnsembleChat, ensembleParticipantsForCurrent, selectedParticipantId])
+  const selectedParticipant = useMemo(
+    () =>
+      effectiveSelectedParticipantId
+        ? ensembleParticipantsForCurrent.find((p) => p.id === effectiveSelectedParticipantId) ||
+          null
+        : null,
+    [ensembleParticipantsForCurrent, effectiveSelectedParticipantId]
+  )
+  // Slice F v2 (1.0.3) — write-through helper used by the composer
+  // pickers when an ensemble chip is selected. Patches the targeted
+  // participant in chat.ensemble.participants and persists. Same
+  // chat-state plumbing as the chip-strip's onChatChange callback —
+  // kept as a separate callback so picker handlers can call it
+  // without going through the strip component.
+  const updateSelectedParticipant = useCallback(
+    (patch: Partial<EnsembleParticipant>) => {
+      if (!isCurrentEnsembleChat || !selectedParticipant || !currentChat?.ensemble) return
+      const nextChat: ChatRecord = {
+        ...currentChat,
+        ensemble: {
+          ...currentChat.ensemble,
+          participants: currentChat.ensemble.participants.map((p) =>
+            p.id === selectedParticipant.id ? { ...p, ...patch } : p
+          ),
+          updatedAt: new Date().toISOString()
+        }
+      }
+      chatByIdRef.current.set(nextChat.appChatId, nextChat)
+      setCurrentChat((prev) =>
+        prev?.appChatId === nextChat.appChatId ? nextChat : prev
+      )
+      setChats((prev) =>
+        prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
+      )
+      void window.api.saveChat(nextChat)
+    },
+    [isCurrentEnsembleChat, selectedParticipant, currentChat]
+  )
+  // Auto-follow the active speaker during a running round so the
+  // composer pickers always reflect who's speaking. When the round
+  // isn't running, the selection is purely user-driven.
+  useEffect(() => {
+    if (!isCurrentEnsembleChat) return
+    const round = currentChat?.ensemble?.activeRound
+    if (round?.status !== 'running') return
+    const activeId = round?.activeParticipantId
+    if (!activeId) return
+    if (activeId === selectedParticipantId) return
+    setSelectedParticipantId(activeId)
+  }, [
+    isCurrentEnsembleChat,
+    currentChat?.ensemble?.activeRound?.activeParticipantId,
+    currentChat?.ensemble?.activeRound?.status,
+    selectedParticipantId
+  ])
   // Phase J3 (steer): the composer Steer button is visible while the
   // current chat has an in-flight run. `isChatBusy` is the per-chat
   // busy predicate already used by every queue-decision site.
@@ -13836,6 +13927,8 @@ function App(): React.JSX.Element {
                 {currentChat?.chatKind === 'ensemble' && (
                   <EnsembleParticipantsAboveRow
                     chat={currentChat}
+                    selectedParticipantId={effectiveSelectedParticipantId}
+                    onSelectParticipant={(id) => setSelectedParticipantId(id)}
                     onChatChange={(updatedChat) => {
                       chatByIdRef.current.set(updatedChat.appChatId, updatedChat)
                       setCurrentChat((prev) =>
@@ -14724,22 +14817,74 @@ function App(): React.JSX.Element {
                       // thinking + Claude reasoning) with one chip + a
                       // two-column popover (Model | Reasoning).
                       //
-                      // Speed tier (Codex) + Claude runtime chip +
-                      // permission picker stay as separate siblings
-                      // below — they're not part of the model+reasoning
-                      // pair.
+                      // Slice F v2 (1.0.3) — when this is an ensemble
+                      // chat AND a participant chip is selected in the
+                      // strip above the composer, this picker rebinds
+                      // to that participant: it reads the participant's
+                      // model / reasoning / fast-mode and writes via
+                      // updateSelectedParticipant() instead of the
+                      // chat-level rememberCurrentChatComposerSelection.
+                      // `effective*` values below resolve to either the
+                      // chat-level hooks (solo chat) or the participant
+                      // (ensemble + selected chip).
+                      const ensembleBinding =
+                        isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                      const effectiveProvider: ProviderId =
+                        ensembleBinding?.provider ?? currentProvider
+                      const effectiveModelOptionsRaw = ensembleBinding
+                        ? getProviderModelOptions(ensembleBinding.provider)
+                        : currentProviderModelOptions
+                      const effectiveSelectedModel = ensembleBinding
+                        ? ensembleBinding.model || 'cli-default'
+                        : selectedComposerModelType
+                      const effectiveCodexReasoning =
+                        ensembleBinding?.provider === 'codex'
+                          ? ensembleBinding.reasoningEffort || 'medium'
+                          : codexReasoningEffort
+                      const effectiveClaudeReasoning =
+                        ensembleBinding?.provider === 'claude'
+                          ? ensembleBinding.reasoningEffort || 'medium'
+                          : claudeReasoningEffort
+                      const effectiveKimiThinking =
+                        ensembleBinding?.provider === 'kimi'
+                          ? Boolean(ensembleBinding.thinkingEnabled)
+                          : kimiThinkingEnabled
+                      const effectiveCodexServiceTier =
+                        ensembleBinding?.provider === 'codex'
+                          ? ensembleBinding.serviceTier ??
+                            (ensembleBinding.fastModeEnabled ? 'fast' : '')
+                          : codexServiceTier
+                      const effectiveClaudeFastMode =
+                        ensembleBinding?.provider === 'claude'
+                          ? Boolean(ensembleBinding.fastModeEnabled)
+                          : claudeFastMode
+
                       const combinedModelOptions: CombinedModelPickerModelOption[] = [
-                        ...currentProviderModelOptions.map((model) => ({
+                        ...effectiveModelOptionsRaw.map((model) => ({
                           id: model.id,
                           label: model.label || model.id
                         })),
-                        ...(currentProvider !== 'kimi' ? [{ id: 'custom', label: 'Custom…' }] : [])
+                        ...(effectiveProvider !== 'kimi'
+                          ? [{ id: 'custom', label: 'Custom…' }]
+                          : [])
                       ]
 
                       let combinedReasoningOptions: CombinedModelPickerReasoningOption[] = []
                       let combinedSelectedReasoning = ''
-                      if (currentProvider === 'codex') {
-                        combinedReasoningOptions = codexReasoningOptions.map((option) => ({
+                      if (effectiveProvider === 'codex') {
+                        // For ensemble binding we use a stable default
+                        // reasoning list (medium/high/xhigh) because the
+                        // participant doesn't carry per-model reasoning
+                        // sets the way `codexReasoningOptions` does for
+                        // the chat-level state.
+                        const sourceOptions = ensembleBinding
+                          ? [
+                              { reasoningEffort: 'medium' },
+                              { reasoningEffort: 'high' },
+                              { reasoningEffort: 'xhigh' }
+                            ]
+                          : codexReasoningOptions
+                        combinedReasoningOptions = sourceOptions.map((option) => ({
                           value: option.reasoningEffort,
                           label:
                             option.reasoningEffort === 'xhigh'
@@ -14747,9 +14892,12 @@ function App(): React.JSX.Element {
                               : option.reasoningEffort.charAt(0).toUpperCase() +
                                 option.reasoningEffort.slice(1)
                         }))
-                        combinedSelectedReasoning = codexReasoningEffort
-                      } else if (currentProvider === 'claude') {
-                        combinedReasoningOptions = claudeReasoningOptions.map((option) => ({
+                        combinedSelectedReasoning = effectiveCodexReasoning
+                      } else if (effectiveProvider === 'claude') {
+                        const sourceOptions = ensembleBinding
+                          ? CLAUDE_THINKING_EFFORTS
+                          : claudeReasoningOptions
+                        combinedReasoningOptions = sourceOptions.map((option) => ({
                           value: option.reasoningEffort,
                           label:
                             option.reasoningEffort === 'off'
@@ -14759,16 +14907,41 @@ function App(): React.JSX.Element {
                                 : option.reasoningEffort.charAt(0).toUpperCase() +
                                   option.reasoningEffort.slice(1)
                         }))
-                        combinedSelectedReasoning = claudeReasoningEffort
-                      } else if (currentProvider === 'kimi') {
+                        combinedSelectedReasoning = effectiveClaudeReasoning
+                      } else if (effectiveProvider === 'kimi') {
                         combinedReasoningOptions = [
                           { value: 'on', label: 'Thinking on' },
                           { value: 'off', label: 'Thinking off' }
                         ]
-                        combinedSelectedReasoning = kimiThinkingEnabled ? 'on' : 'off'
+                        combinedSelectedReasoning = effectiveKimiThinking ? 'on' : 'off'
                       }
 
                       const handleCombinedModelChange = (nextModel: string) => {
+                        if (ensembleBinding) {
+                          const patch: Partial<EnsembleParticipant> = { model: nextModel }
+                          // Drop fast-mode if the new model can't support
+                          // it, mirroring the chat-level handler below.
+                          if (effectiveProvider === 'codex') {
+                            const modelOption = codexModels.find((m) => m.id === nextModel)
+                            if (modelOption?.defaultReasoningEffort) {
+                              patch.reasoningEffort = modelOption.defaultReasoningEffort
+                            }
+                            if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+                              patch.fastModeEnabled = false
+                              patch.serviceTier = ''
+                            }
+                          }
+                          if (effectiveProvider === 'claude') {
+                            const claudeModelOption = (
+                              agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
+                            ).find((m) => m.id === nextModel)
+                            if (!claudeModelOption?.additionalSpeedTiers?.includes('fast')) {
+                              patch.fastModeEnabled = false
+                            }
+                          }
+                          updateSelectedParticipant(patch)
+                          return
+                        }
                         if (nextModel !== 'custom') {
                           setLastNonCustomModelType(nextModel)
                         }
@@ -14815,14 +14988,14 @@ function App(): React.JSX.Element {
                        * where they're already adjusting reasoning.
                        */
                       const fastModeCapableModelIds = (() => {
-                        if (currentProvider === 'codex') {
+                        if (effectiveProvider === 'codex') {
                           return new Set(
                             codexModels
                               .filter((model) => model.additionalSpeedTiers?.includes('fast'))
                               .map((model) => model.id)
                           )
                         }
-                        if (currentProvider === 'claude') {
+                        if (effectiveProvider === 'claude') {
                           return new Set(
                             (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
                               .filter((model) => model.additionalSpeedTiers?.includes('fast'))
@@ -14835,23 +15008,35 @@ function App(): React.JSX.Element {
                         return new Set<string>()
                       })()
                       const fastModeEnabledForProvider =
-                        currentProvider === 'codex'
-                          ? codexServiceTier === 'fast'
-                          : currentProvider === 'claude'
-                            ? claudeFastMode
+                        effectiveProvider === 'codex'
+                          ? effectiveCodexServiceTier === 'fast'
+                          : effectiveProvider === 'claude'
+                            ? effectiveClaudeFastMode
                             : false
                       const handleToggleFastMode =
-                        currentProvider === 'codex'
+                        effectiveProvider === 'codex'
                           ? () => {
-                              const nextTier = codexServiceTier === 'fast' ? '' : 'fast'
+                              const nextTier =
+                                effectiveCodexServiceTier === 'fast' ? '' : 'fast'
+                              if (ensembleBinding) {
+                                updateSelectedParticipant({
+                                  serviceTier: nextTier,
+                                  fastModeEnabled: nextTier === 'fast'
+                                })
+                                return
+                              }
                               setCodexServiceTier(nextTier)
                               rememberCurrentChatComposerSelection({
                                 codexServiceTier: nextTier
                               })
                             }
-                          : currentProvider === 'claude'
+                          : effectiveProvider === 'claude'
                             ? () => {
-                                const nextFast = !claudeFastMode
+                                const nextFast = !effectiveClaudeFastMode
+                                if (ensembleBinding) {
+                                  updateSelectedParticipant({ fastModeEnabled: nextFast })
+                                  return
+                                }
                                 setClaudeFastMode(nextFast)
                                 rememberCurrentChatComposerSelection({
                                   claudeFastMode: nextFast
@@ -14860,6 +15045,14 @@ function App(): React.JSX.Element {
                             : undefined
 
                       const handleCombinedReasoningChange = (value: string) => {
+                        if (ensembleBinding) {
+                          if (ensembleBinding.provider === 'kimi') {
+                            updateSelectedParticipant({ thinkingEnabled: value !== 'off' })
+                          } else {
+                            updateSelectedParticipant({ reasoningEffort: value })
+                          }
+                          return
+                        }
                         if (currentProvider === 'codex') {
                           setCodexReasoningEffort(value)
                           rememberCurrentChatComposerSelection({
@@ -14882,23 +15075,23 @@ function App(): React.JSX.Element {
                       return (
                         <>
                           <CombinedModelPicker
-                            provider={currentProvider}
+                            provider={effectiveProvider}
                             composerStyle={appearance.composerStyle}
                             modelOptions={combinedModelOptions}
-                            selectedModelId={selectedComposerModelType}
+                            selectedModelId={effectiveSelectedModel}
                             onSelectModel={handleCombinedModelChange}
                             reasoningOptions={combinedReasoningOptions}
                             selectedReasoning={combinedSelectedReasoning}
                             onSelectReasoning={handleCombinedReasoningChange}
-                            codexReasoningEffort={codexReasoningEffort}
-                            claudeReasoningEffort={claudeReasoningEffort}
-                            kimiThinkingEnabled={kimiThinkingEnabled}
+                            codexReasoningEffort={effectiveCodexReasoning}
+                            claudeReasoningEffort={effectiveClaudeReasoning}
+                            kimiThinkingEnabled={effectiveKimiThinking}
                             fastModeCapableModelIds={fastModeCapableModelIds}
                             fastModeEnabled={fastModeEnabledForProvider}
                             onToggleFastMode={handleToggleFastMode}
                             disabled={isCurrentComposerLocked}
                           />
-                          {selectedModelType === 'custom' && currentProvider !== 'kimi' && (
+                          {!ensembleBinding && selectedModelType === 'custom' && currentProvider !== 'kimi' && (
                             <span className="composer-inline-custom-model">
                               <input
                                 className="composer-inline-input"
@@ -14970,33 +15163,41 @@ function App(): React.JSX.Element {
                       // absorbs the old "Tool Grants" pill from the
                       // above-bar. Single chip, two-column popover
                       // (Permissions | Tool Grants).
-                      /*
-                       * Permission mode options shown in the picker.
-                       *
-                       * Internal values (`plan` / `default` / `auto_edit`)
-                       * are the canonical tokens persisted to chat
-                       * metadata and threaded into provider runtime
-                       * mappings (codexApprovalPolicyForMode etc). The
-                       * user-facing labels below are display-only.
-                       *
-                       * Pre-1.0.1 ship UX refinement: relabelled
-                       * `auto_edit` as "Full Workspace Access" — the
-                       * old "Edit files (auto_edit)" label leaked an
-                       * internal token that meant little to a new
-                       * tester. The full preset/effective-permissions
-                       * architecture proposed alongside this rename
-                       * (parseable PermissionPreset enum, centralized
-                       * EffectiveRunPermissions, automatic Tool Grants
-                       * activation per provider/workspace) is queued
-                       * for 1.0.2 — see POST-LUNCH-PLAN.md. Keeping
-                       * the internal token unchanged so the rename is
-                       * label-only with zero behavioural risk.
-                       *
-                       * Read-only safety, global-deny precedence,
-                       * external-path grant separation, and global
-                       * networkAccess gating are unaffected — same
-                       * resolver paths handle the work today.
-                       */
+                      //
+                      // Slice F v2 (1.0.3) — when ensemble + a
+                      // participant chip is selected, the picker
+                      // reads/writes the participant's
+                      // `permissionPresetId` instead of the chat's
+                      // `approvalMode`. The user-facing 3-mode UI
+                      // stays the same (Plan / Default / Full
+                      // Workspace Access) but we translate
+                      // bidirectionally to the preset vocabulary
+                      // (`read_only` / `default` / `workspace_write`).
+                      // Tool grants remain per-workspace + per-provider
+                      // (not per-participant) — we just retarget which
+                      // provider the grants column scopes to.
+                      const ensembleBinding =
+                        isCurrentEnsembleChat && selectedParticipant
+                          ? selectedParticipant
+                          : null
+                      const effectiveProvider: ProviderId =
+                        ensembleBinding?.provider ?? currentProvider
+                      const presetToMode = (
+                        preset: string | undefined
+                      ): string => {
+                        if (preset === 'read_only') return 'plan'
+                        if (preset === 'workspace_write') return 'auto_edit'
+                        if (preset === 'full_access') return 'auto_edit'
+                        return 'default'
+                      }
+                      const modeToPreset = (mode: string): PermissionPresetId => {
+                        if (mode === 'plan') return 'read_only'
+                        if (mode === 'auto_edit') return 'workspace_write'
+                        return 'default'
+                      }
+                      const effectiveSelectedPermission = ensembleBinding
+                        ? presetToMode(ensembleBinding.permissionPresetId)
+                        : approvalMode
                       const permissionPickerOptions: PermissionOption[] = [
                         { value: 'plan', label: 'Plan / Read-only' },
                         { value: 'default', label: 'Default Approval' },
@@ -15011,7 +15212,7 @@ function App(): React.JSX.Element {
                           .filter((grant) => {
                             if (
                               !grant ||
-                              grant.provider !== currentProvider ||
+                              grant.provider !== effectiveProvider ||
                               !grant.workspacePath
                             )
                               return false
@@ -15028,11 +15229,17 @@ function App(): React.JSX.Element {
                         currentWorkspace && !isCurrentGlobalChat ? WORKSPACE_POLICY_SERVICES : []
                       return (
                         <CombinedPermissionsPicker
-                          provider={currentProvider}
+                          provider={effectiveProvider}
                           composerStyle={appearance.composerStyle}
                           permissionOptions={permissionPickerOptions}
-                          selectedPermission={approvalMode}
+                          selectedPermission={effectiveSelectedPermission}
                           onSelectPermission={(nextApprovalMode) => {
+                            if (ensembleBinding) {
+                              updateSelectedParticipant({
+                                permissionPresetId: modeToPreset(nextApprovalMode)
+                              })
+                              return
+                            }
                             setApprovalMode(nextApprovalMode)
                             rememberCurrentChatComposerSelection({
                               approvalMode: nextApprovalMode
@@ -15047,11 +15254,11 @@ function App(): React.JSX.Element {
                           enabledGrantIds={enabledGrantIds}
                           agenticServices={agenticServices}
                           onToggleGrant={(service, enabled) =>
-                            void handleSetAgenticWorkspaceGrant(service, enabled)
+                            void handleSetAgenticWorkspaceGrant(service, enabled, effectiveProvider)
                           }
                           disabled={
                             isCurrentComposerLocked ||
-                            (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
+                            (effectiveProvider === 'gemini' && !geminiWorkspaceTrustReady)
                           }
                         />
                       )

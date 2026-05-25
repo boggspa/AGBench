@@ -1,65 +1,64 @@
 /*
- * EnsembleParticipantsAboveRow — 1.0.3 ship-night rework.
+ * EnsembleParticipantsAboveRow — 1.0.3 ship-night.
  *
  * Replaces the bottom-pinned `EnsembleSetupSheet` modal AND the
  * top-of-chat `EnsembleParticipantStrip`, consolidating both into a
  * single composer above-row that sits below the existing file-changes
  * + Create PR row and above the composer textarea.
  *
- * Each participant renders as a chip: provider icon + role + status.
- *   - Click → opens a per-participant flyout with all settings:
- *     enabled, role, model, reasoning, fast-mode (when capable),
- *     permission preset. Visual language matches the composer's
- *     CombinedModelPicker / CombinedPermissionsPicker popovers so
- *     the surface reads as one consistent picker family.
- *   - Drag-and-drop the chips to reorder. The new order is the
- *     order participants speak in. Persists via the same onSave
- *     callback the old modal used.
- *   - "Disabled" participants render dimmed but still visible; the
- *     user toggles them back on inside their own flyout.
+ * Slice F v2 (1.0.3 — same ship-night rework): instead of opening a
+ * per-chip flyout for editing, clicking a chip SELECTS it. The
+ * composer's existing `CombinedModelPicker` + `CombinedPermissionsPicker`
+ * then rebind to read/write the selected participant's settings. This
+ * means there's one set of pickers in the app (the composer's), and
+ * the chips just retarget who they configure.
  *
- * Persistence is inline: every edit calls `onChatChange` with an
- * updated chat record. No explicit Save button.
+ *   - Click chip → onSelectParticipant(id). The chip gets a thick
+ *     accent border to signal selection.
+ *   - Drag horizontally → reorder the speaking sequence (HTML5
+ *     native drag-and-drop, persisted via onChatChange).
+ *   - On the selected chip only, a `⋯` overflow button surfaces an
+ *     inline mini-popover for the two affordances that don't have
+ *     a natural home in the composer pickers: `enabled` toggle and
+ *     `role` rename.
+ *   - Disabled participants render dimmed; they're still selectable
+ *     so the user can re-enable from the overflow.
+ *
+ * Selection state lives in the parent (App.tsx) so the composer
+ * pickers can read it. Auto-follow-active-speaker logic also lives
+ * upstream — this component is otherwise display-only beyond click +
+ * drag + the overflow editor.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
-  EnsembleParticipant,
-  PermissionPresetId,
-  ProviderId
+  EnsembleParticipant
 } from '../../../main/store/types'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
-import { getEnsembleModelDefaults } from '../lib/ensembleProviderDefaults'
-
-const PRESETS: Array<{ id: PermissionPresetId; label: string }> = [
-  { id: 'read_only', label: 'Read only' },
-  { id: 'default', label: 'Default' },
-  { id: 'workspace_write', label: 'Workspace write' },
-  { id: 'full_access', label: 'Full access' }
-]
 
 interface EnsembleParticipantsAboveRowProps {
   chat: ChatRecord
+  selectedParticipantId: string | null
+  onSelectParticipant: (id: string) => void
   onChatChange: (next: ChatRecord) => void
   onStop?: () => void
 }
 
 export function EnsembleParticipantsAboveRow({
   chat,
+  selectedParticipantId,
+  onSelectParticipant,
   onChatChange,
   onStop
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
-  const participants = useMemo(
-    () => [...(chat.ensemble?.participants || [])].sort((a, b) => a.order - b.order),
-    [chat.ensemble?.participants]
-  )
+  const participants = [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
   const activeRound = chat.ensemble.activeRound
 
-  const [openParticipantId, setOpenParticipantId] = useState<string | null>(null)
+  const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
@@ -109,17 +108,27 @@ export function EnsembleParticipantsAboveRow({
           )
           const active = activeRound?.activeParticipantId === participant.id
           const statusLabel = active ? 'speaking' : state?.status || 'idle'
+          const isSelected = participant.id === selectedParticipantId
           return (
             <ParticipantChip
               key={participant.id}
               participant={participant}
               statusLabel={statusLabel}
               dimmed={!participant.enabled}
+              isSelected={isSelected}
               isDragOver={dragOverId === participant.id && dragId !== participant.id}
               isDragging={dragId === participant.id}
-              onClick={() =>
-                setOpenParticipantId((curr) => (curr === participant.id ? null : participant.id))
+              overflowOpen={overflowOpenId === participant.id}
+              onClick={() => {
+                onSelectParticipant(participant.id)
+                // Clicking a different chip closes any open overflow.
+                if (overflowOpenId && overflowOpenId !== participant.id) setOverflowOpenId(null)
+              }}
+              onToggleOverflow={() =>
+                setOverflowOpenId((curr) => (curr === participant.id ? null : participant.id))
               }
+              onCloseOverflow={() => setOverflowOpenId(null)}
+              onPatch={(patch) => updateParticipant(participant.id, patch)}
               onDragStart={() => setDragId(participant.id)}
               onDragEnter={() => setDragOverId(participant.id)}
               onDragOver={(event) => {
@@ -147,13 +156,6 @@ export function EnsembleParticipantsAboveRow({
           </button>
         )}
       </div>
-      {openParticipantId && (
-        <ParticipantFlyout
-          participant={participants.find((p) => p.id === openParticipantId)!}
-          onChange={(patch) => updateParticipant(openParticipantId, patch)}
-          onClose={() => setOpenParticipantId(null)}
-        />
-      )}
     </div>
   )
 }
@@ -162,9 +164,14 @@ interface ParticipantChipProps {
   participant: EnsembleParticipant
   statusLabel: string
   dimmed: boolean
+  isSelected: boolean
   isDragOver: boolean
   isDragging: boolean
+  overflowOpen: boolean
   onClick: () => void
+  onToggleOverflow: () => void
+  onCloseOverflow: () => void
+  onPatch: (patch: Partial<EnsembleParticipant>) => void
   onDragStart: () => void
   onDragEnter: () => void
   onDragOver: (event: React.DragEvent) => void
@@ -176,26 +183,31 @@ function ParticipantChip({
   participant,
   statusLabel,
   dimmed,
+  isSelected,
   isDragOver,
   isDragging,
+  overflowOpen,
   onClick,
+  onToggleOverflow,
+  onCloseOverflow,
+  onPatch,
   onDragStart,
   onDragEnter,
   onDragOver,
   onDrop,
   onDragEnd
 }: ParticipantChipProps): React.JSX.Element {
+  const chipRef = useRef<HTMLDivElement | null>(null)
   // Slug the status onto the class so CSS can colour-code the pill
   // (running=warm, yielded=amber, answered=green, cancelled=muted, etc.).
   const statusClass = `status-${statusLabel.toLowerCase().replace(/\s+/g, '-')}`
   return (
-    <button
-      type="button"
+    <div
+      ref={chipRef}
       draggable
       data-participant-id={participant.id}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move'
-        // Firefox needs setData to actually start a drag.
         event.dataTransfer.setData('text/plain', participant.id)
         onDragStart()
       }}
@@ -203,59 +215,66 @@ function ParticipantChip({
       onDragOver={onDragOver}
       onDrop={onDrop}
       onDragEnd={onDragEnd}
-      onClick={onClick}
-      className={`ensemble-above-chip provider-${participant.provider} ${dimmed ? 'is-dimmed' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      className={`ensemble-above-chip provider-${participant.provider} ${isSelected ? 'is-selected' : ''} ${dimmed ? 'is-dimmed' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
       title={`${getProviderName(participant.provider)} — ${participant.role || 'Participant'}`}
     >
-      <ProviderBadgeIcon provider={participant.provider} />
-      <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
-      <span className={`ensemble-above-chip-status ${statusClass}`}>{statusLabel}</span>
-    </button>
+      <button
+        type="button"
+        className="ensemble-above-chip-body"
+        onClick={onClick}
+        aria-pressed={isSelected}
+      >
+        <ProviderBadgeIcon provider={participant.provider} />
+        <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
+        <span className={`ensemble-above-chip-status ${statusClass}`}>{statusLabel}</span>
+      </button>
+      {isSelected && (
+        <button
+          type="button"
+          className="ensemble-above-chip-overflow"
+          onClick={onToggleOverflow}
+          aria-haspopup="dialog"
+          aria-expanded={overflowOpen}
+          aria-label={`More options for ${getProviderName(participant.provider)}`}
+          title="Toggle enabled / rename role"
+        >
+          ⋯
+        </button>
+      )}
+      {overflowOpen && (
+        <OverflowPopover
+          anchor={chipRef.current}
+          participant={participant}
+          onPatch={onPatch}
+          onClose={onCloseOverflow}
+        />
+      )}
+    </div>
   )
 }
 
-interface ParticipantFlyoutProps {
+interface OverflowPopoverProps {
+  anchor: HTMLElement | null
   participant: EnsembleParticipant
-  onChange: (patch: Partial<EnsembleParticipant>) => void
+  onPatch: (patch: Partial<EnsembleParticipant>) => void
   onClose: () => void
 }
 
-function ParticipantFlyout({
+function OverflowPopover({
+  anchor,
   participant,
-  onChange,
+  onPatch,
   onClose
-}: ParticipantFlyoutProps): React.JSX.Element {
-  const flyoutRef = useRef<HTMLDivElement | null>(null)
+}: OverflowPopoverProps): React.JSX.Element | null {
+  const popoverRef = useRef<HTMLDivElement | null>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
 
-  const defaults = getEnsembleModelDefaults(participant.provider)
-  const modelId = participant.model || defaults.defaultModelId
-  const reasoning =
-    participant.provider === 'kimi'
-      ? participant.thinkingEnabled
-        ? 'on'
-        : 'off'
-      : participant.reasoningEffort || defaults.defaultReasoning
-  const fastCapable = defaults.fastModeCapableModelIds.has(modelId)
-  const fastSupported = defaults.fastModeCapableModelIds.size > 0
-
-  // Anchor the flyout above the chip the user clicked. We target by
-  // `data-participant-id` so the lookup stays exact even if multiple
-  // ensemble chats ever render simultaneously (today there's only one
-  // visible, but the participant.id is unique across the app and
-  // future-proofs us against the provider-class approach grabbing
-  // the wrong chip). CSS.escape() guards against any participant ids
-  // that happen to contain selector-meaningful characters.
   useEffect(() => {
     let cancelled = false
     queueMicrotask(() => {
-      if (cancelled) return
-      const trigger = document.querySelector<HTMLButtonElement>(
-        `.ensemble-above-chip[data-participant-id="${CSS.escape(participant.id)}"]`
-      )
-      if (!trigger) return
-      const rect = trigger.getBoundingClientRect()
-      const flyoutWidth = 340
+      if (cancelled || !anchor) return
+      const rect = anchor.getBoundingClientRect()
+      const flyoutWidth = 260
       const left = Math.max(8, Math.min(window.innerWidth - flyoutWidth - 8, rect.left))
       const top = rect.top - 8
       setPosition({ left, top })
@@ -263,17 +282,15 @@ function ParticipantFlyout({
     return () => {
       cancelled = true
     }
-  }, [participant.id])
+  }, [anchor])
 
-  // Close on Escape + click outside.
   useEffect(() => {
     const handleClick = (event: MouseEvent): void => {
-      if (flyoutRef.current?.contains(event.target as Node)) return
-      // Skip the chip itself — the chip's own onClick toggles the
-      // flyout, so we don't want the outside-click to immediately
-      // close what the click was meant to toggle.
+      if (popoverRef.current?.contains(event.target as Node)) return
+      // Clicking the overflow button itself toggles via onToggleOverflow;
+      // don't double-fire by also closing on outside-click for that hit.
       const target = event.target as HTMLElement
-      if (target.closest('.ensemble-above-chip')) return
+      if (target.closest('.ensemble-above-chip-overflow')) return
       onClose()
     }
     const handleKey = (event: KeyboardEvent): void => {
@@ -290,39 +307,12 @@ function ParticipantFlyout({
     }
   }, [onClose])
 
-  if (!position) return <></>
-
-  const handleModelChange = (nextModel: string): void => {
-    const patch: Partial<EnsembleParticipant> = { model: nextModel }
-    // Drop fast-mode if the new model can't support it so the
-    // persisted flag never outlives its applicability.
-    if (!defaults.fastModeCapableModelIds.has(nextModel)) {
-      patch.fastModeEnabled = false
-      patch.serviceTier = ''
-    }
-    onChange(patch)
-  }
-
-  const handleReasoningChange = (value: string): void => {
-    if (participant.provider === 'kimi') {
-      onChange({ thinkingEnabled: value !== 'off' })
-    } else {
-      onChange({ reasoningEffort: value })
-    }
-  }
-
-  const toggleFastMode = (): void => {
-    const next = !participant.fastModeEnabled
-    onChange({
-      fastModeEnabled: next,
-      ...(participant.provider === 'codex' ? { serviceTier: next ? 'fast' : '' } : {})
-    })
-  }
+  if (!position) return null
 
   const content = (
     <div
-      ref={flyoutRef}
-      className={`ensemble-above-flyout provider-${participant.provider}`}
+      ref={popoverRef}
+      className={`ensemble-above-overflow provider-${participant.provider}`}
       style={{
         position: 'fixed',
         left: `${position.left}px`,
@@ -330,101 +320,28 @@ function ParticipantFlyout({
         transform: 'translateY(-100%)'
       }}
       role="dialog"
-      aria-label={`Configure ${getProviderName(participant.provider)} participant`}
+      aria-label={`Edit ${getProviderName(participant.provider)} role and enabled state`}
     >
-      <div className="ensemble-above-flyout-header">
-        <span className="ensemble-above-flyout-title">
-          <ProviderBadgeIcon provider={participant.provider} />
-          {getProviderName(participant.provider)}
-        </span>
-        <label className="ensemble-above-flyout-enable">
-          <input
-            type="checkbox"
-            checked={participant.enabled}
-            onChange={(event) => onChange({ enabled: event.target.checked })}
-          />
-          Enabled
-        </label>
-      </div>
-
-      <label className="ensemble-above-flyout-field">
-        <span className="ensemble-above-flyout-label">Role</span>
+      <label className="ensemble-above-overflow-enable">
+        <input
+          type="checkbox"
+          checked={participant.enabled}
+          onChange={(event) => onPatch({ enabled: event.target.checked })}
+        />
+        <span>Enabled in ensemble rounds</span>
+      </label>
+      <label className="ensemble-above-overflow-role">
+        <span className="ensemble-above-overflow-label">Role</span>
         <input
           type="text"
           value={participant.role}
-          onChange={(event) => onChange({ role: event.target.value })}
-          placeholder="Role"
+          onChange={(event) => onPatch({ role: event.target.value })}
+          placeholder={`${getProviderName(participant.provider)} role`}
         />
       </label>
-
-      <div className="ensemble-above-flyout-pair">
-        <label className="ensemble-above-flyout-field">
-          <span className="ensemble-above-flyout-label">Model</span>
-          <select value={modelId} onChange={(event) => handleModelChange(event.target.value)}>
-            {defaults.modelOptions.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {defaults.reasoningOptions.length > 0 && (
-          <label className="ensemble-above-flyout-field">
-            <span className="ensemble-above-flyout-label">
-              {participant.provider === 'kimi' ? 'Thinking' : 'Reasoning'}
-            </span>
-            <select
-              value={reasoning}
-              onChange={(event) => handleReasoningChange(event.target.value)}
-            >
-              {defaults.reasoningOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-      </div>
-
-      {fastSupported && (
-        <label
-          className={`ensemble-above-flyout-fast ${fastCapable ? '' : 'is-disabled'}`}
-          title={
-            fastCapable
-              ? 'Fast tier — uses the paid Fast provider tier when on'
-              : 'Selected model does not support Fast mode'
-          }
-        >
-          <input
-            type="checkbox"
-            checked={Boolean(participant.fastModeEnabled)}
-            disabled={!fastCapable}
-            onChange={toggleFastMode}
-          />
-          <span>Fast mode</span>
-        </label>
-      )}
-
-      <label className="ensemble-above-flyout-field">
-        <span className="ensemble-above-flyout-label">Workspace permissions</span>
-        <select
-          value={participant.permissionPresetId || 'default'}
-          onChange={(event) =>
-            onChange({ permissionPresetId: event.target.value as PermissionPresetId })
-          }
-        >
-          {PRESETS.map((preset) => (
-            <option key={preset.id} value={preset.id}>
-              {preset.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <p className="ensemble-above-flyout-hint">
-        Drag chips left/right to change the order participants speak in. Tool grants for this
-        provider live in Settings → Approvals.
+      <p className="ensemble-above-overflow-hint">
+        Model, reasoning, fast mode, and permissions live in the composer pickers below — they
+        apply to the chip selected here.
       </p>
     </div>
   )
@@ -436,26 +353,23 @@ function ParticipantFlyout({
  * Default-populate every ensemble chat with all four providers
  * enabled. Slice F (1.0.3) — previously only Claude + Codex were
  * default-on; Chris's ship-night locked rule is "all four on, user
- * disables via the chip flyout if they want a subset."
+ * disables via the chip overflow if they want a subset."
  */
 export function defaultEnsembleParticipants(): EnsembleParticipant[] {
-  const PROVIDERS: ProviderId[] = ['claude', 'codex', 'gemini', 'kimi']
-  return PROVIDERS.map((provider, index) => {
-    const defaults = getEnsembleModelDefaults(provider)
-    return {
-      id: `ensemble-${provider}`,
-      provider,
-      enabled: true,
-      role: defaultRole(provider),
-      instructions: '',
-      order: index + 1,
-      model: defaults.defaultModelId,
-      permissionPresetId: provider === 'codex' ? 'workspace_write' : 'read_only'
-    }
-  })
+  const PROVIDERS = ['claude', 'codex', 'gemini', 'kimi'] as const
+  return PROVIDERS.map((provider, index) => ({
+    id: `ensemble-${provider}`,
+    provider,
+    enabled: true,
+    role: defaultRole(provider),
+    instructions: '',
+    order: index + 1,
+    model: 'cli-default',
+    permissionPresetId: provider === 'codex' ? 'workspace_write' : 'read_only'
+  }))
 }
 
-function defaultRole(provider: ProviderId): string {
+function defaultRole(provider: string): string {
   if (provider === 'codex') return 'Worker'
   if (provider === 'gemini') return 'Researcher'
   if (provider === 'kimi') return 'Reviewer'

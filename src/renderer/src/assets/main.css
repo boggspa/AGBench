@@ -23676,11 +23676,15 @@ input:disabled, select:disabled, textarea:disabled {
   overflow-x: auto;
 }
 
+/* Slice F v2 (1.0.3) — the chip wrapper is now a `<div>` (not a
+ * <button>) because the chip hosts BOTH a click-to-select body
+ * AND an overflow `⋯` action when selected. The inner body
+ * (`.ensemble-above-chip-body`) is the actual button. The wrapper
+ * carries the drag handle + selection visual treatment. */
 .ensemble-above-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 9px;
+  padding: 0;
   border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
   border-radius: 999px;
   background: color-mix(in srgb, var(--surface-elevated) 65%, transparent);
@@ -23689,11 +23693,59 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.ensemble-above-chip-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  border-radius: 999px 0 0 999px;
+}
+
+/* Selected chip without an overflow button still rounds the body
+ * fully. CSS-level rule: when the only child is the body (no
+ * `.ensemble-above-chip-overflow` sibling), round both ends. */
+.ensemble-above-chip:not(.is-selected) .ensemble-above-chip-body {
+  border-radius: 999px;
+}
+
+.ensemble-above-chip-overflow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 26px;
+  margin-right: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0 999px 999px 0;
+}
+
+.ensemble-above-chip-overflow:hover {
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+  color: var(--text-primary);
 }
 
 .ensemble-above-chip:hover {
   border-color: color-mix(in srgb, var(--accent-color) 50%, var(--border-color));
+}
+
+.ensemble-above-chip.is-selected {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color) 14%, var(--surface-elevated));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 70%, transparent);
 }
 
 .ensemble-above-chip.is-dimmed {
@@ -23712,6 +23764,60 @@ input:disabled, select:disabled, textarea:disabled {
 
 .ensemble-above-chip-role {
   font-weight: 600;
+}
+
+/* Overflow popover (enabled toggle + role rename for the selected chip). */
+.ensemble-above-overflow {
+  width: 260px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-elevated);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--panel-border));
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+  z-index: 9500;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ensemble-above-overflow-enable {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+  user-select: none;
+}
+
+.ensemble-above-overflow-role {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ensemble-above-overflow-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+}
+
+.ensemble-above-overflow-role input[type='text'] {
+  width: 100%;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--input-bg);
+  color: var(--text-primary);
+  padding: 6px 8px;
+  font-size: var(--font-size-sm);
+}
+
+.ensemble-above-overflow-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-secondary);
 }
 
 .ensemble-above-chip-status {
@@ -23769,105 +23875,13 @@ input:disabled, select:disabled, textarea:disabled {
   white-space: nowrap;
 }
 
-/* Portaled per-chip flyout. Visual language mirrors
- * `.composer-combined-picker-popover` so the surface reads as part of
- * the same picker family. */
-.ensemble-above-flyout {
-  width: 320px;
-  padding: 12px 12px 10px;
-  border-radius: 12px;
-  background: var(--surface-elevated);
-  border: 1px solid color-mix(in srgb, var(--accent-color) 30%, var(--panel-border));
-  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
-  z-index: 9500;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.ensemble-above-flyout-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.ensemble-above-flyout-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 700;
-  font-size: var(--font-size-sm);
-  color: var(--text-primary);
-}
-
-.ensemble-above-flyout-enable {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  user-select: none;
-}
-
-.ensemble-above-flyout-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.ensemble-above-flyout-label {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-secondary);
-}
-
-.ensemble-above-flyout-field input[type='text'],
-.ensemble-above-flyout-field select {
-  width: 100%;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  background: var(--input-bg);
-  color: var(--text-primary);
-  padding: 6px 8px;
-  font-size: var(--font-size-sm);
-}
-
-.ensemble-above-flyout-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.ensemble-above-flyout-fast {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--accent-color) 8%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-color) 20%, var(--border-color));
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.ensemble-above-flyout-fast.is-disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.ensemble-above-flyout-hint {
-  margin: 4px 0 0;
-  font-size: 11px;
-  color: var(--text-secondary);
-  line-height: 1.4;
-}
-
-/* Slice F (1.0.3) — `.ensemble-setup-*` and `.ensemble-provider-toggle`
- * deleted alongside EnsembleSetupSheet. The composer above-row chip
- * strip + per-chip flyout are the only configuration surface now. */
+/* Slice F v2 (1.0.3) — `.ensemble-above-flyout-*` deleted alongside
+ * the per-chip flyout. Per-participant model/reasoning/permission
+ * editing now happens via the composer's existing pickers, rebound
+ * to whichever chip is selected. The `.ensemble-above-overflow-*`
+ * rules above own the smaller mini-popover that hosts the two
+ * settings (enabled + role) that don't have a natural home in the
+ * composer pickers. */
 
 @media (max-width: 760px) {
   .ensemble-above-row {

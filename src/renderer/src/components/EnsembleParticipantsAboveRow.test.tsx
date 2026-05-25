@@ -56,7 +56,12 @@ describe('EnsembleParticipantsAboveRow', () => {
       runs: []
     }
     const html = renderToStaticMarkup(
-      <EnsembleParticipantsAboveRow chat={chat} onChatChange={() => undefined} />
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId={null}
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
     )
     expect(html).toBe('')
   })
@@ -67,7 +72,12 @@ describe('EnsembleParticipantsAboveRow', () => {
       makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
     ])
     const html = renderToStaticMarkup(
-      <EnsembleParticipantsAboveRow chat={chat} onChatChange={() => undefined} />
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId={null}
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
     )
     expect(html).toContain('Explorer')
     expect(html).toContain('Worker')
@@ -106,7 +116,12 @@ describe('EnsembleParticipantsAboveRow', () => {
       ]
     }
     const html = renderToStaticMarkup(
-      <EnsembleParticipantsAboveRow chat={chat} onChatChange={() => undefined} />
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId={null}
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
     )
     expect(html).toContain('status-speaking')
     expect(html).toContain('status-answered')
@@ -124,9 +139,38 @@ describe('EnsembleParticipantsAboveRow', () => {
       })
     ])
     const html = renderToStaticMarkup(
-      <EnsembleParticipantsAboveRow chat={chat} onChatChange={() => undefined} />
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId={null}
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
     )
     expect(html).toContain('Researcher')
     expect(html).toContain('is-dimmed')
+  })
+
+  // Slice F v2 (1.0.3) — clicking a chip selects it; the parent
+  // (App.tsx) passes selectedParticipantId in and the component
+  // applies an `.is-selected` class for the visual treatment.
+  it('marks the selected participant chip with is-selected', () => {
+    const chat = makeChat([
+      makeParticipant({ id: 'ensemble-claude', provider: 'claude', role: 'Explorer', order: 1 }),
+      makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
+    ])
+    const html = renderToStaticMarkup(
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId="ensemble-codex"
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
+    )
+    expect(html).toContain('is-selected')
+    // Only one chip is selected. Count the class hits in chip class
+    // strings (the substring also appears inside aria attributes etc.,
+    // so this is a heuristic check).
+    const selectedHits = html.match(/class="ensemble-above-chip[^"]*is-selected/g) || []
+    expect(selectedHits.length).toBe(1)
   })
 })
