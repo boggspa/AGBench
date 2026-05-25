@@ -8963,6 +8963,32 @@ button.diff-file-row {
   background: var(--dot-color, rgba(255,255,255,0.22));
 }
 
+.settings-theme-option {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 62%, transparent);
+  border-radius: var(--radius-sm);
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 68%),
+    color-mix(in srgb, var(--surface-2) 32%, transparent);
+}
+
+.settings-theme-option:hover,
+.settings-theme-option.active {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--panel-border));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent), transparent 74%),
+    color-mix(in srgb, var(--surface-2) 46%, transparent);
+}
+
+.settings-theme-option .theme-dot {
+  width: 18px;
+  height: 18px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px color-mix(in srgb, var(--accent) 44%, transparent);
+}
+
 .theme-system { --dot-color: linear-gradient(135deg, #dfe5ee, #363b45); }
 .theme-dark { --dot-color: #3a3d46; }
 .theme-light { --dot-color: #edf2f8; }
@@ -22595,4 +22621,112 @@ input:disabled, select:disabled, textarea:disabled {
   .ensemble-setup-row {
     grid-template-columns: 1fr;
   }
+}
+
+/* System theme visibility — make the selected System Theme read across
+ * the app chrome, not just the tiny Settings swatch. The chroma variables
+ * live in styles/theme.css; these selectors only attach them to durable
+ * pane surfaces. */
+.app-root {
+  background-color: var(--app-bg);
+  background-image: var(--theme-gradient-app);
+}
+
+.app-sidebar {
+  background-color: color-mix(in srgb, var(--sidebar-bg) 88%, transparent);
+  background-image: var(--theme-gradient-sidebar);
+  border-right-color: color-mix(in srgb, var(--theme-border-accent) 72%, transparent);
+}
+
+[data-appearance="solid"] .app-sidebar,
+[data-reduce-transparency="true"] .app-sidebar {
+  background-color: var(--sidebar-bg-solid);
+  background-image: var(--theme-gradient-sidebar);
+}
+
+[data-appearance="soft_glass"] .app-sidebar {
+  background-color: color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  background-image:
+    var(--theme-gradient-sidebar),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.02));
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
+  background:
+    var(--theme-gradient-sidebar),
+    color-mix(in srgb, var(--sidebar-bg) 42%, transparent) !important;
+  border-right-color: color-mix(in srgb, var(--theme-border-accent) 58%, transparent) !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar {
+  background:
+    var(--theme-gradient-sidebar),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0.26)) !important;
+  border-right-color: color-mix(in srgb, var(--theme-border-accent) 46%, rgba(0, 0, 0, 0.08)) !important;
+}
+
+.app-transcript,
+.app-settings-pane {
+  background-image: var(--theme-gradient-transcript);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript,
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-settings-pane {
+  background-image: var(--theme-gradient-transcript) !important;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-appearance="native_glass"][data-reduce-transparency="false"] .app-settings-pane {
+  background-image: var(--theme-gradient-transcript) !important;
+}
+
+.app-inspector,
+.app-file-editor {
+  background-image: var(--theme-gradient-panel);
+  border-left-color: color-mix(in srgb, var(--theme-border-accent) 74%, transparent);
+}
+
+[data-appearance="native_glass"][data-reduce-transparency="false"] :is(.app-inspector, .app-file-editor) {
+  background-image: var(--theme-gradient-panel) !important;
+  border-color: color-mix(in srgb, var(--theme-border-accent) 62%, transparent) !important;
+}
+
+.inspector-tabs,
+.diff-studio-toolbar,
+.diff-detail-header,
+.file-editor-header {
+  background-image:
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-chroma-1) 10%, transparent), transparent 62%);
+  border-color: color-mix(in srgb, var(--theme-border-accent) 42%, var(--panel-border));
+}
+
+.diff-file-list,
+.file-editor-files {
+  background-image: var(--theme-gradient-file-manager);
+}
+
+.diff-detail,
+.file-editor-code-surface {
+  background-color: color-mix(in srgb, var(--app-bg-sunken) 76%, transparent);
+  background-image: var(--theme-gradient-editor);
+}
+
+.file-editor-row.file:hover:not(:disabled),
+.file-editor-row.active,
+.diff-file-row:hover,
+.diff-file-row.selected,
+.inspector-tab.active {
+  background-color: color-mix(in srgb, var(--theme-chroma-1) 14%, transparent);
+}
+
+.settings-panel-header {
+  background-image:
+    linear-gradient(90deg, color-mix(in srgb, var(--theme-chroma-2) 10%, transparent), transparent 60%);
+}
+
+.settings-composer-preview-card {
+  border-color: color-mix(in srgb, var(--theme-border-accent) 52%, transparent);
+  background-image:
+    var(--theme-gradient-panel),
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 36%);
 }

@@ -35,7 +35,41 @@
 
   /* Content / Transcript */
   --content-bg: transparent;
+  --bg-primary: var(--app-bg);
+  --bg-secondary: var(--app-bg-elevated);
   --content-max-width: 780px;
+
+  /* System theme chroma. These feed the shared pane gradients below so the
+   * selected System Theme is visible across sidebar, transcript, inspector,
+   * file manager, and editor surfaces instead of only nudging base colors. */
+  --theme-chroma-1: #5a8cff;
+  --theme-chroma-2: #bf7cff;
+  --theme-chroma-3: #41c7e5;
+  --theme-wash-soft: 10%;
+  --theme-wash-medium: 16%;
+  --theme-wash-strong: 24%;
+  --theme-border-accent: color-mix(in srgb, var(--theme-chroma-1) 36%, var(--surface-border));
+  --theme-border-accent-strong: color-mix(in srgb, var(--theme-chroma-2) 46%, var(--surface-border));
+  --theme-gradient-app:
+    radial-gradient(ellipse at 13% -8%, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-strong), transparent), transparent 42%),
+    radial-gradient(ellipse at 92% 6%, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-medium), transparent), transparent 44%),
+    linear-gradient(135deg, color-mix(in srgb, var(--theme-chroma-3) var(--theme-wash-soft), transparent), transparent 58%);
+  --theme-gradient-sidebar:
+    radial-gradient(ellipse at 0% 8%, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-strong), transparent), transparent 48%),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-soft), transparent), transparent 46%);
+  --theme-gradient-transcript:
+    radial-gradient(ellipse at 7% 0%, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-medium), transparent), transparent 42%),
+    radial-gradient(ellipse at 94% 18%, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-soft), transparent), transparent 44%),
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-chroma-3) 7%, transparent), transparent 38%);
+  --theme-gradient-panel:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--theme-chroma-2) var(--theme-wash-medium), transparent), transparent 48%),
+    linear-gradient(160deg, color-mix(in srgb, var(--theme-chroma-1) var(--theme-wash-soft), transparent), transparent 56%);
+  --theme-gradient-editor:
+    linear-gradient(135deg, color-mix(in srgb, var(--theme-chroma-1) 14%, transparent), transparent 42%),
+    radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--theme-chroma-3) 12%, transparent), transparent 46%);
+  --theme-gradient-file-manager:
+    linear-gradient(180deg, color-mix(in srgb, var(--theme-chroma-2) 12%, transparent), transparent 48%),
+    radial-gradient(ellipse at 12% 100%, color-mix(in srgb, var(--theme-chroma-1) 10%, transparent), transparent 42%);
 
   /* Composer */
   --composer-bg: rgba(7, 16, 36, 0.92);
@@ -143,6 +177,8 @@
   --app-bg-elevated: #ffffff;
   --app-bg-sunken: #e9edf2;
   --content-bg: rgba(246, 248, 251, 0.96);
+  --bg-primary: var(--content-bg);
+  --bg-secondary: var(--app-bg-elevated);
   --sidebar-bg: rgba(238, 242, 247, 0.64);
   --sidebar-bg-solid: #eef2f7;
   --panel-bg: rgba(239, 243, 248, 0.68);
@@ -168,6 +204,12 @@
   --panel-border: rgba(18, 21, 27, 0.10);
   --composer-border: rgba(18, 21, 27, 0.12);
   --shadow-lg: 0 14px 44px rgba(80, 96, 120, 0.18);
+  --theme-chroma-1: #5a8cff;
+  --theme-chroma-2: #85a8ff;
+  --theme-chroma-3: #9ac7d8;
+  --theme-wash-soft: 8%;
+  --theme-wash-medium: 13%;
+  --theme-wash-strong: 18%;
 }
 
 [data-theme="midnight"] {
@@ -183,6 +225,9 @@
   --composer-glass-border: rgba(135, 164, 255, 0.24);
   --accent: #6f93ff;
   --accent-hover: #89a7ff;
+  --theme-chroma-1: #214fce;
+  --theme-chroma-2: #6f93ff;
+  --theme-chroma-3: #37a9ff;
 }
 
 [data-theme="blue"],
@@ -198,6 +243,9 @@
   --composer-glass-border: rgba(73, 201, 226, 0.22);
   --accent: #41c7e5;
   --accent-hover: #62d8ef;
+  --theme-chroma-1: #1da9ff;
+  --theme-chroma-2: #41c7e5;
+  --theme-chroma-3: #4fd1c5;
 }
 
 [data-theme="green"],
@@ -213,6 +261,9 @@
   --composer-glass-border: rgba(86, 207, 129, 0.22);
   --accent: #4fd17d;
   --accent-hover: #70df97;
+  --theme-chroma-1: #4fd17d;
+  --theme-chroma-2: #8bd450;
+  --theme-chroma-3: #2fb986;
 }
 
 [data-theme="sunset"],
@@ -229,6 +280,9 @@
   --composer-glass-border: rgba(255, 144, 86, 0.22);
   --accent: #ff9b54;
   --accent-hover: #ffb071;
+  --theme-chroma-1: #ff9b54;
+  --theme-chroma-2: #e65b62;
+  --theme-chroma-3: #f2c94c;
 }
 
 [data-theme="purple"],
@@ -246,12 +300,18 @@
   --composer-glass-border: rgba(213, 121, 255, 0.22);
   --accent: #d889ff;
   --accent-hover: #e2a5ff;
+  --theme-chroma-1: #bf7cff;
+  --theme-chroma-2: #ff5fa2;
+  --theme-chroma-3: #6f93ff;
 }
 
 [data-theme="yellow"],
 [data-theme="citrus"] {
   --accent: #d8a900;
   --accent-hover: #efbf1d;
+  --theme-chroma-1: #f2c94c;
+  --theme-chroma-2: #ff9b54;
+  --theme-chroma-3: #4cc38a;
 }
 
 [data-theme="mist"] {
@@ -259,6 +319,8 @@
   --app-bg-elevated: #fbfdfe;
   --app-bg-sunken: #dfe9ed;
   --content-bg: rgba(244, 249, 251, 0.96);
+  --bg-primary: var(--content-bg);
+  --bg-secondary: var(--app-bg-elevated);
   --sidebar-bg: rgba(229, 238, 242, 0.70);
   --sidebar-bg-solid: #e5eef2;
   --panel-bg: rgba(232, 241, 245, 0.72);
@@ -286,6 +348,12 @@
   --accent: #3f8794;
   --accent-hover: #2e7180;
   --shadow-lg: 0 14px 44px rgba(66, 92, 112, 0.16);
+  --theme-chroma-1: #3f8794;
+  --theme-chroma-2: #9bc6cf;
+  --theme-chroma-3: #5a8cff;
+  --theme-wash-soft: 8%;
+  --theme-wash-medium: 13%;
+  --theme-wash-strong: 18%;
 }
 
 [data-theme="sage"] {
@@ -293,6 +361,8 @@
   --app-bg-elevated: #fcfefb;
   --app-bg-sunken: #e3ece2;
   --content-bg: rgba(247, 250, 246, 0.96);
+  --bg-primary: var(--content-bg);
+  --bg-secondary: var(--app-bg-elevated);
   --sidebar-bg: rgba(231, 240, 229, 0.70);
   --sidebar-bg-solid: #e7f0e5;
   --panel-bg: rgba(235, 243, 233, 0.72);
@@ -320,6 +390,12 @@
   --accent: #5f8f62;
   --accent-hover: #4b7a4f;
   --shadow-lg: 0 14px 44px rgba(76, 98, 78, 0.16);
+  --theme-chroma-1: #5f8f62;
+  --theme-chroma-2: #a4bf7a;
+  --theme-chroma-3: #7aa68b;
+  --theme-wash-soft: 8%;
+  --theme-wash-medium: 13%;
+  --theme-wash-strong: 18%;
 }
 
 [data-theme="graphite"] {
@@ -334,6 +410,9 @@
   --composer-glass-border: rgba(220, 224, 235, 0.16);
   --accent: #9da6b8;
   --accent-hover: #b7bfce;
+  --theme-chroma-1: #9da6b8;
+  --theme-chroma-2: #5d667a;
+  --theme-chroma-3: #c2c8d4;
 }
 
 [data-theme="rainbow"],
@@ -350,6 +429,69 @@
   --composer-glass-border: rgba(101, 210, 255, 0.22);
   --accent: #62d8ff;
   --accent-hover: #8be2ff;
+  --theme-chroma-1: #62d8ff;
+  --theme-chroma-2: #bf7cff;
+  --theme-chroma-3: #4cc38a;
+}
+
+[data-theme="ocean"] {
+  --theme-chroma-1: #41c7e5;
+  --theme-chroma-2: #2563eb;
+  --theme-chroma-3: #22d3ee;
+}
+
+[data-theme="forest"] {
+  --theme-chroma-1: #4cc38a;
+  --theme-chroma-2: #84a33b;
+  --theme-chroma-3: #1f8f65;
+}
+
+[data-theme="red"] {
+  --theme-chroma-1: #e65b62;
+  --theme-chroma-2: #ff7a59;
+  --theme-chroma-3: #b91c1c;
+}
+
+[data-theme="sunset"] {
+  --theme-chroma-1: #ff9b54;
+  --theme-chroma-2: #ff5fa2;
+  --theme-chroma-3: #7c5cff;
+}
+
+[data-theme="pink"] {
+  --theme-chroma-1: #ff5fa2;
+  --theme-chroma-2: #ff84c5;
+  --theme-chroma-3: #bf7cff;
+}
+
+[data-theme="nebula"] {
+  --theme-chroma-1: #bf7cff;
+  --theme-chroma-2: #62d8ff;
+  --theme-chroma-3: #ff5fa2;
+}
+
+[data-theme="candy"] {
+  --theme-chroma-1: #ff5fa2;
+  --theme-chroma-2: #f2c94c;
+  --theme-chroma-3: #62d8ff;
+}
+
+[data-theme="rainbow"] {
+  --theme-chroma-1: #ff5fa2;
+  --theme-chroma-2: #f2c94c;
+  --theme-chroma-3: #62d8ff;
+}
+
+[data-theme="twilight"] {
+  --theme-chroma-1: #5a8cff;
+  --theme-chroma-2: #bf7cff;
+  --theme-chroma-3: #ff9b54;
+}
+
+[data-theme="cyber"] {
+  --theme-chroma-1: #62d8ff;
+  --theme-chroma-2: #4cc38a;
+  --theme-chroma-3: #ff5fa2;
 }
 
 /* Accent overrides */

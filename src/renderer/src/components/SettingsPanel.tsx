@@ -803,7 +803,7 @@ export function SettingsPanel({
                   {THEME_OPTIONS.map((option) => (
                     <button
                       key={option.value}
-                      className={`settings-radio-option ${themeAppearance === option.value ? 'active' : ''}`}
+                      className={`settings-radio-option settings-theme-option ${themeAppearance === option.value ? 'active' : ''}`}
                       onClick={() => onChange({ themeAppearance: option.value })}
                     >
                       <span className={`settings-radio-dot theme-dot theme-${option.value}`} />
