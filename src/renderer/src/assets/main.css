@@ -23799,6 +23799,23 @@ input:disabled, select:disabled, textarea:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  /* CRITICAL — re-enable hit-testing.
+   *
+   * The `.composer-area` ancestor (line 4100) sets `pointer-events: none`
+   * so the empty space around the composer passes clicks through to
+   * the transcript behind it. Children that genuinely need clicks
+   * have to opt back in explicitly. `.composer-above-bar`,
+   * `.composer-surface`, and `.composer-header-row` all do this;
+   * `.ensemble-above-row` was missing it, which is why chips,
+   * overflow buttons, and drag/click events on the strip silently
+   * never fired — not a z-index issue, not the prior HTML5-draggable
+   * suppression I chased for two commits, but pointer-events
+   * inheritance from the absolute-positioned composer-area parent.
+   *
+   * Setting `pointer-events: auto` here re-enables the whole strip
+   * including the chip body, overflow button, drag detection, and
+   * any future Stop-Ensemble / queued-prompt indicator. */
+  pointer-events: auto;
   /* A1 follow-up — padding aligned to `.composer-above-bar.style-unified`
    * (8px 16px) so the chip strip pill sits the same width / inset as
    * the Create-PR pill above it. Reads as a coherent stack of
