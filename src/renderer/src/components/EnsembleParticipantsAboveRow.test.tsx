@@ -43,7 +43,7 @@ describe('EnsembleParticipantsAboveRow', () => {
   it('returns null for non-ensemble chats', () => {
     const chat: ChatRecord = {
       appChatId: 'solo-chat',
-      chatKind: 'standard',
+      chatKind: 'single',
       scope: 'workspace',
       provider: 'claude',
       title: 'Solo',

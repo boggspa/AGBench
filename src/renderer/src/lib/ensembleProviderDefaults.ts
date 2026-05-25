@@ -1,13 +1,16 @@
 /*
  * ensembleProviderDefaults — per-provider model + reasoning + fast-tier
- * options for the EnsembleSetupSheet picker rows. Mirrors the defaults
- * baked into App.tsx (CODEX_DEFAULT_MODELS, CLAUDE_DEFAULT_MODELS,
- * GEMINI_DEFAULT_MODELS, KIMI_DEFAULT_MODELS) but stays in a small
- * standalone module so the setup sheet doesn't need to import from
- * App.tsx (which would invert the dependency direction).
+ * options for the ensemble participant chip flyouts. Mirrors the
+ * defaults baked into App.tsx (CODEX_DEFAULT_MODELS,
+ * CLAUDE_DEFAULT_MODELS, GEMINI_DEFAULT_MODELS, KIMI_DEFAULT_MODELS)
+ * but stays in a small standalone module so the consumer doesn't
+ * need to import from App.tsx (which would invert the dependency
+ * direction).
  *
- * Slice D (1.0.3) — replaces the EnsembleSetupSheet's free-text model
- * input with a CombinedModelPicker-driven chip.
+ * Originally landed in Slice D (1.0.3) for the EnsembleSetupSheet
+ * modal's per-row pickers; carried forward in Slice F (1.0.3) when
+ * that modal retired and the per-participant pickers moved into
+ * EnsembleParticipantsAboveRow chip flyouts.
  *
  * Note: the renderer's authoritative model list lives in App.tsx's
  * `agentModelsByProvider` state (which can be hydrated from server-side

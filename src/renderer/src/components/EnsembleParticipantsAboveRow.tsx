@@ -192,6 +192,7 @@ function ParticipantChip({
     <button
       type="button"
       draggable
+      data-participant-id={participant.id}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = 'move'
         // Firefox needs setData to actually start a drag.
@@ -238,20 +239,20 @@ function ParticipantFlyout({
   const fastCapable = defaults.fastModeCapableModelIds.has(modelId)
   const fastSupported = defaults.fastModeCapableModelIds.size > 0
 
-  // Anchor the flyout above the clicked chip. We find the active chip
-  // by `data-participant-id` so the popover follows even if the chips
-  // reorder mid-edit.
+  // Anchor the flyout above the chip the user clicked. We target by
+  // `data-participant-id` so the lookup stays exact even if multiple
+  // ensemble chats ever render simultaneously (today there's only one
+  // visible, but the participant.id is unique across the app and
+  // future-proofs us against the provider-class approach grabbing
+  // the wrong chip). CSS.escape() guards against any participant ids
+  // that happen to contain selector-meaningful characters.
   useEffect(() => {
     let cancelled = false
     queueMicrotask(() => {
       if (cancelled) return
-      // The trigger chip is the closest `.ensemble-above-chip` with
-      // matching provider class. Walk the document since we don't
-      // hold a ref to it.
-      const triggers = document.querySelectorAll<HTMLButtonElement>(
-        `.ensemble-above-chip.provider-${participant.provider}`
+      const trigger = document.querySelector<HTMLButtonElement>(
+        `.ensemble-above-chip[data-participant-id="${CSS.escape(participant.id)}"]`
       )
-      const trigger = triggers[0]
       if (!trigger) return
       const rect = trigger.getBoundingClientRect()
       const flyoutWidth = 340
@@ -262,7 +263,7 @@ function ParticipantFlyout({
     return () => {
       cancelled = true
     }
-  }, [participant.provider])
+  }, [participant.id])
 
   // Close on Escape + click outside.
   useEffect(() => {
