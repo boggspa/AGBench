@@ -4386,6 +4386,61 @@ button.sidebar-item {
   z-index: 2;
 }
 
+/* Welcome workspace picker (1.0.3) — recent-workspace chips +
+ * "Browse…" button under the welcome subheading. Pointer-events
+ * re-enabled here because the parent .welcome-hero is `none` so
+ * the textarea below isn't blocked by the hero text. */
+.welcome-workspace-picker {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-sm);
+  margin-top: var(--space-md);
+  pointer-events: auto;
+}
+.welcome-workspace-picker-label {
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.welcome-workspace-picker-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.welcome-workspace-picker-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated, var(--background)) 65%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-xs);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+.welcome-workspace-picker-chip:hover {
+  background: color-mix(in srgb, currentColor 8%, var(--surface-elevated, var(--background)));
+  border-color: color-mix(in srgb, currentColor 28%, transparent);
+}
+.welcome-workspace-picker-chip-name {
+  display: inline-block;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.welcome-workspace-picker-browse {
+  font-weight: 600;
+  color: var(--accent, var(--text-primary));
+}
+
 .welcome-hero h1 {
   margin: 0;
   color: var(--text-primary);

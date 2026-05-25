@@ -4294,6 +4294,75 @@ interface AgentQuestionCardProps {
   onDismiss: () => void
 }
 
+/**
+ * Welcome-screen workspace picker (1.0.3). Surfaces below the welcome
+ * hero on a fresh chat so users can switch workspace without first
+ * hunting through the sidebar. Two rows of affordances:
+ *
+ *   - "Recent": the 4 most-recently-touched workspaces as chips. Click
+ *     to swap to that workspace. Current workspace is suppressed from
+ *     the list (no point picking the one you're already on).
+ *   - "Browse…": opens the system folder picker via the existing
+ *     `selectWorkspace` IPC → main calls `dialog.showOpenDialog`. On
+ *     success the parent's `handleSelectWorkspace` then refreshes the
+ *     workspace list and switches over.
+ *
+ * Hidden on the *global* chat surface — the global chat is intentionally
+ * workspace-less, so showing a "pick a folder" affordance there is
+ * confusing. Sidebar still has the picker for that case.
+ */
+interface WelcomeWorkspacePickerProps {
+  workspaces: WorkspaceRecord[]
+  currentWorkspace: WorkspaceRecord | null
+  isGlobalChat: boolean
+  onPickExisting: (ws: WorkspaceRecord) => void
+  onBrowse: () => void
+}
+
+function WelcomeWorkspacePicker({
+  workspaces,
+  currentWorkspace,
+  isGlobalChat,
+  onPickExisting,
+  onBrowse
+}: WelcomeWorkspacePickerProps): React.JSX.Element | null {
+  if (isGlobalChat) return null
+  const others = workspaces
+    .filter((ws) => ws.id !== currentWorkspace?.id)
+    .sort((a, b) => (b.lastOpenedAt || b.createdAt || 0) - (a.lastOpenedAt || a.createdAt || 0))
+    .slice(0, 4)
+  return (
+    <div className="welcome-workspace-picker">
+      <span className="welcome-workspace-picker-label">
+        {currentWorkspace ? 'Switch folder' : 'Open a folder'}:
+      </span>
+      <div className="welcome-workspace-picker-chips">
+        {others.map((ws) => (
+          <button
+            key={ws.id}
+            type="button"
+            className="welcome-workspace-picker-chip"
+            onClick={() => onPickExisting(ws)}
+            title={ws.path}
+          >
+            <span className="welcome-workspace-picker-chip-name">
+              {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+            </span>
+          </button>
+        ))}
+        <button
+          type="button"
+          className="welcome-workspace-picker-chip welcome-workspace-picker-browse"
+          onClick={onBrowse}
+          title="Open the system folder picker"
+        >
+          Browse…
+        </button>
+      </div>
+    </div>
+  )
+}
+
 function AgentQuestionCard({
   state,
   onAnswer,
@@ -14975,6 +15044,18 @@ function App(): React.JSX.Element {
                       </div>
                     </>
                   )}
+                  {/* Workspace picker on the ensemble welcome too —
+                      same affordance as the solo welcome surface above,
+                      because the ensemble path lands here just as
+                      often after a "New Chat" click and needs the
+                      same one-click workspace swap. */}
+                  <WelcomeWorkspacePicker
+                    workspaces={workspaces}
+                    currentWorkspace={currentWorkspace}
+                    isGlobalChat={isCurrentGlobalChat}
+                    onPickExisting={handleSelectExistingWorkspace}
+                    onBrowse={handleSelectWorkspace}
+                  />
                 </div>
               )
             })()}
@@ -14988,6 +15069,24 @@ function App(): React.JSX.Element {
                   <span>{welcomeCopy.heading.afterWorkspace}</span>
                 </h1>
                 <p>{welcomeCopy.subheading}</p>
+                {/*
+                  Welcome workspace picker (1.0.3). The sidebar already has a
+                  workspace list, but landing on the welcome screen of a new
+                  chat — especially the global-chat fall-through — leaves the
+                  user staring at "Workspace: <something>" with no way to change
+                  it without first re-finding the sidebar. This row gives them
+                  a one-click affordance: recent workspaces as quick chips,
+                  plus a "Browse…" button to open the system folder picker.
+                  Workspaces show their displayName + folder basename when
+                  different.
+                */}
+                <WelcomeWorkspacePicker
+                  workspaces={workspaces}
+                  currentWorkspace={currentWorkspace}
+                  isGlobalChat={isCurrentGlobalChat}
+                  onPickExisting={handleSelectExistingWorkspace}
+                  onBrowse={handleSelectWorkspace}
+                />
               </div>
             )}
             {/*
