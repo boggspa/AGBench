@@ -1,5 +1,6 @@
 import {
   app,
+  Menu,
   shell,
   BrowserWindow,
   ipcMain,
@@ -8,7 +9,11 @@ import {
   screen,
   powerMonitor
 } from 'electron'
-import type { BrowserWindowConstructorOptions, WebContentsConsoleMessageEventParams } from 'electron'
+import type {
+  BrowserWindowConstructorOptions,
+  MenuItemConstructorOptions,
+  WebContentsConsoleMessageEventParams
+} from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -17711,6 +17716,107 @@ if (isGeminiMcpBridgeProcess) {
   app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.electron')
     registerProductCrashHandlers()
+
+    /*
+     * F4 (1.0.3) — explicit application menu.
+     *
+     * Suppresses the recurring NSMenu warning:
+     *   "representedObject is not a WeakPtrToElectronMenuModelAsNSObject"
+     *
+     * Investigation finding: AGBench never constructed an application
+     * menu (no `Menu.buildFromTemplate` / `setApplicationMenu` calls
+     * anywhere in src/). Electron auto-generated a default macOS
+     * menu bar, and its internal NSMenu bridge emits the warning
+     * during that auto-construction — verified by ruling out every
+     * other menu surface (no dock menu, no tray menu, no context
+     * menus in main).
+     *
+     * Fix: build an explicit standard macOS menu using Electron's
+     * built-in roles (no custom click handlers, no representedObject
+     * fields, no non-standard MenuItem props). The role-based items
+     * use Electron's own bridge representation, which the NSMenu
+     * shim accepts without warning. We get the standard
+     * AGBench / File / Edit / View / Window / Help menus back,
+     * just sourced from us explicitly rather than
+     * auto-generated.
+     */
+    const appMenuTemplate: MenuItemConstructorOptions[] = [
+      {
+        label: app.name,
+        submenu: [
+          { role: 'about' },
+          { type: 'separator' },
+          { role: 'services' },
+          { type: 'separator' },
+          { role: 'hide' },
+          { role: 'hideOthers' },
+          { role: 'unhide' },
+          { type: 'separator' },
+          { role: 'quit' }
+        ]
+      },
+      {
+        label: 'File',
+        submenu: [{ role: 'close' }]
+      },
+      {
+        label: 'Edit',
+        submenu: [
+          { role: 'undo' },
+          { role: 'redo' },
+          { type: 'separator' },
+          { role: 'cut' },
+          { role: 'copy' },
+          { role: 'paste' },
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          {
+            label: 'Speech',
+            submenu: [{ role: 'startSpeaking' }, { role: 'stopSpeaking' }]
+          }
+        ]
+      },
+      {
+        label: 'View',
+        submenu: [
+          { role: 'reload' },
+          { role: 'forceReload' },
+          { role: 'toggleDevTools' },
+          { type: 'separator' },
+          { role: 'resetZoom' },
+          { role: 'zoomIn' },
+          { role: 'zoomOut' },
+          { type: 'separator' },
+          { role: 'togglefullscreen' }
+        ]
+      },
+      {
+        label: 'Window',
+        submenu: [
+          { role: 'minimize' },
+          { role: 'zoom' },
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ]
+      },
+      {
+        label: 'Help',
+        submenu: []
+      }
+    ]
+    try {
+      const appMenu = Menu.buildFromTemplate(appMenuTemplate)
+      Menu.setApplicationMenu(appMenu)
+    } catch (error) {
+      console.warn(
+        '[main] Failed to install custom application menu — falling back to Electron defaults:',
+        error
+      )
+    }
 
     // Phase K3 — wire the creative-action approval gate to the renderer.
     // Broadcasts pending requests to the focused window; resolves
