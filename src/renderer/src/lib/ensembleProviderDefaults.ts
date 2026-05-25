@@ -25,7 +25,11 @@ import type {
   CombinedModelPickerModelOption,
   CombinedModelPickerReasoningOption
 } from '../components/CombinedModelPicker'
-import type { ProviderId } from '../../../main/store/types'
+import type {
+  EnsembleParticipant,
+  PermissionPresetId,
+  ProviderId
+} from '../../../main/store/types'
 
 export interface EnsembleModelDefaults {
   modelOptions: CombinedModelPickerModelOption[]
@@ -92,6 +96,136 @@ const KIMI_MODELS: CombinedModelPickerModelOption[] = [
 
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])
 const CLAUDE_FAST_CAPABLE = new Set<string>(['claude-opus-4-7', 'claude-opus-4-6'])
+
+/**
+ * Canonical seed config for a new ensemble participant. Mirrors the
+ * fallback values that used to be scattered across:
+ *   - `src/main/EnsembleDefaults.ts` (initial `model` + `permissionPresetId`)
+ *   - `App.tsx` composer pickers (`reasoningEffort || 'medium'`, etc.)
+ *   - `EnsembleOrchestrator.ts` dispatch (`participant.model || 'cli-default'`)
+ *
+ * Used both for seeding (when adding a participant) and for resolving
+ * the effective per-participant settings the composer pickers display.
+ *
+ * Field shape matches the `EnsembleParticipant` interface in
+ * `src/main/store/types.ts` (around line 206). `reasoningEffort`,
+ * `fastModeEnabled`, `thinkingEnabled`, and `serviceTier` are optional
+ * on the participant record itself — this helper resolves them to
+ * concrete defaults so call-sites don't need to repeat the fallback
+ * logic.
+ *
+ * Note: `model` defaults to `'cli-default'` rather than the per-provider
+ * preferred id (e.g. `'gpt-5.5'`) to match the existing seeding behaviour
+ * in `EnsembleDefaults.ts`. The orchestrator + provider adapters resolve
+ * `'cli-default'` to the provider's CLI-default model at dispatch time.
+ * `getEnsembleModelDefaults(provider).defaultModelId` exposes the
+ * preferred display id for the model picker; the participant record
+ * keeps the agnostic `'cli-default'` until the user picks something.
+ */
+export interface DefaultEnsembleParticipantConfig {
+  model: string
+  permissionPresetId: PermissionPresetId
+  reasoningEffort?: string
+  fastModeEnabled?: boolean
+  thinkingEnabled?: boolean
+  serviceTier?: string
+}
+
+export function getDefaultEnsembleParticipantConfig(
+  provider: ProviderId
+): DefaultEnsembleParticipantConfig {
+  switch (provider) {
+    case 'codex':
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'workspace_write',
+        reasoningEffort: 'medium',
+        fastModeEnabled: false,
+        serviceTier: ''
+      }
+    case 'claude':
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only',
+        reasoningEffort: 'medium',
+        fastModeEnabled: false
+      }
+    case 'gemini':
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only'
+      }
+    case 'kimi':
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only',
+        thinkingEnabled: false
+      }
+    default:
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'default'
+      }
+  }
+}
+
+/**
+ * Resolve a participant's effective settings by layering its stored
+ * fields on top of `getDefaultEnsembleParticipantConfig`. The returned
+ * object always has concrete (non-undefined) values for the
+ * provider-relevant fields so consumers can read directly without
+ * repeating fallback chains.
+ *
+ * - `reasoningEffort`: empty string for providers without a reasoning
+ *   axis (Gemini); otherwise the participant's value or the canonical
+ *   provider default.
+ * - `serviceTier`: empty string when not the paid Fast tier. Codex
+ *   participants infer `'fast'` from `fastModeEnabled` if `serviceTier`
+ *   itself is unset, matching the existing renderer fallback in
+ *   `App.tsx` and the orchestrator dispatch.
+ */
+export interface ResolvedEnsembleParticipantSettings {
+  provider: ProviderId
+  model: string
+  permissionPresetId: PermissionPresetId
+  reasoningEffort: string
+  fastModeEnabled: boolean
+  thinkingEnabled: boolean
+  serviceTier: string
+}
+
+export function resolveEnsembleParticipantSettings(
+  participant: Pick<
+    EnsembleParticipant,
+    | 'provider'
+    | 'model'
+    | 'permissionPresetId'
+    | 'reasoningEffort'
+    | 'fastModeEnabled'
+    | 'thinkingEnabled'
+    | 'serviceTier'
+  >
+): ResolvedEnsembleParticipantSettings {
+  const defaults = getDefaultEnsembleParticipantConfig(participant.provider)
+  const model = participant.model || defaults.model
+  const permissionPresetId = participant.permissionPresetId || defaults.permissionPresetId
+  const reasoningEffort = participant.reasoningEffort || defaults.reasoningEffort || ''
+  const fastModeEnabled = Boolean(participant.fastModeEnabled ?? defaults.fastModeEnabled)
+  const thinkingEnabled = Boolean(participant.thinkingEnabled ?? defaults.thinkingEnabled)
+  // Codex serviceTier: respect explicit value, else infer 'fast' from
+  // fastModeEnabled (mirrors the existing renderer + dispatch fallback).
+  const serviceTier =
+    participant.serviceTier ?? (fastModeEnabled ? 'fast' : defaults.serviceTier ?? '')
+  return {
+    provider: participant.provider,
+    model,
+    permissionPresetId,
+    reasoningEffort,
+    fastModeEnabled,
+    thinkingEnabled,
+    serviceTier
+  }
+}
 
 export function getEnsembleModelDefaults(provider: ProviderId): EnsembleModelDefaults {
   switch (provider) {

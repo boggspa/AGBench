@@ -1,5 +1,18 @@
 import type { EnsembleConfig, EnsembleParticipant, PermissionPresetId, ProviderId } from './store/types'
 
+/*
+ * F2 (1.0.3) — the per-provider participant defaults below MUST stay in
+ * lockstep with `getDefaultEnsembleParticipantConfig` in
+ * `src/renderer/src/lib/ensembleProviderDefaults.ts`, which is the
+ * renderer-side single source-of-truth for the same values (model,
+ * permissionPresetId, plus the reasoning/fast/thinking fallbacks the
+ * composer pickers read at runtime). The two modules can't share a
+ * file because the renderer module imports renderer-only types from
+ * `CombinedModelPicker` and bundling main → renderer would tangle the
+ * electron-vite build graph. Treat the renderer module as canonical;
+ * if you change a default here, change it there too (the
+ * `ensembleProviderDefaults.test.ts` fixtures pin the values).
+ */
 const DEFAULT_ENSEMBLE_ROLES: Array<{
   provider: ProviderId
   role: string
