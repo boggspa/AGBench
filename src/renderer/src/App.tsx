@@ -15069,13 +15069,10 @@ function App(): React.JSX.Element {
         approvals (K3 FCP import, K4 AppleScript, K5 Blender). */}
       <CreativeActionApprovalModal
         onSubscribe={(handler) => {
-          window.api.onCreativeActionRequest((payload) =>
+          const unsubscribe = window.api.onCreativeActionRequest((payload) =>
             handler(payload as Parameters<typeof handler>[0])
           )
-          // The preload's `onCreativeActionRequest` doesn't return an
-          // unsubscribe handle (the channel is process-lifetime). Return
-          // a noop — `removeListeners` in preload cleans up at teardown.
-          return () => {}
+          return unsubscribe
         }}
         onDecide={(requestId, approved, rememberForSession) =>
           window.api.decideCreativeAction(requestId, approved, rememberForSession)

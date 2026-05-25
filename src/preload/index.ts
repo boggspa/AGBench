@@ -494,7 +494,9 @@ const api = {
   // Phase K3 — creative-app approval flow. Main process broadcasts
   // pending requests; renderer modal renders + collects decision.
   onCreativeActionRequest: (callback: (payload: unknown) => void) => {
-    ipcRenderer.on('creative-action:request', (_event, payload) => callback(payload))
+    const wrapped = (_event: unknown, payload: unknown) => callback(payload)
+    ipcRenderer.on('creative-action:request', wrapped)
+    return () => ipcRenderer.removeListener('creative-action:request', wrapped)
   },
   decideCreativeAction: (
     requestId: string,

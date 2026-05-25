@@ -700,7 +700,7 @@ declare global {
           appRunId?: string
           appChatId?: string
         }) => void
-      ) => void
+      ) => () => void
       onAgentError: (
         callback: (payload: {
           provider: ProviderId
@@ -708,7 +708,7 @@ declare global {
           appRunId?: string
           appChatId?: string
         }) => void
-      ) => void
+      ) => () => void
       onAgentExit: (
         callback: (payload: {
           provider: ProviderId
@@ -749,7 +749,7 @@ declare global {
             payloadPreview?: string
           }
         }) => void
-      ) => void
+      ) => () => void
       decideCreativeAction: (
         requestId: string,
         approved: boolean,

@@ -88,6 +88,8 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'repair-product-install': [],
   'set-appearance-mode': ['any'],
   'get-host-weather': [],
+  'agentic-yolo-get': [],
+  'agentic-yolo-set': ['boolean'],
   'get-file-icon': ['string'],
   'get-gemini-version': [],
   'get-gemini-capabilities': ['optionalString'],

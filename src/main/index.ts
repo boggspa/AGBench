@@ -8,7 +8,7 @@ import {
   screen,
   powerMonitor
 } from 'electron'
-import type { BrowserWindowConstructorOptions } from 'electron'
+import type { BrowserWindowConstructorOptions, WebContentsConsoleMessageEventParams } from 'electron'
 import { detectExternalPath } from './services/ExternalPathDetector'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
@@ -242,6 +242,24 @@ const mcpBrowserConsoleBuffer: Array<{
   line?: number
   url?: string
 }> = []
+
+function consoleMessageLevelToNumber(
+  level: WebContentsConsoleMessageEventParams['level'] | number
+): number {
+  if (typeof level === 'number') return level
+  switch (level) {
+    case 'debug':
+      return 0
+    case 'info':
+      return 1
+    case 'warning':
+      return 2
+    case 'error':
+      return 3
+    default:
+      return 1
+  }
+}
 
 type McpToolContentBlock =
   | { type: 'text'; text: string }
@@ -11826,8 +11844,14 @@ function ensureMcpBrowserWindow(args: Record<string, any> = {}): BrowserWindow {
     openSafeShellTargetDetached(url)
     return { action: 'deny' }
   })
-  win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-    pushMcpBrowserConsoleEntry({ level, message, line, sourceId, url: win.webContents.getURL() })
+  win.webContents.on('console-message', (details) => {
+    pushMcpBrowserConsoleEntry({
+      level: consoleMessageLevelToNumber(details.level),
+      message: details.message,
+      line: details.lineNumber,
+      sourceId: details.sourceId,
+      url: win.webContents.getURL()
+    })
   })
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     pushMcpBrowserConsoleEntry({
@@ -17575,13 +17599,13 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+  mainWindow.webContents.on('console-message', (details) => {
     rendererConsoleBuffer.push({
       timestamp: new Date().toISOString(),
-      level,
-      message,
-      sourceId,
-      line
+      level: consoleMessageLevelToNumber(details.level),
+      message: details.message,
+      sourceId: details.sourceId,
+      line: details.lineNumber
     })
     if (rendererConsoleBuffer.length > 500) {
       rendererConsoleBuffer.splice(0, rendererConsoleBuffer.length - 500)
