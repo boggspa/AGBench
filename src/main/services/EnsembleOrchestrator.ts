@@ -782,58 +782,17 @@ export class EnsembleOrchestrator {
     // Insert lazily so participants that never call tools never produce
     // a stray empty tool bubble. Subsequent flushes replace the message
     // in place via its stable id so activity status updates land.
-    if (run.toolActivities && run.toolActivities.length > 0) {
-      if (!run.toolMessageId) {
-        run.toolMessageId = `ensemble-tool-${run.runId}`
-      }
-      const toolMessageId = run.toolMessageId
-      const existingToolIdx = messages.findIndex((message) => message.id === toolMessageId)
-      // Diagnostic counterpart to the tool_use receive log. Tells us
-      // whether the orchestrator's flush actually emits the tool
-      // message into the chat record. Pair this with the receive log
-      // to see receive → persist round-trip.
-      // eslint-disable-next-line no-console
-      console.log(
-        `[ensemble:flush_tool_message] run=${run.runId} id=${toolMessageId} activities=${run.toolActivities.length} insert=${existingToolIdx >= 0 ? 'replace' : 'append'}`
-      )
-      const toolMsg: ChatMessage = {
-        id: toolMessageId,
-        role: 'tool',
-        content: '',
-        timestamp,
-        runId: run.runId,
-        toolActivities: [...run.toolActivities],
-        metadata: {
-          kind: 'ensembleParticipantTools',
-          ensembleRoundId: run.roundId,
-          ensembleParticipantId: run.participant.id,
-          ensembleProvider: run.participant.provider,
-          ensembleRole: run.participant.role,
-          ensembleOrder: run.participant.order
-        }
-      }
-      if (existingToolIdx >= 0) {
-        messages[existingToolIdx] = toolMsg
-      } else {
-        // First insertion — place before the assistant message slot
-        // (if it already exists) so transcript order reads
-        // tool-calls-then-final-answer. Otherwise append; the
-        // assistant message will be added after in this same flush
-        // pass and naturally lands after the tool message.
-        const assistantSlot = messages.findIndex(
-          (message) => message.id === run.assistantMessageId
-        )
-        if (assistantSlot >= 0) {
-          messages = [
-            ...messages.slice(0, assistantSlot),
-            toolMsg,
-            ...messages.slice(assistantSlot)
-          ]
-        } else {
-          messages = [...messages, toolMsg]
-        }
-      }
-    }
+    // Tool-message handling moved AFTER the assistant-message
+    // insertion below. Tool calls feel "inline with the response"
+    // when they appear directly under the participant's text — the
+    // chronology most LLMs follow is "I'll do X" then doing X.
+    // Putting the tool block above the text inverted that order
+    // and felt like a stack of cold operations preceding the
+    // explanation.
+    //
+    // The actual tool-message creation lives below; we still
+    // accumulate per-flush so the activity status (running →
+    // success/error) lands when results pair up.
     const assistantIndex = messages.findIndex((message) => message.id === run.assistantMessageId)
     if (run.content.trim()) {
       const assistantMessage: ChatMessage = {
@@ -885,6 +844,67 @@ export class EnsembleOrchestrator {
           }
         }
       ]
+    }
+
+    // Tool-message materialisation — AFTER the assistant message so
+    // transcript order reads "assistant said X, then used tools Y/Z".
+    // Chronologically the assistant typically narrates intent before
+    // tool execution; putting tool rows above the text inverted that
+    // and felt wrong to Chris. The renderer's existing ActivityStack
+    // doesn't care about position — it just renders whatever tool
+    // message it sees as a `role: 'tool'` entry with the activities.
+    if (run.toolActivities && run.toolActivities.length > 0) {
+      if (!run.toolMessageId) {
+        run.toolMessageId = `ensemble-tool-${run.runId}`
+      }
+      const toolMessageId = run.toolMessageId
+      const existingToolIdx = messages.findIndex((message) => message.id === toolMessageId)
+      // Diagnostic counterpart to the tool_use receive log. Tells us
+      // whether the orchestrator's flush actually emits the tool
+      // message into the chat record.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[ensemble:flush_tool_message] run=${run.runId} id=${toolMessageId} activities=${run.toolActivities.length} insert=${existingToolIdx >= 0 ? 'replace' : 'append'}`
+      )
+      const toolMsg: ChatMessage = {
+        id: toolMessageId,
+        role: 'tool',
+        content: '',
+        timestamp,
+        runId: run.runId,
+        toolActivities: [...run.toolActivities],
+        metadata: {
+          kind: 'ensembleParticipantTools',
+          ensembleRoundId: run.roundId,
+          ensembleParticipantId: run.participant.id,
+          ensembleProvider: run.participant.provider,
+          ensembleRole: run.participant.role,
+          ensembleOrder: run.participant.order
+        }
+      }
+      if (existingToolIdx >= 0) {
+        messages[existingToolIdx] = toolMsg
+      } else {
+        // Place AFTER the assistant message if one exists, else
+        // append (in which case the assistant message will land
+        // below the tool message on a subsequent flush — but
+        // because we now do tool-handling AFTER assistant
+        // insertion, that's only the case when content is empty,
+        // and the existing tool message will then be relocated on
+        // the next pass once content arrives).
+        const assistantSlot = messages.findIndex(
+          (message) => message.id === run.assistantMessageId
+        )
+        if (assistantSlot >= 0) {
+          messages = [
+            ...messages.slice(0, assistantSlot + 1),
+            toolMsg,
+            ...messages.slice(assistantSlot + 1)
+          ]
+        } else {
+          messages = [...messages, toolMsg]
+        }
+      }
     }
 
     const runs = chat.runs.map((existingRun) =>

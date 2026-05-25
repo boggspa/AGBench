@@ -138,11 +138,14 @@ export function EnsembleParticipantsAboveRow({
         })}
       </div>
       <div className="ensemble-above-row-actions">
-        {activeRound?.status === 'running' && activeRound.queuedPrompt && (
-          <span className="ensemble-above-row-queued" title={activeRound.queuedPrompt}>
-            Queued next round
-          </span>
-        )}
+        {/* "Queued next round" label intentionally not rendered here —
+            the queued-messages above-row (sibling in the composer
+            above-bar stack) now surfaces ensemble `queuedPrompt`
+            entries as a full row with Edit / Delete / Steer actions,
+            so duplicating the bare label here would be noise. See
+            `QueuedMessagesAboveRow.tsx` + the
+            `queuedMessagesAboveRowEntries` builder in App.tsx for
+            the ensemble-queued branch. */}
         {activeRound?.status === 'running' && activeRound.activeParticipantId && onSkipActive && (
           <button
             type="button"

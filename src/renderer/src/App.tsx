@@ -12707,59 +12707,44 @@ function App(): React.JSX.Element {
     // Prefer a live aggregate from tool activities so the above-composer
     // bar updates mid-task rather than only after runDiff lands.
     //
-    // Solo chats: filter to the single current run.
-    // Ensemble chats: aggregate across every tool activity from every
-    // participant whose message is tagged with the current round id.
-    // The simpler "any tool activity belonging to a known round run"
-    // pass mirrors how `getLiveToolFileDiffSummaries` (which drives
-    // the Task Complete card's File changes list) works. Filtering
-    // by `runId` alone would only catch the last speaker's writes,
-    // which is what gave us the "0 files changed" pill mismatch in
-    // the screenshot — the Task Complete card listed four files but
-    // this pill showed zero.
-    const runId = currentRun?.runId
-    const ensembleRoundId = isCurrentEnsembleChat
-      ? currentChat?.ensemble?.activeRound?.roundId
-      : undefined
-    // Collect the set of run ids that belong to the current ensemble
-    // round so we can match by participant runId (matches my
-    // orchestrator's per-participant tool messages whose `runId`
-    // field is the participant's run, not the round). The metadata
-    // path stays as a belt-and-braces.
-    const ensembleRunIds = new Set<string>()
-    if (ensembleRoundId && currentChat) {
-      for (const chatRun of currentChat.runs || []) {
-        if (chatRun.ensembleRoundId === ensembleRoundId && chatRun.runId) {
-          ensembleRunIds.add(chatRun.runId)
+    // Ensemble path: delegate to `getLiveToolFileDiffSummaries` — the
+    // same helper that drives the Task Complete card's File changes
+    // list. It extracts real line counts from tool parameters / patch
+    // previews / `changes` arrays via `extractToolFileContributions`,
+    // which is the path my orchestrator's minimal diffSummary doesn't
+    // reach on its own. Without this, the +XX/-XX pill stayed at 0
+    // even though the Task Complete card showed real numbers (Chris's
+    // "diff doesn't show anything in the Review Changes / Create PR
+    // row" feedback from the 1.0.3 smoke pass).
+    if (isCurrentEnsembleChat && currentChat) {
+      const ensembleSummaries = getLiveToolFileDiffSummaries(
+        currentChat.messages || [],
+        currentWorkspace?.path
+      )
+      const renderableSummaries = ensembleSummaries.filter((entry) => !entry.isNoise)
+      if (renderableSummaries.length > 0) {
+        let liveAdditions = 0
+        let liveDeletions = 0
+        for (const entry of renderableSummaries) {
+          if (typeof entry.additions === 'number') liveAdditions += entry.additions
+          if (typeof entry.deletions === 'number') liveDeletions += entry.deletions
+        }
+        return {
+          additions: liveAdditions,
+          deletions: liveDeletions,
+          filesChanged: renderableSummaries.length
         }
       }
     }
-    if (currentChat && (runId || ensembleRoundId)) {
+    // Solo path: filter to the single current run (the original logic).
+    const runId = currentRun?.runId
+    if (currentChat && runId) {
       let liveAdditions = 0
       let liveDeletions = 0
       const liveFiles = new Set<string>()
       let hasAnyDiff = false
       for (const message of currentChat.messages || []) {
-        const messageRoundId =
-          typeof message.metadata?.ensembleRoundId === 'string'
-            ? (message.metadata.ensembleRoundId as string)
-            : undefined
-        const matchesEnsembleRoundMeta =
-          Boolean(ensembleRoundId) && messageRoundId === ensembleRoundId
-        const matchesEnsembleRoundByRun =
-          message.runId !== undefined && ensembleRunIds.has(message.runId)
-        const matchesCurrentRun = Boolean(runId) && message.runId === runId
-        // Skip messages tagged with a different run id when none of
-        // the per-run / per-round matches apply. Untagged messages
-        // (no `runId`) always pass through.
-        if (
-          message.runId &&
-          !matchesCurrentRun &&
-          !matchesEnsembleRoundMeta &&
-          !matchesEnsembleRoundByRun
-        ) {
-          continue
-        }
+        if (message.runId && message.runId !== runId) continue
         for (const activity of message.toolActivities || []) {
           const diff = activity.diffSummary
           if (!diff) continue
@@ -12793,8 +12778,7 @@ function App(): React.JSX.Element {
     currentRun?.runId,
     runDiff,
     isCurrentEnsembleChat,
-    currentChat?.ensemble?.activeRound?.roundId,
-    currentChat?.runs
+    currentWorkspace?.path
   ])
   // Slice 6 of the external-path-redesign arc: partition diff stats
   // by which grant's repoRoot each tool activity's file path falls
@@ -12898,13 +12882,25 @@ function App(): React.JSX.Element {
   }, [runQueueJobs])
   // Composer above-row stack input: queued requests targeting the
   // active chat, projected to the row component's narrow display
-  // shape. `queuedRuns` is the renderer-local source of truth for
-  // dispatch order (see the schedule loop at line ~12020), so a
-  // direct map preserves the visible-and-dispatch order.
+  // shape. Two sources merge here:
+  //
+  //   1. `queuedRuns` — the renderer-local solo-chat queue. Populated
+  //      when the user sends while a non-ensemble run is busy.
+  //
+  //   2. `chat.ensemble.activeRound.queuedPrompt` — the orchestrator's
+  //      single-string queue for ensemble rounds (set when the user
+  //      sends while an ensemble round is still running). Ensemble
+  //      queueing has a different mechanism than solo queues, so my
+  //      first cut at this component missed it entirely.
+  //
+  // The ensemble entry uses a synthetic id keyed off the active
+  // round + 'ensemble-pending' so the row stays stable across
+  // re-renders. The Skip / Steer / Edit actions for ensemble entries
+  // delegate to the right ensemble-aware paths.
   const queuedMessagesAboveRowEntries: QueuedMessageRowEntry[] = useMemo(() => {
     if (!currentChat) return []
     const chatId = currentChat.appChatId
-    return queuedRuns
+    const entries: QueuedMessageRowEntry[] = queuedRuns
       .filter((request) => request.chatRecord?.appChatId === chatId)
       .map((request) => ({
         id: request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`,
@@ -12912,6 +12908,26 @@ function App(): React.JSX.Element {
         prompt: request.displayPrompt || request.prompt,
         dmTargetParticipantId: request.dmTargetParticipantId
       }))
+    // Append the ensemble-round queued prompt if one exists. There's
+    // exactly one at a time in the current orchestrator design — if
+    // we ever support a multi-entry ensemble queue, expand here.
+    const ensembleRound = currentChat.ensemble?.activeRound
+    if (ensembleRound?.queuedPrompt && ensembleRound.status === 'running') {
+      entries.push({
+        id: `ensemble-queued-${ensembleRound.roundId}`,
+        // Ensemble queue dispatches a fresh round — use the chat's
+        // top-level provider as the chip indicator, since the round
+        // itself is multi-provider. Fall back to the first enabled
+        // participant's provider if `chat.provider` is missing
+        // (ensemble chats may not set it).
+        provider:
+          currentChat.provider ||
+          currentChat.ensemble?.participants.find((p) => p.enabled)?.provider ||
+          'codex',
+        prompt: ensembleRound.queuedPrompt
+      })
+    }
+    return entries
   }, [currentChat, queuedRuns])
   // Edit: hoist the queued prompt into the composer textarea and
   // remove the queue entry. Most chat apps do this when the user
@@ -12920,6 +12936,34 @@ function App(): React.JSX.Element {
   // mutator.
   const handleEditQueuedMessage = useCallback(
     (entryId: string) => {
+      // Ensemble-queued entry: synthetic id `ensemble-queued-<roundId>`.
+      // Hoist the round's `queuedPrompt` into the composer draft and
+      // clear it on the chat so the orchestrator stops queueing it.
+      if (entryId.startsWith('ensemble-queued-')) {
+        const chat = currentChat
+        if (!chat?.ensemble?.activeRound?.queuedPrompt) return
+        setChatPromptDraft(chat.appChatId, chat.ensemble.activeRound.queuedPrompt)
+        const nextChat: ChatRecord = {
+          ...chat,
+          ensemble: {
+            ...chat.ensemble,
+            activeRound: {
+              ...chat.ensemble.activeRound,
+              queuedPrompt: undefined
+            },
+            updatedAt: new Date().toISOString()
+          }
+        }
+        chatByIdRef.current.set(nextChat.appChatId, nextChat)
+        setCurrentChat((prev) =>
+          prev?.appChatId === nextChat.appChatId ? nextChat : prev
+        )
+        setChats((prev) =>
+          prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
+        )
+        void window.api.saveChat(nextChat)
+        return
+      }
       const match = queuedRunsRef.current.find(
         (request) =>
           (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
@@ -12948,31 +12992,93 @@ function App(): React.JSX.Element {
   // Delete: drop from local queue + transition the persistent job
   // to 'cancelled' so the store-backed listing doesn't resurrect it
   // on the next sync.
-  const handleDeleteQueuedMessage = useCallback((entryId: string) => {
-    const match = queuedRunsRef.current.find(
-      (request) =>
-        (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
-    )
-    if (!match) return
-    setQueuedRuns((prev) =>
-      prev.filter(
+  const handleDeleteQueuedMessage = useCallback(
+    (entryId: string) => {
+      // Ensemble-queued: clear `queuedPrompt` on the active round so
+      // the orchestrator doesn't start a new round when the current
+      // one finishes.
+      if (entryId.startsWith('ensemble-queued-')) {
+        const chat = currentChat
+        if (!chat?.ensemble?.activeRound) return
+        const nextChat: ChatRecord = {
+          ...chat,
+          ensemble: {
+            ...chat.ensemble,
+            activeRound: {
+              ...chat.ensemble.activeRound,
+              queuedPrompt: undefined
+            },
+            updatedAt: new Date().toISOString()
+          }
+        }
+        chatByIdRef.current.set(nextChat.appChatId, nextChat)
+        setCurrentChat((prev) =>
+          prev?.appChatId === nextChat.appChatId ? nextChat : prev
+        )
+        setChats((prev) =>
+          prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
+        )
+        void window.api.saveChat(nextChat)
+        return
+      }
+      const match = queuedRunsRef.current.find(
         (request) =>
-          (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) !== entryId
+          (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId
       )
-    )
-    if (match.appRunId) {
-      void window.api
-        .transitionRunQueueJob(match.appRunId, 'cancelled', {
-          statusReason: 'Cancelled from the queued-messages above-row.'
-        })
-        .catch(() => {})
-    }
-  }, [])
+      if (!match) return
+      setQueuedRuns((prev) =>
+        prev.filter(
+          (request) =>
+            (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) !== entryId
+        )
+      )
+      if (match.appRunId) {
+        void window.api
+          .transitionRunQueueJob(match.appRunId, 'cancelled', {
+            statusReason: 'Cancelled from the queued-messages above-row.'
+          })
+          .catch(() => {})
+      }
+    },
+    [currentChat]
+  )
   // Steer to a queued item: cancel the chat's active run, then
   // dispatch this queued request immediately. Same gentle handoff
   // as the composer's Steer button — no restart of unrelated state.
   const handleSteerToQueuedMessage = useCallback(
     (entryId: string) => {
+      // Ensemble-queued: cancel the current round (so the orchestrator
+      // drops the queuedPrompt as part of the cancel flow) then
+      // dispatch a fresh ensemble round with the queued prompt as the
+      // input. The orchestrator's `runEnsembleRound` mode='steer' or
+      // 'normal' handles the cancel-and-restart pattern when needed.
+      if (entryId.startsWith('ensemble-queued-')) {
+        const chat = currentChat
+        const prompt = chat?.ensemble?.activeRound?.queuedPrompt
+        if (!chat || !prompt) return
+        // Optimistically clear the queuedPrompt so the row updates
+        // immediately; the dispatch path below will overwrite the
+        // chat state on the next save anyway.
+        const nextChat: ChatRecord = {
+          ...chat,
+          ensemble: {
+            ...chat.ensemble!,
+            activeRound: {
+              ...chat.ensemble!.activeRound!,
+              queuedPrompt: undefined
+            }
+          }
+        }
+        setCurrentChat((prev) =>
+          prev?.appChatId === nextChat.appChatId ? nextChat : prev
+        )
+        void window.api.runEnsembleRound({
+          chatId: chat.appChatId,
+          prompt,
+          mode: 'steer'
+        })
+        return
+      }
       const match = queuedRunsRef.current.find(
         (request) =>
           (request.appRunId || `${request.provider}-${request.prompt.slice(0, 16)}`) === entryId

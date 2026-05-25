@@ -469,16 +469,20 @@ describe('EnsembleOrchestrator', () => {
     expect(toolMessage?.toolActivities?.[0].status).toBe('success')
     expect(toolMessage?.toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
 
-    // Tool message must appear BEFORE the assistant message so the
-    // transcript reads tool-calls-then-final-answer.
+    // Tool message must appear AFTER the assistant message so the
+    // transcript reads "assistant narrates intent, then tools fire" —
+    // the chronological order most LLM responses follow. Earlier
+    // versions placed tools above the assistant text which felt
+    // wrong (Chris's "weirdly the tool calls sit separately, above
+    // the agent response" feedback from the 1.0.3 smoke pass).
     const toolIdx = harness.chat.messages.findIndex(
       (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
     )
     const assistantIdx = harness.chat.messages.findIndex(
       (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'claude'
     )
-    expect(toolIdx).toBeGreaterThanOrEqual(0)
-    expect(assistantIdx).toBeGreaterThan(toolIdx)
+    expect(assistantIdx).toBeGreaterThanOrEqual(0)
+    expect(toolIdx).toBeGreaterThan(assistantIdx)
   })
 
   it('skipActiveParticipant returns false when no round is active', async () => {
