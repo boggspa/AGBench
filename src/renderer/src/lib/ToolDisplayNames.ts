@@ -133,6 +133,7 @@ export const TOOL_DISPLAY_NAMES: Record<string, string> = {
   // (richer task-category branches handle these when a `title`
   // param is supplied — these are the no-title fallbacks.)
   update_topic: 'Topic update',
+  ensemble_yield: 'Yielding',
   invoke_agent: 'Invoked agent',
   collabtoolcall: 'Collaboration tool call',
   codex_reasoning: 'Codex reasoning',

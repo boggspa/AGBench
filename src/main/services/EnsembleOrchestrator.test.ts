@@ -526,6 +526,7 @@ describe('EnsembleOrchestrator', () => {
     expect(toolMessages).toHaveLength(1)
     expect(toolMessages[0].toolActivities).toHaveLength(1)
     expect(toolMessages[0].toolActivities?.[0].toolName).toBe('read_file')
+    expect(toolMessages[0].toolActivities?.[0].displayName).toBe('Read /tmp/notes.md')
     expect(toolMessages[0].toolActivities?.[0].status).toBe('success')
     expect(toolMessages[0].toolActivities?.[0].parameters?.file_path).toBe('/tmp/notes.md')
 
@@ -571,6 +572,54 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.chat.messages.map((message) => message.content)).toContain(
       'Reviewer failed. Dispatch failed.'
     )
+  })
+
+  it('stores human-readable ensemble yield tool activity labels', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Review then yield.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_use',
+      tool_id: 'yield-1',
+      tool_name: 'mcp_AGBench_ensemble_yield',
+      parameters: { target: 'Worker' }
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'tool_result',
+      tool_id: 'yield-1',
+      content: 'Yielded.'
+    })
+    harness.orchestrator.handleProviderOutput('claude', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    await vi.waitFor(() =>
+      expect(
+        harness.chat.messages.filter(
+          (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+        )
+      ).toHaveLength(1)
+    )
+    const toolMessages = harness.chat.messages.filter(
+      (message) => message.role === 'tool' && message.metadata?.ensembleProvider === 'claude'
+    )
+    expect(toolMessages[0].toolActivities?.[0]).toMatchObject({
+      toolName: 'mcp_AGBench_ensemble_yield',
+      displayName: 'Reviewer yielded to Worker',
+      category: 'task',
+      status: 'success'
+    })
   })
 
   it('clears queued work when a round is stopped', async () => {

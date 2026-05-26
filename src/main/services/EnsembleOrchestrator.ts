@@ -199,6 +199,98 @@ function extractToolParameters(event: any): Record<string, unknown> {
   return raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
 }
 
+function stripToolNamespace(toolName: string): string {
+  const name = (toolName || '').toLowerCase().trim()
+  if (!name) return 'unknown'
+  if (name.startsWith('mcp__')) {
+    const idx = name.indexOf('__', 5)
+    return idx > 5 ? name.slice(idx + 2) : name
+  }
+  if (name.startsWith('mcp_') && !name.startsWith('mcp__')) {
+    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    for (const prefix of knownServerPrefixes) {
+      if (name.startsWith(prefix)) return name.slice(prefix.length)
+    }
+  }
+  if (name.startsWith('agbench__')) return name.slice('agbench__'.length)
+  if (name.startsWith('agentbench__')) return name.slice('agentbench__'.length)
+  if (name.startsWith('agbench_')) return name.slice('agbench_'.length)
+  if (name.startsWith('agentbench_')) return name.slice('agentbench_'.length)
+  return name
+}
+
+function getStringParameter(parameters: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = parameters[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
+}
+
+function titleCaseToolName(toolName: string): string {
+  return toolName
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
+}
+
+function participantLabel(participant?: EnsembleParticipant): string {
+  if (!participant) return 'Participant'
+  return participant.role || participant.provider
+}
+
+function getEnsembleToolCategory(toolName: string): ToolActivity['category'] {
+  const name = stripToolNamespace(toolName)
+  if (
+    name === 'ensemble_yield' ||
+    name === 'update_topic' ||
+    name === 'summary' ||
+    name === 'intent' ||
+    name === 'progress' ||
+    name === 'tool_progress'
+  ) {
+    return 'task'
+  }
+  if (name === 'read_file' || name === 'list_directory') return 'read'
+  if (FILE_WRITE_TOOL_NAMES.has(name)) return 'write'
+  if (name === 'grep_search' || name === 'grep' || name === 'rg' || name === 'web_search')
+    return 'search'
+  if (name === 'run_shell_command' || name === 'shell') return 'shell'
+  return 'unknown'
+}
+
+function getEnsembleToolDisplayName(
+  toolName: string,
+  parameters: Record<string, unknown>,
+  participant?: EnsembleParticipant
+): string {
+  const name = stripToolNamespace(toolName)
+  if (name === 'ensemble_yield') {
+    const target = getStringParameter(parameters, ['target', 'participant', 'to', 'next'])
+    const actor = participantLabel(participant)
+    return target ? `${actor} yielding to ${target}` : `${actor} yielding`
+  }
+  if (name === 'update_topic') {
+    const topic = getStringParameter(parameters, ['title', 'topic', 'name'])
+    return topic ? `Topic update: ${topic}` : 'Topic update'
+  }
+  if (name === 'read_file') {
+    const path = getStringParameter(parameters, ['file_path', 'path'])
+    return path ? `Read ${path}` : 'Read file'
+  }
+  if (name === 'list_directory') {
+    const path = getStringParameter(parameters, ['file_path', 'path'])
+    return path ? `Listed ${path}` : 'Listed directory'
+  }
+  if (FILE_WRITE_TOOL_NAMES.has(name)) {
+    const path = getStringParameter(parameters, ['file_path', 'path'])
+    return path ? `Edited ${path}` : 'Edited file'
+  }
+  if (name === 'run_shell_command' || name === 'shell') return 'Shell command'
+  return titleCaseToolName(name) || toolName || 'Used tool'
+}
+
 /** File-write tool names that should populate a `diffSummary` so the
  * renderer's `latestRunDiffStats` useMemo counts the file. Mirrors
  * the canonical names recognised by the renderer's solo-path
@@ -218,8 +310,13 @@ const FILE_WRITE_TOOL_NAMES = new Set([
   'create_directory'
 ])
 
-function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity {
+function buildEnsembleToolActivity(
+  event: any,
+  startedAt: string,
+  participant?: EnsembleParticipant
+): ToolActivity {
   const toolName = extractToolName(event)
+  const canonicalToolName = stripToolNamespace(toolName)
   const parameters = extractToolParameters(event)
   const filePath =
     typeof parameters.file_path === 'string'
@@ -235,7 +332,7 @@ function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity 
   // Without this, even when tool messages persist correctly, the
   // counter would still read zero for ensemble runs.
   const diffSummary =
-    filePath && FILE_WRITE_TOOL_NAMES.has(toolName.toLowerCase())
+    filePath && FILE_WRITE_TOOL_NAMES.has(canonicalToolName)
       ? {
           files: [
             {
@@ -254,8 +351,8 @@ function buildEnsembleToolActivity(event: any, startedAt: string): ToolActivity 
   return {
     id: extractToolId(event),
     toolName,
-    displayName: toolName,
-    category: 'unknown',
+    displayName: getEnsembleToolDisplayName(toolName, parameters, participant),
+    category: getEnsembleToolCategory(toolName),
     status: 'running',
     startedAt,
     parameters,
@@ -284,9 +381,14 @@ function pairEnsembleToolResult(
           ? event.result
           : ''
   const truncated = output.length > 500 ? `${output.substring(0, 500)}...` : output
+  const displayName =
+    status === 'success' && stripToolNamespace(activity.toolName) === 'ensemble_yield'
+      ? activity.displayName.replace(/\byielding\b/i, 'yielded')
+      : activity.displayName
   return {
     ...activity,
     status,
+    displayName,
     endedAt,
     durationMs,
     resultSummary: truncated,
@@ -561,7 +663,7 @@ export class EnsembleOrchestrator {
       // the run's timeline at the current position so flushRun can
       // emit it inline between content chunks.
       if (!run.toolActivities) run.toolActivities = []
-      const activity = buildEnsembleToolActivity(payload, this.deps.nowIso())
+      const activity = buildEnsembleToolActivity(payload, this.deps.nowIso(), run.participant)
       run.toolActivities.push(activity)
       appendTimelineTool(run, activity.id)
       // Diagnostic for the 1.0.3 ship-night investigation — single
@@ -593,7 +695,8 @@ export class EnsembleOrchestrator {
         // fallback at App.tsx:10336.
         const orphan = buildEnsembleToolActivity(
           { ...payload, type: 'tool_use', tool_id: id },
-          this.deps.nowIso()
+          this.deps.nowIso(),
+          run.participant
         )
         run.toolActivities.push(
           pairEnsembleToolResult(orphan, payload, this.deps.nowIso())

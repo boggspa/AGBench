@@ -8,6 +8,7 @@ import {
 } from '../../../main/store/types'
 import {
   deriveToolDiffSummary,
+  getToolDisplayName,
   isWriteLikeToolName,
   prettyPrintJson,
   unwrapMcpEnvelope
@@ -360,6 +361,21 @@ function getFileActionLabel(activity: ToolActivity): string {
     return 'Wrote'
   if (toolName === 'read_file') return 'Read'
   return activity.displayName || activity.toolName || 'Used tool'
+}
+
+function getReadableActivityDisplayName(activity: ToolActivity): string {
+  const fallback = getToolDisplayName(activity.toolName || '', activity.parameters || {})
+  const displayName = activity.displayName || ''
+  const rawToolName = activity.toolName || ''
+  const lowerDisplay = displayName.toLowerCase()
+  const displayLooksRaw =
+    !displayName ||
+    displayName === rawToolName ||
+    lowerDisplay.startsWith('mcp_agbench_') ||
+    lowerDisplay.startsWith('mcp__agbench__') ||
+    lowerDisplay.startsWith('agbench__') ||
+    lowerDisplay.includes('_')
+  return displayLooksRaw ? fallback || displayName || rawToolName : displayName
 }
 
 function getProgressNote(activity: ToolActivity): { title: string; body?: string } | null {
@@ -828,6 +844,10 @@ function getInlineActivityTitle(activity: ToolActivity, filePath?: string): Reac
   }
 
   if (activity.category === 'task') {
+    const displayName = getReadableActivityDisplayName(activity)
+    if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) {
+      return <>{displayName}</>
+    }
     const summary =
       activity.resultSummary ||
       activity.outputPreview ||
@@ -844,7 +864,7 @@ function getInlineActivityTitle(activity: ToolActivity, filePath?: string): Reac
 
 function ActivityTitle({ activity, filePath }: { activity: ToolActivity; filePath?: string }) {
   if (!filePath) {
-    return <>{activity.displayName || activity.toolName}</>
+    return <>{getReadableActivityDisplayName(activity)}</>
   }
 
   return (

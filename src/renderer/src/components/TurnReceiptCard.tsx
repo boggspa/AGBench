@@ -82,6 +82,7 @@ const FAMILY_LABEL: Record<ToolFamily | 'other', { singular: string; plural: str
   browser: { singular: 'browser', plural: 'browser' },
   'window-context': { singular: 'window', plural: 'windows' },
   delegate: { singular: 'delegate', plural: 'delegates' },
+  yield: { singular: 'yield', plural: 'yields' },
   subthread: { singular: 'subthread op', plural: 'subthread ops' },
   diagnostic: { singular: 'check', plural: 'checks' },
   reasoning: { singular: 'thought', plural: 'thoughts' },

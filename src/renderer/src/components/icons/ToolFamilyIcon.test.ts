@@ -71,6 +71,10 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('delegate_to_subthread')).toBe('delegate')
   })
 
+  it('maps ensemble_yield to its dedicated yield family', () => {
+    expect(toolNameToFamily('ensemble_yield')).toBe('yield')
+  })
+
   it('maps subthread inspection tools to the subthread family', () => {
     expect(toolNameToFamily('list_subthreads')).toBe('subthread')
     expect(toolNameToFamily('read_subthread_result')).toBe('subthread')
@@ -109,6 +113,7 @@ describe('toolNameToFamily', () => {
 
   it('strips MCP namespace prefixes before matching', () => {
     expect(toolNameToFamily('mcp__AGBench__delegate_to_subthread')).toBe('delegate')
+    expect(toolNameToFamily('mcp_AGBench_ensemble_yield')).toBe('yield')
     expect(toolNameToFamily('mcp__AGBench__creative_app_status')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__AGBench__creative_timeline_validate')).toBe('diagnostic')
     expect(toolNameToFamily('mcp__AGBench__creative_timeline_ir')).toBe('diagnostic')

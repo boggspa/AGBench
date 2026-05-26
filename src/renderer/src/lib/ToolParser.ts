@@ -249,6 +249,7 @@ export function getToolCategory(toolName: string): ToolCategory {
   if (
     [
       'update_topic',
+      'ensemble_yield',
       'invoke_agent',
       'summary',
       'intent',
@@ -257,7 +258,7 @@ export function getToolCategory(toolName: string): ToolCategory {
       'codex_reasoning',
       'codex_plan',
       'kimi_thinking'
-    ].includes(name)
+    ].includes(unqualifiedName)
   )
     return 'task'
   if (unqualifiedName === 'read_file' || unqualifiedName === 'list_directory') return 'read'
@@ -277,9 +278,25 @@ function stripToolNamespace(toolName: string): string {
     const index = toolName.indexOf('__', 5)
     return index > 5 ? toolName.slice(index + 2) : toolName
   }
+  if (toolName.startsWith('mcp_') && !toolName.startsWith('mcp__')) {
+    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    for (const prefix of knownServerPrefixes) {
+      if (toolName.startsWith(prefix)) return toolName.slice(prefix.length)
+    }
+  }
   if (toolName.startsWith('agbench__')) return toolName.slice('agbench__'.length)
   if (toolName.startsWith('agentbench__')) return toolName.slice('agentbench__'.length)
+  if (toolName.startsWith('agbench_')) return toolName.slice('agbench_'.length)
+  if (toolName.startsWith('agentbench_')) return toolName.slice('agentbench_'.length)
   return toolName
+}
+
+function getFirstStringParam(params: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = params[key]
+    if (typeof value === 'string' && value.trim()) return value.trim()
+  }
+  return ''
 }
 
 export function getToolDisplayName(toolName: string, parameters?: Record<string, unknown>): string {
@@ -297,6 +314,7 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
     (params.afterPath as string) ||
     (params.draftPath as string) ||
     ''
+  const target = getFirstStringParam(params, ['target', 'participant', 'to', 'next'])
 
   if (unqualifiedName === 'creative_app_status') return 'Creative app status'
   if (unqualifiedName === 'creative_app_capabilities') return 'Creative app capabilities'
@@ -315,15 +333,26 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
 
   switch (category) {
     case 'task':
-      if (toolName.toLowerCase() === 'codex_reasoning')
+      if (unqualifiedName === 'ensemble_yield') {
+        return target ? `Yielding to ${target}` : 'Yielding'
+      }
+      if (unqualifiedName === 'update_topic') {
+        const topic =
+          (params.title as string) ||
+          (params.topic as string) ||
+          (params.name as string) ||
+          ''
+        return topic ? `Topic update: ${topic}` : 'Topic update'
+      }
+      if (unqualifiedName === 'codex_reasoning')
         return (params.title as string) || 'Thinking note'
-      if (toolName.toLowerCase() === 'kimi_thinking')
+      if (unqualifiedName === 'kimi_thinking')
         return (params.title as string) || 'Kimi thinking'
-      if (toolName.toLowerCase() === 'codex_plan') return 'Plan update'
-      if (toolName.toLowerCase() === 'invoke_agent')
+      if (unqualifiedName === 'codex_plan') return 'Plan update'
+      if (unqualifiedName === 'invoke_agent')
         return (params.title as string) || 'Delegated task'
-      if (toolName.toLowerCase() === 'summary') return (params.title as string) || 'Summary'
-      if (toolName.toLowerCase() === 'intent') return (params.title as string) || 'Intent'
+      if (unqualifiedName === 'summary') return (params.title as string) || 'Summary'
+      if (unqualifiedName === 'intent') return (params.title as string) || 'Intent'
       return (params.title as string) || 'Task update'
     case 'read':
       if (toolName.toLowerCase() === 'list_directory')

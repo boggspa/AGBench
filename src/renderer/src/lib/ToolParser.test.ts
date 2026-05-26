@@ -173,7 +173,15 @@ describe('ToolParser', () => {
 
   describe('getToolDisplayName', () => {
     it('shows task title', () => {
-      expect(getToolDisplayName('update_topic', { title: 'Planning' })).toBe('Planning')
+      expect(getToolDisplayName('update_topic', { title: 'Planning' })).toBe(
+        'Topic update: Planning'
+      )
+    })
+    it('humanises ensemble yield tools through MCP namespace variants', () => {
+      expect(getToolDisplayName('mcp_AGBench_ensemble_yield', { target: 'Reviewer' })).toBe(
+        'Yielding to Reviewer'
+      )
+      expect(getToolDisplayName('mcp__AGBench__ensemble_yield', {})).toBe('Yielding')
     })
     it('shows delegated task title', () => {
       expect(getToolDisplayName('invoke_agent', { title: 'Metal harness' })).toBe('Metal harness')

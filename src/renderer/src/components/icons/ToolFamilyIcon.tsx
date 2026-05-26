@@ -28,6 +28,7 @@ export type ToolFamily =
   | 'browser'
   | 'window-context'
   | 'delegate'
+  | 'yield'
   | 'subthread'
   | 'diagnostic'
   | 'reasoning'
@@ -64,16 +65,30 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
   if (normalised.startsWith('mcp__')) {
     const idx = normalised.indexOf('__', 5)
     if (idx > 5) normalised = normalised.slice(idx + 2)
+  } else if (normalised.startsWith('mcp_')) {
+    const knownServerPrefixes = ['mcp_agbench_', 'mcp_agentbench_']
+    for (const prefix of knownServerPrefixes) {
+      if (normalised.startsWith(prefix)) {
+        normalised = normalised.slice(prefix.length)
+        break
+      }
+    }
   } else if (normalised.startsWith('agbench__')) {
     normalised = normalised.slice('agbench__'.length)
   } else if (normalised.startsWith('agentbench__')) {
     normalised = normalised.slice('agentbench__'.length)
+  } else if (normalised.startsWith('agbench_')) {
+    normalised = normalised.slice('agbench_'.length)
+  } else if (normalised.startsWith('agentbench_')) {
+    normalised = normalised.slice('agentbench_'.length)
   }
 
   // Exact-name buckets (most specific first).
   switch (normalised) {
     case 'delegate_to_subthread':
       return 'delegate'
+    case 'ensemble_yield':
+      return 'yield'
     case 'list_subthreads':
     case 'read_subthread_result':
     case 'cancel_subthread':
@@ -274,6 +289,17 @@ function FamilyPaths({ family }: { family: ToolFamily }): ReactElement {
           <path d="M10.9 14.1 12.8 15.8 10.8 17.2" />
           <path d="M5.8 8 9.1 7.9" />
           <path d="M15 14.3 18.3 14.2" />
+        </g>
+      )
+    case 'yield':
+      return (
+        <g>
+          <path d="M4.1 5.7 12.5 5.4C15.9 5.4 18.8 7.7 19 11.1 19.3 15.1 16.2 18.4 12.2 18.4H7.4" />
+          <path d="M8.4 3.5 4.2 5.8 8.6 8" />
+          <path d="M7.1 18.4 9.6 15.8" />
+          <path d="M7.1 18.4 9.8 20.9" />
+          <path d="M11.3 10.3 15.4 10.2" />
+          <path d="M11.2 13.4 14.2 13.3" />
         </g>
       )
     case 'subthread':
