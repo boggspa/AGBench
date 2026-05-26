@@ -66,6 +66,42 @@ export type DispatchFailureReason =
   | { kind: 'unknown'; message: string }
 
 /**
+ * Typed wrapper for participant-unreachable failures, intended for
+ * provider-adapter dispatch sites that already know they're hitting a
+ * dead MCP socket / down provider runtime. The classifier prefers an
+ * instance of this class over `.code` / message-substring sniffing so
+ * adapter authors don't have to preserve the underlying ErrnoException
+ * shape through their wrapping layers — they can construct this
+ * directly with the participant + provider context already in hand.
+ *
+ * Throwing this from `adapter.run(...)` makes the orchestrator's
+ * self-heal path emit the structured `unreachable` note without any
+ * extra plumbing. The classifier still handles raw Node errors as a
+ * fallback so existing code paths keep working.
+ */
+export class ParticipantUnreachableError extends Error {
+  readonly participantId: string
+  readonly providerId: string
+  readonly underlyingCode: string
+
+  constructor(
+    participantId: string,
+    providerId: string,
+    underlyingCode: string,
+    message?: string
+  ) {
+    super(
+      message ??
+        `Participant ${participantId} (${providerId}) unreachable: ${underlyingCode}`
+    )
+    this.name = 'ParticipantUnreachableError'
+    this.participantId = participantId
+    this.providerId = providerId
+    this.underlyingCode = underlyingCode
+  }
+}
+
+/**
  * Classify an arbitrary thrown value (or a `dispatched: false` shape)
  * into one of three known failure modes. Inputs we handle:
  *
@@ -87,6 +123,14 @@ export type DispatchFailureReason =
 export function classifyDispatchError(error: unknown): DispatchFailureReason {
   if (error === null || error === undefined) {
     return { kind: 'unknown', message: '' }
+  }
+
+  // Highest-precedence: typed wrapper from a provider adapter. When
+  // the adapter site knows the failure is socket-level (ECONNREFUSED
+  // on a dead MCP bridge etc.) it can throw a ParticipantUnreachable
+  // directly and skip the `.code` / message-substring dance below.
+  if (error instanceof ParticipantUnreachableError) {
+    return { kind: 'unreachable', underlyingCode: error.underlyingCode }
   }
 
   // Node Errno shape: `{ message, code: 'ECONNREFUSED', errno, syscall }`.
@@ -145,9 +189,7 @@ export function formatDispatchFailureNote(
   participant: EnsembleParticipant,
   reason: DispatchFailureReason
 ): string {
-  const provider = providerDisplayName(participant.provider)
-  const role = (participant.role || '').trim()
-  const who = role ? `${provider} / ${role}` : provider
+  const who = participantNoteLabel(participant)
 
   if (reason.kind === 'unreachable') {
     return (
@@ -175,4 +217,59 @@ export function formatDispatchFailureNote(
 function providerDisplayName(provider: string): string {
   if (!provider) return ''
   return provider.charAt(0).toUpperCase() + provider.slice(1)
+}
+
+/**
+ * Canonical "Provider / Role" label used in every dispatch-failure
+ * transcript note (the generic skip note, the yield-target note, the
+ * all-unreachable fallback). Falls back to bare provider name when a
+ * participant has no role configured. Exported so the orchestrator
+ * can format yield/all-unreachable notes with the same shape.
+ */
+export function participantNoteLabel(participant: EnsembleParticipant): string {
+  const provider = providerDisplayName(participant.provider)
+  const role = (participant.role || '').trim()
+  return role ? `${provider} / ${role}` : provider
+}
+
+/**
+ * Yield-target unreachable transcript note. Emitted when a participant
+ * called `ensemble_yield(target: ...)` and the resolved target's
+ * socket is down. The orchestrator routes past the dead target to the
+ * next-in-rotation; this note tells the user WHY we didn't honour the
+ * yield. When there's no next participant available, the message
+ * gracefully falls back to "returning to user" — the round-end
+ * all-unreachable note typically follows in that case anyway.
+ */
+export function formatYieldTargetUnreachableNote(
+  target: EnsembleParticipant,
+  underlyingCode: string,
+  next: EnsembleParticipant | null
+): string {
+  const targetLabel = participantNoteLabel(target)
+  if (next) {
+    const nextLabel = participantNoteLabel(next)
+    return (
+      `⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
+      `Routing to next participant in rotation (${nextLabel}).`
+    )
+  }
+  return (
+    `⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
+    `No further participants — returning to user.`
+  )
+}
+
+/**
+ * Round-end fallback note. Emitted when every dispatch attempt in the
+ * round failed with `unreachable` — none of the participants' sockets
+ * came up. The chip-strip wording mirrors the recovery hint in
+ * `formatDispatchFailureNote` so the user has one place to act
+ * regardless of which note they read first.
+ */
+export function formatAllUnreachableNote(): string {
+  return (
+    `⚠ No reachable participants left. Returning to user — ` +
+    `re-enable participants from the chip strip and resume.`
+  )
 }

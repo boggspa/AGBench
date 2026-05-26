@@ -27,7 +27,9 @@ import {
 } from './EnsembleMentionAlias'
 import {
   classifyDispatchError,
+  formatAllUnreachableNote,
   formatDispatchFailureNote,
+  formatYieldTargetUnreachableNote,
   type DispatchFailureReason
 } from '../EnsembleErrors'
 
@@ -827,11 +829,27 @@ export class EnsembleOrchestrator {
     // for-loop iterated `participants` directly; reordering required
     // a queue + while-loop pattern.
     const remaining: EnsembleParticipant[] = [...participants]
+    // 1.0.4 — participant id of the just-promoted yield target. Set
+    // at the end of the previous iteration when ensemble_yield's
+    // target landed at remaining[0]; consumed at the top of the next
+    // iteration so the dispatch-failure branch can surface a yield-
+    // specific transcript note ("Yield target X unreachable. Routing
+    // to next-in-rotation Y.") instead of the generic skip note.
+    let yieldedTargetParticipantId: string | null = null
+    // 1.0.4 — round-end all-unreachable fallback. Counts every
+    // dispatch attempt and how many of those attempts failed with
+    // `kind: 'unreachable'`. If the round exhausts `remaining` with
+    // every attempt unreachable, we emit a final "no reachable
+    // participants left" note so the user knows to re-launch.
+    let dispatchAttempts = 0
+    let unreachableFailures = 0
     while (remaining.length > 0) {
       if (runtime.cancelled) break
       const chat = this.deps.getChat(runtime.chatId)
       if (!chat?.ensemble) break
       const participant = remaining.shift()!
+      const wasYieldTarget = yieldedTargetParticipantId === participant.id
+      yieldedTargetParticipantId = null
       const run = this.seedParticipantRun(chat, runtime, participant)
       runtime.activeRunId = run.runId
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
@@ -916,12 +934,35 @@ export class EnsembleOrchestrator {
         // case with no thrown error, we surface as `unknown` since
         // RunCoordinator already consumed the error in its preflight
         // try/catch and we don't have access to the original.
+        dispatchAttempts += 1
         const reason: DispatchFailureReason =
           dispatchFailure || { kind: 'unknown', message: '' }
+        if (reason.kind === 'unreachable') unreachableFailures += 1
         const note = formatDispatchFailureNote(participant, reason)
-        this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+        // 1.0.4 — yield-target-specific transcript note. When the
+        // just-shifted participant was promoted to the front via
+        // ensemble_yield(target:...) and we couldn't reach them, the
+        // round-status line should explicitly call out the yield
+        // routing (it's more informative than the generic skip note
+        // for this case). The per-participant run still records the
+        // generic note as its reason so the chip strip / status pill
+        // copy stays consistent with non-yield failures.
+        if (wasYieldTarget && reason.kind === 'unreachable') {
+          this.appendRoundStatus(
+            runtime.chatId,
+            runtime.roundId,
+            formatYieldTargetUnreachableNote(
+              participant,
+              reason.underlyingCode,
+              remaining[0] || null
+            )
+          )
+        } else {
+          this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+        }
         this.finalizeRun(run, 'failed', note)
       } else {
+        dispatchAttempts += 1
         await completion
       }
       runtime.activeRunId = undefined
@@ -1083,6 +1124,43 @@ export class EnsembleOrchestrator {
           this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
         }
       }
+      // 1.0.4 — remember whose dispatch is "the yield target" for
+      // the next iteration so a failed dispatch on that participant
+      // emits the yield-specific transcript note. Only the yield
+      // path sets this; the @-mention block above promotes via its
+      // own logic but doesn't get the yield-specific treatment (the
+      // generic skip note still names the participant, which is
+      // sufficient for that case).
+      if (routedByYieldTarget && remaining.length > 0) {
+        yieldedTargetParticipantId = remaining[0].id
+      }
+    }
+
+    // 1.0.4 — user-fallback note. When every dispatch in this round
+    // failed with `unreachable`, the round closed with no speaker.
+    // Tell the user explicitly so they know to re-launch their
+    // providers — otherwise the transcript just shows back-to-back
+    // skip notes with no overall verdict. Bounded by:
+    //   - `remaining.length === 0` — we exhausted every participant
+    //     (didn't break early on queued prompts or cancellation)
+    //   - `!runtime.cancelled` — user-initiated cancel has its own
+    //     cancellation transcript line
+    //   - `dispatchAttempts > 0` — empty participant list shouldn't
+    //     trigger this (DM target was disabled, ordered set empty)
+    //   - all attempts unreachable — at least one non-unreachable
+    //     reason means the user has a per-participant note to act
+    //     on; the fallback note would be misleading there
+    if (
+      remaining.length === 0 &&
+      !runtime.cancelled &&
+      dispatchAttempts > 0 &&
+      unreachableFailures === dispatchAttempts
+    ) {
+      this.appendRoundStatus(
+        runtime.chatId,
+        runtime.roundId,
+        formatAllUnreachableNote()
+      )
     }
 
     // Dequeue the next prompt (FIFO) for the follow-up round. Anything

@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { classifyDispatchError, formatDispatchFailureNote } from './EnsembleErrors'
+import {
+  ParticipantUnreachableError,
+  classifyDispatchError,
+  formatAllUnreachableNote,
+  formatDispatchFailureNote,
+  formatYieldTargetUnreachableNote,
+  participantNoteLabel
+} from './EnsembleErrors'
 import type { EnsembleParticipant } from './store/types'
 
 function participant(
@@ -19,6 +26,22 @@ describe('classifyDispatchError', () => {
   it('returns unknown for null / undefined input', () => {
     expect(classifyDispatchError(null)).toEqual({ kind: 'unknown', message: '' })
     expect(classifyDispatchError(undefined)).toEqual({ kind: 'unknown', message: '' })
+  })
+
+  it('classifies a ParticipantUnreachableError via instanceof check', () => {
+    // Highest-precedence path — adapter sites that already know the
+    // failure is socket-level wrap their error in this typed class
+    // and the classifier reads `underlyingCode` directly instead of
+    // sniffing `.code` / message substrings.
+    const err = new ParticipantUnreachableError(
+      'ensemble-gemini',
+      'gemini',
+      'ECONNREFUSED'
+    )
+    expect(classifyDispatchError(err)).toEqual({
+      kind: 'unreachable',
+      underlyingCode: 'ECONNREFUSED'
+    })
   })
 
   it('classifies ECONNREFUSED via the Node ErrnoException `.code` field', () => {
@@ -150,5 +173,79 @@ describe('formatDispatchFailureNote', () => {
     })
     expect(note).toContain('Codex unreachable')
     expect(note).not.toContain('Codex / ')
+  })
+})
+
+describe('participantNoteLabel', () => {
+  it('joins capitalised provider + role with a slash', () => {
+    const p = participant({ id: 'g', provider: 'gemini', role: 'Researcher' })
+    expect(participantNoteLabel(p)).toBe('Gemini / Researcher')
+  })
+
+  it('returns just the provider when role is empty / whitespace', () => {
+    expect(participantNoteLabel(participant({ id: 'g', provider: 'gemini' }))).toBe('Gemini')
+    expect(
+      participantNoteLabel(participant({ id: 'g', provider: 'gemini', role: '   ' }))
+    ).toBe('Gemini')
+  })
+})
+
+describe('formatYieldTargetUnreachableNote', () => {
+  const gemini = participant({ id: 'gemini', provider: 'gemini', role: 'Researcher' })
+  const codex = participant({ id: 'codex', provider: 'codex', role: 'Worker' })
+
+  it('names the dead target, the posix code, and the next-in-rotation', () => {
+    const note = formatYieldTargetUnreachableNote(gemini, 'ECONNREFUSED', codex)
+    expect(note.startsWith('⚠')).toBe(true)
+    expect(note).toContain('Yield target Gemini / Researcher')
+    expect(note).toContain('ECONNREFUSED')
+    expect(note).toContain('Routing to next participant in rotation')
+    expect(note).toContain('Codex / Worker')
+  })
+
+  it('falls back to "returning to user" when there is no next participant', () => {
+    const note = formatYieldTargetUnreachableNote(gemini, 'ETIMEDOUT', null)
+    expect(note).toContain('Yield target Gemini / Researcher')
+    expect(note).toContain('ETIMEDOUT')
+    expect(note).toContain('No further participants')
+    expect(note).toContain('returning to user')
+    expect(note).not.toContain('Routing to next participant')
+  })
+})
+
+describe('formatAllUnreachableNote', () => {
+  it('emits the chip-strip recovery hint with the warning glyph', () => {
+    const note = formatAllUnreachableNote()
+    expect(note.startsWith('⚠')).toBe(true)
+    expect(note).toContain('No reachable participants left')
+    expect(note).toContain('Returning to user')
+    expect(note).toContain('chip strip')
+  })
+})
+
+describe('ParticipantUnreachableError', () => {
+  it('stores the typed fields and produces a default message', () => {
+    const err = new ParticipantUnreachableError(
+      'ensemble-gemini',
+      'gemini',
+      'ECONNREFUSED'
+    )
+    expect(err.name).toBe('ParticipantUnreachableError')
+    expect(err.participantId).toBe('ensemble-gemini')
+    expect(err.providerId).toBe('gemini')
+    expect(err.underlyingCode).toBe('ECONNREFUSED')
+    expect(err.message).toContain('ensemble-gemini')
+    expect(err.message).toContain('gemini')
+    expect(err.message).toContain('ECONNREFUSED')
+  })
+
+  it('accepts an explicit message override', () => {
+    const err = new ParticipantUnreachableError(
+      'ensemble-gemini',
+      'gemini',
+      'ECONNREFUSED',
+      'MCP socket /tmp/agbench-gemini.sock is down'
+    )
+    expect(err.message).toBe('MCP socket /tmp/agbench-gemini.sock is down')
   })
 })

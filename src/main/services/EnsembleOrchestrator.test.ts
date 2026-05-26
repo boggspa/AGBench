@@ -522,6 +522,226 @@ describe('EnsembleOrchestrator', () => {
     expect(failureNote?.content).toContain('Skipping for this round')
   })
 
+  it('accepts a ParticipantUnreachableError thrown by an adapter and classifies it as unreachable', async () => {
+    // 1.0.4 — adapter sites that already know the failure is socket-
+    // level can throw the typed `ParticipantUnreachableError` instead
+    // of preserving the raw Node ErrnoException shape. The classifier
+    // recognises it via instanceof and the orchestrator emits the
+    // same structured "unreachable" note as if a raw ECONNREFUSED
+    // had bubbled. This proves the typed-error fast path works end-
+    // to-end.
+    const { ParticipantUnreachableError } = await import('../EnsembleErrors')
+    let callCount = 0
+    const harness = makeHarness({
+      dispatch: async () => {
+        callCount += 1
+        if (callCount === 1) {
+          throw new ParticipantUnreachableError('claude', 'claude', 'ENOENT')
+        }
+        return { dispatched: true, appRunId: '' }
+      }
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Implement and review.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2))
+    const failureNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('ENOENT')
+    )
+    expect(failureNote?.content).toContain('Claude / Reviewer')
+    expect(failureNote?.content).toContain('unreachable')
+    expect(failureNote?.content).toContain('ENOENT')
+  })
+
+  it('routes past an unreachable yield target and emits a yield-specific transcript note', async () => {
+    // 1.0.4 — the original production reproducer: Claude finishes its
+    // turn, calls ensemble_yield(target='gemini'), but the Gemini MCP
+    // socket is down (ECONNREFUSED). The orchestrator should:
+    //   (a) emit a transcript note: "⚠ Yield target Gemini / Researcher
+    //       unreachable (ECONNREFUSED). Routing to next participant in
+    //       rotation (Codex / Worker)."
+    //   (b) continue with Codex / Worker (the next-in-default-rotation)
+    //       instead of hanging on the dead socket.
+    // The generic "unreachable. Skipping for this round" note is
+    // suppressed in this case — the yield-specific note already
+    // carries the failure info plus the routing decision.
+    const harness = makeHarness({
+      dispatch: async (payload) => {
+        if (payload.provider === 'gemini') {
+          const err = new Error(
+            'connect ECONNREFUSED /tmp/agbench-gemini.sock'
+          ) as Error & { code?: string }
+          err.code = 'ECONNREFUSED'
+          throw err
+        }
+        return { dispatched: true, appRunId: payload.appRunId || '' }
+      }
+    })
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Planner',
+        instructions: 'Plan.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'ensemble-codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 3,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and hand off.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+
+    // Claude yields to gemini via the orchestrator's markYielded path
+    // (mirroring `ensemble_yield(target='gemini')`).
+    harness.orchestrator.markYielded(
+      harness.dispatched[0].appRunId!,
+      'Passing to Gemini',
+      'gemini'
+    )
+
+    // Gemini's dispatch throws ECONNREFUSED → orchestrator routes
+    // past it to Codex (next-in-default-rotation).
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[1].provider).toBe('gemini')
+    expect(harness.dispatched[2].provider).toBe('codex')
+
+    // Yield-specific transcript note should be present.
+    const yieldNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('Yield target')
+    )
+    expect(yieldNote?.content).toContain('Gemini / Researcher')
+    expect(yieldNote?.content).toContain('ECONNREFUSED')
+    expect(yieldNote?.content).toContain('Routing to next participant in rotation')
+    expect(yieldNote?.content).toContain('Codex / Worker')
+
+    // The generic "Skipping for this round" note should NOT have
+    // been emitted for Gemini in this case — the yield-specific note
+    // supersedes it. (The per-participant run's finalize reason is
+    // still set to the generic note for chip-strip consistency, but
+    // that lives on the run record, not the round-status transcript.)
+    const skipNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('Gemini / Researcher') &&
+        message.content.includes('Skipping for this round')
+    )
+    expect(skipNote).toBeUndefined()
+  })
+
+  it('emits an all-unreachable user-fallback note when every dispatch fails ECONNREFUSED', async () => {
+    // 1.0.4 — when none of the participants' sockets came up, the
+    // round ends with no speaker. The orchestrator emits a final
+    // "No reachable participants left. Returning to user — re-enable
+    // participants from the chip strip and resume." system note so
+    // the user has a single overall verdict instead of just back-to-
+    // back skip notes.
+    const harness = makeHarness({
+      dispatch: async () => {
+        const err = new Error('connect ECONNREFUSED') as Error & {
+          code?: string
+        }
+        err.code = 'ECONNREFUSED'
+        throw err
+      }
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Anyone home?',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Both participants attempted (Claude + Codex from the default
+    // fixture), both failing — wait until both dispatches landed.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+
+    const fallbackNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('No reachable participants left')
+    )
+    expect(fallbackNote?.content).toContain('Returning to user')
+    expect(fallbackNote?.content).toContain('chip strip')
+  })
+
+  it('does not emit the all-unreachable fallback when at least one participant succeeds', async () => {
+    // Sanity check on the gating logic. If even one participant
+    // produced output (or failed for a non-unreachable reason), the
+    // fallback note must NOT fire — the user has either the answer
+    // or a per-participant note with actionable info.
+    let callCount = 0
+    const harness = makeHarness({
+      dispatch: async (payload) => {
+        callCount += 1
+        if (callCount === 1) {
+          const err = new Error('connect ECONNREFUSED') as Error & {
+            code?: string
+          }
+          err.code = 'ECONNREFUSED'
+          throw err
+        }
+        return { dispatched: true, appRunId: payload.appRunId || '' }
+      }
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Try both.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    // Finish Codex so the round closes cleanly.
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 5 } }
+    )
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    const fallbackNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        typeof message.content === 'string' &&
+        message.content.includes('No reachable participants left')
+    )
+    expect(fallbackNote).toBeUndefined()
+  })
+
   it('closes the round immediately when a speaker uses @user', async () => {
     // 1.0.4 — `@user` is the explicit return-to-human signal.
     // The orchestrator should NOT promote any further participants
