@@ -160,6 +160,35 @@ describe('ToolParser', () => {
     it('maps unknown to unknown', () => {
       expect(getToolCategory('magic')).toBe('unknown')
     })
+    // 1.0.4-AA — Kimi + some MCP wrappers strip underscores
+    // from tool names. These no-separator variants used to fall
+    // through to 'unknown' and render as "Used readfile" / no icon.
+    it('maps no-separator readfile to read', () => {
+      expect(getToolCategory('readfile')).toBe('read')
+      expect(getToolCategory('ReadFile')).toBe('read')
+    })
+    it('maps no-separator listdirectory + list_dir variants to read', () => {
+      expect(getToolCategory('listdirectory')).toBe('read')
+      expect(getToolCategory('list_dir')).toBe('read')
+      expect(getToolCategory('listdir')).toBe('read')
+    })
+    it('maps no-separator writefile + variants to write', () => {
+      expect(getToolCategory('writefile')).toBe('write')
+      expect(getToolCategory('editfile')).toBe('write')
+      expect(getToolCategory('createfile')).toBe('write')
+      expect(getToolCategory('deletefile')).toBe('write')
+      expect(getToolCategory('applypatch')).toBe('write')
+      expect(getToolCategory('strreplace')).toBe('write')
+    })
+    it('maps exit_plan_mode + exitplanmode variants to task', () => {
+      expect(getToolCategory('exit_plan_mode')).toBe('task')
+      expect(getToolCategory('exitplanmode')).toBe('task')
+      expect(getToolCategory('ExitPlanMode')).toBe('task')
+    })
+    it('maps ask_user_question + askuserquestion to task', () => {
+      expect(getToolCategory('ask_user_question')).toBe('task')
+      expect(getToolCategory('askuserquestion')).toBe('task')
+    })
   })
 
   describe('isWriteLikeToolName', () => {
@@ -199,6 +228,39 @@ describe('ToolParser', () => {
     })
     it('shows Wrote file for write_file', () => {
       expect(getToolDisplayName('write_file', { file_path: 'out.txt' })).toBe('Wrote out.txt')
+    })
+    // 1.0.4-AA — the new no-separator variants need to surface
+    // the same friendly verb + path label as their snake_case
+    // canonicals.
+    it('shows Read for no-separator readfile', () => {
+      expect(getToolDisplayName('readfile', { file_path: 'lib.ts' })).toBe('Read lib.ts')
+    })
+    it('shows Listed for no-separator listdirectory + list_dir', () => {
+      expect(getToolDisplayName('listdirectory', { path: 'src' })).toBe('Listed src')
+      expect(getToolDisplayName('list_dir', { path: 'src' })).toBe('Listed src')
+    })
+    it('shows Wrote for no-separator writefile', () => {
+      expect(getToolDisplayName('writefile', { file_path: 'out.txt' })).toBe('Wrote out.txt')
+    })
+    it('shows Edited for no-separator editfile + applypatch + strreplace', () => {
+      expect(getToolDisplayName('editfile', { file_path: 'a.ts' })).toBe('Edited a.ts')
+      expect(getToolDisplayName('applypatch', { file_path: 'a.ts' })).toBe('Edited a.ts')
+      expect(getToolDisplayName('strreplace', { file_path: 'a.ts' })).toBe('Edited a.ts')
+    })
+    it('shows Created for no-separator createfile', () => {
+      expect(getToolDisplayName('createfile', { file_path: 'new.ts' })).toBe('Created new.ts')
+    })
+    it('shows Deleted for no-separator deletefile', () => {
+      expect(getToolDisplayName('deletefile', { file_path: 'old.ts' })).toBe('Deleted old.ts')
+    })
+    it('shows Exited plan mode for exit_plan_mode + exitplanmode', () => {
+      expect(getToolDisplayName('exit_plan_mode', {})).toBe('Exited plan mode')
+      expect(getToolDisplayName('exitplanmode', {})).toBe('Exited plan mode')
+      expect(getToolDisplayName('ExitPlanMode', {})).toBe('Exited plan mode')
+    })
+    it('shows Asked user for ask_user_question variants', () => {
+      expect(getToolDisplayName('ask_user_question', {})).toBe('Asked user')
+      expect(getToolDisplayName('askuserquestion', {})).toBe('Asked user')
     })
     it('shows Searched project', () => {
       expect(getToolDisplayName('grep_search', {})).toBe('Searched project')

@@ -108,7 +108,14 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
       return 'search'
     case 'codex_plan':
     case 'plan':
+    case 'exit_plan_mode':
+    case 'exitplanmode':
+    case 'exitplan_mode':
+    case 'exit_planmode':
       return 'plan'
+    case 'ask_user_question':
+    case 'askuserquestion':
+      return 'task'
     case 'codex_reasoning':
     case 'reasoning':
       return 'reasoning'
@@ -135,24 +142,46 @@ export function toolNameToFamily(name: string | undefined | null): ToolFamily | 
   if (normalised.startsWith('browser_')) return 'browser'
   if (normalised === 'run_shell_command' || normalised === 'shell') return 'shell'
   if (
+    // 1.0.4-AA — handle no-separator variants alongside snake_case
+    // canonicals. Kimi + some MCP wrappers strip underscores so
+    // `writefile`/`editfile`/`createfile`/`deletefile`/`applypatch`/
+    // `strreplace` were falling through to the null fallback and
+    // showing the legacy category icon.
     normalised === 'write_file' ||
+    normalised === 'writefile' ||
     normalised === 'replace' ||
     normalised === 'edit_file' ||
+    normalised === 'editfile' ||
     normalised === 'edit' ||
     normalised === 'create_file' ||
+    normalised === 'createfile' ||
     normalised === 'delete_file' ||
+    normalised === 'deletefile' ||
     normalised === 'apply_patch' ||
+    normalised === 'applypatch' ||
     normalised === 'str_replace' ||
+    normalised === 'strreplace' ||
     normalised === 'str_replace_editor' ||
+    normalised === 'strreplaceeditor' ||
     normalised === 'multiedit' ||
     normalised === 'notebookedit'
   ) {
     return 'edit'
   }
   if (
+    // 1.0.4-AA — mirror the read-category aliases now recognised
+    // by ToolParser.getToolCategory (READ_LIKE_TOOL_NAMES). Without
+    // these the activity row dropped back to the generic category
+    // icon for `readfile` etc.
     normalised === 'read_file' ||
+    normalised === 'readfile' ||
+    normalised === 'read' ||
     normalised === 'list_directory' ||
-    normalised === 'open_workspace_file'
+    normalised === 'listdirectory' ||
+    normalised === 'list_dir' ||
+    normalised === 'listdir' ||
+    normalised === 'open_workspace_file' ||
+    normalised === 'openworkspacefile'
   ) {
     return 'file'
   }

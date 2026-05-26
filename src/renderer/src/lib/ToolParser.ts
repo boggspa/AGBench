@@ -215,15 +215,21 @@ export type ToolCategory = 'task' | 'read' | 'write' | 'search' | 'shell' | 'unk
 const WRITE_LIKE_TOOL_NAMES = new Set([
   'replace',
   'write_file',
+  'writefile',
   'create_file',
+  'createfile',
   'edit_file',
+  'editfile',
   'delete_file',
+  'deletefile',
   'edit',
   'write',
   'multiedit',
   'notebookedit',
   'apply_patch',
+  'applypatch',
   'str_replace',
+  'strreplace',
   'str_replace_editor',
   'strreplaceeditor'
 ])
@@ -243,33 +249,80 @@ export function isWriteLikeToolName(toolName: string): boolean {
   return false
 }
 
+/**
+ * 1.0.4 — read-category aliases. Same canonical tool can show up
+ * in three+ forms across provider adapters: `read_file` (Claude
+ * SDK, snake_case), `readfile` (Kimi adapter, no separator),
+ * `readFile` (some camelCase wrappers — already lowercased before
+ * we check). Categorise all of them as 'read' so the activity
+ * gets the friendly "Read <path>" label, the file-family SVG
+ * icon, and the auto-compaction in `ActivityStack`.
+ */
+const READ_LIKE_TOOL_NAMES = new Set([
+  'read_file',
+  'readfile',
+  'read',
+  'list_directory',
+  'listdirectory',
+  'list_dir',
+  'listdir',
+  'open_workspace_file',
+  'openworkspacefile'
+])
+
+/**
+ * 1.0.4 — task-category aliases beyond the 1.0.3 set. `exitplanmode`
+ * + `exit_plan_mode` are emitted by Claude when it ends plan mode;
+ * they were falling through to the 'unknown' category and rendering
+ * as the raw "Used exitplanmode" string instead of "Exit plan mode."
+ */
+const TASK_LIKE_TOOL_NAMES = new Set([
+  'update_topic',
+  'ensemble_yield',
+  'invoke_agent',
+  'summary',
+  'intent',
+  'progress',
+  'tool_progress',
+  'codex_reasoning',
+  'codex_plan',
+  'kimi_thinking',
+  'exit_plan_mode',
+  'exitplanmode',
+  'exitplan_mode',
+  'exit_planmode',
+  'ask_user_question',
+  'askuserquestion'
+])
+
+const SEARCH_LIKE_TOOL_NAMES = new Set([
+  'grep_search',
+  'grepsearch',
+  'glob',
+  'search',
+  'grep',
+  'rg',
+  'google_web_search',
+  'googlewebsearch',
+  'web_search',
+  'websearch'
+])
+
 export function getToolCategory(toolName: string): ToolCategory {
   const name = (toolName || '').toLowerCase()
   const unqualifiedName = stripToolNamespace(name)
-  if (
-    [
-      'update_topic',
-      'ensemble_yield',
-      'invoke_agent',
-      'summary',
-      'intent',
-      'progress',
-      'tool_progress',
-      'codex_reasoning',
-      'codex_plan',
-      'kimi_thinking'
-    ].includes(unqualifiedName)
-  )
-    return 'task'
-  if (unqualifiedName === 'read_file' || unqualifiedName === 'list_directory') return 'read'
-  if (isWriteLikeToolName(name)) return 'write'
-  if (
-    ['grep_search', 'glob', 'search', 'grep', 'rg', 'google_web_search', 'web_search'].includes(
-      name
-    )
-  )
+  if (TASK_LIKE_TOOL_NAMES.has(unqualifiedName)) return 'task'
+  if (READ_LIKE_TOOL_NAMES.has(unqualifiedName)) return 'read'
+  if (isWriteLikeToolName(unqualifiedName)) return 'write'
+  if (SEARCH_LIKE_TOOL_NAMES.has(unqualifiedName) || SEARCH_LIKE_TOOL_NAMES.has(name))
     return 'search'
-  if (unqualifiedName === 'run_shell_command' || unqualifiedName === 'shell') return 'shell'
+  if (
+    unqualifiedName === 'run_shell_command' ||
+    unqualifiedName === 'runshellcommand' ||
+    unqualifiedName === 'shell' ||
+    unqualifiedName === 'bash'
+  )
+    return 'shell'
   return 'unknown'
 }
 
@@ -353,31 +406,64 @@ export function getToolDisplayName(toolName: string, parameters?: Record<string,
         return (params.title as string) || 'Delegated task'
       if (unqualifiedName === 'summary') return (params.title as string) || 'Summary'
       if (unqualifiedName === 'intent') return (params.title as string) || 'Intent'
+      // 1.0.4-AA — `exit_plan_mode` + `exitplanmode` were falling
+      // through to the generic 'Task update' label and rendering
+      // as "Used exitplanmode" in the UI. Provide a friendly
+      // human-readable label instead.
+      if (
+        unqualifiedName === 'exit_plan_mode' ||
+        unqualifiedName === 'exitplanmode' ||
+        unqualifiedName === 'exit_planmode' ||
+        unqualifiedName === 'exitplan_mode'
+      ) {
+        return 'Exited plan mode'
+      }
+      if (unqualifiedName === 'ask_user_question' || unqualifiedName === 'askuserquestion') {
+        return 'Asked user'
+      }
       return (params.title as string) || 'Task update'
     case 'read':
-      if (toolName.toLowerCase() === 'list_directory')
+      // 1.0.4-AA — match against the namespace-stripped/normalized
+      // form so `list_directory`, `listdirectory`, `list_dir`, and
+      // `listdir` all share the "Listed <path>" label.
+      if (
+        unqualifiedName === 'list_directory' ||
+        unqualifiedName === 'listdirectory' ||
+        unqualifiedName === 'list_dir' ||
+        unqualifiedName === 'listdir'
+      ) {
         return filePath ? `Listed ${filePath}` : 'Listed directory'
+      }
       return filePath ? `Read ${filePath}` : 'Read file'
     case 'write': {
-      const name = toolName.toLowerCase()
+      // 1.0.4-AA — use the namespace-stripped unqualified form so
+      // no-separator variants (`writefile`, `editfile`, `createfile`,
+      // `deletefile`, `applypatch`, `strreplace`) hit the correct
+      // verb branch instead of falling through to the generic
+      // "Wrote file" default.
+      const name = unqualifiedName
       if (
         name === 'replace' ||
         name.endsWith('__replace') ||
         name === 'edit' ||
         name === 'edit_file' ||
+        name === 'editfile' ||
         name.endsWith('__edit_file') ||
         name === 'multiedit' ||
         name === 'notebookedit' ||
         name === 'apply_patch' ||
+        name === 'applypatch' ||
         name.endsWith('__apply_patch') ||
-        name.includes('str_replace')
+        name.includes('str_replace') ||
+        name === 'strreplace' ||
+        name === 'strreplaceeditor'
       ) {
         return filePath ? `Edited ${filePath}` : 'Edited file'
       }
-      if (name === 'create_file' || name.endsWith('__create_file')) {
+      if (name === 'create_file' || name === 'createfile' || name.endsWith('__create_file')) {
         return filePath ? `Created ${filePath}` : 'Created file'
       }
-      if (name === 'delete_file' || name.endsWith('__delete_file')) {
+      if (name === 'delete_file' || name === 'deletefile' || name.endsWith('__delete_file')) {
         return filePath ? `Deleted ${filePath}` : 'Deleted file'
       }
       return filePath ? `Wrote ${filePath}` : 'Wrote file'

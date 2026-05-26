@@ -22,6 +22,16 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('open_workspace_file')).toBe('file')
   })
 
+  // 1.0.4-AA — no-separator variants emitted by Kimi + certain
+  // MCP wrappers were falling through to the legacy category icon.
+  it('maps no-separator readfile/listdirectory variants to file', () => {
+    expect(toolNameToFamily('readfile')).toBe('file')
+    expect(toolNameToFamily('listdirectory')).toBe('file')
+    expect(toolNameToFamily('list_dir')).toBe('file')
+    expect(toolNameToFamily('listdir')).toBe('file')
+    expect(toolNameToFamily('openworkspacefile')).toBe('file')
+  })
+
   it('maps edit / write tools to the edit family', () => {
     expect(toolNameToFamily('write_file')).toBe('edit')
     expect(toolNameToFamily('replace')).toBe('edit')
@@ -31,6 +41,30 @@ describe('toolNameToFamily', () => {
     expect(toolNameToFamily('apply_patch')).toBe('edit')
     expect(toolNameToFamily('str_replace')).toBe('edit')
     expect(toolNameToFamily('multiedit')).toBe('edit')
+  })
+
+  // 1.0.4-AA — same coverage as file family above.
+  it('maps no-separator writefile/editfile/createfile variants to edit', () => {
+    expect(toolNameToFamily('writefile')).toBe('edit')
+    expect(toolNameToFamily('editfile')).toBe('edit')
+    expect(toolNameToFamily('createfile')).toBe('edit')
+    expect(toolNameToFamily('deletefile')).toBe('edit')
+    expect(toolNameToFamily('applypatch')).toBe('edit')
+    expect(toolNameToFamily('strreplace')).toBe('edit')
+    expect(toolNameToFamily('strreplaceeditor')).toBe('edit')
+  })
+
+  // 1.0.4-AA — Claude's plan-mode tool was rendering as
+  // "Used exitplanmode" with no icon.
+  it('maps exit_plan_mode + exitplanmode to the plan family', () => {
+    expect(toolNameToFamily('exit_plan_mode')).toBe('plan')
+    expect(toolNameToFamily('exitplanmode')).toBe('plan')
+    expect(toolNameToFamily('ExitPlanMode')).toBe('plan')
+  })
+
+  it('maps ask_user_question + askuserquestion to the task family', () => {
+    expect(toolNameToFamily('ask_user_question')).toBe('task')
+    expect(toolNameToFamily('askuserquestion')).toBe('task')
   })
 
   it('maps git_* tools to the git family', () => {
