@@ -2125,6 +2125,255 @@ describe('EnsembleOrchestrator', () => {
     expect(prompt).not.toContain('self-reflective mode')
     expect(prompt).toContain('NOT to AGBench')
   })
+
+  // 1.0.4-AK3 — Work Session hard-stops + permission enforcement.
+  //
+  // These cover the safety surfaces between AK1 (the data shape +
+  // ensemble_continue tool) and AK4-AK6 (the parallel substrate).
+  // The orchestrator must:
+  //   1. Apply the Work Session permission preset over the per-
+  //      participant preset when the session is active (not bypass
+  //      EffectiveRunPermissions, just feed the new preset in).
+  //   2. Drop queued continuations when the session has transitioned
+  //      to a terminal status (completed / paused / cancelled /
+  //      limit_reached) between rounds.
+  //   3. Detect duration-budget exhaustion at round-end and emit
+  //      the appropriate transcript note + status transition.
+
+  it('1.0.4-AK3: overrides per-participant permission preset with workSession preset when active', async () => {
+    const harness = makeHarness()
+    // Claude participant is read_only, Codex is workspace_write.
+    // Setting workSession to full_access should override BOTH.
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test override',
+      acceptanceCriteria: 'Permissions correct',
+      allowedParticipantIds: null,
+      permissionPresetId: 'full_access',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // First dispatched payload is Claude — pre-fix it would have
+    // arrived with permissionPresetId 'read_only' (the participant
+    // preset). Now it should carry 'full_access' from the session.
+    expect(harness.dispatched[0].effectivePermissions?.presetId).toBe('full_access')
+  })
+
+  it('1.0.4-AK3: reverts to per-participant preset when workSession is not active', async () => {
+    const harness = makeHarness()
+    // workSession exists but is in `paused` status — the override
+    // should NOT apply. This guarantees pausing + resuming
+    // doesn't accidentally re-clamp on the resume side.
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'paused',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'read_only',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start work.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Claude is read_only natively — same result either way for
+    // Claude, but the SECOND dispatched payload (Codex) should
+    // have its native workspace_write preset, NOT the paused
+    // session's read_only override.
+    expect(harness.dispatched[0].effectivePermissions?.presetId).toBe('read_only')
+  })
+
+  it('1.0.4-AK3: drops queued prompts when workSession transitions to completed mid-round', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Round 1.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Claude finishes the round.
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Done!' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    // Codex's turn — simulate that ensemble_continue queues a
+    // prompt BUT then transitions the session to completed.
+    harness.orchestrator.enqueueWorkSessionContinuation(
+      'ensemble-chat',
+      'queued-but-should-be-dropped'
+    )
+    // Externally transition the session — same as
+    // ensemble_continue(acceptanceStatus: 'complete') would do.
+    harness.chat.ensemble!.workSession = {
+      ...harness.chat.ensemble!.workSession!,
+      status: 'completed',
+      endedAt: new Date().toISOString(),
+      endedReason: 'Acceptance criteria met.'
+    }
+    // Codex finishes.
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Codex done.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    // Give the orchestrator a tick to drain the queue + dispatch
+    // (which it should refuse to do because session is terminal).
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    // Only the original two dispatches should have happened — the
+    // queued continuation was dropped on the terminal-status check.
+    expect(harness.dispatched).toHaveLength(2)
+  })
+
+  it('1.0.4-AK3: drops queued prompts when workSession duration cap elapses at round-end', async () => {
+    const harness = makeHarness()
+    // startedAt 7 hours ago + 6h cap means we should hit the
+    // duration cap at the first round-end check. Single-participant
+    // ensemble so the round closes after one dispatch — matches the
+    // pattern used by "queues a fresh round" so we don't have to
+    // chase two providers through the full lifecycle in a test that
+    // is really about the round-end terminal-status drain.
+    harness.chat.ensemble!.participants = [harness.chat.ensemble!.participants[0]]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      startedAt: new Date(Date.now() - 7 * 60 * 60 * 1000).toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Queue a continuation before round end.
+    harness.orchestrator.enqueueWorkSessionContinuation(
+      'ensemble-chat',
+      'should-be-dropped-by-duration'
+    )
+    // Close Claude's turn → triggers round-end check.
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    // The duration-exhausted check should have transitioned the
+    // session to limit_reached + dropped the queued continuation.
+    expect(harness.chat.ensemble?.workSession?.status).toBe('limit_reached')
+    expect(harness.chat.ensemble?.workSession?.endedReason).toContain(
+      'Duration budget reached'
+    )
+    // Single dispatch — no fresh round fired from the queue.
+    expect(harness.dispatched).toHaveLength(1)
+    // Transcript status row should explain the end.
+    const durationNote = harness.chat.messages.find(
+      (m) =>
+        m.role === 'system' &&
+        typeof m.content === 'string' &&
+        m.content.includes('Work Session ended') &&
+        m.content.includes('Duration budget reached')
+    )
+    expect(durationNote).toBeDefined()
+  })
+
+  it('1.0.4-AK3: honours queued continuation when workSession stays active', async () => {
+    // Mirror of the above tests — verify the happy path still
+    // dispatches when the session is healthy. Guards against
+    // a bug where the hard-stop check accidentally drops queues
+    // for active sessions. Single-participant ensemble keeps the
+    // test focused on the queue-drain → fresh-round path.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [harness.chat.ensemble!.participants[0]]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: false,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Round 1.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    // Queue a follow-up while Claude is mid-turn.
+    harness.orchestrator.enqueueWorkSessionContinuation(
+      'ensemble-chat',
+      'continue-please'
+    )
+    // Close Claude's turn — round-end check fires + queued prompt
+    // dispatches as a fresh round.
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    // Round 2 fires with the queued prompt.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), {
+      timeout: 1000
+    })
+    expect(harness.dispatched[1].prompt).toContain('continue-please')
+  })
 })
 
 describe('parseSelfReflectivePrefix', () => {

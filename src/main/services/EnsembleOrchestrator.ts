@@ -1370,14 +1370,85 @@ export class EnsembleOrchestrator {
       )
     }
 
+    // 1.0.4-AK3 — Work Session hard-stop check at round end.
+    //
+    // Before honouring a queued continuation, re-read the chat's
+    // current Work Session state. AK1's `ensemble_continue` may
+    // have transitioned the session to `'completed'` / `'paused'` /
+    // `'limit_reached'` from within the just-finished round; the
+    // user may have flipped status to `'cancelled'` via the
+    // session-strip Stop button. In any of those cases we must NOT
+    // dispatch the queued prompt — the session has ended and the
+    // queue should drain to the user as if the round closed
+    // normally.
+    //
+    // Also check: even if the session is still `'active'`, has the
+    // duration budget elapsed? Round-budget checks happen inside
+    // `ensemble_continue` BEFORE queueing (so a queued prompt that
+    // got past that gate is still valid for rounds), but the
+    // duration cap can lapse asynchronously while the round is
+    // running. We check it here so a long-running participant
+    // doesn't accidentally extend the session past its time cap.
+    const chatNow = this.deps.getChat(runtime.chatId)
+    const workSessionAtEnd = chatNow?.ensemble?.workSession
+    const sessionStillActive =
+      workSessionAtEnd?.enabled && workSessionAtEnd.status === 'active'
+
+    let workSessionEnded: 'duration_exhausted' | null = null
+    if (sessionStillActive && workSessionAtEnd?.startedAt && workSessionAtEnd.maxDurationMs > 0) {
+      const started = new Date(workSessionAtEnd.startedAt).getTime()
+      if (
+        Number.isFinite(started) &&
+        Date.now() - started >= workSessionAtEnd.maxDurationMs
+      ) {
+        workSessionEnded = 'duration_exhausted'
+      }
+    }
+
+    if (workSessionEnded === 'duration_exhausted' && chatNow && workSessionAtEnd) {
+      const elapsedHours = (workSessionAtEnd.maxDurationMs / (1000 * 60 * 60)).toFixed(1)
+      const reason = `Duration budget reached (${elapsedHours}h).`
+      this.deps.saveChat({
+        ...chatNow,
+        ensemble: {
+          ...chatNow.ensemble!,
+          workSession: {
+            ...workSessionAtEnd,
+            status: 'limit_reached',
+            endedAt: new Date().toISOString(),
+            endedReason: reason
+          }
+        }
+      })
+      this.appendRoundStatus(
+        runtime.chatId,
+        runtime.roundId,
+        `⏱ Work Session ended: ${reason} Queued continuations dropped.`
+      )
+    }
+
+    // Re-derive after possible duration-exhaustion transition.
+    const chatAfterCheck = this.deps.getChat(runtime.chatId)
+    const finalSessionStatus = chatAfterCheck?.ensemble?.workSession?.status
+    const sessionTerminal =
+      finalSessionStatus === 'completed' ||
+      finalSessionStatus === 'paused' ||
+      finalSessionStatus === 'cancelled' ||
+      finalSessionStatus === 'limit_reached'
+
     // Dequeue the next prompt (FIFO) for the follow-up round. Anything
     // remaining stays in `runtime.queuedPrompts` and gets transferred
     // to the new runtime in `beginRound` so the chain continues
-    // through every queued message until the queue drains.
-    const [nextPrompt, ...remainingQueue] = runtime.queuedPrompts
+    // through every queued message until the queue drains. When a
+    // Work Session terminal state is in effect we drop the queue
+    // entirely — the session is over, queued prompts would re-arm
+    // it.
+    const [nextPrompt, ...remainingQueue] = sessionTerminal
+      ? ([] as string[])
+      : runtime.queuedPrompts
     this.finishRound(runtime.chatId, runtime.roundId, runtime.cancelled ? 'cancelled' : 'completed')
     this.clearRuntimeIfCurrent(runtime)
-    if (nextPrompt && !runtime.cancelled) {
+    if (nextPrompt && !runtime.cancelled && !sessionTerminal) {
       this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, remainingQueue)
     }
   }
@@ -1817,11 +1888,34 @@ export class EnsembleOrchestrator {
     chat: ChatRecord,
     participant: EnsembleParticipant
   ): EffectiveRunPermissions {
+    // 1.0.4-AK3 — Work Session permission clamp. When an active
+    // Work Session is in flight, the session-wide
+    // `permissionPresetId` overrides per-participant presets for
+    // the duration of the session. This lets the user clamp the
+    // entire panel's authority via one knob (e.g. "no writes for
+    // this whole session" → `read_only`) without editing each
+    // participant individually.
+    //
+    // CRITICAL — the override is fed INTO
+    // `resolveEffectiveRunPermissions`, NOT a bypass of it. The
+    // workspace-grant + overrides + EffectiveRunPermissions
+    // resolution still happens normally; we're just substituting
+    // the input `presetId`. Approval gates still fire.
+    //
+    // Skipped when the session is not 'active' — paused / completed
+    // / cancelled / limit_reached sessions revert to participant
+    // presets so the user can resume an interactive round without
+    // the session config lingering.
+    const workSession = chat.ensemble?.workSession
+    const sessionActive = workSession?.enabled && workSession?.status === 'active'
+    const presetId = sessionActive
+      ? workSession.permissionPresetId
+      : participant.permissionPresetId
     return resolveEffectiveRunPermissions({
       provider: participant.provider,
       workspacePath: chat.scope === 'global' ? undefined : chat.workspacePath,
       settings: this.deps.getSettings(),
-      presetId: participant.permissionPresetId,
+      presetId,
       overrides: participant.permissionOverrides || null
     })
   }
