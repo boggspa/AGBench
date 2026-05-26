@@ -75,7 +75,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('data-provider="kimi"')
   })
 
-  it('renders Welcome heading and the three numbered sections', () => {
+  it('renders Welcome heading and the numbered onboarding sections', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
         open={true}
@@ -90,7 +90,53 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Welcome to AGBench')
     expect(html).toContain('1. Sign in to your providers')
     expect(html).toContain('2. Add your first workspace')
-    expect(html).toContain('3. Power-user shortcuts')
+    expect(html).toContain('3. Choose your starting look')
+    expect(html).toContain('4. Try Ensemble chats')
+    expect(html).toContain('5. Power-user shortcuts')
+  })
+
+  it('renders the Appearance preference controls and preview surfaces', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        themeAppearance="blue"
+        composerStyle="claude"
+        userBubbleColor="purple"
+      />
+    )
+    expect(html).toContain('Theme')
+    expect(html).toContain('Composer shell')
+    expect(html).toContain('Message bubble')
+    expect(html).toContain('Composer preview')
+    expect(html).toContain('data-composer-style="claude"')
+    expect(html).toContain('data-user-bubble-color="purple"')
+    expect(html).toContain('Plan / Read-only')
+  })
+
+  it('renders the Ensemble preview row with provider participants', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+      />
+    )
+    expect(html).toContain('New Ensemble puts multiple provider participants')
+    expect(html).toContain('data-provider="codex"')
+    expect(html).toContain('data-provider="claude"')
+    expect(html).toContain('data-provider="gemini"')
+    expect(html).toContain('data-provider="kimi"')
+    expect(html).toContain('Turn / Continuous in the composer')
   })
 
   it('Kimi card carries the de-emphasised + optional classes for muted styling', () => {

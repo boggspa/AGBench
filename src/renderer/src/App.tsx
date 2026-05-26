@@ -17482,6 +17482,10 @@ function App(): React.JSX.Element {
         claudeAuthStatus={claudeAuthStatus}
         kimiAuthStatus={kimiAuthStatus}
         geminiAuthStatus={geminiAuthStatus}
+        themeAppearance={appearance.themeAppearance || 'system'}
+        composerStyle={appearance.composerStyle || 'default'}
+        userBubbleColor={appearance.userBubbleColor || 'system'}
+        onAppearancePreviewChange={handleSettingsChange}
       />
       {/* BugReportSheet — inline issue capture for testers. z-index
           (9120) sits above the FirstLaunchSheet (9100) so the bug-report

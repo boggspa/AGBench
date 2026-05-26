@@ -1,5 +1,12 @@
 import React, { useEffect, useRef } from 'react'
-import type { ProviderApiKeyStatus, GeminiAuthStatus } from '../../../main/store/types'
+import type {
+  AppSettings,
+  ComposerStyle,
+  GeminiAuthStatus,
+  ProviderApiKeyStatus,
+  ThemeAppearance,
+  UserBubbleColor
+} from '../../../main/store/types'
 import {
   summariseCodexStatus,
   summariseGeminiStatus,
@@ -29,7 +36,7 @@ const PROVIDER_LOGOS: Record<'codex' | 'claude' | 'gemini' | 'kimi', string> = {
  * reminder once the sheet is dismissed.
  *
  * Trade-offs (per the work scope):
- *   1. **Sheet not wizard.** One scrollable sheet with four sections
+ *   1. **Sheet not wizard.** One scrollable sheet with five sections
  *      reads slightly more content-dense than a 4-step wizard, but
  *      it's half the JSX, easier to test, and lets the user skim
  *      sections out of order. A wizard is the right next iteration
@@ -81,6 +88,16 @@ export interface FirstLaunchSheetProps {
   /** Gemini auth status. Carries profile info; we only need the
    * top-level "is there an active profile" check. */
   geminiAuthStatus: GeminiAuthStatus | null
+  /** Appearance controls are optional so static tests and older hosts
+   * can render the sheet without wiring the preference preview. */
+  themeAppearance?: ThemeAppearance
+  composerStyle?: ComposerStyle
+  userBubbleColor?: UserBubbleColor
+  onAppearancePreviewChange?: (
+    next: Partial<
+      Pick<AppSettings, 'themeAppearance' | 'composerStyle' | 'userBubbleColor'>
+    >
+  ) => void
 }
 
 type ProviderRowVariant = ProviderAuthVariant
@@ -102,6 +119,107 @@ interface ProviderRowSpec {
 
 const SHEET_TITLE_ID = 'first-launch-sheet-title'
 
+const ONBOARDING_THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
+  { value: 'system', label: 'System' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'light', label: 'Light' },
+  { value: 'midnight', label: 'Midnight' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'pink', label: 'Pink' },
+  { value: 'red', label: 'Red' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'green', label: 'Green' },
+  { value: 'graphite', label: 'Graphite' },
+  { value: 'rainbow', label: 'Rainbow' },
+  { value: 'nebula', label: 'Nebula' },
+  { value: 'citrus', label: 'Citrus' },
+  { value: 'twilight', label: 'Twilight' },
+  { value: 'ocean', label: 'Ocean' },
+  { value: 'sunset', label: 'Sunset' },
+  { value: 'forest', label: 'Forest' },
+  { value: 'cyber', label: 'Cyber' },
+  { value: 'candy', label: 'Candy' },
+  { value: 'mist', label: 'Mist' },
+  { value: 'sage', label: 'Sage' }
+]
+
+const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }> = [
+  { value: 'default', label: 'AGBench native' },
+  { value: 'codex', label: 'Codex shell' },
+  { value: 'claude', label: 'Claude shell' },
+  { value: 'gemini', label: 'Gemini shell' },
+  { value: 'kimi', label: 'Kimi shell' },
+  { value: 'modular', label: 'Modular' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'stub', label: 'Ticket stub' },
+  { value: 'satellite', label: 'Satellite' }
+]
+
+const ONBOARDING_BUBBLE_OPTIONS: Array<{ value: UserBubbleColor; label: string }> = [
+  { value: 'system', label: 'Default' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'pink', label: 'Pink' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'green', label: 'Green' },
+  { value: 'red', label: 'Red' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'graphite', label: 'Graphite' }
+]
+
+function getOnboardingComposerPreview(style: ComposerStyle): {
+  provider: 'codex' | 'claude' | 'gemini' | 'kimi'
+  providerLabel: string
+  modelLabel: string
+  permissionLabel: string
+  placeholder: string
+} {
+  switch (style) {
+    case 'codex':
+      return {
+        provider: 'codex',
+        providerLabel: 'Codex',
+        modelLabel: 'GPT-5.5',
+        permissionLabel: 'Full Workspace Access',
+        placeholder: 'Ask Codex anything. @ to mention files'
+      }
+    case 'claude':
+      return {
+        provider: 'claude',
+        providerLabel: 'Claude',
+        modelLabel: 'Opus 4.7',
+        permissionLabel: 'Plan / Read-only',
+        placeholder: 'Describe a task or ask a question'
+      }
+    case 'gemini':
+      return {
+        provider: 'gemini',
+        providerLabel: 'Gemini',
+        modelLabel: 'Pro 3.1',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Ask Gemini'
+      }
+    case 'kimi':
+      return {
+        provider: 'kimi',
+        providerLabel: 'Kimi',
+        modelLabel: 'K2.6',
+        permissionLabel: 'Read workspace',
+        placeholder: 'Type "/" to use quick actions'
+      }
+    default:
+      return {
+        provider: 'codex',
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Ask anything...'
+      }
+  }
+}
+
 export function FirstLaunchSheet({
   open,
   onDismiss,
@@ -109,7 +227,11 @@ export function FirstLaunchSheet({
   codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
-  geminiAuthStatus
+  geminiAuthStatus,
+  themeAppearance = 'system',
+  composerStyle = 'default',
+  userBubbleColor = 'system',
+  onAppearancePreviewChange
 }: FirstLaunchSheetProps): React.JSX.Element | null {
   const dismissRef = useRef(onDismiss)
   useEffect(() => {
@@ -137,6 +259,7 @@ export function FirstLaunchSheet({
   const claudeSummary = summariseProviderApiKeyStatus(claudeAuthStatus, 'Claude')
   const geminiSummary = summariseGeminiStatus(geminiAuthStatus)
   const kimiSummary = summariseProviderApiKeyStatus(kimiAuthStatus, 'Kimi')
+  const composerPreview = getOnboardingComposerPreview(composerStyle)
 
   const providerRows: ProviderRowSpec[] = [
     {
@@ -209,7 +332,7 @@ export function FirstLaunchSheet({
             <div>
               <h2 id={SHEET_TITLE_ID}>Welcome to AGBench</h2>
               <p className="first-launch-sheet-subtitle">
-                First-launch checklist — three minutes to a working setup.
+                First-launch checklist — providers, workspace, look, and Ensemble basics.
               </p>
             </div>
           </div>
@@ -258,7 +381,147 @@ export function FirstLaunchSheet({
         </section>
 
         <section className="first-launch-sheet-section">
-          <h3 className="first-launch-sheet-section-title">3. Power-user shortcuts (optional)</h3>
+          <h3 className="first-launch-sheet-section-title">3. Choose your starting look</h3>
+          <p className="first-launch-sheet-section-helper">
+            These controls write to Appearance settings immediately. The preview is inert, so it
+            will never touch your active chat prompt.
+          </p>
+          <div
+            className="first-launch-sheet-preference-card"
+            data-composer-style={composerStyle}
+            data-user-bubble-color={userBubbleColor}
+          >
+            <div className="first-launch-sheet-preference-controls">
+              <label className="first-launch-sheet-preference-field">
+                <span>Theme</span>
+                <select
+                  value={themeAppearance}
+                  onChange={(e) =>
+                    onAppearancePreviewChange?.({
+                      themeAppearance: e.target.value as ThemeAppearance
+                    })
+                  }
+                >
+                  {ONBOARDING_THEME_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="first-launch-sheet-preference-field">
+                <span>Composer shell</span>
+                <select
+                  value={composerStyle}
+                  onChange={(e) =>
+                    onAppearancePreviewChange?.({
+                      composerStyle: e.target.value as ComposerStyle
+                    })
+                  }
+                >
+                  {ONBOARDING_COMPOSER_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="first-launch-sheet-preference-field">
+                <span>Message bubble</span>
+                <select
+                  value={userBubbleColor}
+                  onChange={(e) =>
+                    onAppearancePreviewChange?.({
+                      userBubbleColor: e.target.value as UserBubbleColor
+                    })
+                  }
+                >
+                  {ONBOARDING_BUBBLE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <div className="first-launch-sheet-composer-preview" aria-label="Composer preview">
+              <div
+                className="first-launch-sheet-preview-transcript"
+                data-provider={composerPreview.provider}
+              >
+                <span>{composerPreview.providerLabel}</span>
+                <p>
+                  This is how assistant text, inline <code>code</code>, and file names will read
+                  in your transcript.
+                </p>
+              </div>
+              <div className="first-launch-sheet-preview-user-bubble">
+                Can you compare a few providers in one thread?
+              </div>
+              <div
+                className={`composer-area first-launch-sheet-preview-composer interface-${composerStyle}`}
+              >
+                <div className="first-launch-sheet-preview-above-bar">
+                  <span>Preview workspace · main</span>
+                  <span>2 files changed</span>
+                </div>
+                <div className="first-launch-sheet-preview-input" aria-hidden="true">
+                  {composerPreview.placeholder}
+                </div>
+                <div className="first-launch-sheet-preview-footer">
+                  <span>{composerPreview.permissionLabel}</span>
+                  <span>{composerPreview.providerLabel}</span>
+                  <span>{composerPreview.modelLabel}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="first-launch-sheet-section">
+          <h3 className="first-launch-sheet-section-title">4. Try Ensemble chats</h3>
+          <p className="first-launch-sheet-section-helper">
+            New Ensemble puts multiple provider participants in one shared transcript. Turn mode
+            keeps one active speaker at a time; Continuous mode lets the panel keep moving.
+          </p>
+          <div className="first-launch-sheet-ensemble-preview" aria-label="Ensemble row preview">
+            <div className="first-launch-sheet-ensemble-strip">
+              <span className="first-launch-sheet-ensemble-chip" data-provider="codex">
+                <strong>Worker</strong>
+                <em>Codex</em>
+              </span>
+              <span className="first-launch-sheet-ensemble-arrow" aria-hidden>
+                →
+              </span>
+              <span className="first-launch-sheet-ensemble-chip" data-provider="claude">
+                <strong>Explorer</strong>
+                <em>Claude</em>
+              </span>
+              <span className="first-launch-sheet-ensemble-arrow" aria-hidden>
+                →
+              </span>
+              <span className="first-launch-sheet-ensemble-chip" data-provider="gemini">
+                <strong>Researcher</strong>
+                <em>Gemini</em>
+              </span>
+              <span className="first-launch-sheet-ensemble-arrow" aria-hidden>
+                →
+              </span>
+              <span className="first-launch-sheet-ensemble-chip" data-provider="kimi">
+                <strong>Reviewer</strong>
+                <em>Kimi</em>
+              </span>
+            </div>
+            <div className="first-launch-sheet-ensemble-footer">
+              <span>+ New → New Ensemble</span>
+              <span>Turn / Continuous in the composer</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="first-launch-sheet-section">
+          <h3 className="first-launch-sheet-section-title">5. Power-user shortcuts (optional)</h3>
           <ul className="first-launch-sheet-tips">
             <li>
               <strong>@ to reference files.</strong> Type <code>@</code> in the composer to mention
@@ -284,9 +547,12 @@ export function FirstLaunchSheet({
               snappier turns at higher cost.
             </li>
             <li>
-              <strong>Composer shell style.</strong> Settings → Composer interface lets you swap
-              the composer between AGBench native, Codex, Claude, Gemini, and Kimi shells — the
-              chrome morphs to match each provider's idiom.
+              <strong>Audit tools and shortcuts.</strong> Settings includes MCP and Keyboard
+              Shortcuts tabs so you can check which tools the agents can see before a run.
+            </li>
+            <li>
+              <strong>Send a focused report.</strong> The <code>!</code> button captures current
+              surface, provider, workspace, theme, and Ensemble context into the local bug log.
             </li>
           </ul>
         </section>
