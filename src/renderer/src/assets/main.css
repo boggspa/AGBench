@@ -4514,11 +4514,11 @@ button.sidebar-item {
  * with the orchestration chain underneath.
  *
  * The `.workspace-name-glow` class drives the workspace-name text
- * shadow on both the ensemble + non-ensemble welcome variants, keyed
- * off the dominant provider (= first speaker for ensembles, the
- * chat's provider otherwise). Light + dark themes share the same
- * `color-mix()` lerps so the glow stays legible without restating
- * theme-specific shadows. */
+ * shadow. Solo chats key it off their active provider; ensemble chats
+ * use the same `--ensemble-provider-1..4` blend as the shell so a
+ * chat-level fallback provider never owns the welcome title. Light +
+ * dark themes share the same `color-mix()` lerps so the glow stays
+ * legible without restating theme-specific shadows. */
 .welcome-ensemble-shell {
   --ensemble-shell-tint-1: var(--ensemble-provider-1, var(--text-primary));
   --ensemble-shell-tint-2: var(--ensemble-provider-2, var(--ensemble-shell-tint-1));
@@ -4576,10 +4576,10 @@ button.sidebar-item {
     0 1px 12px color-mix(in srgb, var(--ensemble-shell-tint-1) 10%, transparent);
 }
 
-/* Workspace-name glow — soft text-shadow in the dominant provider's
- * colour. Sits ON TOP of the existing shell-scoped strong-color rules
- * (see `.app-transcript.provider-{x} .welcome-hero h1 strong`), which
- * still control the fill colour; this class only adds the halo. */
+/* Workspace-name glow — soft text-shadow for solo-provider welcome
+ * titles. Ensemble welcome titles override this with an all-provider
+ * halo below so the workspace name does not inherit the chat-level
+ * fallback provider. */
 .workspace-name-glow {
   text-shadow:
     0 0 12px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 38%, transparent),
@@ -4597,6 +4597,15 @@ button.sidebar-item {
 .workspace-name-glow.provider-kimi {
   --workspace-name-glow-color: var(--provider-kimi-color);
 }
+.workspace-name-glow.workspace-name-glow-ensemble {
+  color: color-mix(in srgb, #ffffff 96%, var(--text-primary) 4%);
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 0.48),
+    -8px 0 18px color-mix(in srgb, var(--provider-gemini-color) 18%, transparent),
+    -2px 0 22px color-mix(in srgb, var(--provider-claude-color) 16%, transparent),
+    3px 0 22px color-mix(in srgb, var(--provider-codex-color) 12%, transparent),
+    8px 0 18px color-mix(in srgb, var(--provider-kimi-color) 18%, transparent);
+}
 
 /* Light themes get a tighter, slightly stronger glow so the workspace
  * name still reads as accented without bleeding into the light surface. */
@@ -4606,6 +4615,33 @@ button.sidebar-item {
   text-shadow:
     0 0 8px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 30%, transparent),
     0 0 18px color-mix(in srgb, var(--workspace-name-glow-color, var(--text-primary)) 16%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .workspace-name-glow.workspace-name-glow-ensemble {
+  color: color-mix(in srgb, var(--text-primary) 94%, #ffffff 6%);
+  text-shadow:
+    0 0 6px rgba(255, 255, 255, 0.72),
+    -7px 0 14px color-mix(in srgb, var(--provider-gemini-color) 14%, transparent),
+    -2px 0 16px color-mix(in srgb, var(--provider-claude-color) 12%, transparent),
+    3px 0 16px color-mix(in srgb, var(--provider-codex-color) 9%, transparent),
+    7px 0 14px color-mix(in srgb, var(--provider-kimi-color) 14%, transparent);
+}
+.app-transcript.chat-kind-ensemble .welcome-hero h1 strong.workspace-name-glow-ensemble {
+  color: color-mix(in srgb, #ffffff 96%, var(--text-primary) 4%);
+  text-shadow:
+    0 0 7px rgba(255, 255, 255, 0.5),
+    0 0 16px rgba(255, 255, 255, 0.22),
+    0 0 28px color-mix(in srgb, var(--text-primary) 18%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .app-transcript.chat-kind-ensemble
+  .welcome-hero
+  h1
+  strong.workspace-name-glow-ensemble {
+  color: color-mix(in srgb, var(--text-primary) 94%, #ffffff 6%);
+  text-shadow:
+    0 0 5px rgba(255, 255, 255, 0.74),
+    0 0 13px rgba(255, 255, 255, 0.36),
+    0 0 22px color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 .ensemble-hierarchy-chain {
   display: flex;
@@ -25421,4 +25457,82 @@ input:disabled, select:disabled, textarea:disabled {
   background-image:
     var(--theme-gradient-panel),
     radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 36%);
+}
+
+/* Ensemble chats keep `provider-*` on the transcript for legacy runtime
+ * plumbing, but the welcome title and AGBench-native composer chrome are
+ * multi-provider surfaces. Reuse the existing welcome-shell blend variables
+ * without retinting provider-specific composer shells. */
+.app-transcript.chat-kind-ensemble {
+  --ensemble-shell-tint-1: var(--ensemble-provider-1, var(--text-primary));
+  --ensemble-shell-tint-2: var(--ensemble-provider-2, var(--ensemble-shell-tint-1));
+  --ensemble-shell-tint-3: var(--ensemble-provider-3, var(--ensemble-shell-tint-2));
+  --ensemble-shell-tint-4: var(--ensemble-provider-4, var(--ensemble-shell-tint-3));
+}
+
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 18%, var(--composer-border));
+}
+
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface:focus-within {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 38%, var(--composer-border));
+  box-shadow:
+    var(--composer-shadow),
+    0 0 0 1px color-mix(in srgb, var(--ensemble-shell-tint-2) 18%, transparent),
+    0 0 24px color-mix(in srgb, var(--ensemble-shell-tint-1) 16%, transparent),
+    0 0 42px color-mix(in srgb, var(--ensemble-shell-tint-3) 12%, transparent);
+}
+
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface::before,
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ensemble-shell-tint-1) 22%, transparent),
+    color-mix(in srgb, var(--ensemble-shell-tint-2) 14%, transparent) 18%,
+    transparent 36%,
+    transparent 64%,
+    color-mix(in srgb, var(--ensemble-shell-tint-3) 14%, transparent) 82%,
+    color-mix(in srgb, var(--ensemble-shell-tint-4) 22%, transparent)
+  );
+  box-shadow:
+    inset 42px 0 52px -30px color-mix(in srgb, var(--ensemble-shell-tint-1) 28%, transparent),
+    inset -42px 0 52px -30px color-mix(in srgb, var(--ensemble-shell-tint-4) 24%, transparent);
+}
+
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before {
+  display: block;
+}
+
+[data-composer-style="default"] .app-transcript.chat-kind-ensemble .ensemble-above-row {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 22%, var(--composer-border));
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 20%, var(--surface-border));
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface:focus-within {
+  border-color: color-mix(in srgb, var(--ensemble-shell-tint-1) 28%, var(--surface-border));
+  box-shadow:
+    0 4px 22px rgba(0, 0, 0, 0.12),
+    0 0 0 1px color-mix(in srgb, var(--ensemble-shell-tint-2) 14%, transparent),
+    0 0 24px color-mix(in srgb, var(--ensemble-shell-tint-3) 10%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-surface::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before {
+  display: block;
+  opacity: 0.42;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ensemble-shell-tint-1) 12%, transparent),
+    color-mix(in srgb, var(--ensemble-shell-tint-2) 8%, transparent) 18%,
+    transparent 38%,
+    transparent 62%,
+    color-mix(in srgb, var(--ensemble-shell-tint-3) 8%, transparent) 82%,
+    color-mix(in srgb, var(--ensemble-shell-tint-4) 12%, transparent)
+  );
+  box-shadow: none;
 }

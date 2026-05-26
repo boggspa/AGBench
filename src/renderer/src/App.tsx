@@ -12924,6 +12924,24 @@ function App(): React.JSX.Element {
       [...(currentChat?.ensemble?.participants || [])].sort((a, b) => a.order - b.order),
     [currentChat?.ensemble?.participants]
   )
+  const ensembleEnabledParticipantsForCurrent = useMemo(
+    () =>
+      isCurrentEnsembleChat
+        ? ensembleParticipantsForCurrent.filter((participant) => participant.enabled)
+        : [],
+    [isCurrentEnsembleChat, ensembleParticipantsForCurrent]
+  )
+  const ensembleBlendStyle = useMemo<CSSProperties | undefined>(() => {
+    if (!isCurrentEnsembleChat || ensembleEnabledParticipantsForCurrent.length === 0) {
+      return undefined
+    }
+    const style: CSSProperties = {}
+    ensembleEnabledParticipantsForCurrent.slice(0, 4).forEach((participant, idx) => {
+      ;(style as Record<string, string>)[`--ensemble-provider-${idx + 1}`] =
+        `var(--provider-${participant.provider}-color)`
+    })
+    return style
+  }, [isCurrentEnsembleChat, ensembleEnabledParticipantsForCurrent])
   const effectiveSelectedParticipantId = useMemo(() => {
     if (!isCurrentEnsembleChat) return null
     const explicit = ensembleParticipantsForCurrent.find((p) => p.id === selectedParticipantId)
@@ -13079,6 +13097,26 @@ function App(): React.JSX.Element {
     chatId: currentChat?.appChatId || null
   })
   const currentProviderLabel = getProviderLabel(currentProvider)
+  /*
+    Composer-unification (Phase J1): placeholder follows the active
+    provider, not the composer theme. Ensemble chats override this with
+    provider-neutral copy because dispatch runs through participants, not
+    the chat-level fallback provider.
+  */
+  const composerPlaceholder = isCurrentEnsembleChat
+    ? 'Ask the ensemble. @ to direct a participant.'
+    : currentProvider === 'codex'
+      ? 'Ask Codex anything. @ to use plugins or mention files'
+      : currentProvider === 'claude'
+        ? 'Describe a task or ask a question'
+        : currentProvider === 'gemini'
+          ? 'Ask Gemini'
+          : currentProvider === 'kimi'
+            ? 'Type "/" to quickly access skills'
+            : `Enter prompt for ${currentProviderLabel}…`
+  const composerAriaLabel = isCurrentEnsembleChat
+    ? 'Prompt for Ensemble'
+    : `Prompt for ${currentProviderLabel}`
   // Slice B: in an ensemble round, the "Thinking…" label should track the
   // actually-speaking participant — not the chat's base provider, which is
   // always "Codex" for ensemble chats. Falls back to the chat's provider
@@ -13868,6 +13906,16 @@ function App(): React.JSX.Element {
   // copy lives INSIDE the dashboard, gated on `hasActivity`.
   const shouldShowWelcomeUsageDashboard =
     isWelcomeChat && welcomeUsageDashboardData.lifetimeHasActivity
+  const transcriptStyle = useMemo<CSSProperties | undefined>(() => {
+    const style: CSSProperties = {}
+    if (showGeminiTerminal && currentProvider === 'gemini') {
+      ;(style as Record<string, string>)['--gemini-terminal-height'] = `${geminiTerminalHeight}px`
+    }
+    if (ensembleBlendStyle) {
+      Object.assign(style, ensembleBlendStyle)
+    }
+    return Object.keys(style).length > 0 ? style : undefined
+  }, [showGeminiTerminal, currentProvider, geminiTerminalHeight, ensembleBlendStyle])
   const runCompleteDurationText =
     runCompleteNotice && !isWelcomeChat
       ? formatWorkDuration(runCompleteNotice.startedAt, runCompleteNotice.timestamp)
@@ -14529,12 +14577,8 @@ function App(): React.JSX.Element {
 
         <div
           ref={appTranscriptRef}
-          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
-          style={
-            showGeminiTerminal && currentProvider === 'gemini'
-              ? ({ '--gemini-terminal-height': `${geminiTerminalHeight}px` } as CSSProperties)
-              : undefined
-          }
+          className={`app-transcript provider-${currentProvider} interface-${interfaceStyle} ${isCurrentEnsembleChat ? 'chat-kind-ensemble' : ''} ${isWelcomeChat ? 'welcome-mode' : ''} ${showGeminiTerminal && currentProvider === 'gemini' ? 'gemini-terminal-open' : ''} ${isAdvancedFxActive ? `fx-labs-active fx-intensity-${advancedFxIntensity}` : ''} ${showSettings ? 'transcript-hidden-for-settings' : ''}`}
+          style={transcriptStyle}
         >
           {chatContextNotice && (
             <div className="chat-context-application-pill" role="status">
@@ -14942,46 +14986,29 @@ function App(): React.JSX.Element {
                 ensemble welcome. Just hierarchy + textarea + the
                 editable chip strip in the composer above-row.
 
-                1.0.3 polish — provider-theme-aware shell. We compute
-                the ordered-enabled participant list once and use it
-                both for the orchestration chain (existing behaviour)
-                and to drive a subtle hue-blend gradient on the
-                welcome surface. The dominant provider (first speaker)
-                also flavours the workspace-name glow via the
-                `workspace-name-glow provider-{dominant}` class. CSS
-                custom properties keep the gradient declarative and
-                themeable from main.css; both light + dark modes use
-                `color-mix()` against the surface so the blend stays
-                subtle at ~6-10% opacity.
+                1.0.3 polish — provider-theme-aware shell. The
+                ordered-enabled participant list drives the orchestration
+                chain and the shared `--ensemble-provider-1..4` blend
+                variables. The title glow intentionally uses that blend
+                too; ensemble chats should not inherit a single provider's
+                theme from the chat-level fallback provider.
               */
-              const orderedEnabled = [...(currentChat?.ensemble?.participants || [])]
-                .filter((participant) => participant.enabled)
-                .sort((a, b) => a.order - b.order)
+              const orderedEnabled = ensembleEnabledParticipantsForCurrent
               const ensembleIsContinuous =
                 currentChat?.ensemble?.orchestrationMode === 'continuous'
               const ensembleContinuationLimit =
                 currentChat?.ensemble?.maxContinuationHops || 6
-              const dominantProvider = orderedEnabled[0]?.provider
-              const ensembleShellStyle: CSSProperties = {}
-              orderedEnabled.slice(0, 4).forEach((participant, idx) => {
-                ;(ensembleShellStyle as Record<string, string>)[
-                  `--ensemble-provider-${idx + 1}`
-                ] = `var(--provider-${participant.provider}-color)`
-              })
               const shellClassName = [
                 'welcome-hero',
                 'welcome-hero-ensemble',
                 `welcome-ensemble-shell`,
-                `welcome-ensemble-shell-count-${Math.min(orderedEnabled.length, 4)}`,
-                dominantProvider ? `welcome-ensemble-shell-dominant-${dominantProvider}` : ''
+                `welcome-ensemble-shell-count-${Math.min(orderedEnabled.length, 4)}`
               ]
                 .filter(Boolean)
                 .join(' ')
-              const workspaceNameClass = dominantProvider
-                ? `workspace-name-glow provider-${dominantProvider}`
-                : 'workspace-name-glow'
+              const workspaceNameClass = 'workspace-name-glow workspace-name-glow-ensemble'
               return (
-                <div className={shellClassName} style={ensembleShellStyle}>
+                <div className={shellClassName} style={ensembleBlendStyle}>
                   <h1>
                     {isCurrentGlobalChat ? (
                       <>
@@ -15504,24 +15531,8 @@ function App(): React.JSX.Element {
                     }
                   }
                 }}
-                placeholder={
-                  /*
-                    Composer-unification (Phase J1): placeholder follows the
-                    active PROVIDER, not the composer THEME. A user on the
-                    "claude" theme who switches to Kimi gets the Kimi
-                    placeholder, etc.
-                  */
-                  currentProvider === 'codex'
-                    ? 'Ask Codex anything. @ to use plugins or mention files'
-                    : currentProvider === 'claude'
-                      ? 'Describe a task or ask a question'
-                      : currentProvider === 'gemini'
-                        ? 'Ask Gemini'
-                        : currentProvider === 'kimi'
-                          ? 'Type "/" to quickly access skills'
-                          : `Enter prompt for ${currentProviderLabel}…`
-                }
-                aria-label={`Prompt for ${currentProviderLabel}`}
+                placeholder={composerPlaceholder}
+                aria-label={composerAriaLabel}
                 rows={3}
                 disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
                 onKeyDown={(e) => {
