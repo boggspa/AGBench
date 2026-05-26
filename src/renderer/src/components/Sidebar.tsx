@@ -1661,12 +1661,14 @@ export function Sidebar({
               }
             >
               <button
-                className="btn btn-sm btn-ghost"
+                type="button"
+                className="sidebar-section-header-action sidebar-workspace-create"
                 onClick={onSelectWorkspaceDialog}
                 title="Add workspace"
+                aria-label="Add workspace"
                 id="sidebar-add-workspace-btn"
               >
-                +
+                <PlusSymbolIcon />
               </button>
               {workspaceAddPointerActive && (
                 <span className="workspace-add-pointer-label" aria-hidden="true">
@@ -2004,7 +2006,8 @@ export function Sidebar({
                 <h4 className="sidebar-section-title">Chats</h4>
               </button>
               <button
-                className="btn btn-sm btn-ghost"
+                type="button"
+                className="sidebar-section-header-action sidebar-global-chat-create"
                 onClick={onNewGlobalChat}
                 title="New system chat"
                 aria-label="New system chat"
