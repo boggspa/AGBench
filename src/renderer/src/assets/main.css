@@ -5995,10 +5995,32 @@ button.sidebar-item {
 }
 
 .composer-textarea-highlight .composer-mention-token {
-  font-weight: 700;
-  /* Subtle outline matches the transcript chip's pill shape without
-   * paying the cost of a real box (would break textarea alignment). */
-  text-shadow: 0 0 1px currentColor;
+  /*
+   * 1.0.4 — NO `font-weight: 700` here. Bold glyphs have wider
+   * advance widths than regular glyphs, so the overlay's `@Worker`
+   * occupies more horizontal space than the textarea's `@Worker`
+   * underneath (the textarea renders all chars at regular weight —
+   * `<textarea>` doesn't support inline styling). Every character
+   * AFTER the mention then sits at a different x-position in the
+   * two layers, and the caret + native selection (driven by the
+   * textarea's glyph metrics) drifts right of where the styled
+   * overlay text actually appears. Chris's "highlight to see the
+   * divergence" reproducer.
+   *
+   * Fix: keep regular weight (matches textarea metrics exactly) and
+   * simulate boldness via a double text-shadow. The shadow thickens
+   * the glyph stroke optically without affecting advance width, so
+   * both layers stay pixel-aligned at every character position.
+   * The provider-tint colour (applied inline by the React component)
+   * carries the rest of the emphasis cue.
+   *
+   * Tradeoff: faux-bold reads slightly less bold than real bold,
+   * but real bold breaks the typing experience — this is the right
+   * call for a sticker-on-textarea pattern.
+   */
+  text-shadow:
+    0 0 0.6px currentColor,
+    0 0 0.6px currentColor;
 }
 
 /*
