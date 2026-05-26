@@ -6002,6 +6002,44 @@ button.sidebar-item {
 }
 
 /*
+ * 1.0.4 — Light-theme contrast bump for composer mention tokens.
+ *
+ * Default provider hex values (`--provider-codex-color: #6366F1`
+ * etc.) are mid-saturation indigos / ambers / blues / olives. In
+ * dark theme they pop against the dark composer surface. In light
+ * theme they sit at similar luminance to the surface text — Chris
+ * reported `@Worker` rendering as if the provider tinting wasn't
+ * applied at all. Mix each provider colour with `#1d1d1f` (the
+ * light-theme primary text colour) so the saturation tilts darker
+ * and the mention reads as distinctly tinted bold text rather than
+ * "subtly off-grey." The `.composer-mention-token` keeps its
+ * `font-weight: 700` + `text-shadow` from the base rule for double
+ * the emphasis cue.
+ *
+ * Provider-X classes are applied via React inline `style.color`,
+ * so this CSS uses the same `var(--provider-X-color)` chain with
+ * a `color-mix` step to darken — the inline `color` from the
+ * component is overridden because CSS specificity for a class
+ * (`.composer-textarea-highlight .composer-mention-token`) at the
+ * single-class level loses to inline style EXCEPT when we land on
+ * the same property via `!important` or via a more specific
+ * compound selector. We use a compound selector path here
+ * (light-theme attribute + base class) which gives (0,2,1) vs
+ * the inline style's effective (1,0,0,0) — still loses.
+ *
+ * So instead of fighting inline-style specificity, we ride
+ * alongside: keep the inline `color` AS-IS for the base hue, and
+ * add `filter: brightness(0.7)` in light theme to darken whatever
+ * the inline colour resolves to. Simple, robust, no CSS-variable
+ * juggling.
+ */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .composer-textarea-highlight .composer-mention-token {
+  filter: brightness(0.7) saturate(1.2);
+  text-shadow: 0 0 0.5px currentColor;
+}
+
+/*
  * 1.0.4 — welcome-mode adds `padding-top: 30px` to the composer
  * textarea (line 5734) to make room for the "Ask <Provider>
  * anything…" placeholder hero, but the base highlight overlay was
