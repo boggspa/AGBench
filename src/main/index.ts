@@ -881,12 +881,14 @@ interface HostCommandResult {
 const CODEX_STATIC_MODELS = [
   { id: 'gpt-5.5', label: 'GPT-5.5', description: 'Default Codex model', isDefault: true },
   { id: 'gpt-5.4', label: 'GPT-5.4' },
+  { id: 'gpt-5.4-mini', label: 'GPT-5.4 Mini' },
   { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
   {
     id: 'gpt-5.3-codex-spark',
     label: 'GPT-5.3 Codex Spark',
     description: 'Research preview where available'
-  }
+  },
+  { id: 'gpt-5.2', label: 'GPT-5.2' }
 ]
 const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'off' },

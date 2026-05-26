@@ -3457,6 +3457,18 @@ const CODEX_DEFAULT_MODELS = [
     additionalSpeedTiers: ['fast']
   },
   {
+    id: 'gpt-5.4-mini',
+    label: 'GPT-5.4 Mini',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low' },
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+    // No Fast tier — per product spec only 5.5 + 5.4 retain Fast.
+  },
+  {
     id: 'gpt-5.3-codex',
     label: 'GPT-5.3 Codex',
     supportedReasoningEfforts: [
@@ -3474,6 +3486,18 @@ const CODEX_DEFAULT_MODELS = [
     supportedReasoningEfforts: [{ reasoningEffort: 'low' }, { reasoningEffort: 'medium' }],
     defaultReasoningEffort: 'low'
     // Fast tier removed alongside 5.3 — see note above.
+  },
+  {
+    id: 'gpt-5.2',
+    label: 'GPT-5.2',
+    supportedReasoningEfforts: [
+      { reasoningEffort: 'low' },
+      { reasoningEffort: 'medium' },
+      { reasoningEffort: 'high' },
+      { reasoningEffort: 'xhigh' }
+    ],
+    defaultReasoningEffort: 'medium'
+    // Older model — no Fast tier.
   }
 ] satisfies CodexModelOption[]
 const CODEX_DEFAULT_MODEL = CODEX_DEFAULT_MODELS[0].id

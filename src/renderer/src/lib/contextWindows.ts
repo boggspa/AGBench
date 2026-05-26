@@ -10,8 +10,10 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   // Codex
   'gpt-5.5': 400_000,
   'gpt-5.4': 400_000,
+  'gpt-5.4-mini': 400_000,
   'gpt-5.3-codex': 400_000,
   'gpt-5.3-codex-spark': 200_000,
+  'gpt-5.2': 400_000,
   // Claude
   'claude-opus-4-7': 200_000,
   'claude-opus-4-7-1m': 1_000_000,
