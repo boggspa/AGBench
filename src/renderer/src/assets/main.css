@@ -7517,7 +7517,16 @@ button.sidebar-item {
 }
 
 .inspector-tab {
-  padding: 4px 10px;
+  /* 1.0.3 polish — icon-only tabs. Was text-with-padding which
+   * truncated badly past 5 tabs on narrow inspector pane widths
+   * (≤360px). Now a 28×28 square holding the monoline glyph; title +
+   * aria-label expose the full name on hover / to assistive tech. */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   font-size: var(--font-size-xs);
   color: var(--text-secondary);
   background: transparent;
@@ -7525,7 +7534,14 @@ button.sidebar-item {
   border-radius: var(--radius-sm);
   cursor: pointer;
   transition: all 0.12s ease;
-  white-space: nowrap;
+}
+
+.inspector-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
 }
 
 .inspector-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }

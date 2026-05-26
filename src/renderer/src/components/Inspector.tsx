@@ -140,39 +140,121 @@ interface InspectorProps {
   onOpenSubThread?: (chatId: string) => void
 }
 
+/**
+ * Inspector tab definitions (1.0.3 polish).
+ *
+ * Text labels were getting heavily truncated on narrower screens —
+ * "Delegation Timeline" / "Background tasks" each ate ~120-140px of
+ * a strip that maxes out at ~360px, so the last two tabs often
+ * rendered as "…" and went unclickable. Switched to monoline SVG
+ * glyphs so every tab fits at every width. Hover title + aria-label
+ * surface the full name for discoverability + accessibility.
+ *
+ * Icons are stroked `currentColor` so the existing `.inspector-tab.
+ * active` accent + light/dark theming continue to drive the colour.
+ * One source of truth (this array) — easy to extend when new tabs
+ * land in future phases.
+ */
+const INSPECTOR_TABS = [
+  {
+    id: 'diff' as const,
+    label: 'Diff Studio',
+    // Two side-by-side panes with a separator — reads as "compare".
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="3" width="5" height="10" rx="1" />
+        <rect x="9" y="3" width="5" height="10" rx="1" />
+        <path d="M8 1.5v13" strokeDasharray="1.5 1.5" />
+      </svg>
+    )
+  },
+  {
+    id: 'raw' as const,
+    label: 'Raw Events',
+    // Stylised terminal prompt `>_`
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="m3 5 3 3-3 3" />
+        <path d="M8 12h6" />
+      </svg>
+    )
+  },
+  {
+    id: 'delegation' as const,
+    label: 'Delegation',
+    // Branching arrow — single trunk splitting into two children.
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="3.5" cy="3.5" r="1.6" />
+        <circle cx="12.5" cy="3.5" r="1.6" />
+        <circle cx="8" cy="12.5" r="1.6" />
+        <path d="M5 4.5q3 1 3 6.5" />
+        <path d="M11 4.5q-3 1-3 6.5" />
+      </svg>
+    )
+  },
+  {
+    id: 'timeline' as const,
+    label: 'Delegation Timeline',
+    // Horizontal bars at different lengths — Gantt-style.
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 4h7" />
+        <path d="M3 8h10" />
+        <path d="M3 12h5" />
+      </svg>
+    )
+  },
+  {
+    id: 'safety' as const,
+    label: 'Safety',
+    // Shield outline.
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M8 2 3 4v4.5c0 3 2.2 5 5 6 2.8-1 5-3 5-6V4z" />
+        <path d="m5.8 8 1.6 1.6L10.5 6.5" />
+      </svg>
+    )
+  },
+  {
+    id: 'capabilities' as const,
+    label: 'Capabilities',
+    // Lightning bolt — "capabilities = power-ups".
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M9 1.5 4 9h4l-1 5.5 6-8H9z" />
+      </svg>
+    )
+  },
+  {
+    id: 'background-tasks' as const,
+    label: 'Background tasks',
+    // Clock face — background = scheduled / over time.
+    icon: (
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="8" cy="8" r="5.5" />
+        <path d="M8 4.5V8l2.5 1.5" />
+      </svg>
+    )
+  }
+] as const
+
 export function Inspector(props: InspectorProps) {
   return (
     <div className="app-inspector">
       <div className="inspector-tabs">
-        {(
-          [
-            'diff',
-            'raw',
-            'delegation',
-            'timeline',
-            'safety',
-            'capabilities',
-            'background-tasks'
-          ] as const
-        ).map((tab) => (
+        {INSPECTOR_TABS.map((tab) => (
           <button
-            key={tab}
-            className={`inspector-tab ${props.rightTab === tab ? 'active' : ''}`}
-            onClick={() => props.setRightTab(tab)}
+            key={tab.id}
+            type="button"
+            className={`inspector-tab ${props.rightTab === tab.id ? 'active' : ''}`}
+            onClick={() => props.setRightTab(tab.id)}
+            title={tab.label}
+            aria-label={tab.label}
           >
-            {tab === 'diff'
-              ? 'Diff Studio'
-              : tab === 'raw'
-                ? 'Raw Events'
-                : tab === 'delegation'
-                  ? 'Delegation'
-                  : tab === 'timeline'
-                    ? 'Delegation Timeline'
-                    : tab === 'safety'
-                      ? 'Safety'
-                      : tab === 'capabilities'
-                        ? 'Capabilities'
-                        : 'Background tasks'}
+            <span className="inspector-tab-icon" aria-hidden>
+              {tab.icon}
+            </span>
           </button>
         ))}
       </div>
