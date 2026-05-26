@@ -42,6 +42,16 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
   const id = (modelId || '').toLowerCase()
   const label = modelLabel || modelId
 
+  // 1.0.4 — `cli-default` is the sentinel model id stored on a freshly
+  // created ensemble participant (see `ensembleProviderDefaults.ts`)
+  // when the user hasn't actively picked a model yet. Without this
+  // branch the per-message badge displayed the raw token literally —
+  // e.g. "Codex / Brodex · cli-default" — which read as a model name
+  // and made users wonder whether their picker change actually took.
+  // The picker's own label for this id is `'CLI Default'`
+  // (App.tsx:3540), so mirror that here for visual consistency.
+  if (id === 'cli-default') return 'CLI Default'
+
   if (provider === 'codex') {
     // gpt-5.5 → 5.5; gpt-5.4-mini → 5.4-Mini; gpt-5.3-codex-spark → 5.3-Codex-Spark
     const match = id.match(/^gpt-([\d.]+)(.*)$/)

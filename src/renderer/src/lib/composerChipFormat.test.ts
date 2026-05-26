@@ -35,6 +35,13 @@ describe('shortModelName', () => {
   it('falls back to the human label when no provider pattern matches', () => {
     expect(shortModelName('codex', 'Custom Model X', 'custom-model-x')).toBe('Custom Model X')
   })
+
+  it('renders the cli-default sentinel as "CLI Default" across all providers', () => {
+    expect(shortModelName('codex', '', 'cli-default')).toBe('CLI Default')
+    expect(shortModelName('claude', '', 'cli-default')).toBe('CLI Default')
+    expect(shortModelName('kimi', '', 'cli-default')).toBe('CLI Default')
+    expect(shortModelName('gemini', '', 'cli-default')).toBe('CLI Default')
+  })
 })
 
 describe('reasoningDisplayLabel', () => {
