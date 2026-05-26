@@ -6097,24 +6097,83 @@ button.sidebar-item {
  * overlay shows through, using `!important` to beat the
  * per-shell `!important` rules.
  */
+/*
+ * 1.0.4 — per-shell overlay alignment. The base
+ * `.composer-textarea-highlight` rule sets font-size to
+ * `calc(var(--font-size-md) + 2px)`, but each shell overrides the
+ * textarea's font-size (and padding, and border-width) to fit its
+ * native chrome. If the overlay's font-size doesn't match the
+ * textarea's, glyph advance widths diverge and the styled text
+ * drifts across the line — Chris's reproducer. Match every
+ * dimension that affects glyph positioning per shell.
+ */
 [data-composer-style="codex"] .composer-textarea-highlight {
   padding: 6px 6px 10px;
-  /* Codex shell removes the textarea border (line 17971); overlay
-   * matches with no border so content areas align. */
   border: 0;
+  font-size: calc(var(--font-size-md) - 1px);
 }
 [data-composer-style="claude"] .composer-textarea-highlight {
-  padding: 12px 14px;
   /* Claude shell adds `border: 1px solid` to the textarea. With
    * `box-sizing: border-box`, the textarea's CONTENT area is inset
-   * by 1px on each edge relative to its outer box. The overlay
-   * has no border by default — without this match, the overlay's
-   * content area is 2px wider and 1px to the LEFT of the
-   * textarea's content area, so as you type, the styled overlay
-   * text drifts horizontally and wraps differently from the
-   * caret. A transparent 1px border on the overlay restores
-   * exact pixel-level alignment. */
+   * by 1px on each edge relative to its outer box. Match with a
+   * transparent border so the overlay's content area aligns. */
+  padding: 12px 14px;
   border: 1px solid transparent;
+  font-size: calc(var(--font-size-sm) + 1px);
+}
+[data-composer-style="gemini"] .composer-textarea-highlight {
+  padding: 6px 6px 10px;
+  border: 0;
+  font-size: var(--font-size-md);
+}
+[data-composer-style="kimi"] .composer-textarea-highlight {
+  padding: 6px 4px 12px;
+  border: 0;
+  font-size: var(--font-size-md);
+}
+/*
+ * Creative variants — Modular, Terminal, Ticket Stub, Satellite.
+ * Each one redefines textarea padding, font-size, font-family,
+ * and/or border to fit its bespoke chrome. The overlay must
+ * mirror all four dimensions so glyph metrics stay identical
+ * across both layers.
+ */
+[data-composer-style="modular"] .composer-textarea-highlight {
+  padding: 14px 16px;
+  /* Modular shell adds a 1px solid border — transparent border on
+   * the overlay restores content-area alignment. Font-size is
+   * inherited from the base composer-textarea-highlight rule
+   * since modular doesn't override it. */
+  border: 1px solid transparent;
+}
+[data-composer-style="terminal"] .composer-textarea-highlight {
+  padding: 4px 4px 6px 18px;
+  border: 0;
+  /* Terminal shell uses a monospace font at a smaller size.
+   * Monospace glyphs have UNIFORM advance widths (very different
+   * from variable-width fonts) so the font-family match is just
+   * as critical as the font-size match — without it, every char
+   * after position 0 lands at a different x-position in the two
+   * layers. */
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-sm) - 1px);
+}
+[data-composer-style="stub"] .composer-textarea-highlight {
+  padding: 12px 0 6px;
+  border: 0;
+  /* Stub shell uses a serif font — overlays render mentions in
+   * the same serif so kerning + sidebearings stay matched. */
+  font-family: var(--font-serif);
+  font-size: var(--font-size-md);
+}
+[data-composer-style="satellite"] .composer-textarea-highlight {
+  padding: 8px 2px 10px;
+  /* Satellite shell uses `border-bottom: 1px solid` only — no
+   * full border. Match with a transparent border-bottom so the
+   * overlay's content area is inset 1px from the bottom too. */
+  border: 0;
+  border-bottom: 1px solid transparent;
+  font-size: calc(var(--font-size-md) + 1px);
 }
 
 /*
