@@ -31,6 +31,7 @@ const DENYLIST = [
 ]
 
 const ALLOWED_INSTALL_SCRIPTS = new Map([
+  ['@google/genai@2.4.0', { preinstall: "echo 'preinstall: no-op'" }],
   ['electron@39.8.9', { postinstall: 'node install.js' }],
   ['electron-winstaller@5.4.0', { install: 'node ./script/select-7z-arch.js' }],
   ['esbuild@0.25.12', { postinstall: 'node install.js' }],
@@ -41,7 +42,8 @@ const ALLOWED_INSTALL_SCRIPTS = new Map([
       install: 'node scripts/prebuild.js || node-gyp rebuild',
       postinstall: 'node scripts/post-install.js'
     }
-  ]
+  ],
+  ['protobufjs@7.6.0', { postinstall: 'node scripts/postinstall' }]
 ])
 
 const INSTALL_HOOKS = new Set(['preinstall', 'install', 'postinstall'])
