@@ -16393,6 +16393,199 @@ input:disabled, select:disabled, textarea:disabled {
   border-left: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
 }
 
+/* 1.0.4-AG — compact tool trace.
+ *
+ * One-line render for individual tool activities when the user has
+ * `compactDensity` enabled. The line packs: icon · toolName · provider ·
+ * status · duration · "result preview" with a chevron at the end. Click
+ * toggles a foldout panel below the line that holds the full
+ * `{ input, result, timeline }` view — kept distinct from the line so
+ * the transcript stays scannable even with multiple traces expanded.
+ *
+ * Status comes through the line's left-edge accent (data-status) and
+ * the status pill colour. Provider attribution comes through the
+ * provider-tinted name chip (.compact-tool-trace-provider).
+ */
+.compact-tool-trace {
+  width: min(760px, 100%);
+  margin: 2px 0;
+  border-left: 2px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  border-radius: 0 4px 4px 0;
+}
+
+.compact-tool-trace[data-status="success"] {
+  border-left-color: color-mix(in srgb, var(--tool-success) 60%, transparent);
+}
+.compact-tool-trace[data-status="error"] {
+  border-left-color: color-mix(in srgb, var(--tool-error) 70%, transparent);
+}
+.compact-tool-trace[data-status="warning"] {
+  border-left-color: color-mix(in srgb, var(--tool-warning) 65%, transparent);
+}
+.compact-tool-trace[data-status="running"],
+.compact-tool-trace[data-status="pending"] {
+  border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.compact-tool-trace-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px 5px 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--font-size-sm);
+  line-height: 1.35;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.compact-tool-trace-line:hover {
+  background: color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+.compact-tool-trace-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--text-secondary);
+}
+
+.compact-tool-trace-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+}
+
+.compact-tool-trace-name {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.compact-tool-trace-sep {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.compact-tool-trace-provider {
+  flex-shrink: 0;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.compact-tool-trace-provider.provider-gemini { color: var(--provider-gemini-color, #8eb1ff); }
+.compact-tool-trace-provider.provider-codex  { color: var(--provider-codex-color,  #aaa0ff); }
+.compact-tool-trace-provider.provider-claude { color: var(--provider-claude-color, #ffad64); }
+.compact-tool-trace-provider.provider-kimi   { color: var(--provider-kimi-color,   #bbcf66); }
+
+.compact-tool-trace-status {
+  flex-shrink: 0;
+  text-transform: lowercase;
+  font-variant: small-caps;
+  color: var(--text-tertiary);
+}
+.compact-tool-trace-status.status-success { color: var(--tool-success); }
+.compact-tool-trace-status.status-error   { color: var(--tool-error); }
+.compact-tool-trace-status.status-warning { color: var(--tool-warning); }
+.compact-tool-trace-status.status-running,
+.compact-tool-trace-status.status-pending { color: var(--accent); }
+
+.compact-tool-trace-duration {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-tool-trace-preview {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.compact-tool-trace-preview.is-redacted {
+  color: var(--text-muted);
+}
+
+.compact-tool-trace-redacted-hint {
+  flex-shrink: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-elevated) 50%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.compact-tool-trace-chevron {
+  flex-shrink: 0;
+  margin-left: auto;
+  display: inline-flex;
+  color: var(--text-tertiary);
+  transition: transform 180ms ease;
+}
+.compact-tool-trace-chevron[data-expanded="true"] {
+  transform: rotate(180deg);
+  color: var(--text-secondary);
+}
+
+/* Foldout — sits BELOW the line in its own visual unit. Indented +
+ * lightly tinted background so it reads as a distinct attached panel
+ * rather than an inline continuation of the row's text flow. */
+.compact-tool-trace-foldout {
+  margin: 4px 0 6px 24px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 60%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-elevated) 35%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compact-tool-trace-foldout-section {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.compact-tool-trace-foldout-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.compact-tool-trace-foldout-body {
+  margin: 0;
+  padding: 6px 8px;
+  background: color-mix(in srgb, var(--app-bg-elevated) 80%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-subtle) 50%, transparent);
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
+
 /* Balanced Native Glass: Electron vibrancy plus a stable Liquid Glass-style sidebar layer. */
 [data-appearance="native_glass"][data-reduce-transparency="false"] {
   --sidebar-glass-fill: rgba(24, 25, 24, 0.22);

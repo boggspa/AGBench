@@ -24,6 +24,7 @@ import { ToolFamilyIcon, toolNameToFamily } from './icons/ToolFamilyIcon'
 import { TurnReceiptCard } from './TurnReceiptCard'
 import { CreativeTimelineDiffCard } from './CreativeTimelineDiffCard'
 import { creativeTimelineDiffModelFromActivity } from './CreativeTimelineDiffCardModel'
+import { CompactToolTrace } from './CompactToolTrace'
 
 interface ActivityStackProps {
   activities: ToolActivity[]
@@ -1263,6 +1264,22 @@ export function ActivityStack({
           )
         }
         const thread = threadByParentId.get(item.activity.id)
+        // 1.0.4-AG — when the user has compact density on AND this
+        // activity isn't carrying a child-agent thread (those still
+        // need the full ActivityRow render so the ChildAgentThreadCard
+        // hangs off it), route through CompactToolTrace for the
+        // one-line trace + foldout view. The CompactToolTrace reads
+        // its own provider attribution from `activity.metadata` and
+        // falls back to the chat-level `provider` passed here.
+        if (compactDensity && !thread) {
+          return (
+            <CompactToolTrace
+              key={item.activity.id}
+              activity={item.activity}
+              provider={provider}
+            />
+          )
+        }
         return (
           <ActivityRow
             key={item.activity.id}

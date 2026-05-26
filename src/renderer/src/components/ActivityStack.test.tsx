@@ -174,3 +174,94 @@ describe('ActivityStack ensemble_yield rendering', () => {
     expect(html).not.toContain('mcp_AGBench_ensemble_yield')
   })
 })
+
+function makeWriteActivity(overrides: Partial<ToolActivity> = {}): ToolActivity {
+  return {
+    id: 'tool-write-1',
+    toolName: 'write_file',
+    displayName: 'write_file',
+    category: 'write',
+    status: 'success',
+    startedAt: '2026-05-26T17:00:00Z',
+    endedAt: '2026-05-26T17:00:00.250Z',
+    durationMs: 250,
+    parameters: { file_path: '/repo/src/foo.ts', content: 'hello' },
+    resultSummary: 'wrote 1 line',
+    ...overrides
+  }
+}
+
+describe('ActivityStack compactDensity routing', () => {
+  it('routes individual tool activities through CompactToolTrace when compactDensity is true', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[makeWriteActivity()]}
+        provider="claude"
+        compactDensity
+      />
+    )
+
+    expect(html).toContain('compact-tool-trace')
+    // The legacy ActivityRow shell should not render alongside the
+    // CompactToolTrace path — verifies we replaced the row, not
+    // double-rendered.
+    expect(html).not.toContain('activity-row-inline')
+  })
+
+  it('uses the standard ActivityRow when compactDensity is false (default)', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[makeWriteActivity()]}
+        provider="claude"
+      />
+    )
+
+    expect(html).not.toContain('compact-tool-trace')
+    expect(html).toContain('activity-row')
+  })
+
+  it('surfaces cross-provider attribution distinctly when activities carry their own metadata.ensembleProvider', () => {
+    // Simulates a single ensemble round where Codex called write_file
+    // and Claude called Edit — the chat-level provider is "codex" but
+    // each activity tags its actor via metadata.ensembleProvider.
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[
+          makeWriteActivity({
+            id: 'cross-1',
+            toolName: 'write_file',
+            metadata: { ensembleProvider: 'codex' }
+          }),
+          makeWriteActivity({
+            id: 'cross-2',
+            toolName: 'Edit',
+            displayName: 'Edit',
+            metadata: { ensembleProvider: 'claude' }
+          })
+        ]}
+        provider="codex"
+        compactDensity
+      />
+    )
+
+    expect(html).toContain('provider-codex')
+    expect(html).toContain('provider-claude')
+    expect(html).toContain('write_file')
+    expect(html).toContain('Edit')
+  })
+
+  it('still renders ChildAgentSpawnBlock and falls back to ActivityRow when an activity has a child thread, even in compact mode', () => {
+    // Compact-mode bypass only kicks in for activities WITHOUT a
+    // child-agent thread — preserves the ChildAgentThreadCard hang-off.
+    // Smoke test: an activity that isn't a spawner still uses
+    // CompactToolTrace.
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[makeWriteActivity()]}
+        provider="codex"
+        compactDensity
+      />
+    )
+    expect(html).toContain('compact-tool-trace')
+  })
+})
