@@ -167,6 +167,63 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('NOT to AGBench')
   })
 
+  it('marks the first speaker with "(you — first speaker)" and emits the scoping rule', () => {
+    // 1.0.4 — first-speaker scoping nudge. Encourages opening
+    // panelists to lay out direction before executing through to
+    // completion, so other participants have room to weigh in.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      // ensemble.participants[0] is Claude / Reviewer — first in
+      // order (1), so first speaker absent any @-mention reorder.
+      participant: ensemble.participants[0],
+      currentPrompt: 'Walk through this codebase.',
+      roundId: 'round-1'
+    })
+    // Roster marker present for the first speaker
+    expect(prompt).toContain('Claude / Reviewer (you — first speaker)')
+    // Scoping rule present in the Rules section
+    expect(prompt).toContain('SPEAKING FIRST in a multi-participant round')
+    expect(prompt).toContain('Scope the problem and propose a direction')
+    expect(prompt).toContain('Reading + analysis is fine')
+  })
+
+  it('does NOT emit the first-speaker rule for non-first speakers', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      // Codex / Worker — order 2, not first
+      participant: ensemble.participants[1],
+      currentPrompt: 'Implement the change.',
+      roundId: 'round-1'
+    })
+    // Plain "(you)" without the position suffix
+    expect(prompt).toContain('Codex / Worker (you)')
+    expect(prompt).not.toContain('first speaker')
+    expect(prompt).not.toContain('SPEAKING FIRST')
+  })
+
+  it('does NOT emit the first-speaker rule for solo-participant ensembles', () => {
+    // Single-participant ensemble — no panel to consult with, so
+    // the scoping nudge would be unnecessary noise.
+    const soloEnsemble: EnsembleConfig = {
+      ...ensemble,
+      participants: [ensemble.participants[0]]
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: soloEnsemble,
+      participant: soloEnsemble.participants[0],
+      currentPrompt: 'Just you on this one.',
+      roundId: 'round-1'
+    })
+    // Even for the single participant, no "first speaker" framing
+    // since there's no second/third speaker to defer to.
+    expect(prompt).toContain('Claude / Reviewer (you)')
+    expect(prompt).not.toContain('first speaker')
+    expect(prompt).not.toContain('SPEAKING FIRST')
+  })
+
   it('emits the no-workspace fallback when the chat has no workspacePath', () => {
     const globalChat = { ...chat(), workspacePath: undefined, scope: 'global' as const }
     const prompt = buildEnsembleParticipantPrompt({

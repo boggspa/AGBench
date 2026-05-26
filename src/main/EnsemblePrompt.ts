@@ -62,9 +62,25 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
   const maxContinuationHops = input.config.maxContinuationHops || 6
   const continuationHops = input.config.activeRound?.continuationHops || 0
+  // 1.0.4 — speaker-position awareness. The first participant in
+  // a multi-participant round gets two extra nudges (roster
+  // marker + scoping rule) so they're more likely to lay out an
+  // approach rather than executing through to completion alone.
+  // Solo-participant rounds skip both (no panel to consult with).
+  const isMultiParticipantRound = orderedParticipants.length >= 2
+  const isFirstSpeaker =
+    isMultiParticipantRound && orderedParticipants[0]?.id === input.participant.id
   const roster = orderedParticipants
     .map((participant) => {
-      const marker = participant.id === input.participant.id ? ' (you)' : ''
+      const isSelf = participant.id === input.participant.id
+      const isFirstInList = participant.id === orderedParticipants[0]?.id
+      // Position marker accompanies the "(you)" tag when the
+      // participant is also speaking first — gives the model a
+      // contextual cue beyond the rule line further down.
+      let marker = ''
+      if (isSelf) {
+        marker = isFirstSpeaker && isFirstInList ? ' (you — first speaker)' : ' (you)'
+      }
       return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}`
     })
     .join('\n')
@@ -98,6 +114,21 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
     '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
+    // 1.0.4 — first-speaker scoping rule. Emitted ONLY when the
+    // current speaker is opening a multi-participant round.
+    // Addresses Chris's "agents dive in and leave nothing for the
+    // panel" report: Codex / Claude tend to treat any prompt as
+    // "execute through to completion" on turn 1, which forecloses
+    // alternatives the other panelists might raise. Asking for
+    // scope + direction before heavy execution gives the panel
+    // breathing room. Skipped for solo-participant rounds and
+    // for non-first speakers (who SHOULD execute once direction
+    // is set).
+    ...(isFirstSpeaker
+      ? [
+          '- You are SPEAKING FIRST in a multi-participant round. Scope the problem and propose a direction before doing heavy file editing or destructive operations. Later participants need room to weigh in with alternatives before execution lands. Reading + analysis is fine; large multi-file edits + deletes should wait for a follow-up turn unless the user explicitly asked for immediate action.'
+        ]
+      : []),
     '',
     'Recent tagged transcript:',
     transcript || '[No prior transcript]',
