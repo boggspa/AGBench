@@ -1516,7 +1516,13 @@ export function Sidebar({
 
         {ensembleModeEnabled && (
           <div className="sidebar-ensembles-section">
-            <div className="sidebar-section-header sidebar-section-header-with-action">
+            {/* 1.0.3 — dropped the `sidebar-section-header-with-action`
+                modifier so the Ensembles `+` aligns to the trailing
+                edge (matches Workspaces / Chats). The modifier was
+                pinning the `+` flush against the title with
+                justify-content: flex-start; the base `.sidebar-section-
+                header` uses space-between which is what we want here. */}
+            <div className="sidebar-section-header">
               <button
                 type="button"
                 className="sidebar-section-header-toggle"
