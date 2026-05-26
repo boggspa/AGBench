@@ -80,7 +80,14 @@ export const AGENTBENCH_MCP_TOOLS = [
   // Critical fix for plan-mode where Claude was silently exiting after
   // its questions went unanswered. Universally auto-allowed.
   'ask_user_question',
-  'delegate_to_subthread'
+  'delegate_to_subthread',
+  // 1.0.4-AK — Ensemble Work Session control tool. Lets a participant
+  // queue exactly one follow-up round in the active Work Session
+  // (`acceptanceStatus: 'inProgress'`), report completion to end the
+  // session cleanly (`'complete'`), or pause for user input
+  // (`'blocked'`). No-op when no Work Session is active. Validated +
+  // dispatched in `src/main/EnsembleContinue.ts`.
+  'ensemble_continue'
 ] as const
 
 export type AGBenchMcpToolName = (typeof AGENTBENCH_MCP_TOOLS)[number]

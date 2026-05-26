@@ -642,6 +642,56 @@ export class EnsembleOrchestrator {
     return true
   }
 
+  /**
+   * 1.0.4-AK — public lookup for which participant owns a given
+   * runId. The `ensemble_continue` MCP dispatcher in `index.ts`
+   * uses this to populate `EnsembleContinueDeps.callingParticipantId`
+   * for the allowed-participants gate. Returns `null` when no
+   * orchestrator-tracked run matches (e.g. the call came from a
+   * non-ensemble single-participant run).
+   */
+  getParticipantIdForRun(runId: string | undefined): string | null {
+    if (!runId) return null
+    const run = this.runsByRunId.get(runId)
+    return run?.participant.id || null
+  }
+
+  /**
+   * 1.0.4-AK — public enqueue for autonomous follow-up prompts from
+   * `ensemble_continue`. Mirrors the user-driven `enqueuePrompt`
+   * flow but skips the steer/cancel paths since an in-flight
+   * participant is calling this. Returns `false` when no active
+   * round runtime exists for the chat (the call is a no-op).
+   */
+  enqueueWorkSessionContinuation(chatId: string, prompt: string): boolean {
+    const trimmed = (prompt || '').trim()
+    if (!trimmed) return false
+    const runtime = this.roundsByChatId.get(chatId)
+    if (!runtime || runtime.cancelled) return false
+    runtime.queuedPrompts.push(trimmed)
+    const nextQueuedPrompts = [...runtime.queuedPrompts]
+    this.updateChatRound(chatId, (round) =>
+      round ? { ...round, queuedPrompts: nextQueuedPrompts } : round
+    )
+    return true
+  }
+
+  /**
+   * 1.0.4-AK — public status-row append for tool-dispatch sites
+   * that need to surface a transcript note tied to a specific run.
+   * Looks up the run's chat/round context, then routes through the
+   * private `appendRoundStatus` so the renderer sees the same
+   * formatting other lifecycle notes use. No-op when the run isn't
+   * known (e.g. the participant has already finalised).
+   */
+  appendStatusForRun(runId: string, note: string): boolean {
+    if (!runId || !note) return false
+    const run = this.runsByRunId.get(runId)
+    if (!run) return false
+    this.appendRoundStatus(run.chatId, run.roundId, note)
+    return true
+  }
+
   markRunExited(runId: string | undefined, exitCode: number): boolean {
     if (!runId) return false
     const run = this.runsByRunId.get(runId)

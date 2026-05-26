@@ -323,6 +323,87 @@ export interface EnsembleConfig {
    * meta-conversations about the harness.
    */
   selfReflective?: boolean
+  /**
+   * 1.0.4-AK — supervised multi-round autonomy mode. When present
+   * AND `status === 'active'`, the orchestrator queues follow-up
+   * rounds via `ensemble_continue` (the MCP control tool) instead
+   * of returning to the user after each round. See
+   * `src/main/EnsembleContinue.ts` for the handler and
+   * `WorkSessionConfig` for field semantics.
+   */
+  workSession?: WorkSessionConfig
+}
+
+/**
+ * 1.0.4-AK — supervised multi-round autonomy ("Work Session") mode.
+ * The user defines an objective + acceptance criteria + safety
+ * budget; participants drive themselves through rounds via the
+ * `ensemble_continue` MCP control tool until acceptance is reported,
+ * a hard-stop trips, or the user clicks Stop.
+ *
+ * Critically, Work Session does NOT bypass `EffectiveRunPermissions`
+ * — the `permissionPresetId` here is fed INTO the existing per-run
+ * permission resolution (see `EnsembleOrchestrator.ts`'s
+ * `resolveParticipantPermissions`) rather than replacing it. Every
+ * mutation still goes through the same approval gate it would in
+ * an interactive serial session.
+ */
+export type WorkSessionStatus =
+  /** No active session — the field may exist but ignored. */
+  | 'idle'
+  /** Session running, rounds may auto-queue via `ensemble_continue`. */
+  | 'active'
+  /** Blocked on user (a participant called `ask_user_question` or
+   * `ensemble_continue(acceptanceStatus: 'blocked')`). Resume button
+   * re-arms the session once the user has answered. */
+  | 'paused'
+  /** Acceptance criteria reported met by `ensemble_continue`. */
+  | 'completed'
+  /** User clicked Stop. */
+  | 'cancelled'
+  /** Round / duration / token budget exhausted. The transcript
+   * status row distinguishes which budget hit (see `endedReason`). */
+  | 'limit_reached'
+
+export interface WorkSessionConfig {
+  /** Whether this session field is meaningful. Lets us persist
+   * a "last config" without it counting as an active session. */
+  enabled: boolean
+  status: WorkSessionStatus
+  objective: string
+  acceptanceCriteria: string
+  /** Subset of ensemble participants allowed to act in the session.
+   * `null` means "all currently-enabled participants". Participants
+   * not in the list are skipped from rotation but may still receive
+   * `@user` returns. */
+  allowedParticipantIds: string[] | null
+  /** Designated lead — gets the first speaker slot of every round.
+   * Optional; absent = roster-order. */
+  leadParticipantId?: string
+  /** Permission preset clamped over each participant for the
+   * duration of the session. Fed into the existing
+   * `resolveEffectiveRunPermissions` pipeline so workspace grants +
+   * overrides still apply. Never bypasses approval gates. */
+  permissionPresetId: PermissionPresetId
+  /** Hard-stop budgets. */
+  maxRoundsPerProvider: number
+  maxDurationMs: number
+  maxTokenBudget?: number
+  /** Parallel Scout Pass opt-in (1.0.4-AK5/AK6). When false the
+   * session stays pure-serial regardless of participant count. */
+  enableScoutPass: boolean
+  startedAt?: string
+  endedAt?: string
+  /** Human-readable reason captured at terminal-status transition
+   * (e.g. "Round budget reached for codex (38/38)"). */
+  endedReason?: string
+  /** Rolling counters surfaced in the session strip + used for
+   * `limit_reached` checks. Initialised to zero per-provider when
+   * the session starts. */
+  roundsUsed: Record<ProviderId, number>
+  /** Sum of `roundsUsed[*]`. Cached so the UI doesn't re-sum on
+   * every render. */
+  totalRoundsUsed: number
 }
 
 /**

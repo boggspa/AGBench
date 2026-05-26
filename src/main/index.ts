@@ -181,6 +181,7 @@ import {
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcpBridge'
 import { tryRunGeminiApi } from './GeminiApiProvider'
 import { redactGeminiProfileForMcp } from './GeminiAuthRedaction'
+import { handleEnsembleContinue } from './EnsembleContinue'
 import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
@@ -14255,6 +14256,61 @@ async function executeGeminiMcpTool(
         tool: 'ensemble_yield',
         reason: optionalString(args.reason),
         target: optionalString(args.target)
+      })
+    } else if (toolName === 'ensemble_continue') {
+      // 1.0.4-AK1 — Work Session multi-round autonomy control. The
+      // participant calls this when they want the ensemble to
+      // continue (or end) without waiting for the user. Three
+      // acceptanceStatus modes: 'inProgress' queues exactly ONE
+      // follow-up prompt for a fresh round; 'complete' finalises
+      // the Work Session; 'blocked' pauses pending user input.
+      //
+      // We MUST resolve `callingParticipantId` from the
+      // orchestrator's run registry — without that the
+      // allowed-participants gate can't enforce who's allowed to
+      // drive the session forward. When the call originates outside
+      // an active ensemble run we treat it as a no-op error
+      // ('no_active_work_session') rather than letting it succeed
+      // with empty attribution.
+      const chatId = context.appChatId || ''
+      const callingParticipantId =
+        ensembleOrchestratorRef?.getParticipantIdForRun(context.appRunId) || ''
+      const continuation = handleEnsembleContinue(
+        chatId,
+        {
+          summary: optionalString(args.summary),
+          nextPrompt: optionalString(args.nextPrompt),
+          target: optionalString(args.target),
+          reason: optionalString(args.reason),
+          acceptanceStatus: args.acceptanceStatus as
+            | 'inProgress'
+            | 'complete'
+            | 'blocked'
+            | undefined
+        },
+        {
+          getChat: (id: string) => AppStore.getChat(id),
+          saveChat: (chat) => AppStore.saveChat(chat),
+          queueFollowUpPrompt: (id: string, prompt: string) =>
+            ensembleOrchestratorRef?.enqueueWorkSessionContinuation(id, prompt) ?? false,
+          callingProvider: parentProvider,
+          callingParticipantId
+        }
+      )
+      // Surface the result message as a transcript status row so
+      // the user sees the session lifecycle without diving into
+      // logs. The orchestrator already drains queuedPrompts on
+      // round end — no extra dispatch trigger needed here.
+      if (continuation.message) {
+        ensembleOrchestratorRef?.appendStatusForRun(context.appRunId || '', continuation.message)
+      }
+      text = mcpJson({
+        ok: continuation.ok,
+        tool: 'ensemble_continue',
+        status: continuation.status,
+        queued: continuation.queued,
+        message: continuation.message,
+        ...(continuation.error ? { error: continuation.error } : {})
       })
     } else if (toolName === 'ask_user_question') {
       // QMOD (1.0.3) — pause the agent on a modal question and resume
