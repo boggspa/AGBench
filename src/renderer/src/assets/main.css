@@ -4427,6 +4427,12 @@ button.sidebar-item {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: center;
+  /* `position: relative` so the popover below can anchor absolutely
+   * inside the chip strip's box (avoiding a portal). Composer-side
+   * pickers use portals to escape scroll-clipping; the welcome
+   * surface has no overflow:hidden ancestor so inline absolute
+   * positioning suffices. */
+  position: relative;
 }
 .welcome-workspace-picker-chip {
   appearance: none;
@@ -4456,6 +4462,130 @@ button.sidebar-item {
 .welcome-workspace-picker-browse {
   font-weight: 600;
   color: var(--accent, var(--text-primary));
+}
+.welcome-workspace-picker-browse.is-open {
+  /* Trigger keeps the open-state ring while the popover is mounted so
+   * the user can see where the menu anchored from. Matches composer
+   * picker trigger behaviour. */
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+/* Welcome workspace popover (1.0.3) — opens below the "Browse…" chip.
+ * Styling mirrors `.composer-combined-picker-popover` (the model /
+ * permission menu language) so users see a consistent "this is a
+ * picker" mental model. Frosted dark backing in dark themes,
+ * frosted near-white in light themes via the `color-mix` against
+ * `--panel-elevated-bg` / `--surface-1` tokens. */
+.welcome-workspace-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 240px;
+  max-width: 380px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--panel-elevated-bg) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 90%, transparent);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  z-index: 1000;
+  color: var(--text-primary);
+  font-size: calc(var(--font-size-xs) + 1px);
+  isolation: isolate;
+  text-align: left;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .welcome-workspace-popover {
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  border-color: var(--surface-border);
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  color: var(--surface-text);
+}
+
+.welcome-workspace-popover-section {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0;
+}
+.welcome-workspace-popover-section + .welcome-workspace-popover-section {
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  margin-top: 4px;
+  padding-top: 6px;
+}
+.welcome-workspace-popover-header {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  padding: 4px 10px 6px;
+}
+.welcome-workspace-popover-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+}
+.welcome-workspace-popover-row:hover,
+.welcome-workspace-popover-row:focus-visible {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  outline: 0;
+}
+.welcome-workspace-popover-row-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.welcome-workspace-popover-row-path {
+  /* Truncated absolute path under the workspace name — helps when two
+   * workspaces share a basename ("project" / "project") so the user
+   * can tell them apart. */
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-left: auto;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+  text-align: left;
+}
+.welcome-workspace-popover-row-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  flex: 0 0 18px;
+  color: var(--accent, var(--text-primary));
+  font-weight: 700;
+  font-size: 14px;
+}
+.welcome-workspace-popover-row-action {
+  color: var(--accent, var(--text-primary));
+  font-weight: 500;
 }
 
 .welcome-hero h1 {

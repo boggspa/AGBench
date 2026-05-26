@@ -4304,29 +4304,87 @@ interface WelcomeWorkspacePickerProps {
   workspaces: WorkspaceRecord[]
   currentWorkspace: WorkspaceRecord | null
   isGlobalChat: boolean
+  /** Switch to (or rebind the empty welcome chat to) an existing
+   * workspace. Same handler the chips use. */
   onPickExisting: (ws: WorkspaceRecord) => void
-  onBrowse: () => void
+  /** Open the system folder dialog and add the picked folder as a
+   * new workspace. Replaces the "Browse…" chip's previous direct-
+   * to-dialog action — now lives inside the "More workspaces"
+   * popover so the welcome surface stays compact. */
+  onAddNewWorkspace: () => void
+  /** Switch to a workspace-less (global / system) chat. Handy escape
+   * hatch when the user opened the welcome view by accident or for
+   * Ensembles that don't need a workspace anchor. */
+  onSelectNoWorkspace: () => void
 }
+
+/**
+ * Number of most-recent workspaces to surface as inline chips before
+ * the rest spill into the popover. Five feels right — enough to cover
+ * the typical 2-3 active projects + a handful of recent ones, but not
+ * so many that the welcome hero stretches past the composer width.
+ */
+const WELCOME_WORKSPACE_INLINE_LIMIT = 5
 
 function WelcomeWorkspacePicker({
   workspaces,
   currentWorkspace,
   isGlobalChat,
   onPickExisting,
-  onBrowse
+  onAddNewWorkspace,
+  onSelectNoWorkspace
 }: WelcomeWorkspacePickerProps): React.JSX.Element | null {
   if (isGlobalChat) return null
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+
+  // Close on outside click + Escape, so the popover behaves like every
+  // other dropdown in the app (slash menu, mention picker, etc.).
+  useEffect(() => {
+    if (!popoverOpen) return
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
+      setPopoverOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPopoverOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [popoverOpen])
+
   const others = workspaces
     .filter((ws) => ws.id !== currentWorkspace?.id)
     .sort((a, b) => (b.lastOpenedAt || b.createdAt || 0) - (a.lastOpenedAt || a.createdAt || 0))
-    .slice(0, 4)
+  const inline = others.slice(0, WELCOME_WORKSPACE_INLINE_LIMIT)
+  const overflow = others.slice(WELCOME_WORKSPACE_INLINE_LIMIT)
+
+  const handleSelectFromPopover = (callback: () => void): void => {
+    setPopoverOpen(false)
+    // defer so the popover-close render finishes before the parent
+    // navigates / fires its dialog — keeps focus + state transitions
+    // visually clean.
+    setTimeout(callback, 0)
+  }
+
   return (
     <div className="welcome-workspace-picker">
       <span className="welcome-workspace-picker-label">
         {currentWorkspace ? 'Switch folder' : 'Open a folder'}:
       </span>
       <div className="welcome-workspace-picker-chips">
-        {others.map((ws) => (
+        {inline.map((ws) => (
           <button
             key={ws.id}
             type="button"
@@ -4340,13 +4398,78 @@ function WelcomeWorkspacePicker({
           </button>
         ))}
         <button
+          ref={triggerRef}
           type="button"
-          className="welcome-workspace-picker-chip welcome-workspace-picker-browse"
-          onClick={onBrowse}
-          title="Open the system folder picker"
+          className={`welcome-workspace-picker-chip welcome-workspace-picker-browse ${popoverOpen ? 'is-open' : ''}`}
+          onClick={() => setPopoverOpen((open) => !open)}
+          aria-expanded={popoverOpen}
+          aria-haspopup="menu"
+          title="Browse all workspaces"
         >
           Browse…
         </button>
+        {popoverOpen && (
+          <div
+            ref={popoverRef}
+            className="welcome-workspace-popover"
+            role="menu"
+          >
+            {overflow.length > 0 && (
+              <div className="welcome-workspace-popover-section">
+                <div className="welcome-workspace-popover-header">
+                  More workspaces
+                </div>
+                {overflow.map((ws) => (
+                  <button
+                    key={ws.id}
+                    type="button"
+                    role="menuitem"
+                    className="welcome-workspace-popover-row"
+                    onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
+                    title={ws.path}
+                  >
+                    <span className="welcome-workspace-popover-row-name">
+                      {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                    </span>
+                    {ws.path && (
+                      <span className="welcome-workspace-popover-row-path">
+                        {ws.path}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="welcome-workspace-popover-section welcome-workspace-popover-actions">
+              <button
+                type="button"
+                role="menuitem"
+                className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                onClick={() => handleSelectFromPopover(onAddNewWorkspace)}
+              >
+                <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                  +
+                </span>
+                <span className="welcome-workspace-popover-row-name">
+                  Add new workspace…
+                </span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                onClick={() => handleSelectFromPopover(onSelectNoWorkspace)}
+              >
+                <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                  ∅
+                </span>
+                <span className="welcome-workspace-popover-row-name">
+                  No workspace (system chat)
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -15178,7 +15301,8 @@ function App(): React.JSX.Element {
                     currentWorkspace={currentWorkspace}
                     isGlobalChat={isCurrentGlobalChat}
                     onPickExisting={handleSelectWelcomeWorkspace}
-                    onBrowse={handleSelectWelcomeWorkspaceDialog}
+                    onAddNewWorkspace={handleSelectWelcomeWorkspaceDialog}
+                    onSelectNoWorkspace={handleNewGlobalChat}
                   />
                 </div>
               )
@@ -15209,7 +15333,8 @@ function App(): React.JSX.Element {
                   currentWorkspace={currentWorkspace}
                   isGlobalChat={isCurrentGlobalChat}
                   onPickExisting={handleSelectExistingWorkspace}
-                  onBrowse={handleSelectWorkspace}
+                  onAddNewWorkspace={handleSelectWorkspace}
+                  onSelectNoWorkspace={handleNewGlobalChat}
                 />
               </div>
             )}
