@@ -69,6 +69,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     })
     .join('\n')
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
+  const workspaceStanza = formatWorkspaceStanza(input.chat)
   const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
 
   return [
@@ -81,6 +82,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         ? `Continuous. You may hand work to another participant with @mentions or ensemble_yield(target), capped at ${continuationHops}/${maxContinuationHops} extra handoffs this round.`
         : 'Turn-bound. Each participant speaks at most once; @mentions and ensemble_yield(target) only reorder participants who have not spoken yet.'
     }`,
+    workspaceStanza,
     '',
     'Participant roster:',
     roster || '- No other enabled participants.',
@@ -95,6 +97,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '- In Continuous mode, only request another handoff when more agent work is genuinely useful; otherwise return control to the user.',
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
+    '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
     '',
     'Recent tagged transcript:',
     transcript || '[No prior transcript]',
@@ -136,6 +139,53 @@ function messageTag(message: ChatMessage): string {
   }
   if (message.role === 'error') return 'Error'
   return 'System'
+}
+
+/**
+ * 1.0.4 — `Round subject:` stanza injected just below `Round policy:`
+ * in the participant system prompt. Gives every participant a
+ * grounded deictic antecedent for "this app / this repo / this
+ * project" — without it, Claude (and likely other models with
+ * heavy AGBench tool-schema context loaded) tend to resolve "this"
+ * to the surrounding harness rather than the user's actual
+ * workspace.
+ *
+ * The line takes one of three shapes:
+ *
+ *   - Workspace bound (the common case):
+ *       `Round subject: <basename> (<path>)`
+ *
+ *   - No workspace bound (system / global chat):
+ *       `Round subject: No workspace bound — ask the user to name
+ *       the project before assuming.`
+ *
+ *   - Per-chat scope override (sub-thread inheriting a workspace
+ *     but emitting `scope: 'global'`): still emits the bound form
+ *     so the agent has the directory context.
+ *
+ * Origin: Claude/Explorer's introspective feedback after picking up
+ * AGBench-meta context instead of the bound workspace in an
+ * ensemble round. The user asked Claude for prompting-surface
+ * suggestions and got back a four-point list — this implements its
+ * top "highest ROI" recommendation. Round subject as a single
+ * anchor line every participant reads identically.
+ */
+function formatWorkspaceStanza(chat: ChatRecord): string {
+  const path = (chat.workspacePath || '').trim()
+  if (!path) {
+    return 'Round subject: No workspace bound — system / global chat. If the user references "this app / this repo / this project", ask which project they mean before assuming AGBench.'
+  }
+  // Last path segment is the project name. `path.split('/').pop()`
+  // would break on trailing slashes; use the regex form so a path
+  // like `/Users/x/Documents/another-project/` still yields
+  // `another-project`.
+  const basename = path.replace(/\/+$/, '').split('/').pop() || path
+  // Replace user home with `~` for compactness — doesn't reveal
+  // the actual username in the prompt and matches the way the chat
+  // sidebar displays workspace paths.
+  const home = process.env.HOME || ''
+  const displayPath = home && path.startsWith(home) ? `~${path.slice(home.length)}` : path
+  return `Round subject: ${basename} (${displayPath})`
 }
 
 export function providerLabel(provider: ProviderId): string {

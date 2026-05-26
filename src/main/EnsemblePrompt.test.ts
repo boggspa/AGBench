@@ -146,6 +146,39 @@ describe('Ensemble prompt composition', () => {
     // two participants share a provider.
     expect(prompt).not.toContain('multiple participants from the same provider')
   })
+
+  it('emits a Round subject stanza naming the active workspace', () => {
+    // 1.0.4 — Claude/Explorer's introspective feedback after picking
+    // up AGBench-meta context instead of the bound workspace. The
+    // stanza gives every participant a grounded antecedent for
+    // "this app / this repo / this project" so the lazy resolution
+    // path becomes the correct one.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Tell me about this app.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('Round subject: repo (/repo)')
+    // The deictic rule should be in the Rules section too.
+    expect(prompt).toContain('Deictic references')
+    expect(prompt).toContain('"this app"')
+    expect(prompt).toContain('NOT to AGBench')
+  })
+
+  it('emits the no-workspace fallback when the chat has no workspacePath', () => {
+    const globalChat = { ...chat(), workspacePath: undefined, scope: 'global' as const }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: globalChat,
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'What about this app?',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('No workspace bound')
+    expect(prompt).toContain('ask which project')
+  })
 })
 
 describe('formatSameProviderDisambiguationNote', () => {
