@@ -69,7 +69,7 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
 
   return {
     enabled: true,
-    maxParticipants: 4,
+    maxParticipants: 6,
     orchestrationMode: 'turn_bound',
     maxContinuationHops: 6,
     participants,

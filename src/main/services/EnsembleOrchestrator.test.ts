@@ -171,6 +171,59 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.dispatched[1].provider).toBe('codex')
   })
 
+  it('dispatches duplicate-provider participants by participant id', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.maxParticipants = 6
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'codex-primary',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work with the primary model.',
+        order: 1,
+        model: 'gpt-5.5',
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'codex-review',
+        provider: 'codex',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review with the alternate model.',
+        order: 2,
+        model: 'gpt-5.4',
+        permissionPresetId: 'read_only'
+      }
+    ]
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Run both Codex participants.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0]).toMatchObject({
+      provider: 'codex',
+      model: 'gpt-5.5',
+      ensembleRun: { participantId: 'codex-primary', role: 'Worker' }
+    })
+
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success', stats: { total_tokens: 5 } }
+    )
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1]).toMatchObject({
+      provider: 'codex',
+      model: 'gpt-5.4',
+      ensembleRun: { participantId: 'codex-review', role: 'Reviewer' }
+    })
+  })
+
   it('queues a fresh round after the current speaker finishes', async () => {
     const harness = makeHarness()
     harness.orchestrator.startRound({

@@ -42,6 +42,7 @@ import {
   RuntimeProfile,
   HandoffCard,
   EnsembleParticipant,
+  EnsembleOrchestrationMode,
   PermissionPresetId
 } from '../../main/store/types'
 import {
@@ -104,7 +105,11 @@ import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { MentionHighlightedText } from './components/MentionHighlightedText'
 import { hasResolvedMention } from './lib/mentionHighlight'
 import { shortModelName } from './lib/composerChipFormat'
-import { resolveEnsembleParticipantSettings } from './lib/ensembleProviderDefaults'
+import {
+  getDefaultEnsembleParticipantConfig,
+  resolveEnsembleParticipantSettings
+} from './lib/ensembleProviderDefaults'
+import { rebindWelcomeEnsembleChatToWorkspace } from './lib/ensembleWelcomeWorkspace'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -7315,6 +7320,30 @@ function App(): React.JSX.Element {
     setTrustResult(tr)
   }
 
+  const handleSelectWelcomeWorkspace = async (ws: WorkspaceRecord) => {
+    const rebound = rebindWelcomeEnsembleChatToWorkspace(currentChat, ws, isWelcomeChat)
+    if (!rebound) {
+      await handleSelectExistingWorkspace(ws)
+      return
+    }
+
+    setCurrentWorkspace(ws)
+    currentWorkspaceIdRef.current = ws.id
+    updateChatById(rebound.appChatId, () => rebound)
+    await refreshUsageSummary(ws.id, getChatProvider(rebound))
+    setDiff(null)
+    setRunDiff(null)
+    setRunCompleteNotice(null)
+    setRawLogs(rawLogsByChatIdRef.current.get(rebound.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(rebound.appChatId)
+    setShowFallbackUX(false)
+    setSessionTrust(false)
+    setIsThinking(runningChatIds.has(rebound.appChatId))
+    void refreshProviderMetadata(getChatProvider(rebound), ws.path)
+    const tr = await window.api.checkTrust(ws.path)
+    setTrustResult(tr)
+  }
+
   const refreshUsageSummary = async (
     _workspaceId?: string,
     _providerHint?: ProviderId,
@@ -7651,7 +7680,15 @@ function App(): React.JSX.Element {
     const ws = await window.api.selectWorkspace()
     if (ws) {
       setWorkspaces(await window.api.getWorkspaces())
-      handleSelectExistingWorkspace(ws)
+      await handleSelectExistingWorkspace(ws)
+    }
+  }
+
+  const handleSelectWelcomeWorkspaceDialog = async () => {
+    const ws = await window.api.selectWorkspace()
+    if (ws) {
+      setWorkspaces(await window.api.getWorkspaces())
+      await handleSelectWelcomeWorkspace(ws)
     }
   }
 
@@ -12952,6 +12989,19 @@ function App(): React.JSX.Element {
         : null,
     [ensembleParticipantsForCurrent, effectiveSelectedParticipantId]
   )
+  const currentEnsembleRound = currentChat?.ensemble?.activeRound
+  const currentEnsembleOrchestrationMode: EnsembleOrchestrationMode =
+    currentChat?.ensemble?.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
+  const activeEnsembleOrchestrationMode: EnsembleOrchestrationMode =
+    currentEnsembleRound?.orchestrationMode === 'continuous'
+      ? 'continuous'
+      : currentEnsembleOrchestrationMode
+  const currentEnsembleContinuationHops = currentEnsembleRound?.continuationHops || 0
+  const currentEnsembleMaxContinuationHops =
+    currentEnsembleRound?.maxContinuationHops ||
+    currentChat?.ensemble?.maxContinuationHops ||
+    6
+  const isCurrentEnsembleRoundRunning = currentEnsembleRound?.status === 'running'
   // Slice F v2 (1.0.3) — write-through helper used by the composer
   // pickers when an ensemble chip is selected. Patches the targeted
   // participant in chat.ensemble.participants and persists. Same
@@ -12981,6 +13031,22 @@ function App(): React.JSX.Element {
       void window.api.saveChat(nextChat)
     },
     [isCurrentEnsembleChat, selectedParticipant, currentChat]
+  )
+  const updateCurrentEnsembleOrchestrationMode = useCallback(
+    (mode: EnsembleOrchestrationMode) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      updateChatById(currentChat.appChatId, (source) => ({
+        ...source,
+        ensemble: {
+          ...source.ensemble!,
+          orchestrationMode: mode,
+          maxParticipants: 6,
+          maxContinuationHops: source.ensemble!.maxContinuationHops || 6,
+          updatedAt: new Date().toISOString()
+        }
+      }))
+    },
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble]
   )
   // Ensemble round-complete notice — fires once when the round
   // transitions to `completed` (or `cancelled`). Solo chats use the
@@ -15088,8 +15154,8 @@ function App(): React.JSX.Element {
                     workspaces={workspaces}
                     currentWorkspace={currentWorkspace}
                     isGlobalChat={isCurrentGlobalChat}
-                    onPickExisting={handleSelectExistingWorkspace}
-                    onBrowse={handleSelectWorkspace}
+                    onPickExisting={handleSelectWelcomeWorkspace}
+                    onBrowse={handleSelectWelcomeWorkspaceDialog}
                   />
                 </div>
               )
@@ -16287,30 +16353,89 @@ function App(): React.JSX.Element {
                         </span>
                       </button>
                     ) : null}
-                    {/* Provider picker — hidden on ensemble chats.
-                        Ensemble rounds dispatch each participant on
-                        their own provider (configured via the chip
-                        strip's per-participant settings), so the
-                        chat-level provider picker doesn't apply and
-                        switching it mid-round would cause undefined
-                        behaviour. The chip strip above already
-                        surfaces every participant's provider, so
-                        nothing's lost by hiding the picker here. */}
-                    {!isCurrentEnsembleChat && (
+                    {isCurrentEnsembleChat && currentChat?.ensemble && (
+                      <span
+                        className="composer-ensemble-mode"
+                        role="group"
+                        aria-label="Ensemble orchestration mode"
+                        title={
+                          isCurrentEnsembleRoundRunning
+                            ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
+                            : 'Choose whether agents speak once per round or can hand work back and forth.'
+                        }
+                        data-composer-control="ensemble-mode"
+                      >
+                        <button
+                          type="button"
+                          className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
+                          onClick={() => updateCurrentEnsembleOrchestrationMode('turn_bound')}
+                        >
+                          Turn
+                        </button>
+                        <button
+                          type="button"
+                          className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'continuous' ? 'is-active' : ''}`}
+                          onClick={() => updateCurrentEnsembleOrchestrationMode('continuous')}
+                        >
+                          Continuous
+                        </button>
+                        {activeEnsembleOrchestrationMode === 'continuous' && (
+                          <span
+                            className="composer-ensemble-hop-meter"
+                            title="Extra handoff turns used by this continuous round."
+                          >
+                            {currentEnsembleContinuationHops}/{currentEnsembleMaxContinuationHops}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                    {/* Provider picker. In solo chats this remains the
+                        chat-level provider switch. In Ensemble chats it
+                        retargets to the selected participant so users can
+                        build same-provider panels without leaving the
+                        composer. */}
+                    {(() => {
+                      const ensembleBinding =
+                        isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                      const pickerProvider = ensembleBinding?.provider ?? currentProvider
+                      const handleComposerProviderChange = (provider: ProviderId): void => {
+                        if (ensembleBinding) {
+                          const defaults = getDefaultEnsembleParticipantConfig(provider)
+                          updateSelectedParticipant({
+                            provider,
+                            model: defaults.model,
+                            runtimeProfileId: undefined,
+                            geminiAuthProfileId: provider === 'gemini' ? null : undefined,
+                            permissionPresetId: defaults.permissionPresetId,
+                            reasoningEffort: defaults.reasoningEffort,
+                            fastModeEnabled: defaults.fastModeEnabled,
+                            thinkingEnabled: defaults.thinkingEnabled,
+                            serviceTier: defaults.serviceTier,
+                            linkedProviderSessionId: null
+                          })
+                          return
+                        }
+                        void handleProviderChange(provider)
+                      }
+                      return (
                     <label
                       className="composer-picker-label"
-                      title="Provider"
+                      title={ensembleBinding ? 'Selected participant provider' : 'Provider'}
                       data-composer-control="provider"
                     >
                       <LinkCircleSymbolIcon />
                       <select
                         className="composer-inline-picker"
-                        aria-label="Provider"
-                        value={currentProvider}
+                        aria-label={ensembleBinding ? 'Selected participant provider' : 'Provider'}
+                        value={pickerProvider}
                         onChange={(event) =>
-                          void handleProviderChange(event.target.value as ProviderId)
+                          handleComposerProviderChange(event.target.value as ProviderId)
                         }
-                        disabled={isCurrentComposerLocked || isCurrentChatProviderLocked}
+                        disabled={
+                          isCurrentComposerLocked ||
+                          (!ensembleBinding && isCurrentChatProviderLocked) ||
+                          Boolean(ensembleBinding && isCurrentEnsembleRoundRunning)
+                        }
                       >
                         <option value="gemini">Gemini</option>
                         <option value="codex">Codex</option>
@@ -16318,7 +16443,8 @@ function App(): React.JSX.Element {
                         <option value="kimi">Kimi</option>
                       </select>
                     </label>
-                    )}
+                      )
+                    })()}
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here

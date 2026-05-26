@@ -16072,8 +16072,8 @@ input:disabled, select:disabled, textarea:disabled {
  * Anything else AGBench-specific in the left bar (model-aware reasoning
  * pills, extra workspace chips, etc.) still gets hidden by these :not()
  * allowlists. */
-[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]),
-[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]),
+[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
 
@@ -16110,10 +16110,11 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="codex"] [data-composer-control="attach"] { order: 0; }
 [data-composer-style="codex"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] { order: 2; }
 /* Provider sits between permission and the right-aligned model picker,
  * styled as a low-key outlined chip matching the codex purple palette. */
-[data-composer-style="codex"] [data-composer-control="provider"] { order: 2; }
-[data-composer-style="codex"] [data-composer-control="model"] { order: 3; margin-left: auto; }
+[data-composer-style="codex"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="codex"] [data-composer-control="model"] { order: 4; margin-left: auto; }
 
 [data-composer-style="codex"] [data-composer-control="provider"] {
   min-height: 24px;
@@ -16366,8 +16367,9 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] [data-composer-control="attach"]    { order: 1; }
 /* Provider sits in the gap between `+` (attach) and the right-aligned model
  * picker — replaces the previous satellite footer chip. */
-[data-composer-style="claude"] [data-composer-control="provider"] { order: 2; }
-[data-composer-style="claude"] [data-composer-control="model"]    { order: 3; margin-left: auto; }
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="claude"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="claude"] [data-composer-control="model"]    { order: 4; margin-left: auto; }
 
 /* Inline provider chip in claude mode — outlined pill, low-key, native-ish */
 [data-composer-style="claude"] [data-composer-control="provider"] {
@@ -17214,7 +17216,7 @@ input:disabled, select:disabled, textarea:disabled {
  * ============================================================ */
 [data-composer-style="gemini"] .composer-top-toggles,
 [data-composer-style="gemini"] .composer-chips,
-[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
 /* Gemini shell — historically hid `.composer-above-bar` entirely
@@ -17274,8 +17276,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="gemini"] [data-composer-control="attach"] { order: 0; }
 [data-composer-style="gemini"] [data-composer-control="permission"] { order: 1; }
-[data-composer-style="gemini"] [data-composer-control="provider"] { order: 2; }
-[data-composer-style="gemini"] [data-composer-control="model"] { order: 3; margin-left: auto; }
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="gemini"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="gemini"] [data-composer-control="model"] { order: 4; margin-left: auto; }
 
 [data-composer-style="gemini"] .composer-image-picker-btn {
   width: 30px;
@@ -17364,7 +17367,7 @@ input:disabled, select:disabled, textarea:disabled {
  * ============================================================ */
 [data-composer-style="kimi"] .composer-top-toggles,
 [data-composer-style="kimi"] .composer-chips,
-[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
   display: none !important;
 }
 /* Kimi shell — same parity move as Gemini above. Was hidden
@@ -17418,8 +17421,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="kimi"] [data-composer-control="attach"] { order: 0; }
 [data-composer-style="kimi"] [data-composer-control="permission"] { order: 1; }
-[data-composer-style="kimi"] [data-composer-control="provider"] { order: 2; }
-[data-composer-style="kimi"] [data-composer-control="model"] { order: 3; margin-left: auto; }
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="kimi"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="kimi"] [data-composer-control="model"] { order: 4; margin-left: auto; }
 
 [data-composer-style="kimi"] .composer-image-picker-btn {
   width: 30px;
@@ -24707,6 +24711,34 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-primary);
 }
 
+.ensemble-above-add-participant {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated) 55%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.ensemble-above-add-participant:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-color) 48%, var(--border-color));
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-color) 12%, transparent);
+}
+
+.ensemble-above-add-participant:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .ensemble-above-chip:hover {
   border-color: color-mix(in srgb, var(--accent-color) 50%, var(--border-color));
 }
@@ -24843,6 +24875,23 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: var(--font-size-sm);
 }
 
+.ensemble-above-overflow-remove {
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--danger, #c44a4a) 35%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger, #c44a4a) 10%, transparent);
+  color: color-mix(in srgb, var(--danger, #c44a4a) 82%, var(--text-primary));
+  cursor: pointer;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.ensemble-above-overflow-remove:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
 .ensemble-above-overflow-hint {
   margin: 0;
   font-size: 11px;
@@ -24958,11 +25007,13 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 60%, transparent);
 }
 
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-ensemble-mode,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-mode {
   background: color-mix(in srgb, var(--surface-2) 84%, transparent);
   border-color: color-mix(in srgb, var(--surface-border) 78%, transparent);
 }
 
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-ensemble-hop-meter,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-hop-meter {
   background: color-mix(in srgb, var(--accent-color) 12%, var(--surface-2));
 }
@@ -25045,6 +25096,7 @@ input:disabled, select:disabled, textarea:disabled {
   flex-shrink: 0;
 }
 
+.composer-ensemble-mode,
 .ensemble-above-mode {
   display: inline-flex;
   align-items: center;
@@ -25054,6 +25106,7 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--surface-elevated) 54%, transparent);
 }
 
+.composer-ensemble-mode-button,
 .ensemble-above-mode-button {
   border: 0;
   border-radius: 999px;
@@ -25068,15 +25121,18 @@ input:disabled, select:disabled, textarea:disabled {
   white-space: nowrap;
 }
 
+.composer-ensemble-mode-button:hover,
 .ensemble-above-mode-button:hover {
   color: var(--text-primary);
 }
 
+.composer-ensemble-mode-button.is-active,
 .ensemble-above-mode-button.is-active {
   background: color-mix(in srgb, var(--accent-color) 18%, transparent);
   color: var(--accent-color);
 }
 
+.composer-ensemble-hop-meter,
 .ensemble-above-hop-meter {
   display: inline-flex;
   align-items: center;
@@ -25088,6 +25144,18 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: 10px;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.composer-ensemble-mode {
+  min-height: 24px;
+  gap: 2px;
+}
+
+.composer-ensemble-hop-meter {
+  margin-left: 2px;
+  min-height: 18px;
+  padding: 2px 6px;
+  font-size: 9px;
 }
 
 .ensemble-above-row-queued {

@@ -79,6 +79,52 @@ describe('Ensemble prompt composition', () => {
     ])
   })
 
+  it('treats legacy maxParticipants=4 configs as six-capable', () => {
+    const sixParticipantLegacy: EnsembleConfig = {
+      ...ensemble,
+      maxParticipants: 4,
+      participants: [
+        ...ensemble.participants,
+        {
+          id: 'codex-2',
+          provider: 'codex',
+          enabled: true,
+          role: 'Worker 2',
+          instructions: 'Work again.',
+          order: 4,
+          permissionPresetId: 'workspace_write'
+        },
+        {
+          id: 'claude-2',
+          provider: 'claude',
+          enabled: true,
+          role: 'Reviewer 2',
+          instructions: 'Review again.',
+          order: 5,
+          permissionPresetId: 'read_only'
+        },
+        {
+          id: 'gemini-2',
+          provider: 'gemini',
+          enabled: true,
+          role: 'Researcher 2',
+          instructions: 'Research again.',
+          order: 6,
+          permissionPresetId: 'read_only'
+        }
+      ]
+    }
+
+    expect(getOrderedEnsembleParticipants(sixParticipantLegacy).map((p) => p.id)).toEqual([
+      'claude',
+      'codex',
+      'gemini',
+      'codex-2',
+      'claude-2',
+      'gemini-2'
+    ])
+  })
+
   it('builds bounded tagged context with roster and role instructions', () => {
     const prompt = buildEnsembleParticipantPrompt({
       chat: chat(),

@@ -34,12 +34,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
-  EnsembleOrchestrationMode,
-  EnsembleParticipant
+  EnsembleParticipant,
+  ProviderId
 } from '../../../main/store/types'
+import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
 
-const DEFAULT_CONTINUATION_HOP_LIMIT = 6
+const MAX_ENSEMBLE_PARTICIPANTS = 6
 
 interface EnsembleParticipantsAboveRowProps {
   chat: ChatRecord
@@ -69,21 +70,15 @@ export function EnsembleParticipantsAboveRow({
 
   const participants = [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
   const activeRound = chat.ensemble.activeRound
-  const orchestrationMode: EnsembleOrchestrationMode =
-    chat.ensemble.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
-  const activeOrchestrationMode =
-    activeRound?.orchestrationMode === 'continuous' ? 'continuous' : orchestrationMode
-  const maxContinuationHops =
-    activeRound?.maxContinuationHops ||
-    chat.ensemble.maxContinuationHops ||
-    DEFAULT_CONTINUATION_HOP_LIMIT
-  const continuationHops = activeRound?.continuationHops || 0
+  const isRoundRunning = activeRound?.status === 'running'
+  const canAddParticipant = !isRoundRunning && participants.length < MAX_ENSEMBLE_PARTICIPANTS
 
   const [overflowOpenId, setOverflowOpenId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [dragOverId, setDragOverId] = useState<string | null>(null)
 
   const updateParticipant = (id: string, patch: Partial<EnsembleParticipant>): void => {
+    if (isRoundRunning) return
     const next = participants.map((p) => (p.id === id ? { ...p, ...patch } : p))
     persist(next)
   }
@@ -93,28 +88,59 @@ export function EnsembleParticipantsAboveRow({
       ...chat,
       ensemble: {
         ...chat.ensemble!,
+        maxParticipants: MAX_ENSEMBLE_PARTICIPANTS,
         participants: nextParticipants.map((p, idx) => ({ ...p, order: idx + 1 })),
         updatedAt: new Date().toISOString()
       }
     })
   }
 
-  const updateOrchestrationMode = (mode: EnsembleOrchestrationMode): void => {
-    onChatChange({
-      ...chat,
-      ensemble: {
-        ...chat.ensemble!,
-        orchestrationMode: mode,
-        maxContinuationHops:
-          chat.ensemble!.maxContinuationHops || DEFAULT_CONTINUATION_HOP_LIMIT,
-        updatedAt: new Date().toISOString()
-      }
-    })
+  const addParticipant = (): void => {
+    if (!canAddParticipant) return
+    const source =
+      participants.find((participant) => participant.id === selectedParticipantId) ||
+      participants[participants.length - 1]
+    const provider: ProviderId = source?.provider || 'codex'
+    const defaults = getDefaultEnsembleParticipantConfig(provider)
+    const sourceIndex = source
+      ? participants.findIndex((participant) => participant.id === source.id)
+      : participants.length - 1
+    const newParticipant: EnsembleParticipant = {
+      id: nextParticipantId(participants),
+      provider,
+      enabled: true,
+      role: nextRoleLabel(source?.role || getProviderName(provider), participants),
+      instructions:
+        source?.instructions || `Contribute as ${getProviderName(provider)} for this ensemble.`,
+      order: participants.length + 1,
+      model: source?.model || defaults.model,
+      runtimeProfileId: source?.runtimeProfileId,
+      geminiAuthProfileId: provider === 'gemini' ? source?.geminiAuthProfileId || null : null,
+      permissionPresetId: source?.permissionPresetId || defaults.permissionPresetId,
+      reasoningEffort: source?.reasoningEffort || defaults.reasoningEffort,
+      fastModeEnabled: source?.fastModeEnabled ?? defaults.fastModeEnabled,
+      thinkingEnabled: source?.thinkingEnabled ?? defaults.thinkingEnabled,
+      serviceTier: source?.serviceTier ?? defaults.serviceTier
+    }
+    const next = [...participants]
+    next.splice(Math.max(0, sourceIndex + 1), 0, newParticipant)
+    persist(next)
+    onSelectParticipant(newParticipant.id)
+  }
+
+  const removeParticipant = (id: string): void => {
+    if (isRoundRunning || participants.length <= 1) return
+    const next = participants.filter((participant) => participant.id !== id)
+    persist(next)
+    if (selectedParticipantId === id && next[0]) {
+      onSelectParticipant(next[0].id)
+    }
   }
 
   const handleReorder = (sourceId: string, targetId: string | null): void => {
     setDragId(null)
     setDragOverId(null)
+    if (isRoundRunning) return
     if (!targetId || sourceId === targetId) return
     const fromIdx = participants.findIndex((p) => p.id === sourceId)
     const toIdx = participants.findIndex((p) => p.id === targetId)
@@ -155,47 +181,33 @@ export function EnsembleParticipantsAboveRow({
               }
               onCloseOverflow={() => setOverflowOpenId(null)}
               onPatch={(patch) => updateParticipant(participant.id, patch)}
+              onRemove={() => removeParticipant(participant.id)}
+              canRemove={participants.length > 1}
+              locked={isRoundRunning}
               onDragStart={() => setDragId(participant.id)}
               onDragHover={(overId) => setDragOverId(overId)}
               onDragEnd={(droppedOnId) => handleReorder(participant.id, droppedOnId)}
             />
           )
         })}
+        <button
+          type="button"
+          className="ensemble-above-add-participant"
+          onClick={addParticipant}
+          disabled={!canAddParticipant}
+          title={
+            isRoundRunning
+              ? 'Participant changes are locked while a round is running.'
+              : participants.length >= MAX_ENSEMBLE_PARTICIPANTS
+                ? 'Ensembles support up to six participants.'
+                : 'Add another participant'
+          }
+          aria-label="Add Ensemble participant"
+        >
+          +
+        </button>
       </div>
       <div className="ensemble-above-row-actions">
-        <div
-          className="ensemble-above-mode"
-          role="group"
-          aria-label="Ensemble orchestration mode"
-          title={
-            activeRound?.status === 'running'
-              ? `Current round: ${activeOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
-              : 'Choose whether agents speak once per round or can hand work back and forth.'
-          }
-        >
-          <button
-            type="button"
-            className={`ensemble-above-mode-button ${orchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
-            onClick={() => updateOrchestrationMode('turn_bound')}
-          >
-            Turn
-          </button>
-          <button
-            type="button"
-            className={`ensemble-above-mode-button ${orchestrationMode === 'continuous' ? 'is-active' : ''}`}
-            onClick={() => updateOrchestrationMode('continuous')}
-          >
-            Continuous
-          </button>
-        </div>
-        {activeOrchestrationMode === 'continuous' && (
-          <span
-            className="ensemble-above-hop-meter"
-            title="Extra handoff turns used by this continuous round."
-          >
-            {continuationHops}/{maxContinuationHops} hops
-          </span>
-        )}
         {/* "Queued next round" label intentionally not rendered here —
             the queued-messages above-row (sibling in the composer
             above-bar stack) now surfaces ensemble `queuedPrompt`
@@ -231,6 +243,9 @@ interface ParticipantChipProps {
   onToggleOverflow: () => void
   onCloseOverflow: () => void
   onPatch: (patch: Partial<EnsembleParticipant>) => void
+  onRemove: () => void
+  canRemove: boolean
+  locked: boolean
   /**
    * Pointer-based drag callbacks (replaces HTML5 native drag).
    *
@@ -267,6 +282,9 @@ function ParticipantChip({
   onToggleOverflow,
   onCloseOverflow,
   onPatch,
+  onRemove,
+  canRemove,
+  locked,
   onDragStart,
   onDragHover,
   onDragEnd
@@ -286,6 +304,10 @@ function ParticipantChip({
       // logic robust if anything between us mishandles the event.
       const target = event.target as HTMLElement
       if (target.closest('.ensemble-above-chip-overflow')) return
+      if (locked) {
+        onClick()
+        return
+      }
 
       const startX = event.clientX
       const startY = event.clientY
@@ -396,6 +418,9 @@ function ParticipantChip({
           anchor={chipRef.current}
           participant={participant}
           onPatch={onPatch}
+          onRemove={onRemove}
+          canRemove={canRemove}
+          locked={locked}
           onClose={onCloseOverflow}
         />
       )}
@@ -407,6 +432,9 @@ interface OverflowPopoverProps {
   anchor: HTMLElement | null
   participant: EnsembleParticipant
   onPatch: (patch: Partial<EnsembleParticipant>) => void
+  onRemove: () => void
+  canRemove: boolean
+  locked: boolean
   onClose: () => void
 }
 
@@ -414,6 +442,9 @@ function OverflowPopover({
   anchor,
   participant,
   onPatch,
+  onRemove,
+  canRemove,
+  locked,
   onClose
 }: OverflowPopoverProps): React.JSX.Element | null {
   const popoverRef = useRef<HTMLDivElement | null>(null)
@@ -476,6 +507,7 @@ function OverflowPopover({
         <input
           type="checkbox"
           checked={participant.enabled}
+          disabled={locked}
           onChange={(event) => onPatch({ enabled: event.target.checked })}
         />
         <span>Enabled in ensemble rounds</span>
@@ -485,18 +517,50 @@ function OverflowPopover({
         <input
           type="text"
           value={participant.role}
+          disabled={locked}
           onChange={(event) => onPatch({ role: event.target.value })}
           placeholder={`${getProviderName(participant.provider)} role`}
         />
       </label>
+      <button
+        type="button"
+        className="ensemble-above-overflow-remove"
+        onClick={onRemove}
+        disabled={locked || !canRemove}
+      >
+        Remove participant
+      </button>
       <p className="ensemble-above-overflow-hint">
-        Model, reasoning, fast mode, and permissions live in the composer pickers below — they
-        apply to the chip selected here.
+        {locked
+          ? 'Participant membership is locked while a round is running.'
+          : 'Model, provider, reasoning, fast mode, and permissions live in the composer pickers below — they apply to the chip selected here.'}
       </p>
     </div>
   )
 
   return createPortal(content, document.body)
+}
+
+function nextParticipantId(participants: EnsembleParticipant[]): string {
+  const existing = new Set(participants.map((participant) => participant.id))
+  for (let index = participants.length + 1; index < participants.length + 32; index += 1) {
+    const id = `ensemble-participant-${index}`
+    if (!existing.has(id)) return id
+  }
+  return `ensemble-participant-${Date.now().toString(36)}`
+}
+
+function nextRoleLabel(baseRole: string, participants: EnsembleParticipant[]): string {
+  const base = (baseRole || 'Participant').replace(/\s+\d+$/, '').trim() || 'Participant'
+  const existing = new Set(
+    participants.map((participant) => String(participant.role || '').trim().toLowerCase())
+  )
+  if (!existing.has(base.toLowerCase())) return base
+  for (let index = 2; index < 32; index += 1) {
+    const candidate = `${base} ${index}`
+    if (!existing.has(candidate.toLowerCase())) return candidate
+  }
+  return `${base} ${participants.length + 1}`
 }
 
 /*

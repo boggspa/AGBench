@@ -9,6 +9,7 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 
 const MAX_MESSAGE_CHARS = 4000
 const MAX_TRANSCRIPT_CHARS = 24000
+const MAX_ENSEMBLE_PARTICIPANTS = 6
 
 export interface BuildEnsemblePromptInput {
   chat: ChatRecord
@@ -23,10 +24,14 @@ export function getOrderedEnsembleParticipants(
   config: EnsembleConfig,
   currentPrompt = ''
 ): EnsembleParticipant[] {
+  const maxParticipants =
+    Number(config.maxParticipants || 0) > 4
+      ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.floor(Number(config.maxParticipants)))
+      : MAX_ENSEMBLE_PARTICIPANTS
   const enabled = (config.participants || [])
     .filter((participant) => participant.enabled)
-    .slice(0, Math.max(1, config.maxParticipants || 4))
     .sort((a, b) => a.order - b.order || providerLabel(a.provider).localeCompare(providerLabel(b.provider)))
+    .slice(0, Math.max(1, maxParticipants))
   if (!currentPrompt || /@all\b/i.test(currentPrompt)) return enabled
 
   const prompt = currentPrompt.toLowerCase()

@@ -33,7 +33,7 @@ function makeChat(participants: EnsembleParticipant[]): ChatRecord {
     runs: [],
     ensemble: {
       enabled: true,
-      maxParticipants: 4,
+      maxParticipants: 6,
       participants
     }
   }
@@ -174,7 +174,7 @@ describe('EnsembleParticipantsAboveRow', () => {
     expect(selectedHits.length).toBe(1)
   })
 
-  it('renders the orchestration mode control and continuous hop meter', () => {
+  it('leaves orchestration controls out of the participant row', () => {
     const chat = makeChat([
       makeParticipant({ id: 'ensemble-claude', provider: 'claude', role: 'Explorer', order: 1 }),
       makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
@@ -216,8 +216,27 @@ describe('EnsembleParticipantsAboveRow', () => {
       />
     )
 
-    expect(html).toContain('Continuous')
-    expect(html).toContain('2/6 hops')
-    expect(html).toContain('ensemble-above-mode-button is-active')
+    expect(html).not.toContain('Continuous')
+    expect(html).not.toContain('2/6 hops')
+    expect(html).not.toContain('ensemble-above-mode-button')
+  })
+
+  it('renders the add-participant affordance until the six participant cap', () => {
+    const chat = makeChat([
+      makeParticipant({ id: 'ensemble-claude', provider: 'claude', role: 'Explorer', order: 1 }),
+      makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
+    ])
+
+    const html = renderToStaticMarkup(
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId="ensemble-codex"
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
+    )
+
+    expect(html).toContain('ensemble-above-add-participant')
+    expect(html).toContain('Add Ensemble participant')
   })
 })

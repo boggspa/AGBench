@@ -202,6 +202,10 @@ export function AgentMentionMenu({
         .map<ComposerMentionCandidate>((participant) => {
           const role = participant.role?.trim() || ''
           const providerName = getProviderName(participant.provider)
+          const modelDetail =
+            participant.model && participant.model !== 'cli-default'
+              ? `${providerName} · ${participant.model}`
+              : providerName
           // Display name: prefer the user-set role (e.g. "Worker"),
           // fall back to the provider name. The detail line always
           // shows the provider so the user can disambiguate by
@@ -213,7 +217,7 @@ export function AgentMentionMenu({
             participantId: participant.id,
             provider: participant.provider,
             name,
-            detail: role ? providerName : participant.provider,
+            detail: role ? modelDetail : participant.provider,
             // Resolve to the theme's `--provider-{name}-color` CSS
             // variable at popover-render time. Falls back to the
             // accent if the var isn't defined.
