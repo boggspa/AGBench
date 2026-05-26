@@ -365,23 +365,12 @@ function SidebarChatTitleEditable({
   )
 }
 
-function PinSymbolIcon({ filled = false }: { filled?: boolean }) {
-  return (
-    <span className="sf-symbol-icon" aria-hidden>
-      <svg
-        viewBox="0 0 16 16"
-        fill={filled ? 'currentColor' : 'none'}
-        stroke="currentColor"
-        strokeWidth="1.3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      >
-        <path d="M9.5 2.2 13.8 6.5l-2.4.7-1.6 3.5-3.4-3.4L9.9 5.7l-.4-3.5Z" />
-        <path d="m6.6 9.4-3.4 3.4" />
-      </svg>
-    </span>
-  )
-}
+// `PinSymbolIcon` was used by the inline pin/unpin icon button that
+// every chat-tile + workspace-tile rendered alongside the three-dots
+// overflow menu (1.0.2 behaviour). Both icon buttons were retired in
+// 1.0.3 — Pin / Unpin now lives exclusively in the overflow menu via
+// `buildChatMenuItems` + `buildWorkspaceMenuItems`. Definition kept
+// out of the bundle entirely so the unused-import lint stays clean.
 
 /**
  * `EnsembleSymbolIcon` — two overlapping circles to convey "multiple
@@ -869,21 +858,12 @@ export function Sidebar({
     ? recentChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : recentChats
 
-  // `handleTogglePinChatClick` was used by the inline pin-icon buttons
-  // on each chat tile (Pinned / Recents / Workspace-expanded / Global
-  // sections). Those inline action buttons were retired in 1.0.3 in
-  // favour of the per-chat three-dots overflow menu, which now exposes
-  // Pin / Unpin via `buildChatMenuItems` instead. The workspace pin
-  // (line ~1439 / ~1836) still uses `handleTogglePinWorkspaceClick`
-  // below.
-  const handleTogglePinWorkspaceClick = (
-    event: MouseEvent<HTMLButtonElement | HTMLSpanElement>,
-    workspaceId: string
-  ) => {
-    event.preventDefault()
-    event.stopPropagation()
-    onTogglePinWorkspace?.(workspaceId)
-  }
+  // 1.0.3 retiring inline tile action icons — `handleTogglePinChatClick`,
+  // `handleTogglePinWorkspaceClick`, and `handleAddChat` were the
+  // hover-revealed icon-button handlers on each chat / workspace tile
+  // (Pinned / Recents / Workspace-expanded / Global sections). All
+  // affordances now live in the per-tile three-dots overflow menu,
+  // wired via `buildChatMenuItems` / `buildWorkspaceMenuItems`.
 
   const renderProviderDot = (provider: ProviderId | undefined): ReactNode => {
     const providerKey = provider || 'gemini'
@@ -1287,11 +1267,9 @@ export function Sidebar({
     })
   }
 
-  const handleAddChat = (event: MouseEvent<HTMLButtonElement>, ws: WorkspaceRecord) => {
-    event.preventDefault()
-    event.stopPropagation()
-    onNewChat(ws.id, ws.path)
-  }
+  // `handleAddChat` retired alongside the workspace tile's inline
+  // `+` button (1.0.3). New chat lives in the workspace overflow
+  // menu's `New chat` item now (built in `buildWorkspaceMenuItems`).
 
   // Phase L6 slice 1 — `formatResetShort` extracted to
   // `lib/UsageFormat.ts`; the Model Usage card now lives in its
@@ -1434,25 +1412,10 @@ export function Sidebar({
                   <span className="sidebar-pinned-label">
                     <HighlightMatch text={workspace.displayName} query={sidebarSearchQuery} />
                   </span>
-                  {onTogglePinWorkspace && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="sidebar-pin-toggle is-pinned"
-                      onClick={(event) => handleTogglePinWorkspaceClick(event, workspace.id)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onTogglePinWorkspace(workspace.id)
-                        }
-                      }}
-                      title="Unpin workspace"
-                      aria-label="Unpin workspace"
-                    >
-                      <PinSymbolIcon filled />
-                    </span>
-                  )}
+                  <SidebarOverflowMenu
+                    triggerLabel="Workspace actions"
+                    items={buildWorkspaceMenuItems(workspace)}
+                  />
                 </div>
               ))}
               {visiblePinnedChats.map((chat) => (
@@ -1822,44 +1785,11 @@ export function Sidebar({
                         {totalChats}
                       </span>
                     )}
-                    <button
-                      className="btn btn-sm btn-ghost btn-icon sidebar-item-action"
-                      style={{
-                        opacity: hoveredWorkspace === ws.id ? 1 : 0,
-                        transition: 'opacity 0.1s'
-                      }}
-                      onClick={(event) => handleAddChat(event, ws)}
-                      title="New chat"
-                    >
-                      <PlusSymbolIcon />
-                    </button>
-                    {onTogglePinWorkspace && (
-                      <button
-                        className={`btn btn-sm btn-ghost btn-icon sidebar-item-action sidebar-pin-toggle ${ws.pinned ? 'is-pinned' : ''}`}
-                        style={{
-                          opacity: hoveredWorkspace === ws.id || ws.pinned ? 1 : 0,
-                          transition: 'opacity 0.1s'
-                        }}
-                        onClick={(event) => handleTogglePinWorkspaceClick(event, ws.id)}
-                        title={ws.pinned ? 'Unpin workspace' : 'Pin workspace'}
-                        aria-label={ws.pinned ? 'Unpin workspace' : 'Pin workspace'}
-                      >
-                        <PinSymbolIcon filled={!!ws.pinned} />
-                      </button>
-                    )}
-                    {(hoveredWorkspace === ws.id || currentWorkspace?.id !== ws.id) && (
-                      <button
-                        className="btn btn-sm btn-ghost btn-icon sidebar-item-action"
-                        style={{
-                          opacity: hoveredWorkspace === ws.id ? 1 : 0,
-                          transition: 'opacity 0.1s'
-                        }}
-                        onClick={(event) => onRemoveWorkspace(ws.id, event)}
-                        title="Remove"
-                      >
-                        ×
-                      </button>
-                    )}
+                    {/* 1.0.3 — workspace inline action icons retired in
+                        favour of the three-dots overflow menu (single
+                        source of actions per chat-tile rework). All
+                        affordances (New chat / Pin / Unpin / Remove
+                        workspace) live in `buildWorkspaceMenuItems`. */}
                     <SidebarOverflowMenu
                       triggerLabel="Workspace actions"
                       items={buildWorkspaceMenuItems(ws)}

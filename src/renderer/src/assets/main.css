@@ -402,6 +402,19 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 1.0.3 polish — sidebar chat-title fonts 15% smaller across all
+   * sections (Pinned / Recents / Ensembles / Workspaces / Sub-threads /
+   * Global). 0.85em scales relative to the parent's inherited size so
+   * it adapts to any per-section tweaks the user makes via Settings.
+   * Subtitle / status tokens are unaffected (they live in
+   * `.sidebar-chat-subline` and read their own size).
+   *
+   * Sub-thread provider prefix (`.sidebar-chat-title-line
+   * .sidebar-provider-label`) gets the matching scale below so
+   * "Provider / Title" stays visually balanced. Model Usage card
+   * + Settings tabs are NOT touched (they use different class
+   * names entirely). */
+  font-size: 0.85em;
 }
 
 .sidebar-provider-dot {
@@ -14188,11 +14201,22 @@ input:disabled, select:disabled, textarea:disabled {
 
 .sidebar-chat-title-line .sidebar-provider-label {
   flex: 0 0 auto;
+  /* 1.0.3 polish — provider prefix scales with the title (15% smaller
+   * matching `.sidebar-chat-title` below). Scoped to title-line
+   * descendants so non-sidebar usages of `.sidebar-provider-label`
+   * (if any creep in) aren't affected. */
+  font-size: 0.85em;
 }
 
 .sidebar-chat-title {
   font-weight: 610;
   letter-spacing: -0.008em;
+  /* 1.0.3 polish — 15% smaller across Ensembles / Workspace-expanded /
+   * Sub-threads / Global. Pinned + Recents handled separately via
+   * `.sidebar-pinned-label` / `.sidebar-recents-label`. Subtitle
+   * tokens (`.sidebar-chat-subline`, `.sidebar-run-status`,
+   * `.sidebar-branched-badge`) keep their existing size. */
+  font-size: 0.85em;
 }
 
 .sidebar-chat-subline {
