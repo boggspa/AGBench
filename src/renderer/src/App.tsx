@@ -5646,6 +5646,32 @@ function App(): React.JSX.Element {
     setPendingAgentApprovalForChatId,
     setPendingAgentApprovalByChatId
   ] = usePerChatState<AgentApprovalRequest | null>(null)
+  /**
+   * 1.0.4-AK4 — approval queue tail per chat. Holds extra
+   * approvals that arrived while another was already pending for
+   * the same chat. Pre-AK4 the second arrival would overwrite the
+   * first; with parallel scouts (AK5/AK6) N concurrent runs each
+   * blocking on their own approval is the normal case, so we now
+   * keep them in a FIFO and surface the depth via a "+N more"
+   * badge in the modal.
+   *
+   * Lifecycle:
+   *   - Arrival (`onAgentApprovalRequest`): if `pendingAgentApprovalByChatId`
+   *     already has a value for this chat, push the new request
+   *     onto this queue. Otherwise set it as the visible head.
+   *   - Decision (`handleAgentApprovalAction`): after responding,
+   *     shift the next from this queue into the head. Empty queue
+   *     → head goes to null as before.
+   *   - Timeout (`onAgentApprovalTimeout`): same as decision —
+   *     shift the next queued approval into the head.
+   *
+   * Storing the queue separately from the head keeps every
+   * existing consumer that reads `pendingAgentApprovalByChatId[id]`
+   * as a single value working unchanged.
+   */
+  const [pendingApprovalQueueByChatId, setPendingApprovalQueueByChatId] = useState<
+    Record<string, AgentApprovalRequest[]>
+  >({})
   const [isSendConfirming, setIsSendConfirming] = useState(false)
   const [createPrState, setCreatePrState] = useState<{
     status: 'idle' | 'pending' | 'success' | 'error'
@@ -6086,6 +6112,43 @@ function App(): React.JSX.Element {
       | ((previous: AgentApprovalRequest | null) => AgentApprovalRequest | null)
   ) => {
     setPendingAgentApprovalForChatId(chatId, value)
+  }
+  // 1.0.4-AK4 — append an approval onto a chat's pending queue
+  // (tail). Used when an approval arrives while the head slot is
+  // already occupied.
+  const enqueueApprovalForChat = (chatId: string, request: AgentApprovalRequest): void => {
+    if (!chatId) return
+    setPendingApprovalQueueByChatId((prev) => {
+      const existing = prev[chatId] || []
+      // Idempotency: skip if this exact approvalId is already in
+      // the queue. Defensive against duplicate IPC fires.
+      if (existing.some((entry) => entry.id === request.id)) return prev
+      return { ...prev, [chatId]: [...existing, request] }
+    })
+  }
+  // 1.0.4-AK4 — pop the next queued approval for a chat into the
+  // visible head slot. Called when the current head resolves
+  // (user decision OR timeout). Returns the popped approval (or
+  // null when the queue was empty) so callers can log the
+  // promotion if useful.
+  const advanceApprovalQueueForChat = (chatId: string): AgentApprovalRequest | null => {
+    if (!chatId) return null
+    let promoted: AgentApprovalRequest | null = null
+    setPendingApprovalQueueByChatId((prev) => {
+      const existing = prev[chatId] || []
+      if (existing.length === 0) return prev
+      const [next, ...rest] = existing
+      promoted = next
+      if (rest.length === 0) {
+        const { [chatId]: _omit, ...without } = prev
+        return without
+      }
+      return { ...prev, [chatId]: rest }
+    })
+    if (promoted) {
+      setPendingAgentApprovalForChatId(chatId, promoted)
+    }
+    return promoted
   }
   const setPendingPlanChoice = (
     value: PlanChoiceState | null | ((previous: PlanChoiceState | null) => PlanChoiceState | null)
@@ -9578,6 +9641,8 @@ function App(): React.JSX.Element {
     resolveActiveRunContext,
     setPendingAgentApprovalByChatId,
     setPendingAgentApprovalForChat,
+    enqueueApprovalForChat,
+    advanceApprovalQueueForChat,
     showAttachmentPermissionRequest,
     triggerFxBurst
   })
@@ -9591,6 +9656,8 @@ function App(): React.JSX.Element {
     resolveActiveRunContext,
     setPendingAgentApprovalByChatId,
     setPendingAgentApprovalForChat,
+    enqueueApprovalForChat,
+    advanceApprovalQueueForChat,
     showAttachmentPermissionRequest,
     triggerFxBurst
   }
@@ -9957,7 +10024,18 @@ function App(): React.JSX.Element {
           request.appChatId
         )
         const targetChatId = context?.chatId || request.appChatId || currentChatIdRef.current
-        handlers.setPendingAgentApprovalForChat(targetChatId, request)
+        // 1.0.4-AK4 — queue when an approval is already pending for
+        // this chat. Pre-AK4 the second arrival would overwrite the
+        // first (losing the user's chance to act on it). With AK5/AK6
+        // parallel scouts each can produce its own approval gate
+        // simultaneously; queueing keeps them all addressable.
+        handlers.setPendingAgentApprovalForChat(targetChatId, (previous) => {
+          if (previous && targetChatId) {
+            handlers.enqueueApprovalForChat(targetChatId, request)
+            return previous
+          }
+          return request
+        })
         handlers.appendThreadRawLog(targetChatId, {
           type: 'info',
           content: `${getProviderLabel(request.provider)} approval requested: ${request.title}\n${request.body}`
@@ -9974,12 +10052,12 @@ function App(): React.JSX.Element {
         // path the renderer would use — this is just the UI tidy-up.
         // Raw-log uses `stderr` (red-toned in the existing UI) rather
         // than introducing a new `error` kind to the union.
+        const matchedChatIds: string[] = []
         handlers.setPendingAgentApprovalByChatId((prev) => {
-          let matched = false
           const next: Record<string, AgentApprovalRequest | null> = {}
           for (const [chatId, request] of Object.entries(prev)) {
             if (request && request.id === timeout.approvalId) {
-              matched = true
+              matchedChatIds.push(chatId)
               next[chatId] = null
               handlers.appendThreadRawLog(chatId, {
                 type: 'stderr',
@@ -9991,7 +10069,7 @@ function App(): React.JSX.Element {
           }
           // No matching chat — log into the active chat as a fallback
           // so the user at least sees something happened.
-          if (!matched) {
+          if (matchedChatIds.length === 0) {
             const fallbackChatId = currentChatIdRef.current
             if (fallbackChatId) {
               handlers.appendThreadRawLog(fallbackChatId, {
@@ -10002,6 +10080,16 @@ function App(): React.JSX.Element {
           }
           return next
         })
+        // 1.0.4-AK4 — advance queued approvals for any chat whose
+        // head approval just timed out. The setState above runs
+        // synchronously enough for our advance to see the cleared
+        // head, but advanceApprovalQueueForChat reads from the
+        // queue state (not the head), so order doesn't matter
+        // here — it just promotes the next queued approval into
+        // the head slot for each affected chat.
+        for (const chatId of matchedChatIds) {
+          handlers.advanceApprovalQueueForChat(chatId)
+        }
       })
     }
 
@@ -12828,7 +12916,17 @@ function App(): React.JSX.Element {
         { type: 'stderr', content: `Failed to send approval response: ${redactLog(String(error))}` }
       ])
     } finally {
+      // 1.0.4-AK4 — instead of nulling the head outright, advance
+      // the queue so the next pending approval for this chat
+      // (queued while the current one was on screen) becomes the
+      // new head. When the queue is empty the head goes to null
+      // as before. Pre-AK4 each chat held at most one in-flight
+      // approval so this distinction didn't matter.
+      const composerChatId = getCurrentComposerStateChatId()
       setPendingAgentApproval((prev) => (prev?.id === requestId ? null : prev))
+      if (composerChatId) {
+        advanceApprovalQueueForChat(composerChatId)
+      }
     }
   }
 
@@ -16530,6 +16628,27 @@ function App(): React.JSX.Element {
                       <span>{pendingAgentApproval.title}</span>
                       <span className="composer-permission-source">
                         {getProviderLabel(pendingAgentApproval.provider)}
+                        {/* 1.0.4-AK4 — surface the queue depth so the
+                            user knows other approvals are waiting on
+                            this same chat. Common case (single
+                            approval at a time) shows nothing extra. */}
+                        {(() => {
+                          const queue =
+                            currentComposerChatId
+                              ? pendingApprovalQueueByChatId[currentComposerChatId] || []
+                              : []
+                          if (queue.length === 0) return null
+                          return (
+                            <span
+                              className="composer-permission-queue-badge"
+                              title={`${queue.length} more approval${
+                                queue.length === 1 ? '' : 's'
+                              } queued behind this one — they appear in order as you respond.`}
+                            >
+                              +{queue.length} more
+                            </span>
+                          )
+                        })()}
                       </span>
                     </div>
                     {pendingAgentApproval.body && (

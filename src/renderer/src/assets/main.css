@@ -27476,3 +27476,22 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--accent, #6aa6ff) 22%, transparent);
   color: var(--text-1);
 }
+
+/* 1.0.4-AK4 — "+N more" badge in the approval card title row.
+ * Shows queue depth when parallel runs each block on their own
+ * approval gate. Small + understated — common case (single
+ * approval) shows nothing, multi-approval surfaces a warning-
+ * coloured chip so the user knows their decisions cascade. */
+.composer-permission-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-left: 6px;
+  background: color-mix(in srgb, var(--warning, #f7c96b) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warning, #f7c96b) 38%, transparent);
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-1);
+  letter-spacing: 0.02em;
+}
