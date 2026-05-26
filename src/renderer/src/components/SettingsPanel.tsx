@@ -1155,6 +1155,7 @@ export function SettingsPanel({
   const [installedFontOptions, setInstalledFontOptions] = useState<TypefaceOption[]>([])
   const [installedFontStatus, setInstalledFontStatus] = useState('')
   const [composerPreviewText, setComposerPreviewText] = useState('')
+  const [mcpToolQuery, setMcpToolQuery] = useState('')
   const [keyCommandQuery, setKeyCommandQuery] = useState('')
   const safeTurns = Number.isFinite(chatContextTurns)
     ? Math.max(0, Math.trunc(chatContextTurns))
@@ -1244,6 +1245,28 @@ export function SettingsPanel({
           : 'MCP status is not available yet.')
     }
   })
+  const connectedMcpProviderCount = providerMcpSummaries.filter(
+    (entry) => entry.available || entry.enabled
+  ).length
+  const mcpToolSearch = mcpToolQuery.trim().toLowerCase()
+  const filteredMcpToolCatalog = MCP_TOOL_CATALOG.filter((tool) => {
+    if (!mcpToolSearch) return true
+    const haystack = [
+      tool.name,
+      tool.label,
+      tool.transcript,
+      tool.description,
+      tool.iconRef,
+      tool.group,
+      MCP_TOOL_GROUP_LABELS[tool.group],
+      getMcpPolicyLabel(agenticServices, tool.policyKey),
+      formatMcpInvocation('codex', tool.name),
+      formatMcpInvocation('claude', tool.name)
+    ]
+      .join(' ')
+      .toLowerCase()
+    return haystack.includes(mcpToolSearch)
+  })
   const keyCommandSearch = keyCommandQuery.trim().toLowerCase()
   const filteredKeyCommands = SETTINGS_KEY_COMMANDS.filter((command) => {
     if (!keyCommandSearch) return true
@@ -1255,6 +1278,7 @@ export function SettingsPanel({
   const activeKeyCommandCount = SETTINGS_KEY_COMMANDS.filter(
     (command) => command.status !== 'planned'
   ).length
+  const plannedKeyCommandCount = SETTINGS_KEY_COMMANDS.length - activeKeyCommandCount
   const codexUsage = codexStatus?.codexUsage
   const codexUsageConfigured = Boolean(
     codexUsage?.configured ||
@@ -2894,9 +2918,12 @@ export function SettingsPanel({
             <div className="settings-group span-all settings-mcp-overview">
               <div className="settings-mcp-header">
                 <div>
-                  <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-                    MCP servers and AGBench tools
-                  </h4>
+                  <div className="settings-section-title-row">
+                    <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                      MCP servers and AGBench tools
+                    </h4>
+                    <span className="settings-readonly-pill">Read-only audit</span>
+                  </div>
                   <p className="settings-hint">
                     Audit the tool surface agents can see, the transcript labels users see, and the
                     policy gate attached to each capability. Custom server editing stays provider
@@ -2935,19 +2962,20 @@ export function SettingsPanel({
                 </article>
                 <article className="settings-mcp-summary-card">
                   <span>Providers</span>
-                  <strong>
-                    {
-                      providerMcpSummaries.filter((entry) => entry.available || entry.enabled)
-                        .length
-                    }
-                    /{providerMcpSummaries.length}
-                  </strong>
+                  <strong>{connectedMcpProviderCount}/{providerMcpSummaries.length}</strong>
                   <small>report MCP or bridge status</small>
                 </article>
                 <article className="settings-mcp-summary-card">
                   <span>Primary policy</span>
                   <strong>{getMcpPolicyLabel(agenticServices, 'mcpTools')}</strong>
                   <small>MCP and tools gate</small>
+                </article>
+                <article className="settings-mcp-summary-card">
+                  <span>Visible now</span>
+                  <strong>{filteredMcpToolCatalog.length}</strong>
+                  <small>
+                    {mcpToolSearch ? 'matching the current filter' : 'tools in the audit table'}
+                  </small>
                 </article>
               </div>
             </div>
@@ -3035,9 +3063,35 @@ export function SettingsPanel({
                   names, and the current approval policy.
                 </p>
               </div>
+              <div className="settings-audit-toolbar">
+                <label className="settings-audit-search">
+                  <span className="sr-only">Search MCP tools</span>
+                  <input
+                    className="settings-select"
+                    value={mcpToolQuery}
+                    onChange={(event) => setMcpToolQuery(event.target.value)}
+                    aria-label="Search MCP tools"
+                    placeholder="Search tools, aliases, policies"
+                  />
+                </label>
+                <div className="settings-audit-toolbar-meta">
+                  <span>
+                    {filteredMcpToolCatalog.length} of {MCP_TOOL_CATALOG.length} tools
+                  </span>
+                  {mcpToolSearch && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => setMcpToolQuery('')}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
               <div className="settings-mcp-tool-groups">
                 {MCP_TOOL_GROUP_ORDER.map((group) => {
-                  const tools = MCP_TOOL_CATALOG.filter((tool) => tool.group === group)
+                  const tools = filteredMcpToolCatalog.filter((tool) => tool.group === group)
                   if (tools.length === 0) return null
                   return (
                     <section key={group} className="settings-mcp-tool-group">
@@ -3092,6 +3146,9 @@ export function SettingsPanel({
                     </section>
                   )
                 })}
+                {filteredMcpToolCatalog.length === 0 && (
+                  <div className="settings-audit-empty">No MCP tools match that search.</div>
+                )}
               </div>
             </div>
 
@@ -3138,9 +3195,12 @@ export function SettingsPanel({
             <div className="settings-group span-all settings-key-commands-overview">
               <div className="settings-key-commands-header">
                 <div>
-                  <h4 className="sidebar-section-title" style={{ margin: 0 }}>
-                    Keyboard shortcuts
-                  </h4>
+                  <div className="settings-section-title-row">
+                    <h4 className="sidebar-section-title" style={{ margin: 0 }}>
+                      Keyboard shortcuts
+                    </h4>
+                    <span className="settings-readonly-pill">Read-only v1</span>
+                  </div>
                   <p className="settings-hint">
                     A read-only command map for the shortcuts AGBench currently handles. Remapping
                     will need conflict detection and persisted accelerator settings in a later pass.
@@ -3160,21 +3220,45 @@ export function SettingsPanel({
                   <small>global, composer, panels, pickers, editor</small>
                 </article>
                 <article className="settings-key-commands-summary-card">
+                  <span>Visible now</span>
+                  <strong>{filteredKeyCommands.length}</strong>
+                  <small>
+                    {keyCommandSearch ? 'matching the current filter' : 'commands in the table'}
+                  </small>
+                </article>
+                <article className="settings-key-commands-summary-card">
                   <span>Customization</span>
-                  <strong>Planned</strong>
-                  <small>recording and conflict checks deferred</small>
+                  <strong>{plannedKeyCommandCount}</strong>
+                  <small>planned editable binding surface</small>
                 </article>
               </div>
 
-              <label className="settings-key-commands-search">
-                <input
-                  className="settings-select"
-                  value={keyCommandQuery}
-                  onChange={(event) => setKeyCommandQuery(event.target.value)}
-                  aria-label="Search key commands"
-                  placeholder="Search shortcuts"
-                />
-              </label>
+              <div className="settings-audit-toolbar">
+                <label className="settings-audit-search">
+                  <span className="sr-only">Search key commands</span>
+                  <input
+                    className="settings-select"
+                    value={keyCommandQuery}
+                    onChange={(event) => setKeyCommandQuery(event.target.value)}
+                    aria-label="Search key commands"
+                    placeholder="Search commands, groups, keys"
+                  />
+                </label>
+                <div className="settings-audit-toolbar-meta">
+                  <span>
+                    {filteredKeyCommands.length} of {SETTINGS_KEY_COMMANDS.length} commands
+                  </span>
+                  {keyCommandSearch && (
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-ghost"
+                      onClick={() => setKeyCommandQuery('')}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="settings-group span-all">
@@ -3219,7 +3303,7 @@ export function SettingsPanel({
                   )
                 })}
                 {filteredKeyCommands.length === 0 && (
-                  <div className="settings-key-command-empty">No shortcuts match that search.</div>
+                  <div className="settings-audit-empty">No shortcuts match that search.</div>
                 )}
               </div>
             </div>
