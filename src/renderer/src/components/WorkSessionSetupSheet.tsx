@@ -1,0 +1,412 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type {
+  EnsembleParticipant,
+  PermissionPresetId,
+  ProviderId,
+  WorkSessionConfig
+} from '../../../main/store/types'
+
+/**
+ * 1.0.4-AK2 — Work Session setup sheet.
+ *
+ * Modal overlay opened from the composer's "Work Session" toggle.
+ * The user defines an objective + acceptance criteria + budget +
+ * safety knobs, and the ensemble proceeds through rounds
+ * autonomously until acceptance is reported or a hard-stop trips.
+ *
+ * Visual pattern matches `BugReportSheet` / `FirstLaunchSheet` —
+ * fixed-inset backdrop dim + blur, opaque `var(--surface-1)`
+ * panel. Form fields are deliberately spartan; the goal is for
+ * the user to define the work clearly, NOT to expose every knob
+ * the orchestrator has.
+ *
+ * Submit calls `onConfirm(config, initialPrompt)`. The parent is
+ * responsible for:
+ *   - persisting `config` into `chat.ensemble.workSession`
+ *   - dispatching the round with `initialPrompt`
+ *   - mounting the session strip + Stop control
+ */
+
+const DURATION_PRESETS: { label: string; ms: number }[] = [
+  { label: '30m', ms: 30 * 60 * 1000 },
+  { label: '1h', ms: 60 * 60 * 1000 },
+  { label: '2h', ms: 2 * 60 * 60 * 1000 },
+  { label: '6h', ms: 6 * 60 * 60 * 1000 }
+]
+
+const PERMISSION_PRESET_OPTIONS: { value: PermissionPresetId; label: string; hint: string }[] = [
+  { value: 'read_only', label: 'Read-only', hint: 'No writes, no shell, no MCP mutation.' },
+  { value: 'default', label: 'Default', hint: 'Per-provider default approval modes.' },
+  {
+    value: 'workspace_write',
+    label: 'Workspace write',
+    hint: 'Read + write workspace files. Approval gates remain.'
+  },
+  {
+    value: 'full_access',
+    label: 'Full access',
+    hint: 'Read + write + shell + network. Approvals still fire for each action.'
+  }
+]
+
+const DEFAULT_MAX_ROUNDS = 38
+const DEFAULT_MAX_DURATION_MS = 6 * 60 * 60 * 1000
+
+export interface WorkSessionSetupConfirmInput {
+  config: WorkSessionConfig
+  initialPrompt: string
+}
+
+interface WorkSessionSetupSheetProps {
+  isOpen: boolean
+  /** Participants currently configured on the chat's ensemble. The
+   * sheet shows enabled ones in the allowed-participants
+   * multi-select; disabled ones are filtered out. */
+  participants: EnsembleParticipant[]
+  /** Provider helper for human-readable chip labels. */
+  providerLabel: (provider: ProviderId) => string
+  /** Optional preset to pre-populate. Useful when re-opening an
+   * existing session config to edit. */
+  initial?: Partial<WorkSessionConfig> & { initialPrompt?: string }
+  onConfirm: (input: WorkSessionSetupConfirmInput) => void
+  onCancel: () => void
+}
+
+export function WorkSessionSetupSheet({
+  isOpen,
+  participants,
+  providerLabel,
+  initial,
+  onConfirm,
+  onCancel
+}: WorkSessionSetupSheetProps): React.JSX.Element | null {
+  const enabledParticipants = useMemo(
+    () => participants.filter((p) => p.enabled),
+    [participants]
+  )
+
+  const initialAllowed = useMemo(() => {
+    if (initial?.allowedParticipantIds && initial.allowedParticipantIds.length > 0) {
+      return new Set(initial.allowedParticipantIds)
+    }
+    return new Set(enabledParticipants.map((p) => p.id))
+  }, [enabledParticipants, initial?.allowedParticipantIds])
+
+  const [objective, setObjective] = useState(initial?.objective || '')
+  const [acceptanceCriteria, setAcceptanceCriteria] = useState(
+    initial?.acceptanceCriteria || ''
+  )
+  const [initialPrompt, setInitialPrompt] = useState(initial?.initialPrompt || '')
+  const [allowed, setAllowed] = useState<Set<string>>(initialAllowed)
+  const [leadId, setLeadId] = useState<string | undefined>(
+    initial?.leadParticipantId || enabledParticipants[0]?.id
+  )
+  const [permissionPresetId, setPermissionPresetId] = useState<PermissionPresetId>(
+    initial?.permissionPresetId || 'workspace_write'
+  )
+  const [maxRoundsPerProvider, setMaxRoundsPerProvider] = useState<number>(
+    initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS
+  )
+  const [maxDurationMs, setMaxDurationMs] = useState<number>(
+    initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS
+  )
+  const [enableScoutPass, setEnableScoutPass] = useState<boolean>(
+    initial?.enableScoutPass ?? false
+  )
+
+  const [errors, setErrors] = useState<string[]>([])
+  const objectiveRef = useRef<HTMLTextAreaElement | null>(null)
+
+  // Reset when re-opened — avoids stale fields lingering across
+  // open cycles. We re-derive from `initial` on each open so the
+  // sheet behaves predictably whether the user is creating fresh
+  // or editing an existing session.
+  useEffect(() => {
+    if (!isOpen) return
+    setObjective(initial?.objective || '')
+    setAcceptanceCriteria(initial?.acceptanceCriteria || '')
+    setInitialPrompt(initial?.initialPrompt || '')
+    setAllowed(initialAllowed)
+    setLeadId(initial?.leadParticipantId || enabledParticipants[0]?.id)
+    setPermissionPresetId(initial?.permissionPresetId || 'workspace_write')
+    setMaxRoundsPerProvider(initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
+    setMaxDurationMs(initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
+    setEnableScoutPass(initial?.enableScoutPass ?? false)
+    setErrors([])
+    // Focus objective on open so the user can type immediately.
+    setTimeout(() => objectiveRef.current?.focus(), 50)
+  }, [isOpen, initial, initialAllowed, enabledParticipants])
+
+  // Esc dismisses the sheet — matches BugReportSheet behaviour.
+  useEffect(() => {
+    if (!isOpen) return
+    const handleKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        onCancel()
+      }
+    }
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [isOpen, onCancel])
+
+  const handleToggleAllowed = useCallback((participantId: string) => {
+    setAllowed((prev) => {
+      const next = new Set(prev)
+      if (next.has(participantId)) {
+        next.delete(participantId)
+      } else {
+        next.add(participantId)
+      }
+      return next
+    })
+  }, [])
+
+  const handleSubmit = useCallback(() => {
+    const trimmedObjective = objective.trim()
+    const trimmedCriteria = acceptanceCriteria.trim()
+    const trimmedPrompt = initialPrompt.trim()
+    const allowedIds = Array.from(allowed)
+    const validationErrors: string[] = []
+    if (!trimmedObjective) validationErrors.push('Objective is required.')
+    if (!trimmedCriteria) validationErrors.push('Acceptance criteria is required.')
+    if (!trimmedPrompt) validationErrors.push('First-round prompt is required.')
+    if (allowedIds.length === 0)
+      validationErrors.push('At least one participant must be allowed to act in the session.')
+    if (maxRoundsPerProvider < 1 || !Number.isFinite(maxRoundsPerProvider)) {
+      validationErrors.push('Rounds-per-provider must be at least 1.')
+    }
+
+    if (validationErrors.length > 0) {
+      setErrors(validationErrors)
+      return
+    }
+
+    const resolvedLead =
+      leadId && allowedIds.includes(leadId) ? leadId : undefined
+    const config: WorkSessionConfig = {
+      enabled: true,
+      status: 'active',
+      objective: trimmedObjective,
+      acceptanceCriteria: trimmedCriteria,
+      allowedParticipantIds:
+        allowedIds.length === enabledParticipants.length ? null : allowedIds,
+      leadParticipantId: resolvedLead,
+      permissionPresetId,
+      maxRoundsPerProvider,
+      maxDurationMs,
+      enableScoutPass,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    onConfirm({ config, initialPrompt: trimmedPrompt })
+  }, [
+    objective,
+    acceptanceCriteria,
+    initialPrompt,
+    allowed,
+    leadId,
+    permissionPresetId,
+    maxRoundsPerProvider,
+    maxDurationMs,
+    enableScoutPass,
+    enabledParticipants.length,
+    onConfirm
+  ])
+
+  if (!isOpen) return null
+
+  const sheetTitle = initial?.objective ? 'Edit Work Session' : 'Start Work Session'
+  const submitLabel = initial?.objective ? 'Update session' : 'Start session'
+
+  return (
+    <div
+      className="work-session-setup-backdrop"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel()
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="work-session-setup-title"
+    >
+      <div className="work-session-setup-panel">
+        <header className="work-session-setup-header">
+          <h2 id="work-session-setup-title">{sheetTitle}</h2>
+          <p className="work-session-setup-subhead">
+            Define an objective + acceptance criteria. The ensemble continues through
+            rounds via <code>ensemble_continue</code> until acceptance is reported or
+            a hard-stop trips. Existing approval gates still fire for each mutation.
+          </p>
+        </header>
+        <div className="work-session-setup-body">
+          <label className="work-session-field">
+            <span className="work-session-field-label">Objective</span>
+            <textarea
+              ref={objectiveRef}
+              className="work-session-field-textarea"
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              placeholder="What should the ensemble accomplish?"
+              rows={2}
+            />
+          </label>
+          <label className="work-session-field">
+            <span className="work-session-field-label">Acceptance criteria</span>
+            <textarea
+              className="work-session-field-textarea"
+              value={acceptanceCriteria}
+              onChange={(e) => setAcceptanceCriteria(e.target.value)}
+              placeholder="How will the panel know the work is done?"
+              rows={2}
+            />
+          </label>
+          <label className="work-session-field">
+            <span className="work-session-field-label">First-round prompt</span>
+            <textarea
+              className="work-session-field-textarea"
+              value={initialPrompt}
+              onChange={(e) => setInitialPrompt(e.target.value)}
+              placeholder="What should the first participant tackle?"
+              rows={2}
+            />
+          </label>
+          <div className="work-session-field">
+            <span className="work-session-field-label">Allowed participants</span>
+            <div className="work-session-participants-grid">
+              {enabledParticipants.map((participant) => {
+                const isAllowed = allowed.has(participant.id)
+                const isLead = leadId === participant.id
+                return (
+                  <div key={participant.id} className="work-session-participant-row">
+                    <label className="work-session-participant-toggle">
+                      <input
+                        type="checkbox"
+                        checked={isAllowed}
+                        onChange={() => handleToggleAllowed(participant.id)}
+                      />
+                      <span className="work-session-participant-label">
+                        {providerLabel(participant.provider)} /{' '}
+                        {participant.role || 'Participant'}
+                      </span>
+                    </label>
+                    <button
+                      type="button"
+                      className={`work-session-lead-toggle${isLead ? ' is-lead' : ''}`}
+                      disabled={!isAllowed}
+                      onClick={() => setLeadId(isLead ? undefined : participant.id)}
+                      title="Lead — opens every round"
+                    >
+                      {isLead ? '★ Lead' : 'Set lead'}
+                    </button>
+                  </div>
+                )
+              })}
+              {enabledParticipants.length === 0 && (
+                <div className="work-session-participants-empty">
+                  No enabled participants. Enable at least one to start a session.
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="work-session-row">
+            <label className="work-session-field">
+              <span className="work-session-field-label">Permission preset</span>
+              <select
+                className="work-session-field-select"
+                value={permissionPresetId}
+                onChange={(e) =>
+                  setPermissionPresetId(e.target.value as PermissionPresetId)
+                }
+              >
+                {PERMISSION_PRESET_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="work-session-field-hint">
+                {
+                  PERMISSION_PRESET_OPTIONS.find(
+                    (option) => option.value === permissionPresetId
+                  )?.hint
+                }
+              </span>
+            </label>
+            <label className="work-session-field">
+              <span className="work-session-field-label">Rounds / provider</span>
+              <input
+                type="number"
+                className="work-session-field-input"
+                min={1}
+                max={500}
+                value={maxRoundsPerProvider}
+                onChange={(e) =>
+                  setMaxRoundsPerProvider(Math.max(1, Math.floor(Number(e.target.value) || 0)))
+                }
+              />
+              <span className="work-session-field-hint">
+                Hard cap per provider. Default 38.
+              </span>
+            </label>
+          </div>
+          <div className="work-session-field">
+            <span className="work-session-field-label">Duration cap</span>
+            <div className="work-session-duration-row">
+              {DURATION_PRESETS.map((preset) => (
+                <button
+                  key={preset.label}
+                  type="button"
+                  className={`work-session-duration-button${
+                    preset.ms === maxDurationMs ? ' is-active' : ''
+                  }`}
+                  onClick={() => setMaxDurationMs(preset.ms)}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <label className="work-session-field work-session-scout-toggle">
+            <input
+              type="checkbox"
+              checked={enableScoutPass}
+              onChange={(e) => setEnableScoutPass(e.target.checked)}
+            />
+            <span>
+              <strong>Enable Parallel Scout Pass</strong> — read-only participants can
+              run concurrently within a round. Disabled by default while parallel
+              dispatch is in early shake-out.
+            </span>
+          </label>
+          {errors.length > 0 && (
+            <div className="work-session-errors" role="alert">
+              {errors.map((error) => (
+                <div key={error} className="work-session-error-row">
+                  {error}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <footer className="work-session-setup-footer">
+          <button
+            type="button"
+            className="work-session-button work-session-button-cancel"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="work-session-button work-session-button-confirm"
+            onClick={handleSubmit}
+            disabled={enabledParticipants.length === 0}
+          >
+            {submitLabel}
+          </button>
+        </footer>
+      </div>
+    </div>
+  )
+}

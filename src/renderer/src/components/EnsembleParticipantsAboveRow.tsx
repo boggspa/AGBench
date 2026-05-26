@@ -193,6 +193,15 @@ interface EnsembleParticipantsAboveRowProps {
    * this gentler Skip affordance.
    */
   onSkipActive?: () => void
+  /**
+   * 1.0.4-AK2 — Stop the active Work Session. Cancels the in-flight
+   * round + clears queued continuations + flips
+   * `workSession.status` to `'cancelled'`. Wired to
+   * `handleStopWorkSession` in App.tsx; omitted in non-Work-Session
+   * surfaces (e.g. older harness tests) so the strip degrades to
+   * disabled.
+   */
+  onStopWorkSession?: () => void
 }
 
 export function EnsembleParticipantsAboveRow({
@@ -200,7 +209,8 @@ export function EnsembleParticipantsAboveRow({
   selectedParticipantId,
   onSelectParticipant,
   onChatChange,
-  onSkipActive
+  onSkipActive,
+  onStopWorkSession
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
@@ -287,8 +297,119 @@ export function EnsembleParticipantsAboveRow({
     persist(next)
   }
 
+  // 1.0.4-AK2 — Work Session status strip. Renders ABOVE the chip
+  // strip when a Work Session exists in any non-idle state so the
+  // user always knows the round is running autonomously vs.
+  // interactively. The strip surfaces the objective, current
+  // budget consumption, elapsed/remaining time, and a Stop action.
+  // Below-budget hops + statuses fall through with muted styling.
+  const workSession = chat.ensemble?.workSession
+  const workSessionStatus = workSession?.status
+  const showWorkSessionStrip =
+    workSession?.enabled &&
+    (workSessionStatus === 'active' ||
+      workSessionStatus === 'paused' ||
+      workSessionStatus === 'completed' ||
+      workSessionStatus === 'cancelled' ||
+      workSessionStatus === 'limit_reached')
+
+  // Elapsed / remaining time computed from startedAt + maxDurationMs.
+  // Cached on the render to avoid jitter; the parent re-renders
+  // every 30s while the strip is visible (cheap interval).
+  const workSessionTime = (() => {
+    if (!workSession?.startedAt) return null
+    const started = new Date(workSession.startedAt).getTime()
+    if (!Number.isFinite(started)) return null
+    const elapsedMs = Math.max(0, Date.now() - started)
+    const remainingMs = Math.max(0, (workSession.maxDurationMs || 0) - elapsedMs)
+    return { elapsedMs, remainingMs }
+  })()
+
+  const formatDuration = (ms: number): string => {
+    if (ms < 60_000) return `${Math.floor(ms / 1000)}s`
+    const minutes = Math.floor(ms / 60_000)
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.floor(minutes / 60)
+    const remMinutes = minutes % 60
+    return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`
+  }
+
+  // Per-provider budget summary — picks the provider with the
+  // highest usage so the strip shows the participant closest to
+  // its cap. "Codex 8/38" reads more usefully than a sum.
+  const workSessionBudget = (() => {
+    if (!workSession) return null
+    const entries = Object.entries(workSession.roundsUsed || {}).filter(
+      ([, used]) => (used || 0) > 0
+    )
+    if (entries.length === 0) {
+      return `0 / ${workSession.maxRoundsPerProvider}`
+    }
+    entries.sort((a, b) => (b[1] || 0) - (a[1] || 0))
+    const [provider, used] = entries[0]
+    return `${used} / ${workSession.maxRoundsPerProvider} (${provider})`
+  })()
+
+  const workSessionStatusLabel = (() => {
+    switch (workSessionStatus) {
+      case 'active':
+        return '🎯 Working on'
+      case 'paused':
+        return '⏸ Paused'
+      case 'completed':
+        return '✓ Completed'
+      case 'cancelled':
+        return '✕ Stopped'
+      case 'limit_reached':
+        return '⏱ Limit reached'
+      default:
+        return '🎯 Work Session'
+    }
+  })()
+
   return (
     <div className="ensemble-above-row" role="region" aria-label="Ensemble participants">
+      {showWorkSessionStrip && workSession && (
+        <div
+          className="work-session-strip"
+          data-status={workSessionStatus}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="work-session-strip-glyph" aria-hidden="true" />
+          <span className="work-session-strip-objective" title={workSession.objective}>
+            <strong>{workSessionStatusLabel}:</strong> {workSession.objective}
+          </span>
+          <span className="work-session-strip-meta">
+            <span>Rounds {workSessionBudget}</span>
+            {workSessionTime && (
+              <span>
+                {formatDuration(workSessionTime.elapsedMs)} elapsed ·{' '}
+                {formatDuration(workSessionTime.remainingMs)} left
+              </span>
+            )}
+          </span>
+          {workSessionStatus === 'active' || workSessionStatus === 'paused' ? (
+            <span className="work-session-strip-actions">
+              <button
+                type="button"
+                className="work-session-strip-action work-session-strip-action--stop"
+                onClick={() => onStopWorkSession?.()}
+                disabled={!onStopWorkSession}
+                title="Stop the Work Session and cancel any queued continuations."
+              >
+                Stop
+              </button>
+            </span>
+          ) : (
+            workSession.endedReason && (
+              <span className="work-session-strip-meta" title={workSession.endedReason}>
+                <em>{workSession.endedReason}</em>
+              </span>
+            )
+          )}
+        </div>
+      )}
       <div className="ensemble-above-row-chips">
         {participants.map((participant) => {
           const state = activeRound?.participants.find(

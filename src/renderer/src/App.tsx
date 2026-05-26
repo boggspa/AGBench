@@ -85,6 +85,10 @@ import { SettingsSidebar } from './components/SettingsSidebar'
 import { SubThreadCreator } from './components/SubThreadCreator'
 import { FirstLaunchSheet } from './components/FirstLaunchSheet'
 import { BugReportSheet, type BugReportSubmission } from './components/BugReportSheet'
+import {
+  WorkSessionSetupSheet,
+  type WorkSessionSetupConfirmInput
+} from './components/WorkSessionSetupSheet'
 import { IncomingPairingPrompt } from './components/IncomingPairingPrompt'
 import { ActivityStack } from './components/ActivityStack'
 import { FileTypeIcon } from './components/FileTypeIcon'
@@ -5540,6 +5544,13 @@ function App(): React.JSX.Element {
    * end of the test session. No persisted draft state — the sheet
    * resets every open. */
   const [showBugReportSheet, setShowBugReportSheet] = useState(false)
+  /** 1.0.4-AK2 — Work Session setup sheet open/closed state.
+   * Opened by the composer's "Work Session" button (alongside
+   * Turn/Continuous). On confirm, persists the WorkSessionConfig
+   * onto chat.ensemble + pre-fills the composer with the first-round
+   * prompt so the user clicks Send to launch (avoids re-implementing
+   * the full send-message payload composition here). */
+  const [showWorkSessionSheet, setShowWorkSessionSheet] = useState(false)
   /** Fetched once on mount so the BugReportSheet's auto-captured row
    * shows the same version string the main process will stamp into
    * the file. Falls back to "unknown" before the IPC resolves so the
@@ -13513,6 +13524,63 @@ function App(): React.JSX.Element {
     },
     [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble]
   )
+
+  // 1.0.4-AK2 — Work Session lifecycle callbacks wired to the setup
+  // sheet + session strip. The sheet's confirm handler persists the
+  // WorkSessionConfig onto the chat ensemble AND pre-fills the
+  // composer textarea with the first-round prompt so the user
+  // clicks Send to launch (avoids re-implementing send-message
+  // payload composition). Stop calls cancelEnsembleRound which
+  // already clears queuedPrompts; we then flip the session status
+  // to 'cancelled' so the round-end check finalises cleanly.
+  const handleConfirmWorkSession = useCallback(
+    ({ config, initialPrompt }: WorkSessionSetupConfirmInput) => {
+      if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
+      updateChatById(currentChat.appChatId, (source) => ({
+        ...source,
+        ensemble: {
+          ...source.ensemble!,
+          workSession: config,
+          updatedAt: new Date().toISOString()
+        }
+      }))
+      setShowWorkSessionSheet(false)
+      // Pre-fill the composer with the initial prompt so the user
+      // can scan it once before launching. Setting via setPrompt
+      // keeps the textarea reactive (the change handler picks up
+      // mention overlay updates etc.).
+      setPrompt(initialPrompt)
+    },
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
+  )
+  const handleStopWorkSession = useCallback(async () => {
+    if (!isCurrentEnsembleChat || !currentChat?.ensemble?.workSession) return
+    // First cancel any in-flight round + clear queued continuations.
+    try {
+      await window.api.cancelEnsembleRound(currentChat.appChatId)
+    } catch {
+      // cancelEnsembleRound surfaces its own errors via toast; we
+      // proceed to mark the session cancelled regardless so the UI
+      // doesn't show a stale active strip after a failed cancel.
+    }
+    updateChatById(currentChat.appChatId, (source) => {
+      const session = source.ensemble?.workSession
+      if (!session) return source
+      return {
+        ...source,
+        ensemble: {
+          ...source.ensemble!,
+          workSession: {
+            ...session,
+            status: 'cancelled',
+            endedAt: new Date().toISOString(),
+            endedReason: 'Stopped by user.'
+          },
+          updatedAt: new Date().toISOString()
+        }
+      }
+    })
+  }, [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble?.workSession, updateChatById])
   // Ensemble round-complete notice — fires once when the round
   // transitions to `completed` (or `cancelled`). Solo chats use the
   // per-run-exit notice path; for ensemble we suppress that and
@@ -16009,6 +16077,7 @@ function App(): React.JSX.Element {
                       if (!currentChat) return
                       void window.api.skipEnsembleParticipant(currentChat.appChatId)
                     }}
+                    onStopWorkSession={() => void handleStopWorkSession()}
                   />
                 )}
                 {/*
@@ -16978,6 +17047,25 @@ function App(): React.JSX.Element {
                         >
                           Continuous
                         </button>
+                        {/* 1.0.4-AK2 — Work Session entry point. Sits
+                            alongside Turn/Continuous since Work Session
+                            is a third orchestration mode (it composes
+                            ON TOP of either turn-bound or continuous
+                            rounds, but the user picks it via the same
+                            mode group for discoverability). */}
+                        <button
+                          type="button"
+                          className={`composer-ensemble-mode-button work-session-mode-button ${
+                            currentChat?.ensemble?.workSession?.status === 'active' ||
+                            currentChat?.ensemble?.workSession?.status === 'paused'
+                              ? 'is-active'
+                              : ''
+                          }`}
+                          onClick={() => setShowWorkSessionSheet(true)}
+                          title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
+                        >
+                          <span aria-hidden="true">🎯</span> Work Session
+                        </button>
                         {activeEnsembleOrchestrationMode === 'continuous' && (
                           <span
                             className="composer-ensemble-hop-meter"
@@ -17943,6 +18031,28 @@ function App(): React.JSX.Element {
         promptBubble={appearance.userBubbleColor || 'system'}
         ensembleSummary={bugReportEnsembleSummary}
       />
+      {/* 1.0.4-AK2 — Work Session setup sheet. z-index 9130 sits
+          above BugReportSheet (9120) since opening a Work Session
+          is a deliberate intent action and shouldn't be obscured
+          by a tester's bug-report draft. Below the approval modal
+          (10000) so an in-flight approval still wins focus. */}
+      {isCurrentEnsembleChat && currentChat?.ensemble && (
+        <WorkSessionSetupSheet
+          isOpen={showWorkSessionSheet}
+          participants={currentChat.ensemble.participants}
+          providerLabel={getProviderLabel}
+          initial={
+            currentChat.ensemble.workSession
+              ? {
+                  ...currentChat.ensemble.workSession,
+                  initialPrompt: ''
+                }
+              : undefined
+          }
+          onConfirm={handleConfirmWorkSession}
+          onCancel={() => setShowWorkSessionSheet(false)}
+        />
+      )}
       {subThreadCreatorParent && (
         <SubThreadCreator
           parentChat={subThreadCreatorParent}
