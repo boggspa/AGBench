@@ -1,6 +1,9 @@
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { buildDelegationTree } from '../lib/DelegationTree'
-import type { ChatRecord } from '../../../main/store/types'
+import type { ChatRecord, ProviderCapabilityContract, ProviderId } from '../../../main/store/types'
+import { Inspector } from './Inspector'
 
 function makeChat(overrides: Partial<ChatRecord> & Pick<ChatRecord, 'appChatId'>): ChatRecord {
   const { appChatId, ...rest } = overrides
@@ -17,6 +20,57 @@ function makeChat(overrides: Partial<ChatRecord> & Pick<ChatRecord, 'appChatId'>
     messages: [],
     runs: [],
     ...rest
+  }
+}
+
+function makeCapabilityContract(provider: ProviderId): ProviderCapabilityContract {
+  const label =
+    provider === 'codex'
+      ? 'Codex'
+      : provider === 'claude'
+        ? 'Claude'
+        : provider === 'kimi'
+          ? 'Kimi'
+          : 'Gemini'
+  const tool = (id: keyof ProviderCapabilityContract['tools'], toolLabel: string) => ({
+    id,
+    label: toolLabel,
+    state: 'available' as const,
+    source: 'agentbench' as const,
+    enforcedByAgentBench: true,
+    enforcement: 'agentbench' as const,
+    requiresApproval: true,
+    tools: [],
+    details: `${toolLabel} available`
+  })
+  return {
+    provider,
+    label,
+    refreshedAt: new Date(0).toISOString(),
+    workspacePath: '/repo',
+    availability: { available: true, version: '1.0.0' },
+    tools: {
+      shellCommands: tool('shellCommands', 'Shell'),
+      fileChanges: tool('fileChanges', 'Files'),
+      mcpTools: tool('mcpTools', 'MCP'),
+      creativeApps: tool('creativeApps', 'Creative apps'),
+      networkAccess: tool('networkAccess', 'Network')
+    },
+    approvals: {
+      requestedMode: 'default',
+      effectiveMode: 'default',
+      providerMode: 'default',
+      inAppApprovals: true,
+      supportsWorkspaceGrants: true,
+      notes: []
+    },
+    mcp: {
+      state: 'available',
+      source: 'agentbench',
+      available: true,
+      tools: []
+    },
+    warnings: []
   }
 }
 
@@ -54,5 +108,87 @@ describe('buildDelegationTree', () => {
     expect(tree?.chat.appChatId).toBe('solo')
     expect(tree?.children).toEqual([])
     expect(tree?.isCurrent).toBe(true)
+  })
+})
+
+describe('Inspector capabilities', () => {
+  it('renders an Ensemble-wide capability summary instead of the Codex-only panel', () => {
+    const chat = makeChat({
+      appChatId: 'ensemble-1',
+      provider: 'codex',
+      chatKind: 'ensemble',
+      title: 'Ensemble New Ensemble',
+      ensemble: {
+        enabled: true,
+        maxParticipants: 6,
+        orchestrationMode: 'continuous',
+        participants: [
+          {
+            id: 'ensemble-codex',
+            provider: 'codex',
+            enabled: true,
+            role: 'Worker',
+            instructions: 'Make the change.',
+            order: 1,
+            model: 'gpt-5.5',
+            permissionPresetId: 'workspace_write',
+            tokenTotals: { input_tokens: 3200, output_tokens: 1100, total_tokens: 4300 }
+          },
+          {
+            id: 'ensemble-claude',
+            provider: 'claude',
+            enabled: true,
+            role: 'Reviewer',
+            instructions: 'Review the change.',
+            order: 2,
+            model: 'opus-4.7',
+            permissionPresetId: 'read_only'
+          }
+        ]
+      }
+    })
+
+    const html = renderToStaticMarkup(
+      createElement(Inspector, {
+        rightTab: 'capabilities',
+        setRightTab: () => {},
+        activeDiff: null,
+        refreshDiff: () => {},
+        currentWorkspace: { id: 'ws', path: '/repo' },
+        diffView: 'this_run',
+        setDiffView: () => {},
+        runDiff: null,
+        diffRefreshStatus: '',
+        rawLogs: [],
+        rawFilter: 'all',
+        setRawFilter: () => {},
+        setRawLogs: () => {},
+        rawLogsEndRef: { current: null },
+        geminiVersion: '',
+        isOldVersion: false,
+        trustResult: null,
+        sessionTrust: false,
+        setSessionTrust: () => {},
+        showTerminal: false,
+        setShowTerminal: () => {},
+        workspacePath: '/repo',
+        provider: 'codex',
+        approvalMode: 'default',
+        providerCapabilities: makeCapabilityContract('codex'),
+        providerCapabilitiesByProvider: {
+          codex: makeCapabilityContract('codex'),
+          claude: makeCapabilityContract('claude')
+        },
+        currentChat: chat
+      })
+    )
+
+    expect(html).toContain('Ensemble capabilities')
+    expect(html).toContain('Multi-provider view')
+    expect(html).toContain('Worker')
+    expect(html).toContain('Reviewer')
+    expect(html).toContain('Codex, Claude')
+    expect(html).toContain('Continuous')
+    expect(html).not.toContain('<h4>Codex capabilities</h4>')
   })
 })

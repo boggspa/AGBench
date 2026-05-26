@@ -5,6 +5,7 @@ import { BackgroundTasksPanel } from './BackgroundTasksPanel'
 import type {
   ChatRecord,
   DiffFileSummary,
+  EnsembleParticipant,
   ProviderId,
   ExternalPathGrant,
   GeminiMcpBridgeStatus,
@@ -115,6 +116,7 @@ interface InspectorProps {
   }>
   codexMcpStatus?: any
   providerCapabilities?: ProviderCapabilityContract | null
+  providerCapabilitiesByProvider?: Partial<Record<ProviderId, ProviderCapabilityContract | null>>
   codexThreads?: any[]
   externalPathGrants?: ExternalPathGrant[]
   geminiMcpBridgeEnabled?: boolean
@@ -1129,6 +1131,237 @@ function safeText(value: unknown, fallback = ''): string {
   }
 }
 
+function permissionPresetLabel(presetId?: string | null): string {
+  if (presetId === 'read_only') return 'Read only'
+  if (presetId === 'workspace_write') return 'Workspace write'
+  if (presetId === 'full_access') return 'Full access'
+  if (presetId === 'custom') return 'Custom'
+  if (presetId === 'default') return 'Default'
+  return 'Default'
+}
+
+function formatInspectorTokenCount(value: unknown): string {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : 0
+  if (numeric >= 1_000_000_000) return `${(numeric / 1_000_000_000).toFixed(2)}B`
+  if (numeric >= 1_000_000) {
+    return `${(numeric / 1_000_000).toFixed(numeric >= 10_000_000 ? 0 : 1)}M`
+  }
+  if (numeric >= 1_000) return `${(numeric / 1_000).toFixed(numeric >= 10_000 ? 0 : 1)}k`
+  return String(Math.round(numeric))
+}
+
+function formatEnsembleMode(mode?: string): string {
+  return mode === 'continuous' ? 'Continuous' : 'Turn-bound'
+}
+
+function participantTokenTotal(participant: EnsembleParticipant): number {
+  const totals = participant.tokenTotals || {}
+  if (typeof totals.total_tokens === 'number') return totals.total_tokens
+  const input = typeof totals.input_tokens === 'number' ? totals.input_tokens : 0
+  const output = typeof totals.output_tokens === 'number' ? totals.output_tokens : 0
+  return input + output
+}
+
+function participantRuntimeLabel(participant: EnsembleParticipant): string {
+  const pieces = [participant.model || 'cli-default']
+  if (participant.reasoningEffort) pieces.push(`${participant.reasoningEffort} reasoning`)
+  if (participant.fastModeEnabled) pieces.push('Fast')
+  if (participant.thinkingEnabled) pieces.push('Thinking')
+  return pieces.join(' · ')
+}
+
+function contractForProvider(
+  props: InspectorProps,
+  provider: ProviderId
+): ProviderCapabilityContract | null | undefined {
+  return (
+    props.providerCapabilitiesByProvider?.[provider] ||
+    (props.provider === provider ? props.providerCapabilities : null)
+  )
+}
+
+function contractStateLabel(contract?: ProviderCapabilityContract | null): string {
+  if (!contract) return 'not loaded'
+  if (!contract.availability.available) return 'unavailable'
+  if (contract.warnings.some((warning) => warning.severity === 'error')) return 'needs attention'
+  if (contract.warnings.some((warning) => warning.severity === 'warning')) return 'warning'
+  return 'available'
+}
+
+function contractStateColor(contract?: ProviderCapabilityContract | null): string {
+  if (!contract) return 'var(--text-secondary)'
+  if (!contract.availability.available) return 'var(--danger)'
+  if (contract.warnings.some((warning) => warning.severity === 'error')) return 'var(--danger)'
+  if (contract.warnings.some((warning) => warning.severity === 'warning')) return 'var(--warning)'
+  return 'var(--success)'
+}
+
+function contractToolSummary(contract?: ProviderCapabilityContract | null): string {
+  if (!contract) return 'Capability contract not loaded yet'
+  const tools = [
+    contract.tools.shellCommands,
+    contract.tools.fileChanges,
+    contract.tools.mcpTools,
+    contract.tools.networkAccess
+  ].filter(Boolean)
+  return tools
+    .map((tool) => `${safeText(tool.label)} ${safeText(tool.state)}`)
+    .join(' · ')
+}
+
+function runStateForParticipant(
+  chat: ChatRecord,
+  participant: EnsembleParticipant
+): string {
+  const activeRound = chat.ensemble?.activeRound
+  const state = activeRound?.participants.find((item) => item.participantId === participant.id)
+  if (activeRound?.activeParticipantId === participant.id && activeRound.status === 'running') {
+    return 'speaking'
+  }
+  return state?.status || 'idle'
+}
+
+function EnsembleCapabilitiesTab(props: InspectorProps) {
+  const chat = props.currentChat
+  const ensemble = chat?.ensemble
+  if (!chat || chat.chatKind !== 'ensemble' || !ensemble) {
+    return null
+  }
+
+  const participants = [...(ensemble.participants || [])].sort((a, b) => a.order - b.order)
+  const enabledParticipants = participants.filter((participant) => participant.enabled)
+  const providers = Array.from(
+    new Set(enabledParticipants.map((participant) => participant.provider))
+  ) as ProviderId[]
+  const totalTokens = enabledParticipants.reduce(
+    (sum, participant) => sum + participantTokenTotal(participant),
+    0
+  )
+  const contracts = providers.map((provider) => contractForProvider(props, provider)).filter(Boolean)
+  const availableContracts = contracts.filter((contract) => contract?.availability.available).length
+  const activeParticipant = participants.find(
+    (participant) => participant.id === ensemble.activeRound?.activeParticipantId
+  )
+
+  return (
+    <div className="safety-panel">
+      <div className="safety-card">
+        <h4>Ensemble capabilities</h4>
+        <p
+          style={{
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--text-secondary)',
+            margin: '0 0 var(--space-md) 0'
+          }}
+        >
+          Multi-provider view for this Ensemble chat. Each participant keeps its own provider
+          session, model, permission preset, and tooling contract while the orchestrator serializes
+          turns through the active speaker lock.
+        </p>
+        <div className="safety-row">
+          <span>Participants</span>
+          <span>
+            {enabledParticipants.length} enabled / {participants.length} configured
+          </span>
+        </div>
+        <div className="safety-row">
+          <span>Providers</span>
+          <span>{providers.map(providerLabel).join(', ') || 'none enabled'}</span>
+        </div>
+        <div className="safety-row">
+          <span>Mode</span>
+          <span>{formatEnsembleMode(ensemble.orchestrationMode)}</span>
+        </div>
+        <div className="safety-row">
+          <span>Active speaker</span>
+          <span>
+            {activeParticipant
+              ? `${safeText(activeParticipant.role, 'Participant')} · ${providerLabel(activeParticipant.provider)}`
+              : 'none'}
+          </span>
+        </div>
+        <div className="safety-row">
+          <span>Participant tokens</span>
+          <span>{formatInspectorTokenCount(totalTokens)}</span>
+        </div>
+        <div className="safety-row">
+          <span>Tooling contracts</span>
+          <span>
+            {availableContracts} / {providers.length || 0} available
+          </span>
+        </div>
+      </div>
+
+      {participants.map((participant) => {
+        const contract = contractForProvider(props, participant.provider)
+        const tokenTotals = participant.tokenTotals || {}
+        return (
+          <div
+            key={participant.id}
+            className="safety-card"
+            style={{ opacity: participant.enabled ? 1 : 0.62 }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 'var(--space-sm)'
+              }}
+            >
+              <h4>
+                {safeText(participant.role, 'Participant')} · {providerLabel(participant.provider)}
+              </h4>
+              <span
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: participant.enabled ? 'var(--success)' : 'var(--text-tertiary)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {participant.enabled ? 'enabled' : 'disabled'}
+              </span>
+            </div>
+            <div className="safety-row">
+              <span>Order</span>
+              <span>#{participant.order}</span>
+            </div>
+            <div className="safety-row">
+              <span>Run state</span>
+              <span>{safeText(runStateForParticipant(chat, participant))}</span>
+            </div>
+            <div className="safety-row">
+              <span>Runtime</span>
+              <span>{participantRuntimeLabel(participant)}</span>
+            </div>
+            <div className="safety-row">
+              <span>Permissions</span>
+              <span>{permissionPresetLabel(participant.permissionPresetId)}</span>
+            </div>
+            <div className="safety-row">
+              <span>Tokens</span>
+              <span>
+                {formatInspectorTokenCount(tokenTotals.input_tokens)} in ·{' '}
+                {formatInspectorTokenCount(tokenTotals.output_tokens)} out
+              </span>
+            </div>
+            <div className="safety-row">
+              <span>Provider status</span>
+              <span style={{ color: contractStateColor(contract) }}>
+                {contractStateLabel(contract)}
+              </span>
+            </div>
+            <div className="safety-row">
+              <span>Tooling</span>
+              <span>{contractToolSummary(contract)}</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function CapabilitiesTab(props: InspectorProps) {
   const { currentWorkspace } = props
   const workspacePath = props.provider === 'gemini' ? currentWorkspace?.path : undefined
@@ -1143,6 +1376,7 @@ function CapabilitiesTab(props: InspectorProps) {
     // eslint-disable-next-line no-console
     console.debug('[CapabilitiesTab] props snapshot', {
       provider: props.provider,
+      chatKind: props.currentChat?.chatKind,
       codexStatus: props.codexStatus,
       codexModels: props.codexModels,
       codexMcpStatus: props.codexMcpStatus,
@@ -1150,6 +1384,10 @@ function CapabilitiesTab(props: InspectorProps) {
       codexThreads: props.codexThreads
     })
   }, [props.provider])
+
+  if (props.currentChat?.chatKind === 'ensemble' && props.currentChat.ensemble) {
+    return <EnsembleCapabilitiesTab {...props} />
+  }
 
   if (props.provider === 'codex') {
     return (

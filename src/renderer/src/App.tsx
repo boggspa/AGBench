@@ -17391,6 +17391,7 @@ function App(): React.JSX.Element {
               codexModels={currentProvider === 'codex' ? codexModels : currentProviderModelOptions}
               codexMcpStatus={currentAgentMcpStatus}
               providerCapabilities={currentProviderCapabilities}
+              providerCapabilitiesByProvider={providerCapabilitiesByProvider}
               codexThreads={codexThreads}
               externalPathGrants={externalPathGrants}
               geminiMcpBridgeEnabled={geminiMcpBridgeEnabled}
