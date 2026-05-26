@@ -16117,17 +16117,22 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="codex"] [data-composer-control="model"] { order: 4; margin-left: auto; }
 
 [data-composer-style="codex"] [data-composer-control="provider"] {
+  /* 1.0.3 polish (Codex parity) — drop the indigo pill outline so
+   * the provider reads as a satellite text-token like the real
+   * Codex composer's "Full access ▾" / "5.5 Extra High ▾" pickers.
+   * Hover surface still appears subtly so the control is
+   * discoverable, but the resting state is naked text. */
   min-height: 24px;
-  padding: 2px 10px;
-  border-radius: 999px;
+  padding: 2px 4px;
+  border-radius: 6px;
   background: transparent;
   color: color-mix(in srgb, #ffffff 70%, transparent);
-  border: 1px solid color-mix(in srgb, #8c80ff 22%, #ffffff 8%);
+  border: 0;
   font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 500;
 }
 [data-composer-style="codex"] [data-composer-control="provider"]:hover {
-  background: color-mix(in srgb, #8c80ff 8%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
   color: color-mix(in srgb, #ffffff 92%, transparent);
 }
 [data-composer-style="codex"] [data-composer-control="provider"] .composer-control-icon {
@@ -16140,48 +16145,68 @@ input:disabled, select:disabled, textarea:disabled {
   font: inherit;
   color: inherit;
 }
+[data-composer-style="codex"] [data-composer-control="provider"]::after {
+  /* Mirror the chevron the permission + model pickers already wear
+   * (line 16210 / 16263) so the provider reads as a peer-token. */
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
 
-/* Turn / Continuous toggle — matches Codex shell's provider chip
- * (transparent bg, indigo-tinted outline, white-70% text). The
- * segmented look stays so users see both options at once. Active
- * button picks up a quiet indigo tint to reinforce the choice
- * without competing with the surrounding warm-orange permission
- * label.
+/* Turn / Continuous toggle — Codex parity (1.0.3 polish).
+ *
+ * Pre-polish version had an indigo-outlined outer pill, which read
+ * as a competing container next to the naked permission / provider /
+ * model satellite tokens. Real Codex has nothing of the sort — the
+ * mode is just two adjacent text labels. We mirror that: drop the
+ * outer container, keep the segmented two-button pattern so users
+ * can still see both choices, and tint the active button without an
+ * outer pill. Active state uses the same quiet indigo highlight
+ * (8% bg) so it reads as "this one selected" without a competing
+ * container.
  *
  * Specificity: 0,2,0 (data-composer-style + data-composer-control)
- * beats the base `.composer-ensemble-mode` (0,1,0) so these win
- * the cascade cleanly. */
+ * beats the base `.composer-ensemble-mode` (0,1,0) cleanly. */
 [data-composer-style="codex"] [data-composer-control="ensemble-mode"] {
   min-height: 24px;
-  padding: 1px;
-  border-radius: 999px;
+  padding: 0;
+  border-radius: 0;
   background: transparent;
-  border: 1px solid color-mix(in srgb, #8c80ff 22%, #ffffff 8%);
+  border: 0;
   color: color-mix(in srgb, #ffffff 70%, transparent);
   font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 500;
+  gap: 0;
 }
 [data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
-  color: color-mix(in srgb, #ffffff 70%, transparent);
+  color: color-mix(in srgb, #ffffff 60%, transparent);
   font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 500;
-  padding: 2px 9px;
+  padding: 2px 8px;
+  border-radius: 6px;
 }
 [data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
   color: color-mix(in srgb, #ffffff 92%, transparent);
-  background: color-mix(in srgb, #8c80ff 8%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
 }
 [data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
   color: color-mix(in srgb, #ffffff 96%, transparent);
-  background: color-mix(in srgb, #8c80ff 22%, transparent);
+  background: color-mix(in srgb, #8c80ff 18%, transparent);
   font-weight: 600;
 }
 
 [data-composer-style="codex"] .composer-image-picker-btn {
+  /* 1.0.3 polish (Codex parity) — drop the rounded-circle container.
+   * The real Codex composer's `+` is a satellite glyph with a faint
+   * square hover surface, not a pill. Override the base
+   * `border-radius: 999px` so any hover bg renders as a tight
+   * rectangle instead of a circle. */
   width: 28px;
   height: 28px;
   background: transparent;
   border: 0;
+  border-radius: 6px;
   color: color-mix(in srgb, #ffffff 60%, transparent);
 }
 [data-composer-style="codex"] .composer-image-picker-btn:hover:not(:disabled) {
