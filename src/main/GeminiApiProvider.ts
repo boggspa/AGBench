@@ -343,20 +343,53 @@ function selectGeminiAuthProfile(
  *  compatibility. Falls back to a manual walk of
  *  `candidates[0].content.parts` so the function doesn't break if the
  *  SDK changes the getter's behaviour. */
+/**
+ * 1.0.4-AD — drop literal `[Thought: true|false]` prefixes that some
+ * Gemini SDK paths embed in text payloads. We've seen these bleed
+ * through into ensemble transcripts as visible chat content. The
+ * primary defence is the `part.thought === true` filter in
+ * `chunkText` below; this stripper is the belt-and-braces second
+ * line for the case where Gemini ever returns thought-flagged text
+ * inside an unflagged part (or via the `chunk.text` fast-path).
+ */
+function stripThoughtMarkers(text: string): string {
+  return text.replace(/\[Thought:\s*(true|false)\]\s*/g, '')
+}
+
+// Exported for test coverage (1.0.4-AD). The thinking-bleed filter
+// inside `chunkText` is the safest single point to verify the fix,
+// and the regression suite can reach it via this alias without
+// having to stand up a full streaming-SDK harness.
+export function chunkTextForTest(chunk: any): string {
+  return chunkText(chunk)
+}
+
 function chunkText(chunk: any): string {
   if (!chunk) return ''
-  if (typeof chunk.text === 'string' && chunk.text) return chunk.text
+  // 1.0.4-AD — Gemini's thinking-capable models stream parts with
+  // `thought: true` in the SAME `candidates[0].content.parts` array
+  // as the visible response. Pre-fix, `chunkText` concatenated
+  // every text part regardless of the flag, so the model's internal
+  // monologue ("Acknowledging the User's Sign-off, I am
+  // recognizing…") got piped straight into the assistant bubble.
+  // Filter thought parts out of the visible stream and strip any
+  // residual literal markers as defence-in-depth.
   try {
     const parts = chunk.candidates?.[0]?.content?.parts
     if (Array.isArray(parts)) {
       const texts: string[] = []
       for (const part of parts) {
-        if (part && typeof part.text === 'string') texts.push(part.text)
+        if (part && typeof part.text === 'string' && part.thought !== true) {
+          texts.push(part.text)
+        }
       }
-      return texts.join('')
+      return stripThoughtMarkers(texts.join(''))
     }
   } catch {
     // Defensive: never let chunk shape weirdness crash the loop.
+  }
+  if (typeof chunk.text === 'string' && chunk.text) {
+    return stripThoughtMarkers(chunk.text)
   }
   return ''
 }

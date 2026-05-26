@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import fs from 'fs'
-import { tryRunGeminiApi, type GeminiApiProviderDeps } from './GeminiApiProvider'
+import {
+  chunkTextForTest,
+  tryRunGeminiApi,
+  type GeminiApiProviderDeps
+} from './GeminiApiProvider'
 import { AppStore } from './store'
 import type { AgentRunPayload, AgentRunRoute } from './index'
 import type {
@@ -268,6 +272,100 @@ function fakeSdk(chunks: any[], options: { throwOn?: 'init' | 'stream' } = {}) {
     }
   })
 }
+
+describe('chunkText — 1.0.4-AD thinking-bleed filter', () => {
+  // Regression: Gemini's thinking-capable models stream
+  // `parts[].thought === true` parts alongside visible response
+  // parts in the SAME candidates[0].content.parts array. Pre-fix,
+  // `chunkText` concatenated every text part regardless of the
+  // flag — so the model's reasoning monologue leaked into the
+  // assistant bubble. Reported by Chris from an ensemble transcript:
+  // "Acknowledging the User's Sign-off, I am recognizing…
+  // [Thought: true]Crafting the Sign-off Response…".
+
+  it('drops parts where thought === true', () => {
+    const chunk = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'Acknowledging the sign-off…', thought: true },
+              { text: 'Good luck!' }
+            ]
+          }
+        }
+      ]
+    }
+    expect(chunkTextForTest(chunk)).toBe('Good luck!')
+  })
+
+  it('preserves parts where thought is false or absent', () => {
+    const chunk = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'Hello ' },
+              { text: 'world!', thought: false }
+            ]
+          }
+        }
+      ]
+    }
+    expect(chunkTextForTest(chunk)).toBe('Hello world!')
+  })
+
+  it('strips literal `[Thought: true]` / `[Thought: false]` markers as defense-in-depth', () => {
+    // In case Gemini ever returns thought-flagged content INSIDE
+    // an unflagged part (or via the `chunk.text` fast-path),
+    // strip the residual markers so the visible bubble stays
+    // clean even when the per-part flag fails us.
+    const chunk = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: '[Thought: true]reasoning chunk ' },
+              { text: '[Thought: false]visible reply.' }
+            ]
+          }
+        }
+      ]
+    }
+    expect(chunkTextForTest(chunk)).toBe('reasoning chunk visible reply.')
+  })
+
+  it('handles the chunk.text fallback path with the marker stripper', () => {
+    const chunk = { text: '[Thought: true]Visible reply.' }
+    expect(chunkTextForTest(chunk)).toBe('Visible reply.')
+  })
+
+  it('returns empty string for nullish chunks', () => {
+    expect(chunkTextForTest(null)).toBe('')
+    expect(chunkTextForTest(undefined)).toBe('')
+    expect(chunkTextForTest({})).toBe('')
+  })
+
+  it('returns empty when every part is a thought', () => {
+    // The whole turn was reasoning — no visible response. We
+    // want the visible stream to stay empty so the assistant
+    // bubble doesn't render "[Thought: true]…" artifacts; the
+    // result/finalisation event still drives turn-end.
+    const chunk = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              { text: 'Step 1: think.', thought: true },
+              { text: 'Step 2: think more.', thought: true }
+            ]
+          }
+        }
+      ]
+    }
+    expect(chunkTextForTest(chunk)).toBe('')
+  })
+})
 
 describe('GeminiApiProvider (Phase M1 Step 2)', () => {
   beforeEach(() => {
