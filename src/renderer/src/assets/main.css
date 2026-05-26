@@ -1007,7 +1007,29 @@ button.sidebar-item {
   --gemini-terminal-bottom-gap: var(--space-md);
   --composer-bottom-gap: 12px;
   --composer-reserved-height: calc(var(--composer-min-height) + (var(--space-lg) * 4));
-  --composer-scroll-clearance: 14px;
+  /*
+   * 1.0.4 — bumped from 14px to 56px (4x). The clearance is the air
+   * gap between the bottom of the last transcript message and the
+   * top edge of the floating composer when scrolled to the bottom.
+   * 14px was tight enough that the last message visually bled under
+   * the composer (especially in ensemble chats where the composer is
+   * taller — chip strip + above-bar + textarea + footer all stacked).
+   * Chris's report: now the auto-scroll-deny race window is fixed,
+   * the user can ride the bottom, but can't read the most recent
+   * messages until they pass high enough above the composer.
+   *
+   * 56px = ~3.5x line-height — enough for the last assistant line to
+   * sit clear of the composer's top edge with breathing room. Doesn't
+   * make the composer or transcript bouncy: the composer stays docked
+   * at `--composer-bottom-gap`, the transcript's `padding-bottom`
+   * just gets a static 42px more reserved space. No layout shifts,
+   * no resize observer interaction, no scroll re-pin.
+   *
+   * The visual "where is the bottom of the transcript" boundary
+   * stays clear: the composer's top edge IS the boundary, just like
+   * before — there's more air above it now, not less definition.
+   */
+  --composer-scroll-clearance: 56px;
   --composer-scroll-under-padding: calc(
     var(--composer-reserved-height) + var(--composer-bottom-gap) + var(--composer-scroll-clearance) +
       env(safe-area-inset-bottom, 0px)
