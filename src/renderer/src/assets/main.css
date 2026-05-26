@@ -26599,6 +26599,16 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, var(--danger, #c44a4a) 85%, var(--text-primary));
 }
 
+/* 1.0.4-AD — pre-flight reachability probe rejected this participant.
+ * Same danger-tinted family as `.status-failed` (the user is dealing
+ * with the same recovery action either way — re-launch the provider)
+ * but with a slightly cooler hue mix so the two states don't look
+ * identical when both show up in the same round. The broken-chain
+ * glyph from `ParticipantStatusIcon` carries the distinct shape. */
+.ensemble-above-chip-status.status-unreachable {
+  color: color-mix(in srgb, var(--danger, #c44a4a) 75%, var(--accent-color, #d6a23a));
+}
+
 .ensemble-above-chip-status.status-cancelled,
 .ensemble-above-chip-status.status-skipped {
   color: color-mix(in srgb, var(--text-muted) 88%, transparent);

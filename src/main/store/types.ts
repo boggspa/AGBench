@@ -202,6 +202,15 @@ export type EnsembleParticipantStatus =
   | 'failed'
   | 'skipped'
   | 'cancelled'
+  /**
+   * 1.0.4-AD — pre-flight health check ran at round start and the
+   * participant's runtime / socket / binary couldn't be verified.
+   * Distinct from `failed` (which fires after dispatch starts and the
+   * provider returned an error) so the chip strip can render a
+   * "never reached" affordance and the user knows to re-launch the
+   * underlying provider before the next round.
+   */
+  | 'unreachable'
 
 export type EnsembleOrchestrationMode = 'turn_bound' | 'continuous'
 
@@ -252,6 +261,14 @@ export interface EnsembleRoundParticipantState {
   reason?: string
   startedAt?: string
   endedAt?: string
+  /**
+   * 1.0.4-AD — last observed failure reason for this participant, set
+   * by the pre-flight `probeParticipant` check or by a failed dispatch.
+   * Surfaced in the chip strip tooltip so the user can see *why* the
+   * participant was marked unreachable without diving into the
+   * transcript notes.
+   */
+  lastFailureReason?: string
 }
 
 export interface EnsembleRoundState {

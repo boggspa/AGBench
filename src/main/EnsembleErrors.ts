@@ -273,3 +273,37 @@ export function formatAllUnreachableNote(): string {
     `re-enable participants from the chip strip and resume.`
   )
 }
+
+/**
+ * 1.0.4-AD — pre-flight probe failure note. Emitted by the orchestrator
+ * BEFORE dispatch when `probeParticipant` reports the provider's
+ * runtime / socket / binary couldn't be verified. Distinguished from
+ * `formatDispatchFailureNote` so the user can see WHEN the failure was
+ * caught (round start vs mid-dispatch) and so the wording can mention
+ * the specific failure reason captured by the probe (binary path
+ * missing, socket not responding, bridge daemon down, etc.).
+ *
+ *   "⚠ Codex / Worker health check failed: app-server socket
+ *    unreachable (ECONNREFUSED). Skipping for this round — re-launch
+ *    the provider CLI or re-enable from the chip strip when the
+ *    socket is back."
+ *
+ * When the underlying code is known we surface it after the reason in
+ * parentheses (mirroring `formatDispatchFailureNote`'s shape). When
+ * only the reason text is available, the code is omitted.
+ */
+export function formatProbeFailureNote(
+  participant: EnsembleParticipant,
+  reason: string,
+  underlyingCode?: string
+): string {
+  const who = participantNoteLabel(participant)
+  const trimmedReason = (reason || '').replace(/[.!?\s]+$/u, '').trim()
+  const codeSuffix = underlyingCode ? ` (${underlyingCode})` : ''
+  const reasonText = trimmedReason ? `: ${trimmedReason}${codeSuffix}` : codeSuffix
+  return (
+    `⚠ ${who} health check failed${reasonText}. ` +
+    `Skipping for this round — re-launch the provider CLI or ` +
+    `re-enable from the chip strip when the socket is back.`
+  )
+}

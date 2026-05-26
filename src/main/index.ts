@@ -50,7 +50,10 @@ import {
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
-import { EnsembleOrchestrator } from './services/EnsembleOrchestrator'
+import {
+  EnsembleOrchestrator,
+  type ParticipantProbeResult
+} from './services/EnsembleOrchestrator'
 import {
   appendBugReport,
   type BugReportSubmission as BugReportSubmissionInput
@@ -128,7 +131,8 @@ import {
   GeminiOAuthLoginStatus,
   UsageRecord,
   EffectiveRunPermissions,
-  EnsembleRunIdentity
+  EnsembleRunIdentity,
+  EnsembleParticipant
 } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
@@ -140,6 +144,7 @@ import { RunRepository } from './RunRepository'
 import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
+import { buildProviderAuthStatusV2 } from './ProviderAuthStatus'
 import {
   createProviderAdapterRegistry,
   defaultProviderDescriptor,
@@ -175,6 +180,7 @@ import {
 } from './ClaudeAgentbenchMcp'
 import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcpBridge'
 import { tryRunGeminiApi } from './GeminiApiProvider'
+import { redactGeminiProfileForMcp } from './GeminiAuthRedaction'
 import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
@@ -7276,6 +7282,81 @@ function normalizeRunRoute(route?: AgentRunRoute | null): AgentRunRoute {
   }
 }
 
+/**
+ * 1.0.4-AD — pre-flight reachability probe for an ensemble participant.
+ * Called by the orchestrator BEFORE each per-participant dispatch in
+ * `runRound` so we never burn a runId on a participant whose provider
+ * runtime is dead. Each provider has its own cheapest "is this
+ * reachable?" surface:
+ *
+ *   - **Codex** — race `CodexAppServerClient.ensureStarted()` against
+ *     a 1s timeout. When the proc is already alive (hot path)
+ *     `ensureStarted` returns synchronously; when cold-starting it
+ *     spawns the daemon, which we let race against the timeout.
+ *   - **Claude / Gemini / Kimi** — verify the CLI binary is resolvable
+ *     via `resolveCliProviderBinary`. This is the same shape
+ *     `executeRun` would use moments later, so an empty path here is
+ *     the strongest negative signal we can produce cheaply.
+ *
+ * Any throw bubbles to the orchestrator's catch-and-classify path
+ * which downgrades it to a generic unreachable signal — so the probe
+ * is allowed to be defensive without a dedicated try/catch around
+ * every adapter call.
+ */
+const PROBE_TIMEOUT_MS = 1000
+
+async function probeEnsembleParticipant(
+  participant: EnsembleParticipant
+): Promise<ParticipantProbeResult> {
+  if (participant.provider === 'codex') {
+    return probeCodexParticipant()
+  }
+  return probeCliParticipant(participant)
+}
+
+async function probeCodexParticipant(): Promise<ParticipantProbeResult> {
+  const client = getCodexClient()
+  const ensure = client
+    .ensureStarted(app.getVersion())
+    .then<ParticipantProbeResult>(() => ({ reachable: true }))
+    .catch<ParticipantProbeResult>((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err)
+      const code =
+        typeof (err as { code?: unknown })?.code === 'string'
+          ? ((err as { code?: string }).code as string)
+          : 'ECONNREFUSED'
+      return { reachable: false, reason: message, underlyingCode: code }
+    })
+  const timeout = new Promise<ParticipantProbeResult>((resolve) =>
+    setTimeout(
+      () =>
+        resolve({
+          reachable: false,
+          reason: `Codex app-server probe timed out after ${PROBE_TIMEOUT_MS}ms`,
+          underlyingCode: 'ETIMEDOUT'
+        }),
+      PROBE_TIMEOUT_MS
+    )
+  )
+  return Promise.race([ensure, timeout])
+}
+
+async function probeCliParticipant(
+  participant: EnsembleParticipant
+): Promise<ParticipantProbeResult> {
+  const resolved = await resolveCliProviderBinary(participant.provider)
+  if (resolved.binaryPath) {
+    return { reachable: true }
+  }
+  return {
+    reachable: false,
+    reason:
+      resolved.error ||
+      `${providerDisplayName(participant.provider)} CLI binary not found on PATH`,
+    underlyingCode: 'ENOENT'
+  }
+}
+
 function createFallbackRunId(provider: ProviderId): string {
   return `${provider}-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
@@ -13607,6 +13688,10 @@ function executeApprovalStatus(
   }
 }
 
+// 1.0.4-AE — PII redactor extracted to `GeminiAuthRedaction.ts` so
+// the regression test can import it without booting Electron's main
+// process. See that file for full rationale.
+
 function summarizeGeminiAuthStatusForMcp(status: GeminiAuthStatus) {
   return {
     provider: 'gemini',
@@ -13618,7 +13703,8 @@ function summarizeGeminiAuthStatusForMcp(status: GeminiAuthStatus) {
     binaryPath: status.binaryPath,
     activeProfileId: status.activeProfileId,
     activeProfileLabel: status.activeProfileLabel,
-    profiles: status.profiles,
+    // 1.0.4-AE — redact PII (oauthEmail) before exposing to agents.
+    profiles: status.profiles.map(redactGeminiProfileForMcp),
     oauthLogin: status.oauthLogin
       ? {
           profileId: status.oauthLogin.profileId,
@@ -13634,30 +13720,66 @@ function summarizeGeminiAuthStatusForMcp(status: GeminiAuthStatus) {
 
 async function summarizeProviderAuthStatusForMcp(provider: ProviderId) {
   if (provider === 'gemini') {
-    return summarizeGeminiAuthStatusForMcp(await getGeminiAuthStatusSnapshot())
+    const snapshot = await getGeminiAuthStatusSnapshot()
+    const v2 = buildProviderAuthStatusV2({
+      provider: 'gemini',
+      available: snapshot.available,
+      rawAuthState: snapshot.authState,
+      apiKeyConfigured: snapshot.apiKeyConfigured
+    })
+    return { ...summarizeGeminiAuthStatusForMcp(snapshot), ...v2 }
   }
   const status = await getCliProviderStatus(provider)
+  const rawAuthState = typeof status.authState === 'string' ? status.authState : null
+  const errorReason = typeof status.error === 'string' ? status.error : undefined
   if (provider === 'claude') {
+    const apiKeyConfigured = Boolean(getStoredClaudeApiKey())
+    const v2 = buildProviderAuthStatusV2({
+      provider: 'claude',
+      available: status.available,
+      rawAuthState,
+      apiKeyConfigured,
+      errorReason
+    })
     return {
       ...status,
-      apiKeyConfigured: Boolean(getStoredClaudeApiKey()),
-      encryptionAvailable: safeStorage.isEncryptionAvailable()
+      apiKeyConfigured,
+      encryptionAvailable: safeStorage.isEncryptionAvailable(),
+      ...v2
     }
   }
   if (provider === 'kimi') {
+    const apiKeyConfigured = Boolean(getStoredKimiApiKey())
+    const v2 = buildProviderAuthStatusV2({
+      provider: 'kimi',
+      available: status.available,
+      rawAuthState,
+      apiKeyConfigured,
+      errorReason
+    })
     return {
       ...status,
-      apiKeyConfigured: Boolean(getStoredKimiApiKey()),
-      encryptionAvailable: safeStorage.isEncryptionAvailable()
+      apiKeyConfigured,
+      encryptionAvailable: safeStorage.isEncryptionAvailable(),
+      ...v2
     }
   }
+  const codexUsageConfigured = Boolean(AppStore.getSettings().codexUsageCredential?.accountId)
+  const v2 = buildProviderAuthStatusV2({
+    provider: 'codex',
+    available: status.available,
+    rawAuthState,
+    codexClientStarted: Boolean(codexClient),
+    errorReason
+  })
   return {
     ...status,
     apiKeyConfigured: false,
     encryptionAvailable: safeStorage.isEncryptionAvailable(),
     appServer: codexClient ? 'started' : 'lazy',
     accountStatus: 'not-queried',
-    codexUsageConfigured: Boolean(AppStore.getSettings().codexUsageCredential?.accountId)
+    codexUsageConfigured,
+    ...v2
   }
 }
 
@@ -19930,7 +20052,8 @@ if (isGeminiMcpBridgeProcess) {
       cancelRun: (provider, runId) => providerAdapters.require(provider).cancel(runId),
       createRunId: createFallbackRunId,
       now: () => Date.now(),
-      nowIso: () => new Date().toISOString()
+      nowIso: () => new Date().toISOString(),
+      probeParticipant: probeEnsembleParticipant
     })
     const dispatchAgentRun = (
       payload: AgentRunPayload,

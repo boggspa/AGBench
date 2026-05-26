@@ -149,6 +149,23 @@ function ParticipantStatusIcon({ status }: { status: string }): React.JSX.Elemen
       </svg>
     )
   }
+  if (key === 'unreachable') {
+    // 1.0.4-AD — broken-chain icon for participants the pre-flight
+    // probe couldn't verify at round start. Two staggered link-shaped
+    // ovals with a clear gap between them: reads as "connection
+    // severed" at glance. The .status-unreachable colour rule (added
+    // in main.css) carries the danger-amber tint so the pill stands
+    // apart from `answered` (green) and `failed` (also amber but
+    // mid-round rather than pre-flight). Hover tooltip wires the
+    // `lastFailureReason` from the round state.
+    return (
+      <svg {...baseSvgProps}>
+        <path d="M5.5 6.5a2 2 0 0 0-2 2v0a2 2 0 0 0 2 2h1.2" />
+        <path d="M10.5 9.5a2 2 0 0 0 2-2v0a2 2 0 0 0-2-2H9.3" />
+        <path d="m3 13 10-10" strokeWidth={1.3} />
+      </svg>
+    )
+  }
   // idle (default fall-through): three Z marks descending — sleeping
   // / dormant. Drawn as nested polylines so the staircase is the
   // shape, not glyphs (avoids font-rendering inconsistencies).
@@ -280,11 +297,21 @@ export function EnsembleParticipantsAboveRow({
           const active = activeRound?.activeParticipantId === participant.id
           const statusLabel = active ? 'speaking' : state?.status || 'idle'
           const isSelected = participant.id === selectedParticipantId
+          // 1.0.4-AD — surface the pre-flight probe's failure reason
+          // (or any subsequent failure reason stamped on the round
+          // state) so the chip's status pill tooltip explains WHY a
+          // participant is unreachable / failed without diving into
+          // the transcript. Empty string when the round state has no
+          // failure metadata so the chip falls back to the bare
+          // status label.
+          const lastFailureReason =
+            state?.lastFailureReason || (state?.status === 'failed' ? state?.reason : '') || ''
           return (
             <ParticipantChip
               key={participant.id}
               participant={participant}
               statusLabel={statusLabel}
+              statusTooltip={lastFailureReason}
               dimmed={!participant.enabled}
               isSelected={isSelected}
               isDragOver={dragOverId === participant.id && dragId !== participant.id}
@@ -353,6 +380,15 @@ export function EnsembleParticipantsAboveRow({
 interface ParticipantChipProps {
   participant: EnsembleParticipant
   statusLabel: string
+  /**
+   * 1.0.4-AD — optional human-readable explanation surfaced in the
+   * status-pill `title` tooltip. Populated from the round state's
+   * `lastFailureReason` for `unreachable` (and `failed`) participants
+   * so the user sees, e.g. "Codex app-server probe timed out after
+   * 1000ms" without opening the transcript. Empty string falls back
+   * to the bare status label.
+   */
+  statusTooltip: string
   dimmed: boolean
   isSelected: boolean
   isDragOver: boolean
@@ -392,6 +428,7 @@ interface ParticipantChipProps {
 function ParticipantChip({
   participant,
   statusLabel,
+  statusTooltip,
   dimmed,
   isSelected,
   isDragOver,
@@ -513,8 +550,8 @@ function ParticipantChip({
         <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
         <span
           className={`ensemble-above-chip-status ${statusClass}`}
-          aria-label={statusLabel}
-          title={statusLabel}
+          aria-label={statusTooltip ? `${statusLabel}: ${statusTooltip}` : statusLabel}
+          title={statusTooltip ? `${statusLabel} — ${statusTooltip}` : statusLabel}
         >
           <ParticipantStatusIcon status={statusLabel} />
         </span>
