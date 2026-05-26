@@ -35,7 +35,14 @@ const baseSubmission: BugReportSubmission = {
     version: '1.0.1',
     provider: 'codex',
     workspace: '/Users/dev/projects/agbench',
-    shell: 'default'
+    shell: 'default',
+    surface: 'Ensemble',
+    chatKind: 'ensemble',
+    settingsTab: 'mcp',
+    inspectorTab: 'safety',
+    theme: 'midnight',
+    promptBubble: 'blue',
+    ensemble: '4 participants · turn · Reviewer/claude, Worker/codex'
   }
 }
 
@@ -51,6 +58,13 @@ describe('BugReportService.renderBugReportMarkdown', () => {
     expect(md).toContain('provider: codex')
     expect(md).toContain('workspace: /Users/dev/projects/agbench')
     expect(md).toContain('shell: default')
+    expect(md).toContain('surface: "Ensemble"')
+    expect(md).toContain('chat_kind: "ensemble"')
+    expect(md).toContain('settings_tab: "mcp"')
+    expect(md).toContain('inspector_tab: "safety"')
+    expect(md).toContain('theme: "midnight"')
+    expect(md).toContain('prompt_bubble: "blue"')
+    expect(md).toContain('ensemble: "4 participants · turn · Reviewer/claude, Worker/codex"')
     // Body sections.
     expect(md).toContain('## What happened\n')
     expect(md).toContain('## What was expected\n')
@@ -58,7 +72,14 @@ describe('BugReportService.renderBugReportMarkdown', () => {
     // Context list mirrors the frontmatter.
     expect(md).toContain('- Version: 1.0.1')
     expect(md).toContain('- Provider: codex')
+    expect(md).toContain('- Surface: Ensemble')
+    expect(md).toContain('- Chat kind: ensemble')
     expect(md).toContain('- Shell: default')
+    expect(md).toContain('- Settings tab: mcp')
+    expect(md).toContain('- Inspector tab: safety')
+    expect(md).toContain('- Theme: midnight')
+    expect(md).toContain('- Bubble: blue')
+    expect(md).toContain('- Ensemble: 4 participants')
   })
 
   it('omits the "What was expected" section when the expected field is empty', () => {

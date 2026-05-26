@@ -31,7 +31,14 @@ const baseProps = {
   appVersion: '1.0.1',
   currentProvider: 'codex',
   currentWorkspacePath: '/Users/dev/projects/agbench',
-  composerShell: 'default'
+  composerShell: 'default',
+  initialSurface: 'Ensemble',
+  chatKind: 'ensemble',
+  settingsTab: 'mcp',
+  inspectorTab: 'safety',
+  theme: 'midnight',
+  promptBubble: 'blue',
+  ensembleSummary: '4 participants · turn · Reviewer/claude, Worker/codex'
 }
 
 describe('BugReportSheet', () => {
@@ -85,6 +92,16 @@ describe('BugReportSheet', () => {
     expect(html).toMatch(/<input[^>]*checked[^>]*value="minor"|<input[^>]*value="minor"[^>]*checked/)
   })
 
+  it('renders the surface picker for newer app areas', () => {
+    const html = renderToStaticMarkup(
+      <BugReportSheet {...baseProps} open onDismiss={() => {}} onSubmit={async () => {}} />
+    )
+    expect(html).toContain('Where did it happen?')
+    expect(html).toContain('value="Ensemble"')
+    expect(html).toContain('value="MCP"')
+    expect(html).toContain('value="Onboarding"')
+  })
+
   it('exposes the save handler via a labelled submit button so the host wiring stays discoverable', () => {
     // Sanity: the onSubmit prop is required by the type system; the
     // rendered surface should expose a single submit button so the
@@ -117,7 +134,7 @@ describe('BugReportSheet', () => {
     expect(html).toMatch(/class="bug-report-sheet-backdrop"/)
   })
 
-  it('renders the auto-captured context block with the five context fields', () => {
+  it('renders the auto-captured context block with expanded context fields', () => {
     const html = renderToStaticMarkup(
       <BugReportSheet
         {...baseProps}
@@ -133,12 +150,20 @@ describe('BugReportSheet', () => {
     expect(html).toContain('Version')
     expect(html).toContain('Provider')
     expect(html).toContain('Workspace')
+    expect(html).toContain('Surface')
     expect(html).toContain('Composer shell')
+    expect(html).toContain('Chat kind')
+    expect(html).toContain('Settings tab')
+    expect(html).toContain('Inspector tab')
+    expect(html).toContain('Theme')
+    expect(html).toContain('Bubble')
+    expect(html).toContain('Ensemble')
     // Values render verbatim — these are the auto-captured strings.
     expect(html).toContain('1.0.1')
     expect(html).toContain('codex')
     expect(html).toContain('/Users/dev/projects/agbench')
     expect(html).toContain('default')
+    expect(html).toContain('4 participants')
   })
 
   it('falls back to "(global chat)" label when the workspace path is null', () => {

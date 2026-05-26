@@ -340,6 +340,19 @@ function validateBugReportPayload(channel: string, value: unknown): void {
     if (typeof ctx[key] !== 'string')
       throw new Error(`${channel} bug-report context.${key} must be a string.`)
   }
+  for (const key of [
+    'surface',
+    'chatKind',
+    'settingsTab',
+    'inspectorTab',
+    'theme',
+    'promptBubble',
+    'ensemble'
+  ] as const) {
+    if (ctx[key] !== undefined && typeof ctx[key] !== 'string') {
+      throw new Error(`${channel} bug-report context.${key} must be a string when provided.`)
+    }
+  }
 }
 
 export function validateIpcArgs(channel: string, args: unknown[]): unknown[] {

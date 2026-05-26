@@ -496,6 +496,13 @@ const api = {
       provider: string
       workspace: string
       shell: string
+      surface?: string
+      chatKind?: string
+      settingsTab?: string
+      inspectorTab?: string
+      theme?: string
+      promptBubble?: string
+      ensemble?: string
     }
   }) =>
     ipcRenderer.invoke('submit-bug-report', payload) as Promise<{

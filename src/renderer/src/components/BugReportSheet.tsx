@@ -54,6 +54,13 @@ export interface BugReportSubmission {
     provider: string
     workspace: string
     shell: string
+    surface?: string
+    chatKind?: string
+    settingsTab?: string
+    inspectorTab?: string
+    theme?: string
+    promptBubble?: string
+    ensemble?: string
   }
 }
 
@@ -74,6 +81,20 @@ export interface BugReportSheetProps {
   currentWorkspacePath: string | null
   /** Read-only context: composer shell label (default / codex / claude / ...). */
   composerShell: string
+  /** Inferred surface when the report opens; the tester can override it. */
+  initialSurface?: string
+  /** Read-only context: active chat kind (single provider / ensemble / global). */
+  chatKind?: string
+  /** Read-only context: current Settings tab, when relevant. */
+  settingsTab?: string
+  /** Read-only context: current inspector tab, when relevant. */
+  inspectorTab?: string
+  /** Read-only context: theme appearance setting. */
+  theme?: string
+  /** Read-only context: prompt/message bubble preference. */
+  promptBubble?: string
+  /** Read-only context: Ensemble participants/mode summary, when relevant. */
+  ensembleSummary?: string
 }
 
 const SHEET_TITLE_ID = 'bug-report-sheet-title'
@@ -87,6 +108,20 @@ const SEVERITY_OPTIONS: ReadonlyArray<{
   { value: 'major', label: 'Major', description: 'Breaks a feature.' },
   { value: 'blocking', label: 'Blocking', description: 'Stops the test session.' }
 ]
+
+const SURFACE_OPTIONS = [
+  'Transcript',
+  'Composer',
+  'Ensemble',
+  'Inspector',
+  'Settings',
+  'Model Usage',
+  'MCP',
+  'Onboarding',
+  'Bug Report',
+  'Devices',
+  'Other'
+] as const
 
 function formatTimestamp(date: Date): { iso: string; human: string } {
   const iso = date.toISOString()
@@ -111,12 +146,20 @@ export function BugReportSheet({
   appVersion,
   currentProvider,
   currentWorkspacePath,
-  composerShell
+  composerShell,
+  initialSurface = 'Transcript',
+  chatKind = '',
+  settingsTab = '',
+  inspectorTab = '',
+  theme = '',
+  promptBubble = '',
+  ensembleSummary = ''
 }: BugReportSheetProps): React.JSX.Element | null {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [expected, setExpected] = useState('')
   const [severity, setSeverity] = useState<BugReportSeverity>('minor')
+  const [surface, setSurface] = useState<string>(initialSurface)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<string | null>(null)
@@ -132,6 +175,7 @@ export function BugReportSheet({
       setDescription('')
       setExpected('')
       setSeverity('minor')
+      setSurface(initialSurface)
       setSubmitting(false)
       setSubmitError(null)
       setConfirmation(null)
@@ -175,6 +219,9 @@ export function BugReportSheet({
   useEffect(() => {
     if (open) {
       stampRef.current = formatTimestamp(new Date())
+      setSurface(SURFACE_OPTIONS.includes(initialSurface as (typeof SURFACE_OPTIONS)[number])
+        ? initialSurface
+        : 'Transcript')
     }
   }, [open])
 
@@ -208,7 +255,14 @@ export function BugReportSheet({
             version: appVersion,
             provider: currentProvider,
             workspace: workspaceLabel,
-            shell: composerShell
+            shell: composerShell,
+            surface,
+            chatKind,
+            settingsTab,
+            inspectorTab,
+            theme,
+            promptBubble,
+            ensemble: ensembleSummary
           }
         })
         setConfirmation('Report saved — thanks!')
@@ -225,12 +279,19 @@ export function BugReportSheet({
     },
     [
       appVersion,
+      chatKind,
       composerShell,
       currentProvider,
       description,
+      ensembleSummary,
       expected,
+      inspectorTab,
       onSubmit,
+      promptBubble,
       severity,
+      settingsTab,
+      surface,
+      theme,
       trimmedTitle,
       workspaceLabel
     ]
@@ -339,6 +400,26 @@ export function BugReportSheet({
           </div>
 
           <div className="bug-report-sheet-field">
+            <label className="bug-report-sheet-label" htmlFor="bug-report-surface">
+              Where did it happen?
+              <span className="bug-report-sheet-label-helper"> (helps triage)</span>
+            </label>
+            <select
+              id="bug-report-surface"
+              className="bug-report-sheet-input"
+              value={surface}
+              onChange={(e) => setSurface(e.target.value)}
+              disabled={submitting}
+            >
+              {SURFACE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bug-report-sheet-field">
             <span className="bug-report-sheet-label" id="bug-report-severity-label">
               Severity
             </span>
@@ -391,6 +472,16 @@ export function BugReportSheet({
                 <span className="bug-report-sheet-context-value">{currentProvider}</span>
               </li>
               <li>
+                <span className="bug-report-sheet-context-key">Surface</span>
+                <span className="bug-report-sheet-context-value">{surface}</span>
+              </li>
+              {chatKind ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Chat kind</span>
+                  <span className="bug-report-sheet-context-value">{chatKind}</span>
+                </li>
+              ) : null}
+              <li>
                 <span className="bug-report-sheet-context-key">Workspace</span>
                 <span className="bug-report-sheet-context-value">{workspaceLabel}</span>
               </li>
@@ -398,6 +489,36 @@ export function BugReportSheet({
                 <span className="bug-report-sheet-context-key">Composer shell</span>
                 <span className="bug-report-sheet-context-value">{composerShell}</span>
               </li>
+              {settingsTab ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Settings tab</span>
+                  <span className="bug-report-sheet-context-value">{settingsTab}</span>
+                </li>
+              ) : null}
+              {inspectorTab ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Inspector tab</span>
+                  <span className="bug-report-sheet-context-value">{inspectorTab}</span>
+                </li>
+              ) : null}
+              {theme ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Theme</span>
+                  <span className="bug-report-sheet-context-value">{theme}</span>
+                </li>
+              ) : null}
+              {promptBubble ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Bubble</span>
+                  <span className="bug-report-sheet-context-value">{promptBubble}</span>
+                </li>
+              ) : null}
+              {ensembleSummary ? (
+                <li>
+                  <span className="bug-report-sheet-context-key">Ensemble</span>
+                  <span className="bug-report-sheet-context-value">{ensembleSummary}</span>
+                </li>
+              ) : null}
             </ul>
           </div>
 

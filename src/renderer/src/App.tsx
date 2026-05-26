@@ -5716,6 +5716,25 @@ function App(): React.JSX.Element {
   const currentProvider = currentChat ? getChatProvider(currentChat) : activeProvider
   const currentChatScope = getChatScope(currentChat)
   const isCurrentGlobalChat = currentChatScope === 'global'
+  const bugReportInitialSurface = showSettings
+    ? 'Settings'
+    : currentChat?.chatKind === 'ensemble'
+      ? 'Ensemble'
+      : appearance.showInspector
+        ? 'Inspector'
+        : 'Transcript'
+  const bugReportEnsembleSummary = useMemo(() => {
+    const ensemble = currentChat?.ensemble
+    if (!ensemble) return ''
+    const enabled = (ensemble.participants || []).filter((participant) => participant.enabled)
+    const labels = enabled
+      .slice()
+      .sort((a, b) => a.order - b.order)
+      .map((participant) => `${participant.role || participant.provider}/${participant.provider}`)
+      .join(', ')
+    const mode = ensemble.orchestrationMode || 'turn'
+    return `${enabled.length} participants · ${mode} · ${labels}`
+  }, [currentChat?.ensemble])
   const hasWorkspaceContext = Boolean(currentWorkspace && currentChat && !isCurrentGlobalChat)
   const isCurrentChatProviderLocked = Boolean(
     currentChat &&
@@ -17476,6 +17495,13 @@ function App(): React.JSX.Element {
         currentProvider={currentProvider}
         currentWorkspacePath={currentWorkspace?.path ?? null}
         composerShell={appearance.composerStyle || 'default'}
+        initialSurface={bugReportInitialSurface}
+        chatKind={currentChat?.chatKind || 'chat'}
+        settingsTab={showSettings ? settingsActiveTab : ''}
+        inspectorTab={appearance.showInspector ? rightTab : ''}
+        theme={appearance.themeAppearance || 'system'}
+        promptBubble={appearance.userBubbleColor || 'system'}
+        ensembleSummary={bugReportEnsembleSummary}
       />
       {subThreadCreatorParent && (
         <SubThreadCreator

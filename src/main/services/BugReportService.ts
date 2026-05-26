@@ -44,6 +44,20 @@ export interface BugReportContext {
   /** Composer shell label (default / codex / claude / gemini / kimi /
    * modular). */
   shell: string
+  /** User-selected surface from the report sheet. */
+  surface?: string
+  /** Active chat kind, e.g. single-provider or ensemble. */
+  chatKind?: string
+  /** Active Settings tab when the report was filed from Settings. */
+  settingsTab?: string
+  /** Active inspector tab when the inspector was visible. */
+  inspectorTab?: string
+  /** Appearance theme token at capture time. */
+  theme?: string
+  /** Prompt/message bubble preference at capture time. */
+  promptBubble?: string
+  /** Compact participant/mode summary for Ensemble chats. */
+  ensemble?: string
 }
 
 export interface BugReportSubmission {
@@ -77,6 +91,19 @@ function humanizeTimestamp(iso: string): string {
   })
 }
 
+function yamlString(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+function pushOptionalContext(lines: string[], label: string, value: unknown): void {
+  const text = optionalString(value)
+  if (text) lines.push(`- ${label}: ${text}`)
+}
+
 /**
  * Render a single bug-report submission to its Markdown form. Pure
  * — no fs touches. Returns the entry body without leading / trailing
@@ -93,13 +120,20 @@ export function renderBugReportMarkdown(submission: BugReportSubmission): string
   // it; everything else is structurally simple enough not to need
   // additional escaping.
   lines.push('---')
-  lines.push(`title: "${submission.title.replace(/"/g, '\\"')}"`)
+  lines.push(`title: ${yamlString(submission.title)}`)
   lines.push(`severity: ${submission.severity}`)
   lines.push(`timestamp: ${ctx.timestamp}`)
   lines.push(`version: ${ctx.version}`)
   lines.push(`provider: ${ctx.provider}`)
   lines.push(`workspace: ${ctx.workspace}`)
   lines.push(`shell: ${ctx.shell}`)
+  if (optionalString(ctx.surface)) lines.push(`surface: ${yamlString(ctx.surface!)}`)
+  if (optionalString(ctx.chatKind)) lines.push(`chat_kind: ${yamlString(ctx.chatKind!)}`)
+  if (optionalString(ctx.settingsTab)) lines.push(`settings_tab: ${yamlString(ctx.settingsTab!)}`)
+  if (optionalString(ctx.inspectorTab)) lines.push(`inspector_tab: ${yamlString(ctx.inspectorTab!)}`)
+  if (optionalString(ctx.theme)) lines.push(`theme: ${yamlString(ctx.theme!)}`)
+  if (optionalString(ctx.promptBubble)) lines.push(`prompt_bubble: ${yamlString(ctx.promptBubble!)}`)
+  if (optionalString(ctx.ensemble)) lines.push(`ensemble: ${yamlString(ctx.ensemble!)}`)
   lines.push('---')
   lines.push('')
   lines.push('## What happened')
@@ -120,8 +154,15 @@ export function renderBugReportMarkdown(submission: BugReportSubmission): string
   lines.push(`- Timestamp: ${human} (${ctx.timestamp})`)
   lines.push(`- Version: ${ctx.version}`)
   lines.push(`- Provider: ${ctx.provider}`)
+  pushOptionalContext(lines, 'Surface', ctx.surface)
+  pushOptionalContext(lines, 'Chat kind', ctx.chatKind)
   lines.push(`- Workspace: ${ctx.workspace}`)
   lines.push(`- Shell: ${ctx.shell}`)
+  pushOptionalContext(lines, 'Settings tab', ctx.settingsTab)
+  pushOptionalContext(lines, 'Inspector tab', ctx.inspectorTab)
+  pushOptionalContext(lines, 'Theme', ctx.theme)
+  pushOptionalContext(lines, 'Bubble', ctx.promptBubble)
+  pushOptionalContext(lines, 'Ensemble', ctx.ensemble)
   lines.push('')
   return lines.join('\n')
 }

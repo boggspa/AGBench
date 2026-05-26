@@ -215,7 +215,14 @@ describe('IpcValidation', () => {
             version: '1.0.1',
             provider: 'codex',
             workspace: '/Users/dev/projects/agbench',
-            shell: 'default'
+            shell: 'default',
+            surface: 'Ensemble',
+            chatKind: 'ensemble',
+            settingsTab: 'mcp',
+            inspectorTab: 'safety',
+            theme: 'midnight',
+            promptBubble: 'blue',
+            ensemble: '4 participants'
           }
         }
       ])
@@ -228,7 +235,8 @@ describe('IpcValidation', () => {
       version: '1.0.1',
       provider: 'codex',
       workspace: '/tmp/ws',
-      shell: 'default'
+      shell: 'default',
+      surface: 'Transcript'
     }
     // Bad severity.
     expect(() =>
@@ -277,5 +285,16 @@ describe('IpcValidation', () => {
         }
       ])
     ).toThrow(/context\.shell/)
+    expect(() =>
+      validateIpcArgs('submit-bug-report', [
+        {
+          title: 't',
+          description: '',
+          expected: '',
+          severity: 'minor',
+          context: { ...goodContext, surface: 42 as unknown as string }
+        }
+      ])
+    ).toThrow(/context\.surface/)
   })
 })
