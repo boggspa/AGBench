@@ -6054,6 +6054,54 @@ button.sidebar-item {
   padding-top: 30px;
 }
 
+/*
+ * 1.0.4 — per-shell composer-overlay alignment.
+ *
+ * Each composer shell overrides `.composer-textarea` padding to
+ * fit its native chrome (Codex sits flush at 6/6/10, Claude pads
+ * 12/14 with a 1px border). The highlight overlay sits BEHIND the
+ * textarea at `position: absolute; inset: 0` — if its padding
+ * doesn't match, the styled text drifts off the caret and reads
+ * as "doubled text" (Chris's exact report for Codex shell). Mirror
+ * each shell's textarea padding on the overlay so the two layers
+ * stay anchored.
+ *
+ * Claude shell additionally hard-pins `.composer-textarea`'s
+ * `background` with `!important` (line 24517+, `#1e1e1e` dark /
+ * `#f0f0f3` light). When the overlay is active, that opaque
+ * background OCCLUDES the overlay's painted text — Chris's
+ * "invisible text in dark mode" report. The `has-mention-overlay`
+ * override below forces the textarea fully transparent so the
+ * overlay shows through, using `!important` to beat the
+ * per-shell `!important` rules.
+ */
+[data-composer-style="codex"] .composer-textarea-highlight {
+  padding: 6px 6px 10px;
+}
+[data-composer-style="claude"] .composer-textarea-highlight {
+  padding: 12px 14px;
+}
+
+/*
+ * When the overlay is active, the textarea must be fully
+ * transparent so the painted overlay reads as the only visible
+ * text. The base rule at line 6061+ does this for the default
+ * composer, but the per-shell rules above (notably Claude shell
+ * at line 24517+ with `!important`) override `background` and
+ * `color`. We re-assert transparency here with `!important` so the
+ * shell's normal-state styling doesn't bleed into the overlay
+ * state — leaving the chrome alone when no mention is typed, and
+ * standing aside when one is.
+ */
+[data-composer-style] .composer-textarea.has-mention-overlay,
+[data-composer-style] .composer-textarea.has-mention-overlay:focus {
+  color: transparent !important;
+  background: transparent !important;
+  -webkit-text-fill-color: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
 /* When the highlight overlay is active, mute the textarea's own
  * text colour so only the overlay paints visible characters. Caret
  * stays a visible accent so the user always knows where they're
