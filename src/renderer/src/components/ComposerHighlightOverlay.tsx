@@ -33,6 +33,12 @@ interface ComposerHighlightOverlayProps {
   syncEpoch: string | number
 }
 
+export function composerHighlightScrollTransform(scrollLeft: number, scrollTop: number): string {
+  const x = Number.isFinite(scrollLeft) ? -scrollLeft : 0
+  const y = Number.isFinite(scrollTop) ? -scrollTop : 0
+  return `translate3d(${x}px, ${y}px, 0)`
+}
+
 /**
  * Visual layer that sits OVER the composer textarea and renders
  * the same prompt text, except `@Token` mentions that resolve to a
@@ -73,15 +79,17 @@ export function ComposerHighlightOverlay({
 }: ComposerHighlightOverlayProps): React.JSX.Element {
   const segments = tokeniseMentions(value, participants || [])
   const overlayRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current
     const overlay = overlayRef.current
-    if (!textarea || !overlay) return
+    const content = contentRef.current
+    if (!textarea || !overlay || !content) return
 
     /**
      * Copy the textarea's computed glyph-positioning properties
-     * onto the overlay. These are the ones that affect WHERE each
+     * onto the inner overlay content. These are the ones that affect WHERE each
      * character sits — change any of them and the two layers
      * diverge.
      *
@@ -94,36 +102,46 @@ export function ComposerHighlightOverlay({
      *   - `text-align` / `direction` (inherit normally)
      *
      * Border space is matched with a transparent border on the
-     * overlay so its content area is inset by the same number of
+     * content layer so its content area is inset by the same number of
      * pixels as the textarea's (border-box accounting).
      */
     const syncStyles = (): void => {
       const cs = getComputedStyle(textarea)
-      overlay.style.fontFamily = cs.fontFamily
-      overlay.style.fontSize = cs.fontSize
-      overlay.style.fontWeight = cs.fontWeight
-      overlay.style.fontStyle = cs.fontStyle
-      overlay.style.fontVariant = cs.fontVariant
-      overlay.style.lineHeight = cs.lineHeight
-      overlay.style.letterSpacing = cs.letterSpacing
-      overlay.style.wordSpacing = cs.wordSpacing
-      overlay.style.textTransform = cs.textTransform
-      overlay.style.textIndent = cs.textIndent
-      overlay.style.paddingTop = cs.paddingTop
-      overlay.style.paddingRight = cs.paddingRight
-      overlay.style.paddingBottom = cs.paddingBottom
-      overlay.style.paddingLeft = cs.paddingLeft
-      overlay.style.boxSizing = cs.boxSizing
-      overlay.style.borderTopWidth = cs.borderTopWidth
-      overlay.style.borderRightWidth = cs.borderRightWidth
-      overlay.style.borderBottomWidth = cs.borderBottomWidth
-      overlay.style.borderLeftWidth = cs.borderLeftWidth
-      overlay.style.borderStyle = 'solid'
-      overlay.style.borderColor = 'transparent'
+      content.style.fontFamily = cs.fontFamily
+      content.style.fontSize = cs.fontSize
+      content.style.fontWeight = cs.fontWeight
+      content.style.fontStyle = cs.fontStyle
+      content.style.fontVariant = cs.fontVariant
+      content.style.lineHeight = cs.lineHeight
+      content.style.letterSpacing = cs.letterSpacing
+      content.style.wordSpacing = cs.wordSpacing
+      content.style.textTransform = cs.textTransform
+      content.style.textIndent = cs.textIndent
+      content.style.paddingTop = cs.paddingTop
+      content.style.paddingRight = cs.paddingRight
+      content.style.paddingBottom = cs.paddingBottom
+      content.style.paddingLeft = cs.paddingLeft
+      content.style.boxSizing = cs.boxSizing
+      content.style.borderTopWidth = cs.borderTopWidth
+      content.style.borderRightWidth = cs.borderRightWidth
+      content.style.borderBottomWidth = cs.borderBottomWidth
+      content.style.borderLeftWidth = cs.borderLeftWidth
+      content.style.borderStyle = 'solid'
+      content.style.borderColor = 'transparent'
+      content.style.minHeight = `${Math.max(textarea.scrollHeight, textarea.clientHeight)}px`
+    }
+
+    const syncScroll = (): void => {
+      content.style.transform = composerHighlightScrollTransform(
+        textarea.scrollLeft,
+        textarea.scrollTop
+      )
     }
 
     // Initial sync
     syncStyles()
+    syncScroll()
+    textarea.addEventListener('scroll', syncScroll, { passive: true })
 
     // Catch any subsequent style change that affects the textarea's
     // size. `ResizeObserver` fires when content-box / border-box
@@ -131,48 +149,58 @@ export function ComposerHighlightOverlay({
     // swaps, and most font-family swaps (different glyph widths
     // change the intrinsic size). For pure-styling changes that
     // don't resize (rare), the `syncEpoch` dep below handles it.
-    if (typeof ResizeObserver === 'undefined') return
-    const observer = new ResizeObserver(syncStyles)
-    observer.observe(textarea)
-    return () => observer.disconnect()
-  }, [textareaRef, syncEpoch])
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            syncStyles()
+            syncScroll()
+          })
+    observer?.observe(textarea)
+    return () => {
+      textarea.removeEventListener('scroll', syncScroll)
+      observer?.disconnect()
+    }
+  }, [textareaRef, syncEpoch, value])
 
   return (
     <div ref={overlayRef} className="composer-textarea-highlight" aria-hidden="true">
-      {segments.map((segment, idx) => {
-        if (segment.kind === 'text') {
-          return <Fragment key={idx}>{segment.text}</Fragment>
-        }
-        if (segment.kind === 'user-mention') {
-          // 1.0.4 — `@user` / `@human` / `@you` chip. Tints with
-          // the user's chosen `--user-bubble-color` (Appearance
-          // settings) so the chip visually echoes their identity
-          // rather than any provider's brand.
+      <div ref={contentRef} className="composer-textarea-highlight-content">
+        {segments.map((segment, idx) => {
+          if (segment.kind === 'text') {
+            return <Fragment key={idx}>{segment.text}</Fragment>
+          }
+          if (segment.kind === 'user-mention') {
+            // 1.0.4 — `@user` / `@human` / `@you` chip. Tints with
+            // the user's chosen `--user-bubble-color` (Appearance
+            // settings) so the chip visually echoes their identity
+            // rather than any provider's brand.
+            return (
+              <span
+                key={idx}
+                className="composer-mention-token composer-mention-token--user"
+                style={{ color: `var(--user-bubble-base, var(--accent))` }}
+              >
+                {segment.text}
+              </span>
+            )
+          }
           return (
             <span
               key={idx}
-              className="composer-mention-token composer-mention-token--user"
-              style={{ color: `var(--user-bubble-base, var(--accent))` }}
+              className="composer-mention-token"
+              style={{ color: `var(--provider-${segment.provider}-color, var(--accent))` }}
             >
               {segment.text}
             </span>
           )
-        }
-        return (
-          <span
-            key={idx}
-            className="composer-mention-token"
-            style={{ color: `var(--provider-${segment.provider}-color, var(--accent))` }}
-          >
-            {segment.text}
-          </span>
-        )
-      })}
-      {/* Trailing newline so the overlay's last line gets line-height
-          treatment even when `value` ends with `\n`. textareas treat
-          a trailing newline as a real line; pre-wrap divs would
-          collapse without this. */}
-      {'\n'}
+        })}
+        {/* Trailing newline so the overlay's last line gets line-height
+            treatment even when `value` ends with `\n`. textareas treat
+            a trailing newline as a real line; pre-wrap divs would
+            collapse without this. */}
+        {'\n'}
+      </div>
     </div>
   )
 }

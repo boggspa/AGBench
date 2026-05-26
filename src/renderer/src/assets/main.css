@@ -5980,18 +5980,25 @@ button.sidebar-item {
   pointer-events: none;
   user-select: none;
   overflow: hidden;
-  font-family: var(--composer-font-family);
-  font-size: calc(var(--font-size-md) + 2px);
-  line-height: 1.55;
-  padding: 22px 6px 0;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-  overflow-wrap: break-word;
   color: var(--text-primary);
   /* Render below the textarea but above the composer background.
    * The textarea's transparent text doesn't occlude us, so the
    * highlight reads as the visible layer. */
   z-index: 0;
+}
+
+.composer-textarea-highlight-content {
+  min-height: 100%;
+  font-family: var(--composer-font-family);
+  font-size: calc(var(--font-size-md) + 2px);
+  line-height: 1.55;
+  padding: 22px 6px 0;
+  box-sizing: border-box;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: var(--text-primary);
+  will-change: transform;
 }
 
 .composer-textarea-highlight .composer-mention-token {
@@ -6248,6 +6255,29 @@ button.sidebar-item {
   margin-left: auto;
   margin-right: -4px;
   flex-shrink: 0;
+}
+
+.composer-telemetry-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  min-height: 18px;
+  margin: 5px 8px 0;
+  padding: 0 2px;
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+
+.composer-telemetry-row .composer-run-timecode {
+  justify-content: flex-start;
+  min-width: 116px;
+  color: inherit;
+}
+
+.composer-telemetry-row .composer-thread-token-tally {
+  margin-left: auto;
+  max-width: min(360px, 48vw);
+  text-align: right;
 }
 
 .composer-thread-token-tally {
@@ -18149,17 +18179,6 @@ input:disabled, select:disabled, textarea:disabled {
 .composer-claude-chip svg:first-child { opacity: 0.85; }
 .composer-claude-chip > svg:last-child  { opacity: 0.55; }
 
-.composer-claude-runtime-chip {
-  color: color-mix(in srgb, #f4b56c 88%, var(--text-primary) 12%);
-  border-color: color-mix(in srgb, #f4b56c 26%, transparent);
-  background: color-mix(in srgb, #f4b56c 10%, transparent);
-}
-
-.composer-picker-label.composer-claude-runtime-chip {
-  border-color: color-mix(in srgb, #f4b56c 28%, transparent);
-  background: color-mix(in srgb, #f4b56c 10%, transparent);
-}
-
 /* YOLO/Trust-mode chip — collapsed state of the dismissed
  * .provider-yolo banner. Sits inline in the composer's action
  * row so the user has a persistent reminder that auto-approve
@@ -19191,13 +19210,6 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-interface-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
   color: color-mix(in srgb, #ffb36c 82%, #ffffff 18%) !important;
-}
-
-[data-interface-style="claude"] .composer-claude-runtime-chip,
-[data-interface-style="claude"] .composer-picker-label.composer-claude-runtime-chip {
-  background: color-mix(in srgb, #f4a35d 8%, transparent);
-  border-color: color-mix(in srgb, #f4a35d 18%, transparent);
-  color: color-mix(in srgb, #f4b56c 76%, #ffffff 24%);
 }
 
 [data-interface-style="codex"] .welcome-hero,
@@ -23617,6 +23629,10 @@ input:disabled, select:disabled, textarea:disabled {
   font-family: var(--font-mono);
 }
 
+[data-composer-style="terminal"] .composer-telemetry-row {
+  color: color-mix(in srgb, #ccffe4 68%, transparent);
+}
+
 [data-composer-style="terminal"] .composer-run-timecode[data-running="true"] {
   color: #00ff88;
 }
@@ -23675,6 +23691,10 @@ input:disabled, select:disabled, textarea:disabled {
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-run-timecode {
   color: rgba(13, 70, 46, 0.68);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-telemetry-row {
+  color: rgba(13, 70, 46, 0.72);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-run-timecode[data-running="true"] {
@@ -27148,6 +27168,54 @@ input:disabled, select:disabled, textarea:disabled {
     transparent 62%,
     color-mix(in srgb, var(--ensemble-shell-tint-3) 8%, transparent) 82%,
     color-mix(in srgb, var(--ensemble-shell-tint-4) 12%, transparent)
+  );
+  box-shadow: none;
+}
+
+/* Composer above-row gradient parity.
+ *
+ * Gemini/Kimi shells intentionally hid the above-bar ::before layer
+ * when these rows were plain utility strips. Ensemble now makes the
+ * two upper rows part of the visual composer stack, so restore the
+ * same tinted overlay the composer surface already carries. Keep the
+ * scope away from Codex/Claude: those shells have bespoke above-row
+ * presentation that should remain unchanged. */
+[data-composer-style="gemini"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+[data-composer-style="gemini"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before,
+[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before {
+  display: block !important;
+  opacity: 0.72;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ensemble-shell-tint-1) 22%, transparent),
+    color-mix(in srgb, var(--ensemble-shell-tint-2) 14%, transparent) 18%,
+    transparent 36%,
+    transparent 64%,
+    color-mix(in srgb, var(--ensemble-shell-tint-3) 14%, transparent) 82%,
+    color-mix(in srgb, var(--ensemble-shell-tint-4) 22%, transparent)
+  );
+  box-shadow:
+    inset 42px 0 52px -30px color-mix(in srgb, var(--ensemble-shell-tint-1) 24%, transparent),
+    inset -42px 0 52px -30px color-mix(in srgb, var(--ensemble-shell-tint-4) 22%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .composer-above-bar::before,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="default"] .app-transcript.chat-kind-ensemble .ensemble-above-row::before {
+  display: block !important;
+  opacity: 0.5;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--ensemble-shell-tint-1) 13%, transparent),
+    color-mix(in srgb, var(--ensemble-shell-tint-2) 9%, transparent) 18%,
+    transparent 38%,
+    transparent 62%,
+    color-mix(in srgb, var(--ensemble-shell-tint-3) 9%, transparent) 82%,
+    color-mix(in srgb, var(--ensemble-shell-tint-4) 13%, transparent)
   );
   box-shadow: none;
 }

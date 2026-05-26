@@ -3586,10 +3586,6 @@ const CLAUDE_MODEL_IDS = new Set([
   'claude-opus-4-6'
 ])
 const KIMI_MODEL_IDS = new Set(KIMI_DEFAULT_MODELS.map((model) => model.id))
-const CLAUDE_AGENT_SDK_CREDIT_NOTICE =
-  'Claude runs inside AGBench use Agent SDK or claude -p programmatic paths. From 2026-06-15 Anthropic says these use separate Agent SDK credit, not normal interactive Claude Code subscription limits.'
-const CLAUDE_API_KEY_PAYG_NOTICE =
-  'Claude runs inside AGBench use the saved Anthropic API key when configured, so usage is API/PAYG rather than normal interactive Claude Code subscription limits.'
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000
 const GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global_chats__'
@@ -14484,11 +14480,6 @@ function App(): React.JSX.Element {
   const claudeReasoningOptions = currentClaudeModelOption?.supportedReasoningEfforts?.length
     ? currentClaudeModelOption.supportedReasoningEfforts
     : CLAUDE_THINKING_EFFORTS
-  const claudeUsesApiKey = Boolean(claudeAuthStatus?.apiKeyConfigured)
-  const claudeRuntimeLabel = claudeUsesApiKey ? 'Claude API / PAYG' : 'Claude SDK credit'
-  const claudeRuntimeNotice = claudeUsesApiKey
-    ? CLAUDE_API_KEY_PAYG_NOTICE
-    : CLAUDE_AGENT_SDK_CREDIT_NOTICE
   const hasAgenticApprovalGate =
     agenticServices.shellCommands !== 'allow' ||
     agenticServices.fileChanges !== 'allow' ||
@@ -17251,10 +17242,6 @@ function App(): React.JSX.Element {
                     </label>
                       )
                     })()}
-                    <ComposerRunTimecode
-                      running={isCurrentChatRunning}
-                      startedAt={composerRunTimecodeStartedAt}
-                    />
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here
@@ -17599,16 +17586,6 @@ function App(): React.JSX.Element {
                       reasoning effort.
                     */}
 
-                    {currentProvider === 'claude' && (
-                      <span
-                        className="composer-picker-label composer-claude-runtime-chip"
-                        title={claudeRuntimeNotice}
-                        data-composer-control="claude-runtime"
-                      >
-                        <span className="composer-control-label-text">{claudeRuntimeLabel}</span>
-                      </span>
-                    )}
-
                     {(() => {
                       // CombinedPermissionsPicker — replaces the
                       // native <select> permission picker AND
@@ -17779,14 +17756,6 @@ function App(): React.JSX.Element {
                   </div>
                   <div className="composer-inline-actions">
                     <ContextWheel percent={contextUsedPercent} label={contextLabel} />
-                    {threadTokenTallyLabel && (
-                      <span
-                        className="composer-thread-token-tally"
-                        title={threadTokenTallyTooltip}
-                      >
-                        {threadTokenTallyLabel}
-                      </span>
-                    )}
                     {steerIndicatorMessage && (
                       <span className="composer-steer-indicator" role="status" aria-live="polite">
                         <span className="composer-steer-indicator-dot" aria-hidden />
@@ -17912,6 +17881,20 @@ function App(): React.JSX.Element {
                   >
                     Workspace trust is not established. Enable session trust or use Trust Assistant.
                   </div>
+                )}
+              </div>
+              <div
+                className="composer-telemetry-row"
+                data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
+              >
+                <ComposerRunTimecode
+                  running={isCurrentChatRunning}
+                  startedAt={composerRunTimecodeStartedAt}
+                />
+                {threadTokenTallyLabel && (
+                  <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
+                    {threadTokenTallyLabel}
+                  </span>
                 )}
               </div>
               {/*
