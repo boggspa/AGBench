@@ -24250,12 +24250,32 @@ input:disabled, select:disabled, textarea:disabled {
   font-variant-numeric: tabular-nums;
 }
 
+/* Pull tighter against the diff button — the parent has a 10px
+ * `gap` which is a touch wide for the diff-to-PR pairing real
+ * Claude shows. -6px lands on a 4px effective gap. */
 [data-composer-style="claude"] .composer-above-bar .composer-above-bar-action {
-  order: 10;
-  /* Pull tighter against the diff button — the parent has a 10px
-   * `gap` which is a touch wide for the diff-to-PR pairing real
-   * Claude shows. -6px lands on a 4px effective gap. */
   margin-left: -6px;
+}
+/*
+ * 1.0.4 fix — the action button is wrapped in
+ * `.composer-diff-action-menu-wrap` (App.tsx:15589, base rule
+ * at main.css:17305), which is the actual flex child of
+ * `.composer-above-bar`. Order needs to live on the WRAPPER
+ * for the right-anchored trio (files → stats → action) to
+ * reflow correctly — setting `order: 10` on the inner button
+ * was a no-op since the inner button isn't a flex item, which
+ * left the wrapper at default `order: 0` ahead of files
+ * (order 8) and stats (order 9) and parked Review changes
+ * mid-row instead of at the far right end.
+ *
+ * Also overrides the base rule's `margin-left: auto`
+ * (main.css:17308) so the wrapper sits tight to stats — the
+ * files chip is the single auto-margin that consumes leftover
+ * space and pushes the whole trio to the right.
+ */
+[data-composer-style="claude"] .composer-above-bar .composer-diff-action-menu-wrap {
+  order: 10;
+  margin-left: 0;
 }
 
 /* Light-mode counterparts for the new files-changed button skin. */
