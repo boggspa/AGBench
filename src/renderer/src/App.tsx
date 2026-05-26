@@ -16119,12 +16119,23 @@ function App(): React.JSX.Element {
                   prompt,
                   currentChat?.ensemble?.participants || []
                 )
+                // 1.0.4 — sync epoch for the overlay's auto-metric
+                // mirror. Any change in the inputs below can shift
+                // the textarea's computed font / padding / border,
+                // so we encode them into a single string the
+                // overlay watches as a useLayoutEffect dep. The
+                // ResizeObserver inside the overlay handles every
+                // size-changing variation that happens between
+                // these explicit triggers.
+                const composerOverlaySyncEpoch = `${appearance.composerStyle}|${appearance.themeAppearance}|${isWelcomeChat ? 'welcome' : 'active'}`
                 return (
                   <div className="composer-textarea-wrap">
                     {composerHasMention && (
                       <ComposerHighlightOverlay
                         value={prompt}
                         participants={currentChat?.ensemble?.participants}
+                        textareaRef={composerTextareaRef}
+                        syncEpoch={composerOverlaySyncEpoch}
                       />
                     )}
                     <textarea
