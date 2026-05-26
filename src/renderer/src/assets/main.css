@@ -8456,84 +8456,48 @@ button.diff-file-row {
  * naturally inside the activity-row text (e.g. "Codex yielding to
  * [@Gems]" where [@Gems] is a small Gemini-blue pill).
  *
- * Tinting hooks: `.provider-<id>` modifier classes carry the
- * provider's brand colour. Falls back to a neutral accent when the
- * target can't be resolved against the participant roster (e.g.
- * mention to an unknown role).
+ * Colour cascade — the chip uses a single `--provider-tint` custom
+ * property that the provider modifier classes (`.provider-codex` /
+ * `.provider-claude` / `.provider-gemini` / `.provider-kimi`) set.
+ * The base rule references `var(--provider-tint, <neutral>)` so a
+ * chip without any provider class falls back to a neutral grey
+ * rather than the user's selected `--accent` colour (which would
+ * read as "this is somehow the user's themed chip" rather than
+ * "we couldn't resolve who the target is"). The running-state
+ * override below then only has to touch the shimmer-clipping
+ * mechanics — `--provider-tint` cascades through naturally so we
+ * don't have to re-state every provider colour in two places.
  */
 .activity-yield-target {
+  --provider-tint: #9da6b8;
   display: inline-flex;
   align-items: center;
   padding: 1px 8px;
   margin: 0 1px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 32%, transparent);
-  background: color-mix(in srgb, var(--accent, #5a8cff) 14%, transparent);
-  color: color-mix(in srgb, var(--accent, #5a8cff) 92%, #ffffff 8%);
+  border: 1px solid color-mix(in srgb, var(--provider-tint) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
   font-weight: 600;
   font-size: 0.94em;
   line-height: 1.25;
   white-space: nowrap;
 }
 
-.activity-yield-target.provider-codex {
-  --provider-tint: #aaa0ff;
-  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
-  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
-}
+.activity-yield-target.provider-codex { --provider-tint: #aaa0ff; }
+.activity-yield-target.provider-claude { --provider-tint: #ffad64; }
+.activity-yield-target.provider-gemini { --provider-tint: #8eb1ff; }
+.activity-yield-target.provider-kimi { --provider-tint: #bbcf66; }
 
-.activity-yield-target.provider-claude {
-  --provider-tint: #ffad64;
-  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
-  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
-}
-
-.activity-yield-target.provider-gemini {
-  --provider-tint: #8eb1ff;
-  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
-  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
-}
-
-.activity-yield-target.provider-kimi {
-  --provider-tint: #bbcf66;
-  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
-  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
-}
-
-/* Light theme — chip carries the provider tint at higher saturation
- * against the lighter background so it stays legible. */
+/*
+ * Light theme — chip carries the provider tint at higher saturation
+ * against the lighter background so it stays legible. The same
+ * `--provider-tint` cascade applies; we just adjust the mix ratios.
+ */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target {
-  background: color-mix(in srgb, var(--accent, #5a8cff) 18%, white 82%);
-  color: color-mix(in srgb, var(--accent, #5a8cff) 70%, #1d1d1f 30%);
-  border-color: color-mix(in srgb, var(--accent, #5a8cff) 36%, transparent);
-}
-
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-codex {
-  background: color-mix(in srgb, #aaa0ff 18%, white 82%);
-  color: color-mix(in srgb, #6e60d0 100%, transparent);
-  border-color: color-mix(in srgb, #aaa0ff 38%, transparent);
-}
-
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-claude {
-  background: color-mix(in srgb, #ffad64 18%, white 82%);
-  color: color-mix(in srgb, #cb6a25 100%, transparent);
-  border-color: color-mix(in srgb, #ffad64 38%, transparent);
-}
-
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-gemini {
-  background: color-mix(in srgb, #8eb1ff 18%, white 82%);
-  color: color-mix(in srgb, #4d72c8 100%, transparent);
-  border-color: color-mix(in srgb, #8eb1ff 38%, transparent);
-}
-
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-kimi {
-  background: color-mix(in srgb, #bbcf66 18%, white 82%);
-  color: color-mix(in srgb, #6f8528 100%, transparent);
-  border-color: color-mix(in srgb, #bbcf66 38%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 18%, white 82%);
+  color: color-mix(in srgb, var(--provider-tint) 70%, #1d1d1f 30%);
+  border-color: color-mix(in srgb, var(--provider-tint) 38%, transparent);
 }
 
 /*
@@ -8547,65 +8511,35 @@ button.diff-file-row {
  * (the at-a-glance "who's yielding to whom" signal) while the
  * surrounding label text continues to shimmer normally.
  *
+ * The override is provider-agnostic — `var(--provider-tint)` reads
+ * from the same custom property the base chip rules set, so the
+ * shimmer-running state inherits whichever provider colour is on
+ * the chip without needing per-provider duplicate rules. Removes
+ * the `--accent` dependency that previously caused chips to show
+ * the user-selected theme accent during running state instead of
+ * the target's provider colour.
+ *
  * `-webkit-text-fill-color: currentColor` is the targeted reset for
- * the shimmer's `-webkit-text-fill-color: transparent`. `background-
- * clip: border-box` reverts the text-clipping that would otherwise
- * keep the gradient confined to glyph shapes. The chip's text now
- * paints over its own pill background instead of through a clipped
- * gradient.
+ * the shimmer's `-webkit-text-fill-color: transparent`.
+ * `background-clip: border-box` reverts the text-clipping that
+ * would otherwise keep the gradient confined to glyph shapes. The
+ * chip's text now paints over its own pill background instead of
+ * through a clipped gradient.
  */
 .activity-row[data-status="running"] .activity-yield-target {
-  background: color-mix(in srgb, var(--accent, #5a8cff) 14%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
   background-size: auto;
   background-clip: border-box;
   -webkit-background-clip: border-box;
-  color: color-mix(in srgb, var(--accent, #5a8cff) 92%, #ffffff 8%);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
   -webkit-text-fill-color: currentColor;
   animation: none;
 }
-.activity-row[data-status="running"] .activity-yield-target.provider-codex {
-  background: color-mix(in srgb, #aaa0ff 14%, transparent);
-  color: color-mix(in srgb, #aaa0ff 92%, #ffffff 8%);
-}
-.activity-row[data-status="running"] .activity-yield-target.provider-claude {
-  background: color-mix(in srgb, #ffad64 14%, transparent);
-  color: color-mix(in srgb, #ffad64 92%, #ffffff 8%);
-}
-.activity-row[data-status="running"] .activity-yield-target.provider-gemini {
-  background: color-mix(in srgb, #8eb1ff 14%, transparent);
-  color: color-mix(in srgb, #8eb1ff 92%, #ffffff 8%);
-}
-.activity-row[data-status="running"] .activity-yield-target.provider-kimi {
-  background: color-mix(in srgb, #bbcf66 14%, transparent);
-  color: color-mix(in srgb, #bbcf66 92%, #ffffff 8%);
-}
 
-/* Light-theme variants for the running-state override — mirrors the
- * light-theme chip styles above with the same hue saturation. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
   .activity-row[data-status="running"] .activity-yield-target {
-  background: color-mix(in srgb, var(--accent, #5a8cff) 18%, white 82%);
-  color: color-mix(in srgb, var(--accent, #5a8cff) 70%, #1d1d1f 30%);
-}
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
-  .activity-row[data-status="running"] .activity-yield-target.provider-codex {
-  background: color-mix(in srgb, #aaa0ff 18%, white 82%);
-  color: color-mix(in srgb, #6e60d0 100%, transparent);
-}
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
-  .activity-row[data-status="running"] .activity-yield-target.provider-claude {
-  background: color-mix(in srgb, #ffad64 18%, white 82%);
-  color: color-mix(in srgb, #cb6a25 100%, transparent);
-}
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
-  .activity-row[data-status="running"] .activity-yield-target.provider-gemini {
-  background: color-mix(in srgb, #8eb1ff 18%, white 82%);
-  color: color-mix(in srgb, #4d72c8 100%, transparent);
-}
-:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
-  .activity-row[data-status="running"] .activity-yield-target.provider-kimi {
-  background: color-mix(in srgb, #bbcf66 18%, white 82%);
-  color: color-mix(in srgb, #6f8528 100%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 18%, white 82%);
+  color: color-mix(in srgb, var(--provider-tint) 70%, #1d1d1f 30%);
 }
 
 /* Transcript truncation: long shell commands (full /Users/... paths,
