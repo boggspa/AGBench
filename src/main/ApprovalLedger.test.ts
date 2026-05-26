@@ -110,6 +110,60 @@ describe('ApprovalLedger', () => {
     expect(expired.find((record) => record.approvalId === 'approval-3')?.status).toBe('approved')
   })
 
+  // 1.0.4-AD: panel-consensus review — pending approval rows bound to a
+  // finishing run were left as `pending` indefinitely (until the 24h
+  // recovery sweep), even though the run was over and no decision was
+  // ever going to land. This made the ledger UI accumulate "ghost"
+  // pending rows for cancelled / completed runs. The fix sweeps pending
+  // records belonging to the run on terminal lifecycle transitions,
+  // transactionally with the existing approved-scope expiration.
+  it('expires pending approvals bound to a finishing run', () => {
+    const pendingInRun = createApprovalLedgerRecord(
+      { ...baseRequest, approvalId: 'pending-1', id: 'pending-1' },
+      '2026-05-07T00:00:00.000Z'
+    )
+    const pendingOtherRun = createApprovalLedgerRecord(
+      {
+        ...baseRequest,
+        approvalId: 'pending-2',
+        id: 'pending-2',
+        runId: 'run-2'
+      },
+      '2026-05-07T00:00:00.000Z'
+    )
+
+    const expired = expireScopedApprovalLedgerRecords(
+      [pendingInRun, pendingOtherRun],
+      { runId: 'run-1', scopes: ['run', 'session'], reason: 'run_completed' },
+      '2026-05-07T00:04:00.000Z'
+    )
+
+    const swept = expired.find((record) => record.approvalId === 'pending-1')
+    expect(swept?.status).toBe('expired')
+    expect(swept?.expiration.expiredAt).toBe('2026-05-07T00:04:00.000Z')
+    expect(swept?.expiration.expiredReason).toBe('run_completed')
+    // Pending row from an unrelated run is untouched.
+    expect(expired.find((record) => record.approvalId === 'pending-2')?.status).toBe('pending')
+  })
+
+  it('leaves pending approvals without a matching runId untouched', () => {
+    const orphanRunPending = createApprovalLedgerRecord(
+      {
+        ...baseRequest,
+        approvalId: 'pending-no-run',
+        id: 'pending-no-run',
+        runId: undefined
+      },
+      '2026-05-07T00:00:00.000Z'
+    )
+    const expired = expireScopedApprovalLedgerRecords(
+      [orphanRunPending],
+      { runId: 'run-1', scopes: ['run', 'session'], reason: 'run_completed' },
+      '2026-05-07T00:04:00.000Z'
+    )
+    expect(expired[0].status).toBe('pending')
+  })
+
   it('filters ledger records while hiding expired history by default', () => {
     const pending = createApprovalLedgerRecord(baseRequest, '2026-05-07T00:00:00.000Z')
     const expired = recoverExpiredApprovalLedgerRecords(

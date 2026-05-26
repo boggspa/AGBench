@@ -184,6 +184,19 @@ export function expireScopedApprovalLedgerRecords(
 ): ApprovalLedgerRecord[] {
   const scopeSet = new Set(filter.scopes)
   return records.map((record) => {
+    // 1.0.4-AD: a pending request bound to the finishing run has no
+    // decision path left — the renderer can't respond once the run is
+    // gone, and the in-memory pendingX maps are cleared by
+    // `runManager.finish`. Sweep these alongside the approved-scope
+    // expiration so the auto-allow / manual-resolve / run-end paths
+    // are transactional with the ledger and "completed runs" never
+    // leave orphan pending rows hanging until the 24h recovery sweep.
+    if (record.status === 'pending') {
+      if (!filter.runId || record.runId !== filter.runId) return record
+      if (filter.provider && record.provider !== filter.provider) return record
+      if (filter.workspacePath && record.workspacePath !== filter.workspacePath) return record
+      return expireApprovalLedgerRecord(record, now, filter.reason)
+    }
     if (record.status !== 'approved') return record
     if (!record.grantedScope || !scopeSet.has(record.grantedScope)) return record
     if (filter.runId && record.runId !== filter.runId) return record
