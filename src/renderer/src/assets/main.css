@@ -6077,29 +6077,72 @@ button.sidebar-item {
  */
 [data-composer-style="codex"] .composer-textarea-highlight {
   padding: 6px 6px 10px;
+  /* Codex shell removes the textarea border (line 17971); overlay
+   * matches with no border so content areas align. */
+  border: 0;
 }
 [data-composer-style="claude"] .composer-textarea-highlight {
   padding: 12px 14px;
+  /* Claude shell adds `border: 1px solid` to the textarea. With
+   * `box-sizing: border-box`, the textarea's CONTENT area is inset
+   * by 1px on each edge relative to its outer box. The overlay
+   * has no border by default — without this match, the overlay's
+   * content area is 2px wider and 1px to the LEFT of the
+   * textarea's content area, so as you type, the styled overlay
+   * text drifts horizontally and wraps differently from the
+   * caret. A transparent 1px border on the overlay restores
+   * exact pixel-level alignment. */
+  border: 1px solid transparent;
 }
 
 /*
- * When the overlay is active, the textarea must be fully
+ * When the overlay is active, the textarea's TEXT must be fully
  * transparent so the painted overlay reads as the only visible
- * text. The base rule at line 6061+ does this for the default
- * composer, but the per-shell rules above (notably Claude shell
- * at line 24517+ with `!important`) override `background` and
- * `color`. We re-assert transparency here with `!important` so the
- * shell's normal-state styling doesn't bleed into the overlay
- * state — leaving the chrome alone when no mention is typed, and
- * standing aside when one is.
+ * text. Background, border, and shadow STAY — the per-shell rules
+ * (Claude shell at line 24517+ etc.) keep the textarea's native
+ * chrome visible. The overlay then paints ON TOP of that chrome
+ * (z-index flip below) instead of behind it.
+ *
+ * Previous attempt forced `background: transparent !important`
+ * + `border-color: transparent !important` which produced two
+ * regressions: (1) Claude shell composer went see-through
+ * because the per-shell #1e1e1e bg was clobbered, (2) the
+ * textarea's content area shifted by the now-invisible 1px
+ * border space causing 1px horizontal drift between typed text
+ * and overlay text → "text tracking distorts." This version
+ * touches only what's strictly required (text colour) and
+ * leaves chrome alone.
  */
 [data-composer-style] .composer-textarea.has-mention-overlay,
 [data-composer-style] .composer-textarea.has-mention-overlay:focus {
   color: transparent !important;
-  background: transparent !important;
   -webkit-text-fill-color: transparent !important;
-  border-color: transparent !important;
-  box-shadow: none !important;
+}
+
+/*
+ * Flip the highlight overlay ABOVE the textarea (was z-index 0
+ * BELOW the textarea at z-index 1). The previous stack relied on
+ * the textarea's transparent background to let the overlay show
+ * through — that broke whenever a per-shell rule pinned an
+ * opaque background (Claude shell `#1e1e1e !important` / light
+ * `#f0f0f3 !important`).
+ *
+ * With the overlay on top:
+ *   - The textarea's native chrome (bg + border + shadow) renders
+ *     in its normal layer.
+ *   - The overlay paints the styled text directly on top of that
+ *     chrome — no occlusion possible.
+ *   - The textarea's own text is `color: transparent` (rule above)
+ *     so the overlay is the only visible text source.
+ *   - `pointer-events: none` on the overlay (line 5982) means
+ *     clicks still hit the textarea — caret + typing unaffected.
+ *
+ * Applies in all shells, so the dark-theme + Claude-shell
+ * "invisible text" case + the per-shell padding-mismatch
+ * "doubled text" case both resolve cleanly.
+ */
+.composer-textarea-highlight {
+  z-index: 2;
 }
 
 /* When the highlight overlay is active, mute the textarea's own
