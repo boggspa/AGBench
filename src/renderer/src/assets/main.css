@@ -5979,6 +5979,21 @@ button.sidebar-item {
   text-shadow: 0 0 1px currentColor;
 }
 
+/*
+ * 1.0.4 — welcome-mode adds `padding-top: 30px` to the composer
+ * textarea (line 5734) to make room for the "Ask <Provider>
+ * anything…" placeholder hero, but the base highlight overlay was
+ * stuck at `padding-top: 22px` — leaving an 8px vertical drift
+ * between the overlay's styled tags and the textarea's caret. The
+ * overlay rendered the bold + provider-tinted text 8px ABOVE where
+ * the user was typing, so the styling appeared "missing" even when
+ * the mention resolved and the overlay was mounted. Mirror the
+ * welcome-mode padding bump so the two layers stay aligned.
+ */
+.welcome-mode .composer-textarea-highlight {
+  padding-top: 30px;
+}
+
 /* When the highlight overlay is active, mute the textarea's own
  * text colour so only the overlay paints visible characters. Caret
  * stays a visible accent so the user always knows where they're

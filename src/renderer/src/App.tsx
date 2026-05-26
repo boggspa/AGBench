@@ -8674,11 +8674,22 @@ function App(): React.JSX.Element {
       // `End` mirrors the jump-to-latest pill: smooth-scroll to the
       // bottom and clear the unread counter. Fires only when focus is
       // within the transcript scroller (the listener is scroller-
-      // scoped), so it does not steal `End` from the composer textarea
-      // or from line-end behaviour inside fenced code blocks.
+      // scoped). When focus is on an editable element inside the
+      // transcript (an inline chat-title rename, a textarea inside a
+      // tool card, a contenteditable code block) End is line-end
+      // navigation — let the native behaviour through and skip our
+      // jump-to-bottom. Otherwise the user can never reach the end
+      // of a line they're editing.
       if (event.key === 'End') {
-        event.preventDefault()
-        handleJumpToLatestRef.current()
+        const focused = event.target as Element | null
+        const isEditable =
+          focused instanceof HTMLInputElement ||
+          focused instanceof HTMLTextAreaElement ||
+          (focused instanceof HTMLElement && focused.isContentEditable)
+        if (!isEditable) {
+          event.preventDefault()
+          handleJumpToLatestRef.current()
+        }
       }
     }
 
@@ -16011,9 +16022,21 @@ function App(): React.JSX.Element {
                 // base padding). Chris hit this on the ensemble
                 // welcome screen — text invisible in Claude shell,
                 // vertical sync issues in others.
-                const composerHasMention =
-                  isCurrentEnsembleChat &&
-                  hasResolvedMention(prompt, currentChat?.ensemble?.participants || [])
+                // 1.0.4 — drop the `isCurrentEnsembleChat` precondition.
+                // `hasResolvedMention` already self-guards on
+                // `participants.length === 0`, so non-ensemble chats
+                // are excluded naturally. The extra gate caused a
+                // regression on the ensemble welcome screen where
+                // `chatKind === 'ensemble'` evaluated false during
+                // some welcome-surface render passes — leaving typed
+                // tags as plain white text instead of bold +
+                // provider-tinted (Chris's "tags not lighting up"
+                // report). Now: anywhere participants ARE configured
+                // and a mention resolves, the overlay activates.
+                const composerHasMention = hasResolvedMention(
+                  prompt,
+                  currentChat?.ensemble?.participants || []
+                )
                 return (
                   <div className="composer-textarea-wrap">
                     {composerHasMention && (
