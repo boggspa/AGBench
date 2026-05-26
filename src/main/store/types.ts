@@ -315,6 +315,48 @@ export interface EnsembleConfig {
   participants: EnsembleParticipant[]
   activeRound?: EnsembleRoundState
   updatedAt?: string
+  /**
+   * 1.0.4-AF — opt-in "self-reflective" mode. When true, the ensemble
+   * prompt's deictic-resolution rule (1.0.4-Q) is inverted so
+   * "this app / this repo" refers to AGBench itself rather than the
+   * active workspace. Used by the `/discuss` slash command for
+   * meta-conversations about the harness.
+   */
+  selfReflective?: boolean
+}
+
+/**
+ * 1.0.4-AE — typed shape for the `provider_auth_status` MCP tool,
+ * split out of the legacy single-string `appServer` field into
+ * orthogonal concerns the panel review flagged as conflated:
+ *   - `serverState`: lifecycle ('started' / 'lazy' / 'unavailable')
+ *   - `transport`: wire protocol ('cli' / 'sdk' / 'app-server' / 'unavailable')
+ *   - `approvalSupport`: capability — does this provider's adapter
+ *     route approvals through AGBench's main-authority gate?
+ *   - `mcpStatusSupport`: capability — can the adapter answer
+ *     MCP status probes (Codex via app-server, the others not yet).
+ *   - `authState`: actionable state, not the previous vague
+ *     `'unknown'` catch-all.
+ */
+export type ProviderAuthServerState = 'started' | 'lazy' | 'unavailable'
+export type ProviderAuthTransport = 'cli' | 'sdk' | 'app-server' | 'unavailable'
+export type ProviderAuthState =
+  | 'authenticated'
+  | 'not-queried'
+  | 'not-observable'
+  | 'missing'
+
+export interface ProviderAuthStatusV2 {
+  provider: ProviderId
+  serverState: ProviderAuthServerState
+  transport: ProviderAuthTransport
+  approvalSupport: boolean
+  mcpStatusSupport: boolean
+  authState: ProviderAuthState
+  /** Optional human-readable reason — populated for `missing` /
+   * `not-observable` / `not-queried` states where context helps the
+   * agent decide what to do next (re-auth, surface to user, etc.). */
+  authReason?: string
 }
 
 export interface GeminiMcpBridgeStatus {
