@@ -64,17 +64,23 @@ const BOUNDARY_CHARS = `\\s(\\[{<>"'\`!?,;:.`
  * Multi-word mention regex. Matches:
  *   - A boundary (start-of-string OR one of BOUNDARY_CHARS)
  *   - `@`
- *   - First chunk: letter-led, then letters/digits/dot/underscore/dash, max 33 chars
+ *   - First chunk: letter-led, then letters/digits/dot/underscore/
+ *     dash/hash, max 33 chars
  *   - Up to 3 additional chunks, each preceded by whitespace, allowing
- *     letters/digits/dot/underscore/dash; max 33 chars each.
+ *     letters/digits/dot/underscore/dash/hash; max 33 chars each.
  *
  * 4 chunks total covers the longest realistic alias ("gpt 5 codex
  * spark" = 4) without being so greedy that it eats normal prose.
  * After the regex matches, `resolveMentionMatch` decides how many of
  * the captured chunks actually resolve to a participant.
+ *
+ * `#` is in the continuation chunks' lead-char class so role names
+ * like "Chodex #2" / "Captain K #3" resolve correctly — without it,
+ * `@Chodex #2` captured only `@Chodex` and the bare token failed to
+ * match the multi-word alias `chodex #2`. 1.0.4 fix.
  */
 const MENTION_REGEX = new RegExp(
-  `(^|[${BOUNDARY_CHARS}])@([A-Za-z][A-Za-z0-9._-]{0,32}(?:\\s+[A-Za-z0-9][A-Za-z0-9._-]{0,32}){0,3})`,
+  `(^|[${BOUNDARY_CHARS}])@([A-Za-z][A-Za-z0-9._#-]{0,32}(?:\\s+[A-Za-z0-9#][A-Za-z0-9._#-]{0,32}){0,3})`,
   'g'
 )
 

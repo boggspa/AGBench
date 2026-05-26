@@ -8473,19 +8473,27 @@ button.diff-file-row {
  * mechanics — `--provider-tint` cascades through naturally so we
  * don't have to re-state every provider colour in two places.
  */
+/*
+ * 1.0.4 — Yield-target chip rendered as inline bold provider-tinted
+ * text (no pill/bubble) so it matches the `.participant-mention`
+ * styling Chris asked to unify. Keeps the at-a-glance "who is
+ * yielding to whom" colour signal without the heavy pill chrome
+ * that competed with surrounding prose.
+ *
+ * Colour cascade — single `--provider-tint` custom property the
+ * provider modifier classes override. Falls back to a neutral grey
+ * when the target string couldn't be resolved against the
+ * participant roster.
+ */
 .activity-yield-target {
   --provider-tint: #9da6b8;
-  display: inline-flex;
-  align-items: center;
-  padding: 1px 8px;
-  margin: 0 1px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--provider-tint) 32%, transparent);
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  display: inline;
   color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
   font-weight: 600;
-  font-size: 0.94em;
-  line-height: 1.25;
+  /* No border, no background, no padding — the inline `@<role>`
+   * reads as bold provider-coloured text in the activity-row flow.
+   * White-space preserved so multi-word roles ("Captain K") don't
+   * wrap awkwardly mid-tag. */
   white-space: nowrap;
 }
 
@@ -8494,15 +8502,10 @@ button.diff-file-row {
 .activity-yield-target.provider-gemini { --provider-tint: #8eb1ff; }
 .activity-yield-target.provider-kimi { --provider-tint: #bbcf66; }
 
-/*
- * Light theme — chip carries the provider tint at higher saturation
- * against the lighter background so it stays legible. The same
- * `--provider-tint` cascade applies; we just adjust the mix ratios.
- */
+/* Light theme — keep the colour but lift saturation against the
+ * lighter background so the tag stays legible. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target {
-  background: color-mix(in srgb, var(--provider-tint) 18%, white 82%);
   color: color-mix(in srgb, var(--provider-tint) 70%, #1d1d1f 30%);
-  border-color: color-mix(in srgb, var(--provider-tint) 38%, transparent);
 }
 
 /*
@@ -8532,8 +8535,12 @@ button.diff-file-row {
  * through a clipped gradient.
  */
 .activity-row[data-status="running"] .activity-yield-target {
-  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
-  background-size: auto;
+  /* Reset only the shimmer's text-clipping mechanics — no background
+   * to override now that the chip is plain inline text. The
+   * `-webkit-text-fill-color: currentColor` line is the critical
+   * one: the shimmer's `-webkit-text-fill-color: transparent` would
+   * otherwise wipe the tag down to invisible glyphs. */
+  background: none;
   background-clip: border-box;
   -webkit-background-clip: border-box;
   color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
@@ -8543,7 +8550,6 @@ button.diff-file-row {
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
   .activity-row[data-status="running"] .activity-yield-target {
-  background: color-mix(in srgb, var(--provider-tint) 18%, white 82%);
   color: color-mix(in srgb, var(--provider-tint) 70%, #1d1d1f 30%);
 }
 
@@ -8552,12 +8558,21 @@ button.diff-file-row {
  * YouTube pattern). Anchored bottom-right of the `.app-transcript`
  * surface, just above where the composer reserved-height meets the
  * scroller. Click smooth-scrolls to bottom + clears the unread
- * counter (handler lives in App.tsx near the chat-corner-controls).
+ * counter (handler lives in App.tsx, `handleJumpToLatest` near the
+ * scroll-state block). The `End` key on the scroll surface mirrors
+ * the click.
  *
  * Visibility logic in `lib/TranscriptScroll.shouldShowJumpToLatestPill`
  * — only renders when auto-follow is disengaged AND unreadCount > 0.
+ *
+ * Theming is driven by `--jump-pill-accent`, set per-provider on the
+ * `.provider-gemini` / `-codex` / `-claude` / `-kimi` modifier the
+ * element receives at render time. The fallback chain ends at
+ * `var(--accent)` so an unknown / missing provider still produces a
+ * readable pill instead of an unstyled fallback.
  */
 .transcript-jump-to-latest-pill {
+  --jump-pill-accent: var(--accent, #5a8cff);
   position: absolute;
   right: var(--chat-side-gutter, 24px);
   bottom: calc(var(--composer-reserved-height, 120px) + 16px);
@@ -8567,28 +8582,43 @@ button.diff-file-row {
   gap: 6px;
   padding: 6px 14px;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 32%, transparent);
-  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 88%, var(--accent, #5a8cff) 12%);
-  color: color-mix(in srgb, #ffffff 92%, transparent);
-  font-size: calc(var(--font-size-xs) + 1px);
+  border: 1px solid color-mix(in srgb, var(--jump-pill-accent) 36%, transparent);
+  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 84%, var(--jump-pill-accent) 16%);
+  color: color-mix(in srgb, #ffffff 94%, transparent);
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.01em;
   line-height: 1.2;
   cursor: pointer;
   pointer-events: auto;
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.36),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--jump-pill-accent) 14%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 14%, transparent);
   transition:
     transform 120ms ease,
     background 120ms ease,
-    border-color 120ms ease;
+    border-color 120ms ease,
+    box-shadow 120ms ease;
   animation: transcript-jump-pill-fade-in 180ms ease-out;
+}
+
+.transcript-jump-to-latest-pill .transcript-jump-to-latest-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--jump-pill-accent) 78%, #ffffff 22%);
 }
 
 .transcript-jump-to-latest-pill:hover {
   transform: translateY(-1px);
-  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 80%, var(--accent, #5a8cff) 20%);
-  border-color: color-mix(in srgb, var(--accent, #5a8cff) 48%, transparent);
+  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 76%, var(--jump-pill-accent) 24%);
+  border-color: color-mix(in srgb, var(--jump-pill-accent) 56%, transparent);
 }
 
 .transcript-jump-to-latest-pill:active {
@@ -8596,8 +8626,27 @@ button.diff-file-row {
 }
 
 .transcript-jump-to-latest-pill:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent, #5a8cff) 56%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--jump-pill-accent) 64%, transparent);
   outline-offset: 2px;
+}
+
+/*
+ * Provider-specific accent overrides. Match the hex stops used by the
+ * sidebar `.sidebar-chat-item.provider-*` rules so the pill reads as
+ * "the same provider you're chatting with" without introducing a new
+ * palette source.
+ */
+.transcript-jump-to-latest-pill.provider-gemini {
+  --jump-pill-accent: #6f9dff;
+}
+.transcript-jump-to-latest-pill.provider-codex {
+  --jump-pill-accent: #9b8cff;
+}
+.transcript-jump-to-latest-pill.provider-claude {
+  --jump-pill-accent: #ff9f4a;
+}
+.transcript-jump-to-latest-pill.provider-kimi {
+  --jump-pill-accent: #a9bd55;
 }
 
 @keyframes transcript-jump-pill-fade-in {
@@ -8618,18 +8667,23 @@ button.diff-file-row {
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
   .transcript-jump-to-latest-pill {
-  background: color-mix(in srgb, white 92%, var(--accent, #5a8cff) 8%);
-  color: color-mix(in srgb, var(--accent, #5a8cff) 60%, #1d1d1f 40%);
-  border-color: color-mix(in srgb, var(--accent, #5a8cff) 36%, transparent);
+  background: color-mix(in srgb, white 92%, var(--jump-pill-accent) 8%);
+  color: color-mix(in srgb, var(--jump-pill-accent) 60%, #1d1d1f 40%);
+  border-color: color-mix(in srgb, var(--jump-pill-accent) 36%, transparent);
   box-shadow:
     0 4px 12px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .transcript-jump-to-latest-pill .transcript-jump-to-latest-arrow {
+  color: color-mix(in srgb, var(--jump-pill-accent) 80%, #1d1d1f 20%);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
   .transcript-jump-to-latest-pill:hover {
-  background: color-mix(in srgb, white 88%, var(--accent, #5a8cff) 12%);
-  border-color: color-mix(in srgb, var(--accent, #5a8cff) 52%, transparent);
+  background: color-mix(in srgb, white 88%, var(--jump-pill-accent) 12%);
+  border-color: color-mix(in srgb, var(--jump-pill-accent) 52%, transparent);
 }
 
 /* Transcript truncation: long shell commands (full /Users/... paths,
@@ -19244,23 +19298,35 @@ input:disabled, select:disabled, textarea:disabled {
  * applied inline by the React component via `style={{ color, border-
  * color }}` reading the `--provider-{name}-color` token, so this
  * rule just owns shape + hover. */
+/*
+ * 1.0.4 — Participant mention rendered as inline bold provider-tinted
+ * text rather than a pill/bubble. Chris's feedback: the chrome was
+ * heavy and competed visually with the surrounding prose; what
+ * matters is the colour + weight signalling "this is a tagged
+ * participant" — the pill was decoration on top of that. Stripping
+ * the border/background/padding lets the tag sit in the text flow as
+ * naturally as a `<strong>` element while keeping the provider-tint
+ * colour the eye latches onto.
+ *
+ * Colour is applied inline by the React component via
+ * `style={{ color }}` reading `--provider-{name}-color`.
+ */
 .participant-mention {
-  display: inline-flex;
-  align-items: baseline;
-  padding: 1px 7px;
-  margin: 0 1px;
-  border-radius: 999px;
-  border: 1px solid currentColor;
-  background: transparent;
+  display: inline;
   font: inherit;
-  font-size: 0.95em;
   font-weight: 600;
-  line-height: 1.4;
-  vertical-align: baseline;
-  transition: background 120ms ease;
+  /* Reset any inline border-color the React component may pass —
+   * we no longer have a visible border to colour. Keeps the inline
+   * style API backward-compatible without a JSX change. */
+  border: 0;
+  background: transparent;
+  padding: 0;
+  margin: 0;
 }
 .participant-mention:hover {
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  /* No background fill — keep the hover state subtle. The cursor
+   * change is enough affordance for a non-clickable inline tag. */
+  background: transparent;
 }
 
 /* ----- AgentMentionMenu autocomplete popover ----- */
