@@ -2,7 +2,8 @@ import type { AgentRunPayload, AgentRunRoute } from '../index'
 import { resolveEffectiveRunPermissions } from '../EffectiveRunPermissions'
 import {
   buildEnsembleParticipantPrompt,
-  getOrderedEnsembleParticipants
+  getOrderedEnsembleParticipants,
+  providerLabel
 } from '../EnsemblePrompt'
 import type {
   AppSettings,
@@ -967,12 +968,43 @@ export class EnsembleOrchestrator {
         ? null
         : findFirstMention(run.content, allParticipants, new Set([participant.id]))
       if (tagMatch && tagMatch.participant.enabled) {
-        const tagged = tagMatch.participant
+        // 1.0.4 same-provider disambiguation. The shared resolver
+        // returns `ambiguousAmong` when the alias (e.g. plain
+        // `@codex`) could have resolved to >1 participant after the
+        // speaker was excluded. Two policies kick in:
+        //
+        //   1. Re-pick: among candidates, prefer the next-in-rotation
+        //      that hasn't spoken yet in this round (still in
+        //      `remaining`). Falls back to the resolver's ensemble-
+        //      order pick if no candidate is still in remaining.
+        //   2. Warn: emit a transcript system message so the user can
+        //      see WHICH same-provider participant was actually
+        //      addressed, and learn the explicit alias forms.
+        //
+        // Unambiguous matches (single role-name / single model alias)
+        // skip both policies, matching pre-1.0.4 behaviour.
+        let tagged = tagMatch.participant
+        let ambiguityWarning: string | undefined
+        if (tagMatch.ambiguousAmong && tagMatch.ambiguousAmong.length > 0) {
+          const candidates = [tagMatch.participant, ...tagMatch.ambiguousAmong]
+          const preferred = candidates.find((p) =>
+            remaining.some((r) => r.id === p.id)
+          )
+          if (preferred) tagged = preferred
+          const totalPeers = candidates.length
+          ambiguityWarning =
+            `@-mention: \`@${tagMatch.text}\` was ambiguous (${totalPeers} ${providerLabel(tagged.provider)} participants). ` +
+            `Routed to ${tagged.role || tagged.provider} (next in rotation). ` +
+            `Use @<role> or @<model> for explicit targeting.`
+        }
         const existingIdx = remaining.findIndex((p) => p.id === tagged.id)
         if (existingIdx > 0) {
           // Already queued for this round — bring them forward.
           const [moved] = remaining.splice(existingIdx, 1)
           remaining.unshift(moved)
+          if (ambiguityWarning) {
+            this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
+          }
           this.appendRoundStatus(
             runtime.chatId,
             runtime.roundId,
@@ -986,14 +1018,21 @@ export class EnsembleOrchestrator {
           // path is only available in explicit Continuous mode; the
           // default Turn-bound mode treats @mentions as routing hints
           // for still-unspoken participants only.
+          if (ambiguityWarning) {
+            this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
+          }
           this.tryAppendContinuationTurn(
             runtime,
             remaining,
             tagged,
             `@-mention: extra turn appended for ${tagged.role || tagged.provider}.`
           )
+        } else if (existingIdx === 0 && ambiguityWarning) {
+          // Already at the front — no rotation change, but the
+          // ambiguity is still real and the user should see why the
+          // resolver picked this particular Codex/Claude/etc.
+          this.appendRoundStatus(runtime.chatId, runtime.roundId, ambiguityWarning)
         }
-        // existingIdx === 0 → already at front, nothing to do.
       }
     }
 

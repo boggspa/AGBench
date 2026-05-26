@@ -459,9 +459,7 @@ export function FirstLaunchSheet({
               <div className="first-launch-sheet-preview-user-bubble">
                 Can you compare a few providers in one thread?
               </div>
-              <div
-                className={`composer-area first-launch-sheet-preview-composer interface-${composerStyle}`}
-              >
+              <div className={`first-launch-sheet-preview-composer interface-${composerStyle}`}>
                 <div className="first-launch-sheet-preview-above-bar">
                   <span>Preview workspace · main</span>
                   <span>2 files changed</span>

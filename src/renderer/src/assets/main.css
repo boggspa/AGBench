@@ -4328,11 +4328,16 @@ button.sidebar-item {
 /*
  * Composer docking rule — scoped to `.app-transcript` so the absolute
  * positioning + click-through behaviour only applies inside a real chat
- * pane. Without the scope, mounting a "composer preview" mock inside an
- * onboarding sheet or settings card (with the `composer-area` className
- * for chrome inheritance) caused the preview to escape its parent and
- * stretch full-window-width as a click-through strip — see
- * FirstLaunchSheet.tsx:463 and SettingsPanel's composer preview.
+ * pane. Without the scope, any "composer preview" mock that mounts the
+ * `composer-area` className outside the chat pane (e.g. an onboarding
+ * sheet or settings card) inherits `position: absolute` and stretches
+ * full-window-width as a click-through strip. FirstLaunchSheet's
+ * preview was migrated off the `composer-area` className entirely to
+ * remove the coupling at the source; SettingsPanel's preview still uses
+ * the className but ships its own override stack at
+ * `.settings-composer-preview-area.composer-area` (position: relative,
+ * pointer-events: auto). This scope stays in place as defense-in-depth
+ * against future preview mocks that unwittingly reuse the className.
  *
  * `:where()` keeps specificity at (0,1,0) so existing override rules
  * like `.settings-composer-preview-area.composer-area` (0,2,0) and
@@ -8540,6 +8545,91 @@ button.diff-file-row {
   .activity-row[data-status="running"] .activity-yield-target {
   background: color-mix(in srgb, var(--provider-tint) 18%, white 82%);
   color: color-mix(in srgb, var(--provider-tint) 70%, #1d1d1f 30%);
+}
+
+/*
+ * 1.0.4 — "↓ N new messages" jump-to-latest pill (Slack / Discord /
+ * YouTube pattern). Anchored bottom-right of the `.app-transcript`
+ * surface, just above where the composer reserved-height meets the
+ * scroller. Click smooth-scrolls to bottom + clears the unread
+ * counter (handler lives in App.tsx near the chat-corner-controls).
+ *
+ * Visibility logic in `lib/TranscriptScroll.shouldShowJumpToLatestPill`
+ * — only renders when auto-follow is disengaged AND unreadCount > 0.
+ */
+.transcript-jump-to-latest-pill {
+  position: absolute;
+  right: var(--chat-side-gutter, 24px);
+  bottom: calc(var(--composer-reserved-height, 120px) + 16px);
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 32%, transparent);
+  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 88%, var(--accent, #5a8cff) 12%);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow:
+    0 6px 18px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 12%, transparent);
+  transition:
+    transform 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
+  animation: transcript-jump-pill-fade-in 180ms ease-out;
+}
+
+.transcript-jump-to-latest-pill:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--composer-bg, #1c1c20) 80%, var(--accent, #5a8cff) 20%);
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 48%, transparent);
+}
+
+.transcript-jump-to-latest-pill:active {
+  transform: translateY(0);
+}
+
+.transcript-jump-to-latest-pill:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #5a8cff) 56%, transparent);
+  outline-offset: 2px;
+}
+
+@keyframes transcript-jump-pill-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+[data-reduce-motion="true"] .transcript-jump-to-latest-pill {
+  animation: none;
+  transition: none;
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .transcript-jump-to-latest-pill {
+  background: color-mix(in srgb, white 92%, var(--accent, #5a8cff) 8%);
+  color: color-mix(in srgb, var(--accent, #5a8cff) 60%, #1d1d1f 40%);
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 36%, transparent);
+  box-shadow:
+    0 4px 12px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
+  .transcript-jump-to-latest-pill:hover {
+  background: color-mix(in srgb, white 88%, var(--accent, #5a8cff) 12%);
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 52%, transparent);
 }
 
 /* Transcript truncation: long shell commands (full /Users/... paths,

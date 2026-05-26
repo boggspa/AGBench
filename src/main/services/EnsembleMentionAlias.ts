@@ -290,6 +290,21 @@ export interface MentionMatch {
   text: string
   /** Resolved participant. */
   participant: EnsembleParticipant
+  /**
+   * Other participants that claimed the SAME alias as `participant`,
+   * after `excludeIds` (the speaker) has been filtered out. Empty /
+   * undefined when the resolution was unambiguous.
+   *
+   * Populated for 1.0.4 same-provider ensembles: when Kimi writes
+   * `@codex` and two Codex participants both claim the `codex` alias,
+   * the resolver still picks `eligible[0]` deterministically (ensemble
+   * order), but stashes the rest here so the orchestrator can (a)
+   * decide whether to re-pick based on round state (e.g. prefer a
+   * candidate still in `remaining`) and (b) emit a transcript
+   * disambiguation warning so the user sees that the routing choice
+   * was non-deterministic from the agent's perspective.
+   */
+  ambiguousAmong?: EnsembleParticipant[]
 }
 
 /**
@@ -323,7 +338,10 @@ export function findAllMentions(
       atIndex,
       consumedLength: 1 + resolved.consumedText.length, // `@` + phrase
       text: resolved.consumedText,
-      participant: resolved.participant
+      participant: resolved.participant,
+      ...(resolved.ambiguousAmong && resolved.ambiguousAmong.length > 0
+        ? { ambiguousAmong: resolved.ambiguousAmong }
+        : {})
     })
     // Walk regex lastIndex back so it picks up text right after our
     // resolved consumption, not after the (potentially-longer) regex
@@ -356,7 +374,11 @@ function resolveMentionPhrase(
   phrase: string,
   aliasMap: ParticipantAliasMap,
   excludeIds?: ReadonlySet<string>
-): { participant: EnsembleParticipant; consumedText: string } | null {
+): {
+  participant: EnsembleParticipant
+  consumedText: string
+  ambiguousAmong?: EnsembleParticipant[]
+} | null {
   const rawWords = phrase.split(/\s+/).filter(Boolean)
   if (rawWords.length === 0) return null
   // Try longest-first: 4-word, 3-word, 2-word, 1-word prefixes. For
@@ -380,7 +402,10 @@ function resolveMentionPhrase(
       if (eligible.length === 0) continue
       // Take the first (preserves ensemble order). Same-alias ties
       // (two participants both named "codex") fall back to the first
-      // participant declared in the ensemble.
+      // participant declared in the ensemble — deterministic but
+      // non-obvious to the user. The caller gets `ambiguousAmong`
+      // (the other eligible candidates) so it can surface a warning
+      // and/or re-pick based on round state.
       // Reconstruct the consumed text from the original `phrase`
       // (preserving the user's original casing / spacing) by taking
       // the first `len` words from it. Trailing sentence punctuation
@@ -391,7 +416,8 @@ function resolveMentionPhrase(
         TRAILING_PUNCT_RE,
         ''
       )
-      return { participant: eligible[0], consumedText }
+      const ambiguousAmong = eligible.length > 1 ? eligible.slice(1) : undefined
+      return { participant: eligible[0], consumedText, ambiguousAmong }
     }
   }
   return null

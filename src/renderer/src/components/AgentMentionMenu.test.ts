@@ -41,4 +41,39 @@ describe('filterComposerMentionCandidates', () => {
       'external:/Users/me/Other Project'
     ])
   })
+
+  it('preserves both rows when two same-provider ensemble participants both match', () => {
+    // 1.0.4 same-provider ensemble: two Codex participants in the
+    // mention menu. The candidate shape uses participant.id in the
+    // candidate id so they never collide, and the haystack includes
+    // both name (role) and detail (provider · model), so a query of
+    // `cod` matches both entries — the user picks the right one
+    // explicitly rather than the resolver guessing.
+    const ensembleCandidates: ComposerMentionCandidate[] = [
+      {
+        id: 'participant:codex-brodex',
+        kind: 'participant',
+        participantId: 'codex-brodex',
+        provider: 'codex',
+        name: 'Brodex',
+        detail: 'Codex · gpt-5.5'
+      },
+      {
+        id: 'participant:codex-chodex',
+        kind: 'participant',
+        participantId: 'codex-chodex',
+        provider: 'codex',
+        name: 'Chodex #2',
+        detail: 'Codex · gpt-5.4-mini'
+      }
+    ]
+    const matches = filterComposerMentionCandidates(ensembleCandidates, 'cod')
+    expect(matches).toHaveLength(2)
+    expect(matches.map((item) => item.id)).toEqual([
+      'participant:codex-brodex',
+      'participant:codex-chodex'
+    ])
+    expect(matches[0].name).toBe('Brodex')
+    expect(matches[1].name).toBe('Chodex #2')
+  })
 })

@@ -7,6 +7,7 @@ import {
   shouldRepinAfterFrame,
   shouldRepinAfterCodeBlockResize,
   shouldRepinAfterTranscriptResize,
+  shouldShowJumpToLatestPill,
   buildCodeBlockResizeEventInit,
   CODE_BLOCK_RESIZE_EVENT
 } from './TranscriptScroll'
@@ -238,6 +239,47 @@ describe('TranscriptScroll', () => {
           userScrolledAwayInThisFrame: false
         })
       ).toBe(true)
+    })
+  })
+
+  describe('shouldShowJumpToLatestPill', () => {
+    it('hides the pill when auto-follow is engaged (user is already at the bottom)', () => {
+      // The pill is a "jump to where new content is" affordance. When
+      // the transcript is sticky-bottom the user already sees new
+      // content, so the pill would be visual noise.
+      expect(shouldShowJumpToLatestPill({ autoFollow: true, unreadCount: 0 })).toBe(false)
+      expect(shouldShowJumpToLatestPill({ autoFollow: true, unreadCount: 5 })).toBe(false)
+    })
+
+    it('hides the pill when there are no unread messages', () => {
+      // Even when the user has scrolled up, an empty counter means
+      // nothing new arrived while they were reading — nothing to
+      // advertise.
+      expect(shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: 0 })).toBe(false)
+    })
+
+    it('shows the pill when scrolled away AND at least one new message arrived', () => {
+      // The intended use case: user is reading older content while
+      // messages stream in below. Pill surfaces "↓ N new messages".
+      expect(shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: 1 })).toBe(true)
+      expect(shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: 47 })).toBe(true)
+    })
+
+    it('treats non-finite unread counts as zero (no pill)', () => {
+      // Defensive parity with shouldEngageAutoFollow's NaN guard: a
+      // partially-initialised or corrupted counter must not bleed
+      // through as a visible pill.
+      expect(shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: Number.NaN })).toBe(false)
+      expect(
+        shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: Number.POSITIVE_INFINITY })
+      ).toBe(false)
+    })
+
+    it('treats negative counts as zero (no pill)', () => {
+      // A negative delta should never reach this helper, but guard
+      // against an off-by-one reset bug from the caller — show
+      // nothing rather than a confusing "↓ -2 new messages".
+      expect(shouldShowJumpToLatestPill({ autoFollow: false, unreadCount: -1 })).toBe(false)
     })
   })
 

@@ -220,3 +220,37 @@ export function shouldRepinAfterTranscriptResize(input: {
 }): boolean {
   return shouldRepinAfterFrame(input)
 }
+
+/**
+ * Decide whether the "↓ N new messages" jump-to-latest pill should be
+ * visible on the transcript scroller.
+ *
+ * The pill makes the *absence* of auto-scroll visible. Once the
+ * scroll-listener has disengaged auto-follow (the user scrolled up to
+ * read older content) any new messages arriving below are silent — the
+ * Slack/Discord/YouTube pattern surfaces a click-to-jump affordance so
+ * the user has a one-tap way back to the live edge without losing their
+ * place mid-read.
+ *
+ * Visibility rule — both must hold:
+ *   1. `autoFollow` is currently disengaged (user is reading older
+ *      content); if the transcript is already pinned to the bottom the
+ *      user can see the new messages directly and the pill would be
+ *      noise.
+ *   2. `unreadCount > 0`; without at least one new message there is
+ *      nothing to advertise.
+ *
+ * Defensive against malformed inputs: a NaN/negative count is treated
+ * as zero (no pill). This mirrors the
+ * `shouldEngageAutoFollow`/`shouldDisengageAutoFollow` non-finite
+ * guards so the visibility logic stays robust against any future caller
+ * that hands in a stale or partially-initialised value.
+ */
+export function shouldShowJumpToLatestPill(input: {
+  autoFollow: boolean
+  unreadCount: number
+}): boolean {
+  if (input.autoFollow) return false
+  if (!Number.isFinite(input.unreadCount)) return false
+  return input.unreadCount > 0
+}

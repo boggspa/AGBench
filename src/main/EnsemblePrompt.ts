@@ -68,6 +68,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
       return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}`
     })
     .join('\n')
+  const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
   const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
 
   return [
@@ -83,6 +84,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '',
     'Participant roster:',
     roster || '- No other enabled participants.',
+    ...(disambigNote ? ['', disambigNote] : []),
     '',
     'Your role instructions:',
     sanitizeText(input.participant.instructions || 'Contribute a concise, useful response for your role.'),
@@ -138,6 +140,133 @@ function messageTag(message: ChatMessage): string {
 
 export function providerLabel(provider: ProviderId): string {
   return PROVIDER_LABELS[provider] || provider
+}
+
+/**
+ * 1.0.4 same-provider disambiguation note injected just below the
+ * participant roster.
+ *
+ * Real-world repro: an ensemble with "Codex / Brodex" and
+ * "Codex / Chodex #2" both present. Kimi writes `@codex / Brodex —
+ * you had the best view…` because that's the natural way to address
+ * a Codex peer. The orchestrator's resolver picks ONE of the two
+ * deterministically (ensemble order), but the model didn't know
+ * that — it thought `@codex` was unambiguous. The user can't see
+ * the routing choice until the wrong participant speaks.
+ *
+ * The fix: tell the dispatched agent up-front that same-provider
+ * peers exist, list them, and suggest the explicit forms the
+ * resolver supports (`@<role>` or `@<short-model>`). This shifts
+ * the disambiguation burden from the user-facing transcript
+ * (where the orchestrator can only emit a warning after the fact)
+ * to the agent's prompt context (where the agent can pick the
+ * explicit form on the first try).
+ *
+ * Returns `''` when no provider has 2+ enabled participants — the
+ * single-provider-per-role ensembles (the 1.0.3 common case) see
+ * no extra prompt overhead.
+ */
+export function formatSameProviderDisambiguationNote(
+  participants: EnsembleParticipant[]
+): string {
+  const groups = new Map<ProviderId, EnsembleParticipant[]>()
+  for (const p of participants) {
+    const existing = groups.get(p.provider)
+    if (existing) existing.push(p)
+    else groups.set(p.provider, [p])
+  }
+  const dupGroups: { provider: ProviderId; participants: EnsembleParticipant[] }[] = []
+  for (const [provider, list] of groups.entries()) {
+    if (list.length >= 2) dupGroups.push({ provider, participants: list })
+  }
+  if (dupGroups.length === 0) return ''
+
+  const lines: string[] = [
+    'Note: this ensemble contains multiple participants from the same provider:'
+  ]
+  for (const { provider, participants: group } of dupGroups) {
+    for (const p of group) {
+      const role = (p.role || 'Participant').trim()
+      const model = shortModelLabel(provider, p.model)
+      const suffix = model ? ` (model: ${model})` : ''
+      lines.push(`- ${providerLabel(provider)} / ${role}${suffix}`)
+    }
+  }
+  // Build the suggestion line from the first duplicated group. Two
+  // worked examples — role-name and model-id — match the alias forms
+  // the resolver actually supports (see `EnsembleMentionAlias.ts`'s
+  // `getParticipantAliases` for the canonical list).
+  const first = dupGroups[0]
+  const sample = first.participants[0]
+  const sampleRole = (sample.role || '').trim()
+  const sampleModel = shortModelLabel(first.provider, sample.model)
+  const roleHint = sampleRole ? `\`@${sampleRole}\`` : ''
+  const modelHint = sampleModel ? `\`@${sampleModel}\`` : ''
+  const hints = [roleHint, modelHint].filter(Boolean).join(' or ')
+  const providerName = first.provider
+  lines.push('')
+  lines.push(
+    hints
+      ? `When addressing a specific participant, use their role name or model identifier (e.g. ${hints}). Plain \`@${providerName}\` resolves to a single participant but the choice is non-deterministic across same-provider peers.`
+      : `When addressing a specific participant, use an explicit identifier. Plain \`@${providerName}\` resolves to a single participant but the choice is non-deterministic across same-provider peers.`
+  )
+  return lines.join('\n')
+}
+
+/**
+ * Best-effort short model label for the same-provider disambiguation
+ * note. Mirrors the renderer's `composerChipFormat.shortModelName`
+ * shape so the suggested explicit identifier matches what the user
+ * sees in chip strips and per-message badges. Pure function with no
+ * cross-process imports so the main side can call it freely.
+ *
+ *   - Codex (`gpt-5.5`, `gpt-5.4-mini`)       → `5.5`, `5.4 Mini`
+ *   - Claude (`claude-opus-4-7-thinking`)     → `Opus 4.7`
+ *   - Kimi (`kimi-k2.6`, `kimi-k2.6-thinking`) → `K2.6`
+ *   - Gemini (`gemini-2.5-flash-lite`)        → `2.5 Flash Lite`
+ *
+ * Falls back to the raw model id when no per-provider pattern fits,
+ * and to '' when the model is missing or the cli-default sentinel
+ * (since "CLI Default" isn't a useful @-mention target).
+ */
+function shortModelLabel(provider: ProviderId, model: string | undefined): string {
+  if (!model || model === 'cli-default') return ''
+  const id = model.toLowerCase()
+  if (provider === 'codex') {
+    const match = id.match(/^gpt-([\d.]+)(.*)$/)
+    if (match) {
+      const version = match[1]
+      const suffix = match[2]
+        .replace(/^-/, '')
+        .split('-')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+      return suffix ? `${version} ${suffix}` : version
+    }
+  }
+  if (provider === 'claude') {
+    const match = id.match(/^claude-(opus|sonnet|haiku)-(\d+)-(\d+)/)
+    if (match) {
+      const family = match[1].charAt(0).toUpperCase() + match[1].slice(1)
+      return `${family} ${match[2]}.${match[3]}`
+    }
+  }
+  if (provider === 'kimi') {
+    const match = id.match(/^kimi-(k[\d.]+)/)
+    if (match) return match[1].toUpperCase()
+  }
+  if (provider === 'gemini') {
+    const match = id.match(/^gemini-(.+)$/)
+    if (match) {
+      return match[1]
+        .split('-')
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ')
+    }
+  }
+  return model
 }
 
 function sanitizeText(value: unknown): string {

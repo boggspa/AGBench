@@ -393,11 +393,28 @@ function renderEnsembleYieldTitle(
 
   let targetProvider: ProviderId | undefined
   if (target && participants && participants.length > 0) {
-    const lower = target.toLowerCase()
+    // 1.0.4 — agents often emit compound target strings like
+    // "Kimi / Captain K" (provider + role), "@Captain K" (with @
+    // prefix), or "Captain K" (bare role). Strip leading @ and
+    // split on common separators so we try each token against the
+    // participant roster — first as an exact match, then as a
+    // substring fallback. Without this, the chip stayed neutral
+    // grey for compound targets even though the participant was
+    // resolvable.
+    const stripped = target.replace(/^@+/, '').trim().toLowerCase()
+    const tokens = [
+      stripped,
+      ...stripped.split(/[/,|]+/).map((s) => s.trim()).filter(Boolean)
+    ]
     const matched = participants.find((p) => {
-      if ((p.role || '').toLowerCase() === lower) return true
-      if ((p.provider || '').toLowerCase() === lower) return true
-      if ((p.id || '').toLowerCase() === lower) return true
+      const role = (p.role || '').toLowerCase()
+      const provider = (p.provider || '').toLowerCase()
+      const id = (p.id || '').toLowerCase()
+      for (const token of tokens) {
+        if (role === token) return true
+        if (provider === token) return true
+        if (id === token) return true
+      }
       return false
     })
     if (matched) targetProvider = matched.provider
@@ -450,6 +467,13 @@ function getReadableActivityDisplayName(activity: ToolActivity): string {
 
 function getProgressNote(activity: ToolActivity): { title: string; body?: string } | null {
   if (activity.category !== 'task') return null
+  // ensemble_yield is a `task`-category tool but has its own structured
+  // render (actor + provider-tinted target chip) in `renderEnsembleYieldTitle`.
+  // The generic progress-note path renders `activity.displayName` verbatim,
+  // which surfaces the raw tool name (`mcp_AGBench_ensemble_yield`) on any
+  // upstream that didn't pre-humanize it. Defer those rows to the inline
+  // title path so the chip render runs.
+  if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) return null
   const parameters = activity.parameters || {}
   const title =
     cleanProgressText(parameters.title) ||

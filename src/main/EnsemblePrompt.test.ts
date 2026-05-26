@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEnsembleParticipantPrompt,
+  formatSameProviderDisambiguationNote,
   getOrderedEnsembleParticipants
 } from './EnsemblePrompt'
-import type { ChatRecord, EnsembleConfig } from './store/types'
+import type { ChatRecord, EnsembleConfig, EnsembleParticipant } from './store/types'
 
 const ensemble: EnsembleConfig = {
   enabled: true,
@@ -140,5 +141,127 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('[User]')
     expect(prompt).toContain('[Claude / Reviewer]')
     expect(prompt).toContain('Current user request:')
+    // Single-provider-per-role ensembles should NOT see the
+    // same-provider disambiguation note — it's only relevant when
+    // two participants share a provider.
+    expect(prompt).not.toContain('multiple participants from the same provider')
+  })
+})
+
+describe('formatSameProviderDisambiguationNote', () => {
+  function participant(
+    overrides: Partial<EnsembleParticipant> & Pick<EnsembleParticipant, 'id' | 'provider'>
+  ): EnsembleParticipant {
+    return {
+      enabled: true,
+      role: '',
+      instructions: '',
+      order: 0,
+      permissionPresetId: 'default',
+      ...overrides
+    } as EnsembleParticipant
+  }
+
+  it('returns empty when all providers are unique', () => {
+    const note = formatSameProviderDisambiguationNote([
+      participant({ id: 'a', provider: 'codex', role: 'Worker', model: 'gpt-5.5' }),
+      participant({ id: 'b', provider: 'claude', role: 'Reviewer', model: 'claude-opus-4-7' }),
+      participant({ id: 'c', provider: 'gemini', role: 'Researcher', model: 'gemini-2.5-pro' })
+    ])
+    expect(note).toBe('')
+  })
+
+  it('lists same-provider peers with short model labels and suggests explicit forms', () => {
+    // The actual production repro: two Codex participants with
+    // different models. Note should call out both, suggest @<role>
+    // and @<short-model>, and warn about plain @codex.
+    const note = formatSameProviderDisambiguationNote([
+      participant({ id: 'codex-1', provider: 'codex', role: 'Brodex', model: 'gpt-5.5' }),
+      participant({
+        id: 'codex-2',
+        provider: 'codex',
+        role: 'Chodex #2',
+        model: 'gpt-5.4-mini'
+      })
+    ])
+    expect(note).toContain('multiple participants from the same provider')
+    expect(note).toContain('Codex / Brodex (model: 5.5)')
+    expect(note).toContain('Codex / Chodex #2 (model: 5.4 Mini)')
+    expect(note).toContain('`@Brodex`')
+    expect(note).toContain('`@5.5`')
+    expect(note).toContain('Plain `@codex`')
+    expect(note).toContain('non-deterministic')
+  })
+
+  it('handles multiple duplicate-provider groups in one note', () => {
+    const note = formatSameProviderDisambiguationNote([
+      participant({ id: 'codex-1', provider: 'codex', role: 'Brodex', model: 'gpt-5.5' }),
+      participant({ id: 'codex-2', provider: 'codex', role: 'Chodex', model: 'gpt-5.4-mini' }),
+      participant({
+        id: 'claude-1',
+        provider: 'claude',
+        role: 'Reviewer',
+        model: 'claude-opus-4-7'
+      }),
+      participant({
+        id: 'claude-2',
+        provider: 'claude',
+        role: 'Critic',
+        model: 'claude-sonnet-4-6'
+      })
+    ])
+    expect(note).toContain('Codex / Brodex')
+    expect(note).toContain('Codex / Chodex')
+    expect(note).toContain('Claude / Reviewer (model: Opus 4.7)')
+    expect(note).toContain('Claude / Critic (model: Sonnet 4.6)')
+  })
+
+  it('skips model suffix when participant has no resolved model', () => {
+    const note = formatSameProviderDisambiguationNote([
+      participant({ id: 'a', provider: 'codex', role: 'A', model: 'cli-default' }),
+      participant({ id: 'b', provider: 'codex', role: 'B', model: 'cli-default' })
+    ])
+    // No model parenthetical — keeps the line readable when both
+    // participants are on cli-default.
+    expect(note).toContain('Codex / A')
+    expect(note).toContain('Codex / B')
+    expect(note).not.toContain('CLI Default')
+    expect(note).not.toContain('(model:')
+  })
+
+  it('is included in the assembled participant prompt when same-provider peers exist', () => {
+    const dupConfig: EnsembleConfig = {
+      ...ensemble,
+      participants: [
+        participant({
+          id: 'codex-brodex',
+          provider: 'codex',
+          role: 'Brodex',
+          model: 'gpt-5.5',
+          order: 1
+        }),
+        participant({
+          id: 'codex-chodex',
+          provider: 'codex',
+          role: 'Chodex #2',
+          model: 'gpt-5.4-mini',
+          order: 2
+        })
+      ]
+    }
+    const chatRecord = chat()
+    chatRecord.ensemble = dupConfig
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chatRecord,
+      config: dupConfig,
+      participant: dupConfig.participants[0],
+      currentPrompt: 'Disambiguate.',
+      roundId: 'round-disambig',
+      chatContextTurns: 4
+    })
+    expect(prompt).toContain('multiple participants from the same provider')
+    expect(prompt).toContain('Codex / Brodex')
+    expect(prompt).toContain('Codex / Chodex #2')
+    expect(prompt).toContain('`@codex`')
   })
 })

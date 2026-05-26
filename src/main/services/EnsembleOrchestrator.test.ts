@@ -1287,4 +1287,159 @@ describe('EnsembleOrchestrator', () => {
     // participant list (safety net for typo / racy IPC).
     expect(harness.dispatched[0].provider).toBe('claude')
   })
+
+  // 1.0.4 — same-provider disambiguation. Two Codex participants
+  // both claim the `codex` alias; when Kimi writes `@codex`, the
+  // resolver picks the ensemble-first Codex but the orchestrator
+  // must surface a system note explaining the ambiguity AND prefer
+  // a candidate still in the remaining rotation (next-in-rotation
+  // that hasn't spoken).
+  it('emits a system warning and re-picks rotation-aware when @<provider> is ambiguous', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.maxParticipants = 6
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-kimi',
+        provider: 'kimi',
+        enabled: true,
+        role: 'Coder',
+        instructions: 'Code.',
+        order: 1,
+        model: 'kimi-k2.6',
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-codex-brodex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Brodex',
+        instructions: 'Implement.',
+        order: 2,
+        model: 'gpt-5.5',
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-codex-chodex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Chodex #2',
+        instructions: 'Review.',
+        order: 3,
+        model: 'gpt-5.4-mini',
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Plan and tag Codex.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Kimi speaks first, tags @codex (ambiguous), then finishes.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('kimi')
+    const kimiRoute = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('kimi', kimiRoute, {
+      type: 'content',
+      text: '@codex — you had the best view of the API surface.'
+    })
+    harness.orchestrator.handleProviderOutput('kimi', kimiRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    // Both Codex participants are still in `remaining` after Kimi
+    // finishes. The resolver picks Brodex (ensemble-first), and
+    // the orchestrator's rotation-aware re-pick keeps Brodex (also
+    // the next-in-rotation). Either way, Brodex speaks next.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    expect(harness.dispatched[1].provider).toBe('codex')
+    expect(harness.dispatched[1].ensembleRun).toMatchObject({
+      participantId: 'ensemble-codex-brodex'
+    })
+
+    // System message announcing the ambiguity.
+    const messages = harness.chat.messages.map((m) => m.content)
+    expect(
+      messages.some(
+        (content) =>
+          typeof content === 'string' &&
+          content.includes('was ambiguous') &&
+          content.includes('Codex participants') &&
+          content.includes('Brodex')
+      )
+    ).toBe(true)
+  })
+
+  it('does NOT emit an ambiguity warning when the speaker exclusion resolves the alias', async () => {
+    // When the speaker is one of the same-provider peers (Codex
+    // mentions @codex), the speaker-exclusion path collapses the
+    // candidate set to a single survivor, so there is no ambiguity
+    // and no warning should appear. Speaker self-mentions also
+    // don't promote (existing behaviour) — verify both.
+    const harness = makeHarness()
+    harness.chat.ensemble!.orchestrationMode = 'continuous'
+    harness.chat.ensemble!.maxParticipants = 6
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-codex-brodex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Brodex',
+        instructions: 'Implement.',
+        order: 1,
+        model: 'gpt-5.5',
+        permissionPresetId: 'workspace_write'
+      },
+      {
+        id: 'ensemble-codex-chodex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Chodex #2',
+        instructions: 'Review.',
+        order: 2,
+        model: 'gpt-5.4-mini',
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Two Codex back and forth.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].ensembleRun).toMatchObject({
+      participantId: 'ensemble-codex-brodex'
+    })
+    // Brodex speaks with @codex — speaker exclusion drops Brodex,
+    // leaving only Chodex. Unambiguous → no warning.
+    const brodexRoute = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('codex', brodexRoute, {
+      type: 'content',
+      text: '@codex (you, the other one), please double-check.'
+    })
+    harness.orchestrator.handleProviderOutput('codex', brodexRoute, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 10 }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    // Chodex speaks next (the OTHER Codex).
+    expect(harness.dispatched[1].ensembleRun).toMatchObject({
+      participantId: 'ensemble-codex-chodex'
+    })
+
+    // No ambiguity warning in the transcript.
+    const messages = harness.chat.messages.map((m) => m.content)
+    expect(messages.some((content) =>
+      typeof content === 'string' && content.includes('was ambiguous')
+    )).toBe(false)
+  })
 })

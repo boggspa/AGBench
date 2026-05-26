@@ -310,4 +310,36 @@ describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
     // first), which is the deterministic + documented behaviour.
     expect(findFirstMention('@codex go', set)?.participant.id).toBe(CODEX.id)
   })
+
+  it('flags ambiguousAmong when @codex resolves between two Codex peers', () => {
+    // The 1.0.4 repro: speaker is Kimi, the ensemble has two Codex
+    // participants, the model writes plain `@codex`. The resolver
+    // still picks the ensemble-first match (CODEX) so the routing is
+    // deterministic, but stashes the other Codex in `ambiguousAmong`
+    // so the orchestrator can surface a transcript warning + the user
+    // can correct the routing in subsequent turns.
+    const set = [CODEX, CODEX_MINI, KIMI]
+    const match = findFirstMention('@codex go', set, new Set([KIMI.id]))
+    expect(match?.participant.id).toBe(CODEX.id)
+    expect(match?.ambiguousAmong?.map((p) => p.id)).toEqual([CODEX_MINI.id])
+  })
+
+  it('drops ambiguity flag once speaker-exclusion narrows to a single Codex', () => {
+    // Speaker IS one of the Codex peers — excluding them leaves just
+    // the OTHER Codex, so there is no actual ambiguity for the user
+    // to disambiguate. No warning should fire.
+    const set = [CODEX, CODEX_MINI]
+    const match = findFirstMention('@codex go', set, new Set([CODEX.id]))
+    expect(match?.participant.id).toBe(CODEX_MINI.id)
+    expect(match?.ambiguousAmong).toBeUndefined()
+  })
+
+  it('unambiguous role-name mention does not flag ambiguity', () => {
+    // `@Reviewer` is unique to CODEX_MINI — only one candidate before
+    // speaker-exclusion even runs, no warning.
+    const set = [CODEX, CODEX_MINI]
+    const match = findFirstMention('@Reviewer please', set)
+    expect(match?.participant.id).toBe(CODEX_MINI.id)
+    expect(match?.ambiguousAmong).toBeUndefined()
+  })
 })

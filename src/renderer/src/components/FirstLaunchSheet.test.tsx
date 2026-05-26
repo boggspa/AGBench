@@ -275,6 +275,32 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Active profile: work-gemini')
   })
 
+  it('§3 preview composer does not carry the composer-area className', () => {
+    // Regression guard: the preview previously mounted with the
+    // `composer-area` className to inherit chrome from the real composer's
+    // rules, but `.composer-area` itself sets `position: absolute; left: 0;
+    // right: 0; pointer-events: none;` for docking inside the chat pane.
+    // Inside the FirstLaunchSheet's static modal grid, that escaped the
+    // card and stretched a click-through strip across the full window
+    // width. Keep the className list lean — the preview ships its own
+    // `.first-launch-sheet-preview-composer` styles.
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        composerStyle="claude"
+      />
+    )
+    const match = html.match(/class="([^"]*first-launch-sheet-preview-composer[^"]*)"/)
+    expect(match).toBeTruthy()
+    expect(match![1]).not.toMatch(/\bcomposer-area\b/)
+  })
+
   it('renders the footer Skip + Got it buttons', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet

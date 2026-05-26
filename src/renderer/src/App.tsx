@@ -171,6 +171,7 @@ import {
   shouldRepinAfterFrame,
   shouldRepinAfterCodeBlockResize,
   shouldRepinAfterTranscriptResize,
+  shouldShowJumpToLatestPill,
   CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
@@ -5711,6 +5712,58 @@ function App(): React.JSX.Element {
   // Holds the rAF id for the pending post-frame re-pin so consecutive
   // streaming updates can coalesce into a single re-pin write per frame.
   const repinRafIdRef = useRef<number | null>(null)
+  // "↓ N new messages" jump-to-latest pill state (Slack/Discord/YouTube
+  // pattern). After the 1.0.4 race-window fix the user can scroll up
+  // freely without auto-scroll fighting them — but they had no visible
+  // signal that messages were still arriving below. The pill makes that
+  // *absence* of auto-scroll visible.
+  //
+  // Two-piece state by design: a React state for the rendered count
+  // (drives the pill text + visibility) plus a paired ref for reads
+  // inside layout effects that must observe the latest value without
+  // waiting for a re-render. The ref shadows the state on every write
+  // so layout-effect increments and scroll-listener resets stay in
+  // lockstep with the rendered count.
+  const [unreadFromBottomCount, setUnreadFromBottomCount] = useState(0)
+  const unreadFromBottomCountRef = useRef(0)
+  // Per-chat baseline for computing the new-message delta on each
+  // messages-update pass. Keyed by chatId so a chat switch is
+  // self-correcting: when the id flips, the layout effect treats the
+  // current length as the new baseline rather than counting the full
+  // length of the newly-active chat as "unread". The chat-switch
+  // useEffect at the bottom of this scroll block additionally resets
+  // the count to zero so the pill never carries over across threads.
+  const previousMessagesCountRef = useRef<{ chatId: string | null; count: number }>({
+    chatId: null,
+    count: 0
+  })
+  // Click/keypress handler for the jump-to-latest pill. Re-engages
+  // auto-follow eagerly (so subsequent streaming ticks re-pin without
+  // waiting for the smooth scroll to land), clears the unread count
+  // immediately (so the pill fades as the scroll begins rather than
+  // lingering through the smooth animation), and kicks a smooth
+  // scroll-to-bottom on the transcript scroller. Stable identity via
+  // useCallback so it can be passed to scroller-scoped event listeners
+  // through a ref without forcing those listeners to re-bind.
+  const handleJumpToLatest = useCallback(() => {
+    const scroller = transcriptScrollRef.current
+    if (!scroller) return
+    autoFollowRef.current = true
+    userScrolledAwayInFrameRef.current = false
+    if (unreadFromBottomCountRef.current !== 0) {
+      unreadFromBottomCountRef.current = 0
+      setUnreadFromBottomCount(0)
+    }
+    scroller.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' })
+  }, [])
+  // Ref shadow of `handleJumpToLatest` so the scroller's keydown
+  // listener (registered once with an empty-deps useEffect) can
+  // invoke the latest callback without re-binding. The callback is
+  // already useCallback'd with [] so this is belt-and-braces — the
+  // ref also gives us a single read site if we later want to
+  // hot-swap the implementation under test.
+  const handleJumpToLatestRef = useRef(handleJumpToLatest)
+  handleJumpToLatestRef.current = handleJumpToLatest
   // Raw Events panel auto-follow mirror of the transcript pair above.
   // The Inspector's Raw Events tab streams every run event as it arrives;
   // an earlier implementation unconditionally scrolled the panel to the
@@ -8545,6 +8598,15 @@ function App(): React.JSX.Element {
         // previously-recorded scroll-away so the next stream tick can
         // re-pin without delay.
         userScrolledAwayInFrameRef.current = false
+        // Returning to the bottom dismisses the "↓ N new messages"
+        // pill — the user has visually caught up, so there is
+        // nothing left to advertise. Mirror the state write onto
+        // the ref so the layout effect's next pass sees a zero
+        // baseline immediately, not on the following frame.
+        if (unreadFromBottomCountRef.current !== 0) {
+          unreadFromBottomCountRef.current = 0
+          setUnreadFromBottomCount(0)
+        }
       } else if (shouldDisengageAutoFollow(distanceFromBottom)) {
         autoFollowRef.current = false
       }
@@ -8607,6 +8669,16 @@ function App(): React.JSX.Element {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'PageUp' || event.key === 'ArrowUp' || event.key === 'Home') {
         handleUpwardIntent(-1)
+        return
+      }
+      // `End` mirrors the jump-to-latest pill: smooth-scroll to the
+      // bottom and clear the unread counter. Fires only when focus is
+      // within the transcript scroller (the listener is scroller-
+      // scoped), so it does not steal `End` from the composer textarea
+      // or from line-end behaviour inside fenced code blocks.
+      if (event.key === 'End') {
+        event.preventDefault()
+        handleJumpToLatestRef.current()
       }
     }
 
@@ -8771,7 +8843,50 @@ function App(): React.JSX.Element {
   // ensures we never fight a deliberate user scroll-up that happened
   // between the layout effect and the next animation frame.
   useLayoutEffect(() => {
-    if (!autoFollowRef.current) return
+    // Compute the new-message delta for the "↓ N new messages" pill
+    // BEFORE any early returns. The pill exists precisely because the
+    // bail-out paths below leave the user stranded above silent new
+    // content — incrementing here is the only place we can observe
+    // "messages arrived AND we chose not to snap to them".
+    //
+    // Why the delta is per-chat: chat switches change `currentChat?.
+    // messages` to a completely different array. Without keying the
+    // baseline on chatId, switching from a 200-message chat to a
+    // 2-message chat would compute a delta of -198 (clamped to 0)
+    // and switching the other way would falsely flag 198 new
+    // messages on a thread the user never scrolled away from.
+    const currentChatIdForCount = currentChat?.appChatId ?? null
+    const currentMessageCount = currentChat?.messages?.length ?? 0
+    const sameChatAsBaseline =
+      previousMessagesCountRef.current.chatId === currentChatIdForCount
+    const deltaSinceLastPass = sameChatAsBaseline
+      ? currentMessageCount - previousMessagesCountRef.current.count
+      : 0
+    previousMessagesCountRef.current = {
+      chatId: currentChatIdForCount,
+      count: currentMessageCount
+    }
+    // On a chat switch (baseline chatId mismatch) the pill must reset
+    // synchronously, before paint. The chat-switch useEffect at the
+    // bottom of this scroll block also resets the count, but it runs
+    // AFTER paint — without the synchronous reset here the user would
+    // briefly see the previous chat's "↓ N new" pill rendered over
+    // the newly-loaded transcript for one frame.
+    if (!sameChatAsBaseline && unreadFromBottomCountRef.current !== 0) {
+      unreadFromBottomCountRef.current = 0
+      setUnreadFromBottomCount(0)
+    }
+    const incrementUnreadIfNewMessagesArrived = () => {
+      if (deltaSinceLastPass <= 0) return
+      const next = unreadFromBottomCountRef.current + deltaSinceLastPass
+      unreadFromBottomCountRef.current = next
+      setUnreadFromBottomCount(next)
+    }
+
+    if (!autoFollowRef.current) {
+      incrementUnreadIfNewMessagesArrived()
+      return
+    }
     const scroller = transcriptScrollRef.current
     if (!scroller) return
     // 1.0.4 — two additional guards prevent the synchronous snap from
@@ -8797,9 +8912,15 @@ function App(): React.JSX.Element {
     //   Measuring here, just before the write, catches the case where
     //   the user wheeled past `STICK_DISENGAGE_PX` (160px) but the
     //   scroll listener's rAF eval hadn't fired yet to flip the ref.
-    if (userScrolledAwayInFrameRef.current) return
+    if (userScrolledAwayInFrameRef.current) {
+      incrementUnreadIfNewMessagesArrived()
+      return
+    }
     const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-    if (!shouldEngageAutoFollow(distanceFromBottom)) return
+    if (!shouldEngageAutoFollow(distanceFromBottom)) {
+      incrementUnreadIfNewMessagesArrived()
+      return
+    }
     // The flag is reset here (rather than at the top of the effect)
     // because the rAF re-pin below needs a clean signal: any wheel
     // event landing between this sync write and the rAF callback
@@ -8843,6 +8964,19 @@ function App(): React.JSX.Element {
     if (!scroller) return
     autoFollowRef.current = true
     userScrolledAwayInFrameRef.current = false
+    // The "↓ N new messages" pill is a per-thread affordance — landing
+    // on a fresh chat must never inherit unread count from the
+    // previous one. Reset both the rendered state and the per-chat
+    // baseline so the messages layout effect treats the incoming
+    // thread as already-caught-up.
+    if (unreadFromBottomCountRef.current !== 0) {
+      unreadFromBottomCountRef.current = 0
+      setUnreadFromBottomCount(0)
+    }
+    previousMessagesCountRef.current = {
+      chatId: currentChat?.appChatId ?? null,
+      count: currentChat?.messages?.length ?? 0
+    }
     // Defer one frame so the new messages render before we measure.
     const rafId = requestAnimationFrame(() => {
       scroller.scrollTop = scroller.scrollHeight
@@ -15072,6 +15206,49 @@ function App(): React.JSX.Element {
               <SidebarCornerIcon direction="right" isOpen={appearance.showInspector} />
             </button>
           </div>
+
+          {/*
+            1.0.4 — "↓ N new messages" jump-to-latest pill (Slack/
+            Discord/YouTube pattern). The 1.0.4 race-window fix
+            (commit ce130ed) stopped auto-scroll from fighting the
+            user mid-read, so the user could scroll up freely while
+            messages were streaming — but they had no visible signal
+            that new content was arriving below. The pill makes that
+            *absence* of auto-scroll visible.
+
+            Visibility predicate lives in
+            `lib/TranscriptScroll.shouldShowJumpToLatestPill` so the
+            gating logic stays unit-testable alongside the engage /
+            disengage thresholds. We read `autoFollowRef.current`
+            directly rather than mirroring it onto state — the scroll
+            listener already mutates that ref synchronously, and a
+            mirror would just add a frame of lag plus a re-render
+            churn during streaming.
+
+            Click + `End`-key share `handleJumpToLatest` (defined
+            with the scroll-state block higher in the component) so
+            the smooth-scroll, autoFollow re-engage, and count clear
+            stay in lockstep regardless of entry point.
+          */}
+          {shouldShowJumpToLatestPill({
+            autoFollow: autoFollowRef.current,
+            unreadCount: unreadFromBottomCount
+          }) && (
+            <button
+              type="button"
+              className={`transcript-jump-to-latest-pill provider-${currentProvider}`}
+              onClick={handleJumpToLatest}
+              aria-label={`Jump to latest — ${unreadFromBottomCount} new ${unreadFromBottomCount === 1 ? 'message' : 'messages'}`}
+              title={`Jump to latest (End)\n${unreadFromBottomCount} new ${unreadFromBottomCount === 1 ? 'message' : 'messages'}`}
+            >
+              <span aria-hidden="true" className="transcript-jump-to-latest-arrow">
+                ↓
+              </span>
+              <span className="transcript-jump-to-latest-text">
+                {unreadFromBottomCount} new {unreadFromBottomCount === 1 ? 'message' : 'messages'}
+              </span>
+            </button>
+          )}
 
           <ChatMediaFloatingPanel
             open={isChatMediaPanelOpen}
