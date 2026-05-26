@@ -329,22 +329,41 @@ export interface EnsembleConfig {
  * 1.0.4-AE — typed shape for the `provider_auth_status` MCP tool,
  * split out of the legacy single-string `appServer` field into
  * orthogonal concerns the panel review flagged as conflated:
- *   - `serverState`: lifecycle ('started' / 'lazy' / 'unavailable')
- *   - `transport`: wire protocol ('cli' / 'sdk' / 'app-server' / 'unavailable')
+ *   - `serverState`: lifecycle. `'error'` is reserved for helpers
+ *     that crashed mid-run; `'unavailable'` for "not reachable at
+ *     all"; `'started'` / `'lazy'` cover the codex hot/cold path.
+ *   - `transport`: wire protocol. The `'pty'` and `'http'` arms are
+ *     reserved for adapters in flight (cf. the Kimi wire / Gemini
+ *     API transport ramps) so MCP consumers don't need a schema
+ *     bump when they land.
  *   - `approvalSupport`: capability — does this provider's adapter
  *     route approvals through AGBench's main-authority gate?
  *   - `mcpStatusSupport`: capability — can the adapter answer
  *     MCP status probes (Codex via app-server, the others not yet).
  *   - `authState`: actionable state, not the previous vague
- *     `'unknown'` catch-all.
+ *     `'unknown'` catch-all. `'expired'` is reserved for credentials
+ *     we proactively detect as past TTL (vs `'missing'` for never-set).
+ *
+ * `appServer` and `accountStatus` are preserved as deprecated
+ * aliases for the 1.0.4 → 1.0.5 transition window and are removed
+ * after 1.0.5. MCP consumers should migrate to
+ * `serverState` / `transport` (replaces `appServer`) and
+ * `authState` / `authReason` (replaces `accountStatus`).
  */
-export type ProviderAuthServerState = 'started' | 'lazy' | 'unavailable'
-export type ProviderAuthTransport = 'cli' | 'sdk' | 'app-server' | 'unavailable'
+export type ProviderAuthServerState = 'started' | 'lazy' | 'error' | 'unavailable'
+export type ProviderAuthTransport =
+  | 'sdk'
+  | 'cli'
+  | 'app-server'
+  | 'pty'
+  | 'http'
+  | 'unavailable'
 export type ProviderAuthState =
   | 'authenticated'
   | 'not-queried'
   | 'not-observable'
   | 'missing'
+  | 'expired'
 
 export interface ProviderAuthStatusV2 {
   provider: ProviderId
@@ -354,9 +373,18 @@ export interface ProviderAuthStatusV2 {
   mcpStatusSupport: boolean
   authState: ProviderAuthState
   /** Optional human-readable reason — populated for `missing` /
-   * `not-observable` / `not-queried` states where context helps the
-   * agent decide what to do next (re-auth, surface to user, etc.). */
+   * `not-observable` / `not-queried` / `expired` states where context
+   * helps the agent decide what to do next (re-auth, surface to user,
+   * etc.). */
   authReason?: string
+  /** @deprecated 1.0.4 → 1.0.5 alias for the legacy single-string
+   * `appServer` field. Use `serverState` and `transport` instead.
+   * Removed after 1.0.5. */
+  appServer?: string
+  /** @deprecated 1.0.4 → 1.0.5 alias for the legacy `accountStatus`
+   * field. Use `authState` and `authReason` instead. Removed after
+   * 1.0.5. */
+  accountStatus?: string
 }
 
 export interface GeminiMcpBridgeStatus {
