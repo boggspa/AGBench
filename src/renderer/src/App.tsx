@@ -8774,8 +8774,36 @@ function App(): React.JSX.Element {
     if (!autoFollowRef.current) return
     const scroller = transcriptScrollRef.current
     if (!scroller) return
-    // Clear the per-frame scroll-away flag at the start of each pass.
-    // Wheel/touch/key listeners may set it again before the rAF fires.
+    // 1.0.4 — two additional guards prevent the synchronous snap from
+    // fighting a user who has just started scrolling up. Without them,
+    // ensemble chats (which produce 10–100× more store updates per
+    // second than solo runs — per-participant token tallies, active-
+    // round flips, per-tool events) could hit the race window where a
+    // wheel event lands between two rAF-coalesced scroll-listener evals
+    // and `autoFollowRef` is still `true` from the previous frame.
+    //
+    //   (1) `userScrolledAwayInFrameRef` already records the user's
+    //   wheel/touch/key intent. The rAF re-pin path checks it (line
+    //   8794) but the synchronous write below previously didn't —
+    //   the old code reset the flag at the top of the effect, losing
+    //   the signal before it could be honoured. Now the flag is read
+    //   first; if set we bail entirely and never reset it, so the
+    //   next streaming tick will also bail until the scroll listener
+    //   (line 8547) clears it when the user actually returns to the
+    //   bottom.
+    //
+    //   (2) A live distance-from-bottom measurement guards against
+    //   `autoFollowRef` being stale by one frame relative to the user.
+    //   Measuring here, just before the write, catches the case where
+    //   the user wheeled past `STICK_DISENGAGE_PX` (160px) but the
+    //   scroll listener's rAF eval hadn't fired yet to flip the ref.
+    if (userScrolledAwayInFrameRef.current) return
+    const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+    if (!shouldEngageAutoFollow(distanceFromBottom)) return
+    // The flag is reset here (rather than at the top of the effect)
+    // because the rAF re-pin below needs a clean signal: any wheel
+    // event landing between this sync write and the rAF callback
+    // should disable the re-pin.
     userScrolledAwayInFrameRef.current = false
     // Single scrollTop write per messages-update; the browser clamps to
     // [0, scrollHeight - clientHeight] so we don't need to compute target.
