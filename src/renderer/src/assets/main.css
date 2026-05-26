@@ -12518,7 +12518,14 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .app-sidebar .sidebar-section-title {
-  font-size: var(--font-size-xs);
+  /* 1.0.3 polish — 15% smaller, matching the base
+   * `.sidebar-section-title` rule above. This `.app-sidebar`-scoped
+   * override exists at higher specificity (0,2,0) and was previously
+   * winning the cascade with the plain `var(--font-size-xs)` value,
+   * which is why the first 15%-reduction pass didn't show up
+   * visually. Now mirrors the calc form so both rules end up at the
+   * same computed value. */
+  font-size: calc(var(--font-size-xs) * 0.85);
   font-weight: 700;
   letter-spacing: 0.085em;
   color: color-mix(in srgb, var(--text-secondary) 86%, transparent);
