@@ -16141,6 +16141,42 @@ input:disabled, select:disabled, textarea:disabled {
   color: inherit;
 }
 
+/* Turn / Continuous toggle — matches Codex shell's provider chip
+ * (transparent bg, indigo-tinted outline, white-70% text). The
+ * segmented look stays so users see both options at once. Active
+ * button picks up a quiet indigo tint to reinforce the choice
+ * without competing with the surrounding warm-orange permission
+ * label.
+ *
+ * Specificity: 0,2,0 (data-composer-style + data-composer-control)
+ * beats the base `.composer-ensemble-mode` (0,1,0) so these win
+ * the cascade cleanly. */
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] {
+  min-height: 24px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #8c80ff 22%, #ffffff 8%);
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  padding: 2px 9px;
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #8c80ff 8%, transparent);
+}
+[data-composer-style="codex"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #8c80ff 22%, transparent);
+  font-weight: 600;
+}
+
 [data-composer-style="codex"] .composer-image-picker-btn {
   width: 28px;
   height: 28px;
@@ -16395,6 +16431,37 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] [data-composer-control="provider"] select {
   font: inherit;
   color: inherit;
+}
+
+/* Turn / Continuous toggle — matches the Claude shell's provider chip
+ * (transparent bg, faint white border, white-70% text). Claude's
+ * overall palette is whisper-quiet so the toggle stays neutral on
+ * active state — just a slight white tint, no provider-orange
+ * accent (orange is reserved for the permission label here). */
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] {
+  min-height: 24px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  padding: 2px 9px;
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="claude"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #ffffff 12%, transparent);
+  font-weight: 600;
 }
 
 /* Permission as plain text label ("Plan mode" style) */
@@ -17338,6 +17405,39 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, #5a8cff 10%, transparent);
 }
 
+/* Turn / Continuous toggle — matches the Gemini shell's provider
+ * chip (transparent bg, faint white border, white-70% text). Active
+ * state picks up a soft Gemini-blue tint so the choice reads in the
+ * shell's accent rather than a competing colour.
+ *
+ * Heights aligned with the provider chip (28px min) for visual
+ * rhythm across the footer row. */
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+}
+[data-composer-style="gemini"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: color-mix(in srgb, #ffffff 96%, transparent);
+  background: color-mix(in srgb, #5a8cff 22%, transparent);
+  font-weight: 600;
+}
+
 /* Send button — light filled circle with dark arrow */
 [data-composer-style="gemini"] .composer-action-btn.run-btn:not(:disabled) {
   width: 32px;
@@ -17488,6 +17588,37 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="kimi"] [data-composer-control="provider"]:hover {
   background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+
+/* Turn / Continuous toggle — matches the Kimi shell's provider chip
+ * (transparent bg, faint white border, white-78% text — slightly
+ * brighter than Codex/Gemini per Kimi's terminal aesthetic). Active
+ * state uses the olive (#a9bd55) accent so the choice reads in
+ * Kimi's signature colour rather than a neutral white. */
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: color-mix(in srgb, #ffffff 95%, transparent);
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+}
+[data-composer-style="kimi"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: #0a0a0c;
+  background: color-mix(in srgb, #a9bd55 70%, transparent);
+  font-weight: 600;
 }
 
 /* Send button — filled circle, hover takes the Kimi accent */
@@ -22187,6 +22318,40 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="terminal"] .composer-control-button:hover:not(:disabled) {
   border-color: color-mix(in srgb, #00ff88 32%, transparent);
   background: color-mix(in srgb, #00ff88 6%, transparent);
+}
+
+/* Turn / Continuous toggle — terminal shell. Matches the
+ * `.composer-picker-label` treatment above: sharp 2px corners,
+ * mono font, green-tinted border. The active button reads as
+ * terminal-bright (#00ff88) on a dark fill, like a highlighted
+ * REPL prompt. */
+[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] {
+  border-radius: 2px;
+  background: transparent;
+  border: 1px solid color-mix(in srgb, #00ff88 14%, transparent);
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-xs) - 1px);
+  padding: 1px;
+}
+[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  border-radius: 0;
+  background: transparent;
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-size-xs) - 1px);
+  font-weight: 500;
+  letter-spacing: 0;
+  padding: 2px 8px;
+}
+[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  background: color-mix(in srgb, #00ff88 6%, transparent);
+  color: #ccffe4;
+}
+[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  background: color-mix(in srgb, #00ff88 22%, transparent);
+  color: #ccffe4;
+  font-weight: 600;
 }
 
 /* Bracket the visible text inside picker chips via ::before / ::after.
