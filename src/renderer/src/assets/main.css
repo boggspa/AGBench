@@ -24655,12 +24655,21 @@ input:disabled, select:disabled, textarea:disabled {
  * (`.ensemble-above-chip-body`) is the actual button. The wrapper
  * carries the drag handle + selection visual treatment. */
 .ensemble-above-chip {
+  /* Slice 1.0.3 polish — chip is naked by default. Outer pill only
+   * resurrects on the SELECTED chip via the `.is-selected` rules
+   * below (so the user sees which one the composer pickers retarget),
+   * on disabled chips (dashed border re-establishes the "off" cue),
+   * and on drag-over (ring shows the drop target). Frees ~22px of
+   * vertical chrome × N chips so the 6-cap roster doesn't wrap on
+   * narrow shells. The chip's bounding box still comes from the body
+   * element's padding + the row's `gap` between chips.
+   */
   display: inline-flex;
   align-items: center;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elevated) 65%, transparent);
+  background: transparent;
   color: var(--text-primary);
   cursor: grab;
   font-size: 12px;
@@ -24762,8 +24771,11 @@ input:disabled, select:disabled, textarea:disabled {
  * editing right now" — the dashed-grayscale stays as the disabled
  * signal but the accent ring wins. */
 .ensemble-above-chip.is-dimmed {
+  /* Chip is naked by default (1.0.3 polish) so the dashed disabled
+   * cue needs to set BOTH a colour and a style — previously it
+   * inherited the colour from the base rule's border-color. */
   opacity: 0.55;
-  border-style: dashed;
+  border: 1px dashed color-mix(in srgb, var(--border-color) 60%, transparent);
   filter: grayscale(0.7);
 }
 .ensemble-above-chip.is-dimmed .ensemble-above-chip-role {
@@ -24922,14 +24934,20 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-chip {
+  /* Chip is naked by default after 1.0.3 polish; light-mode override
+   * no longer needs a per-chip background. Only the `.is-selected`
+   * pill rules below need a light-mode tweak. */
   color: rgba(29, 29, 31, 0.84);
-  background: color-mix(in srgb, var(--surface-2) 65%, transparent);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])
   .ensemble-above-chip
   .ensemble-above-chip-status {
-  background: color-mix(in srgb, rgba(29, 29, 31, 0.18) 45%, transparent);
-  color: rgba(29, 29, 31, 0.72);
+  /* Pre-1.0.3 light-mode treatment set a pill background here. With
+   * the status now rendering as a monoline SVG glyph there's no pill
+   * to tint — just adjust the muted-grey colour to read on light
+   * surfaces. Per-status colours below (.status-answered etc.) still
+   * win through specificity. */
+  color: rgba(29, 29, 31, 0.66);
 }
 
 /* Per-shell light-mode overrides — Gemini / Kimi / Codex-unified
@@ -25009,8 +25027,12 @@ input:disabled, select:disabled, textarea:disabled {
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-ensemble-mode,
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-mode {
-  background: color-mix(in srgb, var(--surface-2) 84%, transparent);
-  border-color: color-mix(in srgb, var(--surface-border) 78%, transparent);
+  /* 1.0.3 polish — softer light-mode treatment matching the
+   * composer-chip neutral palette. Was heavier (surface-2 84% / border
+   * 78%) which read as "this is a separate UI" — now the toggle reads
+   * as one of many tokens in the footer. */
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  border-color: color-mix(in srgb, var(--surface-border) 50%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .composer-ensemble-hop-meter,
@@ -25055,38 +25077,42 @@ input:disabled, select:disabled, textarea:disabled {
   border-top: 1px solid rgba(18, 21, 27, 0.22) !important;
 }
 
+/* Slice 1.0.3 polish — status went from an uppercase text pill
+ * ("IDLE" / "SPEAKING" / etc.) to a monoline SVG glyph rendered by
+ * `<ParticipantStatusIcon>` in EnsembleParticipantsAboveRow.tsx. We
+ * still drive the tint here per status (the icon strokes
+ * `currentColor`) so the colour-coded semantics survive — green tick
+ * reads as "complete", amber arrow reads as "yielded", etc. Outer
+ * pill background dropped entirely; the glyph stands alone next to
+ * the chip body. Saves ~30-40px per chip so the 6-cap roster fits
+ * comfortably on every shell. */
 .ensemble-above-chip-status {
+  display: inline-flex;
+  align-items: center;
   margin-left: 4px;
-  padding: 2px 7px;
-  border-radius: 999px;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  background: color-mix(in srgb, var(--panel-border) 45%, transparent);
   color: var(--text-secondary);
 }
 
 .ensemble-above-chip-status.status-speaking,
 .ensemble-above-chip-status.status-running {
-  background: color-mix(in srgb, var(--accent-color) 22%, transparent);
   color: var(--accent-color);
 }
 
 .ensemble-above-chip-status.status-yielded {
-  background: color-mix(in srgb, #d6a23a 28%, transparent);
-  color: color-mix(in srgb, #d6a23a 80%, var(--text-primary));
+  color: color-mix(in srgb, #d6a23a 85%, var(--text-primary));
 }
 
 .ensemble-above-chip-status.status-answered {
-  background: color-mix(in srgb, var(--success, #41a26b) 24%, transparent);
-  color: color-mix(in srgb, var(--success, #41a26b) 80%, var(--text-primary));
+  color: color-mix(in srgb, var(--success, #41a26b) 88%, var(--text-primary));
 }
 
-.ensemble-above-chip-status.status-failed,
-.ensemble-above-chip-status.status-cancelled {
-  background: color-mix(in srgb, var(--danger, #c44a4a) 24%, transparent);
-  color: color-mix(in srgb, var(--danger, #c44a4a) 80%, var(--text-primary));
+.ensemble-above-chip-status.status-failed {
+  color: color-mix(in srgb, var(--danger, #c44a4a) 85%, var(--text-primary));
+}
+
+.ensemble-above-chip-status.status-cancelled,
+.ensemble-above-chip-status.status-skipped {
+  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
 }
 
 .ensemble-above-row-actions {
@@ -25096,28 +25122,45 @@ input:disabled, select:disabled, textarea:disabled {
   flex-shrink: 0;
 }
 
+/* Slice 1.0.3 polish — Turn / Continuous toggle now matches the
+ * composer-chip token aesthetic (subtle neutral border + transparent
+ * background, font-size-xs, the same rounded pill shape every other
+ * composer footer chip uses). Pre-polish version had a loud light-
+ * blue active pill that read as "last-minute add" next to the
+ * Codex / model / permission chips.
+ *
+ * Internal segmented pattern stays: two adjacent buttons, the active
+ * one gets a subtle accent tint on TEXT (not bg) so the choice is
+ * legible without a competing fill colour. The hop-meter, when
+ * visible during a continuous round, is rendered inline with a
+ * matched-density accent treatment so it still reads as "this is
+ * the limit you're tracking".
+ */
 .composer-ensemble-mode,
 .ensemble-above-mode {
   display: inline-flex;
   align-items: center;
-  padding: 2px;
-  border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elevated) 54%, transparent);
+  padding: 1px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 100px;
+  background: color-mix(in srgb, currentColor 4%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+  line-height: 1;
 }
 
 .composer-ensemble-mode-button,
 .ensemble-above-mode-button {
   border: 0;
-  border-radius: 999px;
+  border-radius: 100px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  letter-spacing: 0;
   line-height: 1;
-  padding: 4px 7px;
+  padding: 3px 9px;
   white-space: nowrap;
 }
 
@@ -25128,8 +25171,13 @@ input:disabled, select:disabled, textarea:disabled {
 
 .composer-ensemble-mode-button.is-active,
 .ensemble-above-mode-button.is-active {
-  background: color-mix(in srgb, var(--accent-color) 18%, transparent);
-  color: var(--accent-color);
+  /* Subtle pill highlight on the active segment — strong enough to
+   * read as "selected", quiet enough to match the surrounding
+   * neutral-chip palette. Text shifts to text-primary weight so the
+   * choice is clear without a competing accent colour. */
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
+  color: var(--text-primary);
+  font-weight: 600;
 }
 
 .composer-ensemble-hop-meter,
