@@ -1762,6 +1762,57 @@ const formatCompactDurationMs = (durationMs: number): string => {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`
 }
 
+const ZERO_RUN_TIMECODE = '00:00:00:00'
+
+const formatRunTimecodeDuration = (durationMs: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000))
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return [days, hours, minutes, seconds]
+    .map((part) => part.toString().padStart(2, '0'))
+    .join(':')
+}
+
+function ComposerRunTimecode({
+  running,
+  startedAt
+}: {
+  running: boolean
+  startedAt?: string | null
+}) {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!running) {
+      setNow(Date.now())
+      return
+    }
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [running, startedAt])
+
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
+  const label =
+    running && Number.isFinite(startedAtMs)
+      ? formatRunTimecodeDuration(now - startedAtMs)
+      : ZERO_RUN_TIMECODE
+
+  return (
+    <span
+      className="composer-run-timecode"
+      data-running={running ? 'true' : 'false'}
+      title={running ? 'Current run elapsed time' : 'Run timer'}
+      aria-label={`${running ? 'Current run elapsed time' : 'Run timer'} ${label}`}
+    >
+      <ClockSymbolIcon />
+      <span>{label}</span>
+    </span>
+  )
+}
+
 const formatRunStatusLabel = (status?: string): string => {
   if (!status) return 'Unknown'
   if (status === 'success' || status === 'completed') return 'Complete'
@@ -5531,6 +5582,7 @@ function App(): React.JSX.Element {
     status: 'idle' | 'pending' | 'success' | 'error'
     message?: string
   }>({ status: 'idle' })
+  const [diffActionMenuOpen, setDiffActionMenuOpen] = useState(false)
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
   type AttachedWindowSnapshot = {
     handleID: string
@@ -5553,6 +5605,25 @@ function App(): React.JSX.Element {
     }
   }
   const [attachedWindow, setAttachedWindow] = useState<AttachedWindowSnapshot | null>(null)
+  useEffect(() => {
+    if (!diffActionMenuOpen) return
+    const closeFromPointer = (event: MouseEvent): void => {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('.composer-diff-action-menu-wrap')) return
+      setDiffActionMenuOpen(false)
+    }
+    const closeFromEscape = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        setDiffActionMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', closeFromPointer, true)
+    document.addEventListener('keydown', closeFromEscape, true)
+    return () => {
+      document.removeEventListener('mousedown', closeFromPointer, true)
+      document.removeEventListener('keydown', closeFromEscape, true)
+    }
+  }, [diffActionMenuOpen])
   const [isAttachingWindow, setIsAttachingWindow] = useState(false)
   const [pendingPlanChoiceByChatId, setPendingPlanChoiceForChat] =
     usePerChatState<PlanChoiceState | null>(null)
@@ -13401,6 +13472,9 @@ function App(): React.JSX.Element {
   const effectiveIsThinking =
     isThinking && ensembleRoundStatus !== 'completed' && ensembleRoundStatus !== 'cancelled'
   const currentRun = currentChat?.runs?.[currentChat.runs.length - 1]
+  const composerRunTimecodeStartedAt = isCurrentChatRunning
+    ? currentEnsembleRound?.startedAt || currentRun?.startedAt || null
+    : null
   const chatTokenTally = useMemo(
     () => buildChatTokenTally(currentChat?.runs || []),
     [currentChat?.runs]
@@ -14365,6 +14439,20 @@ function App(): React.JSX.Element {
       })
     }
     window.setTimeout(() => setCreatePrState({ status: 'idle' }), 6000)
+  }
+
+  const handlePrimeCommitChangesPrompt = () => {
+    const fileCount = latestRunDiffStats.filesChanged
+    const diffSummary =
+      fileCount > 0
+        ? `${fileCount} ${fileCount === 1 ? 'file' : 'files'} changed (+${latestRunDiffStats.additions} -${latestRunDiffStats.deletions})`
+        : 'the current workspace changes'
+    setPrompt(
+      `Commit ${diffSummary}. Review the diff first, choose a concise commit message, then run the commit.`
+    )
+    window.requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus()
+    })
   }
 
   // Composer-unification (Phase J1): Gemini's standalone /stats, /help,
@@ -15486,62 +15574,85 @@ function App(): React.JSX.Element {
                     worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
                   />
                   {(() => {
-                    /*
-                     * Phase J7-followup: state-aware Create PR / Review
-                     * Changes button.
-                     *
-                     * Real Codex shows `Review here` and opens the diff
-                     * viewer; real Claude Code shows `Commit changes` and
-                     * commits the dirty tree. AGBench's button used to
-                     * unconditionally say "Create PR" and call
-                     * `gh pr create --fill` regardless of state, which
-                     * felt wrong when the user had uncommitted changes
-                     * they wanted to review first.
-                     *
-                     * New behaviour:
-                     *  - Latest run touched files (latestRunDiffStats
-                     *    .filesChanged > 0) → label "Review changes",
-                     *    action: focus the Diff Studio in the right pane.
-                     *    No git mutation. (Mirrors real Codex.)
-                     *  - Clean tree (no recent diff to review) → label
-                     *    "Create PR", action: existing `gh pr create`
-                     *    flow. (Mirrors AGBench's pre-existing UX.)
-                     *
-                     * Per-state pending / success / error variants keep
-                     * the existing tone classes for the active action.
-                     */
                     const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
-                    if (hasReviewableDiff) {
-                      return (
+                    const createPrLabel =
+                      createPrState.status === 'pending'
+                        ? 'Creating…'
+                        : createPrState.status === 'success'
+                          ? 'PR opened'
+                          : createPrState.status === 'error'
+                            ? 'Retry PR'
+                            : 'Create PR'
+                    const primaryLabel = hasReviewableDiff ? 'Review changes' : createPrLabel
+                    const actionClassName = `composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`
+                    return (
+                      <span className="composer-diff-action-menu-wrap">
                         <button
                           type="button"
-                          className="composer-above-bar-action"
-                          onClick={() => setRightTab('diff')}
-                          title="Open Diff Studio to review the latest run's file changes"
+                          className={actionClassName}
+                          onClick={() => setDiffActionMenuOpen((open) => !open)}
+                          disabled={createPrState.status === 'pending'}
+                          aria-haspopup="menu"
+                          aria-expanded={diffActionMenuOpen}
+                          title={
+                            createPrState.message ||
+                            'Choose what to do with the current workspace changes'
+                          }
                         >
-                          Review changes
+                          {primaryLabel}
                         </button>
-                      )
-                    }
-                    return (
-                      <button
-                        type="button"
-                        className={`composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`}
-                        onClick={handleCreateGithubPr}
-                        disabled={createPrState.status === 'pending'}
-                        title={
-                          createPrState.message ||
-                          'Run `gh pr create --fill` against the current branch'
-                        }
-                      >
-                        {createPrState.status === 'pending'
-                          ? 'Creating…'
-                          : createPrState.status === 'success'
-                            ? 'PR opened'
-                            : createPrState.status === 'error'
-                              ? 'Retry PR'
-                              : 'Create PR'}
-                      </button>
+                        {diffActionMenuOpen && (
+                          <div className="composer-diff-action-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setDiffActionMenuOpen(false)
+                                setRightTab('diff')
+                              }}
+                              disabled={!hasReviewableDiff}
+                              title={
+                                hasReviewableDiff
+                                  ? 'Open Diff Studio to review the latest run changes'
+                                  : 'No latest run diff is available yet'
+                              }
+                            >
+                              Review changes
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setDiffActionMenuOpen(false)
+                                handlePrimeCommitChangesPrompt()
+                              }}
+                              disabled={!hasReviewableDiff}
+                              title={
+                                hasReviewableDiff
+                                  ? 'Ask the current agent to review and commit these changes'
+                                  : 'No latest run diff is available to commit yet'
+                              }
+                            >
+                              Commit Changes
+                            </button>
+                            <button
+                              type="button"
+                              role="menuitem"
+                              onClick={() => {
+                                setDiffActionMenuOpen(false)
+                                void handleCreateGithubPr()
+                              }}
+                              disabled={createPrState.status === 'pending'}
+                              title={
+                                createPrState.message ||
+                                'Run `gh pr create --fill` against the current branch'
+                              }
+                            >
+                              {createPrLabel}
+                            </button>
+                          </div>
+                        )}
+                      </span>
                     )
                   })()}
                 </div>
@@ -16612,6 +16723,10 @@ function App(): React.JSX.Element {
                     </label>
                       )
                     })()}
+                    <ComposerRunTimecode
+                      running={isCurrentChatRunning}
+                      startedAt={composerRunTimecodeStartedAt}
+                    />
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here
