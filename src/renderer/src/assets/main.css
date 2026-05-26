@@ -17300,6 +17300,18 @@ input:disabled, select:disabled, textarea:disabled {
 
 .composer-above-bar:has(.composer-diff-action-menu) {
   overflow: visible;
+  /*
+   * 1.0.4 fix — composer-surface (z-index: 2 at main.css:5717) was
+   * painting over the open diff-action dropdown because the
+   * above-bar's `isolation: isolate` at line 16951 trapped the
+   * menu's `z-index: 30` inside the above-bar's own stacking
+   * context, AND the above-bar itself had no z-index (auto/0) vs
+   * the surface's z-index: 2. Lifting the above-bar to z-index: 5
+   * when the menu is open (matching the composer-area's z-index)
+   * ensures the dropdown paints above the textarea + runtime row
+   * below.
+   */
+  z-index: 5;
 }
 
 .composer-diff-action-menu-wrap {
