@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import {
   ChatRecord,
   ChildAgentThread,
+  EnsembleParticipant,
   ProviderId,
   ToolActivity,
   ToolDiffSummary
@@ -363,6 +364,75 @@ function getFileActionLabel(activity: ToolActivity): string {
   return activity.displayName || activity.toolName || 'Used tool'
 }
 
+/**
+ * 1.0.4 — Render an ensemble_yield tool-activity title as structured
+ * JSX with the target participant rendered as an `@-mention` chip
+ * tinted with the target's provider colour. Used by both the inline
+ * row title and the larger card title so the rendering is consistent
+ * regardless of which call path produced the activity (renderer-side
+ * `createToolActivity`, orchestrator-side `buildEnsembleToolActivity`,
+ * or any future shape).
+ *
+ * The fallback shape is "Yielding to @<target>"; when the activity's
+ * `displayName` already carries an actor prefix ("Codex yielding to
+ * Gems" from the orchestrator), we surface that too as "Codex yielding
+ * to @<target>".
+ *
+ * `participants` is optional — when present we resolve the target
+ * string against the participant roster (role / provider / model
+ * alias, case-insensitive) so the chip can carry a `data-provider`
+ * attribute the CSS keys off for the colour tint. Without it the chip
+ * still renders, just without provider colouring.
+ */
+function renderEnsembleYieldTitle(
+  activity: ToolActivity,
+  participants?: EnsembleParticipant[]
+): ReactNode {
+  const params = activity.parameters || {}
+  const target = (getStringParam(params, ['target', 'participant', 'to', 'next']) || '').trim()
+
+  let targetProvider: ProviderId | undefined
+  if (target && participants && participants.length > 0) {
+    const lower = target.toLowerCase()
+    const matched = participants.find((p) => {
+      if ((p.role || '').toLowerCase() === lower) return true
+      if ((p.provider || '').toLowerCase() === lower) return true
+      if ((p.id || '').toLowerCase() === lower) return true
+      return false
+    })
+    if (matched) targetProvider = matched.provider
+  }
+
+  // Pull actor prefix from the orchestrator's displayName when it
+  // matches the canonical "X yielding to Y" shape. Falls back to no
+  // actor when the displayName is the raw tool name (e.g. when the
+  // activity was constructed by the renderer-side path without an
+  // orchestrator participant context).
+  const display = activity.displayName || ''
+  const actorMatch = display.match(/^(.+?)\s+yielding\b/i)
+  const actor = actorMatch && !actorMatch[1].toLowerCase().includes('_') ? actorMatch[1] : ''
+
+  if (!target) {
+    return <>{actor ? `${actor} yielding` : 'Yielding'}</>
+  }
+
+  const chip = (
+    <span
+      className={`activity-yield-target${targetProvider ? ` provider-${targetProvider}` : ''}`}
+      data-provider={targetProvider || ''}
+    >
+      @{target}
+    </span>
+  )
+
+  return (
+    <>
+      {actor ? `${actor} yielding to ` : 'Yielding to '}
+      {chip}
+    </>
+  )
+}
+
 function getReadableActivityDisplayName(activity: ToolActivity): string {
   const fallback = getToolDisplayName(activity.toolName || '', activity.parameters || {})
   const displayName = activity.displayName || ''
@@ -664,13 +734,16 @@ function ActivityProgressNote({ activity }: { activity: ToolActivity }) {
 function ActivityCompactGroup({
   activities,
   workspacePath,
-  provider
+  provider,
+  participants
 }: {
   activities: ToolActivity[]
   workspacePath?: string
   /** Chat-context provider, forwarded to inner ActivityRow rows for
    * the provider-coloured border (Phase L3 slice 2). */
   provider?: ProviderId
+  /** 1.0.4 — forwarded to ActivityRow for ensemble_yield chip tinting. */
+  participants?: EnsembleParticipant[]
 }) {
   const [expanded, setExpanded] = useState(false)
   const searchCount = activities.filter(isSearchActivity).length
@@ -807,6 +880,7 @@ function ActivityCompactGroup({
               workspacePath={workspacePath}
               forceCompact
               provider={provider}
+              participants={participants}
             />
           ))}
         </div>
@@ -815,9 +889,13 @@ function ActivityCompactGroup({
   )
 }
 
-function getInlineActivityTitle(activity: ToolActivity, filePath?: string): ReactNode {
+function getInlineActivityTitle(
+  activity: ToolActivity,
+  filePath?: string,
+  participants?: EnsembleParticipant[]
+): ReactNode {
   if (filePath) {
-    return <ActivityTitle activity={activity} filePath={filePath} />
+    return <ActivityTitle activity={activity} filePath={filePath} participants={participants} />
   }
 
   const parameters = activity.parameters || {}
@@ -844,10 +922,17 @@ function getInlineActivityTitle(activity: ToolActivity, filePath?: string): Reac
   }
 
   if (activity.category === 'task') {
-    const displayName = getReadableActivityDisplayName(activity)
     if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) {
-      return <>{displayName}</>
+      // 1.0.4 — render the ensemble_yield activity title with a
+      // provider-tinted @-mention chip for the target participant
+      // (e.g. "Codex yielding to @Gems" where @Gems is tinted blue
+      // for Gemini). Defensively self-contained — if the activity's
+      // `displayName` is the raw tool name from an upstream path
+      // that bypassed the humanization helper, this still produces
+      // a friendly label by reading target straight from parameters.
+      return renderEnsembleYieldTitle(activity, participants)
     }
+    const displayName = getReadableActivityDisplayName(activity)
     const summary =
       activity.resultSummary ||
       activity.outputPreview ||
@@ -855,14 +940,29 @@ function getInlineActivityTitle(activity: ToolActivity, filePath?: string): Reac
     return summary ? (
       <>{truncateText(summary, 120)}</>
     ) : (
-      <>{activity.displayName || 'Task update'}</>
+      <>{displayName || activity.displayName || 'Task update'}</>
     )
   }
 
-  return <ActivityTitle activity={activity} filePath={filePath} />
+  return <ActivityTitle activity={activity} filePath={filePath} participants={participants} />
 }
 
-function ActivityTitle({ activity, filePath }: { activity: ToolActivity; filePath?: string }) {
+function ActivityTitle({
+  activity,
+  filePath,
+  participants
+}: {
+  activity: ToolActivity
+  filePath?: string
+  participants?: EnsembleParticipant[]
+}) {
+  // 1.0.4 — same structured render as the inline path for
+  // ensemble_yield activities so the larger card form stays in
+  // visual lockstep with the inline form.
+  if ((activity.toolName || '').toLowerCase().includes('ensemble_yield')) {
+    return <>{renderEnsembleYieldTitle(activity, participants)}</>
+  }
+
   if (!filePath) {
     return <>{getReadableActivityDisplayName(activity)}</>
   }
@@ -1045,6 +1145,16 @@ export function ActivityStack({
   chat,
   compactDensity = false
 }: ActivityStackProps) {
+  // 1.0.4 — ensemble participants are forwarded down to ActivityRow
+  // so an `ensemble_yield(target: ...)` activity can render the target
+  // as a provider-tinted `@<role>` chip. Memoised against the
+  // participants array reference so we don't re-key every render when
+  // the chat object has unrelated mutations.
+  const participants = useMemo(
+    () => chat?.ensemble?.participants,
+    [chat?.ensemble?.participants]
+  )
+
   const childThreads = useMemo(() => {
     if (!provider || !activities || activities.length === 0) return [] as ChildAgentThread[]
     return deriveChildAgentThreadsFromActivities(provider, chatId, runId, activities, chat)
@@ -1124,6 +1234,7 @@ export function ActivityStack({
               activities={item.activities}
               workspacePath={workspacePath}
               provider={provider}
+              participants={participants}
             />
           )
         }
@@ -1136,6 +1247,7 @@ export function ActivityStack({
             childThread={thread}
             childActivities={thread ? resolveThreadActivities(thread) : undefined}
             provider={provider}
+            participants={participants}
             forceCompact={compactDensity}
             isExpanded={expandedIds.has(item.activity.id)}
             onToggleExpand={(modKey) => toggleExpand(item.activity.id, modKey)}
@@ -1393,6 +1505,7 @@ function ActivityRow({
   childThread,
   childActivities,
   provider,
+  participants,
   isExpanded,
   onToggleExpand
 }: {
@@ -1401,6 +1514,11 @@ function ActivityRow({
   forceCompact?: boolean
   childThread?: ChildAgentThread
   childActivities?: ToolActivity[]
+  /** 1.0.4 — ensemble participants for resolving an `ensemble_yield`
+   * activity's target string to a provider, so the inline target chip
+   * picks up provider-themed tinting (e.g. blue for Gemini). Optional
+   * — non-ensemble chats pass undefined and the chip renders neutral. */
+  participants?: EnsembleParticipant[]
   /** Chat-context provider — the CLI/runtime that owns the chat this
    * activity belongs to. Drives the left-border color via the
    * `[data-provider]` selector so a long transcript visually clusters
@@ -1641,9 +1759,13 @@ function ActivityRow({
                     )
                   })()}
                 {isInlineActivity ? (
-                  getInlineActivityTitle(activity, activityFilePath)
+                  getInlineActivityTitle(activity, activityFilePath, participants)
                 ) : (
-                  <ActivityTitle activity={activity} filePath={activityFilePath} />
+                  <ActivityTitle
+                    activity={activity}
+                    filePath={activityFilePath}
+                    participants={participants}
+                  />
                 )}
                 {inlineStats.visible && (
                   <span className="activity-line-stats">

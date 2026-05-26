@@ -8447,6 +8447,95 @@ button.diff-file-row {
   white-space: nowrap;
 }
 
+/*
+ * 1.0.4 — ensemble_yield activity target chip.
+ *
+ * Renders the yield target as a provider-tinted `@<role>` pill so the
+ * user can see at a glance *who's handing off to whom* in an ensemble
+ * round without reading the full label. The chip is inline so it sits
+ * naturally inside the activity-row text (e.g. "Codex yielding to
+ * [@Gems]" where [@Gems] is a small Gemini-blue pill).
+ *
+ * Tinting hooks: `.provider-<id>` modifier classes carry the
+ * provider's brand colour. Falls back to a neutral accent when the
+ * target can't be resolved against the participant roster (e.g.
+ * mention to an unknown role).
+ */
+.activity-yield-target {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  margin: 0 1px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent, #5a8cff) 32%, transparent);
+  background: color-mix(in srgb, var(--accent, #5a8cff) 14%, transparent);
+  color: color-mix(in srgb, var(--accent, #5a8cff) 92%, #ffffff 8%);
+  font-weight: 600;
+  font-size: 0.94em;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.activity-yield-target.provider-codex {
+  --provider-tint: #aaa0ff;
+  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
+}
+
+.activity-yield-target.provider-claude {
+  --provider-tint: #ffad64;
+  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
+}
+
+.activity-yield-target.provider-gemini {
+  --provider-tint: #8eb1ff;
+  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
+}
+
+.activity-yield-target.provider-kimi {
+  --provider-tint: #bbcf66;
+  border-color: color-mix(in srgb, var(--provider-tint) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-tint) 14%, transparent);
+  color: color-mix(in srgb, var(--provider-tint) 92%, #ffffff 8%);
+}
+
+/* Light theme — chip carries the provider tint at higher saturation
+ * against the lighter background so it stays legible. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target {
+  background: color-mix(in srgb, var(--accent, #5a8cff) 18%, white 82%);
+  color: color-mix(in srgb, var(--accent, #5a8cff) 70%, #1d1d1f 30%);
+  border-color: color-mix(in srgb, var(--accent, #5a8cff) 36%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-codex {
+  background: color-mix(in srgb, #aaa0ff 18%, white 82%);
+  color: color-mix(in srgb, #6e60d0 100%, transparent);
+  border-color: color-mix(in srgb, #aaa0ff 38%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-claude {
+  background: color-mix(in srgb, #ffad64 18%, white 82%);
+  color: color-mix(in srgb, #cb6a25 100%, transparent);
+  border-color: color-mix(in srgb, #ffad64 38%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-gemini {
+  background: color-mix(in srgb, #8eb1ff 18%, white 82%);
+  color: color-mix(in srgb, #4d72c8 100%, transparent);
+  border-color: color-mix(in srgb, #8eb1ff 38%, transparent);
+}
+
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .activity-yield-target.provider-kimi {
+  background: color-mix(in srgb, #bbcf66 18%, white 82%);
+  color: color-mix(in srgb, #6f8528 100%, transparent);
+  border-color: color-mix(in srgb, #bbcf66 38%, transparent);
+}
+
 /* Transcript truncation: long shell commands (full /Users/... paths,
  * piped one-liners) were extending beyond the chat thread's right
  * gutter because the inline-command span had `white-space: nowrap`
