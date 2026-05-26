@@ -104,7 +104,7 @@ import {
 import { ComposerHighlightOverlay } from './components/ComposerHighlightOverlay'
 import { MentionHighlightedText } from './components/MentionHighlightedText'
 import { hasResolvedMention } from './lib/mentionHighlight'
-import { shortModelName } from './lib/composerChipFormat'
+import { reasoningDisplayLabel, shortModelName } from './lib/composerChipFormat'
 import {
   getDefaultEnsembleParticipantConfig,
   resolveEnsembleParticipantSettings
@@ -3624,7 +3624,40 @@ const formatAssistantMessageLabel = (
   // Falls back to no badge when the participant doesn't carry a model
   // (legacy ensemble chats from before this metadata existed).
   const ensembleModel = typeof message.metadata?.ensembleModel === 'string' ? message.metadata.ensembleModel : ''
-  const modelBadge = ensembleModel ? shortModelName(provider, '', ensembleModel) : null
+  const ensembleReasoningEffort =
+    typeof message.metadata?.ensembleReasoningEffort === 'string'
+      ? message.metadata.ensembleReasoningEffort
+      : ''
+  const ensembleThinkingEnabled =
+    typeof message.metadata?.ensembleThinkingEnabled === 'boolean'
+      ? message.metadata.ensembleThinkingEnabled
+      : undefined
+  const modelName = ensembleModel ? shortModelName(provider, '', ensembleModel) : null
+  // Append a reasoning/thinking suffix when the participant carried one
+  // through dispatch so the header mirrors the composer chip the user
+  // picked ("5.5 Extra High", "Opus 4.7 · Max", "K2.6 Thinking"). The
+  // reasoning helper short-circuits to '' for providers without a
+  // reasoning axis (Gemini) or when the effort is 'off'.
+  const reasoningSuffix = modelName
+    ? reasoningDisplayLabel({
+        provider,
+        // `reasoningDisplayLabel` doesn't read `composerStyle` — only the
+        // sibling `formatComposerModelChip` does — but the shared
+        // `ComposerChipContext` interface requires it. Any valid value
+        // works; `'default'` is the most neutral.
+        composerStyle: 'default',
+        modelId: ensembleModel,
+        modelLabel: '',
+        codexReasoningEffort: provider === 'codex' ? ensembleReasoningEffort : undefined,
+        claudeReasoningEffort: provider === 'claude' ? ensembleReasoningEffort : undefined,
+        kimiThinkingEnabled: provider === 'kimi' ? ensembleThinkingEnabled : undefined
+      })
+    : ''
+  const modelBadge = modelName
+    ? reasoningSuffix
+      ? `${modelName} ${reasoningSuffix}`
+      : modelName
+    : null
   return {
     label: role ? `${getProviderLabel(provider)} / ${role}` : getProviderLabel(provider),
     provider,
@@ -13626,6 +13659,29 @@ function App(): React.JSX.Element {
         (p) => p.id === activeRound.activeParticipantId
       )
       if (participant) {
+        const baseModelName = participant.model
+          ? shortModelName(participant.provider, '', participant.model)
+          : null
+        // Mirror the assistant-header treatment in `formatAssistantMessageLabel`:
+        // append the participant's reasoning effort / thinking flag so
+        // the in-flight indicator reads "5.5 Extra High" / "K2.6
+        // Thinking" — matching the composer chip the user picked.
+        // `reasoningDisplayLabel` short-circuits to '' for providers
+        // without a reasoning axis or when effort is 'off'.
+        const thinkingReasoningSuffix = baseModelName
+          ? reasoningDisplayLabel({
+              provider: participant.provider,
+              composerStyle: 'default',
+              modelId: participant.model || '',
+              modelLabel: '',
+              codexReasoningEffort:
+                participant.provider === 'codex' ? participant.reasoningEffort : undefined,
+              claudeReasoningEffort:
+                participant.provider === 'claude' ? participant.reasoningEffort : undefined,
+              kimiThinkingEnabled:
+                participant.provider === 'kimi' ? participant.thinkingEnabled : undefined
+            })
+          : ''
         return {
           thinkingProviderLabel: getProviderLabel(participant.provider),
           thinkingProvider: participant.provider as ProviderId | null,
@@ -13633,8 +13689,10 @@ function App(): React.JSX.Element {
           // chip so the user can see at a glance which configured
           // model is actually producing the in-flight output. Empty
           // for participants without a custom model (legacy chats).
-          thinkingModelBadge: participant.model
-            ? shortModelName(participant.provider, '', participant.model)
+          thinkingModelBadge: baseModelName
+            ? thinkingReasoningSuffix
+              ? `${baseModelName} ${thinkingReasoningSuffix}`
+              : baseModelName
             : null
         }
       }
