@@ -455,7 +455,17 @@ function DiffTab(props: InspectorProps) {
   )
 }
 
-function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }: InspectorProps) {
+function RawTab(props: InspectorProps) {
+  const { rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef } = props
+  const ensembleParticipants = getOrderedEnsembleParticipants(props.currentChat)
+  const isEnsemble = ensembleParticipants.length > 0
+  const typeCounts = rawLogs.reduce(
+    (acc, log) => {
+      acc[log.type] = (acc[log.type] || 0) + 1
+      return acc
+    },
+    {} as Partial<Record<(typeof rawLogs)[number]['type'], number>>
+  )
   return (
     <div className="diff-studio raw-events-panel">
       <div className="diff-studio-toolbar">
@@ -485,6 +495,39 @@ function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }:
           </button>
         </div>
       </div>
+      {isEnsemble && (
+        <div
+          className="safety-card"
+          style={{
+            margin: '0 var(--space-sm) var(--space-sm)',
+            flex: '0 0 auto'
+          }}
+        >
+          <h4>Ensemble raw event stream</h4>
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--text-secondary)',
+              margin: '0 0 var(--space-sm) 0'
+            }}
+          >
+            Combined event buffer for this Ensemble chat. Participant runs stay tagged in chat/run
+            metadata, while this tab keeps the raw stdout, stderr, tool, and host info stream in one
+            chronological view.
+          </p>
+          <div className="safety-row">
+            <span>Participants</span>
+            <span>{formatParticipantProviderList(ensembleParticipants)}</span>
+          </div>
+          <div className="safety-row">
+            <span>Events</span>
+            <span>
+              {rawLogs.length} total · {typeCounts.stdout || 0} stdout · {typeCounts.stderr || 0}{' '}
+              stderr · {typeCounts.tool || 0} tool · {typeCounts.info || 0} info
+            </span>
+          </div>
+        </div>
+      )}
       <div className="raw-events-body">
         {rawLogs
           .filter((l) => rawFilter === 'all' || l.type === rawFilter)
@@ -525,12 +568,21 @@ function RawTab({ rawLogs, rawFilter, setRawFilter, setRawLogs, rawLogsEndRef }:
 }
 
 function DelegationTab(props: InspectorProps) {
-  const activities = extractDelegationAuditItems(
-    props.rawLogs,
-    props.provider,
-    props.providerCapabilities
-  )
-  const chips = providerDelegationChips(props.provider, props.providerCapabilities)
+  const ensembleParticipants = getOrderedEnsembleParticipants(props.currentChat)
+  const isEnsemble = ensembleParticipants.length > 0
+  const providers = isEnsemble ? uniqueProviders(ensembleParticipants) : [props.provider]
+  const activities = isEnsemble
+    ? extractEnsembleDelegationAuditItems(props, providers)
+    : extractDelegationAuditItems(props.rawLogs, props.provider, props.providerCapabilities)
+  const chips = isEnsemble
+    ? Array.from(
+        new Set(
+          providers.flatMap((provider) =>
+            providerDelegationChips(provider, contractForProvider(props, provider))
+          )
+        )
+      )
+    : providerDelegationChips(props.provider, props.providerCapabilities)
   const openFloatingAudit = () => {
     const auditWindow = window.open('', 'agbench-agent-audit', 'width=560,height=760')
     if (!auditWindow) return
@@ -549,7 +601,7 @@ function DelegationTab(props: InspectorProps) {
       .chip{border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:4px 8px;color:#b8d7ff;background:rgba(255,255,255,.06)}
       li{margin:0 0 14px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.05)}
       span{color:#bbb;line-height:1.45}
-    </style></head><body><h1>AGBench Agent Audit</h1><div class="chips">${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('')}</div><ol>${rows}</ol></body></html>`)
+    </style></head><body><h1>${isEnsemble ? 'AGBench Ensemble Agent Audit' : 'AGBench Agent Audit'}</h1><div class="chips">${chips.map((chip) => `<span class="chip">${escapeHtml(chip)}</span>`).join('')}</div><ol>${rows}</ol></body></html>`)
     auditWindow.document.close()
   }
 
@@ -558,7 +610,7 @@ function DelegationTab(props: InspectorProps) {
       <div className="diff-studio-toolbar">
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)' }}>
-            Provider delegation audit
+            {isEnsemble ? 'Ensemble delegation audit' : 'Provider delegation audit'}
           </div>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
             {activities.length} delegated {activities.length === 1 ? 'activity' : 'activities'}{' '}
@@ -571,7 +623,26 @@ function DelegationTab(props: InspectorProps) {
       </div>
 
       <div className="safety-card">
-        <h4>{providerLabel(props.provider)} delegation model</h4>
+        <h4>{isEnsemble ? 'Ensemble delegation model' : `${providerLabel(props.provider)} delegation model`}</h4>
+        {isEnsemble && (
+          <p
+            style={{
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--text-secondary)',
+              margin: '0 0 var(--space-sm) 0'
+            }}
+          >
+            Delegation and subagent activity is audited across the enabled participant providers.
+            Native provider events remain provider-owned; AGBench displays the combined audit in
+            one inspector surface.
+          </p>
+        )}
+        {isEnsemble && (
+          <div className="safety-row">
+            <span>Participants</span>
+            <span>{formatParticipantProviderList(ensembleParticipants)}</span>
+          </div>
+        )}
         <div
           style={{
             display: 'flex',
@@ -602,8 +673,9 @@ function DelegationTab(props: InspectorProps) {
         <div className="safety-card">
           <h4>No child agents yet</h4>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
-            Ask {providerLabel(props.provider)} to spawn or delegate to subagents. AGBench will
-            render native provider events here when they appear in the stream.
+            {isEnsemble
+              ? 'Ask any Ensemble participant to spawn or delegate to subagents. AGBench will render native provider events here when they appear in the stream.'
+              : `Ask ${providerLabel(props.provider)} to spawn or delegate to subagents. AGBench will render native provider events here when they appear in the stream.`}
           </p>
         </div>
       ) : (
@@ -1129,6 +1201,115 @@ function safeText(value: unknown, fallback = ''): string {
   } catch {
     return '[unrenderable]'
   }
+}
+
+function getOrderedEnsembleParticipants(
+  chat?: ChatRecord | null
+): EnsembleParticipant[] {
+  if (chat?.chatKind !== 'ensemble' || !chat.ensemble) return []
+  return [...(chat.ensemble.participants || [])].sort((a, b) => a.order - b.order)
+}
+
+function uniqueProviders(participants: EnsembleParticipant[]): ProviderId[] {
+  return Array.from(
+    new Set(participants.filter((participant) => participant.enabled).map((p) => p.provider))
+  ) as ProviderId[]
+}
+
+function formatParticipantProviderList(participants: EnsembleParticipant[]): string {
+  const enabled = participants.filter((participant) => participant.enabled)
+  if (enabled.length === 0) return 'none enabled'
+  return enabled
+    .map(
+      (participant) =>
+        `${safeText(participant.role, 'Participant')} / ${providerLabel(participant.provider)}`
+    )
+    .join(', ')
+}
+
+function inferProviderFromRawLogContent(content: string): ProviderId | null {
+  const parsed = parseJsonLike(content)
+  if (parsed) {
+    const found = findProviderInValue(parsed)
+    if (found) return found
+  }
+  const textMatch = content.match(
+    /\b(provider|ensembleProvider|parentProvider|targetProvider)\s*[:=]\s*["']?(gemini|codex|claude|kimi)\b/i
+  )
+  if (textMatch) return textMatch[2].toLowerCase() as ProviderId
+  return null
+}
+
+function parseJsonLike(content: string): unknown | null {
+  const trimmed = content.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return null
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return null
+  }
+}
+
+function findProviderInValue(value: unknown, depth = 0): ProviderId | null {
+  if (depth > 4 || value === null || value === undefined) return null
+  if (typeof value === 'string') {
+    const normalized = value.toLowerCase()
+    return normalized === 'gemini' ||
+      normalized === 'codex' ||
+      normalized === 'claude' ||
+      normalized === 'kimi'
+      ? (normalized as ProviderId)
+      : null
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findProviderInValue(item, depth + 1)
+      if (found) return found
+    }
+    return null
+  }
+  if (typeof value !== 'object') return null
+  const record = value as Record<string, unknown>
+  const preferredKeys = [
+    'ensembleProvider',
+    'provider',
+    'providerId',
+    'parentProvider',
+    'targetProvider',
+    'modelProvider'
+  ]
+  for (const key of preferredKeys) {
+    const found = findProviderInValue(record[key], depth + 1)
+    if (found) return found
+  }
+  for (const nestedKey of ['metadata', 'payload', 'params', 'item', 'run', 'ensembleRun']) {
+    const found = findProviderInValue(record[nestedKey], depth + 1)
+    if (found) return found
+  }
+  return null
+}
+
+function extractEnsembleDelegationAuditItems(
+  props: InspectorProps,
+  providers: ProviderId[]
+) {
+  const inferredProviderCount = props.rawLogs.filter((log) =>
+    inferProviderFromRawLogContent(log.content)
+  ).length
+  const activities = providers.flatMap((provider) => {
+    const providerLogs =
+      inferredProviderCount > 0
+        ? props.rawLogs.filter((log) => inferProviderFromRawLogContent(log.content) === provider)
+        : provider === props.provider
+          ? props.rawLogs
+          : []
+    return extractDelegationAuditItems(providerLogs, provider, contractForProvider(props, provider))
+  })
+  const byKey = new Map<string, (typeof activities)[number]>()
+  for (const activity of activities) {
+    byKey.set(activity.activityId, activity)
+  }
+  return Array.from(byKey.values())
 }
 
 function permissionPresetLabel(presetId?: string | null): string {
@@ -1898,20 +2079,177 @@ function CapabilityCard({ section }: { section: GeminiCapabilitySection }) {
   )
 }
 
-function SafetyTab({
-  provider,
-  approvalMode,
-  codexStatus,
-  geminiVersion,
-  isOldVersion,
-  trustResult,
-  showTerminal,
-  setShowTerminal,
-  currentWorkspace,
-  onImportCodexUsageCredential,
-  onClearCodexUsageCredential,
-  externalPathGrants = []
-}: InspectorProps) {
+function EnsembleSafetyTab(props: InspectorProps) {
+  const chat = props.currentChat
+  const ensemble = chat?.ensemble
+  const participants = getOrderedEnsembleParticipants(chat)
+  const enabledParticipants = participants.filter((participant) => participant.enabled)
+  const providers = uniqueProviders(participants)
+  const externalPathGrants = props.externalPathGrants || []
+  const activeParticipant = participants.find(
+    (participant) => participant.id === ensemble?.activeRound?.activeParticipantId
+  )
+  const writeParticipants = enabledParticipants.filter(
+    (participant) =>
+      participant.permissionPresetId === 'workspace_write' ||
+      participant.permissionPresetId === 'full_access' ||
+      participant.permissionPresetId === 'custom'
+  )
+
+  return (
+    <div className="safety-panel">
+      <div className="safety-card">
+        <h4>Ensemble safety</h4>
+        <p
+          style={{
+            fontSize: 'var(--font-size-sm)',
+            color: 'var(--text-secondary)',
+            margin: '0 0 var(--space-md) 0'
+          }}
+        >
+          Ensemble runs use a serial active-speaker lock. Multiple participants can be configured
+          with write permissions, but only the current speaker can run tools or request approvals at
+          a given moment.
+        </p>
+        <div className="safety-row">
+          <span>Mode</span>
+          <span>{formatEnsembleMode(ensemble?.orchestrationMode)}</span>
+        </div>
+        <div className="safety-row">
+          <span>Speaker lock</span>
+          <span style={{ color: 'var(--success)' }}>serial</span>
+        </div>
+        <div className="safety-row">
+          <span>Active speaker</span>
+          <span>
+            {activeParticipant
+              ? `${safeText(activeParticipant.role, 'Participant')} · ${providerLabel(activeParticipant.provider)}`
+              : 'none'}
+          </span>
+        </div>
+        <div className="safety-row">
+          <span>Participants</span>
+          <span>
+            {enabledParticipants.length} enabled / {participants.length} configured
+          </span>
+        </div>
+        <div className="safety-row">
+          <span>Write-capable</span>
+          <span>{writeParticipants.length}</span>
+        </div>
+        <div className="safety-row">
+          <span>External grants</span>
+          <span>{externalPathGrants.length}</span>
+        </div>
+      </div>
+
+      {participants.map((participant) => {
+        const contract = contractForProvider(props, participant.provider)
+        const grants = externalPathGrants.filter((grant) => grant.provider === participant.provider)
+        return (
+          <div
+            key={participant.id}
+            className="safety-card"
+            style={{ opacity: participant.enabled ? 1 : 0.62 }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 'var(--space-sm)'
+              }}
+            >
+              <h4>
+                {safeText(participant.role, 'Participant')} · {providerLabel(participant.provider)}
+              </h4>
+              <span
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: participant.enabled ? 'var(--success)' : 'var(--text-tertiary)',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                {participant.enabled ? 'enabled' : 'disabled'}
+              </span>
+            </div>
+            <div className="safety-row">
+              <span>Permission preset</span>
+              <span>{permissionPresetLabel(participant.permissionPresetId)}</span>
+            </div>
+            <div className="safety-row">
+              <span>Run state</span>
+              <span>{safeText(runStateForParticipant(chat!, participant))}</span>
+            </div>
+            <div className="safety-row">
+              <span>Provider contract</span>
+              <span style={{ color: contractStateColor(contract) }}>
+                {contractStateLabel(contract)}
+              </span>
+            </div>
+            <div className="safety-row">
+              <span>Approvals</span>
+              <span>{safeText(contract?.approvals.providerMode, 'participant preset')}</span>
+            </div>
+            <div className="safety-row">
+              <span>External grants</span>
+              <span>{grants.length}</span>
+            </div>
+          </div>
+        )
+      })}
+
+      <div className="safety-card">
+        <h4>Provider setup</h4>
+        <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+          Provider login/setup remains provider-owned. Use Settings → Providers for Codex, Claude,
+          Gemini, and Kimi auth state; Ensemble chats never scrape credentials from another
+          provider.
+        </p>
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 'var(--space-xs)',
+            marginTop: 'var(--space-sm)'
+          }}
+        >
+          {providers.map((provider) => {
+            const contract = contractForProvider(props, provider)
+            return (
+              <div className="safety-row" key={provider}>
+                <span>{providerLabel(provider)}</span>
+                <span style={{ color: contractStateColor(contract) }}>
+                  {contractStateLabel(contract)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function SafetyTab(props: InspectorProps) {
+  const {
+    provider,
+    approvalMode,
+    codexStatus,
+    geminiVersion,
+    isOldVersion,
+    trustResult,
+    showTerminal,
+    setShowTerminal,
+    currentWorkspace,
+    onImportCodexUsageCredential,
+    onClearCodexUsageCredential,
+    externalPathGrants = []
+  } = props
+  if (props.currentChat?.chatKind === 'ensemble' && props.currentChat.ensemble) {
+    return <EnsembleSafetyTab {...props} />
+  }
+
   if (provider === 'codex') {
     const sandbox = approvalMode === 'plan' ? 'read-only' : 'workspace-write'
     const approvalPolicy =

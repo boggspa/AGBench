@@ -74,6 +74,105 @@ function makeCapabilityContract(provider: ProviderId): ProviderCapabilityContrac
   }
 }
 
+function makeEnsembleChat(): ChatRecord {
+  return makeChat({
+    appChatId: 'ensemble-1',
+    provider: 'codex',
+    chatKind: 'ensemble',
+    title: 'Ensemble New Ensemble',
+    ensemble: {
+      enabled: true,
+      maxParticipants: 6,
+      orchestrationMode: 'continuous',
+      activeRound: {
+        roundId: 'round-1',
+        status: 'running',
+        prompt: 'Review this',
+        startedAt: new Date(0).toISOString(),
+        activeParticipantId: 'ensemble-claude',
+        orchestrationMode: 'continuous',
+        participants: [
+          {
+            participantId: 'ensemble-codex',
+            provider: 'codex',
+            role: 'Worker',
+            order: 1,
+            status: 'answered'
+          },
+          {
+            participantId: 'ensemble-claude',
+            provider: 'claude',
+            role: 'Reviewer',
+            order: 2,
+            status: 'running'
+          }
+        ]
+      },
+      participants: [
+        {
+          id: 'ensemble-codex',
+          provider: 'codex',
+          enabled: true,
+          role: 'Worker',
+          instructions: 'Make the change.',
+          order: 1,
+          model: 'gpt-5.5',
+          permissionPresetId: 'workspace_write',
+          tokenTotals: { input_tokens: 3200, output_tokens: 1100, total_tokens: 4300 }
+        },
+        {
+          id: 'ensemble-claude',
+          provider: 'claude',
+          enabled: true,
+          role: 'Reviewer',
+          instructions: 'Review the change.',
+          order: 2,
+          model: 'opus-4.7',
+          permissionPresetId: 'read_only'
+        }
+      ]
+    }
+  })
+}
+
+function renderInspector(overrides: Partial<Parameters<typeof Inspector>[0]> = {}): string {
+  return renderToStaticMarkup(
+    createElement(Inspector, {
+      rightTab: 'capabilities',
+      setRightTab: () => {},
+      activeDiff: null,
+      refreshDiff: () => {},
+      currentWorkspace: { id: 'ws', path: '/repo' },
+      diffView: 'this_run',
+      setDiffView: () => {},
+      runDiff: null,
+      diffRefreshStatus: '',
+      rawLogs: [],
+      rawFilter: 'all',
+      setRawFilter: () => {},
+      setRawLogs: () => {},
+      rawLogsEndRef: { current: null },
+      geminiVersion: '',
+      isOldVersion: false,
+      trustResult: null,
+      sessionTrust: false,
+      setSessionTrust: () => {},
+      showTerminal: false,
+      setShowTerminal: () => {},
+      workspacePath: '/repo',
+      provider: 'codex',
+      approvalMode: 'default',
+      providerCapabilities: makeCapabilityContract('codex'),
+      providerCapabilitiesByProvider: {
+        codex: makeCapabilityContract('codex'),
+        claude: makeCapabilityContract('claude')
+      },
+      currentChat: makeEnsembleChat(),
+      ...overrides
+    })
+  )
+}
+
 describe('buildDelegationTree', () => {
   it('returns null when no focus chat id is provided', () => {
     const chats = [makeChat({ appChatId: 'root' })]
@@ -113,75 +212,7 @@ describe('buildDelegationTree', () => {
 
 describe('Inspector capabilities', () => {
   it('renders an Ensemble-wide capability summary instead of the Codex-only panel', () => {
-    const chat = makeChat({
-      appChatId: 'ensemble-1',
-      provider: 'codex',
-      chatKind: 'ensemble',
-      title: 'Ensemble New Ensemble',
-      ensemble: {
-        enabled: true,
-        maxParticipants: 6,
-        orchestrationMode: 'continuous',
-        participants: [
-          {
-            id: 'ensemble-codex',
-            provider: 'codex',
-            enabled: true,
-            role: 'Worker',
-            instructions: 'Make the change.',
-            order: 1,
-            model: 'gpt-5.5',
-            permissionPresetId: 'workspace_write',
-            tokenTotals: { input_tokens: 3200, output_tokens: 1100, total_tokens: 4300 }
-          },
-          {
-            id: 'ensemble-claude',
-            provider: 'claude',
-            enabled: true,
-            role: 'Reviewer',
-            instructions: 'Review the change.',
-            order: 2,
-            model: 'opus-4.7',
-            permissionPresetId: 'read_only'
-          }
-        ]
-      }
-    })
-
-    const html = renderToStaticMarkup(
-      createElement(Inspector, {
-        rightTab: 'capabilities',
-        setRightTab: () => {},
-        activeDiff: null,
-        refreshDiff: () => {},
-        currentWorkspace: { id: 'ws', path: '/repo' },
-        diffView: 'this_run',
-        setDiffView: () => {},
-        runDiff: null,
-        diffRefreshStatus: '',
-        rawLogs: [],
-        rawFilter: 'all',
-        setRawFilter: () => {},
-        setRawLogs: () => {},
-        rawLogsEndRef: { current: null },
-        geminiVersion: '',
-        isOldVersion: false,
-        trustResult: null,
-        sessionTrust: false,
-        setSessionTrust: () => {},
-        showTerminal: false,
-        setShowTerminal: () => {},
-        workspacePath: '/repo',
-        provider: 'codex',
-        approvalMode: 'default',
-        providerCapabilities: makeCapabilityContract('codex'),
-        providerCapabilitiesByProvider: {
-          codex: makeCapabilityContract('codex'),
-          claude: makeCapabilityContract('claude')
-        },
-        currentChat: chat
-      })
-    )
+    const html = renderInspector()
 
     expect(html).toContain('Ensemble capabilities')
     expect(html).toContain('Multi-provider view')
@@ -190,5 +221,42 @@ describe('Inspector capabilities', () => {
     expect(html).toContain('Codex, Claude')
     expect(html).toContain('Continuous')
     expect(html).not.toContain('<h4>Codex capabilities</h4>')
+  })
+
+  it('renders Ensemble context in Raw Events, Delegation, and Safety tabs', () => {
+    const rawLogs = [
+      {
+        type: 'tool' as const,
+        content: JSON.stringify({
+          provider: 'claude',
+          name: 'task',
+          params: {
+            payload: {
+              agentName: 'Review helper',
+              summary: 'Checked the patch'
+            }
+          }
+        }),
+        sequence: 1
+      },
+      { type: 'stdout' as const, content: 'stream line', sequence: 2 }
+    ]
+
+    const rawHtml = renderInspector({ rightTab: 'raw', rawLogs })
+    expect(rawHtml).toContain('Ensemble raw event stream')
+    expect(rawHtml).toContain('Worker / Codex')
+    expect(rawHtml).toContain('Reviewer / Claude')
+
+    const delegationHtml = renderInspector({ rightTab: 'delegation', rawLogs })
+    expect(delegationHtml).toContain('Ensemble delegation audit')
+    expect(delegationHtml).toContain('Ensemble delegation model')
+    expect(delegationHtml).toContain('Review helper')
+    expect(delegationHtml).not.toContain('Codex delegation model')
+
+    const safetyHtml = renderInspector({ rightTab: 'safety' })
+    expect(safetyHtml).toContain('Ensemble safety')
+    expect(safetyHtml).toContain('Speaker lock')
+    expect(safetyHtml).toContain('Provider setup')
+    expect(safetyHtml).not.toContain('Codex safety')
   })
 })
