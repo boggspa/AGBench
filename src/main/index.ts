@@ -3288,15 +3288,32 @@ function formatScopedPath(context: GeminiToolContext, targetPath: string): strin
     : resolve(targetPath)
 }
 
+/**
+ * Build the approval prompt (title + body + service + preview) for an
+ * MCP tool call. Originally Gemini-only — hence the name + hardcoded
+ * "Approve Gemini …" titles — but the same MCP surface is reused by
+ * Codex / Claude / Kimi when they call AGBench-hosted tools via the
+ * shared `parentProvider` dispatch path (`callAgbenchMcpTool` →
+ * line 13857). Before the fix every cross-provider MCP approval read
+ * "Approve Gemini tool call" regardless of which model emitted it,
+ * which the panel-consensus review (1.0.4-AC) flagged.
+ *
+ * Solution: accept `parentProvider` as an argument and compose all
+ * provider-flavoured titles via `providerDisplayName(parentProvider)`.
+ * Generic, provider-agnostic titles ("Approve task run", "Approve
+ * git stage", "Capture attached window") are unchanged.
+ */
 function previewForGeminiMcpTool(
   toolName: AGBenchMcpToolName,
   args: Record<string, any>,
   cwd: string,
-  context: GeminiToolContext
+  context: GeminiToolContext,
+  parentProvider: ProviderId = 'gemini'
 ) {
+  const providerName = providerDisplayName(parentProvider)
   if (toolName === 'run_shell_command') {
     return {
-      title: 'Approve Gemini shell command',
+      title: `Approve ${providerName} shell command`,
       body: `${String(args.command || '')}\n${cwd}`,
       service: 'shellCommands' as AgenticServiceId,
       preview: {
@@ -3327,7 +3344,10 @@ function previewForGeminiMcpTool(
     const filePath = String(args.path || args.file_path || '')
     const previewPath = filePath ? previewGeminiMcpPath(context, filePath) : filePath
     return {
-      title: toolName === 'write_file' ? 'Approve Gemini file write' : 'Approve Gemini file edit',
+      title:
+        toolName === 'write_file'
+          ? `Approve ${providerName} file write`
+          : `Approve ${providerName} file edit`,
       body: previewPath || toolName,
       service: 'fileChanges' as AgenticServiceId,
       preview: {
@@ -3447,7 +3467,7 @@ function previewForGeminiMcpTool(
   }
 
   return {
-    title: 'Approve Gemini tool call',
+    title: `Approve ${providerName} tool call`,
     body: toolName,
     service: 'mcpTools' as AgenticServiceId,
     preview: {
@@ -13854,7 +13874,10 @@ async function executeGeminiMcpTool(
     workspacePath,
     String(args.cwd || args.working_directory || args.workdir || '')
   )
-  const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context)
+  // 1.0.4-AC — pass parentProvider so titles read "Approve Codex /
+  // Claude / Kimi tool call" instead of always "Approve Gemini …"
+  // when a non-Gemini participant invokes a shared MCP tool.
+  const approvalPreview = previewForGeminiMcpTool(toolName, args, cwd, context, parentProvider)
   const externalPathDetection = detectExternalPathForProviderApproval({
     provider: parentProvider,
     appChatId: context.appChatId,

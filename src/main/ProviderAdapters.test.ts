@@ -36,7 +36,17 @@ function adapter(provider: 'gemini' | 'codex'): ProviderAdapter {
 
 describe('ProviderAdapters', () => {
   it('provides stable labels and descriptors for every provider boundary', () => {
+    // 1.0.4-AC — `providerLabel` is the canonical title-building
+    // helper used by the MCP approval-prompt builder (see
+    // `previewForGeminiMcpTool` in `src/main/index.ts`). The bug
+    // pre-1.0.4-AC was that approval titles hardcoded "Gemini"
+    // even when Codex / Claude / Kimi was the parent provider on a
+    // cross-provider MCP call. Verifying the label is correct for
+    // all four providers locks in the contract that fix relies on.
     expect(providerLabel('gemini')).toBe('Gemini')
+    expect(providerLabel('codex')).toBe('Codex')
+    expect(providerLabel('claude')).toBe('Claude')
+    expect(providerLabel('kimi')).toBe('Kimi')
     expect(defaultProviderDescriptor('codex')).toMatchObject({
       provider: 'codex',
       transport: 'codex-app-server',
