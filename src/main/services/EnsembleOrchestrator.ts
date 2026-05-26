@@ -454,6 +454,15 @@ interface ActiveRoundRuntime {
    */
   queuedPrompts: string[]
   activeRunId?: string
+  /**
+   * 1.0.4-AK5 — set of run ids currently in flight for a parallel
+   * scout pass. Distinct from `activeRunId` (the serial writer's
+   * single in-flight run) so the existing reads of `activeRunId`
+   * keep their single-run semantics unchanged; the scout set only
+   * has entries during the brief Promise.all window when the
+   * pre-writer scout pass is running.
+   */
+  activeScoutRunIds?: Set<string>
   orchestrationMode: EnsembleOrchestrationMode
   continuationHops: number
   maxContinuationHops: number
@@ -960,6 +969,56 @@ export class EnsembleOrchestrator {
     // for-loop iterated `participants` directly; reordering required
     // a queue + while-loop pattern.
     const remaining: EnsembleParticipant[] = [...participants]
+
+    // 1.0.4-AK5 — Parallel Scout Pass.
+    //
+    // When the active Work Session has `enableScoutPass: true` AND
+    // the round contains 2+ read-only participants, fan them out
+    // concurrently as a pre-writer "scout pass" before the serial
+    // writer step begins. Read-only-only is enforced explicitly:
+    // we never let a write-capable participant into the parallel
+    // lane because the existing approval / file-lock infrastructure
+    // is single-writer-safe but multi-writer-unsafe.
+    //
+    // The scout pass:
+    //   1. Pulls the scout participants out of `remaining` so the
+    //      while-loop below doesn't dispatch them again.
+    //   2. Seeds each scout's run synchronously (no collision risk —
+    //      UUIDs).
+    //   3. Dispatches all scouts concurrently via Promise.all, then
+    //      awaits all their completion promises.
+    //   4. Returns control to `runRound` which continues serially
+    //      with the writer participants.
+    //
+    // Skipped entirely when scout pass is off (default) or there's
+    // < 2 read-only scouts (single-scout case offers no parallelism
+    // benefit; just runs serially).
+    const chatForScout = this.deps.getChat(runtime.chatId)
+    const workSessionForScout = chatForScout?.ensemble?.workSession
+    if (
+      workSessionForScout?.enabled &&
+      workSessionForScout.status === 'active' &&
+      workSessionForScout.enableScoutPass &&
+      !runtime.cancelled
+    ) {
+      const scouts: EnsembleParticipant[] = []
+      const writers: EnsembleParticipant[] = []
+      for (const participant of remaining) {
+        if ((participant.permissionPresetId || 'default') === 'read_only') {
+          scouts.push(participant)
+        } else {
+          writers.push(participant)
+        }
+      }
+      if (scouts.length >= 2 && chatForScout) {
+        // Replace `remaining` with the writers-only subset so the
+        // serial while-loop below processes them in original order
+        // after the scouts complete.
+        remaining.length = 0
+        remaining.push(...writers)
+        await this.runParallelScoutPass(runtime, chatForScout, scouts)
+      }
+    }
     // 1.0.4 — participant id of the just-promoted yield target. Set
     // at the end of the previous iteration when ensemble_yield's
     // target landed at remaining[0]; consumed at the top of the next
@@ -1451,6 +1510,145 @@ export class EnsembleOrchestrator {
     if (nextPrompt && !runtime.cancelled && !sessionTerminal) {
       this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, remainingQueue)
     }
+  }
+
+  /**
+   * 1.0.4-AK5 — Parallel Scout Pass executor.
+   *
+   * Dispatches N read-only scouts concurrently via Promise.all,
+   * then awaits all their completion promises before returning to
+   * `runRound`. The orchestrator emits a transcript status row at
+   * the start ("Parallel pass · N scouts dispatched.") so the user
+   * sees the fan-out as it happens.
+   *
+   * Critical invariants:
+   *   - Every scout MUST be read-only (the caller in `runRound`
+   *     enforces this). We assert defensively here too.
+   *   - Each scout gets its own `runId` (UUID, collision-free).
+   *   - Dispatch failures for individual scouts are NOT round-fatal
+   *     — the existing typed-error path runs per-scout, marks that
+   *     scout as `failed` or `unreachable`, but the other scouts
+   *     continue. After `Promise.all` settles we return to the
+   *     serial writer step as normal.
+   *
+   * MCP routing for parallel runs: every dispatch payload carries
+   * an explicit `appRunId` (matching the run's id), so the existing
+   * `runManager.resolve` path at `src/main/index.ts:7498-7528`
+   * already handles concurrent runs correctly when callers pass
+   * their `route.appRunId`. The unrouted-with-multiple-active-runs
+   * guard at index.ts:13970-13988 will reject ambiguous calls,
+   * which is the right behaviour — tool calls MUST carry their
+   * runId binding to dispatch correctly.
+   */
+  private async runParallelScoutPass(
+    runtime: ActiveRoundRuntime,
+    chat: ChatRecord,
+    scouts: EnsembleParticipant[]
+  ): Promise<void> {
+    if (scouts.length === 0) return
+    // Defensive — caller in runRound already filters, but the
+    // invariant matters enough to assert at the entry of this
+    // method too.
+    for (const scout of scouts) {
+      if ((scout.permissionPresetId || 'default') !== 'read_only') {
+        throw new Error(
+          `runParallelScoutPass: non-read-only participant ${scout.id} (${scout.permissionPresetId}) — parallel writes are not supported.`
+        )
+      }
+    }
+
+    // Initialise the active-scout-runs tracking set.
+    runtime.activeScoutRunIds = new Set<string>()
+
+    this.appendRoundStatus(
+      runtime.chatId,
+      runtime.roundId,
+      `Parallel scout pass · ${scouts.length} read-only participants dispatched concurrently.`
+    )
+
+    // Seed each scout's run synchronously. UUIDs don't collide.
+    // The seedParticipantRun helper takes care of building the
+    // ChatRun + ActiveParticipantRun + registry entry + chat save.
+    //
+    // Re-fetch chat per seed so each save sees the LATEST chat —
+    // important because `appendRoundStatus` above mutated
+    // `chat.messages` via `deps.saveChat`, and `seedParticipantRun`
+    // spreads its `chat` parameter to compose the next save. Using
+    // the stale `chat` would clobber the status note we just
+    // appended.
+    const scoutRuns: ActiveParticipantRun[] = scouts.map((scout) => {
+      const freshChat = this.deps.getChat(runtime.chatId) || chat
+      return this.seedParticipantRun(freshChat, runtime, scout)
+    })
+    for (const run of scoutRuns) {
+      runtime.activeScoutRunIds.add(run.runId)
+    }
+
+    // Build the per-scout dispatch payload + completion promise
+    // pair. Dispatch concurrently via Promise.all so the round is
+    // bounded by the SLOWEST scout, not the sum of scout durations.
+    const dispatchPromises = scoutRuns.map(async (run) => {
+      const scout = run.participant
+      const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
+        run.completion = resolve
+      })
+      const permissions = this.resolveParticipantPermissions(chat, scout)
+      const promptText = buildEnsembleParticipantPrompt({
+        chat,
+        config: chat.ensemble!,
+        participant: scout,
+        currentPrompt: runtime.prompt,
+        roundId: runtime.roundId,
+        chatContextTurns: this.deps.getSettings().chatContextTurns
+      })
+      const payload: AgentRunPayload = {
+        provider: scout.provider,
+        scope: chat.scope === 'global' ? 'global' : 'workspace',
+        ...(chat.scope === 'global' ? {} : { workspace: chat.workspacePath || '' }),
+        prompt: promptText,
+        appRunId: run.runId,
+        appChatId: chat.appChatId,
+        model: scout.model || 'cli-default',
+        approvalMode: permissions.approvalMode,
+        runtimeProfileId: scout.runtimeProfileId,
+        geminiAuthProfileId:
+          scout.provider === 'gemini' ? scout.geminiAuthProfileId || null : null,
+        providerSessionId: scout.linkedProviderSessionId || null,
+        externalPathGrants: permissions.externalPathGrants,
+        effectivePermissions: permissions,
+        ensembleRun: ensembleRunIdentity(runtime.roundId, scout)
+      }
+      try {
+        await this.deps.dispatch(payload, { sender: runtime.sender })
+      } catch (error) {
+        const reason = classifyDispatchError(error)
+        this.appendRoundStatus(
+          runtime.chatId,
+          runtime.roundId,
+          formatDispatchFailureNote(scout, reason)
+        )
+        // Force-resolve so Promise.all doesn't hang on a scout
+        // whose dispatch never produced output events.
+        run.completion?.('failed')
+      }
+      return completion
+    })
+
+    // Wait for every dispatch to return its completion promise,
+    // then wait for every completion promise to resolve.
+    const completionPromises = await Promise.all(dispatchPromises)
+    await Promise.all(completionPromises)
+
+    // Cleanup: scout pass is done, drop the tracking set so the
+    // serial writer step's reads of activeScoutRunIds see no
+    // stale entries.
+    runtime.activeScoutRunIds = undefined
+
+    this.appendRoundStatus(
+      runtime.chatId,
+      runtime.roundId,
+      `Parallel scout pass complete · returning to serial writer step.`
+    )
   }
 
   private seedParticipantRun(

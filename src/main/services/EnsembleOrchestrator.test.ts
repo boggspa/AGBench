@@ -2374,6 +2374,233 @@ describe('EnsembleOrchestrator', () => {
     })
     expect(harness.dispatched[1].prompt).toContain('continue-please')
   })
+
+  // 1.0.4-AK5 — Parallel Scout Pass.
+  // Gated behind workSession.enableScoutPass + 2+ read-only
+  // participants. When triggered, the orchestrator dispatches all
+  // read-only scouts concurrently via Promise.all BEFORE the
+  // serial writer step begins.
+
+  it('1.0.4-AK5: dispatches all read-only scouts concurrently when scout pass is enabled', async () => {
+    const harness = makeHarness()
+    // 3-participant ensemble — 2 read-only scouts (Claude/Reviewer,
+    // Gemini/Researcher) + 1 writer (Codex/Worker). Scout pass
+    // should fan the two scouts out concurrently.
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        model: 'claude-model',
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 2,
+        model: 'gemini-model',
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 3,
+        model: 'codex-model',
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Scout pass demo',
+      acceptanceCriteria: 'Scouts ran in parallel.',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: true,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Investigate then implement.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Both scouts dispatch concurrently — toHaveLength(2) at the
+    // start. Claude (order 1) + Gemini (order 2) BOTH have entries.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), {
+      timeout: 1000
+    })
+    const dispatchProviders = harness.dispatched.map((p) => p.provider).sort()
+    expect(dispatchProviders).toEqual(['claude', 'gemini'])
+
+    // Resolve both scouts so the parallel-pass's Promise.all
+    // settles. Each scout sends content + result.
+    const claudeRun = harness.dispatched.find((p) => p.provider === 'claude')!
+    const geminiRun = harness.dispatched.find((p) => p.provider === 'gemini')!
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: claudeRun.appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Claude scout note.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: claudeRun.appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'gemini',
+      { appRunId: geminiRun.appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Gemini scout note.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'gemini',
+      { appRunId: geminiRun.appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+
+    // After both scouts resolve, the serial writer step dispatches
+    // Codex (order 3, workspace_write).
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), {
+      timeout: 1000
+    })
+    expect(harness.dispatched[2].provider).toBe('codex')
+
+    // Transcript has the scout-pass open/close status notes.
+    const scoutOpenNote = harness.chat.messages.find(
+      (m) =>
+        m.role === 'system' &&
+        typeof m.content === 'string' &&
+        m.content.includes('Parallel scout pass · 2 read-only')
+    )
+    expect(scoutOpenNote).toBeDefined()
+  })
+
+  it('1.0.4-AK5: serial path unchanged when scout pass is disabled', async () => {
+    // Same fixture as above but scout pass OFF. Verify the
+    // existing serial dispatch path stays byte-identical: scouts
+    // dispatch one at a time in roster order.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'read_only',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      // Scout pass OFF — serial dispatch should run.
+      enableScoutPass: false,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Serial please.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // ONE dispatch initially (serial).
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+    // No parallel-pass status note.
+    const scoutNote = harness.chat.messages.find(
+      (m) =>
+        m.role === 'system' &&
+        typeof m.content === 'string' &&
+        m.content.includes('Parallel scout pass')
+    )
+    expect(scoutNote).toBeUndefined()
+  })
+
+  it('1.0.4-AK5: skips scout pass when only one read-only participant is present', async () => {
+    // Edge case: scout pass requires 2+ read-only participants
+    // to actually parallelise. A single scout falls through to
+    // the normal serial loop.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Work.',
+        order: 2,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Test',
+      acceptanceCriteria: 'Test',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: true,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Solo scout.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('claude')
+    // No parallel-pass note — only 1 scout means the gate
+    // doesn't trigger.
+    const scoutNote = harness.chat.messages.find(
+      (m) =>
+        m.role === 'system' &&
+        typeof m.content === 'string' &&
+        m.content.includes('Parallel scout pass')
+    )
+    expect(scoutNote).toBeUndefined()
+  })
 })
 
 describe('parseSelfReflectivePrefix', () => {
