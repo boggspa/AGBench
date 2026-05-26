@@ -146,8 +146,12 @@ describe('isReservedMentionToken', () => {
   it('reserves the user-referencing pronouns', () => {
     expect(isReservedMentionToken('me')).toBe(true)
     expect(isReservedMentionToken('self')).toBe(true)
-    expect(isReservedMentionToken('user')).toBe(true)
-    expect(isReservedMentionToken('human')).toBe(true)
+    // 1.0.4 — `user` / `human` / `you` are NO LONGER in
+    // RESERVED_TOKENS. They now resolve to a UserMentionMatch
+    // instead of being blackholed. See USER_ALIASES + the
+    // `user-mention resolution` describe block.
+    expect(isReservedMentionToken('user')).toBe(false)
+    expect(isReservedMentionToken('human')).toBe(false)
     expect(isReservedMentionToken('codex')).toBe(false)
   })
 })
@@ -173,14 +177,16 @@ describe('buildParticipantAliasMap', () => {
 describe('findFirstMention — legacy single-token (back-compat)', () => {
   it('matches @codex by provider name', () => {
     const result = findFirstMention('@codex go ahead', QUARTET)
-    expect(result?.participant.id).toBe(CODEX.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(CODEX.id)
     expect(result?.text).toBe('codex')
     expect(result?.consumedLength).toBe('@codex'.length)
   })
 
   it('matches @Planner by role', () => {
     const result = findFirstMention('@Planner can you draft this?', QUARTET)
-    expect(result?.participant.id).toBe(CODEX.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(CODEX.id)
     expect(result?.text).toBe('Planner')
   })
 
@@ -189,34 +195,41 @@ describe('findFirstMention — legacy single-token (back-compat)', () => {
   })
 
   it('rejects reserved @me / @self', () => {
+    // `@user` USED to be rejected (returned null) but as of 1.0.4
+    // it resolves to a UserMentionMatch. See the
+    // `user-mention resolution` block below for the new behaviour.
     expect(findFirstMention('thanks @me', QUARTET)).toBeNull()
-    expect(findFirstMention('back to @user', QUARTET)).toBeNull()
+    expect(findFirstMention('back to @self', QUARTET)).toBeNull()
   })
 })
 
 describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () => {
   it('resolves @GPT 5.5 to the codex participant', () => {
     const result = findFirstMention('Hey @GPT 5.5 take a look', QUARTET)
-    expect(result?.participant.id).toBe(CODEX.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(CODEX.id)
     expect(result?.text).toBe('GPT 5.5')
     expect(result?.consumedLength).toBe('@GPT 5.5'.length)
   })
 
   it('resolves @Sonnet 4.7 to the claude participant', () => {
     const result = findFirstMention('plz review @Sonnet 4.7', QUARTET)
-    expect(result?.participant.id).toBe(CLAUDE.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(CLAUDE.id)
     expect(result?.text).toBe('Sonnet 4.7')
   })
 
   it('resolves @Flash Lite to the gemini participant', () => {
     const result = findFirstMention('@Flash Lite please summarise', QUARTET)
-    expect(result?.participant.id).toBe(GEMINI.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(GEMINI.id)
     expect(result?.text).toBe('Flash Lite')
   })
 
   it('resolves @Kimi K2.6 to the kimi participant', () => {
     const result = findFirstMention('@Kimi K2.6 weigh in', QUARTET)
-    expect(result?.participant.id).toBe(KIMI.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(KIMI.id)
     expect(result?.text).toBe('Kimi K2.6')
   })
 
@@ -224,7 +237,8 @@ describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () =>
     // "kimi" alone resolves to KIMI, but "kimi k2.6 thinking" is a
     // 3-word alias that must win when present.
     const result = findFirstMention('@Kimi K2.6 thinking please', QUARTET)
-    expect(result?.participant.id).toBe(KIMI.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(KIMI.id)
     expect(result?.text).toBe('Kimi K2.6 thinking')
   })
 
@@ -232,7 +246,8 @@ describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () =>
     // "@codex super-duper" — no "codex super-duper" alias, so it
     // resolves "codex" alone and leaves "super-duper" as trailing text.
     const result = findFirstMention('@codex super-duper move', QUARTET)
-    expect(result?.participant.id).toBe(CODEX.id)
+    expect(result?.kind).toBe('participant')
+    if (result?.kind === 'participant') expect(result.participant.id).toBe(CODEX.id)
     expect(result?.text).toBe('codex')
   })
 
@@ -248,9 +263,12 @@ describe('findFirstMention — multi-word model aliases (the 1.0.4 lift)', () =>
 
   it('handles hyphen + concat alias forms', () => {
     // `@gpt-5.5` should resolve as well as `@GPT 5.5` and `@gpt5.5`.
-    expect(findFirstMention('@gpt-5.5 hi', QUARTET)?.participant.id).toBe(CODEX.id)
-    expect(findFirstMention('@gpt5.5 hi', QUARTET)?.participant.id).toBe(CODEX.id)
-    expect(findFirstMention('@GPT 5.5 hi', QUARTET)?.participant.id).toBe(CODEX.id)
+    const checks = ['@gpt-5.5 hi', '@gpt5.5 hi', '@GPT 5.5 hi']
+    for (const text of checks) {
+      const match = findFirstMention(text, QUARTET)
+      expect(match?.kind).toBe('participant')
+      if (match?.kind === 'participant') expect(match.participant.id).toBe(CODEX.id)
+    }
   })
 })
 
@@ -258,9 +276,12 @@ describe('findAllMentions', () => {
   it('returns multiple mentions in order', () => {
     const all = findAllMentions('First @codex then @Sonnet 4.7 and @Flash Lite', QUARTET)
     expect(all).toHaveLength(3)
-    expect(all[0].participant.id).toBe(CODEX.id)
-    expect(all[1].participant.id).toBe(CLAUDE.id)
-    expect(all[2].participant.id).toBe(GEMINI.id)
+    expect(all[0].kind).toBe('participant')
+    expect(all[1].kind).toBe('participant')
+    expect(all[2].kind).toBe('participant')
+    if (all[0].kind === 'participant') expect(all[0].participant.id).toBe(CODEX.id)
+    if (all[1].kind === 'participant') expect(all[1].participant.id).toBe(CLAUDE.id)
+    if (all[2].kind === 'participant') expect(all[2].participant.id).toBe(GEMINI.id)
   })
 
   it('preserves indices that point at the `@` character', () => {
@@ -302,13 +323,19 @@ describe('resolvePhraseToParticipant (legacy single-phrase entry point)', () => 
 describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
   it('GPT 5.5 vs GPT 5.4 Mini route to the right Codex participant', () => {
     const set = [CODEX, CODEX_MINI]
-    expect(findFirstMention('@GPT 5.5 go', set)?.participant.id).toBe(CODEX.id)
-    expect(findFirstMention('@GPT 5.4 Mini go', set)?.participant.id).toBe(
-      CODEX_MINI.id
-    )
+    const m1 = findFirstMention('@GPT 5.5 go', set)
+    expect(m1?.kind).toBe('participant')
+    if (m1?.kind === 'participant') expect(m1.participant.id).toBe(CODEX.id)
+    const m2 = findFirstMention('@GPT 5.4 Mini go', set)
+    expect(m2?.kind).toBe('participant')
+    if (m2?.kind === 'participant') expect(m2.participant.id).toBe(CODEX_MINI.id)
     // The shared "codex" alias falls back to ensemble-order (CODEX
     // first), which is the deterministic + documented behaviour.
-    expect(findFirstMention('@codex go', set)?.participant.id).toBe(CODEX.id)
+    const match = findFirstMention('@codex go', set)
+    expect(match?.kind).toBe('participant')
+    if (match?.kind === 'participant') {
+      expect(match.participant.id).toBe(CODEX.id)
+    }
   })
 
   it('flags ambiguousAmong when @codex resolves between two Codex peers', () => {
@@ -320,8 +347,11 @@ describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
     // can correct the routing in subsequent turns.
     const set = [CODEX, CODEX_MINI, KIMI]
     const match = findFirstMention('@codex go', set, new Set([KIMI.id]))
-    expect(match?.participant.id).toBe(CODEX.id)
-    expect(match?.ambiguousAmong?.map((p) => p.id)).toEqual([CODEX_MINI.id])
+    expect(match?.kind).toBe('participant')
+    if (match?.kind === 'participant') {
+      expect(match.participant.id).toBe(CODEX.id)
+      expect(match.ambiguousAmong?.map((p) => p.id)).toEqual([CODEX_MINI.id])
+    }
   })
 
   it('drops ambiguity flag once speaker-exclusion narrows to a single Codex', () => {
@@ -330,8 +360,11 @@ describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
     // to disambiguate. No warning should fire.
     const set = [CODEX, CODEX_MINI]
     const match = findFirstMention('@codex go', set, new Set([CODEX.id]))
-    expect(match?.participant.id).toBe(CODEX_MINI.id)
-    expect(match?.ambiguousAmong).toBeUndefined()
+    expect(match?.kind).toBe('participant')
+    if (match?.kind === 'participant') {
+      expect(match.participant.id).toBe(CODEX_MINI.id)
+      expect(match.ambiguousAmong).toBeUndefined()
+    }
   })
 
   it('unambiguous role-name mention does not flag ambiguity', () => {
@@ -339,7 +372,72 @@ describe('Same-provider disambiguation (1.0.4 forward-look)', () => {
     // speaker-exclusion even runs, no warning.
     const set = [CODEX, CODEX_MINI]
     const match = findFirstMention('@Reviewer please', set)
-    expect(match?.participant.id).toBe(CODEX_MINI.id)
-    expect(match?.ambiguousAmong).toBeUndefined()
+    expect(match?.kind).toBe('participant')
+    if (match?.kind === 'participant') {
+      expect(match.participant.id).toBe(CODEX_MINI.id)
+      expect(match.ambiguousAmong).toBeUndefined()
+    }
+  })
+})
+
+describe('user-mention resolution', () => {
+  /**
+   * 1.0.4 — `@user` / `@human` / `@you` are explicit return-to-
+   * human handoff signals. The resolver returns a UserMentionMatch
+   * (no `participant` field) — distinct from participant matches
+   * so the orchestrator can close the round instead of promoting.
+   *
+   * Resolved even when the ensemble has no participants — these
+   * aliases are panel-independent.
+   */
+  const CODEX: EnsembleParticipant = participant({
+    id: 'codex',
+    provider: 'codex',
+    role: 'Worker',
+    model: 'gpt-5.5'
+  })
+
+  it('resolves @user to a UserMentionMatch', () => {
+    const match = findFirstMention('@user back to you', [CODEX])
+    expect(match?.kind).toBe('user')
+    expect(match?.text.toLowerCase()).toBe('user')
+  })
+
+  it('resolves @human and @you the same way', () => {
+    const matchHuman = findFirstMention('@human ready?', [CODEX])
+    expect(matchHuman?.kind).toBe('user')
+
+    const matchYou = findFirstMention('@you should approve this', [CODEX])
+    expect(matchYou?.kind).toBe('user')
+  })
+
+  it('resolves user-mentions even when the ensemble has no participants', () => {
+    // The user-mention path must be panel-independent — a chat
+    // with no ensemble participants should still recognise the
+    // signal so a solo agent can hand control back.
+    const match = findFirstMention('@user thoughts?', [])
+    expect(match?.kind).toBe('user')
+  })
+
+  it('still does NOT resolve @me / @self (self-references stay reserved)', () => {
+    expect(findFirstMention('@me speaking', [CODEX])).toBeNull()
+    expect(findFirstMention('@self note', [CODEX])).toBeNull()
+  })
+
+  it('strips trailing punctuation before matching user aliases', () => {
+    // `@user.` and `@user,` both resolve — same trailing-punct
+    // strip as participant aliases.
+    expect(findFirstMention('@user.', [CODEX])?.kind).toBe('user')
+    expect(findFirstMention('@user,', [CODEX])?.kind).toBe('user')
+  })
+
+  it('participant mentions before a user mention are still resolved in order', () => {
+    // `findAllMentions` should yield both — the orchestrator only
+    // acts on the FIRST mention but the renderer overlay needs all
+    // of them tokenised for styling.
+    const matches = findAllMentions('@codex then @user', [CODEX])
+    expect(matches.length).toBe(2)
+    expect(matches[0].kind).toBe('participant')
+    expect(matches[1].kind).toBe('user')
   })
 })

@@ -26,13 +26,23 @@ import {
  * referencing the user shouldn't paint as a participant.
  */
 
-export interface MentionTokenSegment {
-  kind: 'text' | 'mention'
-  text: string
-  /** Provider id for `kind === 'mention'` — drives the tint via
-   * `var(--provider-{name}-color)`. Undefined for text segments. */
-  provider?: ProviderId
-}
+export type MentionTokenSegment =
+  | { kind: 'text'; text: string }
+  | {
+      /** Participant mention — renders with the participant's
+       * provider tint via `var(--provider-{name}-color)`. */
+      kind: 'mention'
+      text: string
+      provider: ProviderId
+    }
+  | {
+      /** 1.0.4 — user-mention (`@user` / `@human` / `@you`).
+       * Renders with `var(--user-bubble-color)` so the chip echoes
+       * the user's chosen identity colour rather than any
+       * provider. No `participant` field. */
+      kind: 'user-mention'
+      text: string
+    }
 
 /**
  * Legacy single-token resolver. Kept for callers that already
@@ -52,7 +62,10 @@ export function tokeniseMentions(
   participants: EnsembleParticipant[]
 ): MentionTokenSegment[] {
   if (!value) return []
-  if (!value.includes('@') || participants.length === 0) {
+  // User-mentions resolve even when the ensemble has no
+  // participants, so we don't short-circuit on participants.length
+  // anymore — only on the absence of `@` in the value.
+  if (!value.includes('@')) {
     return [{ kind: 'text', text: value }]
   }
   const mentions = findAllMentions(value, participants)
@@ -65,11 +78,18 @@ export function tokeniseMentions(
     if (match.atIndex > lastIndex) {
       segments.push({ kind: 'text', text: value.slice(lastIndex, match.atIndex) })
     }
-    segments.push({
-      kind: 'mention',
-      text: `@${match.text}`,
-      provider: match.participant.provider
-    })
+    if (match.kind === 'user') {
+      segments.push({
+        kind: 'user-mention',
+        text: `@${match.text}`
+      })
+    } else {
+      segments.push({
+        kind: 'mention',
+        text: `@${match.text}`,
+        provider: match.participant.provider
+      })
+    }
     lastIndex = match.atIndex + match.consumedLength
   }
   if (lastIndex < value.length) {
@@ -82,11 +102,15 @@ export function tokeniseMentions(
  * `@Token` mention? Used by the composer to decide whether to
  * activate the overlay (and zero-out the textarea's text colour).
  * Cheaper than calling `tokeniseMentions` when callers only need
- * the boolean. */
+ * the boolean.
+ *
+ * 1.0.4 — user-mentions count too (`@user` / `@human` / `@you`),
+ * so the overlay activates and renders the chip even in chats
+ * with no ensemble participants. */
 export function hasResolvedMention(
   value: string,
   participants: EnsembleParticipant[]
 ): boolean {
-  if (!value || !value.includes('@') || participants.length === 0) return false
+  if (!value || !value.includes('@')) return false
   return findFirstMention(value, participants) !== null
 }

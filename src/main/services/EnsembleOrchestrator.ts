@@ -1002,7 +1002,21 @@ export class EnsembleOrchestrator {
       const tagMatch = routedByYieldTarget
         ? null
         : findFirstMention(run.content, allParticipants, new Set([participant.id]))
-      if (tagMatch && tagMatch.participant.enabled) {
+
+      // 1.0.4 — explicit `@user` handoff. The speaker said "back
+      // to the human" inline. Terminate the round immediately by
+      // draining `remaining` so the while-loop exits next
+      // iteration. Skips auto-promotion entirely; emits a status
+      // note so the transcript records WHY the round closed early.
+      if (tagMatch && tagMatch.kind === 'user') {
+        const speakerLabel = participant.role || providerLabel(participant.provider)
+        this.appendRoundStatus(
+          runtime.chatId,
+          runtime.roundId,
+          `${speakerLabel} handed control back to the user via @${tagMatch.text}. Round closed.`
+        )
+        remaining.length = 0
+      } else if (tagMatch && tagMatch.kind === 'participant' && tagMatch.participant.enabled) {
         // 1.0.4 same-provider disambiguation. The shared resolver
         // returns `ambiguousAmong` when the alias (e.g. plain
         // `@codex`) could have resolved to >1 participant after the

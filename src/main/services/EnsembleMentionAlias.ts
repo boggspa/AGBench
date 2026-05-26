@@ -84,7 +84,32 @@ const MENTION_REGEX = new RegExp(
   'g'
 )
 
-const RESERVED_TOKENS = new Set(['me', 'self', 'user', 'human'])
+/**
+ * Tokens that should NEVER resolve to a participant. `me` and
+ * `self` are speaker self-references — an agent narrating its
+ * own role shouldn't accidentally promote itself.
+ *
+ * `user` / `human` / `you` are EXCLUDED from this set as of 1.0.4
+ * — they now resolve to a special `UserMentionMatch` rather than
+ * being blackholed. See `USER_ALIASES` below.
+ */
+const RESERVED_TOKENS = new Set(['me', 'self'])
+
+/**
+ * 1.0.4 — explicit user-mention aliases. When an agent writes
+ * `@user`, `@human`, or `@you`, the resolver returns a
+ * `UserMentionMatch` (no `participant` field) instead of falling
+ * back to participant-alias matching. The orchestrator uses this
+ * as a clean "return to user, end the round" signal — replaces
+ * the previous heuristic of "no explicit yield-target ⇒ probably
+ * meant for user."
+ *
+ * Surface treatment in the transcript / composer overlay: user
+ * mentions render with `var(--user-bubble-color)` (the appearance-
+ * setting tint the user picked for their own message bubble) so
+ * the @-mention chip visually echoes their identity.
+ */
+const USER_ALIASES = new Set(['user', 'human', 'you'])
 
 /**
  * Normalise a candidate alias string for case-insensitive matching.
@@ -286,7 +311,10 @@ export function buildParticipantAliasMap(
   return { byAlias, aliasWordCount }
 }
 
-export interface MentionMatch {
+/**
+ * Common shape for any mention match in the transcript.
+ */
+interface BaseMentionMatch {
   /** Index in the source string where `@` sits. */
   atIndex: number
   /** Total characters consumed by the match, including `@` and any
@@ -294,6 +322,10 @@ export interface MentionMatch {
   consumedLength: number
   /** The matched phrase WITHOUT the leading `@`. e.g. "GPT 5.5". */
   text: string
+}
+
+export interface ParticipantMentionMatch extends BaseMentionMatch {
+  kind: 'participant'
   /** Resolved participant. */
   participant: EnsembleParticipant
   /**
@@ -314,6 +346,32 @@ export interface MentionMatch {
 }
 
 /**
+ * 1.0.4 — explicit user-handoff mention. Returned when the
+ * resolver hits a `USER_ALIASES` token (`user` / `human` / `you`).
+ * No `participant` field — the orchestrator treats this as a
+ * "round ends after current turn" signal rather than promoting a
+ * participant.
+ */
+export interface UserMentionMatch extends BaseMentionMatch {
+  kind: 'user'
+}
+
+export type MentionMatch = ParticipantMentionMatch | UserMentionMatch
+
+/**
+ * Type predicate for callers that need to narrow MentionMatch
+ * down to the participant variant before accessing `.participant`.
+ * Cleaner than `match.kind === 'participant'` at every call site.
+ */
+export function isParticipantMention(match: MentionMatch): match is ParticipantMentionMatch {
+  return match.kind === 'participant'
+}
+
+export function isUserMention(match: MentionMatch): match is UserMentionMatch {
+  return match.kind === 'user'
+}
+
+/**
  * Walk the input string and yield every resolved mention, longest-
  * match first per anchor `@`. Mentions whose resolved participant is
  * in `excludeIds` are skipped (used by the orchestrator to filter out
@@ -324,8 +382,15 @@ export function findAllMentions(
   participants: EnsembleParticipant[],
   excludeIds?: ReadonlySet<string>
 ): MentionMatch[] {
-  if (!text || !text.includes('@') || participants.length === 0) return []
-  const aliasMap = buildParticipantAliasMap(participants)
+  if (!text || !text.includes('@')) return []
+  // User-mentions (`@user` / `@human` / `@you`) resolve even when
+  // the ensemble has no participants — they're a return-to-human
+  // signal independent of the panel. The participant alias map
+  // remains the right structure for the rest of the resolution
+  // path, but we early-out before building it when there's no
+  // panel AND no user-mention possible (the loop below covers
+  // both cases).
+  const aliasMap = participants.length > 0 ? buildParticipantAliasMap(participants) : null
   const matches: MentionMatch[] = []
   MENTION_REGEX.lastIndex = 0
   let regexMatch: RegExpExecArray | null
@@ -333,6 +398,28 @@ export function findAllMentions(
     const prefix = regexMatch[1]
     const phrase = regexMatch[2]
     const atIndex = regexMatch.index + prefix.length
+
+    // 1.0.4 — user-mention check. The first word of the phrase is
+    // checked against USER_ALIASES; if it matches, we emit a
+    // UserMentionMatch consuming only that word (`@user this is
+    // ready` consumes `@user` and leaves `this is ready` for
+    // following tokenisation). We don't multi-word-match user
+    // aliases (no `@you and codex` ambiguity) — keeps the resolver
+    // predictable.
+    const firstWordRaw = phrase.split(/\s+/)[0] || ''
+    const firstWordNormalised = normalizeAlias(firstWordRaw.replace(TRAILING_PUNCT_RE, ''))
+    if (USER_ALIASES.has(firstWordNormalised)) {
+      matches.push({
+        kind: 'user',
+        atIndex,
+        consumedLength: 1 + firstWordRaw.length, // `@` + the matched alias
+        text: firstWordRaw
+      })
+      MENTION_REGEX.lastIndex = atIndex + 1 + firstWordRaw.length
+      continue
+    }
+
+    if (!aliasMap) continue
     const resolved = resolveMentionPhrase(phrase, aliasMap, excludeIds)
     if (!resolved) {
       // Don't advance lastIndex artificially — the regex's own forward
@@ -341,6 +428,7 @@ export function findAllMentions(
       continue
     }
     matches.push({
+      kind: 'participant',
       atIndex,
       consumedLength: 1 + resolved.consumedText.length, // `@` + phrase
       text: resolved.consumedText,

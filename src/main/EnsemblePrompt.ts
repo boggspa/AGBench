@@ -114,6 +114,11 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
     '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
+    // 1.0.4 — explicit `@user` handoff. Ends the round immediately
+    // when the orchestrator sees it; bypasses participant
+    // auto-promotion. Use when the speaker genuinely needs human
+    // input vs. handing off to another panelist.
+    '- To hand control back to the human and end the round, write `@user` (or `@human` / `@you`) inline. The orchestrator closes the round; no further participants speak this turn. Use this instead of `ensemble_yield()` when you want the conversation to wait on the user rather than progress through more agent turns.',
     // 1.0.4 — first-speaker scoping rule. Emitted ONLY when the
     // current speaker is opening a multi-participant round.
     // Addresses Chris's "agents dive in and leave nothing for the

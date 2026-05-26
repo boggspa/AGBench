@@ -43,6 +43,21 @@ export function MentionHighlightedText({
         if (segment.kind === 'text') {
           return <Fragment key={idx}>{segment.text}</Fragment>
         }
+        if (segment.kind === 'user-mention') {
+          // 1.0.4 — `@user` / `@human` / `@you` chip in body text.
+          // Tinted with `--user-bubble-color` (Appearance setting)
+          // so it echoes the user's identity colour rather than
+          // any provider's brand.
+          return (
+            <span
+              key={idx}
+              className={`mention-highlighted-token mention-highlighted-token--user${mentionClassName ? ` ${mentionClassName}` : ''}`}
+              style={{ color: `var(--user-bubble-base, var(--accent))` }}
+            >
+              {segment.text}
+            </span>
+          )
+        }
         return (
           <span
             key={idx}

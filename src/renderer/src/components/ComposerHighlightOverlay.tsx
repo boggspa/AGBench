@@ -143,6 +143,21 @@ export function ComposerHighlightOverlay({
         if (segment.kind === 'text') {
           return <Fragment key={idx}>{segment.text}</Fragment>
         }
+        if (segment.kind === 'user-mention') {
+          // 1.0.4 — `@user` / `@human` / `@you` chip. Tints with
+          // the user's chosen `--user-bubble-color` (Appearance
+          // settings) so the chip visually echoes their identity
+          // rather than any provider's brand.
+          return (
+            <span
+              key={idx}
+              className="composer-mention-token composer-mention-token--user"
+              style={{ color: `var(--user-bubble-base, var(--accent))` }}
+            >
+              {segment.text}
+            </span>
+          )
+        }
         return (
           <span
             key={idx}

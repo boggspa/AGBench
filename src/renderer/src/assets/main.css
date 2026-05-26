@@ -6062,6 +6062,25 @@ button.sidebar-item {
 }
 
 /*
+ * 1.0.4 — `@user` chip (composer overlay + transcript body).
+ * Inherits the base mention-token styling (faux-bold via
+ * text-shadow, no metric-shifting font-weight); only the colour
+ * differs — the inline `style.color` reads
+ * `var(--user-bubble-base)` rather than a provider-color var.
+ * The Appearance settings' user-bubble-color is the source of
+ * truth so the chip visually echoes whichever hue the user
+ * picked for their own message bubbles.
+ *
+ * No separate rule needed for the colour itself (inline style
+ * wins). This block exists only as a CSS anchor for any future
+ * shape / decoration variations (underline, double-shadow, etc).
+ */
+.composer-mention-token--user,
+.mention-highlighted-token--user {
+  /* placeholder anchor; inline color handles tinting */
+}
+
+/*
  * 1.0.4 — per-shell composer-overlay CSS rules retired.
  *
  * This section previously had 9 per-shell rules + a welcome-mode

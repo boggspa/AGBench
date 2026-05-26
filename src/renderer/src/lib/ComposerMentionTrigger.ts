@@ -138,5 +138,10 @@ export function extractFirstEnsembleDmTarget(
     prompt,
     participants as unknown as Parameters<typeof findFirstMention>[1]
   )
-  return match?.participant.id ?? null
+  // 1.0.4 — a user-mention (`@user`) does NOT resolve to a DM
+  // target. It's a return-to-human signal that the orchestrator
+  // handles separately. From the send-path's perspective, the
+  // prompt has no DM-routing intent so we return null.
+  if (!match || match.kind !== 'participant') return null
+  return match.participant.id
 }
