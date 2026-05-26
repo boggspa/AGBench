@@ -3924,40 +3924,31 @@ const labelCodexRateLimitBucket = (snapshot: any, model: string): string => {
   return rawName || 'Codex quota'
 }
 
-const shouldShowCodexSparkWindows = (codexStatus?: any): boolean => {
-  const planType = String(codexStatus?.codexUsage?.planType || codexStatus?.planType || '')
-    .trim()
-    .toLowerCase()
-  if (!planType) return true
-  return !/(^|[^a-z])(plus|go|free)([^a-z]|$)/.test(planType)
-}
-
 const isCodexSparkQuotaLabel = (label: string): boolean => /spark|gpt-5\.3-codex-spark/i.test(label)
 
 const codexQuotaIdentityLabel = (label: string): string => {
-  const normalized = label.toLowerCase()
-  const spark = isCodexSparkQuotaLabel(label)
-  const weekly = normalized.includes('weekly') || normalized.includes('7-day')
-  if (spark && weekly) return 'spark-weekly'
-  if (spark) return 'spark-5h'
-  if (weekly) return 'weekly'
-  return '5h'
+  const normalized = label.toLowerCase().replace(/\s+/g, ' ').trim()
+  if (normalized === 'session' || normalized === '5h' || normalized === '5 h') return '5h'
+  if (normalized === 'weekly' || normalized === '7-day') return 'weekly'
+  return normalized
 }
 
 const codexQuotaDisplayLabel = (label: string): string => {
-  const identity = codexQuotaIdentityLabel(label)
-  if (identity === 'spark-weekly') return 'Spark weekly'
-  if (identity === 'spark-5h') return 'Spark 5h'
-  if (identity === 'weekly') return 'Weekly'
-  return '5h'
+  const normalized = label.toLowerCase().replace(/\s+/g, ' ').trim()
+  if (normalized === 'session' || normalized === '5h' || normalized === '5 h') return '5h'
+  if (normalized === 'weekly' || normalized === '7-day') return 'Weekly'
+  return label
 }
 
 const codexQuotaDisplayOrder = (label: string): number => {
   const identity = codexQuotaIdentityLabel(label)
-  if (identity === 'spark-weekly') return 3
-  if (identity === 'spark-5h') return 2
+  if (identity === '5h') return 0
   if (identity === 'weekly') return 1
-  return 0
+  const weekly = identity.includes('weekly') || identity.includes('7-day')
+  const spark = isCodexSparkQuotaLabel(label)
+  if (spark && !weekly) return 2
+  if (spark && weekly) return 3
+  return weekly ? 5 : 4
 }
 
 const dedupeCodexQuotaWindows = (windows: UsageWindowAggregate[]): UsageWindowAggregate[] => {
@@ -4040,10 +4031,6 @@ const buildCodexUsageWindows = (
             remainingPercent
           }
         })
-        .filter(
-          (windowEntry) =>
-            shouldShowCodexSparkWindows(codexStatus) || !isCodexSparkQuotaLabel(windowEntry.label)
-        )
     ).sort((a, b) => {
       return codexQuotaDisplayOrder(a.label) - codexQuotaDisplayOrder(b.label)
     })
@@ -4083,10 +4070,7 @@ const buildCodexUsageWindows = (
         ...windowEntry,
         label: codexQuotaDisplayLabel(windowEntry.label)
       }))
-      .filter(
-        (windowEntry: any) =>
-          shouldShowCodexSparkWindows(codexStatus) || !isCodexSparkQuotaLabel(windowEntry.label)
-      ) as UsageWindowAggregate[]
+      .filter(Boolean) as UsageWindowAggregate[]
   )
 
   if (realRateLimitWindows.length > 0) {
@@ -7339,8 +7323,11 @@ function App(): React.JSX.Element {
     const now = Date.now()
     const effectiveCodexStatus = codexStatusHint ?? codexStatus
 
-    const [geminiSnap, claudeSnap, kimiSnap, allUsageRecords] = await Promise.all([
+    const [geminiSnap, codexSnap, claudeSnap, kimiSnap, allUsageRecords] = await Promise.all([
       window.api.getAgentRateLimits('gemini').catch(() => null),
+      typeof window.api.getCodexUsageSnapshot === 'function'
+        ? window.api.getCodexUsageSnapshot().catch(() => null)
+        : Promise.resolve(null),
       window.api.getAgentRateLimits('claude').catch(() => null),
       window.api.getAgentRateLimits('kimi').catch(() => null),
       window.api.getUsage().catch(() => [])
@@ -7442,6 +7429,9 @@ function App(): React.JSX.Element {
         const amount = Number(balance?.amount)
         return Boolean(label) && Number.isFinite(amount)
       })
+    const hasQuotaSnapshotContent = (snapshot: any): boolean =>
+      (Array.isArray(snapshot?.windows) && snapshot.windows.length > 0) ||
+      hasUsageBalances(snapshot?.balances)
 
     const buildQuotaAggregate = (
       provider: ProviderId,
@@ -7494,20 +7484,25 @@ function App(): React.JSX.Element {
     }
 
     // Codex — 5H + weekly + (Pro only) GPT-5.3-Codex-Spark windows, real quotas only
+    const effectiveCodexUsage =
+      hasQuotaSnapshotContent(codexSnap) ||
+      !hasQuotaSnapshotContent(effectiveCodexStatus?.codexUsage)
+        ? codexSnap
+        : effectiveCodexStatus?.codexUsage
     const codexWindowsRaw = buildCodexUsageWindows(
       [],
       'usage limits',
       now,
-      effectiveCodexStatus,
+      {
+        ...(effectiveCodexStatus || {}),
+        codexUsage: effectiveCodexUsage
+      },
       true
     )
     const codexFresh = codexWindowsRaw.filter((w) => w.usedPercent !== undefined)
     const codexWindows = resolveWithCache('codex', codexFresh)
-    if (
-      codexWindows.length > 0 ||
-      hasUsageBalances(effectiveCodexStatus?.codexUsage?.balances)
-    ) {
-      ordered.push(buildQuotaAggregate('codex', codexWindows, effectiveCodexStatus?.codexUsage))
+    if (codexWindows.length > 0 || hasUsageBalances(effectiveCodexUsage?.balances)) {
+      ordered.push(buildQuotaAggregate('codex', codexWindows, effectiveCodexUsage))
     }
 
     // Claude — 5H (Session), Weekly, (Max-gated) Sonnet Weekly, (Max20x) Opus Weekly

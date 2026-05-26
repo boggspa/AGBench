@@ -63,6 +63,14 @@ import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
 import {
+  hasProviderUsageSnapshotContent,
+  normalizeClaudeUsageSnapshot,
+  normalizeCodexUsagePayload,
+  normalizeKimiUsageSnapshot,
+  redactAccountId,
+  type NormalizedProviderUsageSnapshot
+} from './ProviderQuotaSnapshots'
+import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
   collectExternalPathGrantsFromMetadata
@@ -4100,12 +4108,6 @@ async function emitProviderCapabilityWarnings(
   }
 }
 
-function redactAccountId(accountId?: string | null): string | null {
-  const raw = String(accountId || '').trim()
-  if (!raw) return null
-  return raw.length <= 10 ? raw : `${raw.slice(0, 6)}...${raw.slice(-4)}`
-}
-
 function parseCodexUsageCredential(raw: string, source: string): CodexUsageCredential {
   const parsed = JSON.parse(raw)
   const tokens = parsed?.tokens && typeof parsed.tokens === 'object' ? parsed.tokens : parsed
@@ -4816,6 +4818,27 @@ function clearCodexUsageCredential() {
   AppStore.updateSettings({ codexUsageCredential: undefined as any })
 }
 
+function cacheProviderUsageSnapshot(provider: ProviderId, snapshot: any) {
+  if (!snapshot?.error && hasProviderUsageSnapshotContent(snapshot)) {
+    AppStore.storeProviderUsageSnapshot(provider, snapshot)
+  }
+}
+
+function usageSnapshotWithPersistedFallback(provider: ProviderId, fallback: any) {
+  const cached = AppStore.getProviderUsageSnapshot(provider)
+  if (hasProviderUsageSnapshotContent(cached)) {
+    return {
+      ...cached,
+      provider,
+      configured: fallback?.configured ?? cached.configured,
+      source: cached.source ?? fallback?.source ?? null,
+      stale: true,
+      error: fallback?.error || cached.error
+    }
+  }
+  return fallback
+}
+
 async function resolveCodexUsageImportPath(
   event: Electron.IpcMainInvokeEvent,
   requestedPath?: string | null
@@ -4842,151 +4865,12 @@ async function resolveCodexUsageImportPath(
   return result.filePaths[0]
 }
 
-function normalizeCodexUsageWindow(id: string, label: string, windowKind: string, window: any) {
-  const usedPercent = Math.max(
-    0,
-    Math.min(100, Number(window?.used_percent || window?.usedPercent || 0))
-  )
-  const remainingPercent = Math.max(0, Math.min(100, 100 - usedPercent))
-  const resetAtSeconds = Number(window?.reset_at || window?.resetAt || 0)
-  const resetAfterSeconds = Number(window?.reset_after_seconds || window?.resetAfterSeconds || 0)
-  const limitWindowSeconds = Number(window?.limit_window_seconds || window?.limitWindowSeconds || 0)
-  return {
-    id,
-    label,
-    windowKind,
-    usedPercent,
-    remainingPercent,
-    limitWindowSeconds,
-    resetAfterSeconds,
-    resetAt: resetAtSeconds > 0 ? new Date(resetAtSeconds * 1000).toISOString() : undefined,
-    limitLabel: `${Math.round(remainingPercent)}% remaining`
-  }
-}
-
-function codexUsageWindowIdentity(label: string): string {
-  const normalized = label.toLowerCase()
-  const spark = /spark|gpt-5\.3-codex-spark/.test(normalized)
-  const weekly = /weekly|7.?day/.test(normalized)
-  if (spark && weekly) return 'spark-weekly'
-  if (spark) return 'spark-5h'
-  if (weekly) return 'weekly'
-  return '5h'
-}
-
-function dedupeCodexUsageWindows(windows: any[]): any[] {
-  const seen = new Set<string>()
-  return windows.filter((windowEntry) => {
-    const key = [
-      codexUsageWindowIdentity(String(windowEntry?.label || '')),
-      windowEntry?.resetAt || '',
-      Math.round(Number(windowEntry?.remainingPercent || 0))
-    ].join(':')
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
-
-function codexUsageWindowValue(rateLimit: any, kind: 'primary' | 'secondary') {
-  if (!rateLimit || typeof rateLimit !== 'object') return null
-  if (kind === 'primary') {
-    return (
-      rateLimit.primary_window ||
-      rateLimit.primaryWindow ||
-      rateLimit.primary ||
-      rateLimit.five_hour_window ||
-      rateLimit.fiveHourWindow ||
-      null
-    )
-  }
-  return (
-    rateLimit.secondary_window ||
-    rateLimit.secondaryWindow ||
-    rateLimit.secondary ||
-    rateLimit.weekly_window ||
-    rateLimit.weeklyWindow ||
-    null
-  )
-}
-
-function normalizeCodexUsagePayload(payload: any, credential: CodexUsageCredential) {
-  const windows: any[] = []
-  const rateLimit =
-    payload?.rate_limit || payload?.rateLimit || payload?.rate_limits || payload?.rateLimits || {}
-  const primaryWindow = codexUsageWindowValue(rateLimit, 'primary')
-  const secondaryWindow = codexUsageWindowValue(rateLimit, 'secondary')
-  if (primaryWindow) {
-    windows.push(normalizeCodexUsageWindow('primary-5h', '5h', 'session', primaryWindow))
-  }
-  if (secondaryWindow) {
-    windows.push(normalizeCodexUsageWindow('secondary-weekly', 'Weekly', 'weekly', secondaryWindow))
-  }
-  const additional = Array.isArray(payload?.additional_rate_limits)
-    ? payload.additional_rate_limits
-    : Array.isArray(payload?.additionalRateLimits)
-      ? payload.additionalRateLimits
-      : []
-  additional.forEach((limit: any, index: number) => {
-    const rawName =
-      String(
-        limit?.limit_name ||
-          limit?.limitName ||
-          limit?.metered_feature ||
-          limit?.meteredFeature ||
-          'Additional Codex'
-      ).trim() || 'Additional Codex'
-    const nested = limit?.rate_limit || limit?.rateLimit || {}
-    const nestedPrimary = codexUsageWindowValue(nested, 'primary')
-    const nestedSecondary = codexUsageWindowValue(nested, 'secondary')
-    if (nestedPrimary) {
-      windows.push(
-        normalizeCodexUsageWindow(
-          `additional-${index}-5h`,
-          `${rawName} 5h`,
-          'session',
-          nestedPrimary
-        )
-      )
-    }
-    if (nestedSecondary) {
-      windows.push(
-        normalizeCodexUsageWindow(
-          `additional-${index}-weekly`,
-          `${rawName} Weekly`,
-          'weekly',
-          nestedSecondary
-        )
-      )
-    }
-  })
-  const creditBalance = payload?.credits?.balance
-  return {
-    configured: true,
-    source: 'chatgpt-wham',
-    accountId: redactAccountId(credential.accountId),
-    importedAt: credential.importedAt,
-    fetchedAt: new Date().toISOString(),
-    planType: payload?.plan_type || payload?.planType || null,
-    windows: dedupeCodexUsageWindows(windows),
-    balances:
-      creditBalance === undefined || creditBalance === null
-        ? []
-        : [
-            {
-              label: 'Credits Remaining',
-              amount: Number(creditBalance),
-              unit: 'credits'
-            }
-          ]
-  }
-}
-
 async function fetchCodexUsageSnapshot(): Promise<any> {
   const credential = storedCodexUsageCredential()
   if (!credential) {
     const stored = AppStore.getSettings().codexUsageCredential
-    return {
+    return usageSnapshotWithPersistedFallback('codex', {
+      provider: 'codex',
       configured: Boolean(stored?.accountId),
       source: stored?.source || null,
       accountId: redactAccountId(stored?.accountId),
@@ -4995,28 +4879,43 @@ async function fetchCodexUsageSnapshot(): Promise<any> {
       error: stored?.accountId
         ? 'Codex usage token is not available in this session. Re-import Codex auth to refresh usage.'
         : 'Codex usage import is not configured.'
-    }
+    })
   }
 
-  const response = await fetch('https://chatgpt.com/backend-api/wham/usage', {
-    method: 'GET',
-    headers: {
-      Authorization: `Bearer ${credential.accessToken}`,
-      'chatgpt-account-id': credential.accountId,
-      Accept: 'application/json'
+  try {
+    const response = await fetch('https://chatgpt.com/backend-api/wham/usage', {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${credential.accessToken}`,
+        'chatgpt-account-id': credential.accountId,
+        Accept: 'application/json'
+      }
+    })
+    if (response.status === 401 || response.status === 403) {
+      throw new Error('Imported Codex session is expired or not authorized.')
     }
-  })
-  if (response.status === 401 || response.status === 403) {
-    throw new Error('Imported Codex session is expired or not authorized.')
+    if (response.status === 429) {
+      throw new Error('Codex usage endpoint is rate limited.')
+    }
+    if (!response.ok) {
+      throw new Error(`Codex usage endpoint returned HTTP ${response.status}.`)
+    }
+    const payload = await response.json()
+    const snapshot = normalizeCodexUsagePayload(payload, credential)
+    cacheProviderUsageSnapshot('codex', snapshot)
+    return snapshot
+  } catch (error) {
+    const fallback = usageSnapshotWithPersistedFallback('codex', {
+      provider: 'codex',
+      configured: true,
+      source: 'chatgpt-wham',
+      accountId: redactAccountId(credential.accountId),
+      importedAt: credential.importedAt,
+      error: error instanceof Error ? error.message : 'Codex usage fetch failed.'
+    })
+    if (hasProviderUsageSnapshotContent(fallback)) return fallback
+    throw error
   }
-  if (response.status === 429) {
-    throw new Error('Codex usage endpoint is rate limited.')
-  }
-  if (!response.ok) {
-    throw new Error(`Codex usage endpoint returned HTTP ${response.status}.`)
-  }
-  const payload = await response.json()
-  return normalizeCodexUsagePayload(payload, credential)
 }
 
 const GEMINI_OAUTH_CLIENT_ID =
@@ -5237,13 +5136,13 @@ async function fetchGeminiUsageSnapshot(): Promise<any> {
 
   const accessToken = await getGeminiAccessToken()
   if (!accessToken) {
-    return {
+    return usageSnapshotWithPersistedFallback('gemini', {
       provider: 'gemini',
       source: 'gemini-live-quota',
       configured: false,
       error:
         'Gemini OAuth credentials were not found. Run Gemini CLI once to refresh ~/.gemini/oauth_creds.json.'
-    }
+    })
   }
 
   try {
@@ -5265,6 +5164,7 @@ async function fetchGeminiUsageSnapshot(): Promise<any> {
     const payload = await response.json()
     const snapshot = normalizeGeminiQuotaSnapshot(payload)
     geminiQuotaCache = { snapshot, fetchedAt: Date.now() }
+    cacheProviderUsageSnapshot('gemini', snapshot)
     return snapshot
   } catch (error) {
     if (geminiQuotaCache && now - geminiQuotaCache.fetchedAt < GEMINI_QUOTA_STALE_TTL_MS) {
@@ -5274,55 +5174,19 @@ async function fetchGeminiUsageSnapshot(): Promise<any> {
         error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
       }
     }
-    return {
+    return usageSnapshotWithPersistedFallback('gemini', {
       provider: 'gemini',
       source: 'gemini-live-quota',
       configured: true,
       error: error instanceof Error ? error.message : 'Gemini live quota fetch failed.'
-    }
+    })
   }
 }
 
 const KIMI_USAGE_FRESH_TTL_MS = 90_000
 const KIMI_USAGE_STALE_TTL_MS = 30 * 60_000
 
-interface NormalizedProviderUsageWindow {
-  id: string
-  label: string
-  runs: number
-  totalTokens: number
-  limitLabel: string
-  resetAt?: string
-  trackingOnly: boolean
-  usedPercent: number
-  remainingPercent?: number
-  sourceModelId?: string
-}
-
-interface NormalizedProviderUsageSnapshot {
-  provider: string
-  source: string
-  configured: boolean
-  fetchedAt?: string
-  windows?: NormalizedProviderUsageWindow[]
-  balances?: Array<{
-    label: string
-    amount: number
-    unit: string
-    subtitle?: string
-    resetAt?: string
-  }>
-  stale?: boolean
-  error?: string
-}
-
 let kimiUsageCache: { snapshot: NormalizedProviderUsageSnapshot; fetchedAt: number } | null = null
-
-function usageRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null
-}
 
 async function readKimiOAuthAccessToken(): Promise<string | null> {
   try {
@@ -5347,114 +5211,6 @@ async function getKimiUsageAccessToken(): Promise<string | null> {
   return getStoredKimiApiKey() || (await readKimiOAuthAccessToken())
 }
 
-function numericUsageValue(value: unknown): number | undefined {
-  if (typeof value === 'number' && Number.isFinite(value)) return value
-  if (typeof value === 'string' && value.trim()) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : undefined
-  }
-  return undefined
-}
-
-function kimiDurationLabel(window: unknown): string {
-  const record = usageRecord(window)
-  const duration = numericUsageValue(record?.duration)
-  const unit = String(record?.timeUnit || record?.time_unit || '').toUpperCase()
-  if (!duration || !unit) return 'Rolling'
-  const rounded = Math.round(duration)
-  if (unit.includes('MINUTE')) {
-    return rounded % 60 === 0 ? `${Math.round(rounded / 60)}H` : `${rounded}M`
-  }
-  if (unit.includes('HOUR')) {
-    if (rounded === 5) return '5H'
-    return `${rounded}H`
-  }
-  if (unit.includes('DAY')) {
-    if (rounded === 7) return 'Weekly'
-    return `${rounded}D`
-  }
-  return 'Rolling'
-}
-
-function kimiQuotaWindow(
-  id: string,
-  label: string,
-  detail: unknown
-): NormalizedProviderUsageWindow | null {
-  const record = usageRecord(detail)
-  const limit = numericUsageValue(record?.limit)
-  const remaining = numericUsageValue(record?.remaining)
-  if (limit === undefined && remaining === undefined) return null
-  const remainingPercent =
-    limit && limit > 0 && remaining !== undefined
-      ? Math.max(0, Math.min(100, (remaining / limit) * 100))
-      : 100
-  const limitLabel =
-    limit && remaining !== undefined
-      ? `${Math.round(remaining).toLocaleString()} / ${Math.round(limit).toLocaleString()} remaining`
-      : remaining !== undefined
-        ? `${Math.round(remaining).toLocaleString()} remaining`
-        : `${Math.round(remainingPercent)}% remaining`
-  return {
-    id,
-    label,
-    runs: 0,
-    totalTokens: 0,
-    limitLabel,
-    resetAt: parseGeminiQuotaReset(
-      record?.resetTime ?? record?.reset_time ?? record?.resetAt ?? record?.reset_at
-    ),
-    trackingOnly: false,
-    usedPercent: remainingPercent,
-    remainingPercent
-  }
-}
-
-function normalizeKimiUsageSnapshot(payload: unknown): NormalizedProviderUsageSnapshot {
-  const record = usageRecord(payload)
-  const windows: NormalizedProviderUsageWindow[] = []
-  const balances: NormalizedProviderUsageSnapshot['balances'] = []
-  const rawLimits = record?.limits
-  const limits: unknown[] = Array.isArray(rawLimits) ? rawLimits : []
-  limits.forEach((limit, index) => {
-    const limitRecord = usageRecord(limit)
-    const detail = usageRecord(limitRecord?.detail) ?? limitRecord
-    const windowEntry = kimiQuotaWindow(
-      `kimi-limit-${index}`,
-      kimiDurationLabel(limitRecord?.window),
-      detail
-    )
-    if (windowEntry) windows.push(windowEntry)
-  })
-  const usage = usageRecord(record?.usage)
-  if (usage) {
-    const weekly = kimiQuotaWindow('kimi-weekly', 'Weekly', usage)
-    if (weekly) windows.push(weekly)
-  }
-  const totalQuota = usageRecord(record?.totalQuota ?? record?.total_quota)
-  const totalRemaining = numericUsageValue(totalQuota?.remaining)
-  if (totalRemaining !== undefined) {
-    const totalLimit = numericUsageValue(totalQuota?.limit)
-    balances.push({
-      label: 'Total Quota',
-      amount: totalRemaining,
-      unit: 'quota',
-      subtitle:
-        totalLimit !== undefined
-          ? `${Math.round(totalLimit).toLocaleString()} total membership quota`
-          : undefined
-    })
-  }
-  return {
-    provider: 'kimi',
-    source: 'kimi-live-usage',
-    configured: true,
-    fetchedAt: new Date().toISOString(),
-    windows,
-    balances
-  }
-}
-
 async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot> {
   const now = Date.now()
   if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_FRESH_TTL_MS) {
@@ -5463,12 +5219,12 @@ async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot
 
   const accessToken = await getKimiUsageAccessToken()
   if (!accessToken) {
-    return {
+    return usageSnapshotWithPersistedFallback('kimi', {
       provider: 'kimi',
       source: 'kimi-live-usage',
       configured: false,
       error: 'Kimi credentials were not found. Run Kimi Code once or configure a Kimi API token.'
-    }
+    })
   }
 
   try {
@@ -5485,6 +5241,7 @@ async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot
     const payload = await response.json()
     const snapshot = normalizeKimiUsageSnapshot(payload)
     kimiUsageCache = { snapshot, fetchedAt: Date.now() }
+    cacheProviderUsageSnapshot('kimi', snapshot)
     return snapshot
   } catch (error) {
     if (kimiUsageCache && now - kimiUsageCache.fetchedAt < KIMI_USAGE_STALE_TTL_MS) {
@@ -5494,12 +5251,12 @@ async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot
         error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
       }
     }
-    return {
+    return usageSnapshotWithPersistedFallback('kimi', {
       provider: 'kimi',
       source: 'kimi-live-usage',
       configured: true,
       error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
-    }
+    })
   }
 }
 
@@ -5609,88 +5366,6 @@ async function getClaudeOAuthCredential(): Promise<ClaudeOAuthCredential | null>
   )
 }
 
-function parseClaudeIsoDate(value: unknown): string | undefined {
-  if (typeof value !== 'string' || !value.trim()) return undefined
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return undefined
-  return date.toISOString()
-}
-
-function claudeUsageWindow(id: string, label: string, payload: any): any | null {
-  if (!payload || typeof payload !== 'object') return null
-  const utilization = numericUsageValue(payload.utilization)
-  if (utilization === undefined) return null
-  const usedPercent = Math.max(0, Math.min(100, utilization))
-  const remainingPercent = Math.max(0, 100 - usedPercent)
-  return {
-    id,
-    label,
-    runs: 0,
-    totalTokens: 0,
-    limitLabel: `${Math.round(remainingPercent)}% remaining`,
-    resetAt: parseClaudeIsoDate(payload.resetAt ?? payload.reset_at),
-    trackingOnly: false,
-    usedPercent
-  }
-}
-
-function normalizeClaudeUsageSnapshot(payload: any, credential: ClaudeOAuthCredential): any {
-  const windows: any[] = []
-  const balances: NormalizedProviderUsageSnapshot['balances'] = []
-  const fiveHour = claudeUsageWindow(
-    'claude-5h',
-    'Session',
-    payload?.fiveHour ?? payload?.five_hour
-  )
-  if (fiveHour) windows.push(fiveHour)
-  const sevenDay = claudeUsageWindow(
-    'claude-weekly',
-    'Weekly',
-    payload?.sevenDay ?? payload?.seven_day
-  )
-  if (sevenDay) windows.push(sevenDay)
-  const sevenDaySonnet = payload?.sevenDaySonnet ?? payload?.seven_day_sonnet
-  if (sevenDaySonnet?.resetAt || sevenDaySonnet?.reset_at) {
-    const sonnetWindow = claudeUsageWindow('claude-weekly-sonnet', 'Sonnet Weekly', sevenDaySonnet)
-    if (sonnetWindow) windows.push(sonnetWindow)
-  }
-  const sevenDayOpus = payload?.sevenDayOpus ?? payload?.seven_day_opus
-  if (sevenDayOpus?.resetAt || sevenDayOpus?.reset_at) {
-    const opusWindow = claudeUsageWindow('claude-weekly-opus', 'Opus Weekly', sevenDayOpus)
-    if (opusWindow) windows.push(opusWindow)
-  }
-  const extraUsage = payload?.extraUsage ?? payload?.extra_usage
-  if (extraUsage?.isEnabled ?? extraUsage?.is_enabled) {
-    const unit = String(extraUsage?.currency || 'credits')
-    const usedCredits = numericUsageValue(extraUsage?.usedCredits ?? extraUsage?.used_credits)
-    const monthlyLimit = numericUsageValue(extraUsage?.monthlyLimit ?? extraUsage?.monthly_limit)
-    if (usedCredits !== undefined && monthlyLimit !== undefined) {
-      balances.push({
-        label: 'Extra Usage',
-        amount: Math.max(0, monthlyLimit - usedCredits),
-        unit,
-        subtitle: `${usedCredits.toLocaleString()} of ${monthlyLimit.toLocaleString()} ${unit} used this month`
-      })
-    } else if (usedCredits !== undefined) {
-      balances.push({
-        label: 'Extra Usage',
-        amount: usedCredits,
-        unit,
-        subtitle: 'Additional usage this month'
-      })
-    }
-  }
-  return {
-    provider: 'claude',
-    source: 'claude-oauth-usage',
-    configured: true,
-    subscriptionType: credential.subscriptionType,
-    fetchedAt: new Date().toISOString(),
-    windows,
-    balances
-  }
-}
-
 async function fetchClaudeUsageSnapshot(): Promise<any> {
   const now = Date.now()
   if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_FRESH_TTL_MS) {
@@ -5699,13 +5374,13 @@ async function fetchClaudeUsageSnapshot(): Promise<any> {
 
   const credential = await getClaudeOAuthCredential()
   if (!credential) {
-    return {
+    return usageSnapshotWithPersistedFallback('claude', {
       provider: 'claude',
       source: 'claude-oauth-usage',
       configured: false,
       error:
         'Claude OAuth credentials were not found. Run Claude Code once to populate ~/.claude/.credentials.json.'
-    }
+    })
   }
 
   try {
@@ -5723,6 +5398,7 @@ async function fetchClaudeUsageSnapshot(): Promise<any> {
     const payload = await response.json()
     const snapshot = normalizeClaudeUsageSnapshot(payload, credential)
     claudeUsageCache = { snapshot, fetchedAt: Date.now() }
+    cacheProviderUsageSnapshot('claude', snapshot)
     return snapshot
   } catch (error) {
     if (claudeUsageCache && now - claudeUsageCache.fetchedAt < CLAUDE_USAGE_STALE_TTL_MS) {
@@ -5732,12 +5408,12 @@ async function fetchClaudeUsageSnapshot(): Promise<any> {
         error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
       }
     }
-    return {
+    return usageSnapshotWithPersistedFallback('claude', {
       provider: 'claude',
       source: 'claude-oauth-usage',
       configured: true,
       error: error instanceof Error ? error.message : 'Claude OAuth usage fetch failed.'
-    }
+    })
   }
 }
 
@@ -10066,22 +9742,24 @@ async function runGeminiProvider(
   // pay no extra cost. Mirrors the line-buffer pattern in the
   // renderer's `GeminiStreamAdapter.appendChunk`.
   let ensembleLineBuffer = ''
-  const feedOrchestrator = payload.ensembleRun ? (chunk: string): void => {
-    ensembleLineBuffer += chunk
-    const lines = ensembleLineBuffer.split('\n')
-    ensembleLineBuffer = lines.pop() || ''
-    for (const line of lines) {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('{')) continue
-      try {
-        const parsed = JSON.parse(trimmed)
-        ensembleOrchestratorRef?.handleProviderOutput('gemini', route, parsed)
-      } catch {
-        // Not parseable JSON (e.g. a stray log line) — skip silently;
-        // the orchestrator only needs the structured events.
+  const feedOrchestrator = payload.ensembleRun
+    ? (chunk: string): void => {
+        ensembleLineBuffer += chunk
+        const lines = ensembleLineBuffer.split('\n')
+        ensembleLineBuffer = lines.pop() || ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (!trimmed.startsWith('{')) continue
+          try {
+            const parsed = JSON.parse(trimmed)
+            ensembleOrchestratorRef?.handleProviderOutput('gemini', route, parsed)
+          } catch {
+            // Not parseable JSON (e.g. a stray log line) — skip silently;
+            // the orchestrator only needs the structured events.
+          }
+        }
       }
-    }
-  } : null
+    : null
 
   child.stdout?.on('data', (data) => {
     const text = data.toString()
@@ -20259,9 +19937,7 @@ if (isGeminiMcpBridgeProcess) {
     )
 
     ipcMain.handle('cancel-ensemble-round', async (_, chatId?: string) => {
-      return ensembleOrchestratorRef?.cancelRound(
-        requireNonEmptyString(chatId, 'Ensemble chat id')
-      )
+      return ensembleOrchestratorRef?.cancelRound(requireNonEmptyString(chatId, 'Ensemble chat id'))
     })
 
     ipcMain.handle('skip-ensemble-participant', async (_, chatId?: string) => {

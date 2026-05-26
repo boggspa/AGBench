@@ -74,6 +74,7 @@ const userDataPath = app.getPath('userData')
 const settingsPath = path.join(userDataPath, 'settings.json')
 const workspacesPath = path.join(userDataPath, 'workspaces.json')
 const usagePath = path.join(userDataPath, 'usage.json')
+const providerUsageSnapshotsPath = path.join(userDataPath, 'provider-usage-snapshots.json')
 const scheduledTasksPath = path.join(userDataPath, 'scheduled-tasks.json')
 const runQueuePath = path.join(userDataPath, 'run-queue.json')
 const runRecoveryPath = path.join(userDataPath, 'run-recovery.json')
@@ -863,6 +864,22 @@ export class AppStore {
 
     records.push(record)
     writeJson(usagePath, records)
+  }
+
+  static getProviderUsageSnapshot(provider: ProviderId) {
+    const snapshots = readJson<Record<string, any>>(providerUsageSnapshotsPath, {})
+    return snapshots[provider] || null
+  }
+
+  static storeProviderUsageSnapshot(provider: ProviderId, snapshot: any) {
+    if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return
+    const snapshots = readJson<Record<string, any>>(providerUsageSnapshotsPath, {})
+    snapshots[provider] = {
+      ...snapshot,
+      provider,
+      cachedAt: new Date().toISOString()
+    }
+    writeJson(providerUsageSnapshotsPath, snapshots)
   }
 
   // Scheduled tasks
