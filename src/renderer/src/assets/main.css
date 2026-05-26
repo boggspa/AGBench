@@ -638,7 +638,11 @@ body {
 }
 
 .sidebar-section-title {
-  font-size: var(--font-size-xs);
+  /* 1.0.3 polish — top-level sidebar hierarchy pills (Pinned / Recents
+   * / Ensembles / Workspaces / Chats) scaled down 15% to match the
+   * chat-title reduction. Was `var(--font-size-xs)`; calc'd
+   * relative-to-the-token so theme overrides still propagate. */
+  font-size: calc(var(--font-size-xs) * 0.85);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -14114,6 +14118,11 @@ input:disabled, select:disabled, textarea:disabled {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* 1.0.3 polish — workspace parent title scaled down 15% to match
+   * the chat-title reduction. Was inheriting parent size (default
+   * 14px in the sidebar); 0.85em scales relative so per-section
+   * tweaks still propagate. */
+  font-size: 0.85em;
 }
 
 /* 1.0.3 sidebar rename — inline `<input>` that replaces the title
