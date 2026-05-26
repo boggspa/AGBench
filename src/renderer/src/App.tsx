@@ -7727,6 +7727,28 @@ function App(): React.JSX.Element {
   }
 
   /**
+   * 1.0.3 — rename a chat's user-visible title from the sidebar
+   * (overflow menu Rename or double-click on the title of the
+   * currently-selected chat). Trimmed + no-op-on-empty enforcement
+   * already happens at the sidebar component level; this handler
+   * trusts whatever string lands, persists it, and lets the
+   * `updateChatById` write fan out to the chat-by-id cache + the
+   * IPC saveChat call.
+   */
+  const handleRenameChat = (chatId: string, nextTitle: string) => {
+    const trimmed = nextTitle.trim()
+    if (!trimmed) return
+    updateChatById(chatId, (source) => {
+      if (source.title === trimmed) return source
+      const updated: ChatRecord = { ...source, title: trimmed, updatedAt: Date.now() }
+      void window.api.saveChat(updated).catch((err) => {
+        console.error('[renameChat] saveChat failed', err)
+      })
+      return updated
+    })
+  }
+
+  /**
    * Permanently delete a chat. Uses the existing `deleteChat` IPC; the
    * main store cascades sub-thread deletion. Drop the chat from our
    * local list immediately for snappy feedback, then refresh from
@@ -14491,6 +14513,7 @@ function App(): React.JSX.Element {
                 onTogglePinWorkspace={handleTogglePinWorkspace}
                 onToggleArchiveChat={handleToggleArchiveChat}
                 onDeleteChat={handleDeleteChat}
+                onRenameChat={handleRenameChat}
                 onInspectRun={(runId, chatId) => {
                   // Navigate to the chat first (handleSelectChat fires via
                   // ActiveRunsSection.onSelectChat above), then open the

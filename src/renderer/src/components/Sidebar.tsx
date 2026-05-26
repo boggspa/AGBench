@@ -105,6 +105,12 @@ interface SidebarProps {
    * semantics). Surfaced from the overflow menu under a separate
    * destructive group so the user has to choose it deliberately. */
   onDeleteChat?: (chatId: string) => void
+  /** Rename a chat thread to a user-chosen title (1.0.3). Surfaced via
+   * the overflow menu's "Rename" item AND via double-click on the title
+   * of the currently-selected chat. The selected-only double-click
+   * gate is intentional: an eager-clicker shouldn't accidentally fall
+   * into rename mode while just trying to navigate the sidebar. */
+  onRenameChat?: (chatId: string, nextTitle: string) => void
   /** Phase K1 follow-up: when provided, clicking a row in the pinned
    * "Active runs" sidebar section navigates to the chat AND opens
    * the Run Inspector for that runId. */
@@ -261,6 +267,100 @@ function XSymbolIcon() {
       >
         <path d="M4.7 4.7 11.3 11.3M11.3 4.7 4.7 11.3" />
       </svg>
+    </span>
+  )
+}
+
+/**
+ * `SidebarChatTitleEditable` — renders a chat's title with two modes:
+ *
+ *   - Display: `<HighlightMatch>` for search-term highlighting. Double-
+ *     clicking the title enters edit mode IFF the chat is currently
+ *     selected (`isSelected`). The selected-gate is intentional —
+ *     without it, an eager-clicker landing on an adjacent chat tile
+ *     would fall into rename mode every time, which is a really easy
+ *     way to mangle a chat list while just trying to navigate.
+ *   - Edit: an `<input>` with the current title pre-filled. Enter
+ *     submits, Escape cancels, blur submits (matches Finder rename UX).
+ *     We stopPropagation on click/mousedown so clicks inside the input
+ *     don't re-fire the parent row's onClick handler.
+ *
+ * Used at all 6 chat-tile render sites (pinned, recents, ensembles
+ * section, workspace-expanded parents, workspace-expanded sub-threads,
+ * global chats). Each site passes its own outer span className so the
+ * existing per-section styling rules (`.sidebar-pinned-label` /
+ * `.sidebar-recents-label` / `.sidebar-chat-title`) keep working.
+ */
+function SidebarChatTitleEditable({
+  chat,
+  className,
+  query,
+  isSelected,
+  isEditing,
+  onStartEdit,
+  onSubmit,
+  onCancel
+}: {
+  chat: ChatRecord
+  className: string
+  query: string
+  isSelected: boolean
+  isEditing: boolean
+  onStartEdit: () => void
+  onSubmit: (nextValue: string) => void
+  onCancel: () => void
+}): React.JSX.Element {
+  const [draft, setDraft] = useState(chat.title)
+  // Reset the draft when (a) the chat's persisted title changes from
+  // under us (e.g. another rename via the menu), or (b) edit mode is
+  // entered (so the user sees the current title, not a stale one
+  // from a previous abandoned edit).
+  useEffect(() => {
+    if (isEditing) setDraft(chat.title)
+  }, [isEditing, chat.title])
+
+  if (isEditing) {
+    return (
+      <span className={className}>
+        <input
+          autoFocus
+          className="sidebar-chat-title-input"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={() => onSubmit(draft)}
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.stopPropagation()
+              // Blur to trigger onSubmit through the unified path —
+              // means the same commit code runs whether the user pressed
+              // Enter or clicked away.
+              event.currentTarget.blur()
+            } else if (event.key === 'Escape') {
+              event.preventDefault()
+              event.stopPropagation()
+              onCancel()
+            }
+          }}
+          aria-label="Rename chat"
+        />
+      </span>
+    )
+  }
+
+  return (
+    <span
+      className={className}
+      onDoubleClick={(event) => {
+        if (!isSelected) return
+        event.preventDefault()
+        event.stopPropagation()
+        onStartEdit()
+      }}
+    >
+      <HighlightMatch text={chat.title} query={query} />
     </span>
   )
 }
@@ -639,11 +739,17 @@ export function Sidebar({
   onTogglePinWorkspace,
   onToggleArchiveChat,
   onDeleteChat,
+  onRenameChat,
   onInspectRun,
   onShowPairingSheet
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
+  // 1.0.3 sidebar rename — single source of "which chat is being
+  // edited right now". Helper component reads + writes via the start /
+  // commit / cancel callbacks below. Null when nothing is being
+  // edited (the common case).
+  const [editingChatId, setEditingChatId] = useState<string | null>(null)
   // Wrap ref for the `+ New` menu so an outside-click / Escape listener
   // can dismiss the popover without each menu item having to remember
   // to call `setNewMenuOpen(false)`. Mirrors the standard pattern the
@@ -763,11 +869,13 @@ export function Sidebar({
     ? recentChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
     : recentChats
 
-  const handleTogglePinChatClick = (event: MouseEvent<HTMLSpanElement>, chatId: string) => {
-    event.preventDefault()
-    event.stopPropagation()
-    onTogglePinChat?.(chatId)
-  }
+  // `handleTogglePinChatClick` was used by the inline pin-icon buttons
+  // on each chat tile (Pinned / Recents / Workspace-expanded / Global
+  // sections). Those inline action buttons were retired in 1.0.3 in
+  // favour of the per-chat three-dots overflow menu, which now exposes
+  // Pin / Unpin via `buildChatMenuItems` instead. The workspace pin
+  // (line ~1439 / ~1836) still uses `handleTogglePinWorkspaceClick`
+  // below.
   const handleTogglePinWorkspaceClick = (
     event: MouseEvent<HTMLButtonElement | HTMLSpanElement>,
     workspaceId: string
@@ -1039,6 +1147,20 @@ export function Sidebar({
    */
   const buildChatMenuItems = (chat: ChatRecord): SidebarOverflowMenuItem[] => {
     const items: SidebarOverflowMenuItem[] = []
+    if (onRenameChat) {
+      items.push({
+        id: 'rename',
+        label: 'Rename',
+        group: 'primary',
+        onSelect: () => {
+          // The menu Rename is unconditional — user explicitly chose it,
+          // so we flip the chat into inline-edit mode regardless of
+          // current selection. The double-click path is the one that
+          // gates on selection (so an eager mouse can't fall into rename).
+          setEditingChatId(chat.appChatId)
+        }
+      })
+    }
     if (onTogglePinChat) {
       items.push({
         id: 'pin',
@@ -1055,6 +1177,19 @@ export function Sidebar({
         onSelect: () => onToggleArchiveChat(chat.appChatId, !chat.archived)
       })
     }
+    if (onCreateSubThread) {
+      // 1.0.3 — delegate moved INTO the overflow menu after the inline
+      // `↪` icon button on each chat tile was retired. Same handler
+      // wiring as before (opens the SubThreadCreator for this chat as
+      // the parent); just lives in the menu now to keep each tile
+      // chrome consistent.
+      items.push({
+        id: 'delegate',
+        label: 'Delegate to a sub-thread',
+        group: 'primary',
+        onSelect: () => onCreateSubThread(chat)
+      })
+    }
     if (onDeleteChat) {
       items.push({
         id: 'delete',
@@ -1065,6 +1200,19 @@ export function Sidebar({
       })
     }
     return items
+  }
+
+  /**
+   * Commit a rename submitted from the inline `<input>`. Trims, drops
+   * no-ops (empty / unchanged), and clears edit mode unconditionally
+   * so the helper always returns to the display state regardless of
+   * whether the submit was meaningful.
+   */
+  const commitChatRename = (chat: ChatRecord, nextValue: string): void => {
+    const trimmed = nextValue.trim()
+    setEditingChatId(null)
+    if (!trimmed || trimmed === chat.title) return
+    onRenameChat?.(chat.appChatId, trimmed)
   }
 
   /**
@@ -1324,28 +1472,16 @@ export function Sidebar({
                   title={chat.title}
                 >
                   {renderProviderDot(chat.provider)}
-                  <span className="sidebar-pinned-label">
-                    <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
-                  </span>
-                  {onTogglePinChat && (
-                    <span
-                      role="button"
-                      tabIndex={0}
-                      className="sidebar-pin-toggle is-pinned"
-                      onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Enter' || event.key === ' ') {
-                          event.preventDefault()
-                          event.stopPropagation()
-                          onTogglePinChat(chat.appChatId)
-                        }
-                      }}
-                      title="Unpin chat"
-                      aria-label="Unpin chat"
-                    >
-                      <PinSymbolIcon filled />
-                    </span>
-                  )}
+                  <SidebarChatTitleEditable
+                    chat={chat}
+                    className="sidebar-pinned-label"
+                    query={sidebarSearchQuery}
+                    isSelected={currentChat?.appChatId === chat.appChatId}
+                    isEditing={editingChatId === chat.appChatId}
+                    onStartEdit={() => setEditingChatId(chat.appChatId)}
+                    onSubmit={(next) => commitChatRename(chat, next)}
+                    onCancel={() => setEditingChatId(null)}
+                  />
                   <SidebarOverflowMenu
                     triggerLabel="Chat actions"
                     items={buildChatMenuItems(chat)}
@@ -1392,29 +1528,17 @@ export function Sidebar({
                     title={chat.title}
                   >
                     {renderProviderDot(chat.provider)}
-                    <span className="sidebar-recents-label">
-                      <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
-                    </span>
+                    <SidebarChatTitleEditable
+                      chat={chat}
+                      className="sidebar-recents-label"
+                      query={sidebarSearchQuery}
+                      isSelected={currentChat?.appChatId === chat.appChatId}
+                      isEditing={editingChatId === chat.appChatId}
+                      onStartEdit={() => setEditingChatId(chat.appChatId)}
+                      onSubmit={(next) => commitChatRename(chat, next)}
+                      onCancel={() => setEditingChatId(null)}
+                    />
                     <ChatAgeLabel timestamp={chatAgeTimestamp} />
-                    {onTogglePinChat && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className="sidebar-pin-toggle"
-                        onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            onTogglePinChat(chat.appChatId)
-                          }
-                        }}
-                        title="Pin chat"
-                        aria-label="Pin chat"
-                      >
-                        <PinSymbolIcon />
-                      </span>
-                    )}
                     <SidebarOverflowMenu
                       triggerLabel="Chat actions"
                       items={buildChatMenuItems(chat)}
@@ -1494,9 +1618,16 @@ export function Sidebar({
                         <span className="sidebar-provider-label provider-ensemble">
                           <span>Ensemble</span>
                         </span>
-                        <span className="sidebar-chat-title">
-                          <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
-                        </span>
+                        <SidebarChatTitleEditable
+                          chat={chat}
+                          className="sidebar-chat-title"
+                          query={sidebarSearchQuery}
+                          isSelected={currentChat?.appChatId === chat.appChatId}
+                          isEditing={editingChatId === chat.appChatId}
+                          onStartEdit={() => setEditingChatId(chat.appChatId)}
+                          onSubmit={(next) => commitChatRename(chat, next)}
+                          onCancel={() => setEditingChatId(null)}
+                        />
                       </span>
                       <span className="sidebar-chat-subline">
                         <span className={`sidebar-run-status tone-${isRunning ? 'warning' : 'muted'}`}>
@@ -1797,12 +1928,16 @@ export function Sidebar({
                                 <span className="sidebar-chat-copy" title={chat.title}>
                                   <span className="sidebar-chat-title-line">
                                     <SidebarProviderLabel provider={chat.provider} />
-                                    <span className="sidebar-chat-title">
-                                      <HighlightMatch
-                                        text={chat.title}
-                                        query={sidebarSearchQuery}
-                                      />
-                                    </span>
+                                    <SidebarChatTitleEditable
+                                      chat={chat}
+                                      className="sidebar-chat-title"
+                                      query={sidebarSearchQuery}
+                                      isSelected={currentChat?.appChatId === chat.appChatId}
+                                      isEditing={editingChatId === chat.appChatId}
+                                      onStartEdit={() => setEditingChatId(chat.appChatId)}
+                                      onSubmit={(next) => commitChatRename(chat, next)}
+                                      onCancel={() => setEditingChatId(null)}
+                                    />
                                   </span>
                                   {(isChatRunning ||
                                     (lastRunStatus &&
@@ -1841,48 +1976,6 @@ export function Sidebar({
                                   />
                                 )}
                                 {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
-                                {onTogglePinChat && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className={`sidebar-pin-toggle sidebar-chat-pin ${chat.pinned ? 'is-pinned' : ''}`}
-                                    onClick={(event) =>
-                                      handleTogglePinChatClick(event, chat.appChatId)
-                                    }
-                                    onKeyDown={(event) => {
-                                      if (event.key === 'Enter' || event.key === ' ') {
-                                        event.preventDefault()
-                                        event.stopPropagation()
-                                        onTogglePinChat(chat.appChatId)
-                                      }
-                                    }}
-                                    title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-                                    aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-                                  >
-                                    <PinSymbolIcon filled={!!chat.pinned} />
-                                  </span>
-                                )}
-                                {onCreateSubThread && (
-                                  <span
-                                    role="button"
-                                    tabIndex={0}
-                                    className="sidebar-chat-delegate"
-                                    title="Delegate to a sub-thread"
-                                    aria-label="Delegate to a sub-thread"
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      onCreateSubThread(chat)
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' || e.key === ' ') {
-                                        e.stopPropagation()
-                                        onCreateSubThread(chat)
-                                      }
-                                    }}
-                                  >
-                                    ↪
-                                  </span>
-                                )}
                                 <SidebarOverflowMenu
                                   triggerLabel="Chat actions"
                                   items={buildChatMenuItems(chat)}
@@ -1912,12 +2005,18 @@ export function Sidebar({
                                         <span className="sidebar-chat-copy" title={subChat.title}>
                                           <span className="sidebar-chat-title-line">
                                             <SidebarProviderLabel provider={subChat.provider} />
-                                            <span className="sidebar-chat-title">
-                                              <HighlightMatch
-                                                text={subChat.title}
-                                                query={sidebarSearchQuery}
-                                              />
-                                            </span>
+                                            <SidebarChatTitleEditable
+                                              chat={subChat}
+                                              className="sidebar-chat-title"
+                                              query={sidebarSearchQuery}
+                                              isSelected={
+                                                currentChat?.appChatId === subChat.appChatId
+                                              }
+                                              isEditing={editingChatId === subChat.appChatId}
+                                              onStartEdit={() => setEditingChatId(subChat.appChatId)}
+                                              onSubmit={(next) => commitChatRename(subChat, next)}
+                                              onCancel={() => setEditingChatId(null)}
+                                            />
                                           </span>
                                           {(subRunning ||
                                             (subLastStatus &&
@@ -1999,9 +2098,16 @@ export function Sidebar({
                     <span className="sidebar-chat-copy" title={chat.title}>
                       <span className="sidebar-chat-title-line">
                         <SidebarProviderLabel provider={chat.provider} />
-                        <span className="sidebar-chat-title">
-                          <HighlightMatch text={chat.title} query={sidebarSearchQuery} />
-                        </span>
+                        <SidebarChatTitleEditable
+                          chat={chat}
+                          className="sidebar-chat-title"
+                          query={sidebarSearchQuery}
+                          isSelected={currentChat?.appChatId === chat.appChatId}
+                          isEditing={editingChatId === chat.appChatId}
+                          onStartEdit={() => setEditingChatId(chat.appChatId)}
+                          onSubmit={(next) => commitChatRename(chat, next)}
+                          onCancel={() => setEditingChatId(null)}
+                        />
                       </span>
                       {(isChatRunning ||
                         (lastRunStatus &&
@@ -2026,25 +2132,6 @@ export function Sidebar({
                       />
                     )}
                     {!isChatRunning && <ChatAgeLabel timestamp={chatAgeTimestamp} />}
-                    {onTogglePinChat && (
-                      <span
-                        role="button"
-                        tabIndex={0}
-                        className={`sidebar-pin-toggle sidebar-chat-pin ${chat.pinned ? 'is-pinned' : ''}`}
-                        onClick={(event) => handleTogglePinChatClick(event, chat.appChatId)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault()
-                            event.stopPropagation()
-                            onTogglePinChat(chat.appChatId)
-                          }
-                        }}
-                        title={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-                        aria-label={chat.pinned ? 'Unpin chat' : 'Pin chat'}
-                      >
-                        <PinSymbolIcon filled={!!chat.pinned} />
-                      </span>
-                    )}
                     <SidebarOverflowMenu
                       triggerLabel="Chat actions"
                       items={buildChatMenuItems(chat)}

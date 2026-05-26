@@ -14103,6 +14103,31 @@ input:disabled, select:disabled, textarea:disabled {
   white-space: nowrap;
 }
 
+/* 1.0.3 sidebar rename — inline `<input>` that replaces the title
+ * span during edit mode. Matches the title's font + colour so the
+ * mode switch feels seamless; only the visible boundary changes
+ * (faint background + 1px outline rim so the user can see it's
+ * now editable). Auto-focuses on entry; Enter / blur commits, Esc
+ * cancels (handlers in SidebarChatTitleEditable). */
+.sidebar-chat-title-input {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  min-width: 0;
+  margin: -2px 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--sidebar-bg, var(--background)) 80%, transparent);
+  color: var(--sidebar-text);
+  font: inherit;
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.sidebar-chat-title-input:focus {
+  border-color: color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
 .sidebar-workspace-name {
   font-weight: 680;
   letter-spacing: -0.01em;

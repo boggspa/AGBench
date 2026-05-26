@@ -440,12 +440,30 @@ export function normalizeClaudeUsageSnapshot(
     payload?.sevenDay ?? payload?.seven_day
   )
   if (sevenDay) windows.push(sevenDay)
-  const sevenDaySonnet = payload?.sevenDaySonnet ?? payload?.seven_day_sonnet
+  /*
+   * 1.0.3 hotfix — the Sonnet + Opus per-family weekly meters were
+   * sometimes missing from AGBench's Claude usage panel even when
+   * Limit Counter (Chris's reference app) was clearly showing them.
+   * The previous probe only knew the top-level snake/camel pair
+   * (`seven_day_sonnet` / `sevenDaySonnet`). Anthropic's OAuth usage
+   * response has subtly different shapes across subscription tiers
+   * and account types; we now also probe the nested forms used by
+   * `seven_day.sonnet` / `sevenDay.sonnet`, plus the `models.sonnet`
+   * sub-tree some account variants emit. First non-null wins.
+   * Same broadening for Opus below. If all probes miss but the
+   * top-level `seven_day` window is present, we log a one-shot
+   * diagnostic so any further field-shape drift surfaces in dev
+   * console rather than silently dropping the meter.
+   */
+  const sevenDaySonnet = pickClaudeModelWindow(payload, 'sonnet')
   const sonnetWindow = claudeUsageWindow('claude-weekly-sonnet', 'Sonnet', sevenDaySonnet)
   if (sonnetWindow) windows.push(sonnetWindow)
-  const sevenDayOpus = payload?.sevenDayOpus ?? payload?.seven_day_opus
+  const sevenDayOpus = pickClaudeModelWindow(payload, 'opus')
   const opusWindow = claudeUsageWindow('claude-weekly-opus', 'Opus', sevenDayOpus)
   if (opusWindow) windows.push(opusWindow)
+  if (sevenDay && !sonnetWindow && !opusWindow && payload && typeof payload === 'object') {
+    logClaudeUsageMissingFamilyWindowOnce(payload)
+  }
   const extraUsage = payload?.extraUsage ?? payload?.extra_usage
   if (Boolean(extraUsage?.isEnabled ?? extraUsage?.is_enabled)) {
     const unit = String(extraUsage?.currency || 'credits')
@@ -475,5 +493,148 @@ export function normalizeClaudeUsageSnapshot(
     fetchedAt: new Date().toISOString(),
     windows,
     balances
+  }
+}
+
+/**
+ * Pick a Claude per-family weekly window from the OAuth usage payload.
+ * Tries every shape Anthropic has been observed to emit, returns the
+ * first non-null candidate. Used for both Sonnet + Opus.
+ *
+ *   Top-level snake/camel: `seven_day_sonnet` / `sevenDaySonnet`
+ *   Nested under seven_day: `seven_day.sonnet` / `sevenDay.sonnet`
+ *   Nested under models: `models.sonnet` / `models.sonnet.weekly` /
+ *                        `models.sonnet.seven_day`
+ *   Alt prefix: `weekly_sonnet` / `weeklySonnet`
+ *
+ * The `family` argument is the lowercase model family name (`sonnet`
+ * or `opus`). Returns whatever's at the matched path; `claudeUsageWindow`
+ * decides if there's a usable `utilization` numeric inside.
+ */
+function pickClaudeModelWindow(payload: any, family: 'sonnet' | 'opus'): any {
+  if (!payload || typeof payload !== 'object') return null
+  const snake = `seven_day_${family}`
+  const camelSuffix = family === 'sonnet' ? 'Sonnet' : 'Opus'
+  const camel = `sevenDay${camelSuffix}`
+  const weeklySnake = `weekly_${family}`
+  const weeklyCamel = `weekly${camelSuffix}`
+  const candidates: any[] = [
+    payload[snake],
+    payload[camel],
+    payload[weeklySnake],
+    payload[weeklyCamel],
+    payload?.seven_day?.[family],
+    payload?.sevenDay?.[family],
+    payload?.models?.[family]?.seven_day,
+    payload?.models?.[family]?.sevenDay,
+    payload?.models?.[family]?.weekly,
+    payload?.models?.[family]
+  ]
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object') return candidate
+  }
+  return null
+}
+
+/**
+ * One-shot diagnostic. Fires when a Claude OAuth usage payload has the
+ * top-level weekly window but neither Sonnet nor Opus per-family
+ * windows survive normalisation — likely a field-shape drift we
+ * haven't accounted for. Logs the payload's top-level keys (NOT
+ * values — those may contain credentials/quota) so the user can
+ * report what fields are actually present.
+ *
+ * `claudeUsageLoggedMissingFamilyFields` is the module-level latch so
+ * we only log once per process boot — repeat fetches don't spam the
+ * console.
+ */
+/**
+ * Project a stale persisted snapshot's window reset timestamps forward.
+ *
+ * Use case (1.0.3): Kimi's CLI auth expires ~1h after activity, after
+ * which the live `/coding/v1/usages` endpoint stops returning data and
+ * AGBench falls back to the persisted on-disk snapshot. If the user
+ * hasn't run Kimi for a few hours (or days), every window's `resetAt`
+ * is in the past — the meter renders "9% used, reset 6am yesterday"
+ * which is misleading. Same issue applies to any provider whose
+ * persisted snapshot can outlive its window: a Codex 5h-session
+ * meter from last week, a Claude 7-day weekly from two weeks ago.
+ *
+ * The projection: for each window with a known `limitWindowSeconds`
+ * rollover duration, if `resetAt` is in the past, increment it by
+ * whole window-durations until it lands in the future. Reset
+ * `usedPercent` to 0 (and `remainingPercent` to 100, `limitLabel`
+ * to "100% remaining") since the window has rolled over and we have
+ * no fresh signal otherwise — best-guess assumption matching Limit
+ * Counter's behaviour. Snapshot is flagged `projected: true` so
+ * downstream code can dim the meter / show a "predicted" hint.
+ *
+ * Windows without `limitWindowSeconds` (we don't know the rollover
+ * cadence) are left untouched — better to show stale-but-real than
+ * project against an unknown clock.
+ */
+export function projectStaleSnapshotForward(snapshot: any): any {
+  if (!snapshot || typeof snapshot !== 'object') return snapshot
+  if (!Array.isArray(snapshot.windows) || snapshot.windows.length === 0) return snapshot
+  const now = Date.now()
+  let anyProjected = false
+  const projectedWindows = snapshot.windows.map((window: any) => {
+    if (!window || typeof window !== 'object') return window
+    const resetAt = typeof window.resetAt === 'string' ? Date.parse(window.resetAt) : NaN
+    const windowSeconds = Number(window.limitWindowSeconds)
+    if (!Number.isFinite(resetAt) || !Number.isFinite(windowSeconds) || windowSeconds <= 0) {
+      return window
+    }
+    if (resetAt > now) return window
+    const windowMs = windowSeconds * 1000
+    let nextReset = resetAt
+    // Advance by whole windows until we're in the future. Defensive
+    // cap at 1000 iterations to prevent a malformed snapshot (e.g.
+    // `resetAt` from 1970 with a 1-second window) from spin-looping.
+    let guard = 0
+    while (nextReset <= now && guard < 1000) {
+      nextReset += windowMs
+      guard += 1
+    }
+    if (nextReset <= now) return window
+    anyProjected = true
+    return {
+      ...window,
+      resetAt: new Date(nextReset).toISOString(),
+      usedPercent: 0,
+      remainingPercent: 100,
+      limitLabel: '100% remaining'
+    }
+  })
+  if (!anyProjected) return snapshot
+  return { ...snapshot, windows: projectedWindows, projected: true }
+}
+
+let claudeUsageLoggedMissingFamilyFields = false
+function logClaudeUsageMissingFamilyWindowOnce(payload: any): void {
+  if (claudeUsageLoggedMissingFamilyFields) return
+  claudeUsageLoggedMissingFamilyFields = true
+  try {
+    const topLevelKeys = Object.keys(payload).sort()
+    const sevenDayKeys =
+      payload.seven_day && typeof payload.seven_day === 'object'
+        ? Object.keys(payload.seven_day).sort()
+        : payload.sevenDay && typeof payload.sevenDay === 'object'
+          ? Object.keys(payload.sevenDay).sort()
+          : null
+    const modelsKeys =
+      payload.models && typeof payload.models === 'object'
+        ? Object.keys(payload.models).sort()
+        : null
+    // eslint-disable-next-line no-console
+    console.warn(
+      '[claudeUsage] per-family weekly windows (Sonnet / Opus) not found in OAuth payload — ' +
+        `top-level keys: ${JSON.stringify(topLevelKeys)}` +
+        (sevenDayKeys ? `, seven_day.* keys: ${JSON.stringify(sevenDayKeys)}` : '') +
+        (modelsKeys ? `, models.* keys: ${JSON.stringify(modelsKeys)}` : '')
+    )
+  } catch {
+    // Best-effort diagnostic — don't let a logging failure crash the
+    // normaliser.
   }
 }

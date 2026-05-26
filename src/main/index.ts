@@ -67,6 +67,7 @@ import {
   normalizeClaudeUsageSnapshot,
   normalizeCodexUsagePayload,
   normalizeKimiUsageSnapshot,
+  projectStaleSnapshotForward,
   redactAccountId,
   type NormalizedProviderUsageSnapshot
 } from './ProviderQuotaSnapshots'
@@ -4827,13 +4828,22 @@ function cacheProviderUsageSnapshot(provider: ProviderId, snapshot: any) {
 function usageSnapshotWithPersistedFallback(provider: ProviderId, fallback: any) {
   const cached = AppStore.getProviderUsageSnapshot(provider)
   if (hasProviderUsageSnapshotContent(cached)) {
+    // 1.0.3 — when the persisted snapshot's window reset timestamps
+    // are in the past (auth's been stale for a while, no fresh fetch
+    // landed), project them forward by whole window-durations so the
+    // meter stays sensible: "5% used, resets in 4h" instead of
+    // "5% used, reset 9pm last Wednesday". Matches the Limit Counter
+    // app's behaviour. Windows without a known `limitWindowSeconds`
+    // rollover cadence are left untouched. Critical for Kimi where
+    // CLI auth typically expires within an hour of last activity.
+    const projected = projectStaleSnapshotForward(cached)
     return {
-      ...cached,
+      ...projected,
       provider,
-      configured: fallback?.configured ?? cached.configured,
-      source: cached.source ?? fallback?.source ?? null,
+      configured: fallback?.configured ?? projected.configured,
+      source: projected.source ?? fallback?.source ?? null,
       stale: true,
-      error: fallback?.error || cached.error
+      error: fallback?.error || projected.error
     }
   }
   return fallback

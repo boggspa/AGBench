@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   normalizeClaudeUsageSnapshot,
   normalizeCodexUsagePayload,
-  normalizeKimiUsageSnapshot
+  normalizeKimiUsageSnapshot,
+  projectStaleSnapshotForward
 } from './ProviderQuotaSnapshots'
 
 describe('ProviderQuotaSnapshots', () => {
@@ -132,5 +133,124 @@ describe('ProviderQuotaSnapshots', () => {
     expect(snapshot.windows?.map((windowEntry) => windowEntry.label)).toEqual(['5H', 'Weekly'])
     expect(snapshot.windows?.map((windowEntry) => windowEntry.usedPercent)).toEqual([0, 0])
     expect(snapshot.windows?.map((windowEntry) => windowEntry.remainingPercent)).toEqual([100, 100])
+  })
+
+  describe('Claude per-family weekly probe (sonnet/opus shape drift)', () => {
+    it('finds Sonnet under nested seven_day.sonnet', () => {
+      const snapshot = normalizeClaudeUsageSnapshot({
+        seven_day: { utilization: 80, sonnet: { utilization: 12 } }
+      })
+      const labels = snapshot.windows?.map((w) => w.label) || []
+      expect(labels).toContain('Sonnet')
+      expect(snapshot.windows?.find((w) => w.label === 'Sonnet')?.usedPercent).toBe(12)
+    })
+
+    it('finds Opus under models.opus.weekly', () => {
+      const snapshot = normalizeClaudeUsageSnapshot({
+        seven_day: { utilization: 50 },
+        models: { opus: { weekly: { utilization: 27 } } }
+      })
+      const labels = snapshot.windows?.map((w) => w.label) || []
+      expect(labels).toContain('Opus')
+      expect(snapshot.windows?.find((w) => w.label === 'Opus')?.usedPercent).toBe(27)
+    })
+
+    it('falls back to top-level snake case (existing behaviour)', () => {
+      const snapshot = normalizeClaudeUsageSnapshot({
+        seven_day_sonnet: { utilization: 3 }
+      })
+      expect(snapshot.windows?.find((w) => w.label === 'Sonnet')?.usedPercent).toBe(3)
+    })
+  })
+
+  describe('projectStaleSnapshotForward', () => {
+    it('advances reset timestamps past their original window when they are stale', () => {
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const input = {
+        provider: 'kimi',
+        windows: [
+          {
+            id: 'kimi-5h',
+            label: '5H',
+            usedPercent: 30,
+            remainingPercent: 70,
+            limitWindowSeconds: 5 * 60 * 60, // 5 hours
+            resetAt: oneDayAgo,
+            runs: 0,
+            totalTokens: 0,
+            trackingOnly: false,
+            limitLabel: '70% remaining'
+          }
+        ]
+      }
+      const projected = projectStaleSnapshotForward(input)
+      expect(projected.projected).toBe(true)
+      const window = projected.windows[0]
+      expect(window.usedPercent).toBe(0)
+      expect(window.remainingPercent).toBe(100)
+      const nextReset = Date.parse(window.resetAt)
+      // Next reset should be in the future
+      expect(nextReset).toBeGreaterThan(Date.now())
+      // And should land within one window-duration of "now" (we
+      // project forward by whole windows until we cross the present).
+      expect(nextReset - Date.now()).toBeLessThanOrEqual(5 * 60 * 60 * 1000)
+    })
+
+    it('leaves windows untouched if resetAt is still in the future', () => {
+      const twoHoursFromNow = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString()
+      const input = {
+        provider: 'kimi',
+        windows: [
+          {
+            id: 'kimi-5h',
+            label: '5H',
+            usedPercent: 30,
+            remainingPercent: 70,
+            limitWindowSeconds: 5 * 60 * 60,
+            resetAt: twoHoursFromNow,
+            runs: 0,
+            totalTokens: 0,
+            trackingOnly: false,
+            limitLabel: '70% remaining'
+          }
+        ]
+      }
+      const projected = projectStaleSnapshotForward(input)
+      // No projection should happen → no `projected: true` flag
+      expect(projected.projected).toBeUndefined()
+      expect(projected.windows[0].usedPercent).toBe(30)
+      expect(projected.windows[0].resetAt).toBe(twoHoursFromNow)
+    })
+
+    it('leaves windows without limitWindowSeconds alone (unknown rollover cadence)', () => {
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const input = {
+        provider: 'codex',
+        windows: [
+          {
+            id: 'codex-weekly',
+            label: 'Weekly',
+            usedPercent: 35,
+            remainingPercent: 65,
+            // No limitWindowSeconds — we don't know the rollover cadence
+            resetAt: yesterday,
+            runs: 0,
+            totalTokens: 0,
+            trackingOnly: false,
+            limitLabel: '65% remaining'
+          }
+        ]
+      }
+      const projected = projectStaleSnapshotForward(input)
+      expect(projected.projected).toBeUndefined()
+      expect(projected.windows[0].usedPercent).toBe(35)
+      expect(projected.windows[0].resetAt).toBe(yesterday)
+    })
+
+    it('handles missing snapshot / empty windows safely', () => {
+      expect(projectStaleSnapshotForward(null)).toBeNull()
+      expect(projectStaleSnapshotForward({ windows: [] }).projected).toBeUndefined()
+      expect(projectStaleSnapshotForward({})).toEqual({})
+    })
   })
 })
