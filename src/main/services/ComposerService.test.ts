@@ -291,6 +291,70 @@ describe('ComposerService', () => {
     expect(payload.prompt).not.toContain('```plan')
   })
 
+  it('1.0.4-AF: strips a leading /discuss token and flags selfReflectiveRequested', () => {
+    // /discuss is the prefix-shaped sibling of the ```plan``` fenced
+    // block: a composer-level slash signal that the user wants the
+    // ensemble's deictic rule to flip toward AGBench itself for the
+    // round. The token never reaches the provider — it's a marker
+    // for the orchestrator (or future self-reflective UI) to read.
+    const payload = compose(
+      { provider: 'claude' },
+      {
+        selectedModelType: 'claude-sonnet-4-6',
+        userInput: '/discuss what would the panel say about ensemble pacing?'
+      }
+    )
+    expect(payload.composer.selfReflectiveRequested).toBe(true)
+    expect(payload.prompt).toContain('what would the panel say about ensemble pacing?')
+    expect(payload.prompt).not.toContain('/discuss')
+    // /discuss is independent of plan mode — approval mode should stay
+    // at whatever the caller asked for (default here).
+    expect(payload.approvalMode).toBe('default')
+    expect(payload.composer.planModeParsed).toBeFalsy()
+  })
+
+  it('1.0.4-AF: accepts /meta as an alias for /discuss with the same flag', () => {
+    const payload = compose(
+      { provider: 'gemini' },
+      { userInput: '/meta let us reflect on the harness UX' }
+    )
+    expect(payload.composer.selfReflectiveRequested).toBe(true)
+    expect(payload.prompt).toContain('let us reflect on the harness UX')
+    expect(payload.prompt).not.toMatch(/^\/meta/)
+  })
+
+  it('1.0.4-AF: /discuss composes with a plan markdown block — both signals fire', () => {
+    // Plan Mode and Ensemble self-reflective mode are orthogonal:
+    // Plan controls per-participant permission posture; self-
+    // reflective controls deictic resolution. A prompt that opens
+    // with /discuss AND carries a ```plan``` block should set both.
+    const payload = compose(
+      { provider: 'kimi' },
+      {
+        selectedModelType: 'kimi-k2.6',
+        userInput: '/discuss outline the cleanup\n\n```plan\n1. inventory\n```'
+      }
+    )
+    expect(payload.composer.selfReflectiveRequested).toBe(true)
+    expect(payload.composer.planModeParsed).toBe(true)
+    expect(payload.approvalMode).toBe('plan')
+    expect(payload.prompt).toContain('outline the cleanup')
+    expect(payload.prompt).not.toContain('/discuss')
+    expect(payload.prompt).not.toContain('```plan')
+  })
+
+  it('1.0.4-AF: does NOT fire on /discuss buried inside the prompt body', () => {
+    // Only a leading /discuss token triggers the flag. Users
+    // discussing the command itself ("explain /discuss") should not
+    // accidentally flip the ensemble's mode.
+    const payload = compose(
+      { provider: 'gemini' },
+      { userInput: 'Please explain how /discuss differs from /plan.' }
+    )
+    expect(payload.composer.selfReflectiveRequested).toBeFalsy()
+    expect(payload.prompt).toContain('/discuss')
+  })
+
   it('teaches Codex about cross-provider delegate_to_subthread (Phase I2 prompt-level fix)', () => {
     // Empirical bug: Codex CLI registered the AGBench MCP server
     // correctly (~/Library/Logs/AGBench/bridge-subprocess.log shows

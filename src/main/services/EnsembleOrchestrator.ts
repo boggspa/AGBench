@@ -29,6 +29,7 @@ import {
   classifyDispatchError,
   formatAllUnreachableNote,
   formatDispatchFailureNote,
+  formatProbeFailureNote,
   formatYieldTargetUnreachableNote,
   type DispatchFailureReason
 } from '../EnsembleErrors'
@@ -40,6 +41,27 @@ const MAX_CONTINUATION_HOP_LIMIT = 12
 
 export interface EnsembleDispatchEvent {
   sender: Electron.WebContents
+}
+
+/**
+ * 1.0.4-AD — pre-flight participant health check result. Returned by
+ * the optional `probeParticipant` dep so the orchestrator can mark a
+ * participant `'unreachable'` BEFORE dispatch when its provider's
+ * runtime / socket / binary can't be verified.
+ *
+ *   - `reachable: true` — proceed to dispatch as normal.
+ *   - `reachable: false` — skip dispatch, mark participant unreachable,
+ *     route past via the existing self-heal path. The `reason` text
+ *     populates the participant state's `lastFailureReason` (surfaced
+ *     in the chip tooltip) and the transcript note via
+ *     `formatProbeFailureNote`. `underlyingCode` is an optional posix-
+ *     like code (`ENOENT`, `ECONNREFUSED`, `ETIMEDOUT`) for the
+ *     parenthetical in the transcript line.
+ */
+export interface ParticipantProbeResult {
+  reachable: boolean
+  reason?: string
+  underlyingCode?: string
 }
 
 export interface EnsembleOrchestratorDeps {
@@ -54,6 +76,15 @@ export interface EnsembleOrchestratorDeps {
   createRunId: (provider: ProviderId) => string
   now: () => number
   nowIso: () => string
+  /**
+   * 1.0.4-AD — optional pre-flight reachability probe. Called BEFORE
+   * each participant's dispatch in `runRound`. When omitted (e.g.
+   * unit-test harness without provider plumbing) the orchestrator
+   * treats every participant as reachable and goes straight to
+   * dispatch — preserving the pre-1.0.4-AD behaviour for callers that
+   * haven't wired the probe yet.
+   */
+  probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
 }
 
 /**
@@ -437,6 +468,17 @@ interface ActiveRoundRuntime {
    * remaining participant).
    */
   yieldTarget?: string
+  /**
+   * 1.0.4-AF — round-scoped self-reflective flag. Set when the user
+   * opened the round with `/discuss` (alias `/meta`). Threaded into
+   * the per-participant config passed to `buildEnsembleParticipantPrompt`
+   * so the deictic rule inverts (`this app` → AGBench) for the whole
+   * round, then dies with the runtime. Persistent toggling of the
+   * EnsembleConfig flag is a separate UI surface (item 4 of the
+   * earlier panel feedback); this only handles the slash-triggered
+   * per-round case.
+   */
+  selfReflective?: boolean
 }
 
 export class EnsembleOrchestrator {
@@ -461,7 +503,13 @@ export class EnsembleOrchestrator {
      */
     dmTargetParticipantId?: string
   }): { status: 'started' | 'queued' | 'steered' | 'ignored'; roundId?: string } {
-    const prompt = input.prompt.trim()
+    // 1.0.4-AF — strip a leading `/discuss` (alias `/meta`) token so
+    // the slash never reaches the panel verbatim. The flag flows
+    // through to `beginRound` and lands on the runtime for the
+    // round's lifetime; queued prompts get the same treatment so a
+    // mid-round /discuss queue entry still flips its eventual round.
+    const parsed = parseSelfReflectivePrefix(input.prompt)
+    const prompt = parsed.prompt.trim()
     if (!prompt) return { status: 'ignored' }
     const existing = this.roundsByChatId.get(input.chatId)
     if (existing && !existing.cancelled) {
@@ -471,7 +519,9 @@ export class EnsembleOrchestrator {
           input.chatId,
           prompt,
           input.event.sender,
-          input.dmTargetParticipantId
+          input.dmTargetParticipantId,
+          [],
+          parsed.selfReflective
         )
         this.appendRoundStatus(
           input.chatId,
@@ -503,7 +553,9 @@ export class EnsembleOrchestrator {
       input.chatId,
       prompt,
       input.event.sender,
-      input.dmTargetParticipantId
+      input.dmTargetParticipantId,
+      [],
+      parsed.selfReflective
     )
     return { status: 'started', roundId }
   }
@@ -752,7 +804,15 @@ export class EnsembleOrchestrator {
      * after we shifted off `prompt`). Lets the chain continue
      * through every queued message until the queue drains.
      */
-    carryOverQueue: string[] = []
+    carryOverQueue: string[] = [],
+    /**
+     * 1.0.4-AF — `/discuss` (alias `/meta`) prefix detected at
+     * startRound. Stashed on the runtime so every
+     * `buildEnsembleParticipantPrompt` call this round sees the
+     * inverted deictic rule. Persistent toggling of the EnsembleConfig
+     * flag is a separate concern handled outside this path.
+     */
+    selfReflective = false
   ): string {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) throw new Error('Ensemble chat not found.')
@@ -832,7 +892,8 @@ export class EnsembleOrchestrator {
       queuedPrompts: [...carryOverQueue],
       orchestrationMode,
       continuationHops: 0,
-      maxContinuationHops
+      maxContinuationHops,
+      ...(selfReflective ? { selfReflective: true } : {})
     }
     this.roundsByChatId.set(chatId, runtime)
     void this.runRound(runtime, ordered)
@@ -870,15 +931,91 @@ export class EnsembleOrchestrator {
       const participant = remaining.shift()!
       const wasYieldTarget = yieldedTargetParticipantId === participant.id
       yieldedTargetParticipantId = null
+
+      // 1.0.4-AD — pre-flight health check. Before we seed the
+      // participant run or hand anything to dispatch, probe the
+      // provider's runtime (Codex app-server socket, Claude SDK/CLI
+      // binary, Gemini CLI/PTY, Kimi bridge). If the probe says
+      // unreachable, mark the participant + emit a transcript note and
+      // route past — same self-heal path as the existing dispatch-
+      // failure branch, but caught at the round start so we never
+      // burn a runId on a participant we can't talk to.
+      //
+      // Probe is optional via deps so the unit-test harness can leave
+      // it undefined and exercise the pre-1.0.4-AD code path.
+      // Production wiring (main/index.ts) implements it via the
+      // existing `resolveCliProviderBinary` / `getCodexClient` /
+      // `GeminiMcpBridge` / `KimiMcpBridge` helpers.
+      if (this.deps.probeParticipant) {
+        const probeResult = await this.deps
+          .probeParticipant(participant)
+          .catch((err: unknown) => {
+            // A probe that THROWS is itself a reachability signal —
+            // the probe couldn't decide, so treat as unreachable
+            // rather than letting the throw take down the round.
+            const message = err instanceof Error ? err.message : String(err)
+            const code =
+              typeof (err as { code?: unknown })?.code === 'string'
+                ? ((err as { code?: string }).code as string)
+                : undefined
+            return {
+              reachable: false,
+              reason: message,
+              ...(code ? { underlyingCode: code } : {})
+            } as ParticipantProbeResult
+          })
+        if (!probeResult.reachable) {
+          dispatchAttempts += 1
+          unreachableFailures += 1
+          const reasonText =
+            probeResult.reason ||
+            `${participant.provider} runtime not reachable`
+          const note = formatProbeFailureNote(
+            participant,
+            reasonText,
+            probeResult.underlyingCode
+          )
+          if (wasYieldTarget) {
+            this.appendRoundStatus(
+              runtime.chatId,
+              runtime.roundId,
+              formatYieldTargetUnreachableNote(
+                participant,
+                probeResult.underlyingCode || 'UNREACHABLE',
+                remaining[0] || null
+              )
+            )
+          } else {
+            this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+          }
+          this.markParticipantUnreachable(
+            runtime.chatId,
+            runtime.roundId,
+            participant,
+            reasonText
+          )
+          continue
+        }
+      }
+
       const run = this.seedParticipantRun(chat, runtime, participant)
       runtime.activeRunId = run.runId
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
       })
       const permissions = this.resolveParticipantPermissions(chat, participant)
+      // 1.0.4-AF — merge the round-scoped `selfReflective` flag (set
+      // by `/discuss` at startRound) into the config so the prompt
+      // builder sees the inverted deictic rule for this round only.
+      // The persisted `chat.ensemble.selfReflective` toggle (future
+      // UI control) takes precedence so an explicit pre-set isn't
+      // accidentally overridden by a non-discuss round.
+      const ensembleConfigForRound: EnsembleConfig = runtime.selfReflective
+        ? { ...chat.ensemble, selfReflective: true }
+        : chat.ensemble
       const prompt = buildEnsembleParticipantPrompt({
         chat,
-        config: chat.ensemble,
+        config: ensembleConfigForRound,
         participant,
         currentPrompt: runtime.prompt,
         roundId: runtime.roundId,
@@ -1520,6 +1657,34 @@ export class EnsembleOrchestrator {
     )
   }
 
+  /**
+   * 1.0.4-AD — pre-flight probe rejected this participant. Mark them
+   * `'unreachable'` in the active round, stash the reason on
+   * `lastFailureReason` so the chip strip tooltip can surface it, and
+   * stamp `endedAt` so the per-participant timing card closes. No run
+   * record is created (we never seeded one) so this is a pure round-
+   * state mutation — distinct from `finalizeRun` which also walks the
+   * provider-run / message timeline.
+   */
+  private markParticipantUnreachable(
+    chatId: string,
+    roundId: string,
+    participant: EnsembleParticipant,
+    reason: string
+  ): void {
+    const endedAt = this.deps.nowIso()
+    this.updateChatRound(chatId, (round) =>
+      round?.roundId === roundId
+        ? updateRoundParticipant(round, participant.id, {
+            status: 'unreachable',
+            reason,
+            lastFailureReason: reason,
+            endedAt
+          })
+        : round
+    )
+  }
+
   private finishRound(
     chatId: string,
     roundId: string,
@@ -1731,6 +1896,23 @@ function resolveMaxContinuationHops(
  * 'me' / 'self' targets are rejected so a model that mis-fills the
  * field doesn't recurse onto itself.
  */
+/**
+ * 1.0.4-AF — strip a leading `/discuss` (alias `/meta`) token from
+ * the user-supplied ensemble prompt. Only matches when the token is
+ * the first non-whitespace word; a `/discuss` later in the prompt is
+ * passed through verbatim so users can still quote the command.
+ * Returns the cleaned prompt and a `selfReflective` flag the
+ * orchestrator threads onto the runtime.
+ */
+export function parseSelfReflectivePrefix(input: string): {
+  prompt: string
+  selfReflective: boolean
+} {
+  const match = input.match(/^[ \t]*\/(discuss|meta)\b[ \t]*/i)
+  if (!match) return { prompt: input, selfReflective: false }
+  return { prompt: input.slice(match[0].length), selfReflective: true }
+}
+
 export function resolveYieldTargetIndex(
   remaining: EnsembleParticipant[],
   target: string

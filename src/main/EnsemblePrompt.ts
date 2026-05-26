@@ -85,7 +85,8 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     })
     .join('\n')
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
-  const workspaceStanza = formatWorkspaceStanza(input.chat)
+  const selfReflective = Boolean(input.config.selfReflective)
+  const workspaceStanza = formatWorkspaceStanza(input.chat, selfReflective)
   const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
 
   return [
@@ -113,7 +114,26 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '- In Continuous mode, only request another handoff when more agent work is genuinely useful; otherwise return control to the user.',
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
     '- Respond as yourself only. Do not impersonate other participants.',
-    '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
+    // 1.0.4-AF — Plan/Ensemble precedence note. Ensemble Mode is an
+    // orchestration mode; Plan Mode is a per-participant permission
+    // posture. The two compose: if the user invokes Plan Mode for
+    // this run, this participant must produce a plan rather than
+    // execute, even though the surrounding ensemble round may include
+    // other participants operating at their own permission presets.
+    // Without this note, panelists were confused about whether a Plan
+    // Mode invocation gates the entire round or only the speaker.
+    '- Plan Mode and Ensemble Mode compose: Plan Mode is a per-participant permission posture (this run only); Ensemble Mode is the orchestration mode. If your approval mode is `plan`, respect the read-only posture even within an ensemble round — produce a plan, do not execute. Other participants may still operate at their default permission preset; their posture is not yours.',
+    selfReflective
+      // 1.0.4-AF — self-reflective deictic rule. When the ensemble is
+      // in `selfReflective: true` (`/discuss` or `/meta` composer
+      // prefix), the orientation flips: the panel is discussing
+      // AGBench itself, so "this app / this repo / this project"
+      // should resolve to the harness. Workspace files are still
+      // readable but the conversation is meta-level. This matches the
+      // user's intent when they explicitly open a "talk about
+      // AGBench" round.
+      ? '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to AGBench / the harness / this ensemble — the panel is in self-reflective mode (the user opened the round with `/discuss` or `/meta`). The bound workspace is incidental context; the conversation is about AGBench itself.'
+      : '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
     // 1.0.4 — explicit `@user` handoff. Ends the round immediately
     // when the orchestrator sees it; bypasses participant
     // auto-promotion. Use when the speaker genuinely needs human
@@ -206,7 +226,23 @@ function messageTag(message: ChatMessage): string {
  * top "highest ROI" recommendation. Round subject as a single
  * anchor line every participant reads identically.
  */
-function formatWorkspaceStanza(chat: ChatRecord): string {
+function formatWorkspaceStanza(chat: ChatRecord, selfReflective = false): string {
+  if (selfReflective) {
+    // 1.0.4-AF — self-reflective round. The panel is explicitly
+    // discussing AGBench itself, so the workspace stanza calls that
+    // out. The bound workspace (if any) is still mentioned for
+    // context — agents may still cite paths from it — but the topic
+    // anchor flips from "the user's project" to "the AGBench harness
+    // / this ensemble surface".
+    const path = (chat.workspacePath || '').trim()
+    if (!path) {
+      return 'Round subject: AGBench harness (self-reflective mode — `/discuss`). The panel is discussing AGBench itself. No external workspace is bound.'
+    }
+    const basename = path.replace(/\/+$/, '').split('/').pop() || path
+    const home = process.env.HOME || ''
+    const displayPath = home && path.startsWith(home) ? `~${path.slice(home.length)}` : path
+    return `Round subject: AGBench harness (self-reflective mode — \`/discuss\`). The panel is discussing AGBench itself. Bound workspace (incidental context): ${basename} (${displayPath}).`
+  }
   const path = (chat.workspacePath || '').trim()
   if (!path) {
     return 'Round subject: No workspace bound — system / global chat. If the user references "this app / this repo / this project", ask which project they mean before assuming AGBench.'

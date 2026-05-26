@@ -236,6 +236,72 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('No workspace bound')
     expect(prompt).toContain('ask which project')
   })
+
+  it('1.0.4-AF: always includes the Plan/Ensemble precedence note in the Rules', () => {
+    // The note documents the orthogonal-modes contract for every
+    // participant regardless of approval mode or self-reflective
+    // state, so even a default round carries it.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Implement.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('Plan Mode and Ensemble Mode compose')
+    expect(prompt).toContain('per-participant permission posture')
+    expect(prompt).toContain('produce a plan, do not execute')
+    expect(prompt).toContain('Other participants may still operate')
+  })
+
+  it('1.0.4-AF: inverts the deictic rule and rewrites the workspace stanza in selfReflective mode', () => {
+    const reflectiveEnsemble: EnsembleConfig = { ...ensemble, selfReflective: true }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: reflectiveEnsemble,
+      participant: reflectiveEnsemble.participants[1],
+      currentPrompt: 'What is AGBench getting right?',
+      roundId: 'round-discuss'
+    })
+    // Workspace stanza calls out self-reflective mode and the bound
+    // workspace appears as incidental context, not the topic.
+    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
+    expect(prompt).toContain('Bound workspace (incidental context): repo (/repo)')
+    // Deictic rule is now the inverted variant.
+    expect(prompt).toContain('refer to AGBench / the harness / this ensemble')
+    expect(prompt).not.toContain('NOT to AGBench')
+    expect(prompt).not.toContain('Discuss AGBench only when the user explicitly references it by name')
+  })
+
+  it('1.0.4-AF: self-reflective stanza handles the no-workspace case', () => {
+    const reflectiveEnsemble: EnsembleConfig = { ...ensemble, selfReflective: true }
+    const globalChat = { ...chat(), workspacePath: undefined, scope: 'global' as const }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: globalChat,
+      config: reflectiveEnsemble,
+      participant: reflectiveEnsemble.participants[1],
+      currentPrompt: 'Reflect.',
+      roundId: 'round-discuss-global'
+    })
+    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
+    expect(prompt).toContain('No external workspace is bound')
+    expect(prompt).not.toContain('Bound workspace (incidental context)')
+  })
+
+  it('1.0.4-AF: default rounds keep the original workspace-pointing deictic rule', () => {
+    // Sanity check that the new branch doesn't leak into ordinary
+    // rounds — selfReflective=false (or unset) should behave exactly
+    // like 1.0.4-Q did.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[1],
+      currentPrompt: 'Walk through this codebase.',
+      roundId: 'round-default'
+    })
+    expect(prompt).toContain('refer to the active workspace named in `Round subject:` above, NOT to AGBench')
+    expect(prompt).not.toContain('self-reflective mode')
+  })
 })
 
 describe('formatSameProviderDisambiguationNote', () => {

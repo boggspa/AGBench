@@ -62,6 +62,14 @@ export interface ComposerRunMetadata {
   uiNoticeMessage?: string
   imagePaths: string[]
   planModeParsed?: boolean
+  /**
+   * 1.0.4-AF — set when the user prefixed the prompt with `/discuss`
+   * (or `/meta`). Signals the renderer / orchestrator to flip the
+   * active ensemble round into self-reflective mode (see
+   * `EnsembleConfig.selfReflective`). The slash token is stripped
+   * from `finalPrompt` so it never reaches the provider verbatim.
+   */
+  selfReflectiveRequested?: boolean
 }
 
 export type ComposerRunPayload = AgentRunPayload & {
@@ -102,6 +110,7 @@ export class ComposerService {
     if (!basePrompt.trim()) {
       throw new Error('Prompt is required.')
     }
+    const selfReflectiveRequested = planParsed.selfReflective
 
     const requestedModel = resolveRequestedModel(provider, input, chat)
     const approvalMode = resolveApprovalMode(
@@ -201,7 +210,8 @@ export class ComposerService {
         codexHandoffApplied: composed.codexHandoffApplied,
         uiNoticeMessage: composed.uiNoticeMessage,
         imagePaths,
-        planModeParsed: planParsed.planMode
+        planModeParsed: planParsed.planMode,
+        ...(selfReflectiveRequested ? { selfReflectiveRequested: true } : {})
       }
     }
 
@@ -351,15 +361,44 @@ function externalPathGrantPromptAppendix(grants: ExternalPathGrant[] = []): stri
   return `\n\nUser-approved external path grants for this Codex request:\n${lines.join('\n')}\nUse only these paths outside the workspace.`
 }
 
-function parsePlanModeInput(input: string): { prompt: string; planMode: boolean } {
+/**
+ * Parses composer-level slash signals out of the user's raw prompt.
+ *
+ *   - ` ```plan ` (or ` ```agbench-plan `) fenced block → planMode=true
+ *     and the block is stripped. Pre-existing behaviour (1.0.3); the
+ *     composer then forces approvalMode='plan' for the run.
+ *   - `/discuss` (alias `/meta`) leading token → selfReflective=true
+ *     and the token is stripped from the leading whitespace. The
+ *     orchestrator picks the flag up at round start and sets
+ *     `chat.ensemble.selfReflective = true` for the round so
+ *     `EnsemblePrompt` inverts the deictic rule. The prefix only
+ *     fires when it's the first non-whitespace token; a `/discuss`
+ *     buried inside the prompt body is left untouched so users can
+ *     still talk about the command verbatim.
+ *
+ * Returns the cleaned prompt plus the two parsed signal flags.
+ * Falls back to the original input if the cleaning steps left the
+ * prompt empty (so callers that depend on a non-empty prompt still
+ * see a usable string and can fail with their own validation).
+ */
+function parsePlanModeInput(input: string): {
+  prompt: string
+  planMode: boolean
+  selfReflective: boolean
+} {
   let planMode = false
-  const prompt = input
-    .replace(/```(?:agbench-)?plan[^\n]*\n[\s\S]*?```/gi, () => {
-      planMode = true
-      return ''
-    })
-    .trim()
-  return { prompt: prompt || input, planMode }
+  let selfReflective = false
+  let working = input.replace(/```(?:agbench-)?plan[^\n]*\n[\s\S]*?```/gi, () => {
+    planMode = true
+    return ''
+  })
+  const discussMatch = working.match(/^[ \t]*\/(discuss|meta)\b[ \t]*/i)
+  if (discussMatch) {
+    selfReflective = true
+    working = working.slice(discussMatch[0].length)
+  }
+  const prompt = working.trim()
+  return { prompt: prompt || input, planMode, selfReflective }
 }
 
 function getProviderLabel(provider: ProviderId): string {

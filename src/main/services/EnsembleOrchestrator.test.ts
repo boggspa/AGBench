@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { EnsembleOrchestrator } from './EnsembleOrchestrator'
+import {
+  EnsembleOrchestrator,
+  parseSelfReflectivePrefix,
+  type ParticipantProbeResult
+} from './EnsembleOrchestrator'
 import type { AgentRunPayload } from '../index'
-import type { AppSettings, ChatRecord, EnsembleConfig } from '../store/types'
+import type {
+  AppSettings,
+  ChatRecord,
+  EnsembleConfig,
+  EnsembleParticipant
+} from '../store/types'
 
 const ensemble: EnsembleConfig = {
   enabled: true,
@@ -108,6 +117,17 @@ function makeSettings(): AppSettings {
 
 function makeHarness(options: {
   dispatch?: (payload: AgentRunPayload) => Promise<{ dispatched: boolean; appRunId: string }>
+  /**
+   * 1.0.4-AD — optional probe injection. When set, the orchestrator
+   * calls it BEFORE each participant's dispatch. Returning
+   * `reachable: false` simulates a pre-flight health-check failure
+   * (dead Codex socket, missing CLI binary, etc.) and the
+   * orchestrator should skip dispatch + route to the next
+   * participant. Default (undefined) preserves the pre-1.0.4-AD code
+   * path so the existing dispatch-failure / yield / @-mention tests
+   * stay byte-identical.
+   */
+  probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
 } = {}) {
   let chat = makeChat()
   let counter = 0
@@ -119,6 +139,9 @@ function makeHarness(options: {
       : { dispatched: true, appRunId: payload.appRunId || '' }
   })
   const cancelRun = vi.fn(async () => true)
+  const probeParticipant = options.probeParticipant
+    ? vi.fn(options.probeParticipant)
+    : undefined
   const orchestrator = new EnsembleOrchestrator({
     getChat: () => chat,
     saveChat: (next) => {
@@ -129,7 +152,8 @@ function makeHarness(options: {
     cancelRun,
     createRunId: (provider) => `${provider}-run-${++counter}`,
     now: () => counter,
-    nowIso: () => `2026-05-24T00:00:0${counter}.000Z`
+    nowIso: () => `2026-05-24T00:00:0${counter}.000Z`,
+    ...(probeParticipant ? { probeParticipant } : {})
   })
   return {
     get chat() {
@@ -138,6 +162,7 @@ function makeHarness(options: {
     cancelRun,
     dispatched,
     dispatch,
+    probeParticipant,
     orchestrator
   }
 }
@@ -855,6 +880,162 @@ describe('EnsembleOrchestrator', () => {
         message.content.includes('No reachable participants left')
     )
     expect(fallbackNote).toBeUndefined()
+  })
+
+  it('1.0.4-AD: skips a participant whose pre-flight probe reports unreachable', async () => {
+    // The orchestrator now runs `probeParticipant(participant)` BEFORE
+    // dispatch in `runRound`. When the probe returns
+    // `reachable: false`, we expect:
+    //   1. dispatch NEVER fires for that participant (we don't burn a
+    //      runId on a dead provider)
+    //   2. the round advances to the next participant in `remaining`
+    //   3. the active round's per-participant state flips to
+    //      `'unreachable'` with `lastFailureReason` populated from the
+    //      probe's `reason`
+    //   4. a `formatProbeFailureNote`-shaped transcript line lands as
+    //      a `role: 'system'` message with the `ensembleRoundStatus`
+    //      metadata kind (matches the existing dispatch-failure note
+    //      shape so the renderer's status-card handling carries over)
+    //   5. the `probeParticipant` dep gets called once per participant
+    //      (one call for the unreachable one, one call for the
+    //      survivor)
+    const probeParticipant = async (
+      participant: EnsembleParticipant
+    ): Promise<ParticipantProbeResult> => {
+      if (participant.id === 'claude') {
+        return {
+          reachable: false,
+          reason: 'Claude CLI binary not found on PATH',
+          underlyingCode: 'ENOENT'
+        }
+      }
+      return { reachable: true }
+    }
+    const harness = makeHarness({ probeParticipant })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Probe-skip path.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    // Only Codex (the survivor) is dispatched — Claude is skipped at
+    // round start by the probe rather than burning a runId on dispatch.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('codex')
+
+    // Probe was called for both participants in turn order — Claude
+    // first (rejected), then Codex (accepted).
+    expect(harness.probeParticipant).toHaveBeenCalledTimes(2)
+    const probedIds = harness.probeParticipant!.mock.calls.map(
+      ([p]: [EnsembleParticipant]) => p.id
+    )
+    expect(probedIds).toEqual(['claude', 'codex'])
+
+    // Active round's Claude state should be `unreachable` with the
+    // probe's reason preserved on `lastFailureReason`. Codex should
+    // either be running or already completed depending on timing —
+    // we don't assert its state here, just Claude's.
+    const claudeState = harness.chat.ensemble?.activeRound?.participants.find(
+      (p) => p.participantId === 'claude'
+    )
+    expect(claudeState?.status).toBe('unreachable')
+    expect(claudeState?.lastFailureReason).toBe('Claude CLI binary not found on PATH')
+
+    // Transcript carries the structured probe-failure note —
+    // contains the participant label, the probe reason, the posix
+    // code in parens, AND the "Skipping for this round" recovery hint
+    // (same wording shared with `formatDispatchFailureNote`).
+    const probeNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('health check failed') &&
+        message.content.includes('Claude / Reviewer')
+    )
+    expect(probeNote?.content).toContain('Claude CLI binary not found on PATH')
+    expect(probeNote?.content).toContain('(ENOENT)')
+    expect(probeNote?.content).toContain('Skipping for this round')
+  })
+
+  it('1.0.4-AD: treats a probe that throws as unreachable rather than crashing the round', async () => {
+    // Defensive path. A probe implementation that throws shouldn't
+    // take the whole round down — it's a reachability signal in its
+    // own right. The orchestrator's wrapper catches and downgrades
+    // the throw into a `reachable: false` result. The round must
+    // still advance to the next participant.
+    const probeParticipant = async (
+      participant: EnsembleParticipant
+    ): Promise<ParticipantProbeResult> => {
+      if (participant.id === 'claude') {
+        const err = new Error('boom: probe blew up') as Error & { code?: string }
+        err.code = 'EPROBE_FAIL'
+        throw err
+      }
+      return { reachable: true }
+    }
+    const harness = makeHarness({ probeParticipant })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Probe-throws path.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.dispatched[0].provider).toBe('codex')
+
+    const claudeState = harness.chat.ensemble?.activeRound?.participants.find(
+      (p) => p.participantId === 'claude'
+    )
+    expect(claudeState?.status).toBe('unreachable')
+    expect(claudeState?.lastFailureReason).toBe('boom: probe blew up')
+  })
+
+  it('1.0.4-AD: when every participant probe rejects, no dispatch fires and the all-unreachable note appears', async () => {
+    // Round-end fallback gating still works for the probe path —
+    // `dispatchAttempts` increments on every probe rejection, and
+    // when every attempt counted as `unreachable`, the orchestrator
+    // emits the all-unreachable note alongside the per-participant
+    // probe notes.
+    const probeParticipant = async (): Promise<ParticipantProbeResult> => ({
+      reachable: false,
+      reason: 'socket file missing',
+      underlyingCode: 'ENOENT'
+    })
+    const harness = makeHarness({ probeParticipant })
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Probe-everyone-dead path.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    // Wait for the round to settle (both participants probed and
+    // marked unreachable, no dispatches fired).
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    expect(harness.dispatched).toHaveLength(0)
+
+    const fallbackNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('No reachable participants left')
+    )
+    expect(fallbackNote).toBeDefined()
+    // Both per-participant probe-failure notes should also be present.
+    const probeNotes = harness.chat.messages.filter(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('health check failed')
+    )
+    expect(probeNotes).toHaveLength(2)
   })
 
   it('closes the round immediately when a speaker uses @user', async () => {
@@ -1907,5 +2088,87 @@ describe('EnsembleOrchestrator', () => {
     expect(messages.some((content) =>
       typeof content === 'string' && content.includes('was ambiguous')
     )).toBe(false)
+  })
+
+  it('1.0.4-AF: /discuss prefix flips the round into self-reflective mode and strips the token', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: '/discuss what is the panel routing logic missing?',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const prompt = harness.dispatched[0].prompt
+    // The slash token is stripped before the system prompt is built
+    // — agents never see the literal `/discuss` marker.
+    expect(prompt).not.toMatch(/^\/discuss/)
+    expect(prompt).not.toContain('Current user request:\n/discuss')
+    // Self-reflective deictic rule is in force for this dispatch.
+    expect(prompt).toContain('Round subject: AGBench harness (self-reflective mode')
+    expect(prompt).toContain('refer to AGBench / the harness / this ensemble')
+    // The user message persisted on the chat shows the cleaned prompt
+    // too, not the raw `/discuss …` text.
+    const userMessages = harness.chat.messages.filter((m) => m.role === 'user')
+    expect(userMessages.at(-1)?.content).toBe('what is the panel routing logic missing?')
+  })
+
+  it('1.0.4-AF: rounds without /discuss keep the workspace-pointing deictic rule', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Walk through this codebase.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const prompt = harness.dispatched[0].prompt
+    expect(prompt).toContain('Round subject: repo (/repo)')
+    expect(prompt).not.toContain('self-reflective mode')
+    expect(prompt).toContain('NOT to AGBench')
+  })
+})
+
+describe('parseSelfReflectivePrefix', () => {
+  it('strips a leading /discuss token and reports selfReflective=true', () => {
+    expect(parseSelfReflectivePrefix('/discuss talk about AGBench')).toEqual({
+      prompt: 'talk about AGBench',
+      selfReflective: true
+    })
+  })
+
+  it('accepts /meta as an alias', () => {
+    expect(parseSelfReflectivePrefix('/meta reflect on the harness')).toEqual({
+      prompt: 'reflect on the harness',
+      selfReflective: true
+    })
+  })
+
+  it('matches case-insensitively', () => {
+    expect(parseSelfReflectivePrefix('/DISCUSS hey')).toEqual({
+      prompt: 'hey',
+      selfReflective: true
+    })
+  })
+
+  it('does not match /discuss buried in the prompt body', () => {
+    const input = 'Please explain how /discuss differs from /plan.'
+    expect(parseSelfReflectivePrefix(input)).toEqual({
+      prompt: input,
+      selfReflective: false
+    })
+  })
+
+  it('does not match prefixes like /discussion that share the leading letters', () => {
+    const input = '/discussion topic'
+    expect(parseSelfReflectivePrefix(input)).toEqual({
+      prompt: input,
+      selfReflective: false
+    })
+  })
+
+  it('returns the original input when no slash prefix is present', () => {
+    expect(parseSelfReflectivePrefix('plain prompt')).toEqual({
+      prompt: 'plain prompt',
+      selfReflective: false
+    })
   })
 })

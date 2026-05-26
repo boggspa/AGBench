@@ -1592,6 +1592,17 @@ export interface ToolActivity {
   rawResultEvent?: unknown
   /** If this tool call was emitted by a sub-agent, the tool_use id of the parent Task / Agent call that spawned it. */
   parentToolCallId?: string
+  /** 1.0.4-AG — optional attribution metadata. `provider` names the
+   * CLI/runtime that issued the call, `ensembleProvider` names the
+   * specific ensemble participant when the chat is multi-provider —
+   * so the compact tool-trace render can read "Codex calls write_file"
+   * vs "Claude calls Edit" distinctly during cross-provider rounds.
+   * Both are optional; absent means "fall back to the chat-level
+   * provider passed to ActivityStack". */
+  metadata?: {
+    provider?: ProviderId
+    ensembleProvider?: ProviderId
+  }
   // Legacy fields preserved for backward compatibility
   affectedFilePath?: string
   operationCategory?: 'update_topic' | 'read_file' | 'edit_file' | 'search' | 'shell' | 'unknown'
