@@ -2545,6 +2545,134 @@ describe('EnsembleOrchestrator', () => {
     expect(scoutNote).toBeUndefined()
   })
 
+  it('1.0.4-AK6: threads scout briefs into the writer\'s prompt context after the parallel pass', async () => {
+    // End-to-end: scout pass records briefs, then the serial
+    // writer's prompt should include the "Scout briefs from the
+    // parallel pass:" section with each scout's findings.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        enabled: true,
+        role: 'Reviewer',
+        instructions: 'Review.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 2,
+        permissionPresetId: 'read_only'
+      },
+      {
+        id: 'codex',
+        provider: 'codex',
+        enabled: true,
+        role: 'Worker',
+        instructions: 'Implement.',
+        order: 3,
+        permissionPresetId: 'workspace_write'
+      }
+    ]
+    harness.chat.ensemble!.workSession = {
+      enabled: true,
+      status: 'active',
+      objective: 'Brief threading test',
+      acceptanceCriteria: 'Codex sees both briefs.',
+      allowedParticipantIds: null,
+      permissionPresetId: 'workspace_write',
+      maxRoundsPerProvider: 38,
+      maxDurationMs: 6 * 60 * 60 * 1000,
+      enableScoutPass: true,
+      startedAt: new Date().toISOString(),
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
+      totalRoundsUsed: 0
+    }
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Investigate then implement.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Both scouts dispatch in parallel.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2), {
+      timeout: 1000
+    })
+    const claudeRun = harness.dispatched.find((p) => p.provider === 'claude')!
+    const geminiRun = harness.dispatched.find((p) => p.provider === 'gemini')!
+
+    // Record briefs directly via the orchestrator API (matches
+    // what the scout_brief MCP dispatcher does when an agent
+    // calls the tool from within its lane).
+    harness.orchestrator.recordScoutBrief(claudeRun.appRunId!, {
+      participantId: 'claude',
+      participantRole: 'Reviewer',
+      provider: 'claude',
+      findings: 'Module X locks shared state.',
+      confidence: 'high',
+      blockers: ['concurrency in X'],
+      emittedAt: new Date().toISOString()
+    })
+    harness.orchestrator.recordScoutBrief(geminiRun.appRunId!, {
+      participantId: 'gemini',
+      participantRole: 'Researcher',
+      provider: 'gemini',
+      findings: 'External API expects v2 shape.',
+      confidence: 'medium',
+      emittedAt: new Date().toISOString()
+    })
+
+    // Resolve both scouts so the parallel pass closes.
+    for (const run of [claudeRun, geminiRun]) {
+      harness.orchestrator.handleProviderOutput(
+        run.provider,
+        { appRunId: run.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'content', text: 'Scout done.' }
+      )
+      harness.orchestrator.handleProviderOutput(
+        run.provider,
+        { appRunId: run.appRunId, appChatId: 'ensemble-chat' },
+        { type: 'result', status: 'success' }
+      )
+    }
+    // Codex's writer dispatch happens — its prompt should now
+    // contain the scout briefs section.
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3), {
+      timeout: 1000
+    })
+    expect(harness.dispatched[2].provider).toBe('codex')
+    const writerPrompt = harness.dispatched[2].prompt
+    expect(writerPrompt).toContain('Scout briefs from the parallel pass:')
+    expect(writerPrompt).toContain('[Reviewer (claude)] (high)')
+    expect(writerPrompt).toContain('Module X locks shared state.')
+    expect(writerPrompt).toContain('[Researcher (gemini)] (medium)')
+    expect(writerPrompt).toContain('External API expects v2 shape.')
+    // Blocker from Claude's brief surfaces too.
+    expect(writerPrompt).toContain('Blockers:')
+    expect(writerPrompt).toContain('- concurrency in X')
+  })
+
+  it('1.0.4-AK6: isParticipantInScoutPass returns false outside scout window', async () => {
+    // Defensive coverage: the scout_brief handler relies on
+    // isParticipantInScoutPass to gate writes. Outside a Work
+    // Session (or before/after a scout pass) this MUST return
+    // false so writer-step calls can't smuggle briefs in.
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Just a regular round.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+    // No Work Session, no scout pass — must be false.
+    expect(harness.orchestrator.isParticipantInScoutPass(runId)).toBe(false)
+  })
+
   it('1.0.4-AK5: skips scout pass when only one read-only participant is present', async () => {
     // Edge case: scout pass requires 2+ read-only participants
     // to actually parallelise. A single scout falls through to

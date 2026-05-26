@@ -9,6 +9,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 
 const MAX_MESSAGE_CHARS = 4000
 const MAX_TRANSCRIPT_CHARS = 24000
+import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
+
 const MAX_ENSEMBLE_PARTICIPANTS = 6
 
 export interface BuildEnsemblePromptInput {
@@ -18,6 +20,18 @@ export interface BuildEnsemblePromptInput {
   currentPrompt: string
   roundId: string
   chatContextTurns?: number
+  /**
+   * 1.0.4-AK6 — structured briefs recorded by participants during
+   * a just-completed parallel scout pass. When present, the
+   * prompt builder injects a "Scout briefs from the parallel pass:"
+   * block above the recent-transcript section so the writer has
+   * a coherent picture of the panel's read-only findings.
+   *
+   * Empty array (or undefined) skips the section entirely. The
+   * orchestrator clears scout briefs at round-end so a subsequent
+   * serial round doesn't re-use stale briefs.
+   */
+  scoutBriefs?: ScoutBriefRecord[]
 }
 
 export function getOrderedEnsembleParticipants(
@@ -229,6 +243,14 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
             continuousHopsRemaining === 1 ? '' : 's'
           } remain before this round must return to user. Prefer closing cleanly to chaining another \`ensemble_yield()\` unless the work genuinely needs another agent turn.`
         ]
+      : []),
+    // 1.0.4-AK6 — scout briefs from a just-completed parallel pass
+    // are surfaced above the recent transcript so the serial writer
+    // can synthesise findings before responding. Skipped when no
+    // briefs are available (non-Work-Session rounds, no scout pass,
+    // empty pass with no briefs emitted).
+    ...(input.scoutBriefs && input.scoutBriefs.length > 0
+      ? ['', formatScoutBriefsForPrompt(input.scoutBriefs)]
       : []),
     '',
     'Recent tagged transcript:',

@@ -33,6 +33,7 @@ import {
   formatYieldTargetUnreachableNote,
   type DispatchFailureReason
 } from '../EnsembleErrors'
+import type { ScoutBriefRecord } from '../ScoutBrief'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -463,6 +464,16 @@ interface ActiveRoundRuntime {
    * pre-writer scout pass is running.
    */
   activeScoutRunIds?: Set<string>
+  /**
+   * 1.0.4-AK6 — structured briefs recorded by participants during
+   * the parallel scout pass via the `scout_brief` MCP tool. After
+   * the scout pass closes, the serial writer's prompt builder
+   * reads these and injects them as a "Scout briefs from the
+   * parallel pass:" context block. Cleared at round-end so a
+   * subsequent serial round doesn't accidentally re-use stale
+   * briefs.
+   */
+  scoutBriefs?: ScoutBriefRecord[]
   orchestrationMode: EnsembleOrchestrationMode
   continuationHops: number
   maxContinuationHops: number
@@ -699,6 +710,58 @@ export class EnsembleOrchestrator {
     if (!run) return false
     this.appendRoundStatus(run.chatId, run.roundId, note)
     return true
+  }
+
+  /**
+   * 1.0.4-AK6 — public lookup for scout-pass membership. The
+   * `scout_brief` dispatcher in `index.ts` uses this to refuse
+   * briefs from outside an active parallel scout pass (writer
+   * step calls, non-Work-Session rounds).
+   */
+  isParticipantInScoutPass(runId: string): boolean {
+    if (!runId) return false
+    const run = this.runsByRunId.get(runId)
+    if (!run) return false
+    const runtime = this.roundsByChatId.get(run.chatId)
+    return Boolean(runtime?.activeScoutRunIds?.has(runId))
+  }
+
+  /**
+   * 1.0.4-AK6 — lookup the participant's role + provider for
+   * scout-brief recording. Used by the dispatch site to populate
+   * the brief's identity fields without exposing the orchestrator's
+   * internal run registry.
+   */
+  getParticipantMetaForRun(
+    runId: string
+  ): { role: string; provider: ProviderId } | null {
+    if (!runId) return null
+    const run = this.runsByRunId.get(runId)
+    if (!run) return null
+    return {
+      role: run.participant.role || '',
+      provider: run.participant.provider
+    }
+  }
+
+  /**
+   * 1.0.4-AK6 — record a scout brief into the round runtime. Called
+   * by the `scout_brief` MCP tool dispatcher after handler
+   * validation. The brief is read after the parallel scout pass
+   * closes and threaded into the serial writer's prompt via
+   * `formatScoutBriefsForPrompt`.
+   *
+   * No-op when the runtime doesn't exist (defensive against late
+   * calls after the round closed).
+   */
+  recordScoutBrief(runId: string, brief: ScoutBriefRecord): void {
+    if (!runId) return
+    const run = this.runsByRunId.get(runId)
+    if (!run) return
+    const runtime = this.roundsByChatId.get(run.chatId)
+    if (!runtime) return
+    if (!runtime.scoutBriefs) runtime.scoutBriefs = []
+    runtime.scoutBriefs.push(brief)
   }
 
   markRunExited(runId: string | undefined, exitCode: number): boolean {
@@ -1128,7 +1191,11 @@ export class EnsembleOrchestrator {
         participant,
         currentPrompt: runtime.prompt,
         roundId: runtime.roundId,
-        chatContextTurns: this.deps.getSettings().chatContextTurns
+        chatContextTurns: this.deps.getSettings().chatContextTurns,
+        // 1.0.4-AK6 — thread scout briefs into the writer's prompt
+        // when a parallel scout pass just completed. Empty array
+        // (or undefined) skips the section entirely.
+        scoutBriefs: runtime.scoutBriefs
       })
       // Slice D (1.0.3) — per-participant reasoning + speed + thinking
       // settings flow through the same AgentRunPayload fields the

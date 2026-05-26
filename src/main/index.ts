@@ -182,6 +182,7 @@ import { buildKimiMcpBridgeAddArgs, redactKimiMcpBridgeAddArgs } from './KimiMcp
 import { tryRunGeminiApi } from './GeminiApiProvider'
 import { redactGeminiProfileForMcp } from './GeminiAuthRedaction'
 import { handleEnsembleContinue } from './EnsembleContinue'
+import { handleScoutBrief, type ScoutBriefConfidence } from './ScoutBrief'
 import {
   buildCreativeAppCapabilitySnapshot,
   buildCreativeAppStatusSnapshot,
@@ -14311,6 +14312,47 @@ async function executeGeminiMcpTool(
         queued: continuation.queued,
         message: continuation.message,
         ...(continuation.error ? { error: continuation.error } : {})
+      })
+    } else if (toolName === 'scout_brief') {
+      // 1.0.4-AK6 — Parallel Scout Pass brief tool. Validated +
+      // recorded via `src/main/ScoutBrief.ts`. No-op outside an
+      // active scout pass (writer step calls, non-Work-Session
+      // rounds, etc.) — the handler returns a structured error in
+      // that case rather than silently logging.
+      const runId = context.appRunId || ''
+      const briefResult = handleScoutBrief(
+        runId,
+        {
+          findings: optionalString(args.findings),
+          confidence: args.confidence as ScoutBriefConfidence | undefined,
+          blockers: Array.isArray(args.blockers) ? (args.blockers as unknown[]) as string[] : undefined,
+          recommendations: Array.isArray(args.recommendations)
+            ? (args.recommendations as unknown[]) as string[]
+            : undefined,
+          tags: Array.isArray(args.tags) ? (args.tags as unknown[]) as string[] : undefined
+        },
+        {
+          getParticipantIdForRun: (id: string) =>
+            ensembleOrchestratorRef?.getParticipantIdForRun(id) || null,
+          getParticipantMeta: (id: string) =>
+            ensembleOrchestratorRef?.getParticipantMetaForRun(id) || null,
+          isParticipantInScoutPass: (id: string) =>
+            ensembleOrchestratorRef?.isParticipantInScoutPass(id) ?? false,
+          recordScoutBrief: (id: string, brief) =>
+            ensembleOrchestratorRef?.recordScoutBrief(id, brief)
+        }
+      )
+      // Append the result message to the transcript so the user
+      // sees the brief was recorded (or rejected) without diving
+      // into raw logs.
+      if (briefResult.message) {
+        ensembleOrchestratorRef?.appendStatusForRun(runId, briefResult.message)
+      }
+      text = mcpJson({
+        ok: briefResult.ok,
+        tool: 'scout_brief',
+        message: briefResult.message,
+        ...(briefResult.error ? { error: briefResult.error } : {})
       })
     } else if (toolName === 'ask_user_question') {
       // QMOD (1.0.3) — pause the agent on a modal question and resume

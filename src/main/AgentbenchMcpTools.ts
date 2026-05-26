@@ -87,7 +87,14 @@ export const AGENTBENCH_MCP_TOOLS = [
   // session cleanly (`'complete'`), or pause for user input
   // (`'blocked'`). No-op when no Work Session is active. Validated +
   // dispatched in `src/main/EnsembleContinue.ts`.
-  'ensemble_continue'
+  'ensemble_continue',
+  // 1.0.4-AK6 — structured brief emitted by a participant at the
+  // end of their parallel-scout-pass lane. Threaded into the
+  // serial writer's prompt context so the writer can synthesize
+  // the panel's read-only findings before acting. Validated +
+  // recorded in `src/main/ScoutBrief.ts`. No-op outside an active
+  // parallel scout pass.
+  'scout_brief'
 ] as const
 
 export type AGBenchMcpToolName = (typeof AGENTBENCH_MCP_TOOLS)[number]
