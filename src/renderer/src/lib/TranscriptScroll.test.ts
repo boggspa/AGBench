@@ -27,11 +27,12 @@ describe('TranscriptScroll', () => {
       expect(shouldEngageAutoFollow(STICK_ENGAGE_PX + 1)).toBe(false)
     })
 
-    it('is wide enough to tolerate one-frame token jitter', () => {
-      // Empirical token-stream height ticks observed during Kimi runs:
-      // 20-40px per frame. Engage threshold must remain >= 40 to avoid
-      // dropping out of sticky mode during normal streaming.
-      expect(shouldEngageAutoFollow(40)).toBe(true)
+    it('does not treat a partially scrolled transcript as bottom-pinned', () => {
+      // New messages should follow only when the user was already at
+      // the live edge. A normal streamed line can be 20-40px tall; if
+      // we used that as an engage band, a user reading just above the
+      // bottom would get pulled down unexpectedly.
+      expect(shouldEngageAutoFollow(40)).toBe(false)
     })
 
     it('rejects non-finite inputs defensively', () => {
@@ -50,11 +51,10 @@ describe('TranscriptScroll', () => {
       expect(shouldDisengageAutoFollow(STICK_DISENGAGE_PX + 1)).toBe(true)
     })
 
-    it('has the engage threshold strictly below the disengage threshold (hysteresis)', () => {
-      // The hysteresis gap prevents a single scroll event from
-      // toggling auto-follow on and off repeatedly when the user
-      // hovers right on the boundary.
-      expect(STICK_ENGAGE_PX).toBeLessThan(STICK_DISENGAGE_PX)
+    it('uses the same tight threshold for engage and disengage', () => {
+      // Auto-follow is no longer a broad sticky band: leaving the
+      // live edge disengages, returning to it re-engages.
+      expect(STICK_ENGAGE_PX).toBe(STICK_DISENGAGE_PX)
     })
 
     it('rejects non-finite inputs defensively', () => {

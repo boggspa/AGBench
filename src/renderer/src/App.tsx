@@ -947,25 +947,8 @@ function SteerSymbolIcon() {
 }
 
 function ThinkingIndicator() {
-  // Slice A4 (1.0.3) — elapsed-time tick + "still working" sub-label.
-  // The "I stopped Gemini thinking it hung" issue Chris flagged during
-  // the Ensemble walkthrough: the dots animate identically whether 2s
-  // or 60s have passed, so users can't tell a slow response from a
-  // dead one. Solution: a `· 12s` suffix appears once elapsed ≥ 5s
-  // so users see the counter incrementing (proof the UI is alive). A
-  // second-tier "still working…" reassurance fades in past 30s for
-  // genuinely long thinking (Gemini hard prompts hit this).
-  //
-  // The indicator mounts/unmounts with `isThinking` at the call site
-  // so internal state resets cleanly on each new thinking phase —
-  // no parent-side timer plumbing required.
-  const [elapsedSec, setElapsedSec] = useState(0)
-  useEffect(() => {
-    const start = Date.now()
-    const tick = (): void => setElapsedSec(Math.floor((Date.now() - start) / 1000))
-    const interval = setInterval(tick, 1000)
-    return () => clearInterval(interval)
-  }, [])
+  // The composer telemetry row now carries the elapsed run clock, so
+  // the transcript indicator stays intentionally quiet.
   return (
     <div className="message-bubble assistant message-thinking">
       <span>Thinking</span>
@@ -974,16 +957,6 @@ function ThinkingIndicator() {
         <span className="thinking-dot" />
         <span className="thinking-dot" />
       </span>
-      {elapsedSec >= 5 && (
-        <span className="thinking-elapsed" aria-live="polite">
-          · {elapsedSec}s
-        </span>
-      )}
-      {elapsedSec >= 30 && (
-        <span className="thinking-still-working" aria-live="polite">
-          still working…
-        </span>
-      )}
     </div>
   )
 }
@@ -8710,15 +8683,11 @@ function App(): React.JSX.Element {
     const scroller = transcriptScrollRef.current
     if (!scroller) return
 
-    let rafId: number | null = null
     const evaluate = () => {
-      rafId = null
       const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-      // Hysteresis: user must be essentially at the bottom to opt back
-      // into auto-follow, but a single meaningful upward scroll
-      // immediately disengages so a slow scroll-up from one stream tick
-      // doesn't fight the user trying to read. Thresholds in
-      // `lib/TranscriptScroll`.
+      // Only the actual bottom opts back into auto-follow. This keeps
+      // transcript scrolling fully user-owned until they deliberately
+      // return to the live edge.
       if (shouldEngageAutoFollow(distanceFromBottom)) {
         autoFollowRef.current = true
         // Once the user lands at the bottom again we forget any
@@ -8738,14 +8707,10 @@ function App(): React.JSX.Element {
         autoFollowRef.current = false
       }
     }
-    const onScroll = () => {
-      if (rafId !== null) return
-      rafId = requestAnimationFrame(evaluate)
-    }
+    const onScroll = evaluate
     scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {
       scroller.removeEventListener('scroll', onScroll)
-      if (rafId !== null) cancelAnimationFrame(rafId)
     }
   }, [])
 
@@ -8766,12 +8731,13 @@ function App(): React.JSX.Element {
       // further toward the bottom should not flip the flag (we'd just
       // immediately re-engage on the next scroll event anyway).
       if (deltaY >= 0) return
-      const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-      // Only react when there's actually somewhere up to scroll. At the
-      // very top (distance ≈ scrollHeight) the wheel event is a no-op
-      // and should not change auto-follow state.
-      if (distanceFromBottom > 0) {
+      // Only react when there's actually somewhere up to scroll. This
+      // catches the race before the browser emits the corresponding
+      // scroll event, including the common "wheel up from bottom"
+      // case where distance-from-bottom is still zero at wheel time.
+      if (scroller.scrollTop > 0) {
         userScrolledAwayInFrameRef.current = true
+        autoFollowRef.current = false
       }
     }
 
@@ -9045,17 +9011,12 @@ function App(): React.JSX.Element {
     //   (line 8547) clears it when the user actually returns to the
     //   bottom.
     //
-    //   (2) A live distance-from-bottom measurement guards against
-    //   `autoFollowRef` being stale by one frame relative to the user.
-    //   Measuring here, just before the write, catches the case where
-    //   the user wheeled past `STICK_DISENGAGE_PX` (160px) but the
-    //   scroll listener's rAF eval hadn't fired yet to flip the ref.
+    //   The scroll listener now updates synchronously, so
+    //   `autoFollowRef` is the "was at the bottom before this message
+    //   update" signal. Do not re-measure distance here: after a large
+    //   incoming message, the user who was previously bottom-pinned
+    //   would incorrectly look far from the bottom.
     if (userScrolledAwayInFrameRef.current) {
-      incrementUnreadIfNewMessagesArrived()
-      return
-    }
-    const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
-    if (!shouldEngageAutoFollow(distanceFromBottom)) {
       incrementUnreadIfNewMessagesArrived()
       return
     }
