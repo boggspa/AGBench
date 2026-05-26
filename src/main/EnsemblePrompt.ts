@@ -62,24 +62,68 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     input.config.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound'
   const maxContinuationHops = input.config.maxContinuationHops || 6
   const continuationHops = input.config.activeRound?.continuationHops || 0
-  // 1.0.4 — speaker-position awareness. The first participant in
-  // a multi-participant round gets two extra nudges (roster
-  // marker + scoping rule) so they're more likely to lay out an
-  // approach rather than executing through to completion alone.
-  // Solo-participant rounds skip both (no panel to consult with).
+  // 1.0.4 — speaker-position awareness. First + last participants
+  // in a multi-participant turn-bound round get extra nudges so the
+  // panel doesn't lopside: the opener scopes rather than executing
+  // through (1.0.4-Y), and the closer knows there's nobody left to
+  // yield to so they should address `@user` rather than reach for
+  // ensemble_yield(target) and bounce the round off the end of the
+  // rotation (1.0.4-AJ).
+  //
+  // Continuous-mode rounds don't have a fixed "last" speaker —
+  // continuationHops budget keeps the round open until someone
+  // explicitly returns to user — so the last-speaker marker is
+  // skipped there. The continuous-mode rule line already nudges
+  // toward "only request another handoff when more agent work is
+  // genuinely useful" which covers that orchestration mode.
   const isMultiParticipantRound = orderedParticipants.length >= 2
+  const selfIndex = orderedParticipants.findIndex(
+    (participant) => participant.id === input.participant.id
+  )
+  const totalParticipants = orderedParticipants.length
+  const positionOneIndexed = selfIndex >= 0 ? selfIndex + 1 : 0
   const isFirstSpeaker =
     isMultiParticipantRound && orderedParticipants[0]?.id === input.participant.id
+  const isLastSpeaker =
+    isMultiParticipantRound &&
+    orchestrationMode === 'turn_bound' &&
+    selfIndex === totalParticipants - 1
+  // 1.0.4-AJ — continuous-mode hop-budget awareness. When the round
+  // is in continuous mode and the running hop count is at-or-near
+  // the cap, the closer can choose to close even though there's no
+  // fixed final turn. Surface "X hops remaining" so the speaker can
+  // weigh another yield vs. closing to user.
+  const continuousHopsRemaining =
+    orchestrationMode === 'continuous'
+      ? Math.max(0, maxContinuationHops - continuationHops)
+      : null
+  const isContinuousNearCap =
+    continuousHopsRemaining !== null && continuousHopsRemaining <= 1
   const roster = orderedParticipants
     .map((participant) => {
       const isSelf = participant.id === input.participant.id
       const isFirstInList = participant.id === orderedParticipants[0]?.id
-      // Position marker accompanies the "(you)" tag when the
-      // participant is also speaking first — gives the model a
-      // contextual cue beyond the rule line further down.
+      const isLastInList = participant.id === orderedParticipants[totalParticipants - 1]?.id
+      // Position marker accompanies the "(you)" tag. First/last
+      // markers give the model a contextual cue beyond the rule
+      // lines further down — useful even when the participant
+      // hasn't read the rules section closely. Middle slots in a
+      // 3+ participant round get a bare position count.
       let marker = ''
       if (isSelf) {
-        marker = isFirstSpeaker && isFirstInList ? ' (you — first speaker)' : ' (you)'
+        if (isFirstSpeaker && isFirstInList) {
+          marker = ' (you — first speaker)'
+        } else if (isLastSpeaker && isLastInList) {
+          marker = ` (you — last speaker, position ${positionOneIndexed} of ${totalParticipants})`
+        } else if (
+          isMultiParticipantRound &&
+          positionOneIndexed > 0 &&
+          totalParticipants >= 3
+        ) {
+          marker = ` (you — position ${positionOneIndexed} of ${totalParticipants})`
+        } else {
+          marker = ' (you)'
+        }
       }
       return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}`
     })
@@ -152,6 +196,38 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     ...(isFirstSpeaker
       ? [
           '- You are SPEAKING FIRST in a multi-participant round. Scope the problem and propose a direction before doing heavy file editing or destructive operations. Later participants need room to weigh in with alternatives before execution lands. Reading + analysis is fine; large multi-file edits + deletes should wait for a follow-up turn unless the user explicitly asked for immediate action.'
+        ]
+      : []),
+    // 1.0.4-AJ — last-speaker scoping rule. Mirror of the first-
+    // speaker rule, addressing the "Gemini tries to yield to Codex
+    // on its final turn and the yield fails → bounces back to user"
+    // failure mode. Without this rule the final speaker had no way
+    // to know they were last: they'd reach for `ensemble_yield(target:
+    // ...)` thinking they were passing the baton, but in turn_bound
+    // mode there's nobody after them in the rotation and the
+    // orchestrator routes the failed yield back to the user. Now
+    // the closer knows: no more participants are scheduled — either
+    // close cleanly (final summary / observation / no extra agent
+    // work needed) or use `@user` to ask a follow-up question. Risk
+    // noted: agents could theoretically abuse turn-position
+    // awareness to manipulate flow (e.g. always extending). User
+    // will monitor over time; trust-but-verify.
+    ...(isLastSpeaker
+      ? [
+          `- You are SPEAKING LAST in this turn-bound round (position ${positionOneIndexed} of ${totalParticipants}). No further participants are scheduled — \`ensemble_yield(target: ...)\` cannot route to another panelist this round. Either close with a final observation / summary / decision OR write \`@user\` if you have a question the user should answer next. Avoid attempting a participant yield that has nowhere to land.`
+        ]
+      : []),
+    // 1.0.4-AJ — continuous-mode hop-budget awareness. When the
+    // hop counter is near the cap, surface the remaining-hops count
+    // so the speaker can decide whether to close gracefully vs.
+    // hand off again. Skipped in turn_bound (rotation already
+    // bounds the round) and skipped when there's plenty of budget
+    // left (no signal needed yet).
+    ...(isContinuousNearCap
+      ? [
+          `- Continuation-hop budget is nearly exhausted: ${continuousHopsRemaining} extra handoff${
+            continuousHopsRemaining === 1 ? '' : 's'
+          } remain before this round must return to user. Prefer closing cleanly to chaining another \`ensemble_yield()\` unless the work genuinely needs another agent turn.`
         ]
       : []),
     '',

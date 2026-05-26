@@ -192,13 +192,15 @@ describe('Ensemble prompt composition', () => {
     const prompt = buildEnsembleParticipantPrompt({
       chat: chat(),
       config: ensemble,
-      // Codex / Worker — order 2, not first
+      // Codex / Worker — order 2, middle of a 3-participant round
       participant: ensemble.participants[1],
       currentPrompt: 'Implement the change.',
       roundId: 'round-1'
     })
-    // Plain "(you)" without the position suffix
-    expect(prompt).toContain('Codex / Worker (you)')
+    // 1.0.4-AJ — middle slot now carries an explicit position
+    // count ("you — position 2 of 3") to give the model a turn-
+    // awareness signal. The first-speaker rule itself stays off.
+    expect(prompt).toContain('Codex / Worker (you — position 2 of 3)')
     expect(prompt).not.toContain('first speaker')
     expect(prompt).not.toContain('SPEAKING FIRST')
   })
@@ -222,6 +224,138 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toContain('Claude / Reviewer (you)')
     expect(prompt).not.toContain('first speaker')
     expect(prompt).not.toContain('SPEAKING FIRST')
+  })
+
+  // 1.0.4-AJ — last-speaker awareness. The pre-fix failure mode
+  // reported by Chris: the final participant in a turn-bound round
+  // called `ensemble_yield(target: 'codex')` thinking they were
+  // passing the baton, but nobody was scheduled after them — the
+  // failed yield routed back to user as if the round had broken.
+  // Now the closer knows they're last + has no yield target.
+  it('marks the last speaker with "last speaker, position N of N" and emits the scoping rule (turn_bound)', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      // ensemble.participants[2] is Gemini / Researcher — order 3,
+      // last in the 3-participant rotation.
+      participant: ensemble.participants[2],
+      currentPrompt: 'Close out the round.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('Gemini / Researcher (you — last speaker, position 3 of 3)')
+    expect(prompt).toContain('SPEAKING LAST in this turn-bound round')
+    expect(prompt).toContain('position 3 of 3')
+    expect(prompt).toContain('`ensemble_yield(target: ...)` cannot route')
+    expect(prompt).toContain('`@user`')
+  })
+
+  it('does NOT emit the last-speaker rule for non-last speakers in turn_bound', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      // Codex / Worker — order 2, middle of a 3-participant round
+      participant: ensemble.participants[1],
+      currentPrompt: 'Take the middle slot.',
+      roundId: 'round-1'
+    })
+    expect(prompt).not.toContain('SPEAKING LAST')
+    expect(prompt).not.toContain('last speaker')
+    // Middle slot in 3+ round gets the bare position marker
+    expect(prompt).toContain('Codex / Worker (you — position 2 of 3)')
+  })
+
+  it('does NOT emit the last-speaker rule in continuous orchestration mode', () => {
+    // Continuous mode has no fixed final turn — the hops budget
+    // bounds the round instead. The last-speaker rule is
+    // turn_bound-specific and would mislead a continuous speaker.
+    const continuousEnsemble: EnsembleConfig = {
+      ...ensemble,
+      orchestrationMode: 'continuous',
+      maxContinuationHops: 6
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: continuousEnsemble,
+      participant: continuousEnsemble.participants[2],
+      currentPrompt: 'Continue the conversation.',
+      roundId: 'round-1'
+    })
+    expect(prompt).not.toContain('SPEAKING LAST')
+    expect(prompt).not.toContain('last speaker')
+    // Continuous-mode speaker at the bottom of the roster still
+    // gets a position marker for context (the round can extend
+    // via the hop budget; "position 3 of 3" reflects roster
+    // position, not a hard-end).
+    expect(prompt).toContain('Gemini / Researcher (you — position 3 of 3)')
+  })
+
+  it('emits the hops-near-cap rule when continuous round is near its limit', () => {
+    const continuousEnsemble: EnsembleConfig = {
+      ...ensemble,
+      orchestrationMode: 'continuous',
+      maxContinuationHops: 4,
+      activeRound: {
+        id: 'round-1',
+        startedAt: new Date().toISOString(),
+        participantStatuses: {},
+        continuationHops: 4 // exhausted → 0 remaining
+      } as any
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: continuousEnsemble,
+      participant: continuousEnsemble.participants[1],
+      currentPrompt: 'Mid-conversation handoff.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('Continuation-hop budget is nearly exhausted')
+    expect(prompt).toContain('0 extra handoffs remain')
+  })
+
+  it('emits the hops-near-cap rule with singular wording when exactly one hop remains', () => {
+    const continuousEnsemble: EnsembleConfig = {
+      ...ensemble,
+      orchestrationMode: 'continuous',
+      maxContinuationHops: 5,
+      activeRound: {
+        id: 'round-1',
+        startedAt: new Date().toISOString(),
+        participantStatuses: {},
+        continuationHops: 4 // 1 remaining
+      } as any
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: continuousEnsemble,
+      participant: continuousEnsemble.participants[0],
+      currentPrompt: 'Last-but-one in continuous mode.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('1 extra handoff remain')
+    // Sanity: not plural
+    expect(prompt).not.toContain('1 extra handoffs')
+  })
+
+  it('does NOT emit the hops-near-cap rule when budget has comfortable room', () => {
+    const continuousEnsemble: EnsembleConfig = {
+      ...ensemble,
+      orchestrationMode: 'continuous',
+      maxContinuationHops: 6,
+      activeRound: {
+        id: 'round-1',
+        startedAt: new Date().toISOString(),
+        participantStatuses: {},
+        continuationHops: 0 // 6 remaining, plenty
+      } as any
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: continuousEnsemble,
+      participant: continuousEnsemble.participants[0],
+      currentPrompt: 'Fresh continuous round.',
+      roundId: 'round-1'
+    })
+    expect(prompt).not.toContain('Continuation-hop budget is nearly exhausted')
   })
 
   it('emits the no-workspace fallback when the chat has no workspacePath', () => {
