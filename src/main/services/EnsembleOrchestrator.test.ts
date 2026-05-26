@@ -466,6 +466,62 @@ describe('EnsembleOrchestrator', () => {
     expect(skipMessage?.metadata?.ensembleProvider).toBe('claude')
   })
 
+  it('classifies ECONNREFUSED dispatch errors and continues to the next participant', async () => {
+    // 1.0.4 — Claude/Explorer's introspective feedback after a real
+    // production round where ensemble_yield hit ECONNREFUSED on the
+    // Gemini MCP socket and bubbled as a raw socket error. The
+    // orchestrator already self-heals (round falls through to next
+    // participant in `remaining`), this test asserts the diagnostic
+    // upgrade: a structured "⚠ <Provider> / <Role> unreachable
+    // (<code>). Skipping for this round..." system note instead of
+    // the previous generic 'Dispatch failed.' line.
+    //
+    // The harness's dispatch fn throws an ECONNREFUSED error on the
+    // FIRST call (Claude / Reviewer), then succeeds on subsequent
+    // calls. We assert (a) the round continues to Codex / Worker
+    // without halting, and (b) the transcript carries the typed
+    // failure note.
+    let callCount = 0
+    const harness = makeHarness({
+      dispatch: async () => {
+        callCount += 1
+        if (callCount === 1) {
+          const err = new Error('connect ECONNREFUSED /tmp/agbench-claude.sock') as Error & {
+            code?: string
+          }
+          err.code = 'ECONNREFUSED'
+          throw err
+        }
+        return { dispatched: true, appRunId: '' }
+      }
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Implement and review.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    // Round should reach the second participant despite the first
+    // throwing — the dispatch was called twice (once for the failed
+    // Claude, once for the succeeding Codex).
+    await vi.waitFor(() => expect(callCount).toBeGreaterThanOrEqual(2))
+
+    // The structured failure note lives in chat.messages as a
+    // role:'system' message with the `ensembleRoundStatus` metadata
+    // kind. The content carries the typed reason: provider + role +
+    // posix code + recovery hint.
+    const failureNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('ECONNREFUSED')
+    )
+    expect(failureNote?.content).toContain('Claude / Reviewer')
+    expect(failureNote?.content).toContain('unreachable')
+    expect(failureNote?.content).toContain('ECONNREFUSED')
+    expect(failureNote?.content).toContain('Skipping for this round')
+  })
+
   it('persists tool calls used by ensemble participants into a role:tool message', async () => {
     // Regression: tool calls used by ensemble participants weren't
     // showing in the transcript. Root cause: the renderer-side tool
@@ -569,9 +625,24 @@ describe('EnsembleOrchestrator', () => {
     await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
     expect(harness.dispatched[0].provider).toBe('claude')
     expect(harness.dispatched[1].provider).toBe('codex')
-    expect(harness.chat.messages.map((message) => message.content)).toContain(
-      'Reviewer failed. Dispatch failed.'
+    // 1.0.4 — the generic 'Reviewer failed. Dispatch failed.' has
+    // been replaced by the structured failure note from
+    // `EnsembleErrors.formatDispatchFailureNote`. When the dispatch
+    // returns `dispatched: false` WITHOUT throwing, we can't
+    // classify the error (RunCoordinator already consumed it in
+    // its preflight try/catch), so the note surfaces as the
+    // `unknown` kind: "⚠ <Provider> / <Role> dispatch failed.
+    // Skipping for this round."
+    const failureNote = harness.chat.messages.find(
+      (message) =>
+        message.role === 'system' &&
+        message.metadata?.kind === 'ensembleRoundStatus' &&
+        typeof message.content === 'string' &&
+        message.content.includes('Claude / Reviewer')
     )
+    expect(failureNote?.content).toContain('Claude / Reviewer')
+    expect(failureNote?.content).toContain('dispatch failed')
+    expect(failureNote?.content).toContain('Skipping for this round')
   })
 
   it('stores human-readable ensemble yield tool activity labels', async () => {

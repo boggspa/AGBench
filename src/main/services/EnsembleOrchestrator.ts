@@ -25,6 +25,11 @@ import {
   findFirstMention,
   resolvePhraseToParticipant
 } from './EnsembleMentionAlias'
+import {
+  classifyDispatchError,
+  formatDispatchFailureNote,
+  type DispatchFailureReason
+} from '../EnsembleErrors'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -883,9 +888,39 @@ export class EnsembleOrchestrator {
         ...(claudeFastMode !== undefined ? { claudeFastMode } : {}),
         ...(kimiThinking !== undefined ? { kimiThinking } : {})
       }
-      const dispatched = await this.deps.dispatch(payload, { sender: runtime.sender })
-      if (!dispatched.dispatched) {
-        this.finalizeRun(run, 'failed', 'Dispatch failed.')
+      // 1.0.4 — wrap dispatch in try/catch so socket-level errors
+      // (ECONNREFUSED on a dead MCP bridge, ETIMEDOUT on a hung
+      // provider, ENOENT on a missing CLI binary) classify into a
+      // typed failure and emit a structured transcript note rather
+      // than crashing the whole round on the first dead participant.
+      // The round-self-heal path was already correct structurally —
+      // while-loop continues to the next participant in `remaining`
+      // after a failed dispatch — this just adds the diagnostic.
+      //
+      // See `src/main/EnsembleErrors.ts` for the classifier; the
+      // note shape is `formatDispatchFailureNote(participant, reason)`.
+      // Origin: Claude/Explorer's introspective feedback in
+      // production when ensemble_yield hit ECONNREFUSED on Gemini.
+      let dispatchedResult: { dispatched: boolean; appRunId: string } | null = null
+      let dispatchFailure: DispatchFailureReason | null = null
+      try {
+        dispatchedResult = await this.deps.dispatch(payload, { sender: runtime.sender })
+      } catch (error) {
+        dispatchFailure = classifyDispatchError(error)
+      }
+      if (dispatchFailure || !dispatchedResult?.dispatched) {
+        // Reason precedence: the typed classification from a thrown
+        // error wins over the generic `dispatched: false` path,
+        // because the classifier carries more information (posix
+        // code, preflight message). For the `dispatched: false`
+        // case with no thrown error, we surface as `unknown` since
+        // RunCoordinator already consumed the error in its preflight
+        // try/catch and we don't have access to the original.
+        const reason: DispatchFailureReason =
+          dispatchFailure || { kind: 'unknown', message: '' }
+        const note = formatDispatchFailureNote(participant, reason)
+        this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
+        this.finalizeRun(run, 'failed', note)
       } else {
         await completion
       }
@@ -1205,7 +1240,15 @@ export class EnsembleOrchestrator {
             // bubble. Crucial preview for 1.0.4's same-provider
             // ensembles where the role+provider alone won't tell the
             // user which Claude/Codex is speaking.
-            ensembleModel: run.participant.model
+            ensembleModel: run.participant.model,
+            // Reasoning suffix companion to `ensembleModel`. The
+            // renderer's `formatAssistantMessageLabel` appends this via
+            // `reasoningDisplayLabel` so the header reads "5.5 Extra
+            // High" / "Opus 4.7 · Max" / "K2.6 Thinking" — matching
+            // the composer chip the user picked. Only the field that
+            // applies to this participant's provider is set; the others
+            // stay undefined.
+            ...ensembleReasoningMetadata(run.participant)
           }
         })
       } else {
@@ -1228,7 +1271,8 @@ export class EnsembleOrchestrator {
             ensembleRole: run.participant.role,
             ensembleOrder: run.participant.order,
             ensembleTimelineIndex: i,
-            ensembleModel: run.participant.model
+            ensembleModel: run.participant.model,
+            ...ensembleReasoningMetadata(run.participant)
           }
         })
       }
@@ -1291,7 +1335,8 @@ export class EnsembleOrchestrator {
           ensembleRole: run.participant.role,
           ensembleOrder: run.participant.order,
           ensembleStatus: run.status,
-          ensembleModel: run.participant.model
+          ensembleModel: run.participant.model,
+          ...ensembleReasoningMetadata(run.participant)
         }
       }
       if (existingStatusIdx >= 0) {
@@ -1466,6 +1511,35 @@ function ensembleRunIdentity(
     role: participant.role,
     order: participant.order
   }
+}
+
+/**
+ * Companion fields to `ensembleModel` on the assistant message metadata
+ * so the transcript header can append a reasoning suffix that mirrors
+ * what the user picked in the composer chip
+ * (`reasoningDisplayLabel` in `composerChipFormat.ts`).
+ *
+ * Only the field that applies to this participant's provider is set:
+ *   codex / claude  → `ensembleReasoningEffort` (token: low/medium/high/xhigh/off)
+ *   kimi            → `ensembleThinkingEnabled` (boolean)
+ *   gemini          → nothing (no reasoning axis)
+ *
+ * Returning an object that gets spread keeps the call-sites compact and
+ * avoids stamping `undefined` keys onto the metadata when the field
+ * doesn't apply.
+ */
+function ensembleReasoningMetadata(
+  participant: EnsembleParticipant
+): Record<string, unknown> {
+  if (participant.provider === 'codex' || participant.provider === 'claude') {
+    return participant.reasoningEffort
+      ? { ensembleReasoningEffort: participant.reasoningEffort }
+      : {}
+  }
+  if (participant.provider === 'kimi') {
+    return { ensembleThinkingEnabled: Boolean(participant.thinkingEnabled) }
+  }
+  return {}
 }
 
 function updateRoundParticipant(
