@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { Component, useEffect, useState, type ReactNode, type RefObject } from 'react'
 import { DiffViewer } from './DiffViewer'
 import { TerminalPanel } from './TerminalPanel'
 import { BackgroundTasksPanel } from './BackgroundTasksPanel'
@@ -239,6 +239,78 @@ const INSPECTOR_TABS = [
   }
 ] as const
 
+/**
+ * Per-tab error boundary (1.0.3 hotfix).
+ *
+ * Capabilities tab was crashing on Claude/Kimi sessions with a React
+ * #31 ("Objects are not valid as a React child") that bubbled all the
+ * way up to the transcript surface's top-level boundary — every click
+ * on Capabilities took the whole chat down. This boundary catches the
+ * render error at the tab level so other tabs (and the transcript)
+ * stay healthy. Console-log of the original error stays in dev tools
+ * so we can pin the root cause in a follow-up.
+ *
+ * `resetKey` lets the parent force a remount (e.g. when the user
+ * switches to a different tab and back) by changing the key the
+ * boundary sees. Without it the user would be stuck on the fallback
+ * forever once a tab had failed.
+ */
+class InspectorTabErrorBoundary extends Component<
+  { children: ReactNode; resetKey: string },
+  { errored: boolean; message: string }
+> {
+  state = { errored: false, message: '' }
+  static getDerivedStateFromError(err: unknown): { errored: true; message: string } {
+    return {
+      errored: true,
+      message: err instanceof Error ? err.message : String(err ?? 'unknown error')
+    }
+  }
+  componentDidCatch(err: unknown, info: unknown): void {
+    // eslint-disable-next-line no-console
+    console.error('[Inspector] tab render failed', err, info)
+  }
+  componentDidUpdate(prev: Readonly<{ resetKey: string }>): void {
+    if (prev.resetKey !== this.props.resetKey && this.state.errored) {
+      this.setState({ errored: false, message: '' })
+    }
+  }
+  render(): ReactNode {
+    if (this.state.errored) {
+      return (
+        <div className="safety-panel">
+          <div className="safety-card">
+            <h4>Tab failed to render</h4>
+            <p
+              style={{
+                fontSize: 'var(--font-size-sm)',
+                color: 'var(--text-secondary)',
+                margin: '0 0 var(--space-sm) 0'
+              }}
+            >
+              This inspector tab hit an error and was contained so the chat surface
+              stays usable. Other tabs are unaffected.
+            </p>
+            <p
+              style={{
+                fontFamily: 'var(--font-mono)',
+                fontSize: 'var(--font-size-xs)',
+                color: 'var(--danger)',
+                margin: 0,
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}
+            >
+              {this.state.message}
+            </p>
+          </div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
+
 export function Inspector(props: InspectorProps) {
   return (
     <div className="app-inspector">
@@ -259,15 +331,19 @@ export function Inspector(props: InspectorProps) {
         ))}
       </div>
       <div className="inspector-body">
-        {props.rightTab === 'diff' && <DiffTab {...props} />}
-        {props.rightTab === 'raw' && <RawTab {...props} />}
-        {props.rightTab === 'delegation' && <DelegationTab {...props} />}
-        {props.rightTab === 'timeline' && <DelegationTimelineTab {...props} />}
-        {props.rightTab === 'safety' && <SafetyTab {...props} />}
-        {props.rightTab === 'capabilities' && <CapabilitiesTab {...props} />}
-        {props.rightTab === 'background-tasks' && (
-          <BackgroundTasksPanel chat={props.currentChat || undefined} provider={props.provider} />
-        )}
+        {/* Per-tab error boundary. resetKey=`{tab}` so switching tabs
+            forces a fresh mount and clears any previous failure state. */}
+        <InspectorTabErrorBoundary resetKey={props.rightTab}>
+          {props.rightTab === 'diff' && <DiffTab {...props} />}
+          {props.rightTab === 'raw' && <RawTab {...props} />}
+          {props.rightTab === 'delegation' && <DelegationTab {...props} />}
+          {props.rightTab === 'timeline' && <DelegationTimelineTab {...props} />}
+          {props.rightTab === 'safety' && <SafetyTab {...props} />}
+          {props.rightTab === 'capabilities' && <CapabilitiesTab {...props} />}
+          {props.rightTab === 'background-tasks' && (
+            <BackgroundTasksPanel chat={props.currentChat || undefined} provider={props.provider} />
+          )}
+        </InspectorTabErrorBoundary>
       </div>
     </div>
   )
@@ -875,7 +951,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
   const enforcedCount = tools.filter((tool) => tool.enforcedByAgentBench).length
   return (
     <div className="safety-card">
-      <h4>{contract.label} tooling contract</h4>
+      <h4>{safeText(contract.label, 'Provider')} tooling contract</h4>
       <p
         style={{
           fontSize: 'var(--font-size-sm)',
@@ -896,11 +972,11 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
       </div>
       <div className="safety-row">
         <span>Version</span>
-        <span>{contract.availability.version || 'unknown'}</span>
+        <span>{safeText(contract.availability.version, 'unknown')}</span>
       </div>
       <div className="safety-row">
         <span>Approval mode</span>
-        <span>{contract.approvals.providerMode}</span>
+        <span>{safeText(contract.approvals.providerMode)}</span>
       </div>
       <div className="safety-row">
         <span>In-app approvals</span>
@@ -914,7 +990,9 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
       </div>
       <div className="safety-row">
         <span>MCP</span>
-        <span style={{ color: toolingStateColor(contract.mcp.state) }}>{contract.mcp.state}</span>
+        <span style={{ color: toolingStateColor(contract.mcp.state) }}>
+          {safeText(contract.mcp.state)}
+        </span>
       </div>
       <div
         style={{
@@ -924,16 +1002,16 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
           marginTop: 'var(--space-md)'
         }}
       >
-        {tools.map((tool) => (
+        {tools.map((tool, idx) => (
           <div
-            key={tool.id}
+            key={safeText(tool.id) || `tool-${idx}`}
             style={{ borderTop: '1px solid var(--panel-border)', paddingTop: 'var(--space-sm)' }}
           >
             <div
               style={{ display: 'flex', justifyContent: 'space-between', gap: 'var(--space-sm)' }}
             >
               <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-primary)' }}>
-                {tool.label}
+                {safeText(tool.label)}
               </span>
               <span
                 style={{
@@ -942,7 +1020,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
                   whiteSpace: 'nowrap'
                 }}
               >
-                {tool.state}
+                {safeText(tool.state)}
               </span>
             </div>
             <div
@@ -963,7 +1041,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
                   whiteSpace: 'nowrap'
                 }}
               >
-                {toolingEnforcementLabel(tool)}
+                {safeText(toolingEnforcementLabel(tool))}
               </span>
             </div>
             <div
@@ -973,7 +1051,8 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
                 marginTop: 2
               }}
             >
-              {tool.details || `${tool.source}${tool.policy ? ` · ${tool.policy}` : ''}`}
+              {safeText(tool.details) ||
+                `${safeText(tool.source)}${tool.policy ? ` · ${safeText(tool.policy)}` : ''}`}
             </div>
             {tool.tools.length > 0 && (
               <div
@@ -984,7 +1063,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
                   fontFamily: 'var(--font-mono)'
                 }}
               >
-                {tool.tools.join(', ')}
+                {safeText(tool.tools)}
               </div>
             )}
           </div>
@@ -999,9 +1078,9 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
             marginTop: 'var(--space-md)'
           }}
         >
-          {contract.warnings.slice(0, 4).map((item) => (
+          {contract.warnings.slice(0, 4).map((item, idx) => (
             <div
-              key={item.id}
+              key={safeText(item.id) || `warning-${idx}`}
               style={{
                 fontSize: 'var(--font-size-xs)',
                 color:
@@ -1012,7 +1091,7 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
                       : 'var(--text-secondary)'
               }}
             >
-              <strong>{item.title}</strong>: {item.message}
+              <strong>{safeText(item.title)}</strong>: {safeText(item.message)}
             </div>
           ))}
         </div>
@@ -1021,11 +1100,56 @@ function ToolingContractCard({ contract }: { contract?: ProviderCapabilityContra
   )
 }
 
+/**
+ * Coerce any value to a safe React-renderable string. Defensive net
+ * for the 1.0.3 Capabilities tab crash where one of the data fields
+ * threaded through as `props.codexStatus.*` / `props.codexModels[].*`
+ * / `props.codexMcpStatus.data[].*` was an object instead of the
+ * typed string, causing React #31 ("Objects are not valid as a React
+ * child") to take down the inspector. Applied at every text-render
+ * site in CapabilitiesTab + ToolingContractCard so the surface
+ * stays readable while we track the actual source down via the
+ * console.dir log below.
+ *
+ * Primitives pass through unchanged; objects become `[object]`
+ * (matches dev-tools rendering convention); null/undefined become
+ * empty string (so React's "false-y skip" semantics still work).
+ */
+function safeText(value: unknown, fallback = ''): string {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === 'string') return value
+  if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+    return String(value)
+  }
+  if (Array.isArray(value)) return value.map((item) => safeText(item, '')).join(', ')
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '[unrenderable]'
+  }
+}
+
 function CapabilitiesTab(props: InspectorProps) {
   const { currentWorkspace } = props
   const workspacePath = props.provider === 'gemini' ? currentWorkspace?.path : undefined
   const { capabilities, isLoading, error, refreshCapabilities } =
     useGeminiCapabilities(workspacePath)
+  // 1.0.3 hotfix diagnostic — dump the props once per mount so we can
+  // see which field threaded through as an object and triggered the
+  // React #31 crash that the InspectorTabErrorBoundary above is now
+  // catching. Strip once the root cause is pinned + a permanent
+  // type guard lands.
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.debug('[CapabilitiesTab] props snapshot', {
+      provider: props.provider,
+      codexStatus: props.codexStatus,
+      codexModels: props.codexModels,
+      codexMcpStatus: props.codexMcpStatus,
+      providerCapabilities: props.providerCapabilities,
+      codexThreads: props.codexThreads
+    })
+  }, [props.provider])
 
   if (props.provider === 'codex') {
     return (
@@ -1046,11 +1170,11 @@ function CapabilitiesTab(props: InspectorProps) {
           </p>
           <div className="safety-row">
             <span>CLI</span>
-            <span>{props.codexStatus?.version || 'unknown'}</span>
+            <span>{safeText(props.codexStatus?.version, 'unknown')}</span>
           </div>
           <div className="safety-row">
             <span>App-server</span>
-            <span>{props.codexStatus?.appServer || 'lazy'}</span>
+            <span>{safeText(props.codexStatus?.appServer, 'lazy')}</span>
           </div>
           <div className="safety-row">
             <span>Models</span>
@@ -1062,32 +1186,32 @@ function CapabilitiesTab(props: InspectorProps) {
           </div>
         </div>
         {(props.codexModels || []).slice(0, 10).map((model) => (
-          <div key={model.id} className="safety-card">
-            <h4>{model.label || model.id}</h4>
+          <div key={safeText(model.id) || String(Math.random())} className="safety-card">
+            <h4>{safeText(model.label) || safeText(model.id, 'Model')}</h4>
             <div className="safety-row">
               <span>Model id</span>
-              <span>{model.id}</span>
+              <span>{safeText(model.id)}</span>
             </div>
             <div className="safety-row">
               <span>Default effort</span>
-              <span>{model.defaultReasoningEffort || 'default'}</span>
+              <span>{safeText(model.defaultReasoningEffort, 'default')}</span>
             </div>
             <div className="safety-row">
               <span>Speed tiers</span>
-              <span>{model.additionalSpeedTiers?.join(', ') || 'standard'}</span>
+              <span>{safeText(model.additionalSpeedTiers, 'standard')}</span>
             </div>
           </div>
         ))}
-        {(props.codexMcpStatus?.data || []).slice(0, 8).map((server: any) => (
-          <div key={server.name} className="safety-card">
-            <h4>{server.name}</h4>
+        {(props.codexMcpStatus?.data || []).slice(0, 8).map((server: any, idx: number) => (
+          <div key={safeText(server?.name) || `server-${idx}`} className="safety-card">
+            <h4>{safeText(server?.name, 'Server')}</h4>
             <div className="safety-row">
               <span>Auth</span>
-              <span>{server.authStatus || 'unknown'}</span>
+              <span>{safeText(server?.authStatus, 'unknown')}</span>
             </div>
             <div className="safety-row">
               <span>Tools</span>
-              <span>{server.tools ? Object.keys(server.tools).length : 0}</span>
+              <span>{server?.tools ? Object.keys(server.tools).length : 0}</span>
             </div>
           </div>
         ))}
@@ -1124,9 +1248,9 @@ function CapabilitiesTab(props: InspectorProps) {
                 marginTop: 'var(--space-sm)'
               }}
             >
-              {(props.codexThreads || []).slice(0, 8).map((thread: any) => (
+              {(props.codexThreads || []).slice(0, 8).map((thread: any, idx: number) => (
                 <div
-                  key={thread.id}
+                  key={safeText(thread?.id) || `thread-${idx}`}
                   style={{
                     borderTop: '1px solid var(--panel-border)',
                     paddingTop: 'var(--space-sm)'
@@ -1141,7 +1265,9 @@ function CapabilitiesTab(props: InspectorProps) {
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    {thread.name || thread.preview || thread.id}
+                    {safeText(thread?.name) ||
+                      safeText(thread?.preview) ||
+                      safeText(thread?.id, 'Thread')}
                   </div>
                   <div
                     style={{
@@ -1152,7 +1278,8 @@ function CapabilitiesTab(props: InspectorProps) {
                       whiteSpace: 'nowrap'
                     }}
                   >
-                    {thread.status || 'unknown'} · {thread.modelProvider || 'openai'} · {thread.id}
+                    {safeText(thread?.status, 'unknown')} ·{' '}
+                    {safeText(thread?.modelProvider, 'openai')} · {safeText(thread?.id)}
                   </div>
                   <div
                     style={{
@@ -1209,11 +1336,11 @@ function CapabilitiesTab(props: InspectorProps) {
           </p>
           <div className="safety-row">
             <span>Binary</span>
-            <span>{props.codexStatus?.binaryPath || 'not found'}</span>
+            <span>{safeText(props.codexStatus?.binaryPath, 'not found')}</span>
           </div>
           <div className="safety-row">
             <span>Version</span>
-            <span>{props.codexStatus?.version || 'unknown'}</span>
+            <span>{safeText(props.codexStatus?.version, 'unknown')}</span>
           </div>
           <div className="safety-row">
             <span>Models</span>
@@ -1228,12 +1355,12 @@ function CapabilitiesTab(props: InspectorProps) {
             <span>{props.codexMcpStatus?.available ? 'available' : 'unavailable'}</span>
           </div>
         </div>
-        {(props.codexModels || []).map((model) => (
-          <div key={model.id} className="safety-card">
-            <h4>{model.label || model.id}</h4>
+        {(props.codexModels || []).map((model, idx) => (
+          <div key={safeText(model.id) || `claude-model-${idx}`} className="safety-card">
+            <h4>{safeText(model.label) || safeText(model.id, 'Model')}</h4>
             <div className="safety-row">
               <span>Model id</span>
-              <span>{model.id}</span>
+              <span>{safeText(model.id)}</span>
             </div>
           </div>
         ))}
