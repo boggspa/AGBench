@@ -430,6 +430,121 @@ describe('EnsembleOrchestrator', () => {
     expect(geminiMessage?.content).toBe('Yo! Doing great, honestly. Sunset is beautiful.')
   })
 
+  it('1.0.4-AB: does not double assistant content when a non-delta final message follows streamed deltas', async () => {
+    // Regression: providers that stream `{ type: 'message', delta: true,
+    // content }` deltas (Gemini CLI) AND then close the turn with a
+    // non-delta `{ type: 'message', content: <full text> }` were
+    // producing duplicated assistant bubbles — the final non-delta
+    // payload would re-append the entire turn on top of the
+    // already-accumulated delta stream.
+    //
+    // Reported by Chris from a Claude ensemble session that contained
+    // the paragraph "(And — same ECONNREFUSED ...)" twice in a single
+    // bubble. The fix: treat a non-delta `type: 'message'` as
+    // authoritative ONLY when no deltas have already streamed; when
+    // we already have accumulated content, the final repeat is a
+    // no-op (the stream already produced the full text).
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Tell me a fact.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    // 1. Stream delta chunks.
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: 'Sunsets are '
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: 'beautiful.'
+    })
+    // 2. Provider closes the turn with the full-text non-delta repeat
+    //    BEFORE the result event arrives. Pre-fix this would have
+    //    appended "Sunsets are beautiful." a second time.
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      content: 'Sunsets are beautiful.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success'
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe('Sunsets are beautiful.')
+  })
+
+  it('1.0.4-AB: non-delta message-shape payload stands alone when no deltas streamed', async () => {
+    // Companion to the AB regression test above. The fix must NOT
+    // break providers that emit ONLY a single non-delta
+    // `{ type: 'message', content }` payload (no streaming deltas).
+    // In that case the non-delta is authoritative and should
+    // populate the assistant bubble exactly as before.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Fact, please.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    // Single non-delta final message — no streaming deltas first.
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      content: 'Mountains are tall.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success'
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe('Mountains are tall.')
+  })
+
   it('skipActiveParticipant cancels the active run and advances to the next participant', async () => {
     // Post-ship UX: replaces the redundant "Stop Ensemble" button with
     // a per-participant Skip affordance. Skip must:

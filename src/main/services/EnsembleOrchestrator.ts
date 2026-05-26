@@ -644,9 +644,19 @@ export class EnsembleOrchestrator {
     // raw logs full of deltas, transcript empty. Codex / Claude / Kimi
     // are unaffected — they all emit `type: 'content'`.
     //
-    // A final non-delta `{ type: 'message', role: 'assistant', content }`
-    // is treated the same way (append). The trailing `type: 'result'`
-    // event still drives finalisation via the branch below.
+    // 1.0.4-AB — non-delta finals are NOT auto-appended any more.
+    // Previously a closing `{ type: 'message', role: 'assistant',
+    // content: <full text> }` arriving AFTER a stream of `delta:true`
+    // chunks would re-append the entire turn, doubling the assistant
+    // bubble (Chris's "(And — same ECONNREFUSED…)" paragraph showing
+    // up twice). Two cases now:
+    //   (a) `delta === true` → streamed chunk, always append.
+    //   (b) no `delta` flag → treat as authoritative ONLY when we
+    //       haven't accumulated anything yet. If we already have
+    //       content, the non-delta is the trailing repeat the
+    //       provider emits for parity with non-streaming clients,
+    //       and we ignore it. The trailing `type: 'result'` event
+    //       still drives finalisation via the branch below.
     if (
       payload?.type === 'message' &&
       payload?.role === 'assistant' &&
@@ -654,9 +664,19 @@ export class EnsembleOrchestrator {
     ) {
       const text = payload.content
       if (text) {
-        run.content += text
-        appendTimelineContent(run, text)
-        this.scheduleFlush(run)
+        const isDelta = payload.delta === true
+        if (isDelta) {
+          run.content += text
+          appendTimelineContent(run, text)
+          this.scheduleFlush(run)
+        } else if (run.content.length === 0) {
+          // First and only message-shape payload for this turn —
+          // treat as the authoritative body.
+          run.content = text
+          appendTimelineContent(run, text)
+          this.scheduleFlush(run)
+        }
+        // else: non-delta repeat-of-deltas → drop on the floor.
       }
       return true
     }
