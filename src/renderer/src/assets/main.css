@@ -4325,7 +4325,20 @@ button.sidebar-item {
 }
 
 /* Composer */
-.composer-area {
+/*
+ * Composer docking rule — scoped to `.app-transcript` so the absolute
+ * positioning + click-through behaviour only applies inside a real chat
+ * pane. Without the scope, mounting a "composer preview" mock inside an
+ * onboarding sheet or settings card (with the `composer-area` className
+ * for chrome inheritance) caused the preview to escape its parent and
+ * stretch full-window-width as a click-through strip — see
+ * FirstLaunchSheet.tsx:463 and SettingsPanel's composer preview.
+ *
+ * `:where()` keeps specificity at (0,1,0) so existing override rules
+ * like `.settings-composer-preview-area.composer-area` (0,2,0) and
+ * `.welcome-mode .composer-area` continue to win where they apply.
+ */
+:where(.app-transcript) .composer-area {
   position: absolute;
   left: 0;
   right: 0;
