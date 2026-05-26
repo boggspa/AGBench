@@ -178,5 +178,24 @@ function getProviderLabel(provider: ProviderId): string {
 
 function shortRunId(runId: string): string {
   if (runId.length <= 8) return runId
+  // 1.0.4 — AGBench's standard runId is
+  // `<provider>-<Date.now()>-<base36-random>` from
+  // `createFallbackRunId` in main/index.ts. The previous
+  // `slice(0, 8)` produced confusing display collisions when two
+  // same-provider participants dispatched in the same ensemble
+  // round: both shared `<provider>-<first 2 digits of Date.now()>`
+  // (e.g. every 2025-era Codex run displayed as `codex-17` because
+  // Date.now() ≈ 17xxxxxxxxxxx). Switching to
+  // `<provider>-<first 4 chars of random tail>` keeps the
+  // discriminator visible — collision space goes from ~100
+  // (2 timestamp digits) to ~1.6M (4 base36 chars).
+  const parts = runId.split('-')
+  if (parts.length >= 3) {
+    const provider = parts[0]
+    const tail = parts[parts.length - 1]
+    if (provider && tail && tail.length >= 3) {
+      return `${provider}-${tail.slice(0, 4)}`
+    }
+  }
   return runId.slice(0, 8)
 }
