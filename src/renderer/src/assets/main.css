@@ -26260,6 +26260,16 @@ input:disabled, select:disabled, textarea:disabled {
   line-height: 1;
   transition: border-color 120ms ease, background 120ms ease, opacity 120ms ease,
     box-shadow 120ms ease;
+  /* 1.0.4-AQ2 — chips are interactive pills, never text-select
+   * targets. The pointer-event drag (see ParticipantChip's
+   * handlePointerDown) was getting its visual feedback swallowed
+   * by the browser's default text selection highlighting the
+   * role/provider text on every chip the pointer crossed during
+   * a drag. Disabling user-select on the chip and its body lets
+   * `.is-dragging` (opacity 0.4) and `.is-drag-over` (accent
+   * ring) actually read as drag affordances. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .ensemble-above-chip-body {
@@ -26273,6 +26283,9 @@ input:disabled, select:disabled, textarea:disabled {
   font: inherit;
   cursor: pointer;
   border-radius: 999px 0 0 999px;
+  /* 1.0.4-AQ2 — see chip-level rule above. */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* Selected chip without an overflow button still rounds the body
@@ -26376,13 +26389,22 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .ensemble-above-chip.is-dragging {
+  /* 1.0.4-AQ2 — slight scale + grabbing cursor reinforces the
+   * "I'm holding this" affordance now that the opacity-only
+   * cue isn't getting drowned in selection-blue. */
   cursor: grabbing;
-  opacity: 0.4;
+  opacity: 0.45;
+  transform: scale(0.96);
+  transition: transform 80ms ease, opacity 80ms ease;
 }
 
 .ensemble-above-chip.is-drag-over {
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 60%, transparent);
+  /* 1.0.4-AQ2 — thicker ring + tint behind the target chip
+   * makes the drop intent unmistakable during a fast drag. */
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent-color) 65%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-color) 18%, transparent);
 }
 
 .ensemble-above-chip-role {
