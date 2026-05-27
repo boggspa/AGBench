@@ -269,6 +269,47 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).toMatch(/address with @Researcher or @/)
   })
 
+  it('1.0.5-EW20: emits a conversational-mode rule in workspace-less global chats', () => {
+    // Regression: in a global ensemble chat with no workspace
+    // bound and not in self-reflective mode, the panel used to
+    // push the user toward binding a workspace because the
+    // default role instructions assume there's a concrete task.
+    // EW20 emits an explicit "this is just a chat" rule that
+    // overrides the task-shape baked into role descriptions.
+    const globalChat: ChatRecord = {
+      ...chat(),
+      scope: 'global',
+      workspacePath: '',
+      workspaceId: undefined
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: globalChat,
+      config: ensemble,
+      participant: ensemble.participants[0],
+      currentPrompt: 'Hey panel, how are we doing today?',
+      roundId: 'round-1'
+    })
+    expect(prompt).toMatch(/conversational global chat/i)
+    expect(prompt).toMatch(/do NOT push the user to bind a workspace/i)
+    // The workspace-bound deictic rule must NOT also fire — only
+    // one branch of the three-way deictic switch is correct here.
+    expect(prompt).not.toContain('refer to the active workspace named in `Round subject:`')
+  })
+
+  it('1.0.5-EW20: does NOT emit the conversational rule when a workspace is bound', () => {
+    // Counterpart: workspace-bound chats keep the existing
+    // deictic rule, no conversational nudge needed.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[0],
+      currentPrompt: 'Please review.',
+      roundId: 'round-1'
+    })
+    expect(prompt).not.toMatch(/conversational global chat/i)
+    expect(prompt).toContain('refer to the active workspace named in `Round subject:`')
+  })
+
   it('1.0.5-EW18: rules block tells agents to prefer @Role / @Model over @provider', () => {
     // Regression for the same shape — even without models on the
     // panel, the rules section must include the directive nudging

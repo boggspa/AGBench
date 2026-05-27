@@ -329,7 +329,28 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         ? [
             '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. Discuss AGBench only when the user explicitly references it by name.'
           ]
-        : []),
+        // 1.0.5-EW20 — Conversational-mode rule for workspace-less
+        // global ensembles. Chris reported: in a chill global chat
+        // the panel reflexively pushed him to bind a workspace
+        // (specifically the Codex smoke-test dir on his desktop)
+        // because the default role instructions (Explorer /
+        // Worker / Researcher / Reviewer) all assume there's a
+        // concrete task underway. AR8 suspended the workspace
+        // stanza in this exact case but the absence of "you're
+        // working on a project" wasn't enough to override the
+        // task-shaped role descriptions — agents filled the
+        // silence with "where would you like us to look?". This
+        // rule names the mode explicitly so the panel knows the
+        // user may just be chatting and stops nudging toward
+        // execution. Only fires for global scope; workspace-
+        // scoped chats without a workspace path shouldn't really
+        // happen in practice, but if they did, the existing
+        // empty-rule branch is still the right behavior there.
+        : input.chat.scope === 'global'
+          ? [
+              '- This is a conversational global chat — no workspace is bound and the user may not have a specific task in mind. Match the tone of a casual panel: share thoughts, weigh in on what the user actually said, and respond like an expert at a coffee table. Do NOT push the user to bind a workspace, assign a project, or treat the round as "we should be doing real work" unless they explicitly ask for that kind of help. If they want to start a concrete task they will bind a workspace themselves; until then, just chat.'
+            ]
+          : []),
     // 1.0.4 — explicit `@user` handoff. Ends the round immediately
     // when the orchestrator sees it; bypasses participant
     // auto-promotion. Use when the speaker genuinely needs human
