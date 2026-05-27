@@ -798,6 +798,21 @@ function ParticipantChip({
       // Left-click only. Right-click / middle-click fall through to
       // the browser default — no drag, no select.
       if (event.button !== 0) return
+      // 1.0.5-EW40 — Skip when the event originated inside the
+      // portaled popover. React portals propagate synthetic events
+      // through the React tree, not the DOM tree — so a pointerdown
+      // on the popover's Role input (or any input/button inside the
+      // popover) bubbles up to THIS handler even though the popover
+      // lives at <body> in the actual DOM. Without this guard, the
+      // chip's pointerup-fires-onClick logic treats the popover
+      // input click as a second tap on the selected chip and toggles
+      // the popover closed before the user can type a character.
+      // We check the DOM target's ancestry (not React's) because the
+      // popover root is `.ensemble-above-overflow` regardless of
+      // which chip anchored it, and that selector is collision-free
+      // with everything else in the strip.
+      const target = event.target as HTMLElement | null
+      if (target?.closest('.ensemble-above-overflow')) return
       // 1.0.5-EW22 — Pre-EW22 there was a guard here for the inline
       // `⋯` overflow button. With that button removed (the popover
       // is now opened by clicking the selected chip a second time),

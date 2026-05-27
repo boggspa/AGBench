@@ -22,7 +22,7 @@ function makeChat(overrides: Partial<ChatRecord> = {}): ChatRecord {
   return {
     appChatId: 'chat-solo-1',
     title: 'Solo chat',
-    chatKind: 'workspace',
+    chatKind: 'single',
     provider: 'codex',
     createdAt: Date.now(),
     updatedAt: Date.now(),

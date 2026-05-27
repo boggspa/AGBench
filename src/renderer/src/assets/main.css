@@ -27253,7 +27253,22 @@ input:disabled, select:disabled, textarea:disabled {
   min-width: 0;
   flex: 1;
   gap: 6px;
-  overflow-x: auto;
+  /* 1.0.5-EW39 — Was `overflow-x: auto` (pre-EW37) to defensively
+   * scroll long rosters. Per CSS spec, when `overflow-x` is
+   * `auto`/`scroll`/`hidden`, the computed `overflow-y` is forced
+   * from `visible` to `auto` — which clips the selected chip's
+   * 16px outward `box-shadow` halo on the top and bottom edges
+   * (the "is-selected" glow defined ~270 lines below). The roster
+   * already wraps to a 6-column grid at 7+ participants (the
+   * `.is-wrapped` rule below) and individual chips truncate via
+   * `min-width: 0` + the role-text overflow rules — so there's no
+   * realistic case where 1–6 chips genuinely need horizontal
+   * scroll. Switching to `overflow: visible` lets the selected-
+   * chip glow paint past the strip's bounds into the surrounding
+   * pill padding, restoring the satellite-halo look across all
+   * nine shell variants (default / codex / claude / gemini / kimi
+   * / modular / satellite / stub / terminal). */
+  overflow: visible;
   /* Centre-justify chips within their flex slot so the row reads
    * as a balanced strip rather than left-pinned text. Works across
    * every shell (default / codex / claude / gemini / kimi /
@@ -27279,14 +27294,20 @@ input:disabled, select:disabled, textarea:disabled {
  * `minmax(0, 1fr)` lets grid items shrink past their intrinsic
  * width — chip labels truncate via the chip-role overflow rules
  * below rather than forcing the grid wider than its container.
- * overflow-x: hidden replaces the horizontal scroll we had on the
- * flex layout — there's nothing to scroll to in a 2-row grid. */
+ *
+ * 1.0.5-EW39 — Was `overflow-x: hidden` (pre-EW37). The grid is
+ * sized by 1fr columns so there's nothing to clip horizontally,
+ * but `overflow-x: hidden` was forcing `overflow-y` from
+ * `visible` to `auto` (per CSS spec), which cropped the selected
+ * chip's 16px outward halo on the top and bottom edges. Leaving
+ * overflow at its default `visible` value preserves the satellite
+ * glow on both rows when the strip wraps. */
 .ensemble-above-row-chips.is-wrapped {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   grid-auto-flow: row;
   justify-content: stretch;
-  overflow-x: hidden;
+  overflow: visible;
   row-gap: 6px;
 }
 
