@@ -1,4 +1,11 @@
-import type { ChatMessage, ChatRecord, EnsembleConfig, EnsembleParticipant, ProviderId } from './store/types'
+import type {
+  ChatMessage,
+  ChatRecord,
+  EnsembleConfig,
+  EnsembleParticipant,
+  ProviderId,
+  ToolActivity
+} from './store/types'
 
 const PROVIDER_LABELS: Record<ProviderId, string> = {
   gemini: 'Gemini',
@@ -326,6 +333,54 @@ function titleCase(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
+/**
+ * 1.0.4-AR7 — compact tool-trace summary line for the tagged
+ * transcript context. Pre-AR7 the prompt builder dropped tool
+ * messages entirely AND ignored each assistant message's
+ * `toolActivities` array, so downstream participants saw only
+ * the prose output of upstream turns and had to guess whether a
+ * file was read, edited, or searched. That made it harder for the
+ * panel to coordinate on multi-turn work.
+ *
+ * Format (one line, prepended to the message body):
+ *
+ *   (tools: read_file × 3 · edit × 2 · search × 1)
+ *
+ * - Aggregated by `toolName` so repeated calls collapse into a
+ *   single entry with a count.
+ * - Ordered by descending count, then alphabetically — most-used
+ *   tools surface first.
+ * - Capped at the first 6 distinct tool names; an "…(+N more)"
+ *   suffix indicates truncation so the line stays a single visual
+ *   row even on heavy tool-call turns.
+ *
+ * Exported for unit-testing in isolation; the trip through
+ * `buildTaggedTranscript` is covered by the prompt-builder tests.
+ */
+export function formatToolTraceSummary(activities: readonly ToolActivity[] | undefined): string {
+  if (!activities || activities.length === 0) return ''
+  const counts = new Map<string, number>()
+  for (const activity of activities) {
+    // Skip truly unnamed activities — better to omit them entirely
+    // than to inject a synthetic `tool` placeholder that confuses
+    // the trace summary.
+    const name = ((activity.toolName || activity.displayName || '') as string).trim()
+    if (!name) continue
+    counts.set(name, (counts.get(name) || 0) + 1)
+  }
+  if (counts.size === 0) return ''
+  const ordered = Array.from(counts.entries()).sort((a, b) => {
+    if (b[1] !== a[1]) return b[1] - a[1]
+    return a[0].localeCompare(b[0])
+  })
+  const HEAD = 6
+  const head = ordered.slice(0, HEAD)
+  const tail = ordered.length - head.length
+  const segments = head.map(([name, count]) => (count > 1 ? `${name} × ${count}` : name))
+  const suffix = tail > 0 ? ` · …(+${tail} more)` : ''
+  return `(tools: ${segments.join(' · ')}${suffix})`
+}
+
 function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): string {
   const relevant = messages
     .filter((message) => message.role !== 'tool')
@@ -335,7 +390,14 @@ function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): s
   for (const message of relevant) {
     const tag = messageTag(message)
     const text = sanitizeText(message.content).slice(0, MAX_MESSAGE_CHARS)
-    const line = `[${tag}]\n${text}`
+    // 1.0.4-AR7 — surface a compact tool-trace summary on every
+    // message that has one, prepended to the content so downstream
+    // participants can see at a glance what tools were used to
+    // produce the response. Pure prose messages (no tools) skip
+    // the line so the transcript stays lean.
+    const trace = formatToolTraceSummary(message.toolActivities)
+    const body = trace ? `${trace}\n${text}` : text
+    const line = `[${tag}]\n${body}`
     used += line.length
     if (used > MAX_TRANSCRIPT_CHARS) {
       lines.push('[Transcript truncated to fit Ensemble V1 context budget.]')

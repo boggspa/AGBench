@@ -2,9 +2,15 @@ import { describe, expect, it } from 'vitest'
 import {
   buildEnsembleParticipantPrompt,
   formatSameProviderDisambiguationNote,
+  formatToolTraceSummary,
   getOrderedEnsembleParticipants
 } from './EnsemblePrompt'
-import type { ChatRecord, EnsembleConfig, EnsembleParticipant } from './store/types'
+import type {
+  ChatRecord,
+  EnsembleConfig,
+  EnsembleParticipant,
+  ToolActivity
+} from './store/types'
 
 const ensemble: EnsembleConfig = {
   enabled: true,
@@ -617,5 +623,75 @@ describe('formatSameProviderDisambiguationNote', () => {
     expect(prompt).toContain('Codex / Brodex')
     expect(prompt).toContain('Codex / Chodex #2')
     expect(prompt).toContain('`@codex`')
+  })
+})
+
+/*
+ * 1.0.4-AR7 — pure-function coverage for the tool-trace summary
+ * line that surfaces tool usage in the tagged transcript context.
+ * The transcript-builder pre-AR7 dropped tool messages AND ignored
+ * each assistant message's `toolActivities`, so downstream
+ * participants had no idea what tools an upstream participant
+ * had used. Now every assistant message with a non-empty
+ * `toolActivities` array gets a one-line "(tools: read_file × 3
+ * · edit × 2)" header prepended to its content.
+ */
+describe('formatToolTraceSummary', () => {
+  const ta = (name: string): ToolActivity => ({
+    id: `${name}-${Math.random().toString(36).slice(2, 8)}`,
+    toolName: name,
+    displayName: name,
+    category: 'read',
+    status: 'success'
+  })
+
+  it('returns the empty string when no activities are present', () => {
+    expect(formatToolTraceSummary(undefined)).toBe('')
+    expect(formatToolTraceSummary([])).toBe('')
+  })
+
+  it('aggregates repeated tool calls by name with a count', () => {
+    const summary = formatToolTraceSummary([
+      ta('read_file'),
+      ta('read_file'),
+      ta('read_file'),
+      ta('edit')
+    ])
+    expect(summary).toBe('(tools: read_file × 3 · edit)')
+  })
+
+  it('orders by descending count, then alphabetically', () => {
+    const summary = formatToolTraceSummary([
+      ta('z_tool'),
+      ta('a_tool'),
+      ta('z_tool'),
+      ta('a_tool')
+    ])
+    // Tie at 2 each → alphabetical wins.
+    expect(summary).toBe('(tools: a_tool × 2 · z_tool × 2)')
+  })
+
+  it('caps the head at 6 distinct names and indicates truncation', () => {
+    const activities = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(ta)
+    const summary = formatToolTraceSummary(activities)
+    expect(summary).toContain('a · b · c · d · e · f')
+    expect(summary).toContain('…(+2 more)')
+    expect(summary).not.toContain(' · g')
+    expect(summary).not.toContain(' · h')
+  })
+
+  it('falls back to displayName when toolName is missing', () => {
+    const summary = formatToolTraceSummary([
+      { ...ta(''), toolName: '', displayName: 'Search' }
+    ])
+    expect(summary).toBe('(tools: Search)')
+  })
+
+  it('omits unnamed activities (no toolName + no displayName)', () => {
+    const summary = formatToolTraceSummary([
+      { ...ta(''), toolName: '', displayName: '' },
+      ta('edit')
+    ])
+    expect(summary).toBe('(tools: edit)')
   })
 })
