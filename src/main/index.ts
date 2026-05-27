@@ -14898,16 +14898,20 @@ async function executeGeminiMcpTool(
           `\nReuse this id by passing subThreadId="${subThread.appChatId}" on the next delegate_to_subthread call if you want to continue the conversation with this same sub-agent.`
     }
 
+    const finalRichResult = richResult as McpToolExecutionResult | null
     emitMcpToolTranscriptEvent({
       type: 'tool_result',
       tool_id: toolId,
       tool_name: toolName,
       status: toolIsError ? 'error' : 'success',
       output: text,
+      ...(finalRichResult?.content ? { content: finalRichResult.content } : {}),
+      ...(finalRichResult?.structuredContent
+        ? { structuredContent: finalRichResult.structuredContent }
+        : {}),
       provider: parentProvider,
       server: GEMINI_MCP_SERVER_NAME
     })
-    const finalRichResult = richResult as McpToolExecutionResult | null
     if (finalRichResult) {
       return { ...finalRichResult, ...(toolIsError ? { isError: true } : {}) }
     }

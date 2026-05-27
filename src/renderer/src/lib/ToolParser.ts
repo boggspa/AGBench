@@ -112,6 +112,86 @@ function extractMcpEnvelopeText(value: { content: unknown[] }): string {
     .join('')
 }
 
+export interface McpImageBlock {
+  id: string
+  mimeType: string
+  data: string
+}
+
+function parseJsonObjectLike(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim()
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return value
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    return value
+  }
+}
+
+function imageBlockFromContentItem(item: unknown, index: number): McpImageBlock | null {
+  if (!item || typeof item !== 'object') return null
+  const record = item as Record<string, unknown>
+  if (record.type !== 'image') return null
+  const mimeType =
+    typeof record.mimeType === 'string'
+      ? record.mimeType
+      : typeof record.mime_type === 'string'
+        ? record.mime_type
+        : ''
+  const data = typeof record.data === 'string' ? record.data : ''
+  if (!mimeType.startsWith('image/') || !data) return null
+  return {
+    id: `mcp-image-${index}-${mimeType}-${data.length}`,
+    mimeType,
+    data
+  }
+}
+
+/**
+ * Extract rich MCP image content blocks from either a parsed MCP
+ * `{ content: [...] }` envelope or a JSON-stringified equivalent.
+ * Text unwrapping intentionally ignores these blocks; this helper is
+ * the renderer-side companion used by tool detail panes.
+ */
+export function extractMcpImageBlocks(raw: unknown): McpImageBlock[] {
+  const parsed = parseJsonObjectLike(raw)
+  const candidates: unknown[] = [parsed]
+
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const record = parsed as Record<string, unknown>
+    candidates.push(parseJsonObjectLike(record.result))
+    candidates.push(parseJsonObjectLike(record.output))
+    candidates.push(parseJsonObjectLike(record.content))
+  }
+
+  const blocks: McpImageBlock[] = []
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== 'object') continue
+    if (Array.isArray(candidate)) {
+      candidate.forEach((item, index) => {
+        const block = imageBlockFromContentItem(item, blocks.length + index)
+        if (block) blocks.push(block)
+      })
+      continue
+    }
+    const record = candidate as Record<string, unknown>
+    const content = Array.isArray(record.content) ? record.content : []
+    content.forEach((item, index) => {
+      const block = imageBlockFromContentItem(item, blocks.length + index)
+      if (block) blocks.push(block)
+    })
+  }
+
+  const seen = new Set<string>()
+  return blocks.filter((block) => {
+    const key = `${block.mimeType}:${block.data}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 /**
  * Detect strings that JSON-parse to an MCP `{content:[{type:'text',
  * text}]}` envelope and return the concatenated `text` fields.

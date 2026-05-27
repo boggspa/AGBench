@@ -9,6 +9,7 @@ import {
 } from '../../../main/store/types'
 import {
   deriveToolDiffSummary,
+  extractMcpImageBlocks,
   getToolDisplayName,
   isWriteLikeToolName,
   prettyPrintJson,
@@ -1055,6 +1056,25 @@ function ActivityPreview({ preview }: { preview: SanitizedDetail['previews'][num
   )
 }
 
+function ActivityImageBlocks({ blocks }: { blocks: ReturnType<typeof extractMcpImageBlocks> }) {
+  if (blocks.length === 0) return null
+  return (
+    <div>
+      <div className="activity-detail-section-title">
+        {blocks.length === 1 ? 'Image result' : `Image results · ${blocks.length}`}
+      </div>
+      <div className="activity-image-grid">
+        {blocks.map((block, index) => (
+          <figure className="activity-image-card" key={block.id}>
+            <img src={`data:${block.mimeType};base64,${block.data}`} alt={`Tool result ${index + 1}`} />
+            <figcaption className="activity-image-meta">{block.mimeType}</figcaption>
+          </figure>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /**
  * Spawn block — collapsed summary that precedes the individual
  * `ChildAgentThreadCard`s when 2+ subagents are spawned in the same message.
@@ -1652,8 +1672,13 @@ function ActivityRow({
   const visiblePreviews = creativeTimelineDiff
     ? sanitizedDetail.previews.filter((preview) => preview.label !== 'Result')
     : sanitizedDetail.previews
+  const imageBlocks = extractMcpImageBlocks(activity.rawResultEvent)
+  const hasRichImages = imageBlocks.length > 0
   const hasSanitizedDetail =
-    sanitizedDetail.rows.length > 0 || visiblePreviews.length > 0 || Boolean(creativeTimelineDiff)
+    sanitizedDetail.rows.length > 0 ||
+    visiblePreviews.length > 0 ||
+    Boolean(creativeTimelineDiff) ||
+    hasRichImages
   const shouldShowRawEvent = showDebugWarning || (isUnknown && !hasSanitizedDetail)
   const diffFileCount = diffSummary?.files?.length || 0
   const renderInputs = {
@@ -1661,7 +1686,7 @@ function ActivityRow({
     detailRowCount: sanitizedDetail.rows.length,
     previews: sanitizedDetail.previews,
     diffFileCount,
-    customDetailCount: creativeTimelineDiff ? 1 : 0,
+    customDetailCount: (creativeTimelineDiff ? 1 : 0) + (hasRichImages ? 1 : 0),
     shouldShowRawEvent
   }
   // Phase L4 slice 3 — all rows render in the inline body-text form by
@@ -1874,6 +1899,7 @@ function ActivityRow({
                   <ActivityPreview preview={preview} />
                 </div>
               ))}
+              <ActivityImageBlocks blocks={imageBlocks} />
               {shouldShowRawEvent && (!!activity.rawUseEvent || !!activity.rawResultEvent) && (
                 <div>
                   <div className="activity-detail-section-title">Raw event</div>

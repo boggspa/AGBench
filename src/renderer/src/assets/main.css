@@ -9166,6 +9166,41 @@ button.diff-file-row {
     0 0 18px rgb(var(--agent-accent-rgb) / 0.07);
 }
 
+.activity-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-sm);
+}
+
+.activity-image-card {
+  margin: 0;
+  padding: var(--space-xs);
+  background: var(--app-bg-sunken);
+  border: 1px solid rgb(var(--agent-accent-rgb) / 0.16);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025),
+    0 0 18px rgb(var(--agent-accent-rgb) / 0.07);
+}
+
+.activity-image-card img {
+  display: block;
+  width: 100%;
+  max-height: 360px;
+  object-fit: contain;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.activity-image-meta {
+  margin-top: 6px;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
 .activity-output-clean {
   margin: 0;
   padding: var(--space-sm);

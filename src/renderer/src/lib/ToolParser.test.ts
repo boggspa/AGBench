@@ -16,6 +16,7 @@ import {
   isToolUseEvent,
   isToolResultEvent,
   unwrapMcpEnvelope,
+  extractMcpImageBlocks,
   prettyPrintJson
 } from './ToolParser'
 
@@ -494,6 +495,62 @@ describe('ToolParser', () => {
     it('passes through arrays at top level (not envelope-shaped)', () => {
       const arr = '[{"type":"text","text":"loose"}]'
       expect(unwrapMcpEnvelope(arr)).toBe(arr)
+    })
+  })
+
+  describe('extractMcpImageBlocks', () => {
+    it('extracts image blocks from parsed MCP envelopes', () => {
+      const blocks = extractMcpImageBlocks({
+        content: [
+          { type: 'text', text: 'metadata' },
+          { type: 'image', mimeType: 'image/png', data: 'abc123' }
+        ]
+      })
+
+      expect(blocks).toEqual([
+        expect.objectContaining({ mimeType: 'image/png', data: 'abc123' })
+      ])
+    })
+
+    it('extracts image blocks from stringified MCP envelopes', () => {
+      const blocks = extractMcpImageBlocks(
+        JSON.stringify({
+          content: [
+            { type: 'image', mimeType: 'image/jpeg', data: 'jpeg-base64' },
+            { type: 'resource_link', uri: 'file:///tmp/frame.jpg' }
+          ]
+        })
+      )
+
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0]).toMatchObject({ mimeType: 'image/jpeg', data: 'jpeg-base64' })
+    })
+
+    it('extracts image blocks from nested result envelopes', () => {
+      const blocks = extractMcpImageBlocks({
+        output: 'summary',
+        result: {
+          content: [{ type: 'image', mime_type: 'image/png', data: 'nested-png' }]
+        }
+      })
+
+      expect(blocks).toEqual([
+        expect.objectContaining({ mimeType: 'image/png', data: 'nested-png' })
+      ])
+    })
+
+    it('ignores malformed and duplicate image blocks', () => {
+      const blocks = extractMcpImageBlocks({
+        content: [
+          { type: 'image', mimeType: 'text/plain', data: 'nope' },
+          { type: 'image', mimeType: 'image/png', data: '' },
+          { type: 'image', mimeType: 'image/png', data: 'same' },
+          { type: 'image', mimeType: 'image/png', data: 'same' }
+        ]
+      })
+
+      expect(blocks).toHaveLength(1)
+      expect(blocks[0]).toMatchObject({ mimeType: 'image/png', data: 'same' })
     })
   })
 
