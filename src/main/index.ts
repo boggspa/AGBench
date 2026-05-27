@@ -13736,9 +13736,32 @@ function executeApprovalStatus(
     acc[record.status] = (acc[record.status] || 0) + 1
     return acc
   }, {})
+  // 1.0.4-AR4 — surface the resolved query scope so the calling
+  // agent can reason about what it just received. `all: true` (or
+  // an explicit chatId/runId that overrides context) widens the
+  // query; we mirror the effective scope back in the response so
+  // the agent doesn't have to re-derive it from the filter shape.
+  const queryScope = {
+    all: args.all === true,
+    runIdInFilter: filter.runId || null,
+    chatIdInFilter: filter.chatId || null,
+    explicitRunIdProvided: Boolean(optionalString(args.runId)),
+    explicitChatIdProvided: Boolean(optionalString(args.chatId)),
+    /** 'current-run' when the default narrowing applied, 'all' when
+     * the user passed `all: true` with no explicit override,
+     * 'explicit' when an explicit runId/chatId widened or replaced
+     * the default scope. */
+    effectiveScope:
+      args.all === true && !optionalString(args.runId) && !optionalString(args.chatId)
+        ? 'all'
+        : optionalString(args.runId) || optionalString(args.chatId)
+          ? 'explicit'
+          : 'current-run'
+  }
   return {
     provider,
     scope: context.scope,
+    queryScope,
     workspacePath,
     services: settings.agenticServices,
     workspaceGrants: (settings.agenticWorkspaceGrants || []).filter(
@@ -13770,6 +13793,22 @@ function summarizeGeminiAuthStatusForMcp(status: GeminiAuthStatus) {
     binaryPath: status.binaryPath,
     activeProfileId: status.activeProfileId,
     activeProfileLabel: status.activeProfileLabel,
+    // 1.0.4-AR5 — capability-flag symmetry with Claude / Codex / Kimi.
+    // Pre-AR5 the Gemini summarizer omitted `supportsSessions`,
+    // `supportsApprovals`, `supportsQuota`, `supportsMcpStatus`, and
+    // `appServer` while the other three providers shipped them via
+    // `getCliProviderStatus`. Consumers iterating provider capability
+    // matrices read undefined for Gemini and either crashed on
+    // strict-mode boolean reads or fell into "unknown capability"
+    // branches. The V2 flags below (`approvalSupport`,
+    // `mcpStatusSupport`) are the canonical replacements but the
+    // legacy ones still ship until 1.0.5 for back-compat — see
+    // `ProviderAuthStatus.ts` for the V2 builder.
+    supportsSessions: true,
+    supportsApprovals: true,
+    supportsQuota: false,
+    supportsMcpStatus: false,
+    appServer: 'sdk-or-cli',
     // 1.0.4-AE — redact PII (oauthEmail) before exposing to agents.
     profiles: status.profiles.map(redactGeminiProfileForMcp),
     oauthLogin: status.oauthLogin
@@ -15695,7 +15734,12 @@ function mcpToolDefinitions() {
     {
       name: 'approval_status',
       description:
-        'Return approval policies, workspace grants, and recent approval ledger records.',
+        'Return approval policies, workspace grants, and recent approval ledger records. ' +
+        'By default the query is scoped to the current run+chat (derived from the calling ' +
+        'agent context) so the agent sees only approvals relevant to its own work. Pass ' +
+        "`all: true` to widen the query to ALL of the calling agent's provider's approvals " +
+        'across every run+chat — useful for auditing or surfacing historical approvals. ' +
+        'Explicit `runId` / `chatId` always override scope inference, regardless of `all`.',
       annotations: {
         readOnlyHint: true,
         destructiveHint: false,
@@ -15705,20 +15749,66 @@ function mcpToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: {
-          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          provider: {
+            type: 'string',
+            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            description:
+              'Optional provider override. Defaults to the calling agent\'s provider.'
+          },
           service: {
             type: 'string',
-            enum: ['shellCommands', 'fileChanges', 'mcpTools', 'subThreadDelegation']
+            enum: ['shellCommands', 'fileChanges', 'mcpTools', 'subThreadDelegation'],
+            description: 'Filter to one approval-service kind. Omit to return all kinds.'
           },
-          approvalId: { type: 'string' },
-          runId: { type: 'string' },
-          chatId: { type: 'string' },
-          statuses: { type: 'array', items: { type: 'string' } },
-          scopes: { type: 'array', items: { type: 'string' } },
-          includeExpired: { type: 'boolean' },
-          includePreview: { type: 'boolean' },
-          all: { type: 'boolean' },
-          limit: { type: 'number' }
+          approvalId: {
+            type: 'string',
+            description: 'Filter to a specific approval record by id.'
+          },
+          runId: {
+            type: 'string',
+            description:
+              'Filter to a specific run id. Always honored; setting this overrides the ' +
+              "default current-run scope. Pairs with `all: true` to keep `runId` narrow while " +
+              'widening the chat scope.'
+          },
+          chatId: {
+            type: 'string',
+            description:
+              'Filter to a specific chat id. Always honored; setting this overrides the ' +
+              'default current-chat scope.'
+          },
+          statuses: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by ledger record status (e.g. `pending` / `approved`).'
+          },
+          scopes: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by approval scope (e.g. `oneshot` / `chat` / `workspace`).'
+          },
+          includeExpired: {
+            type: 'boolean',
+            description: 'Include expired records. Defaults to false.'
+          },
+          includePreview: {
+            type: 'boolean',
+            description:
+              'Include the payload preview (command excerpts, diffs, tool args). Defaults to ' +
+              "false to keep the response compact; set true when you need the approval's content."
+          },
+          all: {
+            type: 'boolean',
+            description:
+              'Widen the query past the calling agent\'s current run+chat. When true, the ' +
+              "default run/chat narrowing is skipped — every approval matching the other " +
+              "filters across all runs and chats is returned (still scoped to the calling " +
+              "agent's provider unless `provider` is overridden). Defaults to false."
+          },
+          limit: {
+            type: 'number',
+            description: 'Max records to return. Defaults to 25, capped at 200.'
+          }
         }
       }
     },
