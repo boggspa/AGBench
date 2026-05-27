@@ -4422,6 +4422,98 @@ type TranscriptPanelProps = {
    * the appRunId drops from this set and the transcript card
    * reappears as the historical "this run was queued" record. */
   pendingQueuedAppRunIds?: Set<string>
+  /**
+   * 1.0.4-AQ4 — per-message actions on hover.
+   *
+   * `onCopyMessage` writes the raw `msg.content` string to the
+   * clipboard. Pure — does not mutate chat state.
+   *
+   * `onDeleteMessage(messageId)` removes the message from
+   * `currentChat.messages`. The host applies a `confirm()` gate so
+   * the destructive action requires intent. Both user and assistant
+   * bubbles use the same handler; the host can differentiate by
+   * checking the role itself if it ever wants to gate
+   * differently (e.g. forbid deleting in-flight assistant runs).
+   */
+  onCopyMessage: (content: string) => void
+  onDeleteMessage: (messageId: string) => void
+}
+
+/**
+ * 1.0.4-AQ4 — small Copy + Delete action group rendered inside
+ * each message bubble. Visible only on hover via CSS
+ * (`.message-bubble:hover .message-actions-chip`). Two icon-only
+ * buttons:
+ *   • Copy — writes the bubble's content to the clipboard via the
+ *     `onCopy` callback (host calls `navigator.clipboard.writeText`).
+ *   • Delete — calls the `onDelete` callback (host gates with
+ *     `confirm()` before removing the message from the transcript).
+ *
+ * Kept as a tiny inline component so the bubble render blocks
+ * stay readable. Doesn't take the message directly — the parent
+ * binds `msg.content` / `msg.id` into the callbacks so this
+ * component stays role-agnostic.
+ */
+function MessageActionsChip({
+  onCopy,
+  onDelete,
+  label
+}: {
+  onCopy: () => void
+  onDelete: () => void
+  label: string
+}): React.JSX.Element {
+  return (
+    <div className="message-actions-chip" role="group" aria-label={`Actions for ${label}`}>
+      <button
+        type="button"
+        className="message-actions-chip-button message-actions-chip-button--copy"
+        onClick={onCopy}
+        title="Copy message content to clipboard"
+        aria-label={`Copy ${label} content`}
+      >
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <rect x="5" y="5" width="9" height="9" rx="1.5" />
+          <path d="M3 11V3.5C3 2.67 3.67 2 4.5 2H11" />
+        </svg>
+      </button>
+      <button
+        type="button"
+        className="message-actions-chip-button message-actions-chip-button--delete"
+        onClick={onDelete}
+        title="Delete message from transcript"
+        aria-label={`Delete ${label}`}
+      >
+        <svg
+          width="13"
+          height="13"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+        >
+          <path d="M3 4h10" />
+          <path d="M5.5 4V2.5C5.5 2.22 5.72 2 6 2h4c.28 0 .5.22.5.5V4" />
+          <path d="M4.5 4l.5 9c.04.55.5 1 1 1h4c.5 0 .96-.45 1-1l.5-9" />
+          <path d="M7 7v5" />
+          <path d="M9 7v5" />
+        </svg>
+      </button>
+    </div>
+  )
 }
 
 /**
@@ -4783,7 +4875,9 @@ const TranscriptPanel = memo(
     onOpenSubThread,
     onInspectRun,
     compactDensity,
-    pendingQueuedAppRunIds
+    pendingQueuedAppRunIds,
+    onCopyMessage,
+    onDeleteMessage
   }: TranscriptPanelProps) {
     const visibleMessages = useMemo(() => {
       const source = isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages
@@ -5049,6 +5143,16 @@ const TranscriptPanel = memo(
                                 {isExpanded ? 'Show less' : 'Show more'}
                               </button>
                             )}
+                            {/* 1.0.4-AQ4 — hover-only Copy + Delete actions.
+                                Visible only when hovering the bubble (CSS),
+                                so the resting transcript stays clean. Copy
+                                writes msg.content verbatim; Delete confirms
+                                before removing from the transcript. */}
+                            <MessageActionsChip
+                              onCopy={() => onCopyMessage(msg.content)}
+                              onDelete={() => onDeleteMessage(msg.id)}
+                              label="user message"
+                            />
                           </div>
                         )
                       })()
@@ -5058,6 +5162,17 @@ const TranscriptPanel = memo(
                           <MarkdownMessage content={msg.content} chat={currentChat || undefined} />
                         ) : (
                           msg.content
+                        )}
+                        {/* 1.0.4-AQ4 — Copy + Delete on hover. Both assistant
+                            and "other" role bubbles get the chip; for system
+                            bubbles (status notes etc.) the chip is harmless
+                            but rarely useful. */}
+                        {(msg.role === 'assistant' || msg.role === 'system') && msg.content && (
+                          <MessageActionsChip
+                            onCopy={() => onCopyMessage(msg.content)}
+                            onDelete={() => onDeleteMessage(msg.id)}
+                            label={`${msg.role} message`}
+                          />
                         )}
                       </div>
                     )}
@@ -5286,7 +5401,9 @@ const TranscriptPanel = memo(
     previous.fileChangeDisplayDels === next.fileChangeDisplayDels &&
     previous.chats === next.chats &&
     previous.runningChatIds === next.runningChatIds &&
-    previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds
+    previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
+    previous.onCopyMessage === next.onCopyMessage &&
+    previous.onDeleteMessage === next.onDeleteMessage
 )
 
 type SettingsPanelUpdate = {
@@ -12897,6 +13014,64 @@ function App(): React.JSX.Element {
     await startPersistentGeminiSession()
   }
 
+  // 1.0.4-AQ4 — Copy message content to clipboard. Pure side
+  // effect; no state mutation. Failure (clipboard API blocked) is
+  // logged to raw-logs but not surfaced as a toast — the user
+  // initiates the action and can retry.
+  const handleCopyMessage = useCallback((content: string) => {
+    if (!content) return
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        void navigator.clipboard.writeText(content).catch((error) => {
+          setRawLogs((prev) => [
+            ...prev,
+            {
+              type: 'stderr',
+              content: `Failed to copy message to clipboard: ${redactLog(String(error))}`
+            }
+          ])
+        })
+      }
+    } catch (error) {
+      setRawLogs((prev) => [
+        ...prev,
+        {
+          type: 'stderr',
+          content: `Clipboard API unavailable: ${redactLog(String(error))}`
+        }
+      ])
+    }
+  }, [])
+
+  // 1.0.4-AQ4 — Delete a single message from the current chat's
+  // transcript. Gates on `confirm()` because the action is
+  // destructive and the user can't undo from the UI (no
+  // tombstone). The orphan-pending check guards against deleting
+  // a message that's currently the anchor of an in-flight
+  // `pendingAgentQuestion` / `pendingPlanChoice` — the modal
+  // would lose its tether. Best-effort.
+  const handleDeleteMessage = useCallback(
+    (messageId: string) => {
+      if (!currentChat || !messageId) return
+      const target = currentChat.messages.find((m) => m.id === messageId)
+      if (!target) return
+      const preview =
+        target.content && target.content.length > 80
+          ? `${target.content.slice(0, 77)}…`
+          : target.content || `(${target.role} message)`
+      const ok =
+        typeof window !== 'undefined' && typeof window.confirm === 'function'
+          ? window.confirm(`Delete this message from the transcript?\n\n${preview}`)
+          : true
+      if (!ok) return
+      updateChatById(currentChat.appChatId, (source) => ({
+        ...source,
+        messages: source.messages.filter((m) => m.id !== messageId)
+      }))
+    },
+    [currentChat, updateChatById]
+  )
+
   const handlePlanChoiceSubmit = (messageId: string, option: string) => {
     if (!currentWorkspace || !currentChat || !option.trim()) return
 
@@ -15755,6 +15930,8 @@ function App(): React.JSX.Element {
               onInspectRun={(runId) => setInspectingRunId(runId)}
               compactDensity={appearance.compactDensity}
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
+              onCopyMessage={handleCopyMessage}
+              onDeleteMessage={handleDeleteMessage}
             />
             </>
           )}

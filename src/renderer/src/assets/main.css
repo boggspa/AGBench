@@ -27663,3 +27663,73 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--text-1);
   letter-spacing: 0.02em;
 }
+
+/* ──────────────────────────────────────────────────────────────
+ * 1.0.4-AQ4 — per-message Copy + Delete action chip
+ *
+ * Hover-revealed group anchored to the top-right of each bubble.
+ * Two icon-only buttons; Copy = clipboard write, Delete = remove
+ * from transcript (host gates with confirm()).
+ *
+ * Sits at the bubble corner via `position: absolute` over the
+ * existing `position: relative` bubble base. Hidden by default
+ * (`opacity: 0` + `pointer-events: none`) and revealed when the
+ * bubble itself is hovered or any child is focused — keeps the
+ * resting transcript clean while remaining discoverable.
+ *
+ * The user-bubble variant rounds its corner to follow the bubble
+ * tail; the assistant variant gets a neutral pill.
+ * ────────────────────────────────────────────────────────────── */
+.message-actions-chip {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--surface-1, rgba(0, 0, 0, 0.6)) 88%, transparent);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease, transform 120ms ease;
+  z-index: 2;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.message-bubble:hover .message-actions-chip,
+.message-bubble:focus-within .message-actions-chip,
+.message-actions-chip:hover,
+.message-actions-chip:focus-within {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-actions-chip-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 999px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 100ms ease, color 100ms ease;
+}
+.message-actions-chip-button:hover,
+.message-actions-chip-button:focus-visible {
+  outline: none;
+  color: var(--text-1);
+  background: color-mix(in srgb, var(--text-1) 12%, transparent);
+}
+.message-actions-chip-button--delete:hover,
+.message-actions-chip-button--delete:focus-visible {
+  color: var(--danger, #ff6363);
+  background: color-mix(in srgb, var(--danger, #ff6363) 18%, transparent);
+}
+.message-actions-chip svg {
+  display: block;
+}
