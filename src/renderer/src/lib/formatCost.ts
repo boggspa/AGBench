@@ -25,14 +25,52 @@
 
 export type DisplayCurrency = 'USD' | 'GBP' | 'EUR'
 
-// 1.0.5-EW25 — Static FX rates, USD-relative. Update when these
-// drift more than ~5%, or replace this whole module with live
-// fetch when 1.0.6 sub-slice c lands. Rounded to 4 sig figs since
-// we're rendering 2 decimal places anyway.
+// 1.0.5-EW25 — Static FX rates, USD-relative. These are the
+// fallback constants used when the live-fetch service hasn't
+// hydrated yet, or when both live fetch + cache file fail.
+//
+// 1.0.5-EW35 — Currency sub-slice (c): rates can now be hot-
+// swapped at runtime via `setFxRatesPerUsd`. The renderer
+// hydrates this map from `window.api.getFxRates()` on app boot;
+// main-side `FxRateService` keeps the cache fresh in the
+// background (12h interval). USD is always 1.
 const FX_RATES_PER_USD: Record<DisplayCurrency, number> = {
   USD: 1,
-  GBP: 0.79, // approx mid-2026 spot
-  EUR: 0.92 // approx mid-2026 spot
+  GBP: 0.79, // approx mid-2026 spot (baked-in fallback)
+  EUR: 0.92 // approx mid-2026 spot (baked-in fallback)
+}
+
+/**
+ * 1.0.5-EW35 — Hot-swap entry point for the live-fetched FX rate
+ * snapshot. Called from `App.tsx` after the renderer reads
+ * `window.api.getFxRates()`. Mutates the module-level map in place
+ * so existing callers don't need to re-import — subsequent
+ * `formatCost` calls just pick up the new numbers.
+ *
+ * Defensive: only accepts finite positive numbers; silently drops
+ * malformed values so a corrupted snapshot can't break rendering.
+ * USD is pinned to 1 — even if a (broken) live source returns a
+ * non-1 USD rate we ignore it; the whole table is USD-relative.
+ */
+export function setFxRatesPerUsd(
+  partial: Partial<Record<DisplayCurrency, number>>
+): void {
+  if (!partial || typeof partial !== 'object') return
+  for (const key of ['GBP', 'EUR'] as const) {
+    const value = partial[key]
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      FX_RATES_PER_USD[key] = value
+    }
+  }
+}
+
+/**
+ * 1.0.5-EW35 — Read-side accessor for tests + debug. Returns a
+ * defensive shallow copy so callers can't mutate the module's
+ * internal map.
+ */
+export function getFxRatesPerUsd(): Record<DisplayCurrency, number> {
+  return { ...FX_RATES_PER_USD }
 }
 
 // Per-currency floor for "tiny but non-zero" amounts. Pre-EW25

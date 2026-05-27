@@ -11,7 +11,7 @@ import {
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 // 1.0.5-EW25 — User-currency cost formatting helper.
-import { formatCost, type DisplayCurrency } from './lib/formatCost'
+import { formatCost, setFxRatesPerUsd, type DisplayCurrency } from './lib/formatCost'
 import {
   AppSettings,
   WorkspaceRecord,
@@ -5955,6 +5955,38 @@ function App(): React.JSX.Element {
       if (workspaceAddPointerTimerRef.current) {
         clearTimeout(workspaceAddPointerTimerRef.current)
       }
+    }
+  }, [])
+
+  /**
+   * 1.0.5-EW35 — Currency sub-slice (c): hydrate `formatCost`'s
+   * in-memory FX rate table from the main-side `FxRateService` once
+   * on mount. Main keeps the cache fresh in the background (12h
+   * interval) and on app boot reads the cache file first, so this
+   * read returns almost immediately — even before the first live
+   * fetch resolves. If the read fails for any reason we leave the
+   * baked-in EW25 fallback constants in place, so `formatCost`
+   * always has usable rates.
+   *
+   * This is intentionally one-shot. The live-refresh interval lives
+   * main-side; a future "refresh now" button can re-call
+   * `api.refreshFxRates(true)` and re-hydrate, but for normal usage
+   * one read at mount is enough — the rates barely move during a
+   * session.
+   */
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const snapshot = await window.api.getFxRates()
+        if (cancelled || !snapshot?.rates) return
+        setFxRatesPerUsd(snapshot.rates)
+      } catch {
+        // Silent — baked-in EW25 constants remain in effect.
+      }
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
   /**

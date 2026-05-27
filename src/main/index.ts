@@ -63,6 +63,11 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
+import {
+  getCurrentFxRates,
+  refreshFxRates,
+  startFxRateScheduler
+} from './services/FxRateService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
@@ -18873,6 +18878,16 @@ if (isGeminiMcpBridgeProcess) {
     registerProductCrashHandlers()
 
     /*
+     * 1.0.5-EW35 — Currency sub-slice (c): kick off the live FX
+     * rate scheduler. Best-effort — if the network is unavailable
+     * the service falls back to the cached file then the baked-in
+     * EW25 constants, so the renderer's `formatCost` keeps working
+     * either way. Timer is `unref`d so it doesn't keep the process
+     * alive at quit. See `src/main/services/FxRateService.ts`.
+     */
+    startFxRateScheduler()
+
+    /*
      * F4 (1.0.3) — explicit application menu.
      *
      * Suppresses the recurring NSMenu warning:
@@ -20882,6 +20897,23 @@ if (isGeminiMcpBridgeProcess) {
     )
 
     ipcMain.handle('get-provider-adapters', () => getProviderAdapterDescriptors())
+
+    /*
+     * 1.0.5-EW35 — Currency sub-slice (c): expose the live FX rate
+     * snapshot to the renderer. Read-only; the renderer's
+     * `formatCost` module reads this on app boot to hot-swap its
+     * in-memory rate table. The "refresh now" path is opt-in via
+     * `force=true` and currently unused; reserved for a future
+     * Settings → General "refresh rates" button when 1.0.7 lands
+     * the macOS UX pass. Always returns a usable snapshot — even
+     * when network + cache both fail we return the baked-in EW25
+     * fallback constants with `source: 'fallback'` so callers can
+     * disambiguate live from synthetic.
+     */
+    ipcMain.handle('fx-rates:get', () => getCurrentFxRates())
+    ipcMain.handle('fx-rates:refresh', async (_event, force: boolean = false) => {
+      return refreshFxRates(Boolean(force))
+    })
 
     ipcMain.handle('list-agent-threads', async (_, provider: ProviderId, params: any = {}) => {
       if (provider !== 'codex') {

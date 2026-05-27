@@ -256,6 +256,19 @@ declare global {
         approvalMode?: string
       ) => Promise<ProviderCapabilityContract>
       getProviderAdapters: () => Promise<ProviderAdapterDescriptor[]>
+      // 1.0.5-EW35 — Currency sub-slice (c): live FX rate snapshot.
+      getFxRates: () => Promise<{
+        rates: { USD: 1; GBP: number; EUR: number }
+        fetchedAt: string
+        source: 'live' | 'cached' | 'fallback'
+        errorMessage?: string
+      }>
+      refreshFxRates: (force?: boolean) => Promise<{
+        rates: { USD: 1; GBP: number; EUR: number }
+        fetchedAt: string
+        source: 'live' | 'cached' | 'fallback'
+        errorMessage?: string
+      }>
       getAgentModels: (provider: ProviderId) => Promise<
         Array<{
           id: string

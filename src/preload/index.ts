@@ -64,6 +64,23 @@ const api = {
   getProviderCapabilities: (provider: ProviderId, workspace?: string, approvalMode?: string) =>
     ipcRenderer.invoke('get-provider-capabilities', provider, workspace, approvalMode),
   getProviderAdapters: () => ipcRenderer.invoke('get-provider-adapters'),
+  // 1.0.5-EW35 — Currency sub-slice (c): live FX rate snapshot.
+  // Renderer hydrates `formatCost`'s in-memory rate table from this
+  // on app boot. `refreshFxRates` is reserved for a future explicit
+  // "refresh now" button; not wired into any UI yet.
+  getFxRates: () => ipcRenderer.invoke('fx-rates:get') as Promise<{
+    rates: { USD: 1; GBP: number; EUR: number }
+    fetchedAt: string
+    source: 'live' | 'cached' | 'fallback'
+    errorMessage?: string
+  }>,
+  refreshFxRates: (force?: boolean) =>
+    ipcRenderer.invoke('fx-rates:refresh', force) as Promise<{
+      rates: { USD: 1; GBP: number; EUR: number }
+      fetchedAt: string
+      source: 'live' | 'cached' | 'fallback'
+      errorMessage?: string
+    }>,
   getAgentModels: (provider: ProviderId) => ipcRenderer.invoke('get-agent-models', provider),
   getAgentRateLimits: (provider: ProviderId) =>
     ipcRenderer.invoke('get-agent-rate-limits', provider),

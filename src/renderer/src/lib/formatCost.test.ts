@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
-import { formatCost, formatCostAlwaysOn } from './formatCost'
+import {
+  formatCost,
+  formatCostAlwaysOn,
+  getFxRatesPerUsd,
+  setFxRatesPerUsd
+} from './formatCost'
 
 /**
  * 1.0.5-EW34 — Tests for the conservative-overestimate bias
@@ -112,6 +117,79 @@ describe('formatCost — overestimate sub-slice (e)', () => {
     expect(formatCost(-1, 'USD', undefined, 10)).toBe('')
     expect(formatCost(Number.NaN, 'USD', undefined, 10)).toBe('')
     expect(formatCost(Number.POSITIVE_INFINITY, 'USD', undefined, 10)).toBe('')
+  })
+})
+
+describe('setFxRatesPerUsd / getFxRatesPerUsd — live FX hot-swap (sub-slice c)', () => {
+  // Reset to baked-in EW25 constants after each test so the
+  // mutation doesn't leak across cases.
+  afterEach(() => {
+    setFxRatesPerUsd({ GBP: 0.79, EUR: 0.92 })
+  })
+
+  it('exposes the baked-in EW25 rates by default', () => {
+    setFxRatesPerUsd({ GBP: 0.79, EUR: 0.92 })
+    const rates = getFxRatesPerUsd()
+    expect(rates).toEqual({ USD: 1, GBP: 0.79, EUR: 0.92 })
+  })
+
+  it('returns a defensive copy — mutating the result does not affect the module', () => {
+    const a = getFxRatesPerUsd()
+    a.GBP = 99
+    const b = getFxRatesPerUsd()
+    expect(b.GBP).not.toBe(99)
+  })
+
+  it('accepts a partial update for GBP only', () => {
+    setFxRatesPerUsd({ GBP: 0.81 })
+    const rates = getFxRatesPerUsd()
+    expect(rates.GBP).toBe(0.81)
+    expect(rates.EUR).toBe(0.92) // unchanged
+  })
+
+  it('accepts a partial update for EUR only', () => {
+    setFxRatesPerUsd({ EUR: 0.94 })
+    const rates = getFxRatesPerUsd()
+    expect(rates.EUR).toBe(0.94)
+    expect(rates.GBP).toBe(0.79)
+  })
+
+  it('rejects malformed values (non-numeric / non-finite / zero / negative)', () => {
+    setFxRatesPerUsd({ GBP: 0.81, EUR: 0.94 })
+    setFxRatesPerUsd({ GBP: 'not a number' as unknown as number })
+    setFxRatesPerUsd({ GBP: Number.NaN })
+    setFxRatesPerUsd({ GBP: Number.POSITIVE_INFINITY })
+    setFxRatesPerUsd({ GBP: 0 })
+    setFxRatesPerUsd({ GBP: -1 })
+    // GBP should still be 0.81 from the first call — every
+    // malformed update silently dropped.
+    expect(getFxRatesPerUsd().GBP).toBe(0.81)
+  })
+
+  it('ignores attempts to override USD (always pinned to 1)', () => {
+    setFxRatesPerUsd({ USD: 999 } as unknown as { GBP?: number; EUR?: number })
+    expect(getFxRatesPerUsd().USD).toBe(1)
+  })
+
+  it('tolerates null / undefined / non-object input without throwing', () => {
+    expect(() => setFxRatesPerUsd(null as unknown as { GBP?: number })).not.toThrow()
+    expect(() => setFxRatesPerUsd(undefined as unknown as { GBP?: number })).not.toThrow()
+    expect(() => setFxRatesPerUsd('oops' as unknown as { GBP?: number })).not.toThrow()
+  })
+
+  it('updated rates flow through formatCost end-to-end', () => {
+    // Simulate a live-fetch returning a slightly different GBP rate.
+    setFxRatesPerUsd({ GBP: 0.85 })
+    // $1 at 0.85 GBP = £0.85.
+    const out = formatCost(1, 'GBP')
+    expect(out.replace(/[^\d.]/g, '')).toBe('0.85')
+  })
+
+  it('updated rates compose correctly with the overestimate bias', () => {
+    // GBP=0.85 + +10% bias on $1 = $1.10 * 0.85 = £0.935 → rounds to £0.94.
+    setFxRatesPerUsd({ GBP: 0.85 })
+    const out = formatCost(1, 'GBP', undefined, 10)
+    expect(out.replace(/[^\d.]/g, '')).toBe('0.94')
   })
 })
 
