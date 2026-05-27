@@ -2964,6 +2964,16 @@ async function requestAgenticServiceApproval(
     | undefined
   const ensembleRun = session?.state?.ensembleRun as EnsembleRunIdentity | undefined
   const ensembleApproval = ensembleApprovalContext(ensembleRun, service, workspacePath)
+  // 1.0.4-AR3 — carry `appChatId` into every auto-decision so the
+  // ledger row is filterable by chat without re-deriving via
+  // `approvalRouteContext`. Pre-AR3 the central path passed only
+  // `{ appRunId: request.runId }` while the Codex inline path
+  // (index.ts:8716+) passed both, leaving Gemini / Claude / Kimi-
+  // bridge rows missing the explicit chat-routing breadcrumb. The
+  // session lookup already happened above, so the value is in
+  // scope and free.
+  const appChatId = session?.state?.appChatId
+  const auditRoute = { appRunId: request.runId, ...(appChatId ? { appChatId } : {}) }
   const effectiveSettings = effectivePermissions
     ? {
         ...settings,
@@ -2986,7 +2996,7 @@ async function requestAgenticServiceApproval(
   if (decision === 'deny') {
     auditService.recordAutomaticApprovalDecision(
       provider,
-      { appRunId: request.runId },
+      auditRoute,
       service,
       workspacePath,
       request,
@@ -3009,7 +3019,7 @@ async function requestAgenticServiceApproval(
   if (sessionYoloState.enabled) {
     auditService.recordAutomaticApprovalDecision(
       provider,
-      { appRunId: request.runId },
+      auditRoute,
       service,
       workspacePath,
       request,
@@ -3031,7 +3041,7 @@ async function requestAgenticServiceApproval(
   ) {
     auditService.recordAutomaticApprovalDecision(
       provider,
-      { appRunId: request.runId },
+      auditRoute,
       service,
       workspacePath,
       request,
@@ -6218,6 +6228,26 @@ function claudeAgenticServiceForTool(toolName: string): AgenticServiceId | null 
   return null
 }
 
+/**
+ * 1.0.4-AR3 — Kimi wire-protocol approval analog of
+ * `claudeAgenticServiceForTool`. Pre-AR3 the Kimi wire approval
+ * path passed no `service` to the ledger, so Kimi rows came out
+ * with `service: undefined` and weren't filterable by service
+ * type. This helper mirrors the Claude classifier (same normalized
+ * naming patterns) so the ledger row carries a useful service tag.
+ *
+ * Returns null for tool names that don't map to any known agentic
+ * service — the caller leaves `service` unset in that case, which
+ * matches the pre-AR3 behavior for unknown tools.
+ */
+function kimiAgenticServiceForTool(toolName: string): AgenticServiceId | null {
+  // Kimi tools share the same naming conventions as the wider
+  // AGBench MCP surface (e.g. `agbench__ensemble_yield`,
+  // `agbench__create_handoff_card`) and the same generic
+  // shell/file-edit tool names as Claude.
+  return claudeAgenticServiceForTool(toolName)
+}
+
 function normalizeClaudeCanUseToolArgs(
   toolNameOrRequest: unknown,
   input?: unknown
@@ -7120,7 +7150,14 @@ async function runKimiWireProvider(
                 approvalTitle,
                 approvalPayload
               )
+              // 1.0.4-AR3 — pass the resolved agentic-service tag so
+              // Kimi wire-protocol ledger rows are filterable by
+              // service (shellCommands / fileChanges / mcpTools).
+              // `null` from the classifier falls through to undefined,
+              // matching pre-AR3 behavior for unknown tools.
+              const kimiResolvedService = kimiAgenticServiceForTool(kimiToolName)
               recordApprovalLedgerRequest('kimi', route, approvalPayload, {
+                ...(kimiResolvedService ? { service: kimiResolvedService } : {}),
                 metadata: { requestType, transport: 'kimi-wire' }
               })
               event.sender.send('agent-approval-request', approvalPayload)
