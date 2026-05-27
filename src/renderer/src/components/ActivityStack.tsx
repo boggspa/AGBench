@@ -704,6 +704,59 @@ function getActivityDurationTotal(activities: ToolActivity[]): number | undefine
   return total > 0 ? total : undefined
 }
 
+/**
+ * 1.0.4-AS2b — extracted so the label-generation logic can be
+ * unit-tested without instantiating the full
+ * `ActivityCompactGroup` React component. Returns the header
+ * string the group's button shows when collapsed.
+ *
+ * Pure read/search groups get the legacy descriptive phrasing
+ * ("Read 5 files and searched 2 times"). Heterogeneous /
+ * Ensemble-mode groups pick the dominant category and emit
+ * category-specific phrasing ("Edited 3 files", "Ran 2
+ * commands"), with a "+N more" suffix when other categories
+ * are present. Groups with NO categorisable activities fall
+ * back to "Used N tools" — slightly less opaque than the
+ * pre-AS2b "N activities".
+ */
+export function buildCompactGroupLabel(activities: readonly ToolActivity[]): string {
+  const searchCount = activities.filter(isSearchActivity).length
+  const readCount = activities.filter(
+    (a) => a.category === 'read' && !isSearchActivity(a)
+  ).length
+  const writeCount = activities.filter((a) => a.category === 'write').length
+  const shellCount = activities.filter((a) => a.category === 'shell').length
+  const taskCount = activities.filter((a) => a.category === 'task').length
+  const otherCount = activities.length - searchCount - readCount
+
+  if (otherCount === 0) {
+    if (searchCount > 0 && readCount > 0) {
+      return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'} and searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+    }
+    if (searchCount > 0) {
+      return `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+    }
+    return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`
+  }
+
+  const counts: Array<[number, string]> = [
+    [writeCount, `Edited ${writeCount} ${writeCount === 1 ? 'file' : 'files'}`],
+    [shellCount, `Ran ${shellCount} ${shellCount === 1 ? 'command' : 'commands'}`],
+    [readCount, `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`],
+    [searchCount, `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`],
+    [taskCount, `Completed ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}`]
+  ]
+  counts.sort((a, b) => b[0] - a[0])
+  const [dominantCount, dominantLabel] = counts[0]
+  if (dominantCount === 0) {
+    const total = activities.length
+    return `Used ${total} ${total === 1 ? 'tool' : 'tools'}`
+  }
+  const remainder = activities.length - dominantCount
+  if (remainder <= 0) return dominantLabel
+  return `${dominantLabel} (+${remainder} more)`
+}
+
 function isCompactGroupCandidate(activity: ToolActivity): boolean {
   if (activity.status === 'error' || activity.status === 'running' || activity.status === 'pending')
     return false
@@ -770,7 +823,14 @@ export function buildTimelineItems(
   const isCandidate = options.collapseAllTerminal
     ? isEnsembleCollapseCandidate
     : isCompactGroupCandidate
-  const minGroupSize = options.collapseAllTerminal ? 1 : 3
+  // 1.0.4-AS2b — keep single-activity entries inline even in
+  // Ensemble. A solitary terminal activity carries useful
+  // context (which file was edited, which command ran, the tool
+  // arguments etc.) that gets hidden behind a generic header
+  // when we collapse N=1 into a group. Both modes now require
+  // at least 2 consecutive activities before grouping — the
+  // visual win from grouping only materialises with two or more.
+  const minGroupSize = 2
 
   while (index < activities.length) {
     const activity = activities[index]
@@ -837,32 +897,12 @@ function ActivityCompactGroup({
   const readCount = activities.filter(
     (a) => a.category === 'read' && !isSearchActivity(a)
   ).length
-  // 1.0.4-AS2 — count "everything else" so heterogeneous Ensemble
-  // compact groups (which include write/shell/task activities, not
-  // just read/search) get an accurate header. Pre-AS2 the label
-  // always said "Read N files" even when the group was actually
-  // 3 writes + 2 shells — left over from when the group was
-  // read/search-only.
   const otherCount = activities.length - searchCount - readCount
   const durationMs = getActivityDurationTotal(activities)
-  const label = (() => {
-    if (otherCount === 0) {
-      // Pure read/search group — preserve the descriptive
-      // single-provider phrasing.
-      if (searchCount > 0 && readCount > 0) {
-        return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'} and searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
-      }
-      if (searchCount > 0) {
-        return `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
-      }
-      return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`
-    }
-    // 1.0.4-AS2 — heterogeneous (Ensemble) group: generic
-    // "N activities" header. The icon array below carries the
-    // category mix.
-    const total = activities.length
-    return `${total} ${total === 1 ? 'activity' : 'activities'}`
-  })()
+  // 1.0.4-AS2b — label generation extracted to a pure helper
+  // (`buildCompactGroupLabel`) for unit testing. See its docstring
+  // for the dominant-category phrasing rules.
+  const label = buildCompactGroupLabel(activities)
   const primaryCategory: 'search' | 'read' =
     otherCount === 0 && searchCount > readCount ? 'search' : 'read'
   const chips = activities
