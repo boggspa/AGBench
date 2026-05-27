@@ -80,7 +80,11 @@ describe('Ensemble prompt composition', () => {
     ])
   })
 
-  it('treats legacy maxParticipants=4 configs as six-capable', () => {
+  // 1.0.4-AR2 — pre-AR2 the prompt-builder treated any
+  // `maxParticipants <= 4` as legacy data and fell back to the
+  // global ceiling. AR2 honors the per-chat value as long as it's
+  // in [2, 8], so a stored 4 now correctly clamps to 4 participants.
+  it('honors per-chat maxParticipants=4 (no silent expansion to the global cap)', () => {
     const sixParticipantLegacy: EnsembleConfig = {
       ...ensemble,
       maxParticipants: 4,
@@ -120,9 +124,31 @@ describe('Ensemble prompt composition', () => {
       'claude',
       'codex',
       'gemini',
-      'codex-2',
-      'claude-2',
-      'gemini-2'
+      'codex-2'
+    ])
+  })
+
+  // 1.0.4-AR2 — `maxParticipants` of 0 / NaN / negative is treated as
+  // missing data and falls back to the global ceiling so a corrupted
+  // config can't accidentally produce a 0-participant slice.
+  it('falls back to the global ceiling when maxParticipants is missing or out of range', () => {
+    const zeroConfig: EnsembleConfig = { ...ensemble, maxParticipants: 0 }
+    expect(getOrderedEnsembleParticipants(zeroConfig).map((p) => p.id)).toEqual([
+      'claude',
+      'codex',
+      'gemini'
+    ])
+    const nanConfig: EnsembleConfig = { ...ensemble, maxParticipants: Number.NaN }
+    expect(getOrderedEnsembleParticipants(nanConfig).map((p) => p.id)).toEqual([
+      'claude',
+      'codex',
+      'gemini'
+    ])
+    const negConfig: EnsembleConfig = { ...ensemble, maxParticipants: -3 }
+    expect(getOrderedEnsembleParticipants(negConfig).map((p) => p.id)).toEqual([
+      'claude',
+      'codex',
+      'gemini'
     ])
   })
 

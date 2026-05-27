@@ -41,7 +41,14 @@ import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefa
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
 
-const MAX_ENSEMBLE_PARTICIPANTS = 6
+// 1.0.4-AR2 — global ceiling raised from 6 → 8 so the panel can host
+// the broader four-provider roster plus alternates (e.g. two Claudes
+// in different roles). The hard minimum is enforced in
+// `removeParticipant` below at `<= 2` so a panel is never reduced to
+// a solo speaker — keeps the ensemble distinct from a single-provider
+// chat throughout its lifecycle.
+const MAX_ENSEMBLE_PARTICIPANTS = 8
+const MIN_ENSEMBLE_PARTICIPANTS = 2
 
 /**
  * Monoline status icon for a participant chip (1.0.3 polish).
@@ -231,11 +238,25 @@ export function EnsembleParticipantsAboveRow({
   }
 
   const persist = (nextParticipants: EnsembleParticipant[]): void => {
+    // 1.0.4-AR2 — preserve any existing per-chat `maxParticipants`
+    // override that's already in range [MIN, MAX]. Pre-AR2 every
+    // persist clobbered the cap to the global ceiling, silently
+    // expanding a user's deliberately-tightened 3-of-N panel back
+    // to the default whenever they toggled a participant. Fall back
+    // to the ceiling only when the stored value is missing /
+    // nonsensical / out of range.
+    const existingMax = chat.ensemble?.maxParticipants
+    const clampedMax =
+      Number.isFinite(existingMax) &&
+      (existingMax as number) >= MIN_ENSEMBLE_PARTICIPANTS &&
+      (existingMax as number) <= MAX_ENSEMBLE_PARTICIPANTS
+        ? (existingMax as number)
+        : MAX_ENSEMBLE_PARTICIPANTS
     const nextChat: ChatRecord = {
       ...chat,
       ensemble: {
         ...chat.ensemble!,
-        maxParticipants: MAX_ENSEMBLE_PARTICIPANTS,
+        maxParticipants: clampedMax,
         participants: nextParticipants.map((p, idx) => ({ ...p, order: idx + 1 })),
         updatedAt: new Date().toISOString()
       }
@@ -277,7 +298,12 @@ export function EnsembleParticipantsAboveRow({
   }
 
   const removeParticipant = (id: string): void => {
-    if (isRoundRunning || participants.length <= 1) return
+    // 1.0.4-AR2 — hard floor of 2 participants. Pre-AR2 this was
+    // `<= 1` (i.e. you could always have a solo ensemble), which
+    // defeats the point of the ensemble surface. The chip strip
+    // already renders the trash button disabled when at the floor;
+    // this guard is the defense-in-depth for IPC-driven roster edits.
+    if (isRoundRunning || participants.length <= MIN_ENSEMBLE_PARTICIPANTS) return
     const next = participants.filter((participant) => participant.id !== id)
     persist(next)
     if (selectedParticipantId === id && next[0]) {
@@ -468,7 +494,7 @@ export function EnsembleParticipantsAboveRow({
             isRoundRunning
               ? 'Participant changes are locked while a round is running.'
               : participants.length >= MAX_ENSEMBLE_PARTICIPANTS
-                ? 'Ensembles support up to six participants.'
+                ? 'Ensembles support up to eight participants.'
                 : 'Add another participant'
           }
           aria-label="Add Ensemble participant"

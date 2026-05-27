@@ -13947,7 +13947,15 @@ function App(): React.JSX.Element {
           ensemble: {
             ...source.ensemble!,
             orchestrationMode: mode,
-            maxParticipants: 6,
+            // 1.0.4-AR2 — track the new global ceiling of 8 (was 6).
+            // Preserve any existing per-chat override that's already
+            // within [2, 8] instead of clobbering it to the cap.
+            maxParticipants:
+              Number.isFinite(source.ensemble!.maxParticipants) &&
+              source.ensemble!.maxParticipants >= 2 &&
+              source.ensemble!.maxParticipants <= 8
+                ? source.ensemble!.maxParticipants
+                : 8,
             maxContinuationHops: source.ensemble!.maxContinuationHops || 6,
             updatedAt: new Date().toISOString()
           }

@@ -69,7 +69,12 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
 
   return {
     enabled: true,
-    maxParticipants: 6,
+    // 1.0.4-AR2 — track the new global ceiling (was 6). The
+    // DEFAULT_ENSEMBLE_ROLES seed yields 4 enabled participants
+    // (claude / codex / gemini / kimi) so the user starts with a
+    // 4-of-8 panel and has headroom to add specialists without
+    // raising the cap. Hard min on the remove path is 2.
+    maxParticipants: 8,
     orchestrationMode: 'turn_bound',
     maxContinuationHops: 6,
     participants,

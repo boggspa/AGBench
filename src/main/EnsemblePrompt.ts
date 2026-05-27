@@ -11,7 +11,13 @@ const MAX_MESSAGE_CHARS = 4000
 const MAX_TRANSCRIPT_CHARS = 24000
 import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
 
-const MAX_ENSEMBLE_PARTICIPANTS = 6
+// 1.0.4-AR2 — mirror of the renderer ceiling
+// (`EnsembleParticipantsAboveRow.MAX_ENSEMBLE_PARTICIPANTS`). Keep
+// these two constants in sync; a divergence would let the renderer
+// add a participant the prompt builder then silently truncates,
+// confusing the user about why a participant they enabled never
+// spoke.
+const MAX_ENSEMBLE_PARTICIPANTS = 8
 
 export interface BuildEnsemblePromptInput {
   chat: ChatRecord
@@ -38,10 +44,15 @@ export function getOrderedEnsembleParticipants(
   config: EnsembleConfig,
   currentPrompt = ''
 ): EnsembleParticipant[] {
-  const maxParticipants =
-    Number(config.maxParticipants || 0) > 4
-      ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.floor(Number(config.maxParticipants)))
-      : MAX_ENSEMBLE_PARTICIPANTS
+  // 1.0.4-AR2 — clamp the per-chat cap into [2, MAX_ENSEMBLE_PARTICIPANTS].
+  // Pre-AR2 the floor was `> 4` (i.e. anything ≤4 fell back to the global
+  // cap), which broke users who deliberately tightened their panel to 3.
+  // Now a numeric config value wins as long as it's a reasonable size;
+  // garbage values (NaN / 0 / negative) fall back to the global cap.
+  const rawMax = Math.floor(Number(config.maxParticipants))
+  const maxParticipants = Number.isFinite(rawMax) && rawMax >= 2
+    ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, rawMax)
+    : MAX_ENSEMBLE_PARTICIPANTS
   const enabled = (config.participants || [])
     .filter((participant) => participant.enabled)
     .sort((a, b) => a.order - b.order || providerLabel(a.provider).localeCompare(providerLabel(b.provider)))
