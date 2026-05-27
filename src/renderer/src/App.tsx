@@ -5450,6 +5450,38 @@ const TranscriptPanel = memo(
               </div>
             )
           })}
+          {/*
+            1.0.5-EW36 — Belt-and-braces fallback for the
+            `ask_user_question` modal. The primary render path is
+            inline next to the synthetic `agentQuestion` system
+            marker (line ~5437); the chat-updated merge guard at
+            line ~10864 keeps that marker alive across re-syncs.
+            This fallback covers the residual case where the
+            marker is somehow missing (race / store reset / future
+            regression in the merge logic): if the user has a
+            pending question with no matching message in
+            visibleMessages, render the card here at the tail of
+            the transcript so they can still answer. Without this
+            the agent times out after 10 minutes with no
+            user-recoverable surface.
+          */}
+          {pendingAgentQuestion &&
+            !visibleMessages.some((m) => m.id === pendingAgentQuestion.messageId) && (
+              <div
+                key={`pending-agent-question-fallback-${pendingAgentQuestion.questionId}`}
+                className="message-group agent-question-fallback"
+              >
+                <AgentQuestionCard
+                  state={pendingAgentQuestion}
+                  onAnswer={(answer, isCustom) =>
+                    onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
+                  }
+                  onDismiss={() =>
+                    onAgentQuestionDismiss(pendingAgentQuestion.questionId)
+                  }
+                />
+              </div>
+            )}
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
               <div
@@ -10865,16 +10897,54 @@ function App(): React.JSX.Element {
           const orphanedLiveAssistants = liveChat.messages.filter(
             (m) => m.role === 'assistant' && !incomingIds.has(m.id)
           )
+          /*
+           * 1.0.5-EW36 — Also preserve orphaned synthetic `agentQuestion`
+           * system markers added by the `onAgentQuestionRequested` IPC
+           * listener (around line 10929). Without this, when an agent
+           * calls `ask_user_question`:
+           *
+           *  1. Renderer creates a synthetic `role: 'system'` marker
+           *     in `chat.messages` with `metadata.kind: 'agentQuestion'`
+           *     and sets `pendingAgentQuestionByChatId[chatId]`.
+           *  2. Main broadcasts `chat-updated` (e.g. because the tool-
+           *     call event from the participant was just flushed, or
+           *     because another participant in the same ensemble round
+           *     emitted output). That broadcast doesn't include the
+           *     synthetic marker — main doesn't know about it.
+           *  3. The merge above ONLY preserved orphaned `assistant`
+           *     messages, so the synthetic system marker silently
+           *     vanished from `chat.messages`.
+           *  4. The transcript-side `AgentQuestionCard` renders inline
+           *     next to the marker via
+           *     `pendingAgentQuestion.messageId === msg.id`. With the
+           *     marker gone, the card never appears — the modal never
+           *     pops, the user has no way to answer, the question
+           *     times out after 10 minutes, and the agent reports
+           *     "interactive question card timed out" in chat.
+           *
+           * Fix: filter the same orphaned-from-incoming list but also
+           * include synthetic `agentQuestion` system markers.
+           * Conservative — only matches the specific metadata kind so
+           * other system messages (delegation cards, status notes,
+           * etc.) keep flowing through unchanged.
+           */
+          const orphanedAgentQuestionMarkers = liveChat.messages.filter(
+            (m) =>
+              m.role === 'system' &&
+              m.metadata?.kind === 'agentQuestion' &&
+              !incomingIds.has(m.id)
+          )
+          const orphans = [...orphanedLiveAssistants, ...orphanedAgentQuestionMarkers]
           if (
             mergedMessages.length !== chat.messages.length ||
-            orphanedLiveAssistants.length > 0 ||
+            orphans.length > 0 ||
             mergedMessages.some((m, i) => m !== chat.messages[i])
           ) {
             merged = {
               ...chat,
               messages:
-                orphanedLiveAssistants.length > 0
-                  ? [...mergedMessages, ...orphanedLiveAssistants]
+                orphans.length > 0
+                  ? [...mergedMessages, ...orphans]
                   : mergedMessages
             }
           }
