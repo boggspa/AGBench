@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallbac
 import type { CSSProperties, ReactElement } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
+import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 import {
@@ -6320,11 +6321,18 @@ function App(): React.JSX.Element {
       ''
     )
   }
-  const selectedRuntimeProfileId = currentComposerChatId
+  const chatLevelSelectedRuntimeProfileId = currentComposerChatId
     ? selectedRuntimeProfileByChatId[currentComposerChatId] ||
       defaultRuntimeProfileIdForProvider(currentProvider)
     : defaultRuntimeProfileIdForProvider(currentProvider)
-  const currentProviderRuntimeProfiles = runtimeProfiles.filter(
+  // 1.0.4-AT2 — `selectedRuntimeProfileId` and
+  // `currentProviderRuntimeProfiles` are derived AFTER
+  // `selectedParticipant` is in scope (see ~line 14000), so the
+  // picker can branch between chat-scope and participant-scope.
+  // Earlier consumers (if any) should use the chat-level fallback
+  // above directly.
+  let selectedRuntimeProfileId: string = chatLevelSelectedRuntimeProfileId
+  let currentProviderRuntimeProfiles = runtimeProfiles.filter(
     (profile) => profile.provider === currentProvider
   )
   const setChatPromptDraft = (chatId: string | null | undefined, value: string) => {
@@ -7853,6 +7861,29 @@ function App(): React.JSX.Element {
   const handleRuntimeProfileChange = (runtimeProfileId: string) => {
     const chatId = currentChatIdRef.current || currentChat?.appChatId
     if (!chatId) return
+    // 1.0.4-AT2 — write-through to the selected participant when
+    // the runtime picker is in participant scope. Pre-AT2 the
+    // picker always wrote to chat-level state regardless of
+    // Ensemble selection, so the per-participant
+    // `runtimeProfileId` (which is what dispatch actually uses)
+    // never got updated. We still set the chat-level cache
+    // because it's the picker's fallback for the next render
+    // when no participant is selected — but the source of truth
+    // for Ensemble dispatch is now correctly the participant.
+    if (
+      isCurrentEnsembleChat &&
+      selectedParticipant &&
+      currentChat?.ensemble
+    ) {
+      updateSelectedParticipant({ runtimeProfileId })
+      // Skip the chat-level write for ensembles so we don't
+      // poison the chat-level provider/runtime metadata with
+      // a participant-scoped choice. The chat-level cache below
+      // still mirrors the selection so the picker keeps
+      // displaying the right value mid-render.
+      setRuntimeProfileForChat(chatId, runtimeProfileId)
+      return
+    }
     setRuntimeProfileForChat(chatId, runtimeProfileId)
     updateChatById(chatId, (source) => ({
       ...source,
@@ -14013,6 +14044,24 @@ function App(): React.JSX.Element {
           null
         : null,
     [ensembleParticipantsForCurrent, effectiveSelectedParticipantId]
+  )
+  // 1.0.4-AT2 — finalise the runtime-profile picker derivation now
+  // that `selectedParticipant` is in scope. In Ensemble + selected
+  // participant, the picker reads the participant's
+  // `runtimeProfileId` and filters the profile list by the
+  // participant's provider. Solo chats and Ensemble-without-
+  // selection keep the chat-level behavior set above.
+  const runtimePickerScope = resolveRuntimePickerScope({
+    chat: currentChat,
+    chatLevelSelection: chatLevelSelectedRuntimeProfileId,
+    chatLevelProvider: currentProvider,
+    selectedParticipant: isCurrentEnsembleChat ? selectedParticipant : null
+  })
+  selectedRuntimeProfileId =
+    runtimePickerScope.selectedRuntimeProfileId ||
+    defaultRuntimeProfileIdForProvider(runtimePickerScope.provider)
+  currentProviderRuntimeProfiles = runtimeProfiles.filter(
+    (profile) => profile.provider === runtimePickerScope.provider
   )
   const currentEnsembleRound = currentChat?.ensemble?.activeRound
   const currentEnsembleOrchestrationMode: EnsembleOrchestrationMode =
