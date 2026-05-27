@@ -695,3 +695,115 @@ describe('formatToolTraceSummary', () => {
     expect(summary).toBe('(tools: edit)')
   })
 })
+
+/*
+ * 1.0.4-AT8 — synthesizer/owner participant + last-round summary
+ * propagation. The data shape lives on EnsembleConfig
+ * (synthesizerParticipantId + lastRoundSummary). The prompt
+ * builder integrates two things from it:
+ *
+ *   - When the current participant matches
+ *     `synthesizerParticipantId`, an extra rule lands instructing
+ *     them to emit a structured "Round summary:" block.
+ *   - When `lastRoundSummary` is non-empty, every participant
+ *     (synthesizer or not) sees it as a "Prior round summary"
+ *     block above the recent transcript.
+ *
+ * The orchestrator-side end-of-round capture
+ * (writing the synthesizer's text into `lastRoundSummary`) is a
+ * documented follow-up; these tests pin the prompt-builder side
+ * which can be exercised by setting the field directly.
+ */
+describe('Ensemble synthesizer + last-round summary (AT8)', () => {
+  it('appends the synthesize-this-round instruction only to the designated synthesizer', () => {
+    const synthEnsemble: EnsembleConfig = {
+      ...ensemble,
+      synthesizerParticipantId: 'codex'
+    }
+    const synthesizerPrompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: synthEnsemble,
+      participant: synthEnsemble.participants.find((p) => p.id === 'codex')!,
+      currentPrompt: 'Implement.',
+      roundId: 'round-1'
+    })
+    expect(synthesizerPrompt).toContain('You are the designated SYNTHESIZER')
+    expect(synthesizerPrompt).toContain('Decisions:')
+    expect(synthesizerPrompt).toContain('Corrections:')
+    expect(synthesizerPrompt).toContain('Open risks:')
+    expect(synthesizerPrompt).toContain('Next action:')
+
+    const nonSynthPrompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: synthEnsemble,
+      participant: synthEnsemble.participants.find((p) => p.id === 'claude')!,
+      currentPrompt: 'Implement.',
+      roundId: 'round-1'
+    })
+    expect(nonSynthPrompt).not.toContain('designated SYNTHESIZER')
+  })
+
+  it('omits the synthesizer rule entirely when no synthesizer is configured', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[0],
+      currentPrompt: 'Implement.',
+      roundId: 'round-1'
+    })
+    expect(prompt).not.toContain('designated SYNTHESIZER')
+  })
+
+  it('injects the prior-round summary into EVERY participant prompt when set', () => {
+    const summary =
+      'Decisions: ship the X module. Corrections: the earlier read of foo.ts was outdated. Open risks: none. Next action: write tests.'
+    const synthEnsemble: EnsembleConfig = {
+      ...ensemble,
+      synthesizerParticipantId: 'codex',
+      lastRoundSummary: summary
+    }
+    const claudePrompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: synthEnsemble,
+      participant: synthEnsemble.participants.find((p) => p.id === 'claude')!,
+      currentPrompt: 'Continue.',
+      roundId: 'round-2'
+    })
+    expect(claudePrompt).toContain('Prior round summary (from the panel synthesizer):')
+    expect(claudePrompt).toContain('ship the X module')
+  })
+
+  it('skips the prior-summary block when lastRoundSummary is empty / whitespace', () => {
+    const empty: EnsembleConfig = {
+      ...ensemble,
+      synthesizerParticipantId: 'codex',
+      lastRoundSummary: '   '
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: empty,
+      participant: empty.participants[0],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2'
+    })
+    expect(prompt).not.toContain('Prior round summary')
+  })
+
+  it('caps the prior-round summary at 2000 characters', () => {
+    const longSummary = 'x'.repeat(3000)
+    const longEnsemble: EnsembleConfig = {
+      ...ensemble,
+      lastRoundSummary: longSummary
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: longEnsemble,
+      participant: longEnsemble.participants[0],
+      currentPrompt: 'Continue.',
+      roundId: 'round-2'
+    })
+    // Should contain a truncated chunk, NOT the full 3000-char blob.
+    expect(prompt).toContain('xxxxxxxxxx')
+    expect(prompt.length).toBeLessThan(longSummary.length + 4000)
+  })
+})

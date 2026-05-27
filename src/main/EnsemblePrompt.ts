@@ -288,6 +288,31 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     ...(input.scoutBriefs && input.scoutBriefs.length > 0
       ? ['', formatScoutBriefsForPrompt(input.scoutBriefs)]
       : []),
+    // 1.0.4-AT8 — designated synthesizer instruction. When the
+    // ensemble config names this participant as the synthesizer,
+    // append a structured "summarise this round" suffix asking
+    // for decisions / open risks / corrections / next action.
+    // Lands once per participant per round; non-synthesizer
+    // participants don't see this rule.
+    ...(input.config.synthesizerParticipantId === input.participant.id
+      ? [
+          '',
+          '- You are the designated SYNTHESIZER for this ensemble. After your normal response, append a structured summary block titled "Round summary:" containing four short lines: `Decisions:` (what was decided this round), `Corrections:` (any earlier panel claims this round needed to correct), `Open risks:` (unresolved concerns the user should know about), `Next action:` (what the panel recommends next). Keep each line under ~120 chars; this summary propagates to every participant in the following round.'
+        ]
+      : []),
+    // 1.0.4-AT8 — prior round summary block. When the config has a
+    // non-empty `lastRoundSummary` from the previous round's
+    // synthesizer, prepend it so every participant sees the same
+    // canonical picture of what already happened. Skipped on the
+    // first round (no prior summary) and when the synthesizer is
+    // unconfigured.
+    ...(input.config.lastRoundSummary && input.config.lastRoundSummary.trim().length > 0
+      ? [
+          '',
+          'Prior round summary (from the panel synthesizer):',
+          sanitizeText(input.config.lastRoundSummary).slice(0, 2000)
+        ]
+      : []),
     '',
     'Recent tagged transcript:',
     transcript || '[No prior transcript]',

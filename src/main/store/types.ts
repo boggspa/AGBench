@@ -347,6 +347,33 @@ export interface EnsembleConfig {
    * `WorkSessionConfig` for field semantics.
    */
   workSession?: WorkSessionConfig
+  /**
+   * 1.0.4-AT8 — designated synthesizer/owner participant. When set,
+   * the prompt builder appends a structured "summarise this round"
+   * instruction to this participant's prompt (decisions / open
+   * risks / next action), letting the panel produce a canonical
+   * round summary instead of leaving every participant's final
+   * paragraph as N parallel takes the user has to reconcile.
+   *
+   * The orchestrator's end-of-round hook captures the synthesizer's
+   * final text into `lastRoundSummary` (follow-up — wiring lives in
+   * the orchestrator's `flushRun` path, deferred to a subsequent
+   * slice). Subsequent rounds' participant prompts read
+   * `lastRoundSummary` (when non-empty) and prepend it as a
+   * "Prior round summary:" block so corrections propagate.
+   *
+   * Undefined = no synthesizer (pre-AT8 behavior; each participant
+   * speaks for themselves).
+   */
+  synthesizerParticipantId?: string
+  /**
+   * 1.0.4-AT8 — canonical summary of the most recent completed
+   * round. Set by the orchestrator (follow-up) when the
+   * synthesizer participant emits their structured summary. Read
+   * by subsequent rounds' prompt builders. Cleared by `Steer`
+   * (intentional reset) and `Stop` (round cancelled).
+   */
+  lastRoundSummary?: string
 }
 
 /**
