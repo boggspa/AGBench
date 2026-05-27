@@ -4695,6 +4695,32 @@ button.sidebar-item {
   direction: rtl;
   text-align: left;
 }
+/*
+ * 1.0.5-AR12b — Composer-position workspace switcher popover.
+ * Same outer popover styling as `welcome-workspace-popover`
+ * (extends via `composer-workspace-popover` second class on the
+ * portal root), with one composer-specific override: bounded
+ * max-height + overflow-y so a user with many workspaces gets
+ * a scrollable list rather than a popover that runs past the
+ * viewport edge. Position is computed in the component (flip
+ * above the trigger when there's no room below), so the
+ * 360px cap matches the position calc's
+ * `POPOVER_MAX_HEIGHT` constant.
+ */
+.composer-workspace-popover {
+  max-height: 360px;
+  overflow-y: auto;
+  /* The popover sits above the composer (z-index 9999 from the
+   * base rule); also bump above any potentially-stacked menu
+   * surfaces inside the composer area without disturbing
+   * existing slash / mention popover z-indices (also 9999). */
+}
+.composer-workspace-popover .welcome-workspace-popover-section {
+  /* Tighter section padding inside the composer popover variant —
+   * the welcome popover has more headroom; the composer popover
+   * sits inside a denser part of the UI. */
+}
+
 .welcome-workspace-popover-row-glyph {
   display: inline-flex;
   align-items: center;

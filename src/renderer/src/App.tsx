@@ -4961,6 +4961,231 @@ function WelcomeWorkspacePicker({
   )
 }
 
+/**
+ * 1.0.5-AR12b — Composer-position workspace switcher.
+ *
+ * Pre-AR12b the composer's workspace button (`data-composer-
+ * control="workspace"`) opened the workspace files popout — the
+ * label said "Switch workspace · <name>" but the action just
+ * surfaced the current workspace's files. That mismatch surprised
+ * users (clicking "Switch workspace" doesn't switch the workspace).
+ *
+ * This component preserves the 9-shell CSS targeting (same outer
+ * button class + `data-composer-control="workspace"` hook + same
+ * order tokens via the existing per-shell overrides in main.css)
+ * but the click action is now a real portal-popover with:
+ *
+ *   - All workspaces (recent-first, current omitted) as menu rows
+ *   - Add new workspace… (opens system folder dialog)
+ *   - No workspace (rebinds to a system / global chat)
+ *
+ * The popover render shape mirrors `WelcomeWorkspacePicker` (1.0.5-
+ * W1 portal positioning, outside-click + Escape dismiss, fixed-
+ * position coords clamped to the viewport) but the trigger is the
+ * composer button itself, sized and themed by the composer-shell
+ * CSS rather than the welcome-screen chip layout. The popover
+ * styling reuses the `welcome-workspace-popover*` class family
+ * since the visual surface is intentionally identical to the
+ * welcome-screen surface — no need to fork the CSS.
+ */
+interface ComposerWorkspaceSwitcherProps {
+  workspaces: WorkspaceRecord[]
+  currentWorkspace: WorkspaceRecord | null
+  /** Switch to (or rebind the chat to) an existing workspace. */
+  onPickExisting: (ws: WorkspaceRecord) => void
+  /** Open the system folder dialog and add the picked folder. */
+  onAddNewWorkspace: () => void
+  /** Switch to a workspace-less (global / system) chat. */
+  onSelectNoWorkspace: () => void
+}
+
+function ComposerWorkspaceSwitcher({
+  workspaces,
+  currentWorkspace,
+  onPickExisting,
+  onAddNewWorkspace,
+  onSelectNoWorkspace
+}: ComposerWorkspaceSwitcherProps): React.JSX.Element {
+  const [popoverOpen, setPopoverOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const popoverRef = useRef<HTMLDivElement | null>(null)
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
+    null
+  )
+
+  // Same outside-click + Escape dismiss pattern as WelcomeWorkspacePicker.
+  useEffect(() => {
+    if (!popoverOpen) return
+    const handlePointerDown = (event: MouseEvent): void => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target)) return
+      if (popoverRef.current?.contains(target)) return
+      setPopoverOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        setPopoverOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [popoverOpen])
+
+  // Position computation: anchor below the trigger, left-align to
+  // the trigger so the popover grows toward the composer's centre
+  // (the welcome variant centres on the trigger, but the composer
+  // button sits at the far left of the composer row so left-anchor
+  // reads more naturally). Clamped to the viewport edges on
+  // narrow windows.
+  useLayoutEffect(() => {
+    if (!popoverOpen) {
+      setPopoverPosition(null)
+      return
+    }
+    const computePosition = (): void => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const popoverWidth = 320
+      const margin = 8
+      // Left-align to the trigger but keep on-screen.
+      const idealLeft = rect.left
+      const clampedLeft = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, idealLeft)
+      )
+      // Open ABOVE the button when the composer sits at the bottom
+      // of the viewport — flip if there's no room below. 360px is
+      // the popover's max-height estimate; leave a 6px gap.
+      const POPOVER_MAX_HEIGHT = 360
+      const wouldOverflowBottom =
+        rect.bottom + 6 + POPOVER_MAX_HEIGHT > window.innerHeight - margin
+      const top = wouldOverflowBottom
+        ? Math.max(margin, rect.top - 6 - POPOVER_MAX_HEIGHT)
+        : rect.bottom + 6
+      setPopoverPosition({ left: clampedLeft, top })
+    }
+    computePosition()
+    window.addEventListener('resize', computePosition)
+    window.addEventListener('scroll', computePosition, true)
+    return () => {
+      window.removeEventListener('resize', computePosition)
+      window.removeEventListener('scroll', computePosition, true)
+    }
+  }, [popoverOpen])
+
+  const others = workspaces
+    .filter((ws) => ws.id !== currentWorkspace?.id)
+    .sort((a, b) => (b.lastOpenedAt || b.createdAt || 0) - (a.lastOpenedAt || a.createdAt || 0))
+
+  const handleSelectFromPopover = (callback: () => void): void => {
+    setPopoverOpen(false)
+    setTimeout(callback, 0)
+  }
+
+  const triggerLabel = currentWorkspace
+    ? currentWorkspace.displayName ||
+      currentWorkspace.path.split('/').pop() ||
+      'Workspace'
+    : 'Pick workspace'
+
+  const titleText = currentWorkspace
+    ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
+    : 'Pick a workspace'
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={`composer-picker-label composer-workspace-button ${
+          popoverOpen ? 'is-open' : ''
+        }`}
+        data-composer-control="workspace"
+        aria-expanded={popoverOpen}
+        aria-haspopup="menu"
+        onClick={() => setPopoverOpen((open) => !open)}
+        title={titleText}
+        aria-label={titleText}
+      >
+        <FolderSymbolIcon />
+        <span className="composer-workspace-button-label">{triggerLabel}</span>
+      </button>
+      {popoverOpen &&
+        popoverPosition &&
+        createPortal(
+          <div
+            ref={popoverRef}
+            className="welcome-workspace-popover welcome-workspace-popover--portaled composer-workspace-popover"
+            role="menu"
+            style={{
+              position: 'fixed',
+              left: `${popoverPosition.left}px`,
+              top: `${popoverPosition.top}px`,
+              transform: 'none'
+            }}
+          >
+            {others.length > 0 && (
+              <div className="welcome-workspace-popover-section">
+                <div className="welcome-workspace-popover-header">Switch to workspace</div>
+                {others.map((ws) => (
+                  <button
+                    key={ws.id}
+                    type="button"
+                    role="menuitem"
+                    className="welcome-workspace-popover-row"
+                    onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
+                    title={ws.path}
+                  >
+                    <span className="welcome-workspace-popover-row-name">
+                      {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                    </span>
+                    {ws.path && (
+                      <span className="welcome-workspace-popover-row-path">{ws.path}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="welcome-workspace-popover-section welcome-workspace-popover-actions">
+              <button
+                type="button"
+                role="menuitem"
+                className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                onClick={() => handleSelectFromPopover(onAddNewWorkspace)}
+              >
+                <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                  +
+                </span>
+                <span className="welcome-workspace-popover-row-name">Add new workspace…</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                onClick={() => handleSelectFromPopover(onSelectNoWorkspace)}
+              >
+                <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                  ∅
+                </span>
+                <span className="welcome-workspace-popover-row-name">
+                  No workspace (system chat)
+                </span>
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
+    </>
+  )
+}
+
 function AgentQuestionCard({
   state,
   onAnswer,
@@ -18313,59 +18538,34 @@ function App(): React.JSX.Element {
                     </label>
                       )
                     })()}
-                    {/* 1.0.5-AR12 — Workspace switch button. Renders a
-                       compact, shell-themed control in the composer's
-                       inline-pickers-left row so users can pivot to a
-                       different workspace context (or open the workspace
-                       popout to inspect files) without leaving the
-                       composer. Uses the existing
-                       `window.api.openWorkspacePopout` IPC contract
-                       (`kind: 'file-editor'`) — the workspace files
-                       popout is the most natural "switch workspace
-                       view" target without inventing a new channel.
-                       The button is hidden in global chats (no
-                       workspace bound). Themed shells (codex / claude /
-                       gemini / kimi) gain their own style overrides
-                       via the `data-composer-control="workspace"`
-                       hook; the AGBench-native / modular / terminal /
-                       stub / satellite shells inherit the base
-                       `composer-picker-label` chrome plus a `composer-
-                       workspace-button` class for shell-agnostic
-                       polish. */}
+                    {/* 1.0.5-AR12 (button + 9-shell CSS) / AR12b (real
+                       switcher behaviour). Renders a compact, shell-
+                       themed control in the composer's inline-pickers-
+                       left row. Pre-AR12b the click action opened the
+                       workspace files popout — label said "Switch
+                       workspace" but the action was just "show files",
+                       which surprised users. AR12b swaps in a real
+                       portal-popover switcher that mirrors
+                       `WelcomeWorkspacePicker`'s shape:
+                       click → popover with all other workspaces +
+                       Add new + No workspace rows. The outer button
+                       keeps the same className /
+                       `data-composer-control="workspace"` hook so the
+                       per-shell CSS (codex / claude / gemini / kimi
+                       overrides + the base style for the 5 other
+                       shells) continues to apply unchanged. Hidden in
+                       global chats — there's nothing to switch FROM
+                       in a workspace-less chat (and the welcome
+                       picker already handles the no-workspace start).
+                    */}
                     {!isCurrentGlobalChat && (
-                      <button
-                        type="button"
-                        className="composer-picker-label composer-workspace-button"
-                        data-composer-control="workspace"
-                        onClick={() => {
-                          const workspacePath = currentWorkspace?.path
-                          if (!workspacePath) return
-                          void window.api.openWorkspacePopout({
-                            kind: 'file-editor',
-                            workspacePath
-                          })
-                        }}
-                        disabled={!currentWorkspace}
-                        title={
-                          currentWorkspace
-                            ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
-                            : 'Pick a workspace'
-                        }
-                        aria-label={
-                          currentWorkspace
-                            ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
-                            : 'Pick a workspace'
-                        }
-                      >
-                        <FolderSymbolIcon />
-                        <span className="composer-workspace-button-label">
-                          {currentWorkspace
-                            ? currentWorkspace.displayName ||
-                              currentWorkspace.path.split('/').pop() ||
-                              'Workspace'
-                            : 'Pick workspace'}
-                        </span>
-                      </button>
+                      <ComposerWorkspaceSwitcher
+                        workspaces={workspaces}
+                        currentWorkspace={currentWorkspace}
+                        onPickExisting={handleSelectExistingWorkspace}
+                        onAddNewWorkspace={handleSelectWorkspace}
+                        onSelectNoWorkspace={handleNewGlobalChat}
+                      />
                     )}
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
