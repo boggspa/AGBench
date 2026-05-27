@@ -44,6 +44,12 @@ export interface EnsembleDispatchEvent {
   sender: Electron.WebContents
 }
 
+export interface EnsembleImageAttachment {
+  id?: string
+  path: string
+  name?: string
+}
+
 /**
  * 1.0.4-AD — pre-flight participant health check result. Returned by
  * the optional `probeParticipant` dep so the orchestrator can mark a
@@ -442,6 +448,7 @@ interface ActiveRoundRuntime {
   roundId: string
   sender: Electron.WebContents
   prompt: string
+  imageAttachments: EnsembleImageAttachment[]
   cancelled: boolean
   /**
    * FIFO queue of prompts to dispatch as fresh rounds after the
@@ -512,6 +519,7 @@ export class EnsembleOrchestrator {
     prompt: string
     event: EnsembleDispatchEvent
     mode?: EnsembleRunMode
+    imageAttachments?: EnsembleImageAttachment[]
     /**
      * A2 (1.0.3) — when set, scope the round to just this participant
      * (the "DM" routing the chip strip + composer pickers feed when
@@ -531,6 +539,7 @@ export class EnsembleOrchestrator {
     const parsed = parseSelfReflectivePrefix(input.prompt)
     const prompt = parsed.prompt.trim()
     if (!prompt) return { status: 'ignored' }
+    const imageAttachments = normalizeEnsembleImageAttachments(input.imageAttachments)
     const existing = this.roundsByChatId.get(input.chatId)
     if (existing && !existing.cancelled) {
       if (input.mode === 'steer') {
@@ -540,6 +549,7 @@ export class EnsembleOrchestrator {
           prompt,
           input.event.sender,
           input.dmTargetParticipantId,
+          imageAttachments,
           [],
           parsed.selfReflective
         )
@@ -553,7 +563,7 @@ export class EnsembleOrchestrator {
       // Multi-entry queue: append rather than overwrite. The
       // chat-round state mirrors the runtime's `queuedPrompts` so the
       // renderer's stack picks up every entry.
-      existing.queuedPrompts.push(prompt)
+      existing.queuedPrompts.push(promptWithAttachmentReferences(prompt, imageAttachments))
       const nextQueuedPrompts = [...existing.queuedPrompts]
       this.updateChatRound(input.chatId, (round) =>
         round
@@ -574,6 +584,7 @@ export class EnsembleOrchestrator {
       prompt,
       input.event.sender,
       input.dmTargetParticipantId,
+      imageAttachments,
       [],
       parsed.selfReflective
     )
@@ -921,6 +932,7 @@ export class EnsembleOrchestrator {
     prompt: string,
     sender: Electron.WebContents,
     dmTargetParticipantId?: string,
+    imageAttachments: EnsembleImageAttachment[] = [],
     /**
      * Carry-over queue from a previous round's `queuedPrompts` (FIFO
      * after we shifted off `prompt`). Lets the chain continue
@@ -954,6 +966,11 @@ export class EnsembleOrchestrator {
         })()
       : orderedFull
     const startedAt = this.deps.nowIso()
+    const normalizedImageAttachments = normalizeEnsembleImageAttachments(imageAttachments)
+    const promptForParticipants = promptWithAttachmentReferences(
+      prompt,
+      normalizedImageAttachments
+    )
     const orchestrationMode = resolveEnsembleOrchestrationMode(chat.ensemble)
     const maxContinuationHops = resolveMaxContinuationHops(chat.ensemble)
     const round: EnsembleRoundState = {
@@ -985,7 +1002,10 @@ export class EnsembleOrchestrator {
       timestamp: startedAt,
       metadata: {
         kind: 'ensembleRoundPrompt',
-        ensembleRoundId: roundId
+        ensembleRoundId: roundId,
+        ...(normalizedImageAttachments.length
+          ? { imageAttachments: normalizedImageAttachments }
+          : {})
       }
     }
     const updated: ChatRecord = {
@@ -1009,7 +1029,8 @@ export class EnsembleOrchestrator {
       chatId,
       roundId,
       sender,
-      prompt,
+      prompt: promptForParticipants,
+      imageAttachments: normalizedImageAttachments,
       cancelled: false,
       queuedPrompts: [...carryOverQueue],
       orchestrationMode,
@@ -1222,6 +1243,7 @@ export class EnsembleOrchestrator {
         scope: chat.scope === 'global' ? 'global' : 'workspace',
         ...(chat.scope === 'global' ? {} : { workspace: chat.workspacePath || '' }),
         prompt,
+        imagePaths: runtime.imageAttachments.map((attachment) => attachment.path),
         appRunId: run.runId,
         appChatId: chat.appChatId,
         model: participant.model || 'cli-default',
@@ -1575,7 +1597,7 @@ export class EnsembleOrchestrator {
     this.finishRound(runtime.chatId, runtime.roundId, runtime.cancelled ? 'cancelled' : 'completed')
     this.clearRuntimeIfCurrent(runtime)
     if (nextPrompt && !runtime.cancelled && !sessionTerminal) {
-      this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, remainingQueue)
+      this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, [], remainingQueue)
     }
   }
 
@@ -1673,6 +1695,7 @@ export class EnsembleOrchestrator {
         scope: chat.scope === 'global' ? 'global' : 'workspace',
         ...(chat.scope === 'global' ? {} : { workspace: chat.workspacePath || '' }),
         prompt: promptText,
+        imagePaths: runtime.imageAttachments.map((attachment) => attachment.path),
         appRunId: run.runId,
         appChatId: chat.appChatId,
         model: scout.model || 'cli-default',
@@ -2287,6 +2310,42 @@ function resolveMaxContinuationHops(
   const raw = Number(config?.maxContinuationHops)
   if (!Number.isFinite(raw)) return DEFAULT_CONTINUATION_HOP_LIMIT
   return Math.max(1, Math.min(MAX_CONTINUATION_HOP_LIMIT, Math.floor(raw)))
+}
+
+function normalizeEnsembleImageAttachments(
+  attachments: EnsembleImageAttachment[] | undefined
+): EnsembleImageAttachment[] {
+  if (!Array.isArray(attachments)) return []
+  const seen = new Set<string>()
+  const normalized: EnsembleImageAttachment[] = []
+  for (const attachment of attachments) {
+    const path = typeof attachment?.path === 'string' ? attachment.path.trim() : ''
+    if (!path || seen.has(path)) continue
+    seen.add(path)
+    normalized.push({
+      ...(typeof attachment.id === 'string' && attachment.id.trim()
+        ? { id: attachment.id.trim() }
+        : {}),
+      path,
+      ...(typeof attachment.name === 'string' && attachment.name.trim()
+        ? { name: attachment.name.trim() }
+        : {})
+    })
+  }
+  return normalized
+}
+
+function promptWithAttachmentReferences(
+  prompt: string,
+  attachments: EnsembleImageAttachment[]
+): string {
+  const normalized = normalizeEnsembleImageAttachments(attachments)
+  if (normalized.length === 0) return prompt
+  const lines = normalized.map(
+    (attachment, index) =>
+      `${index + 1}. ${attachment.name ? `${attachment.name}: ` : ''}"${attachment.path}"`
+  )
+  return `${prompt}\n\nAttachment references for this request:\n${lines.join('\n')}`
 }
 
 /**

@@ -1075,6 +1075,29 @@ function stringArray(value: unknown): string[] {
     : []
 }
 
+function imageAttachmentSnapshots(
+  value: unknown
+): Array<{ id?: string; path: string; name?: string }> {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const record = item as Record<string, unknown>
+      const path = typeof record.path === 'string' ? record.path.trim() : ''
+      if (!path) return null
+      return {
+        ...(typeof record.id === 'string' && record.id.trim()
+          ? { id: record.id.trim() }
+          : {}),
+        path,
+        ...(typeof record.name === 'string' && record.name.trim()
+          ? { name: record.name.trim() }
+          : {})
+      }
+    })
+    .filter((item): item is { id?: string; path: string; name?: string } => Boolean(item))
+}
+
 function optionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
 }
@@ -20172,6 +20195,7 @@ if (isGeminiMcpBridgeProcess) {
           chatId?: string
           prompt?: string
           mode?: 'normal' | 'queue' | 'steer'
+          imageAttachments?: Array<{ id?: string; path?: string; name?: string }>
           dmTargetParticipantId?: string
         }
       ) => {
@@ -20185,6 +20209,7 @@ if (isGeminiMcpBridgeProcess) {
           prompt,
           event,
           mode: payload?.mode || 'normal',
+          imageAttachments: imageAttachmentSnapshots(payload?.imageAttachments),
           ...(payload?.dmTargetParticipantId
             ? { dmTargetParticipantId: payload.dmTargetParticipantId }
             : {})

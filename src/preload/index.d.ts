@@ -648,6 +648,7 @@ declare global {
         chatId: string
         prompt: string
         mode?: 'normal' | 'queue' | 'steer'
+        imageAttachments?: ComposerImageAttachment[]
         /** A2 (1.0.3) — DM routing: scope the round to a single chip. */
         dmTargetParticipantId?: string
       }) => Promise<{ status: string; roundId?: string }>

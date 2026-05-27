@@ -348,6 +348,9 @@ type MediaAttachmentLike = {
   id?: string
   path?: string
   name?: string
+  kind?: ChatMediaKind
+  source?: ChatMediaSource
+  access?: ExternalPathGrant['access']
 }
 
 function isChatMediaImagePath(path: string): boolean {
@@ -470,6 +473,84 @@ function collectChatMediaRefs(
     const rank = (ref: ChatMediaRef) => (ref.kind === 'image' ? 0 : ref.kind === 'folder' ? 1 : 2)
     return rank(a) - rank(b) || a.name.localeCompare(b.name)
   })
+}
+
+function collectMessageMediaRefs(message: ChatMessage): ChatMediaRef[] {
+  const refs: ChatMediaRef[] = []
+  const seen = new Set<string>()
+  const metadata = message.metadata || {}
+
+  const addAttachment = (attachment: MediaAttachmentLike | null | undefined) => {
+    const path = typeof attachment?.path === 'string' ? attachment.path.trim() : ''
+    if (!path) return
+    const source = attachment?.source === 'external_path' ? 'external_path' : 'upload'
+    const key = `${source}:${path}:${attachment?.access || ''}`
+    if (seen.has(key)) return
+    seen.add(key)
+    const declaredKind = attachment?.kind
+    const kind =
+      declaredKind === 'folder' || declaredKind === 'file' || declaredKind === 'image'
+        ? declaredKind
+        : isChatMediaImagePath(path)
+          ? 'image'
+          : 'file'
+    refs.push({
+      id: attachment?.id || `${source}:${path}`,
+      kind,
+      source,
+      name: attachment?.name || chatMediaNameFromPath(path),
+      path,
+      ...(attachment?.access ? { access: attachment.access } : {})
+    })
+  }
+
+  ;[metadata.imageAttachments, metadata.attachments, metadata.mediaRefs].forEach((candidate) => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach((attachment) => addAttachment(attachment as MediaAttachmentLike))
+    }
+  })
+
+  return refs
+}
+
+function ChatMessageMediaStrip({
+  refs,
+  workspacePath
+}: {
+  refs: ChatMediaRef[]
+  workspacePath?: string
+}) {
+  if (refs.length === 0) return null
+  return (
+    <div className="message-attachment-strip" aria-label="Message attachments">
+      {refs.map((ref) => {
+        const previewSrc = ref.kind === 'image' ? chatMediaPreviewSrc(ref.path) : ''
+        return (
+          <button
+            key={ref.id}
+            type="button"
+            className={`message-attachment-card is-${ref.kind}`}
+            title={`Copy ${ref.name} path`}
+            onClick={() => void navigator.clipboard?.writeText(ref.path)}
+          >
+            {previewSrc ? (
+              <img src={previewSrc} alt={ref.name} />
+            ) : (
+              <span className="message-attachment-icon">
+                <FileTypeIcon path={ref.path} size={16} workspacePath={workspacePath} />
+              </span>
+            )}
+            <span className="message-attachment-copy">
+              <span className="message-attachment-name">{ref.name}</span>
+              <span className="message-attachment-path">
+                {formatChatMediaLocation(ref.path, workspacePath)}
+              </span>
+            </span>
+          </button>
+        )
+      })}
+    </div>
+  )
 }
 
 function ChatMediaFloatingPanel({
@@ -4937,6 +5018,7 @@ const TranscriptPanel = memo(
                         const preview = showCollapsed
                           ? truncateUserMessagePreview(msg.content)
                           : msg.content
+                        const mediaRefs = collectMessageMediaRefs(msg)
                         return (
                           <div
                             className={`message-bubble user${
@@ -4949,6 +5031,12 @@ const TranscriptPanel = memo(
                                 participants={currentChat?.ensemble?.participants}
                               />
                             </div>
+                            {mediaRefs.length > 0 && (
+                              <ChatMessageMediaStrip
+                                refs={mediaRefs}
+                                workspacePath={currentChat?.workspacePath}
+                              />
+                            )}
                             {collapsible && (
                               <button
                                 type="button"
@@ -10743,6 +10831,11 @@ function App(): React.JSX.Element {
           chatId: runChat.appChatId,
           prompt: request.prompt,
           mode,
+          imageAttachments: request.imageAttachments.map((attachment) => ({
+            id: attachment.id,
+            path: attachment.path,
+            name: attachment.name
+          })),
           // A2 (1.0.3) — DM the selected chip only when the user
           // sent with Cmd/Ctrl held. The orchestrator filters
           // participants to just this one for the round.
@@ -10882,11 +10975,21 @@ function App(): React.JSX.Element {
       let runStartedAt = new Date().toISOString()
       let promptMessageId: string | undefined
       if (!request.existingPrompt) {
+        const imageAttachmentMetadata = request.imageAttachments
+          .map((attachment) => ({
+            id: attachment.id,
+            path: attachment.path,
+            name: attachment.name || getImageName(attachment.path)
+          }))
+          .filter((attachment) => Boolean(attachment.path))
         const userMessage: ChatMessage = {
           id: Date.now().toString(),
           role: 'user',
           content: displayFinalPrompt,
-          timestamp: runStartedAt
+          timestamp: runStartedAt,
+          ...(imageAttachmentMetadata.length
+            ? { metadata: { imageAttachments: imageAttachmentMetadata } }
+            : {})
         }
         promptMessageId = userMessage.id
         chatToUpdate.messages = [...chatToUpdate.messages, userMessage]
@@ -11700,7 +11803,12 @@ function App(): React.JSX.Element {
       await window.api.runEnsembleRound({
         chatId: targetChatId,
         prompt: request.prompt,
-        mode: targetChat.ensemble?.activeRound?.status === 'running' ? 'steer' : 'normal'
+        mode: targetChat.ensemble?.activeRound?.status === 'running' ? 'steer' : 'normal',
+        imageAttachments: request.imageAttachments.map((attachment) => ({
+          id: attachment.id,
+          path: attachment.path,
+          name: attachment.name
+        }))
       })
       clearComposerAttachmentsForSubmittedRequest(request)
       if (!request.existingPrompt) {

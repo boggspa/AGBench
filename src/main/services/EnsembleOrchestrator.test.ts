@@ -249,6 +249,33 @@ describe('EnsembleOrchestrator', () => {
     })
   })
 
+  it('persists and forwards image attachments for ensemble rounds', async () => {
+    const harness = makeHarness()
+
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Review this screenshot.',
+      imageAttachments: [
+        { id: 'img-1', path: '/tmp/ensemble-screenshot.png', name: 'ensemble-screenshot.png' }
+      ],
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    expect(harness.chat.messages[0]).toMatchObject({
+      role: 'user',
+      metadata: {
+        kind: 'ensembleRoundPrompt',
+        imageAttachments: [
+          { id: 'img-1', path: '/tmp/ensemble-screenshot.png', name: 'ensemble-screenshot.png' }
+        ]
+      }
+    })
+    expect(harness.dispatched[0].imagePaths).toEqual(['/tmp/ensemble-screenshot.png'])
+    expect(harness.dispatched[0].prompt).toContain('Attachment references for this request:')
+    expect(harness.dispatched[0].prompt).toContain('/tmp/ensemble-screenshot.png')
+  })
+
   it('queues a fresh round after the current speaker finishes', async () => {
     const harness = makeHarness()
     harness.orchestrator.startRound({

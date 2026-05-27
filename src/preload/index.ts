@@ -1,6 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { GeminiWorktreeLaunchOption, ProviderId } from '../main/store/types'
 
+type ComposerImageAttachment = {
+  id?: string
+  path?: string
+  name?: string
+}
+
 // Custom APIs for renderer
 const api = {
   getRuntimeVersions: () => ({ ...(process?.versions || {}) }),
@@ -430,6 +436,7 @@ const api = {
     chatId: string
     prompt: string
     mode?: string
+    imageAttachments?: ComposerImageAttachment[]
     /** A2 (1.0.3) — DM routing: scope this "round" to a single
      * participant chip. The orchestrator's machinery still drives
      * the run (so status pills + per-participant tally still update)
