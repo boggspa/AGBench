@@ -1536,6 +1536,55 @@ export type ScheduledTaskStatus =
   | 'failed'
   | 'cancelled'
 
+/**
+ * 1.0.4-AT3 — discriminant for solo vs ensemble scheduled runs.
+ *
+ * Pre-AT3 every scheduled task was implicitly a single-provider
+ * dispatch (`kind` undefined). Ensemble chats COULD be scheduled
+ * (the dispatch path correctly routed via `chat.chatKind` at fire
+ * time) BUT the schedule didn't snapshot the participant roster
+ * / orchestration mode at schedule time. A user who scheduled a
+ * 4-participant ensemble at 9am and then disabled two
+ * participants at 9:30 would see only the remaining two
+ * participants fire at 10am — not what they scheduled.
+ *
+ * `kind: 'ensemble'` plus an `ensembleSnapshot` locks in the
+ * panel state at schedule time. The dispatcher applies the
+ * snapshot to the chat's ensemble config before kicking off the
+ * round so the panel composition matches the user's intent.
+ *
+ * Undefined `kind` reads as `'single'` so existing scheduled
+ * records (and the solo-chat scheduling path) keep working
+ * verbatim.
+ */
+export type ScheduledTaskKind = 'single' | 'ensemble'
+
+/**
+ * 1.0.4-AT3 — snapshot of the ensemble state captured when the
+ * user clicked Schedule. Applied to the chat's ensemble config
+ * before the round fires so subsequent roster/mode edits don't
+ * change what the user scheduled. Participants are stored in
+ * full (not just ids) so we can rehydrate a disabled-since
+ * participant if the chat's live record was mutated.
+ *
+ * `EnsembleOrchestrationMode` and `EnsembleParticipant` are
+ * imported below; we reference them via `import type` to avoid
+ * a runtime circular.
+ */
+export interface ScheduledEnsembleSnapshot {
+  orchestrationMode: EnsembleOrchestrationMode
+  participants: EnsembleParticipant[]
+  /** Direct-message target participant id, when scheduled with
+   * Cmd/Ctrl-Send while a chip was selected. */
+  dmTargetParticipantId?: string
+  maxParticipants?: number
+  maxContinuationHops?: number
+  /** Snapshot ISO timestamp — purely informational, so the user
+   * can compare "scheduled with this roster at X" vs the chat's
+   * current ensemble config at fire time. */
+  capturedAt: string
+}
+
 export interface ScheduledTask {
   id: string
   workspaceId: string
@@ -1570,6 +1619,12 @@ export interface ScheduledTask {
   firedAt?: string
   completedAt?: string
   lastError?: string
+  /** 1.0.4-AT3 — discriminant. Undefined == legacy single-provider. */
+  kind?: ScheduledTaskKind
+  /** 1.0.4-AT3 — required when `kind === 'ensemble'`. Applied to
+   * the chat's ensemble config at fire time so roster/mode edits
+   * after scheduling don't reshape the dispatch. */
+  ensembleSnapshot?: ScheduledEnsembleSnapshot
 }
 
 export type RunQueueJobStatus =

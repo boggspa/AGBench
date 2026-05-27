@@ -1,0 +1,73 @@
+import type {
+  ChatRecord,
+  ScheduledEnsembleSnapshot
+} from '../../../main/store/types'
+
+/**
+ * 1.0.4-AT3 — capture a scheduled-task ensemble snapshot from a
+ * chat record at schedule time.
+ *
+ * Returns `null` for non-ensemble chats (the caller schedules a
+ * regular single-provider task in that case). Returns a frozen
+ * snapshot when the chat has ensemble config: orchestration
+ * mode, full participant array, dmTarget (if provided), and the
+ * cap budgets. `capturedAt` is the ISO timestamp the snapshot
+ * was taken — purely informational, surfaced in the task list
+ * so users can see "scheduled with roster as of <time>".
+ *
+ * Pure function so the renderer can unit-test it independently
+ * of the IPC/scheduler plumbing.
+ */
+export function buildScheduledEnsembleSnapshot(
+  chat: ChatRecord | null | undefined,
+  options: { dmTargetParticipantId?: string; now?: () => Date } = {}
+): ScheduledEnsembleSnapshot | null {
+  if (!chat || chat.chatKind !== 'ensemble' || !chat.ensemble) return null
+  const now = (options.now || (() => new Date()))()
+  return {
+    orchestrationMode:
+      chat.ensemble.orchestrationMode === 'continuous' ? 'continuous' : 'turn_bound',
+    participants: chat.ensemble.participants.map((participant) => ({ ...participant })),
+    ...(options.dmTargetParticipantId
+      ? { dmTargetParticipantId: options.dmTargetParticipantId }
+      : {}),
+    ...(typeof chat.ensemble.maxParticipants === 'number'
+      ? { maxParticipants: chat.ensemble.maxParticipants }
+      : {}),
+    ...(typeof chat.ensemble.maxContinuationHops === 'number'
+      ? { maxContinuationHops: chat.ensemble.maxContinuationHops }
+      : {}),
+    capturedAt: now.toISOString()
+  }
+}
+
+/**
+ * 1.0.4-AT3 — apply an ensemble snapshot back onto a chat record
+ * so the orchestrator sees the schedule-time roster/mode when
+ * firing the task. Returns a new chat (immutable; original is
+ * unchanged). The snapshot's `dmTargetParticipantId` is NOT
+ * written onto the chat — the caller carries it into the
+ * `runEnsembleRound` dispatch payload separately so the chat's
+ * own selection isn't perturbed.
+ */
+export function applyScheduledEnsembleSnapshot(
+  chat: ChatRecord,
+  snapshot: ScheduledEnsembleSnapshot
+): ChatRecord {
+  if (!chat.ensemble) return chat
+  return {
+    ...chat,
+    ensemble: {
+      ...chat.ensemble,
+      orchestrationMode: snapshot.orchestrationMode,
+      participants: snapshot.participants.map((participant) => ({ ...participant })),
+      ...(typeof snapshot.maxParticipants === 'number'
+        ? { maxParticipants: snapshot.maxParticipants }
+        : {}),
+      ...(typeof snapshot.maxContinuationHops === 'number'
+        ? { maxContinuationHops: snapshot.maxContinuationHops }
+        : {}),
+      updatedAt: new Date().toISOString()
+    }
+  }
+}

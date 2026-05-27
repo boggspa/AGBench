@@ -3,6 +3,10 @@ import type { CSSProperties, ReactElement } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
+import {
+  applyScheduledEnsembleSnapshot,
+  buildScheduledEnsembleSnapshot
+} from './lib/scheduledEnsembleSnapshot'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 import {
@@ -12402,6 +12406,18 @@ function App(): React.JSX.Element {
       return
     }
 
+    // 1.0.4-AT3 — when scheduling from an ensemble chat, capture
+    // the panel state at schedule time (orchestration mode +
+    // participants + caps + DM target) so the dispatcher can
+    // apply it as the fire-time roster. Pre-AT3 the dispatcher
+    // read the chat's LIVE ensemble config, so the user's
+    // post-schedule edits silently reshaped what ran.
+    const ensembleSnapshot = isCurrentEnsembleChat
+      ? buildScheduledEnsembleSnapshot(currentChat, {
+          dmTargetParticipantId: request.dmTargetParticipantId
+        })
+      : null
+
     const saved = await window.api.saveScheduledTask({
       workspaceId: currentWorkspace.id,
       workspacePath: currentWorkspace.path,
@@ -12424,7 +12440,10 @@ function App(): React.JSX.Element {
       geminiAuthProfileId: request.geminiAuthProfileId,
       handoffSourceRunId: request.handoffSourceRunId,
       runAt: runAtDate.toISOString(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local'
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'local',
+      ...(ensembleSnapshot
+        ? { kind: 'ensemble' as const, ensembleSnapshot }
+        : { kind: 'single' as const })
     })
     setScheduledTasks(await window.api.getScheduledTasks(currentWorkspace.id))
     setScheduleRunAt('')
@@ -12675,7 +12694,7 @@ function App(): React.JSX.Element {
         setWorkspacesHydrated(true)
         workspace = latestWorkspaces.find((item) => item.id === task.workspaceId)
       }
-      const chat = await window.api.getChat(task.chatId)
+      let chat = await window.api.getChat(task.chatId)
       if (!workspace || !chat) {
         await window.api.updateScheduledTask(task.id, {
           status: 'failed',
@@ -12683,6 +12702,17 @@ function App(): React.JSX.Element {
         })
         setScheduledTasks(await window.api.getScheduledTasks(currentWorkspace?.id))
         return
+      }
+
+      // 1.0.4-AT3 — apply the schedule-time ensemble snapshot to the
+      // chat record before dispatch so the orchestrator sees the
+      // roster + mode the user actually scheduled, not whatever
+      // edits happened between schedule + fire. Persist the snapshot
+      // application so the renderer's local cache + main-process
+      // store agree on the dispatch-time state.
+      if (task.kind === 'ensemble' && task.ensembleSnapshot && chat.chatKind === 'ensemble') {
+        chat = applyScheduledEnsembleSnapshot(chat, task.ensembleSnapshot)
+        await window.api.saveChat(chat)
       }
 
       setCurrentWorkspace(workspace)
