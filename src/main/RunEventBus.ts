@@ -128,7 +128,21 @@ export function makeElectronIpcSink(): RunEventSink {
       } catch {
         return
       }
-      sender.send(event.channel, event.payload)
+      // 1.0.4-AQ1 — wrap the actual send in try-catch too. The
+      // isDestroyed() check above can pass and then the frame can
+      // be disposed during the same microtask (e.g. user closing
+      // the window while a CLI socket is mid-flush). Electron's
+      // `webContents.send` then logs `Render frame was disposed
+      // before WebFrameMain could be accessed` to stderr — which
+      // is harmless but spammy in production logs and indicates
+      // a real TOCTOU race we can mask.
+      try {
+        sender.send(event.channel, event.payload)
+      } catch {
+        // Renderer is gone — the bus is best-effort, so swallow
+        // the failure. Persistent state lives in the durable run
+        // event log (`RunRepository`) so no data is lost.
+      }
     }
   }
 }

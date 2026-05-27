@@ -1822,7 +1822,11 @@ function providerDisplayName(provider: ProviderId): string {
 }
 
 function emitRunQueueChanged(): void {
-  mainWindow?.webContents.send(
+  // 1.0.4-AQ1 — same disposed-frame race; fires from
+  // RunCoordinator state transitions which can land on background
+  // ticks while the user is closing the window.
+  safeSendToWebContents(
+    mainWindow,
     'run-queue-changed',
     AppStore.getRunQueueJobs({ includeTerminal: true })
   )
@@ -2267,13 +2271,46 @@ function surfaceSubThreadDispatchFailure(args: {
   }
 }
 
+/**
+ * 1.0.4-AQ1 — defensive `webContents.send` wrapper.
+ *
+ * Background-timer driven sends (orchestrator flush, durable run-event
+ * fanout, socket data callbacks) race against window close. The
+ * frame can be disposed between the `isDestroyed()` check and the
+ * actual `send()` call, and Electron logs `Render frame was disposed
+ * before WebFrameMain could be accessed` to stderr — harmless but
+ * spammy and an indicator of a real TOCTOU race we'd rather mask.
+ *
+ * This helper:
+ *   1. Verifies the BrowserWindow is non-null and not destroyed.
+ *   2. Verifies the WebContents is not destroyed.
+ *   3. Wraps the actual `send` in try-catch so a same-tick dispose
+ *      doesn't surface as an uncaught error.
+ *
+ * Caller-visible contract: best-effort delivery. State that needs
+ * to survive a renderer close should live in durable storage
+ * (AppStore, RunRepository) — the renderer notification is just
+ * a UI freshness signal.
+ */
+function safeSendToWebContents(
+  target: Electron.BrowserWindow | null | undefined,
+  channel: string,
+  payload: unknown
+): void {
+  if (!target || target.isDestroyed()) return
+  const wc = target.webContents
+  if (!wc || wc.isDestroyed()) return
+  try {
+    wc.send(channel, payload)
+  } catch {
+    // Frame disposed between the check above and the send.
+    // Persistent state already lives in AppStore / RunRepository.
+  }
+}
+
 function saveAndBroadcastChat(chat: ChatRecord): void {
   AppStore.saveChat(chat)
-  try {
-    mainWindow?.webContents.send('chat-updated', chat)
-  } catch {
-    // Renderer not attached; persistence is the source of truth.
-  }
+  safeSendToWebContents(mainWindow, 'chat-updated', chat)
 }
 
 function resolveDelegatedApprovalMode(context: GeminiToolContext, parentChatId: string): string {
@@ -2545,7 +2582,12 @@ function emitRunEventsChanged(record: {
   workspaceId?: string
   sequence: number
 }) {
-  mainWindow?.webContents.send('run-events-changed', {
+  // 1.0.4-AQ1 — same TOCTOU race as saveAndBroadcastChat. This
+  // fires from `RunRepository.appendRunEvent` via the durable
+  // run-event log, which itself fires from socket data callbacks
+  // (CLI providers) and timer-driven flushes. Without the guard
+  // we get `Render frame was disposed` spam during window-close.
+  safeSendToWebContents(mainWindow, 'run-events-changed', {
     runId: record.runId,
     chatId: record.chatId,
     workspaceId: record.workspaceId,
