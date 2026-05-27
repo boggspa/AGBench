@@ -6553,6 +6553,29 @@ button.sidebar-item {
   align-self: center;
 }
 
+/*
+ * 1.0.5-AR12e (tester report) — Reset the `order` property on
+ * the workspace button when it's in the telemetry row.
+ *
+ * Pre-AR12c the four themed shells (codex / claude / gemini /
+ * kimi) each set `order: 4` on `[data-composer-control="workspace"]`
+ * so the button slotted between Provider (order: 3) and Model
+ * (order: 5) in the inline-pickers-left row. Those `order: 4`
+ * rules still apply in AR12c's new home (the telemetry row),
+ * where every other item has the default `order: 0` — so the
+ * workspace button ends up AFTER the token tally instead of
+ * between the timecode cluster and the tally.
+ *
+ * Fix: reset order to 0 specifically inside `.composer-telemetry-row`.
+ * The per-shell `order: 4` declarations stay intact in case the
+ * workspace button ever returns to the top inline-pickers row
+ * (e.g. a future shell-specific variant). Cleanest seam — no
+ * touch to the existing per-shell positioning logic.
+ */
+.composer-telemetry-row .composer-workspace-button[data-composer-control='workspace'] {
+  order: 0;
+}
+
 /* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button in the
  * composer telemetry row. Pre-AS3 the attached-window UX was an
  * inline pill in the action row showing the app name + ×. The
