@@ -17,6 +17,7 @@ import type {
   EnsembleParticipantStatus,
   EnsembleRunIdentity,
   EnsembleRoundState,
+  ExternalPathGrant,
   ProviderId,
   ToolActivity,
   ToolActivityStatus
@@ -520,6 +521,22 @@ interface ActiveRoundRuntime {
    * per-round case.
    */
   selfReflective?: boolean
+  /**
+   * 1.0.4-AT4 — composer-level external path grants captured at
+   * startRound time. Pre-AT4 the round dispatch dropped these on
+   * the floor (`runEnsembleRound` IPC schema didn't accept them),
+   * so file-mention grants the user added in the composer never
+   * reached the participants' effective permissions. Now they
+   * land here on the runtime, get fed into
+   * `resolveEffectiveRunPermissions` via
+   * `explicitExternalPathGrants`, and the resolver's existing
+   * provider filter ensures each participant only sees grants
+   * tagged for its own provider.
+   *
+   * Empty / undefined when the user didn't add any explicit
+   * grants — matches pre-AT4 behaviour for those rounds.
+   */
+  externalPathGrants?: ExternalPathGrant[]
 }
 
 export class EnsembleOrchestrator {
@@ -544,6 +561,18 @@ export class EnsembleOrchestrator {
      * instead of the full enabled set.
      */
     dmTargetParticipantId?: string
+    /**
+     * 1.0.4-AT4 — composer-level external path grants. Pre-AT4
+     * the runEnsembleRound IPC payload didn't accept these, so
+     * file-mention grants the user added in the composer never
+     * reached the participant dispatch payload. The orchestrator
+     * stashes them on the runtime and merges them into each
+     * participant's effective permissions via
+     * `resolveEffectiveRunPermissions`'s `explicitExternalPathGrants`
+     * input (the resolver's provider-filter ensures each
+     * participant only sees grants tagged for its own provider).
+     */
+    externalPathGrants?: ExternalPathGrant[]
   }): { status: 'started' | 'queued' | 'steered' | 'ignored'; roundId?: string } {
     // 1.0.4-AF — strip a leading `/discuss` (alias `/meta`) token so
     // the slash never reaches the panel verbatim. The flag flows
@@ -565,7 +594,8 @@ export class EnsembleOrchestrator {
           input.dmTargetParticipantId,
           imageAttachments,
           [],
-          parsed.selfReflective
+          parsed.selfReflective,
+          input.externalPathGrants
         )
         this.appendRoundStatus(
           input.chatId,
@@ -600,7 +630,8 @@ export class EnsembleOrchestrator {
       input.dmTargetParticipantId,
       imageAttachments,
       [],
-      parsed.selfReflective
+      parsed.selfReflective,
+      input.externalPathGrants
     )
     return { status: 'started', roundId }
   }
@@ -960,7 +991,17 @@ export class EnsembleOrchestrator {
      * inverted deictic rule. Persistent toggling of the EnsembleConfig
      * flag is a separate concern handled outside this path.
      */
-    selfReflective = false
+    selfReflective = false,
+    /**
+     * 1.0.4-AT4 — composer-level external path grants captured at
+     * `startRound`. Lands on the runtime so each participant's
+     * `resolveParticipantPermissions` can merge it into
+     * `resolveEffectiveRunPermissions` via
+     * `explicitExternalPathGrants`. The resolver's existing
+     * provider filter ensures each participant only sees grants
+     * tagged for its own provider.
+     */
+    externalPathGrants: ExternalPathGrant[] = []
   ): string {
     const chat = this.deps.getChat(chatId)
     if (!chat?.ensemble) throw new Error('Ensemble chat not found.')
@@ -1050,7 +1091,8 @@ export class EnsembleOrchestrator {
       orchestrationMode,
       continuationHops: 0,
       maxContinuationHops,
-      ...(selfReflective ? { selfReflective: true } : {})
+      ...(selfReflective ? { selfReflective: true } : {}),
+      ...(externalPathGrants.length > 0 ? { externalPathGrants: [...externalPathGrants] } : {})
     }
     this.roundsByChatId.set(chatId, runtime)
     void this.runRound(runtime, ordered)
@@ -1210,7 +1252,11 @@ export class EnsembleOrchestrator {
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
       })
-      const permissions = this.resolveParticipantPermissions(chat, participant)
+      const permissions = this.resolveParticipantPermissions(
+        chat,
+        participant,
+        runtime.externalPathGrants
+      )
       // 1.0.4-AF — merge the round-scoped `selfReflective` flag (set
       // by `/discuss` at startRound) into the config so the prompt
       // builder sees the inverted deictic rule for this round only.
@@ -1695,7 +1741,11 @@ export class EnsembleOrchestrator {
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
       })
-      const permissions = this.resolveParticipantPermissions(chat, scout)
+      const permissions = this.resolveParticipantPermissions(
+        chat,
+        scout,
+        runtime.externalPathGrants
+      )
       const promptText = buildEnsembleParticipantPrompt({
         chat,
         config: chat.ensemble!,
@@ -2189,7 +2239,8 @@ export class EnsembleOrchestrator {
 
   private resolveParticipantPermissions(
     chat: ChatRecord,
-    participant: EnsembleParticipant
+    participant: EnsembleParticipant,
+    explicitExternalPathGrants?: ExternalPathGrant[]
   ): EffectiveRunPermissions {
     // 1.0.4-AK3 — Work Session permission clamp. When an active
     // Work Session is in flight, the session-wide
@@ -2219,7 +2270,14 @@ export class EnsembleOrchestrator {
       workspacePath: chat.scope === 'global' ? undefined : chat.workspacePath,
       settings: this.deps.getSettings(),
       presetId,
-      overrides: participant.permissionOverrides || null
+      overrides: participant.permissionOverrides || null,
+      // 1.0.4-AT4 — composer-level grants merge in here. The
+      // resolver dedupes across (`explicit` ∪ `overrides.externalPathGrants`)
+      // and provider-filters before returning, so each
+      // participant only sees grants tagged for its own provider.
+      ...(explicitExternalPathGrants && explicitExternalPathGrants.length > 0
+        ? { explicitExternalPathGrants }
+        : {})
     })
   }
 }

@@ -20370,6 +20370,7 @@ if (isGeminiMcpBridgeProcess) {
           mode?: 'normal' | 'queue' | 'steer'
           imageAttachments?: Array<{ id?: string; path?: string; name?: string }>
           dmTargetParticipantId?: string
+          externalPathGrants?: ExternalPathGrant[]
         }
       ) => {
         if (AppStore.getSettings().ensembleModeEnabled === false) {
@@ -20377,6 +20378,20 @@ if (isGeminiMcpBridgeProcess) {
         }
         const chatId = requireNonEmptyString(payload?.chatId, 'Ensemble chat id')
         const prompt = requireNonEmptyString(payload?.prompt, 'Ensemble prompt')
+        // 1.0.4-AT4 — normalize the renderer-supplied grants the
+        // same way solo-run dispatch does. Drops malformed entries
+        // and produces an [] when nothing is granted.
+        const externalPathGrants = Array.isArray(payload?.externalPathGrants)
+          ? (payload!.externalPathGrants as ExternalPathGrant[]).filter(
+              (grant): grant is ExternalPathGrant =>
+                Boolean(
+                  grant &&
+                    typeof grant.path === 'string' &&
+                    grant.path.length > 0 &&
+                    typeof grant.provider === 'string'
+                )
+            )
+          : []
         return ensembleOrchestratorRef?.startRound({
           chatId,
           prompt,
@@ -20385,7 +20400,8 @@ if (isGeminiMcpBridgeProcess) {
           imageAttachments: imageAttachmentSnapshots(payload?.imageAttachments),
           ...(payload?.dmTargetParticipantId
             ? { dmTargetParticipantId: payload.dmTargetParticipantId }
-            : {})
+            : {}),
+          ...(externalPathGrants.length > 0 ? { externalPathGrants } : {})
         })
       }
     )

@@ -11200,6 +11200,16 @@ function App(): React.JSX.Element {
           // participants to just this one for the round.
           ...(request.dmTargetParticipantId
             ? { dmTargetParticipantId: request.dmTargetParticipantId }
+            : {}),
+          // 1.0.4-AT4 — composer-level external path grants. Pre-AT4
+          // these were dropped at the IPC boundary, so file-mention
+          // grants the user added in the composer never reached
+          // ensemble participants. The orchestrator runs them
+          // through `resolveEffectiveRunPermissions`'s
+          // `explicitExternalPathGrants` input which provider-
+          // filters per participant.
+          ...(request.externalPathGrants && request.externalPathGrants.length > 0
+            ? { externalPathGrants: request.externalPathGrants }
             : {})
         })
         if (!request.existingPrompt && !request.preserveComposer) {

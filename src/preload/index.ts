@@ -442,6 +442,19 @@ const api = {
      * the run (so status pills + per-participant tally still update)
      * but iterates a one-element participant list. */
     dmTargetParticipantId?: string
+    /** 1.0.4-AT4 — composer-level external path grants applied to
+     * every participant's effective permissions for the round.
+     * Pre-AT4 these were dropped on the IPC boundary, so file-
+     * mention grants the user added in the composer never reached
+     * the participants. The orchestrator's
+     * `resolveParticipantPermissions` provider-filters so each
+     * participant only sees grants tagged for its own provider. */
+    externalPathGrants?: Array<{
+      provider: string
+      path: string
+      kind?: string
+      grantedAt?: string
+    }>
   }) => ipcRenderer.invoke('run-ensemble-round', payload),
   cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
   skipEnsembleParticipant: (chatId: string) =>
