@@ -233,6 +233,19 @@ interface EnsembleParticipantsAboveRowProps {
    * the overflow popover hides the Retry row.
    */
   onRetryParticipant?: (participantId: string) => void
+  /**
+   * 1.0.5-N7 — User-initiated Wake-Now from the chip overflow. Fires
+   * the wakeup immediately via the orchestrator's handleWakeupFired
+   * (same code path as the timer firing naturally). Omitted in
+   * harness tests that don't model wakeups.
+   */
+  onWakeNowParticipant?: (wakeupId: string) => void
+  /**
+   * 1.0.5-N7 — User-initiated Cancel of a pending wakeup. Marks
+   * the persisted record cancelled and flips the participant out
+   * of the sleeping state.
+   */
+  onCancelWakeupParticipant?: (wakeupId: string) => void
 }
 
 export function EnsembleParticipantsAboveRow({
@@ -242,7 +255,9 @@ export function EnsembleParticipantsAboveRow({
   onChatChange,
   onSkipActive,
   onStopWorkSession,
-  onRetryParticipant
+  onRetryParticipant,
+  onWakeNowParticipant,
+  onCancelWakeupParticipant
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
@@ -491,6 +506,20 @@ export function EnsembleParticipantsAboveRow({
             !active &&
             (state?.status === 'failed' || state?.status === 'unreachable') &&
             !isRoundRunning
+          // 1.0.5-N7 — Look up this participant's pending wakeup (if
+          // any) from the chat's persisted wakeups map. The
+          // sleeping chip shows Wake-Now + Cancel rows in the
+          // overflow popover. We rely on the persisted record
+          // because in-memory runtime state isn't visible to the
+          // renderer.
+          const pendingWakeup = activeRound
+            ? Object.values(chat.ensemble?.wakeups || {}).find(
+                (wakeup) =>
+                  wakeup.status === 'pending' &&
+                  wakeup.roundId === activeRound.roundId &&
+                  wakeup.participantId === participant.id
+              )
+            : undefined
           return (
             <ParticipantChip
               key={participant.id}
@@ -523,6 +552,17 @@ export function EnsembleParticipantsAboveRow({
                   ? () => onRetryParticipant(participant.id)
                   : undefined
               }
+              onWakeNow={
+                pendingWakeup && onWakeNowParticipant
+                  ? () => onWakeNowParticipant(pendingWakeup.wakeupId)
+                  : undefined
+              }
+              onCancelWakeup={
+                pendingWakeup && onCancelWakeupParticipant
+                  ? () => onCancelWakeupParticipant(pendingWakeup.wakeupId)
+                  : undefined
+              }
+              wakeAt={pendingWakeup?.wakeAt}
             />
           )
         })}
@@ -621,6 +661,15 @@ interface ParticipantChipProps {
    * means "no retry row in the overflow popover".
    */
   onRetry?: () => void
+  /**
+   * 1.0.5-N7 — Wake-Now + Cancel for a sleeping participant. The
+   * parent computes the pending wakeup record and only passes the
+   * callbacks when there's actually a pending wakeup. wakeAt is
+   * forwarded for the popover tooltip.
+   */
+  onWakeNow?: () => void
+  onCancelWakeup?: () => void
+  wakeAt?: string
 }
 
 function ParticipantChip({
@@ -642,7 +691,10 @@ function ParticipantChip({
   onDragStart,
   onDragHover,
   onDragEnd,
-  onRetry
+  onRetry,
+  onWakeNow,
+  onCancelWakeup,
+  wakeAt
 }: ParticipantChipProps): React.JSX.Element {
   const chipRef = useRef<HTMLDivElement | null>(null)
   // Slug the status onto the class so CSS can colour-code the pill
@@ -814,6 +866,9 @@ function ParticipantChip({
           locked={locked}
           onClose={onCloseOverflow}
           onRetry={onRetry}
+          onWakeNow={onWakeNow}
+          onCancelWakeup={onCancelWakeup}
+          wakeAt={wakeAt}
         />
       )}
     </div>
@@ -831,6 +886,11 @@ interface OverflowPopoverProps {
   /** 1.0.4-AT7 — re-dispatch the participant when their last turn
    * failed. Optional; when omitted, the Retry row is hidden. */
   onRetry?: () => void
+  /** 1.0.5-N7 — Wake-Now + Cancel rows for a sleeping participant.
+   * Hidden when no callback (no pending wakeup). */
+  onWakeNow?: () => void
+  onCancelWakeup?: () => void
+  wakeAt?: string
 }
 
 function OverflowPopover({
@@ -841,7 +901,10 @@ function OverflowPopover({
   canRemove,
   locked,
   onClose,
-  onRetry
+  onRetry,
+  onWakeNow,
+  onCancelWakeup,
+  wakeAt
 }: OverflowPopoverProps): React.JSX.Element | null {
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
@@ -935,6 +998,40 @@ function OverflowPopover({
           }}
         >
           Retry participant
+        </button>
+      )}
+      {onWakeNow && (
+        // 1.0.5-N7 — Wake the sleeping participant immediately,
+        // bypassing the scheduled wakeAt. Same orchestrator path
+        // as the timer firing naturally; the participant resumes
+        // with the standard [Scheduled wakeup] prompt block.
+        <button
+          type="button"
+          className="ensemble-above-overflow-wake-now"
+          title={wakeAt ? `Originally scheduled for ${wakeAt}` : undefined}
+          onClick={() => {
+            onWakeNow()
+            onClose()
+          }}
+        >
+          Wake now
+        </button>
+      )}
+      {onCancelWakeup && (
+        // 1.0.5-N7 — Cancel the pending wakeup. The participant
+        // exits the sleeping state but the round continues with
+        // other participants. If you want the round itself to
+        // stop, use the round-level Stop button instead.
+        <button
+          type="button"
+          className="ensemble-above-overflow-cancel-wakeup"
+          title={wakeAt ? `Cancels the scheduled wakeup at ${wakeAt}` : undefined}
+          onClick={() => {
+            onCancelWakeup()
+            onClose()
+          }}
+        >
+          Cancel wakeup
         </button>
       )}
       <button

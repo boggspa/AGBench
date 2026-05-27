@@ -20805,6 +20805,44 @@ if (isGeminiMcpBridgeProcess) {
       )
     })
 
+    // 1.0.5-N7 — User-initiated Wake-Now from the participant chip
+    // overflow. Forwards to the orchestrator's existing wakeup-fired
+    // path; same code path as the timer firing naturally.
+    ipcMain.handle('wake-ensemble-participant-now', async (_, wakeupId?: string) => {
+      const id = requireNonEmptyString(wakeupId, 'Wakeup id')
+      // The timer service holds an in-flight setTimeout; cancel it
+      // first so the timer doesn't fire a duplicate after this user
+      // wake. handleWakeupFired removes the record from
+      // runtime.pendingWakeups, so the timer's onFire callback would
+      // miss anyway — but explicit cancellation keeps the timer
+      // bookkeeping clean.
+      wakeupTimerServiceRef?.cancel(id)
+      return Boolean(ensembleOrchestratorRef?.handleWakeupFired(id))
+    })
+
+    // 1.0.5-N7 — User-initiated Cancel of a pending wakeup. Tries
+    // the in-memory runtime path first; falls back to a direct
+    // persisted-record cancel if the runtime isn't in memory
+    // (e.g. post-restart before recovery armed the timer).
+    ipcMain.handle('cancel-ensemble-participant-wakeup', async (_, wakeupId?: string) => {
+      const id = requireNonEmptyString(wakeupId, 'Wakeup id')
+      wakeupTimerServiceRef?.cancel(id)
+      const cancelled = ensembleOrchestratorRef?.cancelWakeupById(id, 'cancelled by user')
+      if (cancelled) return { ok: true, cancelled }
+      const persisted = findPersistedEnsembleWakeup(id)
+      if (!persisted || persisted.status !== 'pending') {
+        return { ok: false, error: 'No pending wakeup matches.' }
+      }
+      const fallback = {
+        ...persisted,
+        status: 'cancelled' as const,
+        cancelledAt: new Date().toISOString(),
+        message: 'cancelled by user'
+      }
+      savePersistedEnsembleWakeup(fallback)
+      return { ok: true, cancelled: fallback }
+    })
+
     ipcMain.handle(
       'cancel-agent-run',
       async (_, provider: ProviderId = 'gemini', runId?: string) => {

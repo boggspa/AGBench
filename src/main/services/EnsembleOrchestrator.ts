@@ -1014,6 +1014,26 @@ export class EnsembleOrchestrator {
     return true
   }
 
+  /**
+   * 1.0.5-N7 — User-initiated cancel of a specific pending wakeup
+   * by id. Symmetric with handleWakeupFired but marks the record
+   * cancelled instead of fired. Returns the cancelled record or
+   * null when no in-memory runtime matches. Persisted-only fallback
+   * is the caller's responsibility (IPC layer).
+   */
+  cancelWakeupById(wakeupId: string, message: string): EnsembleWakeupRecord | null {
+    if (!wakeupId) return null
+    const located = this.findRuntimeByWakeupId(wakeupId)
+    if (!located) return null
+    const { runtime, wakeup } = located
+    if (wakeup.status !== 'pending') return null
+    const cancelled = this.markWakeupCancelled(wakeup, message)
+    runtime.pendingWakeups?.delete(wakeupId)
+    this.updateSleepingRoundState(wakeup.chatId, wakeup.roundId)
+    this.signalWakeWaiter(runtime)
+    return cancelled
+  }
+
   resumePersistedWakeup(
     wakeup: EnsembleWakeupRecord,
     sender: Electron.WebContents

@@ -26818,6 +26818,43 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* 1.0.5-N7 — Wake-Now in the chip overflow. Same accent shape as
+ * Retry (both are recovery affordances) but tone-warning so it
+ * reads as "do something with the sleeping state right now" vs
+ * Retry's "try again after a failure". */
+.ensemble-above-overflow-wake-now {
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
+  color: color-mix(in srgb, var(--warning) 82%, var(--text-primary));
+  cursor: pointer;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ensemble-above-overflow-wake-now:hover {
+  background: color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
+/* 1.0.5-N7 — Cancel wakeup. Muted/neutral; cancelling a wakeup is
+ * not destructive (the round keeps running for the other
+ * participants), so this doesn't get danger styling. */
+.ensemble-above-overflow-cancel-wakeup {
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 35%, var(--border-color));
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+}
+.ensemble-above-overflow-cancel-wakeup:hover {
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+}
+
 .ensemble-above-overflow-remove {
   align-self: flex-start;
   border: 1px solid color-mix(in srgb, var(--danger, #c44a4a) 35%, var(--border-color));

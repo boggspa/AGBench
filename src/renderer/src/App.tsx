@@ -16924,6 +16924,22 @@ function App(): React.JSX.Element {
                         dmTargetParticipantId: participantId
                       })
                     }}
+                    onWakeNowParticipant={(wakeupId) => {
+                      // 1.0.5-N7 — Fire the wakeup immediately. The
+                      // orchestrator's handleWakeupFired path runs
+                      // the same code the timer would; the participant
+                      // resumes with the [Scheduled wakeup] prompt
+                      // block as if the wake time had arrived.
+                      void window.api.wakeEnsembleParticipantNow(wakeupId)
+                    }}
+                    onCancelWakeupParticipant={(wakeupId) => {
+                      // 1.0.5-N7 — Cancel the pending wakeup. The
+                      // participant exits sleeping state; the round
+                      // continues with other participants. Falls
+                      // back to a persisted-record cancel if there's
+                      // no in-memory runtime (e.g. post-restart).
+                      void window.api.cancelEnsembleParticipantWakeup(wakeupId)
+                    }}
                   />
                 )}
                 {/*

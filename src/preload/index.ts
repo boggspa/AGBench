@@ -463,6 +463,13 @@ const api = {
   cancelEnsembleRound: (chatId: string) => ipcRenderer.invoke('cancel-ensemble-round', chatId),
   skipEnsembleParticipant: (chatId: string) =>
     ipcRenderer.invoke('skip-ensemble-participant', chatId),
+  wakeEnsembleParticipantNow: (wakeupId: string) =>
+    ipcRenderer.invoke('wake-ensemble-participant-now', wakeupId) as Promise<boolean>,
+  cancelEnsembleParticipantWakeup: (wakeupId: string) =>
+    ipcRenderer.invoke('cancel-ensemble-participant-wakeup', wakeupId) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
   createSubThread: (args: {
     parentChatId: string
     provider: string

@@ -545,6 +545,59 @@ describe('EnsembleOrchestrator', () => {
     ).toBe(true)
   })
 
+  it('cancelWakeupById flips a pending wakeup to cancelled and clears the sleeping state', async () => {
+    // 1.0.5-N7 — Backs the chip-overflow Cancel button. Symmetric
+    // with handleWakeupFired (Wake Now) but cancels instead of
+    // firing. Must (a) flip the persisted record to status
+    // 'cancelled' with the supplied message, (b) drop it from
+    // runtime.pendingWakeups, (c) clear the participant's
+    // sleeping status on the round, (d) signal any wake waiter.
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+    const scheduled = harness.orchestrator.scheduleWakeupForRun(runId, {
+      delayMs: 60_000,
+      reason: 'Waiting.'
+    })
+    expect(scheduled.ok).toBe(true)
+    const wakeupId = scheduled.wakeup!.wakeupId
+
+    const cancelled = harness.orchestrator.cancelWakeupById(
+      wakeupId,
+      'cancelled by user'
+    )
+    expect(cancelled?.status).toBe('cancelled')
+    expect(cancelled?.message).toBe('cancelled by user')
+    expect(harness.chat.ensemble?.wakeups?.[wakeupId]?.status).toBe('cancelled')
+    expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toBeUndefined()
+    const participantStates = harness.chat.ensemble?.activeRound?.participants || []
+    const claudeState = participantStates.find((p) => p.participantId === 'claude')
+    expect(claudeState?.status).not.toBe('sleeping')
+  })
+
+  it('cancelWakeupById returns null for a wakeup that is no longer pending', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+    const scheduled = harness.orchestrator.scheduleWakeupForRun(runId, {
+      delayMs: 60_000
+    })
+    const wakeupId = scheduled.wakeup!.wakeupId
+    harness.orchestrator.cancelWakeupById(wakeupId, 'first cancel')
+    const second = harness.orchestrator.cancelWakeupById(wakeupId, 'second cancel')
+    expect(second).toBeNull()
+  })
+
   it('refuses to resume a persisted wakeup whose status is no longer pending', () => {
     // Guards the early-return at the top of resumePersistedWakeup.
     // A wakeup that already fired / cancelled / expired must not

@@ -658,6 +658,10 @@ declare global {
       }) => Promise<{ status: string; roundId?: string }>
       cancelEnsembleRound: (chatId: string) => Promise<boolean>
       skipEnsembleParticipant: (chatId: string) => Promise<boolean>
+      wakeEnsembleParticipantNow: (wakeupId: string) => Promise<boolean>
+      cancelEnsembleParticipantWakeup: (
+        wakeupId: string
+      ) => Promise<{ ok: boolean; error?: string }>
       createSubThread: (args: {
         parentChatId: string
         provider: ProviderId
