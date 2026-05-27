@@ -5626,6 +5626,9 @@ type SettingsPanelUpdate = {
   chatContextTurns?: number
   /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
   currency?: AppSettings['currency']
+  /** 1.0.5-EW26 — Kimi compatibility filter. */
+  kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
+  kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
   claudeBinaryPath?: string
   kimiBinaryPath?: string
   agenticServices?: AgenticServicesSettings
@@ -7510,6 +7513,19 @@ function App(): React.JSX.Element {
     // pipeline like every other AppSettings field.
     if (next.currency !== undefined) {
       settingsPatch.currency = next.currency
+    }
+
+    // 1.0.5-EW26 — Kimi compatibility filter. Same persist-only
+    // pattern — the renderer reads `settings.kimiSanitiserEnabled`
+    // / `settings.kimiSanitiserCustomKeywords` directly when
+    // rendering the Settings UI; the actual sanitisation happens
+    // main-side in `runKimiProvider` when an ensemble dispatch
+    // for Kimi is about to spawn.
+    if (next.kimiSanitiserEnabled !== undefined) {
+      settingsPatch.kimiSanitiserEnabled = next.kimiSanitiserEnabled
+    }
+    if (next.kimiSanitiserCustomKeywords !== undefined) {
+      settingsPatch.kimiSanitiserCustomKeywords = next.kimiSanitiserCustomKeywords
     }
 
     if (next.mode !== undefined) {
@@ -16006,6 +16022,8 @@ function App(): React.JSX.Element {
               geminiApiRuntime={geminiApiRuntime}
               chatContextTurns={chatContextTurns}
               currency={displayCurrency}
+              kimiSanitiserEnabled={settings?.kimiSanitiserEnabled ?? false}
+              kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
               agenticServices={agenticServices}

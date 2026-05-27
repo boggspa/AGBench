@@ -16,6 +16,8 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     geminiCheckpointingEnabled: false,
     chatContextTurns: 6,
     currency: 'USD',
+    kimiSanitiserEnabled: false,
+    kimiSanitiserCustomKeywords: '',
     appearanceMode: 'solid',
     visualEffectStyle: 'auto',
     themeAppearance: 'system',

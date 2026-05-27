@@ -1,0 +1,122 @@
+import { describe, expect, it } from 'vitest'
+import {
+  KIMI_DEFAULT_TRIGGER_KEYWORDS,
+  formatKimiSanitiserDiagnostic,
+  parseCustomKeywords,
+  sanitiseForKimi
+} from './kimiSanitiser'
+
+describe('kimiSanitiser', () => {
+  it('returns text unchanged when no triggers match', () => {
+    const input =
+      'The weather today is lovely. The crops are healthy and the village square is busy.'
+    const result = sanitiseForKimi(input)
+    expect(result.text).toBe(input)
+    expect(result.redacted).toBe(false)
+    expect(result.matches).toEqual([])
+  })
+
+  it('redacts a sentence containing a default trigger keyword', () => {
+    const input =
+      'Codex summarised global supply chains. The 1989 Tiananmen anniversary was mentioned in passing. Discussion continued on shipping.'
+    const result = sanitiseForKimi(input)
+    expect(result.redacted).toBe(true)
+    expect(result.matches).toHaveLength(1)
+    expect(result.matches[0].trigger).toBe('Tiananmen')
+    expect(result.text).toContain('Codex summarised global supply chains.')
+    expect(result.text).toContain(
+      '[sentence redacted: AGBench Kimi compatibility filter detected content Moonshot rejects]'
+    )
+    expect(result.text).toContain('Discussion continued on shipping.')
+  })
+
+  it('redacts multiple matching sentences in a longer text', () => {
+    const input =
+      'Hong Kong protest history was covered. The US-China relations summary followed. The market closed up 2%.'
+    const result = sanitiseForKimi(input)
+    expect(result.redacted).toBe(true)
+    expect(result.matches.map((m) => m.trigger)).toEqual([
+      'Hong Kong protest',
+      'US-China relations'
+    ])
+    expect(result.text).toContain('The market closed up 2%.')
+  })
+
+  it('matches case-insensitively', () => {
+    const input = 'TIANANMEN was mentioned. Other content follows.'
+    const result = sanitiseForKimi(input)
+    expect(result.redacted).toBe(true)
+    expect(result.matches[0].trigger).toBe('Tiananmen')
+  })
+
+  it('honours user-supplied custom keywords on top of defaults', () => {
+    const input =
+      'A discussion of the South China Sea dispute appeared in the briefing. Other markets were calm.'
+    const baseline = sanitiseForKimi(input)
+    expect(baseline.redacted).toBe(false)
+    const withCustom = sanitiseForKimi(input, {
+      customKeywords: ['South China Sea']
+    })
+    expect(withCustom.redacted).toBe(true)
+    expect(withCustom.matches[0].trigger).toBe('South China Sea')
+  })
+
+  it('trims and ignores blank custom keyword lines', () => {
+    const result = sanitiseForKimi('Something benign here.', {
+      customKeywords: ['', '   ', 'real-trigger', '']
+    })
+    expect(result.text).toBe('Something benign here.')
+    expect(result.redacted).toBe(false)
+  })
+
+  it('parses the raw custom-keywords textarea into a usable array', () => {
+    const raw = `# A comment line that should be ignored\nSouth China Sea\n\n  Spratly Islands  \n# another comment\nNine Dash Line`
+    expect(parseCustomKeywords(raw)).toEqual([
+      'South China Sea',
+      'Spratly Islands',
+      'Nine Dash Line'
+    ])
+  })
+
+  it('truncates long sentence excerpts in the matches list', () => {
+    const longSentence =
+      'A sentence that contains Tiananmen and goes on for quite a while ' +
+      'with various filler words to push past the 120 character truncation ' +
+      'boundary so we can verify the excerpt elision is applied.'
+    const result = sanitiseForKimi(longSentence)
+    expect(result.redacted).toBe(true)
+    expect(result.matches[0].sentenceExcerpt.length).toBeLessThanOrEqual(120)
+    expect(result.matches[0].sentenceExcerpt.endsWith('…')).toBe(true)
+  })
+
+  it('produces a human-readable diagnostic when sanitisation fired', () => {
+    const result = sanitiseForKimi(
+      'A summary mentioning Tibet independence appeared. Things continue.'
+    )
+    const diagnostic = formatKimiSanitiserDiagnostic(result)
+    expect(diagnostic).toContain('redacted 1 sentence')
+    expect(diagnostic).toContain('Trigger "Tibet independence"')
+    expect(diagnostic).toContain('Codex / Claude / Gemini')
+  })
+
+  it('produces an empty diagnostic when nothing was redacted', () => {
+    const result = sanitiseForKimi('Benign content only.')
+    expect(formatKimiSanitiserDiagnostic(result)).toBe('')
+  })
+
+  it('caps the diagnostic at 8 matches with a "and N more" suffix', () => {
+    const input = Array(10)
+      .fill('A Tiananmen reference happened.')
+      .join(' ')
+    const result = sanitiseForKimi(input)
+    const diagnostic = formatKimiSanitiserDiagnostic(result)
+    expect(diagnostic).toContain('…and 2 more')
+  })
+
+  it('default keyword list is non-empty and contains expected core triggers', () => {
+    expect(KIMI_DEFAULT_TRIGGER_KEYWORDS.length).toBeGreaterThan(0)
+    expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Tiananmen')
+    expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Xinjiang')
+    expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Falun Gong')
+  })
+})

@@ -11,6 +11,8 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     geminiCheckpointingEnabled: false,
     chatContextTurns: 8,
     currency: 'USD',
+    kimiSanitiserEnabled: false,
+    kimiSanitiserCustomKeywords: '',
     appearanceMode: 'solid',
     visualEffectStyle: 'classic',
     themeAppearance: 'system',

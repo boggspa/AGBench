@@ -163,6 +163,15 @@ import {
 } from './ProductOperations'
 import { installIpcValidation } from './IpcValidation'
 import { resolveGeminiCliResumePolicy } from './GeminiSessionPolicy'
+// 1.0.5-EW26 — Kimi compatibility filter (curated + user-
+// editable keyword list, redacts matched sentences before the
+// Kimi process sees the prompt). Module + tests live in
+// `src/main/lib/kimiSanitiser.ts`.
+import {
+  formatKimiSanitiserDiagnostic,
+  parseCustomKeywords,
+  sanitiseForKimi
+} from './lib/kimiSanitiser'
 import { composeRunPrompt } from './PromptComposition'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from './AgentbenchMcpTools'
 import {
@@ -7530,6 +7539,37 @@ async function runKimiWireProvider(
 }
 
 async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
+  // 1.0.5-EW26 — Kimi compatibility filter. When enabled in
+  // Settings, ensemble-mode Kimi participants get their prompt
+  // pre-sanitised: sentences containing keywords known to trip
+  // Moonshot's content filter (Tiananmen, Xinjiang, Hong Kong
+  // protests, US-China relations, etc.) are replaced with a
+  // redacted placeholder before Kimi spawns. Other participants
+  // see the unfiltered prompt — we only modify Kimi's view.
+  // Solo Kimi chats are NOT sanitised because the user is
+  // typing directly; a content_filter rejection there is more
+  // useful as immediate feedback than a silently-redacted view.
+  if (payload.ensembleRun) {
+    const settings = AppStore.getSettings()
+    if (settings.kimiSanitiserEnabled && typeof payload.prompt === 'string') {
+      const result = sanitiseForKimi(payload.prompt, {
+        customKeywords: parseCustomKeywords(settings.kimiSanitiserCustomKeywords)
+      })
+      if (result.redacted) {
+        payload.prompt = result.text
+        const diagnostic = formatKimiSanitiserDiagnostic(result)
+        sendAgentCompatLine(event.sender, 'kimi', {
+          type: 'provider_diagnostic',
+          provider: 'kimi',
+          message: diagnostic,
+          source: 'kimi-compatibility-filter',
+          matchCount: result.matches.length,
+          triggers: result.matches.map((m) => m.trigger)
+        })
+      }
+    }
+  }
+
   const resolved = await resolveCliProviderBinary('kimi', payload.runtimeProfile)
   if (!resolved.binaryPath) {
     sendAgentCompatError(event.sender, 'kimi', resolved.error || 'Kimi CLI is not configured.')

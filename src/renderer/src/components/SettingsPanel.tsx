@@ -89,6 +89,11 @@ interface SettingsPanelProps {
    * provider event payloads in USD; conversion is renderer-side
    * via `src/renderer/src/lib/formatCost.ts`. */
   currency: 'USD' | 'GBP' | 'EUR'
+  /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
+  kimiSanitiserEnabled: boolean
+  /** 1.0.5-EW26 — User's additional trigger keywords (newline-
+   * separated; lines starting with `#` are treated as comments). */
+  kimiSanitiserCustomKeywords: string
   claudeBinaryPath: string
   kimiBinaryPath: string
   agenticServices: AgenticServicesSettings
@@ -172,6 +177,10 @@ interface SettingsPanelProps {
     chatContextTurns?: number
     /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
     currency?: 'USD' | 'GBP' | 'EUR'
+    /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
+    kimiSanitiserEnabled?: boolean
+    /** 1.0.5-EW26 — User additions to the trigger keyword list. */
+    kimiSanitiserCustomKeywords?: string
     claudeBinaryPath?: string
     kimiBinaryPath?: string
     agenticServices?: AgenticServicesSettings
@@ -1088,6 +1097,8 @@ export function SettingsPanel({
   geminiApiRuntime,
   chatContextTurns,
   currency,
+  kimiSanitiserEnabled,
+  kimiSanitiserCustomKeywords,
   claudeBinaryPath,
   kimiBinaryPath,
   agenticServices,
@@ -2032,6 +2043,74 @@ export function SettingsPanel({
                   Used for cost displays on per-participant chips and the chat-level cumulative
                   tally. Rates are static approximations — provider pricing is sampled in USD
                   and converted at display time. Live FX refresh is on the 1.0.6 roadmap.
+                </p>
+              </div>
+
+              {/*
+                1.0.5-EW26 — Kimi (Moonshot) compatibility filter.
+                Off by default. When enabled, ensemble-mode Kimi
+                participants get their prompt context scanned by
+                `src/main/lib/kimiSanitiser.ts` before spawn:
+                sentences containing curated trigger keywords
+                (Tiananmen, Xinjiang, Hong Kong protests, US-China
+                relations, etc.) are replaced with a redacted
+                placeholder so Kimi can still participate without
+                triggering Moonshot's content_filter rejection.
+                Other participants always see the unfiltered prompt.
+              */}
+              <div className="settings-group">
+                <label
+                  className="settings-label"
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 'var(--space-sm)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={Boolean(kimiSanitiserEnabled)}
+                    onChange={(e) => onChange({ kimiSanitiserEnabled: e.target.checked })}
+                  />
+                  Kimi compatibility filter (Moonshot)
+                </label>
+                <p className="settings-hint">
+                  When enabled, prompts dispatched to Kimi participants in ensemble chats are
+                  pre-scanned and any sentence containing a known Moonshot-rejected topic
+                  (Tiananmen, Xinjiang, Hong Kong protests, Tibet sovereignty, Taiwan
+                  independence, Falun Gong, US-China relations summaries, etc.) is replaced
+                  with a redacted placeholder so Kimi can still participate. Other panelists
+                  always see the unfiltered prompt. Your transcript is never modified — only
+                  Kimi&apos;s view. A diagnostic note appears whenever the filter fires.
+                </p>
+                <label
+                  className="settings-label"
+                  style={{ marginTop: 'var(--space-sm)' }}
+                >
+                  Custom triggers (one per line)
+                </label>
+                <textarea
+                  className="settings-textarea"
+                  value={kimiSanitiserCustomKeywords ?? ''}
+                  onChange={(e) =>
+                    onChange({ kimiSanitiserCustomKeywords: e.target.value })
+                  }
+                  placeholder={
+                    '# Add phrases you have seen trigger Moonshot rejection.\n# Lines starting with # are comments.\n# Example:\nSouth China Sea\nNine Dash Line'
+                  }
+                  rows={4}
+                  disabled={!kimiSanitiserEnabled}
+                  style={{
+                    width: '100%',
+                    resize: 'vertical',
+                    fontFamily: 'var(--font-mono, monospace)',
+                    fontSize: 'var(--font-size-xs)'
+                  }}
+                />
+                <p className="settings-hint">
+                  Added on top of the curated default list. Case-insensitive substring match,
+                  one phrase per line. Lines starting with <code>#</code> are comments.
                 </p>
               </div>
 

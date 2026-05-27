@@ -123,6 +123,12 @@ const defaultSettings: AppSettings = {
   // USD by default; user can switch to GBP / EUR via Settings →
   // General. Rates are static approximations (see `formatCost.ts`).
   currency: 'USD',
+  // 1.0.5-EW26 — Kimi compatibility filter defaults. Off by
+  // default; the user opts in from Settings → General when they
+  // hit a Moonshot content_filter rejection on an incidental
+  // topic. Custom keywords stay empty until the user adds any.
+  kimiSanitiserEnabled: false,
+  kimiSanitiserCustomKeywords: '',
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,

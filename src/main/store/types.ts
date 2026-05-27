@@ -936,6 +936,21 @@ export interface AppSettings {
    * Rates are static approximations (no live FX lookup yet — that's
    * deferred to 1.0.6 sub-slice c). USD is the default. */
   currency: 'USD' | 'GBP' | 'EUR'
+  /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
+   * When true, prompts dispatched to a Kimi participant are
+   * scanned by `src/main/lib/kimiSanitiser.ts` and any sentence
+   * containing a configured trigger keyword (default list +
+   * `kimiSanitiserCustomKeywords`) is replaced with a redacted
+   * placeholder before the Kimi process spawns. Other
+   * participants always see the unfiltered prompt. Default
+   * `false` — opt-in for users who hit Moonshot content_filter
+   * rejections on incidental world-news / geopolitics digressions. */
+  kimiSanitiserEnabled: boolean
+  /** 1.0.5-EW26 — Newline-separated extra trigger keywords the
+   * user wants the Kimi compatibility filter to catch on top of
+   * the curated defaults. Lines starting with `#` are treated as
+   * comments and skipped. Empty string = use defaults only. */
+  kimiSanitiserCustomKeywords: string
   funFxEnabled: boolean
   funFxMode: FunFxMode
   advancedFx: AdvancedFxSettings

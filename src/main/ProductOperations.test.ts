@@ -21,6 +21,8 @@ const baseSettings: AppSettings = {
   geminiCheckpointingEnabled: false,
   chatContextTurns: 6,
   currency: 'USD',
+  kimiSanitiserEnabled: false,
+  kimiSanitiserCustomKeywords: '',
   appearanceMode: 'soft_glass',
   visualEffectStyle: 'auto',
   themeAppearance: 'system',
