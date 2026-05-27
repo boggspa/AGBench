@@ -26580,6 +26580,35 @@ input:disabled, select:disabled, textarea:disabled {
   font-weight: 600;
 }
 
+/* 1.0.4-AV2 — Per-participant token-spend badge.
+ *
+ * Sits between the role label and the status icon when the
+ * participant has accumulated >= 1k tokens this chat. Compact
+ * numeric format ("12k", "1.2m"); tooltip carries the precise
+ * input/output/duration breakdown. Below 1k the chip is hidden
+ * so unspoken participants don't get a "0k" badge that reads as
+ * noise (logic in `buildParticipantTokenChipModel`).
+ *
+ * Styled as a quiet mono-numeric badge — neutral background +
+ * smaller font than the role label so the role stays primary
+ * and the cost-meter reads as secondary metadata. */
+.ensemble-above-chip-tokens {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  margin-left: 2px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--text-secondary) 12%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 90%, transparent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
 /* Per-provider role text colouring. The chip container stays
  * neutral gray (so the strip reads as a consistent set rather
  * than four wildly different blocks), but the role label inside

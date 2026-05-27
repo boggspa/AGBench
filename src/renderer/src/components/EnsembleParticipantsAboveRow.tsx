@@ -38,6 +38,7 @@ import type {
   ProviderId
 } from '../../../main/store/types'
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
+import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
 
@@ -742,6 +743,26 @@ function ParticipantChip({
       >
         <ProviderBadgeIcon provider={participant.provider} />
         <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
+        {/* 1.0.4-AV2 — per-participant token-spend chip. Renders
+          inline between the role label and the status icon when
+          the participant has accumulated 1k+ total tokens in this
+          chat. Hidden below the 1k threshold so unspoken / freshly-
+          spawned participants don't get a "0k" badge that reads as
+          noise. Tooltip carries the precise input/output/duration
+          breakdown for power users who hover. */}
+        {(() => {
+          const tokenChip = buildParticipantTokenChipModel(participant)
+          if (!tokenChip.label) return null
+          return (
+            <span
+              className="ensemble-above-chip-tokens"
+              title={tokenChip.tooltip}
+              aria-label={`${tokenChip.label} tokens — ${tokenChip.tooltip}`}
+            >
+              {tokenChip.label}
+            </span>
+          )
+        })()}
         <span
           className={`ensemble-above-chip-status ${statusClass}`}
           aria-label={statusTooltip ? `${statusLabel}: ${statusTooltip}` : statusLabel}
