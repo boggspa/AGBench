@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DiffViewer } from './components/DiffViewer'
 import { FileEditorPanel } from './components/FileEditorPanel'
 import { useAppearance } from './hooks/useAppearance'
@@ -16,6 +16,11 @@ const basename = (path: string): string => {
   return cleaned.split(/[\\/]/).filter(Boolean).pop() || path
 }
 
+// 1.0.5-PO2 — Debounce window for live-refresh signals. A burst of
+// chat-updated events (e.g. during a tool-call sequence) collapses
+// into a single getDiff fetch.
+const REFRESH_DEBOUNCE_MS = 500
+
 export function PopoutApp() {
   useAppearance()
   const params = useMemo(() => new URLSearchParams(window.location.search), [])
@@ -23,6 +28,11 @@ export function PopoutApp() {
   const workspacePath = params.get('workspace') || ''
   const [diff, setDiff] = useState<WorkspaceDiff | null>(null)
   const [status, setStatus] = useState('')
+  // 1.0.5-PO2 — fileEditorRefreshTick bumps to nudge FileEditorPanel
+  // to re-list. We can't directly call into the panel; flipping a
+  // key prop forces a re-mount. Cheap, correct, and the panel
+  // already handles its own load lifecycle.
+  const [fileEditorRefreshTick, setFileEditorRefreshTick] = useState(0)
 
   const refreshDiff = useCallback(async () => {
     if (kind !== 'diff-studio' || !workspacePath) return
@@ -43,6 +53,34 @@ export function PopoutApp() {
   useEffect(() => {
     void refreshDiff()
   }, [refreshDiff])
+
+  // 1.0.5-PO2 — Subscribe to the main-process broadcast that fires
+  // whenever a chat in this workspace has changed. Debounce the
+  // re-fetch so a chatty round doesn't spam getDiff.
+  const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    if (!workspacePath) return
+    const unsubscribe = window.api.onWorkspacePopoutRefresh((payload) => {
+      // Belt-and-braces: main filters by workspacePath too, but if
+      // any future broadcaster forgets we don't want cross-workspace
+      // churn here.
+      if (payload.workspacePath !== workspacePath) return
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = setTimeout(() => {
+        refreshTimerRef.current = null
+        if (kind === 'diff-studio') {
+          void refreshDiff()
+        } else {
+          setFileEditorRefreshTick((tick) => tick + 1)
+        }
+      }, REFRESH_DEBOUNCE_MS)
+    })
+    return () => {
+      if (refreshTimerRef.current) clearTimeout(refreshTimerRef.current)
+      refreshTimerRef.current = null
+      unsubscribe?.()
+    }
+  }, [kind, workspacePath, refreshDiff])
 
   if (!kind || !workspacePath) {
     return (
@@ -78,7 +116,13 @@ export function PopoutApp() {
       </header>
       <section className="popout-body">
         {kind === 'file-editor' ? (
-          <FileEditorPanel workspacePath={workspacePath} />
+          // 1.0.5-PO2 — key bump forces FileEditorPanel to re-mount,
+          // which re-runs its file-list load. Cheaper than wiring a
+          // bespoke imperative refresh hook into the panel.
+          <FileEditorPanel
+            key={`file-editor-${fileEditorRefreshTick}`}
+            workspacePath={workspacePath}
+          />
         ) : (
           <div className="diff-studio popout-diff-studio">
             <DiffViewer diff={diff} workspacePath={workspacePath} />

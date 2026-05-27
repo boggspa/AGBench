@@ -779,6 +779,9 @@ declare global {
       onScheduledTaskDue: (callback: (payload: ScheduledTask) => void) => void
       onScheduledTasksChanged: (callback: (payload: ScheduledTask[]) => void) => void
       onChatUpdated: (callback: (chat: ChatRecord) => void) => void
+      onWorkspacePopoutRefresh: (
+        callback: (payload: { workspacePath: string; reason: string }) => void
+      ) => () => void
       onCreativeActionRequest: (
         callback: (payload: {
           requestId: string

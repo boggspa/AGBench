@@ -583,6 +583,19 @@ const api = {
   onChatUpdated: (callback: (chat: unknown) => void) => {
     ipcRenderer.on('chat-updated', (_event, chat) => callback(chat))
   },
+  // 1.0.5-PO2 — Workspace popout live-refresh signal. Main process
+  // emits when something in the popout's workspace has changed
+  // (chat update, run progress, etc.). The popout debounces a
+  // re-fetch on its end. Returns an unsubscribe function so the
+  // popout can clean up on unmount.
+  onWorkspacePopoutRefresh: (
+    callback: (payload: { workspacePath: string; reason: string }) => void
+  ) => {
+    const wrapped = (_event: unknown, payload: { workspacePath: string; reason: string }): void =>
+      callback(payload)
+    ipcRenderer.on('workspace-popout-refresh', wrapped)
+    return () => ipcRenderer.removeListener('workspace-popout-refresh', wrapped)
+  },
   // Phase K3 — creative-app approval flow. Main process broadcasts
   // pending requests; renderer modal renders + collects decision.
   onCreativeActionRequest: (callback: (payload: unknown) => void) => {
@@ -612,6 +625,7 @@ const api = {
     ipcRenderer.removeAllListeners('scheduled-task-due')
     ipcRenderer.removeAllListeners('scheduled-tasks-changed')
     ipcRenderer.removeAllListeners('chat-updated')
+    ipcRenderer.removeAllListeners('workspace-popout-refresh')
     ipcRenderer.removeAllListeners('creative-action:request')
   }
 }

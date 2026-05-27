@@ -2324,6 +2324,30 @@ function safeSendToWebContents(
 function saveAndBroadcastChat(chat: ChatRecord): void {
   AppStore.saveChat(chat)
   safeSendToWebContents(mainWindow, 'chat-updated', chat)
+  // 1.0.5-PO2 — Notify open workspace popouts that something in
+  // their workspace may have changed. The popout debounces a
+  // re-fetch on its end; we just need to tell it something
+  // happened. Filter on workspacePath so a chat update in a
+  // *different* workspace doesn't churn unrelated popouts.
+  if (chat.workspacePath) {
+    broadcastWorkspacePopoutRefresh(chat.workspacePath, 'chat-updated')
+  }
+}
+
+/**
+ * 1.0.5-PO2 — Send a refresh signal to every popout window whose
+ * workspacePath matches. The Map key encodes
+ * `${kind}:${workspacePath}` so we filter on the suffix. Each
+ * popout decides what to re-fetch (file list, diff, etc.) on its
+ * end, debounced so a burst of chat updates doesn't spam getDiff.
+ */
+function broadcastWorkspacePopoutRefresh(workspacePath: string, reason: string): void {
+  if (!workspacePath || workspacePopoutWindows.size === 0) return
+  const suffix = `:${workspacePath}`
+  for (const [key, win] of workspacePopoutWindows.entries()) {
+    if (!key.endsWith(suffix)) continue
+    safeSendToWebContents(win, 'workspace-popout-refresh', { workspacePath, reason })
+  }
 }
 
 function getPersistedEnsembleWakeups(): EnsembleWakeupRecord[] {
