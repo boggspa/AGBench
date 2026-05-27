@@ -597,6 +597,63 @@ describe('EnsembleOrchestrator', () => {
     expect(geminiMessage?.content).toBe('Mountains are tall.')
   })
 
+  it('strips Gemini pseudo-system yield text from visible assistant content', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Share your view, then yield.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: 'A ledger would help agents interpret intentional setup changes.\n\n'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content:
+        '[System] Yielding to Kimi to see if they agree before circling back to screenshots.\n\n'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'message',
+      role: 'assistant',
+      delta: true,
+      content: 'I am passing the floor now.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success'
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe(
+      'A ledger would help agents interpret intentional setup changes.\n\nI am passing the floor now.'
+    )
+    expect(geminiMessage?.content).not.toContain('[System]')
+  })
+
   it('skipActiveParticipant cancels the active run and advances to the next participant', async () => {
     // Post-ship UX: replaces the redundant "Stop Ensemble" button with
     // a per-participant Skip affordance. Skip must:

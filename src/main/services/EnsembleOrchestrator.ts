@@ -191,6 +191,20 @@ function appendTimelineTool(run: ActiveParticipantRun, toolId: string): void {
   run.timeline.push({ kind: 'tool', toolId })
 }
 
+const PSEUDO_SYSTEM_YIELD_LINE_RE = /^\s*\[System\]\s+Yield(?:ing|ed)\b.*$/i
+
+function stripPseudoSystemYieldLines(text: string): string {
+  if (!text || !/\[System\]\s+Yield/i.test(text)) return text
+  const newline = text.includes('\r\n') ? '\r\n' : '\n'
+  const hadTrailingNewline = /\r?\n$/.test(text)
+  const filtered = text
+    .split(/\r?\n/)
+    .filter((line) => !PSEUDO_SYSTEM_YIELD_LINE_RE.test(line))
+    .join(newline)
+    .replace(/\n{3,}/g, '\n\n')
+  return hadTrailingNewline && filtered ? `${filtered}${newline}` : filtered
+}
+
 /**
  * Minimal tool-activity builders for the orchestrator. The renderer's
  * `ToolParser.ts` has richer extraction (file-path heuristics, diff
@@ -1877,11 +1891,12 @@ export class EnsembleOrchestrator {
       if (entry.kind === 'content') {
         const id = timelineMessageId(run.runId, i, 'content')
         desiredIds.add(id)
-        if (!entry.text.trim()) continue
+        const content = stripPseudoSystemYieldLines(entry.text)
+        if (!content.trim()) continue
         desiredMessages.push({
           id,
           role: 'assistant',
-          content: entry.text,
+          content,
           timestamp,
           runId: run.runId,
           metadata: {

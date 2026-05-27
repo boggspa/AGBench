@@ -24939,7 +24939,7 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="claude"] .composer-action-btn.stop-btn,
 [data-composer-style="claude"] .composer-action-btn.steer-btn {
   top: auto !important;
-  bottom: 56px !important;
+  bottom: 82px !important;
   right: 14px !important;
 }
 
@@ -27042,6 +27042,10 @@ input:disabled, select:disabled, textarea:disabled {
   );
 }
 [data-composer-style="claude"] .ensemble-above-row::before {
+  display: none;
+}
+
+[data-composer-style="codex"] .composer-above-bar-stack:has(.ensemble-above-row) > .ensemble-above-row::before {
   display: none;
 }
 
