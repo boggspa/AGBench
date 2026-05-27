@@ -54,6 +54,7 @@ import {
   EnsembleOrchestrator,
   type ParticipantProbeResult
 } from './services/EnsembleOrchestrator'
+import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
 import {
   appendBugReport,
   type BugReportSubmission as BugReportSubmissionInput
@@ -136,7 +137,8 @@ import {
   UsageRecord,
   EffectiveRunPermissions,
   EnsembleRunIdentity,
-  EnsembleParticipant
+  EnsembleParticipant,
+  EnsembleWakeupRecord
 } from './store/types'
 import { TrustStatusService } from './TrustStatusService'
 import { getWorkspaceDiff, captureWorkspaceSnapshot, computeRunDiff } from './DiffService'
@@ -514,6 +516,7 @@ let approvalService: ApprovalService | null = null
 // Stays null until whenReady; the consumer null-checks.
 let runCoordinatorRef: RunCoordinator | null = null
 let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
+let wakeupTimerServiceRef: WakeupTimerService | null = null
 
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
@@ -2315,6 +2318,93 @@ function safeSendToWebContents(
 function saveAndBroadcastChat(chat: ChatRecord): void {
   AppStore.saveChat(chat)
   safeSendToWebContents(mainWindow, 'chat-updated', chat)
+}
+
+function getPersistedEnsembleWakeups(): EnsembleWakeupRecord[] {
+  return AppStore.getChats().flatMap((chat) => Object.values(chat.ensemble?.wakeups || {}))
+}
+
+function findPersistedEnsembleWakeup(wakeupId: string): EnsembleWakeupRecord | null {
+  if (!wakeupId) return null
+  for (const wakeup of getPersistedEnsembleWakeups()) {
+    if (wakeup.wakeupId === wakeupId) return wakeup
+  }
+  return null
+}
+
+function savePersistedEnsembleWakeup(wakeup: EnsembleWakeupRecord): void {
+  const chat = AppStore.getChat(wakeup.chatId)
+  if (!chat?.ensemble) return
+  saveAndBroadcastChat({
+    ...chat,
+    ensemble: {
+      ...chat.ensemble,
+      wakeups: {
+        ...(chat.ensemble.wakeups || {}),
+        [wakeup.wakeupId]: wakeup
+      },
+      updatedAt:
+        wakeup.firedAt ||
+        wakeup.cancelledAt ||
+        wakeup.expiredAt ||
+        wakeup.scheduledAt ||
+        new Date().toISOString()
+    },
+    updatedAt: Date.now()
+  })
+}
+
+function expirePersistedEnsembleWakeup(
+  wakeup: EnsembleWakeupRecord,
+  expiredAt: string,
+  message: string
+): void {
+  savePersistedEnsembleWakeup({
+    ...wakeup,
+    status: 'expired',
+    expiredAt,
+    message
+  })
+}
+
+function tryResumePersistedEnsembleWakeup(wakeup: EnsembleWakeupRecord): boolean {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  const sender = mainWindow.webContents
+  if (!sender || sender.isDestroyed()) return false
+  return Boolean(ensembleOrchestratorRef?.resumePersistedWakeup(wakeup, sender))
+}
+
+function handleEnsembleWakeupTimerFired(wakeupId: string): void {
+  if (ensembleOrchestratorRef?.handleWakeupFired(wakeupId)) return
+  const wakeup = findPersistedEnsembleWakeup(wakeupId)
+  if (!wakeup || wakeup.status !== 'pending') {
+    console.warn(`Wakeup fired with no pending persisted Ensemble wakeup: ${wakeupId}`)
+    return
+  }
+  if (tryResumePersistedEnsembleWakeup(wakeup)) return
+  expirePersistedEnsembleWakeup(
+    wakeup,
+    new Date().toISOString(),
+    'No active Ensemble runtime was available when the wakeup fired.'
+  )
+}
+
+function recoverPersistedEnsembleWakeups(): void {
+  const actions = classifyWakeupRecovery(getPersistedEnsembleWakeups(), {
+    nowMs: Date.now(),
+    nowIso: new Date().toISOString()
+  })
+  for (const action of actions) {
+    if (action.action === 'arm' || action.action === 'fire') {
+      wakeupTimerServiceRef?.schedule(action.wakeup)
+    } else {
+      expirePersistedEnsembleWakeup(
+        action.wakeup,
+        action.expiredAt,
+        'Wakeup expired during startup recovery.'
+      )
+    }
+  }
 }
 
 function resolveDelegatedApprovalMode(context: GeminiToolContext, parentChatId: string): string {
@@ -11064,6 +11154,9 @@ const MCP_AUTO_ALLOWED_TOOLS = new Set<AGBenchMcpToolName>([
   'ide_app_capabilities',
   'list_running_ides',
   'ensemble_yield',
+  'list_ensemble_participants',
+  'schedule_wakeup',
+  'cancel_wakeup',
   // QMOD (1.0.3): asking the user a question is the inverse of the
   // user prompting the agent — it's a focus-shift, not a state mutation.
   // The renderer modal IS the approval surface, so a second confirm
@@ -14430,6 +14523,49 @@ async function executeGeminiMcpTool(
         reason: optionalString(args.reason),
         target: optionalString(args.target)
       })
+    } else if (toolName === 'list_ensemble_participants') {
+      const result = ensembleOrchestratorRef?.listParticipantsForRun(context.appRunId) || {
+        ok: false,
+        error: 'Ensemble orchestrator is not available.'
+      }
+      toolIsError = result.ok === false
+      text = mcpJson({
+        ...result,
+        tool: 'list_ensemble_participants'
+      })
+    } else if (toolName === 'schedule_wakeup') {
+      const result = ensembleOrchestratorRef?.scheduleWakeupForRun(context.appRunId, {
+        wakeAt: optionalString(args.wakeAt || args.wake_at || args.at),
+        delayMs: optionalNumber(args.delayMs || args.delay_ms),
+        delaySeconds: optionalNumber(args.delaySeconds || args.delay_seconds || args.seconds),
+        reason: optionalString(args.reason),
+        cancelOnUserInput:
+          args.cancelOnUserInput !== undefined
+            ? Boolean(args.cancelOnUserInput)
+            : args.cancel_on_user_input !== undefined
+              ? Boolean(args.cancel_on_user_input)
+              : undefined
+      }) || {
+        ok: false,
+        error: 'Ensemble orchestrator is not available.'
+      }
+      toolIsError = result.ok === false
+      text = mcpJson({
+        ...result,
+        tool: 'schedule_wakeup'
+      })
+    } else if (toolName === 'cancel_wakeup') {
+      const result = ensembleOrchestratorRef?.cancelWakeupForRun(context.appRunId, {
+        wakeupId: optionalString(args.wakeupId || args.wakeup_id)
+      }) || {
+        ok: false,
+        error: 'Ensemble orchestrator is not available.'
+      }
+      toolIsError = result.ok === false
+      text = mcpJson({
+        ...result,
+        tool: 'cancel_wakeup'
+      })
     } else if (toolName === 'ensemble_continue') {
       // 1.0.4-AK1 — Work Session multi-round autonomy control. The
       // participant calls this when they want the ensemble to
@@ -16403,6 +16539,75 @@ function mcpToolDefinitions() {
         properties: {
           reason: { type: 'string' },
           target: { type: 'string' }
+        }
+      }
+    },
+    {
+      name: 'list_ensemble_participants',
+      description:
+        'In Ensemble Mode, list the current participants, providers, roles, models, and per-round statuses for the active round.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {}
+      }
+    },
+    {
+      name: 'schedule_wakeup',
+      description:
+        'In Ensemble Mode, pause this participant and schedule it to resume later in the same active round. Active participant runs only; unavailable from parallel scout-pass lanes. Provide wakeAt (ISO), delayMs, or delaySeconds.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          wakeAt: {
+            type: 'string',
+            description: 'ISO timestamp for when this participant should resume.'
+          },
+          delayMs: {
+            type: 'number',
+            description: 'Delay before resuming, in milliseconds.'
+          },
+          delaySeconds: {
+            type: 'number',
+            description: 'Delay before resuming, in seconds.'
+          },
+          reason: {
+            type: 'string',
+            description: 'Optional reason shown in the transcript and resume prompt.'
+          },
+          cancelOnUserInput: {
+            type: 'boolean',
+            description:
+              'Default true. When true, a new user message cancels this pending wake before the next user round starts.'
+          }
+        }
+      }
+    },
+    {
+      name: 'cancel_wakeup',
+      description:
+        'Cancel this participant’s pending wakeup in the active Ensemble round. Omit wakeupId to cancel all own pending wakeups for the round.',
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          wakeupId: { type: 'string' }
         }
       }
     },
@@ -20398,6 +20603,9 @@ if (isGeminiMcpBridgeProcess) {
     // (Phase F3) can dispatch agent-driven sub-thread runs without
     // requiring a Gemini-renderer round-trip.
     runCoordinatorRef = runCoordinator
+    wakeupTimerServiceRef = new WakeupTimerService({
+      onFire: handleEnsembleWakeupTimerFired
+    })
     ensembleOrchestratorRef = new EnsembleOrchestrator({
       getChat: (chatId) => AppStore.getChat(chatId),
       saveChat: saveAndBroadcastChat,
@@ -20407,8 +20615,11 @@ if (isGeminiMcpBridgeProcess) {
       createRunId: createFallbackRunId,
       now: () => Date.now(),
       nowIso: () => new Date().toISOString(),
-      probeParticipant: probeEnsembleParticipant
+      probeParticipant: probeEnsembleParticipant,
+      scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
+      cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId)
     })
+    recoverPersistedEnsembleWakeups()
     const dispatchAgentRun = (
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent

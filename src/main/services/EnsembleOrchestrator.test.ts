@@ -9,7 +9,8 @@ import type {
   AppSettings,
   ChatRecord,
   EnsembleConfig,
-  EnsembleParticipant
+  EnsembleParticipant,
+  EnsembleWakeupRecord
 } from '../store/types'
 
 const ensemble: EnsembleConfig = {
@@ -128,6 +129,8 @@ function makeHarness(options: {
    * stay byte-identical.
    */
   probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
+  scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
+  cancelWakeupTimer?: (wakeupId: string) => void
 } = {}) {
   let chat = makeChat()
   let counter = 0
@@ -153,7 +156,9 @@ function makeHarness(options: {
     createRunId: (provider) => `${provider}-run-${++counter}`,
     now: () => counter,
     nowIso: () => `2026-05-24T00:00:0${counter}.000Z`,
-    ...(probeParticipant ? { probeParticipant } : {})
+    ...(probeParticipant ? { probeParticipant } : {}),
+    ...(options.scheduleWakeupTimer ? { scheduleWakeupTimer: options.scheduleWakeupTimer } : {}),
+    ...(options.cancelWakeupTimer ? { cancelWakeupTimer: options.cancelWakeupTimer } : {})
   })
   return {
     get chat() {
@@ -247,6 +252,101 @@ describe('EnsembleOrchestrator', () => {
       model: 'gpt-5.4',
       ensembleRun: { participantId: 'codex-review', role: 'Reviewer' }
     })
+  })
+
+  it('lists active ensemble participants for the calling run', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'List the panel.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const result = harness.orchestrator.listParticipantsForRun(harness.dispatched[0].appRunId)
+    expect(result.ok).toBe(true)
+    expect(result.activeParticipantId).toBe('claude')
+    expect(result.participants?.map((participant) => participant.id)).toEqual(['claude', 'codex'])
+    expect(result.participants?.[0]).toMatchObject({
+      id: 'claude',
+      provider: 'claude',
+      role: 'Reviewer',
+      status: 'running'
+    })
+  })
+
+  it('schedules a wakeup and resumes the same participant in the active round', async () => {
+    const scheduled: EnsembleWakeupRecord[] = []
+    const harness = makeHarness({
+      scheduleWakeupTimer: (wakeup) => scheduled.push(wakeup)
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start and sleep if blocked.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const claudeRunId = harness.dispatched[0].appRunId!
+
+    const scheduledResult = harness.orchestrator.scheduleWakeupForRun(claudeRunId, {
+      delayMs: 60_000,
+      reason: 'Waiting for logs.'
+    })
+    expect(scheduledResult.ok).toBe(true)
+    expect(scheduled).toHaveLength(1)
+    expect(harness.chat.ensemble?.activeRound?.participants[0].status).toBe('sleeping')
+    expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([
+      scheduled[0].wakeupId
+    ])
+
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    const codexRunId = harness.dispatched[1].appRunId!
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: codexRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+
+    await vi.waitFor(() => {
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('running')
+      expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([
+        scheduled[0].wakeupId
+      ])
+    })
+    expect(harness.orchestrator.handleWakeupFired(scheduled[0].wakeupId)).toBe(true)
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].ensembleRun?.participantId).toBe('claude')
+    expect(harness.dispatched[2].prompt).toContain('[Scheduled wakeup]')
+    expect(harness.dispatched[2].prompt).toContain('Waiting for logs.')
+  })
+
+  it('rejects a second pending wakeup for the same participant and round', async () => {
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Sleep once.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+    const roundId = harness.chat.ensemble!.activeRound!.roundId
+    harness.chat.ensemble!.wakeups = {
+      existing: {
+        wakeupId: 'existing',
+        chatId: 'ensemble-chat',
+        roundId,
+        participantId: 'claude',
+        provider: 'claude',
+        role: 'Reviewer',
+        runId,
+        scheduledAt: '2026-05-24T00:00:01.000Z',
+        wakeAt: '2026-05-24T00:01:01.000Z',
+        status: 'pending'
+      }
+    }
+    const duplicate = harness.orchestrator.scheduleWakeupForRun(runId, { delayMs: 2000 })
+    expect(duplicate.ok).toBe(false)
+    expect(duplicate.error).toContain('already has a pending wakeup')
   })
 
   it('persists and forwards image attachments for ensemble rounds', async () => {

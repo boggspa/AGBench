@@ -17,6 +17,7 @@ import type {
   EnsembleParticipantStatus,
   EnsembleRunIdentity,
   EnsembleRoundState,
+  EnsembleWakeupRecord,
   ExternalPathGrant,
   ProviderId,
   ToolActivity,
@@ -94,6 +95,8 @@ export interface EnsembleOrchestratorDeps {
    * haven't wired the probe yet.
    */
   probeParticipant?: (participant: EnsembleParticipant) => Promise<ParticipantProbeResult>
+  scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
+  cancelWakeupTimer?: (wakeupId: string) => void
 }
 
 /**
@@ -160,6 +163,18 @@ interface ActiveParticipantRun {
   stats?: any
   completion?: (status: EnsembleParticipantStatus) => void
   flushTimer?: ReturnType<typeof setTimeout>
+}
+
+export interface ScheduleWakeupInput {
+  wakeAt?: string
+  delayMs?: number
+  delaySeconds?: number
+  reason?: string
+  cancelOnUserInput?: boolean
+}
+
+export interface CancelWakeupInput {
+  wakeupId?: string
 }
 
 /** Stable per-timeline-entry message id. Includes the runId + the
@@ -539,6 +554,10 @@ interface ActiveRoundRuntime {
    * grants — matches pre-AT4 behaviour for those rounds.
    */
   externalPathGrants?: ExternalPathGrant[]
+  pendingWakeups?: Map<string, EnsembleWakeupRecord>
+  readyWakeups?: EnsembleWakeupRecord[]
+  wakeWaiter?: () => void
+  resumeWakeup?: EnsembleWakeupRecord
 }
 
 export class EnsembleOrchestrator {
@@ -587,6 +606,7 @@ export class EnsembleOrchestrator {
     const imageAttachments = normalizeEnsembleImageAttachments(input.imageAttachments)
     const existing = this.roundsByChatId.get(input.chatId)
     if (existing && !existing.cancelled) {
+      this.cancelWakeupsOnUserInput(existing)
       if (input.mode === 'steer') {
         void this.cancelRound(input.chatId, 'steered')
         const roundId = this.beginRound(
@@ -643,6 +663,7 @@ export class EnsembleOrchestrator {
     if (!runtime) return false
     runtime.cancelled = true
     runtime.queuedPrompts = []
+    this.cancelWakeupsForRuntime(runtime, reason)
     const roundId = runtime.roundId
     const active = runtime.activeRunId ? this.runsByRunId.get(runtime.activeRunId) : undefined
     if (active) {
@@ -820,6 +841,363 @@ export class EnsembleOrchestrator {
     if (!runtime) return
     if (!runtime.scoutBriefs) runtime.scoutBriefs = []
     runtime.scoutBriefs.push(brief)
+  }
+
+  listParticipantsForRun(runId: string | undefined): {
+    ok: boolean
+    error?: string
+    chatId?: string
+    roundId?: string
+    activeParticipantId?: string
+    participants?: Array<{
+      id: string
+      provider: ProviderId
+      role: string
+      model?: string
+      order: number
+      enabled: boolean
+      status: EnsembleParticipantStatus
+    }>
+  } {
+    if (!runId) return { ok: false, error: 'list_ensemble_participants requires an active run id.' }
+    const run = this.runsByRunId.get(runId)
+    if (!run) return { ok: false, error: 'No active Ensemble participant run matches this tool call.' }
+    const chat = this.deps.getChat(run.chatId)
+    if (!chat?.ensemble) return { ok: false, error: 'The active chat is not an Ensemble chat.' }
+    const states = new Map(
+      (chat.ensemble.activeRound?.participants || []).map((participant) => [
+        participant.participantId,
+        participant.status
+      ])
+    )
+    return {
+      ok: true,
+      chatId: chat.appChatId,
+      roundId: run.roundId,
+      activeParticipantId: run.participant.id,
+      participants: (chat.ensemble.participants || []).map((participant) => ({
+        id: participant.id,
+        provider: participant.provider,
+        role: participant.role,
+        model: participant.model,
+        order: participant.order,
+        enabled: participant.enabled,
+        status: states.get(participant.id) || 'idle'
+      }))
+    }
+  }
+
+  scheduleWakeupForRun(runId: string | undefined, input: ScheduleWakeupInput): {
+    ok: boolean
+    error?: string
+    wakeup?: EnsembleWakeupRecord
+    message?: string
+  } {
+    if (!runId) return { ok: false, error: 'schedule_wakeup requires an active run id.' }
+    const run = this.runsByRunId.get(runId)
+    if (!run) return { ok: false, error: 'No active Ensemble participant run matches this wakeup request.' }
+    const runtime = this.roundsByChatId.get(run.chatId)
+    if (!runtime || runtime.roundId !== run.roundId || runtime.cancelled) {
+      return { ok: false, error: 'No active Ensemble round is available for this wakeup.' }
+    }
+    if (runtime.activeScoutRunIds?.has(runId)) {
+      return { ok: false, error: 'schedule_wakeup is not available from parallel scout-pass lanes.' }
+    }
+    const chat = this.deps.getChat(run.chatId)
+    if (!chat?.ensemble) return { ok: false, error: 'The active chat is not an Ensemble chat.' }
+    const existing = this.findPendingWakeupForParticipant(chat, run.roundId, run.participant.id)
+    if (existing) {
+      return {
+        ok: false,
+        error: `Participant already has a pending wakeup for this round (${existing.wakeupId}).`
+      }
+    }
+    const wakeAtMs = resolveWakeAtMs(input, this.deps.now())
+    if (!Number.isFinite(wakeAtMs)) {
+      return {
+        ok: false,
+        error: 'schedule_wakeup requires wakeAt, delayMs, or delaySeconds.'
+      }
+    }
+    const nowIso = this.deps.nowIso()
+    const wakeup: EnsembleWakeupRecord = {
+      wakeupId: `wakeup-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      chatId: run.chatId,
+      roundId: run.roundId,
+      participantId: run.participant.id,
+      provider: run.participant.provider,
+      role: run.participant.role,
+      runId: run.runId,
+      scheduledAt: nowIso,
+      wakeAt: new Date(wakeAtMs).toISOString(),
+      status: 'pending',
+      reason: input.reason,
+      cancelOnUserInput: input.cancelOnUserInput !== false
+    }
+    if (!runtime.pendingWakeups) runtime.pendingWakeups = new Map()
+    runtime.pendingWakeups.set(wakeup.wakeupId, wakeup)
+    this.saveWakeupRecord(chat, wakeup)
+    this.updateSleepingRoundState(run.chatId, run.roundId)
+    this.deps.scheduleWakeupTimer?.(wakeup)
+    this.finalizeRun(run, 'sleeping', formatWakeupScheduledReason(wakeup))
+    const message = `${run.participant.role || providerLabel(run.participant.provider)} sleeping until ${wakeup.wakeAt}.`
+    this.appendRoundStatus(run.chatId, run.roundId, message)
+    return { ok: true, wakeup, message }
+  }
+
+  cancelWakeupForRun(runId: string | undefined, input: CancelWakeupInput = {}): {
+    ok: boolean
+    error?: string
+    cancelled?: EnsembleWakeupRecord[]
+    message?: string
+  } {
+    if (!runId) return { ok: false, error: 'cancel_wakeup requires an active run id.' }
+    const run = this.runsByRunId.get(runId)
+    if (!run) return { ok: false, error: 'No active Ensemble participant run matches this wakeup cancellation.' }
+    const chat = this.deps.getChat(run.chatId)
+    if (!chat?.ensemble) return { ok: false, error: 'The active chat is not an Ensemble chat.' }
+    const wakeups = Object.values(chat.ensemble.wakeups || {}).filter((wakeup) => {
+      if (wakeup.status !== 'pending') return false
+      if (wakeup.roundId !== run.roundId) return false
+      if (wakeup.participantId !== run.participant.id) return false
+      return input.wakeupId ? wakeup.wakeupId === input.wakeupId : true
+    })
+    if (input.wakeupId && wakeups.length === 0) {
+      return { ok: false, error: 'No matching pending wakeup belongs to this participant.' }
+    }
+    if (wakeups.length === 0) return { ok: true, cancelled: [], message: 'No pending wakeups to cancel.' }
+    const cancelled = wakeups.map((wakeup) =>
+      this.markWakeupCancelled(wakeup, 'cancelled by participant')
+    )
+    const runtime = this.roundsByChatId.get(run.chatId)
+    if (runtime) {
+      for (const wakeup of cancelled) runtime.pendingWakeups?.delete(wakeup.wakeupId)
+      this.signalWakeWaiter(runtime)
+    }
+    this.updateSleepingRoundState(run.chatId, run.roundId)
+    return {
+      ok: true,
+      cancelled,
+      message: `Cancelled ${cancelled.length} wakeup${cancelled.length === 1 ? '' : 's'}.`
+    }
+  }
+
+  handleWakeupFired(wakeupId: string): boolean {
+    if (!wakeupId) return false
+    const located = this.findRuntimeByWakeupId(wakeupId)
+    if (!located) return false
+    const { runtime, wakeup } = located
+    if (wakeup.status !== 'pending') return false
+    const fired: EnsembleWakeupRecord = {
+      ...wakeup,
+      status: 'fired',
+      firedAt: this.deps.nowIso()
+    }
+    runtime.pendingWakeups?.delete(wakeupId)
+    if (!runtime.readyWakeups) runtime.readyWakeups = []
+    runtime.readyWakeups.push(fired)
+    this.saveWakeupRecord(this.deps.getChat(fired.chatId), fired)
+    this.updateSleepingRoundState(fired.chatId, fired.roundId)
+    this.signalWakeWaiter(runtime)
+    return true
+  }
+
+  resumePersistedWakeup(
+    wakeup: EnsembleWakeupRecord,
+    sender: Electron.WebContents
+  ): boolean {
+    if (wakeup.status !== 'pending') return false
+    const chat = this.deps.getChat(wakeup.chatId)
+    const round = chat?.ensemble?.activeRound
+    if (!chat?.ensemble || !round || round.roundId !== wakeup.roundId || round.status !== 'running') {
+      return false
+    }
+    const participant = chat.ensemble.participants.find(
+      (entry) => entry.id === wakeup.participantId && entry.enabled
+    )
+    if (!participant) return false
+    const runtime: ActiveRoundRuntime = {
+      chatId: wakeup.chatId,
+      roundId: wakeup.roundId,
+      sender,
+      prompt: round.prompt,
+      imageAttachments: [],
+      cancelled: false,
+      queuedPrompts: [...(round.queuedPrompts || [])],
+      orchestrationMode: round.orchestrationMode || chat.ensemble.orchestrationMode || 'turn_bound',
+      continuationHops: round.continuationHops || 0,
+      maxContinuationHops: round.maxContinuationHops || chat.ensemble.maxContinuationHops || DEFAULT_CONTINUATION_HOP_LIMIT,
+      pendingWakeups: new Map(
+        Object.values(chat.ensemble.wakeups || {})
+          .filter((entry) => entry.status === 'pending' && entry.roundId === wakeup.roundId)
+          .map((entry) => [entry.wakeupId, entry])
+      )
+    }
+    this.roundsByChatId.set(wakeup.chatId, runtime)
+    const fired: EnsembleWakeupRecord = {
+      ...wakeup,
+      status: 'fired',
+      firedAt: this.deps.nowIso(),
+      message: 'recovered after app restart'
+    }
+    runtime.pendingWakeups?.delete(wakeup.wakeupId)
+    runtime.resumeWakeup = fired
+    this.saveWakeupRecord(chat, fired)
+    this.updateSleepingRoundState(wakeup.chatId, wakeup.roundId)
+    this.appendRoundStatus(
+      wakeup.chatId,
+      wakeup.roundId,
+      `${participant.role || providerLabel(participant.provider)} woke after app restart (${wakeup.wakeAt}).`
+    )
+    void this.runRound(runtime, [participant])
+    return true
+  }
+
+  private findPendingWakeupForParticipant(
+    chat: ChatRecord,
+    roundId: string,
+    participantId: string
+  ): EnsembleWakeupRecord | null {
+    return (
+      Object.values(chat.ensemble?.wakeups || {}).find(
+        (wakeup) =>
+          wakeup.status === 'pending' &&
+          wakeup.roundId === roundId &&
+          wakeup.participantId === participantId
+      ) || null
+    )
+  }
+
+  private saveWakeupRecord(chat: ChatRecord | null | undefined, wakeup: EnsembleWakeupRecord): void {
+    if (!chat?.ensemble) return
+    this.deps.saveChat({
+      ...chat,
+      ensemble: {
+        ...chat.ensemble,
+        wakeups: {
+          ...(chat.ensemble.wakeups || {}),
+          [wakeup.wakeupId]: wakeup
+        },
+        updatedAt: wakeup.firedAt || wakeup.cancelledAt || wakeup.expiredAt || wakeup.scheduledAt
+      },
+      updatedAt: this.deps.now()
+    })
+  }
+
+  private markWakeupCancelled(
+    wakeup: EnsembleWakeupRecord,
+    message: string
+  ): EnsembleWakeupRecord {
+    this.deps.cancelWakeupTimer?.(wakeup.wakeupId)
+    const cancelled: EnsembleWakeupRecord = {
+      ...wakeup,
+      status: 'cancelled',
+      cancelledAt: this.deps.nowIso(),
+      message
+    }
+    this.saveWakeupRecord(this.deps.getChat(wakeup.chatId), cancelled)
+    return cancelled
+  }
+
+  private cancelWakeupsForRuntime(runtime: ActiveRoundRuntime, message: string): void {
+    const wakeups = Array.from(runtime.pendingWakeups?.values() || [])
+    if (wakeups.length === 0) return
+    for (const wakeup of wakeups) {
+      this.markWakeupCancelled(wakeup, message)
+    }
+    runtime.pendingWakeups?.clear()
+    runtime.readyWakeups = []
+    this.updateSleepingRoundState(runtime.chatId, runtime.roundId)
+    this.signalWakeWaiter(runtime)
+  }
+
+  private cancelWakeupsOnUserInput(runtime: ActiveRoundRuntime): void {
+    const wakeups = Array.from(runtime.pendingWakeups?.values() || []).filter(
+      (wakeup) => wakeup.cancelOnUserInput !== false
+    )
+    if (wakeups.length === 0) return
+    for (const wakeup of wakeups) {
+      this.markWakeupCancelled(wakeup, 'cancelled by user input')
+      runtime.pendingWakeups?.delete(wakeup.wakeupId)
+    }
+    this.updateSleepingRoundState(runtime.chatId, runtime.roundId)
+    this.signalWakeWaiter(runtime)
+  }
+
+  private updateSleepingRoundState(chatId: string, roundId: string): void {
+    const chat = this.deps.getChat(chatId)
+    const round = chat?.ensemble?.activeRound
+    if (!chat?.ensemble || !round || round.roundId !== roundId) return
+    const pending = Object.values(chat.ensemble.wakeups || {}).filter(
+      (wakeup) => wakeup.status === 'pending' && wakeup.roundId === roundId
+    )
+    const pendingIds = new Set(pending.map((wakeup) => wakeup.wakeupId))
+    const sleepingIds = new Set(pending.map((wakeup) => wakeup.participantId))
+    const nextRound: EnsembleRoundState = {
+      ...round,
+      pendingWakeupIds: pendingIds.size ? Array.from(pendingIds) : undefined,
+      sleepingParticipantIds: sleepingIds.size ? Array.from(sleepingIds) : undefined,
+      participants: round.participants.map((participant) => {
+        if (sleepingIds.has(participant.participantId)) {
+          const wakeup = pending.find((entry) => entry.participantId === participant.participantId)
+          return {
+            ...participant,
+            status: 'sleeping',
+            reason: wakeup ? formatWakeupScheduledReason(wakeup) : participant.reason,
+            endedAt: this.deps.nowIso()
+          }
+        }
+        if (participant.status === 'sleeping') {
+          return {
+            ...participant,
+            status: 'idle',
+            reason: undefined,
+            endedAt: undefined
+          }
+        }
+        return participant
+      })
+    }
+    this.deps.saveChat({
+      ...chat,
+      ensemble: {
+        ...chat.ensemble,
+        activeRound: nextRound,
+        updatedAt: this.deps.nowIso()
+      },
+      updatedAt: this.deps.now()
+    })
+  }
+
+  private findRuntimeByWakeupId(
+    wakeupId: string
+  ): { runtime: ActiveRoundRuntime; wakeup: EnsembleWakeupRecord } | null {
+    for (const runtime of this.roundsByChatId.values()) {
+      const wakeup = runtime.pendingWakeups?.get(wakeupId)
+      if (wakeup) return { runtime, wakeup }
+    }
+    return null
+  }
+
+  private hasPendingWakeups(runtime: ActiveRoundRuntime): boolean {
+    return Boolean(runtime.pendingWakeups && runtime.pendingWakeups.size > 0)
+  }
+
+  private waitForNextWakeup(runtime: ActiveRoundRuntime): Promise<EnsembleWakeupRecord | null> {
+    const ready = runtime.readyWakeups?.shift()
+    if (ready) return Promise.resolve(ready)
+    if (!this.hasPendingWakeups(runtime)) return Promise.resolve(null)
+    return new Promise((resolve) => {
+      runtime.wakeWaiter = () => {
+        runtime.wakeWaiter = undefined
+        resolve(runtime.readyWakeups?.shift() || null)
+      }
+    })
+  }
+
+  private signalWakeWaiter(runtime: ActiveRoundRuntime): void {
+    const waiter = runtime.wakeWaiter
+    if (waiter) waiter()
   }
 
   markRunExited(runId: string | undefined, exitCode: number): boolean {
@@ -1202,6 +1580,9 @@ export class EnsembleOrchestrator {
       const participant = remaining.shift()!
       const wasYieldTarget = yieldedTargetParticipantId === participant.id
       yieldedTargetParticipantId = null
+      const resumeWakeup =
+        runtime.resumeWakeup?.participantId === participant.id ? runtime.resumeWakeup : undefined
+      if (resumeWakeup) runtime.resumeWakeup = undefined
 
       const run = this.seedParticipantRun(chat, runtime, participant)
       runtime.activeRunId = run.runId
@@ -1226,7 +1607,9 @@ export class EnsembleOrchestrator {
         chat,
         config: ensembleConfigForRound,
         participant,
-        currentPrompt: runtime.prompt,
+        currentPrompt: resumeWakeup
+          ? formatWakeupResumePrompt(runtime.prompt, resumeWakeup)
+          : runtime.prompt,
         roundId: runtime.roundId,
         chatContextTurns: this.deps.getSettings().chatContextTurns,
         // 1.0.4-AK6 — thread scout briefs into the writer's prompt
@@ -1267,7 +1650,8 @@ export class EnsembleOrchestrator {
         runtimeProfileId: participant.runtimeProfileId,
         geminiAuthProfileId:
           participant.provider === 'gemini' ? participant.geminiAuthProfileId || null : null,
-        providerSessionId: participant.linkedProviderSessionId || null,
+        providerSessionId:
+          run.providerSessionId || participant.linkedProviderSessionId || null,
         externalPathGrants: permissions.externalPathGrants,
         effectivePermissions: permissions,
         ensembleRun: ensembleRunIdentity(runtime.roundId, participant),
@@ -1532,6 +1916,31 @@ export class EnsembleOrchestrator {
         runtime.roundId,
         formatAllUnreachableNote()
       )
+    }
+
+    if (
+      remaining.length === 0 &&
+      !runtime.cancelled &&
+      runtime.queuedPrompts.length === 0 &&
+      this.hasPendingWakeups(runtime)
+    ) {
+      const wakeup = await this.waitForNextWakeup(runtime)
+      if (wakeup && !runtime.cancelled) {
+        const chatForWake = this.deps.getChat(runtime.chatId)
+        const participant = chatForWake?.ensemble?.participants.find(
+          (entry) => entry.id === wakeup.participantId && entry.enabled
+        )
+        if (participant) {
+          runtime.resumeWakeup = wakeup
+          this.appendRoundStatus(
+            runtime.chatId,
+            runtime.roundId,
+            `${participant.role || providerLabel(participant.provider)} woke for scheduled continuation (${wakeup.wakeAt}).`
+          )
+          await this.runRound(runtime, [participant])
+          return
+        }
+      }
     }
 
     // 1.0.4-AK3 — Work Session hard-stop check at round end.
@@ -2014,13 +2423,17 @@ export class EnsembleOrchestrator {
     // messages are materialised.
     if (
       final &&
-      (run.status === 'yielded' || run.status === 'failed' || run.status === 'skipped')
+      (run.status === 'yielded' ||
+        run.status === 'failed' ||
+        run.status === 'skipped' ||
+        run.status === 'sleeping')
     ) {
       const statusLine = (() => {
         const who = run.participant.role || run.participant.provider
         const suffix = reason ? ` ${reason}` : ''
         if (run.status === 'yielded') return `${who} yielded.${suffix}`
         if (run.status === 'failed') return `${who} failed.${suffix}`
+        if (run.status === 'sleeping') return `${who} sleeping.${suffix}`
         return `${who} skipped.${suffix}`
       })()
       const statusId = `ensemble-status-${run.runId}`
@@ -2061,7 +2474,14 @@ export class EnsembleOrchestrator {
             providerThreadId: run.providerSessionId || existingRun.providerThreadId,
             stats: run.stats || existingRun.stats,
             status: final ? statusToRunStatus(run.status) : existingRun.status || 'running',
-            endedAt: final ? timestamp : existingRun.endedAt
+            endedAt: final ? timestamp : existingRun.endedAt,
+            ...(run.status === 'sleeping'
+              ? {
+                  ensembleSleepWakeupId: reason ? extractWakeupIdFromReason(reason) : existingRun.ensembleSleepWakeupId,
+                  ensembleSleepUntil: reason ? extractWakeAtFromReason(reason) : existingRun.ensembleSleepUntil,
+                  ensembleSleepReason: reason || existingRun.ensembleSleepReason
+                }
+              : {})
           }
         : existingRun
     )
@@ -2379,8 +2799,42 @@ function formatParticipantHealthHeader(
   return `${PARTICIPANT_HEALTH_TAG}\n${lines.join('\n')}`
 }
 
+function resolveWakeAtMs(input: ScheduleWakeupInput, nowMs: number): number {
+  const delayMs =
+    typeof input.delayMs === 'number' && Number.isFinite(input.delayMs)
+      ? input.delayMs
+      : typeof input.delaySeconds === 'number' && Number.isFinite(input.delaySeconds)
+        ? input.delaySeconds * 1000
+        : undefined
+  if (delayMs !== undefined) return nowMs + Math.max(0, delayMs)
+  if (input.wakeAt) {
+    const parsed = new Date(input.wakeAt).getTime()
+    return Number.isFinite(parsed) ? parsed : Number.NaN
+  }
+  return Number.NaN
+}
+
+function formatWakeupScheduledReason(wakeup: EnsembleWakeupRecord): string {
+  const reason = wakeup.reason ? ` Reason: ${wakeup.reason}` : ''
+  return `[wakeup:${wakeup.wakeupId} until ${wakeup.wakeAt}]${reason}`
+}
+
+function formatWakeupResumePrompt(prompt: string, wakeup: EnsembleWakeupRecord): string {
+  const reason = wakeup.reason ? `\nWake reason: ${wakeup.reason}` : ''
+  return `${prompt}\n\n[Scheduled wakeup]\nWakeup id: ${wakeup.wakeupId}\nScheduled at: ${wakeup.scheduledAt}\nWoke at: ${wakeup.firedAt || new Date().toISOString()}${reason}\nContinue this same Ensemble round from where you intentionally slept.`
+}
+
+function extractWakeupIdFromReason(reason: string): string | undefined {
+  return /\[wakeup:([^\s\]]+)/.exec(reason)?.[1]
+}
+
+function extractWakeAtFromReason(reason: string): string | undefined {
+  return /\[wakeup:[^\]]+ until ([^\]]+)\]/.exec(reason)?.[1]
+}
+
 function statusToRunStatus(status: EnsembleParticipantStatus): string {
   if (status === 'answered' || status === 'yielded' || status === 'skipped') return 'success'
+  if (status === 'sleeping') return 'sleeping'
   if (status === 'cancelled') return 'cancelled'
   return 'failed'
 }

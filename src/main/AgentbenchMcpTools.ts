@@ -76,6 +76,9 @@ export const AGENTBENCH_MCP_TOOLS = [
   'switch_auth_profile',
   'agent_delegation_role',
   'ensemble_yield',
+  'list_ensemble_participants',
+  'schedule_wakeup',
+  'cancel_wakeup',
   // QMOD (1.0.3): universal "ask the user" tool. Agents call this when
   // they need clarification mid-plan instead of trying to emit a
   // question into the chat stream and hoping the user notices. Renderer
