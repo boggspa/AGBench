@@ -79,6 +79,7 @@ const MIN_ENSEMBLE_PARTICIPANTS = 2
  *   - answered          → checkmark (turn complete, content delivered)
  *   - failed            → warning triangle with !
  *   - skipped           → skip-forward double-triangle (passed over)
+ *   - sleeping          → alarm clock (scheduled wakeup pending)
  *   - cancelled         → circle-slash (round-level cancel)
  *   - default           → ZZZ (unknown status falls through to idle
  *                          glyph for safety)
@@ -175,8 +176,20 @@ function ParticipantStatusIcon({ status }: { status: string }): React.JSX.Elemen
       </svg>
     )
   }
-  // idle (default fall-through): three Z marks descending — sleeping
-  // / dormant. Drawn as nested polylines so the staircase is the
+  if (key === 'sleeping') {
+    return (
+      <svg {...baseSvgProps}>
+        <circle cx="8" cy="8.5" r="4.5" />
+        <path d="M5 2.5 3.5 4" />
+        <path d="m11 2.5 1.5 1.5" />
+        <path d="M8 6.5v2.2l1.6 1.2" />
+        <path d="M5.5 14 4.7 15" />
+        <path d="m10.5 14 .8 1" />
+      </svg>
+    )
+  }
+  // idle (default fall-through): three Z marks descending — dormant
+  // / waiting. Drawn as nested polylines so the staircase is the
   // shape, not glyphs (avoids font-rendering inconsistencies).
   return (
     <svg {...baseSvgProps}>
@@ -464,8 +477,9 @@ export function EnsembleParticipantsAboveRow({
           // the transcript. Empty string when the round state has no
           // failure metadata so the chip falls back to the bare
           // status label.
-          const lastFailureReason =
+          const statusTooltip =
             state?.lastFailureReason || (state?.status === 'failed' ? state?.reason : '') || ''
+          const wakeupTooltip = state?.status === 'sleeping' ? state.reason || '' : ''
           // 1.0.4-AT7 — retryable when the participant's last turn
           // exited in a failure state. The Retry row in the overflow
           // popover re-dispatches the chat's last user prompt as a
@@ -482,7 +496,7 @@ export function EnsembleParticipantsAboveRow({
               key={participant.id}
               participant={participant}
               statusLabel={statusLabel}
-              statusTooltip={lastFailureReason}
+              statusTooltip={wakeupTooltip || statusTooltip}
               dimmed={!participant.enabled}
               isSelected={isSelected}
               isDragOver={dragOverId === participant.id && dragId !== participant.id}

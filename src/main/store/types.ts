@@ -1898,7 +1898,13 @@ export interface RunRecoveryFilter {
   limit?: number
 }
 
-export type RunStatus = 'success' | 'success_with_warnings' | 'failed' | 'cancelled' | 'running'
+export type RunStatus =
+  | 'success'
+  | 'success_with_warnings'
+  | 'failed'
+  | 'cancelled'
+  | 'running'
+  | 'sleeping'
 
 export interface RunWarning {
   message: string

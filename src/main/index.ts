@@ -518,6 +518,11 @@ let runCoordinatorRef: RunCoordinator | null = null
 let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
 
+function ensembleWakeupsEnabled(): boolean {
+  const value = process.env.AGBENCH_ENSEMBLE_WAKEUPS
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
 // which lives outside that block — can reach the `attachedWindow.*` JSON-RPC
@@ -14534,33 +14539,43 @@ async function executeGeminiMcpTool(
         tool: 'list_ensemble_participants'
       })
     } else if (toolName === 'schedule_wakeup') {
-      const result = ensembleOrchestratorRef?.scheduleWakeupForRun(context.appRunId, {
-        wakeAt: optionalString(args.wakeAt || args.wake_at || args.at),
-        delayMs: optionalNumber(args.delayMs || args.delay_ms),
-        delaySeconds: optionalNumber(args.delaySeconds || args.delay_seconds || args.seconds),
-        reason: optionalString(args.reason),
-        cancelOnUserInput:
-          args.cancelOnUserInput !== undefined
-            ? Boolean(args.cancelOnUserInput)
-            : args.cancel_on_user_input !== undefined
-              ? Boolean(args.cancel_on_user_input)
-              : undefined
-      }) || {
-        ok: false,
-        error: 'Ensemble orchestrator is not available.'
-      }
+      const result = ensembleWakeupsEnabled()
+        ? ensembleOrchestratorRef?.scheduleWakeupForRun(context.appRunId, {
+            wakeAt: optionalString(args.wakeAt || args.wake_at || args.at),
+            delayMs: optionalNumber(args.delayMs || args.delay_ms),
+            delaySeconds: optionalNumber(args.delaySeconds || args.delay_seconds || args.seconds),
+            reason: optionalString(args.reason),
+            cancelOnUserInput:
+              args.cancelOnUserInput !== undefined
+                ? Boolean(args.cancelOnUserInput)
+                : args.cancel_on_user_input !== undefined
+                  ? Boolean(args.cancel_on_user_input)
+                  : undefined
+          }) || {
+            ok: false,
+            error: 'Ensemble orchestrator is not available.'
+          }
+        : {
+            ok: false,
+            error: 'schedule_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+          }
       toolIsError = result.ok === false
       text = mcpJson({
         ...result,
         tool: 'schedule_wakeup'
       })
     } else if (toolName === 'cancel_wakeup') {
-      const result = ensembleOrchestratorRef?.cancelWakeupForRun(context.appRunId, {
-        wakeupId: optionalString(args.wakeupId || args.wakeup_id)
-      }) || {
-        ok: false,
-        error: 'Ensemble orchestrator is not available.'
-      }
+      const result = ensembleWakeupsEnabled()
+        ? ensembleOrchestratorRef?.cancelWakeupForRun(context.appRunId, {
+            wakeupId: optionalString(args.wakeupId || args.wakeup_id)
+          }) || {
+            ok: false,
+            error: 'Ensemble orchestrator is not available.'
+          }
+        : {
+            ok: false,
+            error: 'cancel_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+          }
       toolIsError = result.ok === false
       text = mcpJson({
         ...result,
@@ -20619,7 +20634,7 @@ if (isGeminiMcpBridgeProcess) {
       scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
       cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId)
     })
-    recoverPersistedEnsembleWakeups()
+    if (ensembleWakeupsEnabled()) recoverPersistedEnsembleWakeups()
     const dispatchAgentRun = (
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent

@@ -127,6 +127,48 @@ describe('EnsembleParticipantsAboveRow', () => {
     expect(html).toContain('status-answered')
   })
 
+  it('renders sleeping participant chips for scheduled wakeups', () => {
+    const chat = makeChat([
+      makeParticipant({ id: 'ensemble-claude', provider: 'claude', role: 'Explorer', order: 1 }),
+      makeParticipant({ id: 'ensemble-codex', provider: 'codex', role: 'Worker', order: 2 })
+    ])
+    chat.ensemble!.activeRound = {
+      roundId: 'round-1',
+      status: 'running',
+      prompt: 'Wait for external input.',
+      startedAt: '2026-05-25T15:00:00.000Z',
+      sleepingParticipantIds: ['ensemble-claude'],
+      pendingWakeupIds: ['wakeup-1'],
+      participants: [
+        {
+          participantId: 'ensemble-claude',
+          provider: 'claude',
+          role: 'Explorer',
+          order: 1,
+          status: 'sleeping',
+          reason: '[wakeup:wakeup-1 until 2026-05-25T15:05:00.000Z]'
+        },
+        {
+          participantId: 'ensemble-codex',
+          provider: 'codex',
+          role: 'Worker',
+          order: 2,
+          status: 'answered'
+        }
+      ]
+    }
+    const html = renderToStaticMarkup(
+      <EnsembleParticipantsAboveRow
+        chat={chat}
+        selectedParticipantId={null}
+        onSelectParticipant={() => undefined}
+        onChatChange={() => undefined}
+      />
+    )
+    expect(html).toContain('status-sleeping')
+    expect(html).toContain('sleeping — [wakeup:wakeup-1')
+  })
+
   it('dims disabled participants but still renders them', () => {
     const chat = makeChat([
       makeParticipant({ id: 'ensemble-claude', enabled: true, role: 'Explorer' }),

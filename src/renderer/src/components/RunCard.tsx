@@ -29,7 +29,8 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
     !run.endedAt &&
     run.status !== 'failed' &&
     run.status !== 'cancelled' &&
-    run.status !== 'success'
+    run.status !== 'success' &&
+    run.status !== 'sleeping'
   const fileCount = useMemo(() => {
     const diffCount = countRunDiffFiles(run)
     if (diffCount !== null) return diffCount
@@ -146,6 +147,7 @@ function getRunStatus(run: ChatRun): {
 } {
   if (run.cancelled || run.status === 'cancelled') return { label: 'Cancelled', tone: 'muted' }
   if (run.status === 'failed') return { label: 'Failed', tone: 'danger' }
+  if (run.status === 'sleeping') return { label: 'Sleeping', tone: 'warning' }
   // In-flight runs render as the contrast-aware accent shimmer-sweep
   // "Active" badge (CSS handles the animation; tone-running is the hook).
   if (!run.endedAt) return { label: 'Active', tone: 'running' }

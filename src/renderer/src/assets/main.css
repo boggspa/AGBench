@@ -26925,6 +26925,10 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #d6a23a 85%, var(--text-primary));
 }
 
+.ensemble-above-chip-status.status-sleeping {
+  color: color-mix(in srgb, var(--warning, #d6a23a) 82%, var(--accent-color));
+}
+
 .ensemble-above-chip-status.status-answered {
   color: color-mix(in srgb, var(--success, #41a26b) 88%, var(--text-primary));
 }

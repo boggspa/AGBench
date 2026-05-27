@@ -694,6 +694,7 @@ function getLastRunStatus(
 ): { label: string; tone: 'success' | 'warning' | 'danger' | 'muted' } | null {
   const run = chat.runs?.[chat.runs.length - 1]
   if (!run) return null
+  if (run.status === 'sleeping') return { label: 'Sleeping', tone: 'warning' }
   if (!run.endedAt && run.status !== 'failed' && run.status !== 'cancelled') {
     return { label: 'Running', tone: 'warning' }
   }
