@@ -119,19 +119,15 @@ function extractRoundId(message: ChatMessage): string | null {
 }
 
 function pickRoundSummary(chat: ChatRecord, roundId: string): string | null {
-  // Today: only the latest round summary is stored on the chat
-  // ensemble config (AT8 ships the prompt-injection side; the
-  // orchestrator-side capture writes here when synthesizer
-  // emits a structured block). When `chat.ensemble.activeRound`
-  // matches the roundId, return that summary — otherwise null.
   const ensemble = chat.ensemble
   if (!ensemble) return null
+  const historical = ensemble.roundSummaries?.[roundId]?.summary
+  if (typeof historical === 'string' && historical.trim()) {
+    return historical.trim()
+  }
   const activeRoundId = ensemble.activeRound?.roundId
   if (activeRoundId === roundId && typeof ensemble.lastRoundSummary === 'string') {
     return ensemble.lastRoundSummary.trim() || null
   }
-  // 1.0.5 follow-up: persist a per-round summary index so older
-  // rounds also surface their synthesizer take. Tracked as
-  // 1.0.4-AV3 / 1.0.5 long-running checkpoints.
   return null
 }

@@ -114,7 +114,7 @@ describe('groupEnsembleMessagesByRound (AV1)', () => {
     if (items[2].type === 'round-group') expect(items[2].messages).toHaveLength(1)
   })
 
-  it('surfaces lastRoundSummary on the group for the current active round only', () => {
+  it('surfaces lastRoundSummary on the group for the current active round fallback', () => {
     const messages = [
       message('u1', { role: 'user', roundId: 'r1' }),
       message('a', { roundId: 'r1' })
@@ -137,7 +137,7 @@ describe('groupEnsembleMessagesByRound (AV1)', () => {
     }
   })
 
-  it('returns null summary for older rounds (no per-round summary index yet)', () => {
+  it('surfaces historical round summaries from the per-round summary index', () => {
     const messages = [
       message('u1', { role: 'user', roundId: 'r1' }),
       message('a', { roundId: 'r1' }),
@@ -152,12 +152,21 @@ describe('groupEnsembleMessagesByRound (AV1)', () => {
           maxParticipants: 4,
           participants: [],
           activeRound: { roundId: 'r2', status: 'running', prompt: '', startedAt: '' } as any,
-          lastRoundSummary: 'Round 2 summary'
+          lastRoundSummary: 'Round 2 summary',
+          roundSummaries: {
+            r1: {
+              roundId: 'r1',
+              participantId: 'codex',
+              provider: 'codex',
+              summary: 'Round 1 captured summary',
+              capturedAt: '2026-05-27T12:01:00.000Z'
+            }
+          }
         }
       })
     )
     if (items[0].type === 'round-group') {
-      expect(items[0].summary).toBeNull() // r1 is no longer the active round
+      expect(items[0].summary).toContain('Round 1 captured')
     }
     if (items[1].type === 'round-group') {
       expect(items[1].summary).toContain('Round 2')

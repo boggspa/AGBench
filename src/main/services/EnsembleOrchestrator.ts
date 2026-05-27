@@ -35,6 +35,7 @@ import {
   type DispatchFailureReason
 } from '../EnsembleErrors'
 import type { ScoutBriefRecord } from '../ScoutBrief'
+import { findTerminalSynthesizerRoundSummary } from '../EnsembleRoundSummary'
 
 export type EnsembleRunMode = 'normal' | 'queue' | 'steer'
 
@@ -2164,30 +2165,55 @@ export class EnsembleOrchestrator {
     roundId: string,
     status: EnsembleRoundState['status']
   ): void {
+    const chat = this.deps.getChat(chatId)
+    if (!chat?.ensemble) return
     const endedAt = this.deps.nowIso()
-    this.updateChatRound(chatId, (round) =>
-      round?.roundId === roundId
-        ? {
-            ...round,
-            status,
-            activeParticipantId: undefined,
-            endedAt,
-            participants: round.participants.map((participant) =>
-              participant.status === 'idle'
-                ? {
-                    ...participant,
-                    status: status === 'cancelled' ? 'cancelled' : 'skipped',
-                    reason:
-                      status === 'cancelled'
-                        ? 'Round cancelled before this participant spoke.'
-                        : 'Round superseded before this participant spoke.',
-                    endedAt
-                  }
-                : participant
-            )
-          }
-        : round
-    )
+    const activeRound = chat.ensemble.activeRound
+    if (activeRound?.roundId !== roundId) return
+    const nextRound: EnsembleRoundState = {
+      ...activeRound,
+      status,
+      activeParticipantId: undefined,
+      endedAt,
+      participants: activeRound.participants.map((participant) =>
+        participant.status === 'idle'
+          ? {
+              ...participant,
+              status: status === 'cancelled' ? 'cancelled' : 'skipped',
+              reason:
+                status === 'cancelled'
+                  ? 'Round cancelled before this participant spoke.'
+                  : 'Round superseded before this participant spoke.',
+              endedAt
+            }
+          : participant
+      )
+    }
+    const summaryRecord =
+      status === 'completed'
+        ? findTerminalSynthesizerRoundSummary({
+            messages: chat.messages,
+            roundId,
+            synthesizerParticipantId: chat.ensemble.synthesizerParticipantId,
+            capturedAt: endedAt
+          })
+        : null
+    this.deps.saveChat({
+      ...chat,
+      ensemble: {
+        ...chat.ensemble,
+        activeRound: nextRound,
+        lastRoundSummary: summaryRecord ? summaryRecord.summary : undefined,
+        roundSummaries: summaryRecord
+          ? {
+              ...(chat.ensemble.roundSummaries || {}),
+              [roundId]: summaryRecord
+            }
+          : chat.ensemble.roundSummaries,
+        updatedAt: endedAt
+      },
+      updatedAt: this.deps.now()
+    })
   }
 
   private appendRoundStatus(chatId: string, roundId: string, content: string): void {

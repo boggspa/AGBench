@@ -351,6 +351,16 @@ export type EnsembleRoundMode =
   | 'chair-summary'
   | 'rebuttal'
 
+export interface EnsembleRoundSummaryRecord {
+  roundId: string
+  participantId: string
+  provider: ProviderId
+  role?: string
+  runId?: string
+  summary: string
+  capturedAt: string
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
@@ -390,9 +400,8 @@ export interface EnsembleConfig {
    * paragraph as N parallel takes the user has to reconcile.
    *
    * The orchestrator's end-of-round hook captures the synthesizer's
-   * final text into `lastRoundSummary` (follow-up — wiring lives in
-   * the orchestrator's `flushRun` path, deferred to a subsequent
-   * slice). Subsequent rounds' participant prompts read
+   * final text into `lastRoundSummary` once the round is complete.
+   * Subsequent rounds' participant prompts read
    * `lastRoundSummary` (when non-empty) and prepend it as a
    * "Prior round summary:" block so corrections propagate.
    *
@@ -408,6 +417,13 @@ export interface EnsembleConfig {
    * (intentional reset) and `Stop` (round cancelled).
    */
   lastRoundSummary?: string
+  /**
+   * 1.0.5-AT8 — per-round summary history keyed by round id. This
+   * backs historical round cards and future long-running checkpoint
+   * views while `lastRoundSummary` remains the prompt-facing latest
+   * summary.
+   */
+  roundSummaries?: Record<string, EnsembleRoundSummaryRecord>
 }
 
 /**

@@ -302,6 +302,121 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.chat.messages.map((message) => message.content)).toContain('Second prompt')
   })
 
+  it('captures a terminal synthesizer summary when the round completes', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.synthesizerParticipantId = 'codex'
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Summarise this round.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Reviewed the plan.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    const summary = `Round summary:
+The panel agreed to capture summaries at round close.
+
+Decisions:
+- Capture in finishRound.
+
+Corrections:
+- Do not capture from flushRun.
+
+Open risks:
+- Wakeups are still next.
+
+Next action:
+- Add renderer history tests.`
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: summary }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    const roundId = harness.chat.ensemble!.activeRound!.roundId
+    expect(harness.chat.ensemble?.lastRoundSummary).toContain('Capture in finishRound')
+    expect(harness.chat.ensemble?.roundSummaries?.[roundId]?.summary).toContain(
+      'Next action:'
+    )
+  })
+
+  it('threads the captured summary into the next round prompt', async () => {
+    const harness = makeHarness()
+    harness.chat.ensemble!.synthesizerParticipantId = 'codex'
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'First round.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'content', text: 'Review done.' }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'claude',
+      { appRunId: harness.dispatched[0].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      {
+        type: 'content',
+        text: `Round summary:
+Carry this forward.
+
+Decisions:
+- Queue works.
+
+Corrections:
+- None.
+
+Open risks:
+- None.
+
+Next action:
+- Use it next round.`
+      }
+    )
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.status).toBe('completed')
+    )
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Second round.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    expect(harness.dispatched[2].prompt).toContain('Prior round summary')
+    expect(harness.dispatched[2].prompt).toContain('Carry this forward')
+  })
+
   it('steers by cancelling the active run without deleting the replacement round', async () => {
     const harness = makeHarness()
     harness.orchestrator.startRound({
