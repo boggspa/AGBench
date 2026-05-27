@@ -17922,6 +17922,32 @@ input:disabled, select:disabled, textarea:disabled {
   transform: none;
 }
 
+/* 1.0.5-EW27 light-mode follow-up — the generic light-theme rule
+ * at line ~23465 paints a soft-grey fill on `.composer-image-picker-btn`
+ * across ALL composer shells, and its specificity (0,2,0) matches
+ * the Claude rule above (also 0,2,0) so source-order makes it
+ * win in light mode. Chris caught it: dark mode satellite reads
+ * fine, light mode still showed a white square container.
+ *
+ * Bumping specificity here with stacked attribute selectors —
+ * `[data-theme=...][data-composer-style=...]` is (0,3,0) which
+ * beats the generic light rule's (0,2,0) regardless of source
+ * order. Hover follows the same pattern. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn {
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn:hover:not(:disabled),
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="claude"]
+  .composer-image-picker-btn:focus-visible {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+}
+
 /* Model picker styled like "Sonnet 4.6 · High" minimal */
 [data-composer-style="claude"] [data-composer-control="model"] {
   background: transparent;
