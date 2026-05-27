@@ -550,6 +550,40 @@ function ensembleWakeupsEnabled(): boolean {
   return value === '1' || value === 'true' || value === 'yes'
 }
 
+/**
+ * 1.0.5-C0 — Feature gates for the C-series work absorbed from the
+ * original 1.0.6 blueprint. Folding C0–C5 into 1.0.5 keeps 1.0.6
+ * cleanly focused on the Remote Task Console (R0–R12). Each gate
+ * defaults OFF so existing serial/ensemble behaviour is unchanged
+ * until a developer opts in. Final ship enables them by default
+ * once smoke-tested.
+ *
+ * - `AGBENCH_CONCURRENT_LANES` — gates the per-lane Ensemble state
+ *   model + the per-workspace write-intent registry (C1 + C2).
+ *   Without this flag, Ensemble dispatches serially as before.
+ * - `AGBENCH_PERMISSION_ENVELOPES` — gates child-agent permission
+ *   envelope derivation + enforcement on sub-thread delegations
+ *   (C3 + C4). Without it, sub-threads inherit parent permissions
+ *   as they did pre-C3.
+ * - `AGBENCH_COMPOSER_CONTENTEDITABLE` — gates the contenteditable
+ *   composer surface (C5). Without it, the renderer keeps using
+ *   the textarea + overlay pair. Renderer reads the gate from the
+ *   capability snapshot exposed via IPC so the runtime can flip
+ *   it without an app restart.
+ */
+export function concurrentLanesEnabled(): boolean {
+  const value = process.env.AGBENCH_CONCURRENT_LANES
+  return value === '1' || value === 'true' || value === 'yes'
+}
+export function permissionEnvelopesEnabled(): boolean {
+  const value = process.env.AGBENCH_PERMISSION_ENVELOPES
+  return value === '1' || value === 'true' || value === 'yes'
+}
+export function composerContenteditableEnabled(): boolean {
+  const value = process.env.AGBENCH_COMPOSER_CONTENTEDITABLE
+  return value === '1' || value === 'true' || value === 'yes'
+}
+
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
 // which lives outside that block — can reach the `attachedWindow.*` JSON-RPC
