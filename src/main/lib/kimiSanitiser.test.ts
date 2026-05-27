@@ -119,4 +119,32 @@ describe('kimiSanitiser', () => {
     expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Xinjiang')
     expect(KIMI_DEFAULT_TRIGGER_KEYWORDS).toContain('Falun Gong')
   })
+
+  it('1.0.5-EW26b: catches diplomatic-summit / arms-package phrasings', () => {
+    // Regression for the gap Chris spotted in a real transcript:
+    // Codex/Politician posted "Trump's Beijing summit... Taiwan
+    // arms package after summit aimed at steadying us-china ties"
+    // which contained NO words matching the pre-EW26b default
+    // list (no "Tiananmen", no "Taiwan independence", no
+    // "US-China relations"/"tensions") but would absolutely
+    // trigger Moonshot's filter. EW26b adds the summit/arms/ties
+    // headline-shape phrasings to the curated baseline.
+    const input =
+      "Trump's Beijing summit ended with both sides claiming stabilization. " +
+      'Trump weighs Taiwan arms package. ' +
+      'A focus on steadying us-china ties followed.'
+    const result = sanitiseForKimi(input)
+    expect(result.redacted).toBe(true)
+    // Three trigger matches in three sentences — every sentence
+    // contains at least one of the new triggers.
+    expect(result.matches).toHaveLength(3)
+    const triggers = result.matches.map((m) => m.trigger)
+    expect(triggers).toContain('Beijing summit')
+    // "Taiwan arms package" and "Taiwan arms" both match; the
+    // resolver picks the first one in the list — order in
+    // `KIMI_DEFAULT_TRIGGER_KEYWORDS` puts "Taiwan arms" before
+    // "Taiwan arms package" so that's what fires first.
+    expect(triggers).toContain('Taiwan arms')
+    expect(triggers).toContain('US-China ties')
+  })
 })

@@ -122,7 +122,28 @@ export const KIMI_DEFAULT_TRIGGER_KEYWORDS: ReadonlyArray<string> = [
   'US-China relations',
   'China-US relations',
   'US China tensions',
-  'China US tensions'
+  'China US tensions',
+  // 1.0.5-EW26b — additional headline phrasings observed in a
+  // real transcript that didn't match the "relations"/"tensions"
+  // variants above but still tripped Moonshot's filter. The
+  // pattern is: any diplomatic-summit / arms-package framing
+  // involving China + an adversary (Taiwan, US). We
+  // intentionally do NOT include bare "Taiwan" or "Beijing"
+  // here — those produce heavy false-positives on benign
+  // mentions (Taiwanese food, Beijing dumplings, business
+  // trips, etc.). The compound phrasings below are tight
+  // enough to specifically catch the geopolitical headline
+  // shape without grabbing innocent uses.
+  'Beijing summit',
+  'Taiwan arms',
+  'Taiwan arms package',
+  'US-China ties',
+  'China-US ties',
+  'US China ties',
+  'China US ties',
+  'Trump-Xi',
+  'Xi summit',
+  'China summit'
 ]
 
 export interface KimiSanitiserResult {
