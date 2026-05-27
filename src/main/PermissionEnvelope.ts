@@ -19,7 +19,12 @@
  * the broader system layers on top of.
  */
 
-import type { PermissionEnvelope, ProviderId } from './store/types'
+import type { ActorChainEntry, PermissionEnvelope, ProviderId } from './store/types'
+
+// Re-export so existing imports of `ActorChainEntry` from this
+// module keep working (now sourced from the canonical
+// `store/types` location after 1.0.5-C4).
+export type { ActorChainEntry }
 
 /**
  * The "read-only" preset toolset. A child with no explicit
@@ -260,13 +265,12 @@ export function isHostAllowedByEnvelope(envelope: PermissionEnvelope, host: stri
  * scanning all chats for matching `permissionEnvelope.envelopeId`).
  * When the parentEnvelopeId is unknown the walk stops gracefully
  * — partial chains are better than throws.
+ *
+ * `ActorChainEntry` is defined in `store/types.ts` as of
+ * 1.0.5-C4 so `ApprovalLedgerRecord` can reference it without a
+ * circular import; this module re-exports it for callers that
+ * already import here.
  */
-export interface ActorChainEntry {
-  envelopeId: string
-  parentRunId: string
-  childProvider?: ProviderId
-  purpose: string
-}
 
 export function walkActorChain(
   leaf: PermissionEnvelope,

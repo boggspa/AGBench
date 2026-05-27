@@ -278,6 +278,23 @@ export interface EnsembleRoundParticipantState {
 }
 
 /**
+ * 1.0.5-C4 — Actor-chain entry. One stop on the chain from a
+ * leaf envelope back to the root delegator. Captured on
+ * approval rows + audit log entries so the trail is
+ * inspectable ("Codex → Claude → Kimi" for a tool call that
+ * originated in Codex, was delegated to Claude, who further
+ * delegated to Kimi to actually run).
+ *
+ * Walked by `walkActorChain` in `PermissionEnvelope.ts`.
+ */
+export interface ActorChainEntry {
+  envelopeId: string
+  parentRunId: string
+  childProvider?: ProviderId
+  purpose: string
+}
+
+/**
  * 1.0.5-C3 — Permission envelope for child-agent delegation.
  *
  * Every sub-thread spawned via `delegate_to_subthread` (or any
@@ -338,6 +355,21 @@ export interface PermissionEnvelope {
   /** Regex patterns the enforcer redacts from prompts / tool
    * inputs / outputs flowing through this envelope. */
   redactionPatterns: string[]
+  /**
+   * 1.0.5-C4 — Maximum approvals this envelope is allowed to
+   * generate over its lifetime. Undefined = no cap (the child
+   * shares the parent's pool implicitly). Once `consumed`
+   * crosses `approvalBudget`, the approval is returned to the
+   * parent / router / user with an `'exhausted'` decision and
+   * the child can't request further approvals until the
+   * envelope is renewed.
+   *
+   * Tracked at runtime by `ApprovalBudgetTracker`; not
+   * persisted on the envelope itself (the budget is the cap;
+   * consumption is volatile per-process state that resets at
+   * app restart along with the lanes that owned it).
+   */
+  approvalBudget?: number
   /** Stamp from when the envelope was derived. */
   createdAt: string
 }
@@ -1828,6 +1860,15 @@ export interface ApprovalLedgerRecord {
   providerRunId?: string
   rpcId?: number | string
   metadata?: Record<string, unknown>
+  /**
+   * 1.0.5-C4 — Actor chain from the leaf envelope (the agent
+   * that actually requested this approval) back to the root
+   * delegator. Empty / undefined for top-level approvals where
+   * no delegation was involved. Stamped on the row at
+   * `requestedAt` time via `walkActorChain`; immutable
+   * thereafter.
+   */
+  actorChain?: ActorChainEntry[]
 }
 
 export type ApprovalLedgerRequestInput = Omit<
