@@ -18203,25 +18203,29 @@ input:disabled, select:disabled, textarea:disabled {
   color: color-mix(in srgb, #ffffff 58%, transparent);
 }
 
-/* 1.0.5-EW31 — Nudge the Claude shell's send / stop / steer
- * glyphs upward by 1.5px. Chris caught: the ↵ return-arrow
- * icon sat slightly low inside its action button's bounding
- * box in both light and dark mode. Cause is the SF Symbol's
- * own baseline — the glyph art is bottom-weighted so visual
- * center sits below geometric center. Other shells aren't
- * affected because their action buttons have a visible filled
- * background that grounds the icon visually; the Claude
- * shell's transparent satellite chrome makes the offset
- * obvious. Apply only inside Claude shell so other shells'
- * action buttons stay as-is. */
+/* 1.0.5-EW31 + EW31a — Nudge the Claude shell's send / stop /
+ * steer glyphs upward. Chris caught: the ↵ return-arrow
+ * (`ClaudeReturnSymbolIcon`'s SVG path-pair) sat slightly low
+ * inside its action button's bounding box in both light and
+ * dark mode. Cause is the SVG's own optical balance — the
+ * arrow tip sits at y=8.5–10.5 inside a 16x16 viewBox, so
+ * visual center is below geometric center.
+ *
+ * EW31 (1.5px) was too subtle to perceive at Retina scale —
+ * Chris reported "didn't seem to work even after reset".
+ * EW31a bumps to 3px AND adds explicit `!important` flags so
+ * any pre-existing transform with higher source-order or
+ * unforeseen specificity gets beaten cleanly. The base
+ * `.composer-action-btn:hover:not(:disabled) .sf-symbol-icon`
+ * rule at main.css:7674 is (0,4,0) which beats our (0,3,0) on
+ * hover; the `!important` here sidesteps the specificity
+ * battle entirely. Hover combines nudge + scale via the
+ * second selector below. */
 [data-composer-style="claude"] .composer-action-btn .sf-symbol-icon {
-  transform: translateY(-1.5px);
+  transform: translateY(-3px) !important;
 }
 [data-composer-style="claude"] .composer-action-btn:hover:not(:disabled) .sf-symbol-icon {
-  /* Preserve the EW31 nudge under the base rule's
-   * `scale(1.06)` hover effect — combine both transforms so
-   * the glyph stays nudged AND scaled on hover. */
-  transform: translateY(-1.5px) scale(1.06);
+  transform: translateY(-3px) scale(1.06) !important;
 }
 
 [data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
