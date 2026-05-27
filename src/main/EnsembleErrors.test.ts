@@ -130,7 +130,10 @@ describe('formatDispatchFailureNote', () => {
     expect(note).toContain('ECONNREFUSED')
     expect(note).toContain('Skipping for this round')
     expect(note).toContain('re-launch the provider CLI')
-    expect(note.startsWith('⚠')).toBe(true)
+    // 1.0.4-AR6 — every health-category note now carries the
+    // `[participant-health]` tag prefix so the renderer can group
+    // them. The warning glyph follows the tag.
+    expect(note.startsWith('[participant-health] ⚠')).toBe(true)
   })
 
   it('formats preflight failures with the error message inline', () => {
@@ -196,7 +199,10 @@ describe('formatYieldTargetUnreachableNote', () => {
 
   it('names the dead target, the posix code, and the next-in-rotation', () => {
     const note = formatYieldTargetUnreachableNote(gemini, 'ECONNREFUSED', codex)
-    expect(note.startsWith('⚠')).toBe(true)
+    // 1.0.4-AR6 — every health-category note now carries the
+    // `[participant-health]` tag prefix so the renderer can group
+    // them. The warning glyph follows the tag.
+    expect(note.startsWith('[participant-health] ⚠')).toBe(true)
     expect(note).toContain('Yield target Gemini / Researcher')
     expect(note).toContain('ECONNREFUSED')
     expect(note).toContain('Routing to next participant in rotation')
@@ -216,7 +222,10 @@ describe('formatYieldTargetUnreachableNote', () => {
 describe('formatAllUnreachableNote', () => {
   it('emits the chip-strip recovery hint with the warning glyph', () => {
     const note = formatAllUnreachableNote()
-    expect(note.startsWith('⚠')).toBe(true)
+    // 1.0.4-AR6 — every health-category note now carries the
+    // `[participant-health]` tag prefix so the renderer can group
+    // them. The warning glyph follows the tag.
+    expect(note.startsWith('[participant-health] ⚠')).toBe(true)
     expect(note).toContain('No reachable participants left')
     expect(note).toContain('Returning to user')
     expect(note).toContain('chip strip')

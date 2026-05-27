@@ -185,6 +185,24 @@ export function classifyDispatchError(error: unknown): DispatchFailureReason {
  *   - `unknown`: `"⚠ Codex / Worker dispatch failed. Skipping for
  *     this round."`
  */
+/**
+ * 1.0.4-AR6 — every health-category note now carries a
+ * `[participant-health]` tag prefix so the user can scan a long
+ * transcript and group all the panel's health signals at a glance.
+ * Pre-AR6 the notes were tagged only with `⚠` — distinguishable from
+ * normal content but indistinguishable from each other vs. other
+ * warning categories (rate-limit warnings, dispatch warnings,
+ * scout-pass warnings). The shared tag makes consolidated
+ * downstream rendering (collapsed health drawer, etc.) trivial: a
+ * future renderer can simply group by tag prefix without parsing
+ * the body text.
+ *
+ * Exported because the orchestrator uses the same tag when emitting
+ * the round-end "all unreachable" follow-up so the consolidated
+ * health summary reads as one block.
+ */
+export const PARTICIPANT_HEALTH_TAG = '[participant-health]'
+
 export function formatDispatchFailureNote(
   participant: EnsembleParticipant,
   reason: DispatchFailureReason
@@ -193,7 +211,7 @@ export function formatDispatchFailureNote(
 
   if (reason.kind === 'unreachable') {
     return (
-      `⚠ ${who} unreachable (${reason.underlyingCode}). ` +
+      `${PARTICIPANT_HEALTH_TAG} ⚠ ${who} unreachable (${reason.underlyingCode}). ` +
       `Skipping for this round — re-launch the provider CLI or ` +
       `re-enable from the chip strip when the socket is back.`
     )
@@ -204,9 +222,9 @@ export function formatDispatchFailureNote(
     // "!" already, and the appended ". Skipping..." would look
     // like a typo.
     const trimmed = reason.message.replace(/[.!?\s]+$/u, '')
-    return `⚠ ${who} dispatch failed: ${trimmed}. Skipping for this round.`
+    return `${PARTICIPANT_HEALTH_TAG} ⚠ ${who} dispatch failed: ${trimmed}. Skipping for this round.`
   }
-  return `⚠ ${who} dispatch failed. Skipping for this round.`
+  return `${PARTICIPANT_HEALTH_TAG} ⚠ ${who} dispatch failed. Skipping for this round.`
 }
 
 /**
@@ -250,12 +268,12 @@ export function formatYieldTargetUnreachableNote(
   if (next) {
     const nextLabel = participantNoteLabel(next)
     return (
-      `⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
+      `${PARTICIPANT_HEALTH_TAG} ⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
       `Routing to next participant in rotation (${nextLabel}).`
     )
   }
   return (
-    `⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
+    `${PARTICIPANT_HEALTH_TAG} ⚠ Yield target ${targetLabel} unreachable (${underlyingCode}). ` +
     `No further participants — returning to user.`
   )
 }
@@ -269,7 +287,7 @@ export function formatYieldTargetUnreachableNote(
  */
 export function formatAllUnreachableNote(): string {
   return (
-    `⚠ No reachable participants left. Returning to user — ` +
+    `${PARTICIPANT_HEALTH_TAG} ⚠ No reachable participants left. Returning to user — ` +
     `re-enable participants from the chip strip and resume.`
   )
 }
@@ -302,7 +320,7 @@ export function formatProbeFailureNote(
   const codeSuffix = underlyingCode ? ` (${underlyingCode})` : ''
   const reasonText = trimmedReason ? `: ${trimmedReason}${codeSuffix}` : codeSuffix
   return (
-    `⚠ ${who} health check failed${reasonText}. ` +
+    `${PARTICIPANT_HEALTH_TAG} ⚠ ${who} health check failed${reasonText}. ` +
     `Skipping for this round — re-launch the provider CLI or ` +
     `re-enable from the chip strip when the socket is back.`
   )
