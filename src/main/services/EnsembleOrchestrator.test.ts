@@ -996,6 +996,112 @@ Next action:
     expect(geminiMessage?.content).toBe('Yo! Doing great, honestly. Sunset is beautiful.')
   })
 
+  it('1.0.5-EW16: accumulates Gemini CLI token-shape events into the ensemble assistant message', async () => {
+    // Regression: handleProviderOutput pre-EW16 had no branch for
+    // `{ type: 'token', content }` events, so token-streamed Gemini
+    // turns silently fell through to `return true` without ever
+    // touching `run.content`. flushRun's content-trim guard then
+    // skipped the assistant-message append, and the transcript
+    // stayed blank while the round timer ticked — making it look
+    // like Gemini was hung when it was actually streaming fine.
+    // The renderer's GeminiAdapter has handled token events since
+    // 1.0.0 (GeminiAdapter.ts:158-162); this brings the orchestrator
+    // bridge to parity.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Gemini, what is the weather?',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'token',
+      content: 'Token-streamed '
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'token',
+      content: 'reply '
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'token',
+      content: 'lands cleanly.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 31337 }
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe('Token-streamed reply lands cleanly.')
+  })
+
+  it('1.0.5-EW16: accepts content events that carry `content` instead of `text`', async () => {
+    // Regression: pre-EW16 the orchestrator's content-branch
+    // gated on `typeof payload.text === 'string'`. Some Gemini CLI
+    // builds emit `{ type: 'content', content: '…' }` rather than
+    // `{ type: 'content', text: '…' }` — the renderer's adapter
+    // falls back to `parsed.content` (GeminiAdapter.ts:99), but the
+    // orchestrator did not, so these events were dropped silently.
+    // Same observable symptom as the token-event case: empty bubble
+    // even though Gemini was clearly streaming.
+    const harness = makeHarness()
+    harness.chat.ensemble!.participants = [
+      {
+        id: 'ensemble-gemini',
+        provider: 'gemini',
+        enabled: true,
+        role: 'Researcher',
+        instructions: 'Research.',
+        order: 1,
+        permissionPresetId: 'read_only'
+      }
+    ]
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Gemini, can you hear me?',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+
+    const route = {
+      appRunId: harness.dispatched[0].appRunId,
+      appChatId: 'ensemble-chat'
+    }
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'content',
+      content: 'Loud and clear.'
+    })
+    harness.orchestrator.handleProviderOutput('gemini', route, {
+      type: 'result',
+      status: 'success',
+      stats: { total_tokens: 100 }
+    })
+
+    const geminiMessage = harness.chat.messages.find(
+      (message) => message.role === 'assistant' && message.metadata?.ensembleProvider === 'gemini'
+    )
+    expect(geminiMessage?.content).toBe('Loud and clear.')
+  })
+
   it('1.0.4-AB: does not double assistant content when a non-delta final message follows streamed deltas', async () => {
     // Regression: providers that stream `{ type: 'message', delta: true,
     // content }` deltas (Gemini CLI) AND then close the turn with a

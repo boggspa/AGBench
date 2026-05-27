@@ -1279,10 +1279,29 @@ export class EnsembleOrchestrator {
       this.flushRun(run)
       return true
     }
-    if (payload?.type === 'content' && typeof payload.text === 'string') {
+    // 1.0.5-EW16 — Accept `payload.content` as a fallback when
+    // `payload.text` is missing. Gemini CLI emits both shapes
+    // depending on internal state; the renderer's GeminiAdapter
+    // handles them via `parsed.text || parsed.content` (see
+    // GeminiAdapter.ts:99). Pre-EW16 the orchestrator only
+    // checked `payload.text`, so `{ type: 'content', content: '…' }`
+    // events were silently dropped — run.content stayed empty,
+    // flushRun's content-trim guard skipped the assistant message
+    // append, and the transcript stayed blank even though Gemini
+    // was clearly streaming (timer kept resetting because events
+    // ARE arriving, just with the wrong field name).
+    if (
+      payload?.type === 'content' &&
+      (typeof payload.text === 'string' || typeof payload.content === 'string')
+    ) {
       const itemId =
         typeof payload.itemId === 'string' && payload.itemId ? payload.itemId : undefined
-      const text = payload.text
+      const text =
+        typeof payload.text === 'string' && payload.text
+          ? payload.text
+          : typeof payload.content === 'string'
+            ? payload.content
+            : ''
       if (text) {
         const itemTransition =
           itemId !== undefined &&
@@ -1296,6 +1315,22 @@ export class EnsembleOrchestrator {
         this.scheduleFlush(run)
       } else if (itemId) {
         run.lastContentItemId = itemId
+      }
+      return true
+    }
+    // 1.0.5-EW16 — Gemini CLI also emits `{ type: 'token',
+    // content: '…' }` events (see GeminiAdapter.ts:158-162 for
+    // the renderer-side handling). Pre-EW16 the orchestrator
+    // had no branch for `'token'` and these silently fell through
+    // to the final `return true` — token-streamed turns went into
+    // the transcript as empty assistant bubbles. Treat token
+    // events as plain delta chunks.
+    if (payload?.type === 'token' && typeof payload.content === 'string') {
+      const text = payload.content
+      if (text) {
+        run.content += text
+        appendTimelineContent(run, text)
+        this.scheduleFlush(run)
       }
       return true
     }

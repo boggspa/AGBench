@@ -10145,8 +10145,16 @@ async function runGeminiProvider(
   // events Gemini emits during its initial burst — as long as the
   // burst stops cleanly and no further events arrive, we detect
   // it. Solo Gemini chats don't run this code path.
-  const GEMINI_STUCK_IDLE_MS = 30_000
-  const GEMINI_STUCK_POLL_MS = 5_000
+  // 1.0.5-EW15 — Bumped 30s → 180s. Chris caught: a global-chat
+  // Gemini turn legitimately took 332s (5.5 minutes) to complete
+  // because the CLI fell back from ripgrep to GrepTool for a
+  // workspace scan. EW12's 30s threshold was killing healthy-but-
+  // slow runs mid-progress. The new 180s threshold + counting
+  // stderr as a heartbeat (EW15 below) only fires the kill when
+  // Gemini is TRULY silent (no stdout, no stderr) for 3 minutes —
+  // i.e. genuinely deadlocked, not just slow.
+  const GEMINI_STUCK_IDLE_MS = 180_000
+  const GEMINI_STUCK_POLL_MS = 10_000
   let lastOrchestratorEventAt = Date.now()
   let ensembleStuckTimer: ReturnType<typeof setInterval> | null = null
   // 1.0.5-EW13 — Capture Gemini's last few stderr lines so the
@@ -10258,6 +10266,15 @@ async function runGeminiProvider(
           ensembleStderrTail.shift()
         }
       }
+      // 1.0.5-EW15 — Treat stderr as a "still alive" heartbeat.
+      // EW12's idle-time detector only watched stdout JSON events,
+      // so a Gemini turn that's slowly emitting progress on stderr
+      // (e.g. "Falling back to GrepTool", workspace scan logs)
+      // would trip the 180s kill even though the process is making
+      // forward progress. Resetting the idle timer on any stderr
+      // byte means the kill only fires during TRUE silence — no
+      // stdout AND no stderr for the full window.
+      lastOrchestratorEventAt = Date.now()
     }
     appendDurableRunEventForRoute(
       'gemini',
