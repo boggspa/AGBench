@@ -123,6 +123,7 @@ import {
   resolveEnsembleParticipantSettings
 } from './lib/ensembleProviderDefaults'
 import {
+  rebindEnsembleChatToWorkspace,
   rebindWelcomeEnsembleChatToGlobal,
   rebindWelcomeEnsembleChatToWorkspace
 } from './lib/ensembleWelcomeWorkspace'
@@ -8540,6 +8541,63 @@ function App(): React.JSX.Element {
     setPersistentSessionNeedsRestart(false)
     setCurrentWorkspace(ws)
     currentWorkspaceIdRef.current = ws.id
+
+    // 1.0.5-EW41 — When the current chat is an Ensemble, rebind it
+    // in place to the new workspace instead of falling through to
+    // the "find empty chat or create new single-provider chat"
+    // path below. Pre-EW41 a user mid-Ensemble who switched
+    // workspaces (composer workspace switcher → Add new workspace
+    // or pick another) was dropped onto a fresh Gemini single-
+    // provider welcome screen — losing their entire curated panel
+    // and transcript. The helper preserves participants + ensemble
+    // config + history; subsequent rounds dispatch against the new
+    // workspace path. The helper returns null when the rebind is a
+    // no-op (chat is already on this workspace) — we then short-
+    // circuit without churning state, since the user effectively
+    // re-selected their current workspace from the popover.
+    if (isCurrentEnsembleChat && currentChat) {
+      const rebound = rebindEnsembleChatToWorkspace(currentChat, ws)
+      if (rebound) {
+        const chatWithLedger = withSessionActivityLedger(currentChat, rebound)
+        const provider = getChatProvider(chatWithLedger)
+        updateChatById(chatWithLedger.appChatId, () => chatWithLedger)
+        await refreshUsageSummary(ws.id, provider)
+        setDiff(
+          provider === 'gemini' &&
+            isGeminiWorktreeDiffUnavailable(resolveGeminiWorktreeConfig(ws))
+            ? createWorktreeDiffUnavailable()
+            : null
+        )
+        void refreshProviderMetadata(provider, ws.path)
+        setRunDiff(null)
+        setRunCompleteNotice(null)
+        setRawLogs(rawLogsByChatIdRef.current.get(chatWithLedger.appChatId) || [])
+        hydrateThreadRawLogsFromEvents(chatWithLedger.appChatId)
+        setShowFallbackUX(false)
+        setSessionTrust(false)
+        setIsThinking(runningChatIds.has(chatWithLedger.appChatId))
+        if (provider === 'codex' && typeof window.api.listAgentThreads === 'function') {
+          window.api
+            .listAgentThreads('codex', { cwd: ws.path })
+            .then((response) =>
+              setCodexThreads(Array.isArray(response?.data) ? response.data : [])
+            )
+            .catch(() => setCodexThreads([]))
+        }
+        const tr = await window.api.checkTrust(ws.path)
+        setTrustResult(tr)
+        return
+      }
+      // rebound === null → chat is already on this workspace.
+      // No state churn needed; we already set currentWorkspace
+      // above (cheap no-op when identical), so just refresh trust
+      // and bail. This handles the edge case where the user picks
+      // the workspace they're already in from the popover.
+      const tr = await window.api.checkTrust(ws.path)
+      setTrustResult(tr)
+      return
+    }
+
     const allChats = await window.api.getChats()
     const workspaceChats = allChats.filter((chat) => chat.workspaceId === ws.id)
     const emptyChat = workspaceChats.find((chat) => chat.messages.length === 0)
