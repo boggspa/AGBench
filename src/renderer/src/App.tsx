@@ -1284,6 +1284,29 @@ function LinkCircleSymbolIcon() {
   )
 }
 
+// 1.0.5-AR12 — Workspace glyph used by the composer's workspace
+// switch button (data-composer-control="workspace"). Matches the
+// stroked, 16-viewbox, rounded-cap shape of the other inline
+// composer SymbolIcons so it reads as a peer-token across all 9
+// composer shells (default / codex / claude / gemini / kimi /
+// modular / terminal / stub / satellite).
+function FolderSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M2.8 4.4h4.1L7.3 5.6h6.5c.6 0 1.1.4 1.1 1v6.2c0 .6-.5 1-1.1 1H2.8C2.2 13.8 1.7 13.4 1.7 12.8V5.5c0-.6.5-1.1 1.1-1.1z" />
+      </svg>
+    </span>
+  )
+}
+
 // Composer-unification (Phase J1): CheckpointSymbolIcon was only used
 // by the Gemini-only Checkpoints toggle button which moved into the
 // command palette (and the palette uses text labels, not glyphs, for
@@ -18168,6 +18191,60 @@ function App(): React.JSX.Element {
                     </label>
                       )
                     })()}
+                    {/* 1.0.5-AR12 — Workspace switch button. Renders a
+                       compact, shell-themed control in the composer's
+                       inline-pickers-left row so users can pivot to a
+                       different workspace context (or open the workspace
+                       popout to inspect files) without leaving the
+                       composer. Uses the existing
+                       `window.api.openWorkspacePopout` IPC contract
+                       (`kind: 'file-editor'`) — the workspace files
+                       popout is the most natural "switch workspace
+                       view" target without inventing a new channel.
+                       The button is hidden in global chats (no
+                       workspace bound). Themed shells (codex / claude /
+                       gemini / kimi) gain their own style overrides
+                       via the `data-composer-control="workspace"`
+                       hook; the AGBench-native / modular / terminal /
+                       stub / satellite shells inherit the base
+                       `composer-picker-label` chrome plus a `composer-
+                       workspace-button` class for shell-agnostic
+                       polish. */}
+                    {!isCurrentGlobalChat && (
+                      <button
+                        type="button"
+                        className="composer-picker-label composer-workspace-button"
+                        data-composer-control="workspace"
+                        onClick={() => {
+                          const workspacePath = currentWorkspace?.path
+                          if (!workspacePath) return
+                          void window.api.openWorkspacePopout({
+                            kind: 'file-editor',
+                            workspacePath
+                          })
+                        }}
+                        disabled={!currentWorkspace}
+                        title={
+                          currentWorkspace
+                            ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
+                            : 'Pick a workspace'
+                        }
+                        aria-label={
+                          currentWorkspace
+                            ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
+                            : 'Pick a workspace'
+                        }
+                      >
+                        <FolderSymbolIcon />
+                        <span className="composer-workspace-button-label">
+                          {currentWorkspace
+                            ? currentWorkspace.displayName ||
+                              currentWorkspace.path.split('/').pop() ||
+                              'Workspace'
+                            : 'Pick workspace'}
+                        </span>
+                      </button>
+                    )}
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here

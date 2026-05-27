@@ -7570,6 +7570,47 @@ button.sidebar-item {
   outline: none;
 }
 
+/* 1.0.5-AR12 — Workspace switch button (data-composer-control="workspace").
+ *
+ * Base chrome inherits from `.composer-picker-label` (already applied
+ * to the element); this rule adds workspace-specific polish:
+ *   - tighter max-width with ellipsis truncation so a long workspace
+ *     name doesn't stretch the pickers row,
+ *   - button-reset (button defaults like white-space + text-align),
+ *   - active/focus states matching the rest of the picker chip family.
+ *
+ * Per-shell overrides in the [data-composer-style="..."] sections
+ * below restyle the chrome to match each shell's aesthetic; this base
+ * rule is the AGBench-native / modular / terminal / stub / satellite
+ * default. */
+.composer-workspace-button {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  max-width: 180px;
+  overflow: hidden;
+}
+
+.composer-workspace-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--text-primary) 36%, transparent);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+}
+
+.composer-workspace-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer-workspace-button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
 .composer-actions {
   display: flex;
   justify-content: space-between;
@@ -17567,8 +17608,8 @@ input:disabled, select:disabled, textarea:disabled {
  * Anything else AGBench-specific in the left bar (model-aware reasoning
  * pills, extra workspace chips, etc.) still gets hidden by these :not()
  * allowlists. */
-[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]),
-[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="codex"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]),
+[data-composer-style="claude"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
   display: none !important;
 }
 
@@ -17609,7 +17650,40 @@ input:disabled, select:disabled, textarea:disabled {
 /* Provider sits between permission and the right-aligned model picker,
  * styled as a low-key outlined chip matching the codex purple palette. */
 [data-composer-style="codex"] [data-composer-control="provider"] { order: 3; }
-[data-composer-style="codex"] [data-composer-control="model"] { order: 4; margin-left: auto; }
+/* 1.0.5-AR12 — Workspace sits between provider and the right-anchored
+ * model picker. Same satellite-text token treatment as the codex
+ * provider chip so it reads as a peer-control rather than a fresh
+ * chrome surface. */
+[data-composer-style="codex"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="codex"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+[data-composer-style="codex"] [data-composer-control="workspace"] {
+  min-height: 24px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 0;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  border-color: transparent;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
+[data-composer-style="codex"] [data-composer-control="workspace"]::after {
+  content: '▾';
+  font-size: 9px;
+  margin-left: 4px;
+  opacity: 0.7;
+}
 
 [data-composer-style="codex"] [data-composer-control="provider"] {
   /* 1.0.3 polish (Codex parity) — drop the indigo pill outline so
@@ -17925,7 +17999,33 @@ input:disabled, select:disabled, textarea:disabled {
  * picker — replaces the previous satellite footer chip. */
 [data-composer-style="claude"] [data-composer-control="ensemble-mode"] { order: 2; }
 [data-composer-style="claude"] [data-composer-control="provider"] { order: 3; }
-[data-composer-style="claude"] [data-composer-control="model"]    { order: 4; margin-left: auto; }
+/* 1.0.5-AR12 — Workspace sits just before the right-anchored model
+ * picker. Same outlined-pill aesthetic as the claude provider chip
+ * so the controls cluster reads as a coherent peer-group. */
+[data-composer-style="claude"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="claude"] [data-composer-control="model"]    { order: 5; margin-left: auto; }
+
+[data-composer-style="claude"] [data-composer-control="workspace"] {
+  min-height: 24px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 70%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="claude"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  color: color-mix(in srgb, #ffffff 92%, transparent);
+  border-color: color-mix(in srgb, #ffffff 24%, transparent);
+}
+[data-composer-style="claude"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 11px;
+  opacity: 0.78;
+}
 
 /* Inline provider chip in claude mode — outlined pill, low-key, native-ish */
 [data-composer-style="claude"] [data-composer-control="provider"] {
@@ -18948,7 +19048,7 @@ input:disabled, select:disabled, textarea:disabled {
  * ============================================================ */
 [data-composer-style="gemini"] .composer-top-toggles,
 [data-composer-style="gemini"] .composer-chips,
-[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="gemini"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
   display: none !important;
 }
 /* Gemini shell — historically hid `.composer-above-bar` entirely
@@ -19010,7 +19110,30 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="gemini"] [data-composer-control="permission"] { order: 1; }
 [data-composer-style="gemini"] [data-composer-control="ensemble-mode"] { order: 2; }
 [data-composer-style="gemini"] [data-composer-control="provider"] { order: 3; }
-[data-composer-style="gemini"] [data-composer-control="model"] { order: 4; margin-left: auto; }
+/* 1.0.5-AR12 — Workspace pill matches Gemini's softened outline-chip
+ * family (provider chip pattern at line 19060). */
+[data-composer-style="gemini"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="gemini"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+[data-composer-style="gemini"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 12%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="gemini"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #5a8cff 10%, transparent);
+  border-color: color-mix(in srgb, #5a8cff 30%, transparent);
+}
+[data-composer-style="gemini"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.78;
+}
 
 [data-composer-style="gemini"] .composer-image-picker-btn {
   width: 30px;
@@ -19132,7 +19255,7 @@ input:disabled, select:disabled, textarea:disabled {
  * ============================================================ */
 [data-composer-style="kimi"] .composer-top-toggles,
 [data-composer-style="kimi"] .composer-chips,
-[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]) {
+[data-composer-style="kimi"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
   display: none !important;
 }
 /* Kimi shell — same parity move as Gemini above. Was hidden
@@ -19188,7 +19311,31 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="kimi"] [data-composer-control="permission"] { order: 1; }
 [data-composer-style="kimi"] [data-composer-control="ensemble-mode"] { order: 2; }
 [data-composer-style="kimi"] [data-composer-control="provider"] { order: 3; }
-[data-composer-style="kimi"] [data-composer-control="model"] { order: 4; margin-left: auto; }
+/* 1.0.5-AR12 — Workspace pill mirrors Kimi's outlined provider chip
+ * (line 19245) — slightly brighter than codex/gemini per Kimi's
+ * terminal aesthetic. */
+[data-composer-style="kimi"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="kimi"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+[data-composer-style="kimi"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: transparent;
+  color: color-mix(in srgb, #ffffff 78%, transparent);
+  border: 1px solid color-mix(in srgb, #ffffff 14%, transparent);
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="kimi"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: color-mix(in srgb, #ffffff 6%, transparent);
+  border-color: color-mix(in srgb, #a9bd55 40%, transparent);
+}
+[data-composer-style="kimi"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.78;
+}
 
 [data-composer-style="kimi"] .composer-image-picker-btn {
   width: 30px;
