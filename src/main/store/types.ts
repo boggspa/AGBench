@@ -278,6 +278,71 @@ export interface EnsembleRoundParticipantState {
 }
 
 /**
+ * 1.0.5-C3 — Permission envelope for child-agent delegation.
+ *
+ * Every sub-thread spawned via `delegate_to_subthread` (or any
+ * future child-agent surface) carries an envelope describing
+ * what the child can do, scoped relative to the parent. Default
+ * child permissions are read-only: the parent must explicitly
+ * grant write / network / tool scopes via the delegation
+ * request, otherwise the child can't mutate state.
+ *
+ * The envelope is also the audit-trail seam: every action a
+ * child takes is checked against its envelope at enforcement
+ * time, and the actor chain (parent → child → grandchild …) is
+ * recorded on every approval row + audit log entry.
+ *
+ * Scope strings use the same glob/path syntax as the existing
+ * `fileScopes` patterns — `'*'` for unrestricted, an absolute
+ * path for exact match, an absolute path with trailing `/`
+ * for directory subtree, or any of the existing
+ * `ExternalPathGrant` shapes. Network patterns are host globs
+ * (`'github.com'`, `'*.openai.com'`).
+ */
+export interface PermissionEnvelope {
+  /** Stable id for this envelope (`env-${parentRunId}-${ulid}`). */
+  envelopeId: string
+  /** Parent run that issued the delegation. */
+  parentRunId: string
+  /** Optional parent envelope, when the parent was itself a child
+   * (delegation chain). Set on derivation; surfaces in the
+   * actor chain. */
+  parentEnvelopeId?: string
+  /** Child provider — set once the delegation target is chosen. */
+  childProvider?: ProviderId
+  /** Child run id — set once the child spawns. */
+  childRunId?: string
+  /** Human-readable rationale ("Codex delegated to Claude to
+   * cross-check the auth fix"). Persisted in the audit log so
+   * the chain is interpretable months later. */
+  purpose: string
+  /**
+   * Allowed tool names. Empty array = no tools (the child can
+   * still respond conversationally). `['*']` = all tools
+   * (rare — the parent must explicitly opt in). The standard
+   * "read-only" preset enumerates only non-mutating tools
+   * (`read_file`, `list_directory`, `grep`, etc.) — never `['*']`.
+   */
+  allowedTools: string[]
+  /** File paths the child may read. Empty = no file reads. */
+  fileReadScope: string[]
+  /** File paths the child may write. Empty = no writes (the default). */
+  fileWriteScope: string[]
+  /** Network host patterns the child may reach. Empty = no
+   * network access. */
+  networkScope: string[]
+  /** ISO timestamp. After this the envelope refuses all actions
+   * and the child run must be re-delegated by the parent.
+   * Undefined = inherit parent's expiry (or no expiry). */
+  expiry?: string
+  /** Regex patterns the enforcer redacts from prompts / tool
+   * inputs / outputs flowing through this envelope. */
+  redactionPatterns: string[]
+  /** Stamp from when the envelope was derived. */
+  createdAt: string
+}
+
+/**
  * 1.0.5-C1 — Concurrent lane lifecycle. Same set of terminal
  * states as `EnsembleParticipantStatus`, but scoped to a single
  * dispatch attempt rather than the participant's overall round
@@ -1468,6 +1533,14 @@ export interface ChatRecord {
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string
   ensemble?: EnsembleConfig
+  /**
+   * 1.0.5-C3 — Permission envelope for this chat, when it was
+   * spawned as a sub-thread (`parentChatId` is set). Stays
+   * undefined for top-level chats. Enforced on every tool /
+   * file / network action the child takes; the actor chain
+   * traces back via `parentEnvelopeId` to the root delegator.
+   */
+  permissionEnvelope?: PermissionEnvelope
   /**
    * 1.0.5-EW37 — Solo-chat wakeup records. Mirror of
    * `ensemble.wakeups` for solo chats: the agent calls
