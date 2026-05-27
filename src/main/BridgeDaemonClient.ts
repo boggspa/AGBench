@@ -402,7 +402,21 @@ export class BridgeDaemonClient {
       ...(params !== undefined ? { params } : {})
     }
     try {
-      this.proc.stdin.write(`${JSON.stringify(envelope)}\n`)
+      // 1.0.5-EW14 — Pre-EW14 this was a fire-and-forget
+      // stdin.write; if the daemon's pipe closed between our
+      // destroyed-check above and the actual write reaching the
+      // OS (typical race during app quit), Node fires an EPIPE
+      // from inside `afterWriteDispatched` — an async callback
+      // the surrounding try/catch can't catch. The error
+      // bubbled all the way up to Electron's uncaught-exception
+      // dialog. Passing a callback to write() lets us swallow
+      // EPIPE / write-after-end / similar terminal-write
+      // errors gracefully; notifications are inherently
+      // best-effort so a missed one on quit is fine.
+      this.proc.stdin.write(`${JSON.stringify(envelope)}\n`, () => {
+        // Intentionally empty — any error here is acceptable
+        // (we either successfully sent or the daemon went away).
+      })
     } catch {
       // Best-effort — notifications can't fail observably.
     }

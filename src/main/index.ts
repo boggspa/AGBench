@@ -10149,6 +10149,13 @@ async function runGeminiProvider(
   const GEMINI_STUCK_POLL_MS = 5_000
   let lastOrchestratorEventAt = Date.now()
   let ensembleStuckTimer: ReturnType<typeof setInterval> | null = null
+  // 1.0.5-EW13 — Capture Gemini's last few stderr lines so the
+  // stuck-process timeout message can include the actual error
+  // text. Pre-EW13 the user had to dig through the Inspector's raw
+  // events panel to see what Gemini was complaining about; now the
+  // tail is included inline in the kill notice.
+  const ensembleStderrTail: string[] = []
+  const ENSEMBLE_STDERR_TAIL_MAX = 6
   const feedOrchestrator = payload.ensembleRun
     ? (chunk: string): void => {
         ensembleLineBuffer += chunk
@@ -10172,18 +10179,26 @@ async function runGeminiProvider(
     ensembleStuckTimer = setInterval(() => {
       const idleMs = Date.now() - lastOrchestratorEventAt
       if (idleMs < GEMINI_STUCK_IDLE_MS) return
+      // 1.0.5-EW13 — Include the captured stderr tail in the
+      // timeout notice so the user sees Gemini's actual complaint
+      // (workspace path missing, auth failed, etc.) inline rather
+      // than having to dig through the Inspector.
+      const stderrTail = ensembleStderrTail.join('\n').trim()
+      const seconds = Math.round(idleMs / 1000)
+      const baseMessage =
+        `Gemini stopped emitting events ${seconds} seconds ago. ` +
+        'The CLI is still alive but unresponsive (often a workspace / cwd error ' +
+        'in global ensemble chats). Terminating so the ensemble round can continue.'
+      const fullMessage = stderrTail
+        ? `${baseMessage}\n\nLast stderr output:\n${stderrTail}`
+        : baseMessage
       appendDurableRunEventForRoute(
         'gemini',
         route,
         'provider_error',
         'raw',
-        `Gemini stuck — no events for ${Math.round(idleMs / 1000)}s, terminating`,
-        {
-          error:
-            `Gemini stopped emitting events ${Math.round(idleMs / 1000)} seconds ago. ` +
-            'The CLI is still alive but unresponsive (often a workspace / cwd error ' +
-            'in global ensemble chats). Terminating so the ensemble round can continue.'
-        },
+        `Gemini stuck — no events for ${seconds}s, terminating`,
+        { error: fullMessage },
         'provider'
       )
       publishRunEvent(
@@ -10191,7 +10206,7 @@ async function runGeminiProvider(
         'gemini',
         {
           provider: 'gemini',
-          error: `Gemini stuck — no events for ${Math.round(idleMs / 1000)}s; terminating.`,
+          error: fullMessage,
           ...route
         },
         event.sender
@@ -10232,6 +10247,18 @@ async function runGeminiProvider(
 
   child.stderr?.on('data', (data) => {
     const error = data.toString()
+    // 1.0.5-EW13 — Keep a rolling tail of stderr so the timeout
+    // notice can surface what Gemini was actually complaining
+    // about, not just "stuck".
+    if (payload.ensembleRun) {
+      const trimmed = error.trim()
+      if (trimmed) {
+        ensembleStderrTail.push(trimmed)
+        while (ensembleStderrTail.length > ENSEMBLE_STDERR_TAIL_MAX) {
+          ensembleStderrTail.shift()
+        }
+      }
+    }
     appendDurableRunEventForRoute(
       'gemini',
       route,
