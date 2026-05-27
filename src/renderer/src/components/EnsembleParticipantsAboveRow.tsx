@@ -40,7 +40,7 @@ import type {
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
 import { buildParticipantTokenChipModel } from '../lib/participantTokenChip'
 import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
-import { getProviderName, ProviderBadgeIcon } from './Sidebar'
+import { getProviderName } from './Sidebar'
 
 // 1.0.4-AR2 — global ceiling raised from 6 → 8 so the panel can host
 // the broader four-provider roster plus alternates (e.g. two Claudes
@@ -898,7 +898,17 @@ function ParticipantChip({
           }
         }}
       >
-        <ProviderBadgeIcon provider={participant.provider} />
+        {/*
+          1.0.5-EW24 — Removed the leading `<ProviderBadgeIcon>`.
+          Chris flagged that the left-side icon read as ambiguous
+          (users couldn't tell at a glance what it meant), while
+          the right-side `ParticipantStatusIcon` carries
+          unambiguous round-status semantics. The role text + its
+          provider-tinted colour (from `.provider-${provider}` on
+          the chip wrapper) is enough to identify the panelist
+          without the redundant glyph. Token chip + status icon
+          stay on the right edge.
+        */}
         <span className="ensemble-above-chip-role">{participant.role || getProviderName(participant.provider)}</span>
         {/* 1.0.4-AV2 — per-participant token-spend chip. Renders
           inline between the role label and the status icon when

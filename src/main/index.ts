@@ -6293,8 +6293,51 @@ function runCliProviderProcess(
     }
   })
 
+  // 1.0.5-EW23 — Detect Kimi's content-filter rejection. Moonshot's
+  // hosted API can reject prompts upstream with a 400 + a
+  // `type: 'content_filter'` payload. Pre-EW23 that bubbled out as a
+  // raw stderr line ("Error code: 400 - {'error': {...}}") plus a
+  // generic `type:result, status:failed` event, and the user just
+  // saw "Kimi failed" on the chip with no idea it was an API-side
+  // safety filter rather than an AGBench bug. Chris hit this with
+  // 3x Kimi participants in a global ensemble — first Kimi passed,
+  // second Kimi's prompt (which now included the first Kimi's
+  // response plus several other panelists' turns + URLs) tripped
+  // the filter.
+  //
+  // We surface a structured provider_warning with a friendly
+  // explanation BEFORE forwarding the raw stderr so the user sees
+  // the cause inline. The actual run still finalizes as failed —
+  // we don't fake a recovery — but the failure reads as
+  // "explanation + try this next time" rather than mystery.
+  //
+  // Deeper investigation (which role names / content shapes trip
+  // the filter most often, whether retry policies make sense,
+  // whether there's a Moonshot-side sensitivity control) is
+  // parked for 1.0.6. This is the small defensive note Chris
+  // approved for 1.0.5.
+  let kimiContentFilterWarned = false
+  const kimiContentFilterPattern =
+    /Error code: 400[\s\S]*content_filter|considered high risk/i
   child.stderr?.on('data', (chunk) => {
-    sendAgentCompatError(event.sender, provider, chunk.toString(), state)
+    const text = chunk.toString()
+    if (provider === 'kimi' && !kimiContentFilterWarned && kimiContentFilterPattern.test(text)) {
+      kimiContentFilterWarned = true
+      sendAgentCompatLine(
+        event.sender,
+        'kimi',
+        {
+          type: 'provider_warning',
+          provider: 'kimi',
+          severity: 'warning',
+          title: 'Kimi safety filter rejected this prompt',
+          message:
+            "Kimi (Moonshot) rejected this turn upstream with a content-filter 400. The other participants saw the same prompt context fine — this is API-side, not an AGBench bug. Common triggers: politically-coded role names (e.g. 'Politician'), accumulated transcript content from many preceding turns, or external URLs / quoted material the filter reads as suspicious. Try rephrasing the user prompt, renaming sensitive roles, or starting a fresh round."
+        },
+        state
+      )
+    }
+    sendAgentCompatError(event.sender, provider, text, state)
   })
 
   let onCompleteFired = false
