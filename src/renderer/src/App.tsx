@@ -12072,6 +12072,36 @@ function App(): React.JSX.Element {
       setDiffView('workspace')
       setRightTab('diff')
 
+      // 1.0.4-AT5 — surface a clear distinction between Codex's
+      // native `/review` (only fires when the solo path resumes a
+      // linked Codex thread via `startAgentReview`) and the
+      // ensemble-mode prompt-based review (which runs as a panel
+      // discussion of the diff through `runEnsembleRound`, with no
+      // native review invocation). Pre-AT5 there was no signal that
+      // these two paths produced different behavior — users
+      // assumed Ensemble `/review` had the same correctness
+      // guarantees as Codex's solo native review and were surprised
+      // when the panel's output differed.
+      if (isCurrentEnsembleChat) {
+        setRawLogs((prev) => [
+          ...prev,
+          {
+            type: 'info',
+            content:
+              'Ensemble /review: runs as a panel discussion of the diff (prompt-only). ' +
+              'Native Codex review only fires in solo Codex chats with a linked thread.'
+          }
+        ])
+      }
+
+      // 1.0.4-AT5 — `codexNativeReview` only fires for solo Codex
+      // chats. In Ensemble the dispatch goes through
+      // `runEnsembleRound` (see `executeRun`'s chatKind branch),
+      // which ignores this flag — every participant gets the same
+      // diff as a prompt and reviews it in their role. The flag
+      // is kept on the request so the downstream
+      // `formatReviewRequestPrompt` / activity-categorization paths
+      // can still tag the run as a "review" intent.
       const reviewRequest: QueuedRunRequest = {
         provider: currentProvider,
         prompt: buildReviewCurrentDiffPrompt(diffObj),
@@ -12082,7 +12112,9 @@ function App(): React.JSX.Element {
         sessionTrust,
         imageAttachments: [],
         codexNativeReview:
-          currentProvider === 'codex' && Boolean(currentChat?.linkedProviderSessionId),
+          currentProvider === 'codex' &&
+          !isCurrentEnsembleChat &&
+          Boolean(currentChat?.linkedProviderSessionId),
         workspaceRecord: currentWorkspace,
         chatRecord: currentChat
       }
