@@ -18538,35 +18538,19 @@ function App(): React.JSX.Element {
                     </label>
                       )
                     })()}
-                    {/* 1.0.5-AR12 (button + 9-shell CSS) / AR12b (real
-                       switcher behaviour). Renders a compact, shell-
-                       themed control in the composer's inline-pickers-
-                       left row. Pre-AR12b the click action opened the
-                       workspace files popout — label said "Switch
-                       workspace" but the action was just "show files",
-                       which surprised users. AR12b swaps in a real
-                       portal-popover switcher that mirrors
-                       `WelcomeWorkspacePicker`'s shape:
-                       click → popover with all other workspaces +
-                       Add new + No workspace rows. The outer button
-                       keeps the same className /
-                       `data-composer-control="workspace"` hook so the
-                       per-shell CSS (codex / claude / gemini / kimi
-                       overrides + the base style for the 5 other
-                       shells) continues to apply unchanged. Hidden in
-                       global chats — there's nothing to switch FROM
-                       in a workspace-less chat (and the welcome
-                       picker already handles the no-workspace start).
-                    */}
-                    {!isCurrentGlobalChat && (
-                      <ComposerWorkspaceSwitcher
-                        workspaces={workspaces}
-                        currentWorkspace={currentWorkspace}
-                        onPickExisting={handleSelectExistingWorkspace}
-                        onAddNewWorkspace={handleSelectWorkspace}
-                        onSelectNoWorkspace={handleNewGlobalChat}
-                      />
-                    )}
+                    {/* 1.0.5-AR12c — Workspace switcher previously
+                       lived here in the top inline-pickers row but
+                       crowded the approval / provider / model
+                       controls on dense windows. Moved to the
+                       composer's bottom telemetry row (below) where
+                       it sits spaced between the timecodes / Screen
+                       Watch cluster on the left and the token tally
+                       on the right. See the
+                       `data-composer-control="workspace"` mount
+                       inside `.composer-telemetry-row` below for
+                       the new placement; the underlying
+                       `ComposerWorkspaceSwitcher` component is
+                       unchanged. */}
                     {(() => {
                       // CombinedModelPicker — replaces the per-provider
                       // native <select> chain that used to live here
@@ -19257,6 +19241,23 @@ function App(): React.JSX.Element {
                     <span className="composer-screen-watch-button-dot" aria-hidden="true" />
                   )}
                 </button>
+                {/* 1.0.5-AR12c — Workspace switcher in its new home.
+                   Sits between the timecodes / Screen Watch cluster
+                   on the left and the token tally on the right. The
+                   `composer-workspace-button` class gets a
+                   telemetry-row scoped CSS override (`margin-left:
+                   auto`) so the two auto-margins (this + the tally)
+                   split the free space. Hidden in global chats —
+                   same gating as the previous top-row mount. */}
+                {!isCurrentGlobalChat && (
+                  <ComposerWorkspaceSwitcher
+                    workspaces={workspaces}
+                    currentWorkspace={currentWorkspace}
+                    onPickExisting={handleSelectExistingWorkspace}
+                    onAddNewWorkspace={handleSelectWorkspace}
+                    onSelectNoWorkspace={handleNewGlobalChat}
+                  />
+                )}
                 {threadTokenTallyLabel && (
                   <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
                     {threadTokenTallyLabel}

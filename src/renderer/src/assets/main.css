@@ -6532,6 +6532,27 @@ button.sidebar-item {
   text-align: right;
 }
 
+/*
+ * 1.0.5-AR12c — Workspace switcher relocated from the top inline-
+ * pickers row to the bottom telemetry row. Sits spaced between the
+ * left cluster (timecodes + Screen Watch) and the right token
+ * tally. The `margin-left: auto` here competes with the existing
+ * `margin-left: auto` on `.composer-thread-token-tally` — both
+ * absorb half the free space, which positions the switcher near
+ * centre and keeps the tally pinned right. Capped max-width so a
+ * long workspace name can't push the tally off-screen on narrow
+ * windows; the existing label ellipsis truncation absorbs the
+ * overflow.
+ */
+.composer-telemetry-row .composer-workspace-button {
+  margin-left: auto;
+  max-width: min(220px, 32vw);
+  /* Vertical alignment with the timecode + tally text in the same
+   * row — the switcher button is taller than the run timecode by
+   * default so this nudges it down by a hairline to read level. */
+  align-self: center;
+}
+
 /* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button in the
  * composer telemetry row. Pre-AS3 the attached-window UX was an
  * inline pill in the action row showing the app name + ×. The
