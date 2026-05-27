@@ -33,6 +33,10 @@ export const AGENTBENCH_MCP_TOOLS = [
   'appwatch_frames',
   'approval_status',
   'provider_auth_status',
+  // 1.0.4-AR9 — coarse quota-band view for the agent so it can
+  // self-throttle / pick lighter models when a provider's window
+  // is near exhaustion. See `executeProviderUsageStatus`.
+  'provider_usage_status',
   'run_timeline',
   'raw_provider_events',
   'open_workspace_file',

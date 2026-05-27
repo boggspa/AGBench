@@ -75,6 +75,10 @@ import {
   type NormalizedProviderUsageSnapshot
 } from './ProviderQuotaSnapshots'
 import {
+  summarizeProviderUsage,
+  type ProviderUsageSummary
+} from './ProviderUsageStatus'
+import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
   collectExternalPathGrantsFromMetadata
@@ -13938,6 +13942,31 @@ async function executeProviderAuthStatus(args: Record<string, any>) {
   }
 }
 
+/**
+ * 1.0.4-AR9 — Coarse quota-band view per provider. Pulls cached
+ * snapshots from `AppStore.getProviderUsageSnapshot()` (no live
+ * fetch — keeps the tool cheap + idempotent) and runs them
+ * through `summarizeProviderUsage` to flatten each window into
+ * a band the agent can branch on. When the snapshot is missing
+ * for a provider, the entry comes back with `configured: false`
+ * and `worstBand: 'unknown'` — the agent should treat that as
+ * "no signal" rather than "headroom available".
+ */
+function executeProviderUsageStatus(args: Record<string, any>) {
+  const providers = args.provider ? [assertProviderId(args.provider)] : Array.from(PROVIDER_IDS)
+  const entries: Record<string, ProviderUsageSummary> = {}
+  for (const provider of providers) {
+    const cached = AppStore.getProviderUsageSnapshot(
+      provider
+    ) as NormalizedProviderUsageSnapshot | null
+    entries[provider] = summarizeProviderUsage(provider, cached)
+  }
+  return {
+    checkedAt: new Date().toISOString(),
+    providers: entries
+  }
+}
+
 function executeRunTimeline(args: Record<string, any>, context: GeminiToolContext) {
   const runId = optionalString(args.runId) || context.appRunId
   if (!runId) throw new Error('run_timeline requires runId or an active run context.')
@@ -14337,6 +14366,8 @@ async function executeGeminiMcpTool(
       text = mcpJson(executeApprovalStatus(context, args, parentProvider))
     } else if (toolName === 'provider_auth_status') {
       text = mcpJson(await executeProviderAuthStatus(args))
+    } else if (toolName === 'provider_usage_status') {
+      text = mcpJson(executeProviderUsageStatus(args))
     } else if (toolName === 'run_timeline') {
       text = mcpJson(executeRunTimeline(args, context))
     } else if (toolName === 'raw_provider_events') {
@@ -15862,6 +15893,35 @@ function mcpToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: { provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] } }
+      }
+    },
+    {
+      name: 'provider_usage_status',
+      description:
+        'Return a coarse quota-band view of the requested provider (or all providers when ' +
+        'omitted) so the calling agent can self-throttle or pick a lighter model when a ' +
+        'window is near exhaustion. Per window, the response carries a `band` value of one of ' +
+        "`'low' | 'medium' | 'high' | 'critical' | 'unknown'` (computed from `usedPercent`) " +
+        'plus the underlying percent, the window label, and `resetAt` if known. No raw ' +
+        'credentials or account-identifying detail. This is intentionally COARSE — finer ' +
+        'numeric usage telemetry beyond the band is deferred to a future tool to keep this ' +
+        'one cheap and stable across provider snapshot-shape changes.',
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false
+      },
+      inputSchema: {
+        type: 'object',
+        properties: {
+          provider: {
+            type: 'string',
+            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            description:
+              'Optional provider to filter to. Omit to return all four providers.'
+          }
+        }
       }
     },
     {
