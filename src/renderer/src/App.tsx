@@ -8510,6 +8510,33 @@ function App(): React.JSX.Element {
   }
 
   const handleNewGlobalChat = async () => {
+    // 1.0.4-AQ5 — preserve the current chat's `chatKind` when the
+    // user picks "No Workspace" from the workspace browser. Pre-AQ5
+    // this always called `createGlobalChat()` which hardcodes
+    // `chatKind: 'single'`, so a user on an ensemble welcome screen
+    // who switched to global would land on a Codex single-provider
+    // welcome screen — losing their ensemble configuration intent.
+    //
+    // Now: if the user was on an ensemble chat, call
+    // `createEnsembleChat()` with NO workspace args so the main
+    // process produces a `scope: 'global'` ensemble chat. We bypass
+    // `handleNewEnsemble()` here because that helper derives the
+    // workspace from `currentWorkspace`, which is still set when
+    // the user clicks "No Workspace" from the workspace browser —
+    // it would create a workspace-bound ensemble instead of the
+    // intended global one.
+    if (isCurrentEnsembleChat) {
+      const newChat = await window.api.createEnsembleChat()
+      const allChats = await window.api.getChats()
+      const mergedChats = allChats.some((chat) => chat.appChatId === newChat.appChatId)
+        ? allChats
+        : [newChat, ...allChats]
+      setChats(mergedChats)
+      chatByIdRef.current.set(newChat.appChatId, newChat)
+      currentChatIdRef.current = newChat.appChatId
+      await selectGlobalChat(newChat)
+      return
+    }
     const newChat = await window.api.createGlobalChat()
     const allChats = await window.api.getChats()
     setChats(allChats)
@@ -16240,11 +16267,28 @@ function App(): React.JSX.Element {
               files / Create PR / external-path rows don't render
               with empty data on a fresh ensemble chat.
             */}
-            {!isCurrentGlobalChat &&
+            {/* 1.0.4-AQ5 — also let GLOBAL ensemble chats into this
+              stack so the participant chip strip renders. Before:
+              `!isCurrentGlobalChat && currentWorkspace && ...` blocked
+              global ensemble chats entirely, leaving them with no
+              way to edit roster / orchestration mode / Work Session.
+              Now: workspace-bound chats keep their existing rules
+              (the inner sections still gate on `!isWelcomeChat` so
+              Create PR / file-changes / external-path rows don't
+              render with empty data), AND global ensemble chats
+              get in for the participants strip via the explicit
+              second branch. */}
+            {((!isCurrentGlobalChat &&
               currentWorkspace &&
-              (!isWelcomeChat || isCurrentEnsembleChat) && (
+              (!isWelcomeChat || isCurrentEnsembleChat)) ||
+              (isCurrentGlobalChat && isCurrentEnsembleChat)) && (
               <div className="composer-above-bar-stack">
-                {!isWelcomeChat && (
+                {/* 1.0.4-AQ5 — file-changes / Create-PR / external-path
+                  rows are workspace-only by construction. Guard with
+                  `currentWorkspace` so the new global-ensemble-chat
+                  branch above doesn't drag them into render with
+                  null workspace data. */}
+                {!isWelcomeChat && currentWorkspace && (
                 <>
                 <div className="composer-above-bar style-unified">
                   <span className="composer-above-bar-branch">
