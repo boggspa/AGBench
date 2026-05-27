@@ -13740,6 +13740,36 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--app-bg) 16%, transparent);
 }
 
+/* 1.0.5-EW3 — Match the sidebar-footer's backdrop frosting to the
+ * `.model-usage-summary` card sitting directly above it. Pre-EW3 the
+ * footer rendered with a flat 16%-of-app-bg tint and no
+ * backdrop-filter while the model-usage-summary already had per-
+ * appearance backdrop-blur + tinted background treatments
+ * (mirrored from rules at ~line 2828 onward). The mismatch was most
+ * visible in light + soft_glass modes, where the model-usage card
+ * popped as a distinct frosted panel and the bare footer showed the
+ * raw sidebar bg through — the two sections read as separate
+ * materials instead of a continuous surface. Re-applying the same
+ * appearance-mode treatments here closes that gap. We keep the
+ * footer's existing `border-top` divider (the model-usage card uses
+ * its own card border + radius which the footer doesn't have).
+ */
+[data-appearance="solid"] .app-sidebar .sidebar-footer {
+  background: color-mix(in srgb, var(--app-bg-elevated) 92%, transparent);
+}
+[data-appearance="soft_glass"] .app-sidebar .sidebar-footer {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+[data-appearance="native_glass"] .app-sidebar .sidebar-footer {
+  background: rgba(255, 255, 255, 0.025);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
 .app-sidebar .sidebar-footer .btn {
   border-radius: 6px;
   background: color-mix(in srgb, var(--text-primary) 4%, transparent);
