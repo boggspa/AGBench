@@ -8269,6 +8269,24 @@ button.sidebar-item {
   overflow: hidden;
 }
 
+/* 1.0.5-EW33 — File Editor popout: sidebar+main layout.
+ *
+ * Pre-EW33 the popout inherited the in-app `.app-file-editor`
+ * grid which stacked the file list and editor rows
+ * (`grid-template-rows: minmax(150px, 38%) minmax(220px, 62%)`).
+ * That looks fine inline in a sidebar but feels broken in a
+ * dedicated window — both halves shrink awkwardly on resize
+ * and the editor area is squeezed for the file list above. The
+ * user reported "strange behaviour when the window is resized".
+ *
+ * EW33 overrides the grid axis to columns when in a popout
+ * window: file list pinned as a left sidebar (220-320px range),
+ * editor takes the full remaining width. Reads like a mini
+ * standalone Files+Editor app, which matches what users
+ * intuit when they pop a window out.
+ *
+ * `!important` flags counter the base grid declaration's
+ * specificity since both rules target `.app-file-editor`. */
 .popout-body .app-file-editor {
   width: 100%;
   max-width: none;
@@ -8276,12 +8294,61 @@ button.sidebar-item {
   padding-top: 0;
   border: 0;
   background: transparent;
+  /* Override the in-app row-stack grid (lines 7846-7847) with
+   * a 2-column sidebar+main layout. */
+  grid-template-rows: minmax(0, 1fr) !important;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr) !important;
+}
+.popout-body .file-editor-files {
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 0;
+}
+.popout-body .file-editor-code {
+  min-width: 0;
 }
 
+/* 1.0.5-EW33 — Diff Studio popout: sidebar+main layout.
+ *
+ * The DiffViewer's root container uses an inline
+ * `style={{ display: 'flex', flexDirection: 'column' }}` to
+ * stack toolbar / file list / diff-detail vertically. That
+ * stacking is fine in the inspector inline surface but the
+ * dedicated popout window deserves a proper 2-column layout:
+ * toolbar across the top, file list pinned as left sidebar,
+ * diff-detail filling the main area on the right.
+ *
+ * The override targets `.popout-diff-studio > div` (the
+ * DiffViewer's root). The inline style sets flex; we promote
+ * to grid via `!important` and use named grid-template-areas
+ * so the children land in the right cells regardless of their
+ * source order. `.diff-file-list`'s in-app
+ * `max-height: 35%` is also overridden — in the sidebar
+ * column it gets to use the full row height. */
 .popout-diff-studio {
   width: 100%;
   height: 100%;
   background: transparent;
+}
+.popout-diff-studio > div {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) !important;
+  grid-template-areas:
+    'toolbar toolbar'
+    'files   detail' !important;
+}
+.popout-diff-studio .diff-studio-toolbar {
+  grid-area: toolbar;
+}
+.popout-diff-studio .diff-file-list {
+  grid-area: files;
+  max-height: none;
+  border-right: 1px solid var(--panel-border);
+  border-bottom: 0;
+}
+.popout-diff-studio .diff-detail {
+  grid-area: detail;
+  min-width: 0;
 }
 
 .popout-error {
