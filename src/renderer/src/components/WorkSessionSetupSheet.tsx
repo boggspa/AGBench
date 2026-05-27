@@ -5,6 +5,7 @@ import type {
   ProviderId,
   WorkSessionConfig
 } from '../../../main/store/types'
+import { ENSEMBLE_PRESETS, findEnsemblePreset } from '../lib/ensemblePresets'
 
 /**
  * 1.0.4-AK2 — Work Session setup sheet.
@@ -240,6 +241,51 @@ export function WorkSessionSetupSheet({
           </p>
         </header>
         <div className="work-session-setup-body">
+          {/*
+            1.0.4-AT9 — preset picker. Five named shapes the panel
+            review identified as the most useful starting points
+            (One-shot review, Architecture panel, Scout pass,
+            Implementation review, Long-running). Selecting one
+            patches permission preset + round/duration budgets +
+            scout-pass toggle + acceptance-criteria seed. The user
+            can still tweak each field afterwards; presets are a
+            fast path, not a lock-in.
+          */}
+          <label className="work-session-field">
+            <span className="work-session-field-label">Preset</span>
+            <div className="work-session-preset-row">
+              {ENSEMBLE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className="work-session-preset-chip"
+                  title={preset.description}
+                  onClick={() => {
+                    const found = findEnsemblePreset(preset.id)
+                    if (!found) return
+                    const o = found.overrides
+                    if (o.permissionPresetId !== undefined) {
+                      setPermissionPresetId(o.permissionPresetId)
+                    }
+                    if (o.maxRoundsPerProvider !== undefined) {
+                      setMaxRoundsPerProvider(o.maxRoundsPerProvider)
+                    }
+                    if (o.maxDurationMs !== undefined) {
+                      setMaxDurationMs(o.maxDurationMs)
+                    }
+                    if (o.enableScoutPass !== undefined) {
+                      setEnableScoutPass(o.enableScoutPass)
+                    }
+                    if (o.acceptanceCriteriaHint && !acceptanceCriteria.trim()) {
+                      setAcceptanceCriteria(o.acceptanceCriteriaHint)
+                    }
+                  }}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </label>
           <label className="work-session-field">
             <span className="work-session-field-label">Objective</span>
             <textarea
