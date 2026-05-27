@@ -13768,6 +13768,24 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--app-bg) 16%, transparent);
 }
 
+/* 1.0.5-EW11 — Suppress all transitions / animations briefly when
+ * the appearance mode swaps (Solid ↔ Soft Glass ↔ Native Glass).
+ * The class is added in useAppearance.applyToDocument right before
+ * the data-appearance attribute swap and removed 150ms later. With
+ * transitions paused for that window, backdrop-filter and background
+ * changes apply instantaneously instead of being interpolated — no
+ * mid-flight blur layers for the compositor to leave stale on the
+ * GPU. !important is intentional: we need to defeat every shell-
+ * and theme-specific transition rule across the entire stylesheet
+ * during the swap window. */
+.is-appearance-transitioning,
+.is-appearance-transitioning *,
+.is-appearance-transitioning *::before,
+.is-appearance-transitioning *::after {
+  transition: none !important;
+  animation-play-state: paused !important;
+}
+
 /* 1.0.5-EW3 — Match the sidebar-footer's backdrop frosting to the
  * `.model-usage-summary` card sitting directly above it. Pre-EW3 the
  * footer rendered with a flat 16%-of-app-bg tint and no

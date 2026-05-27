@@ -188,6 +188,23 @@ export function useAppearance() {
 
   const applyToDocument = useCallback((next: AppearanceState) => {
     const root = document.documentElement
+    // 1.0.5-EW11 — Briefly disable all transitions when the
+    // appearance MODE changes (Solid ↔ Soft Glass ↔ Native Glass).
+    // Rapid mode-swaps + complex backdrop-filter transitions could
+    // leave stale GPU layer tiles in the renderer, producing the
+    // ghost-rectangle / overlay-bleed artifacts Chris caught while
+    // stress-testing. By adding `is-appearance-transitioning` for
+    // 150ms around the attribute swap, CSS transitions on backdrop
+    // and background are skipped — the swap is instantaneous, no
+    // mid-flight blur layers to glitch. Normal-cadence UX is
+    // unaffected because the class is only on for the 150ms window.
+    const prevAppearance = root.getAttribute('data-appearance')
+    if (prevAppearance && prevAppearance !== next.mode) {
+      root.classList.add('is-appearance-transitioning')
+      window.setTimeout(() => {
+        root.classList.remove('is-appearance-transitioning')
+      }, 150)
+    }
     root.setAttribute('data-appearance', next.mode)
     root.setAttribute('data-visual-effect', next.visualEffectStyle)
     root.setAttribute('data-theme', next.themeAppearance)

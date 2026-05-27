@@ -10123,19 +10123,32 @@ async function runGeminiProvider(
   // pay no extra cost. Mirrors the line-buffer pattern in the
   // renderer's `GeminiStreamAdapter.appendChunk`.
   let ensembleLineBuffer = ''
-  // 1.0.5-EW7 — Count Gemini events delivered to the orchestrator
+  // 1.0.5-EW7 + EW12 — Stuck-process detection for the Gemini CLI
   // in ensemble runs. The legacy CLI path has a failure mode where
-  // the process emits stderr (`gemini-error` channel) + an `init`
-  // stdout event (`{"type":"init", ...}`) and then sits there
-  // FOREVER without producing actual content. The process never
-  // exits, so EW6's close-handler markRunExited doesn't fire, and
-  // the ensemble round stalls on "Thinking…" indefinitely. The
-  // stuck-process safety timer below kills the child if only the
-  // init event arrived within the window — that triggers the
-  // close handler which calls markRunExited → orchestrator
-  // unblocks. Solo Gemini chats don't run this code path.
-  let orchestratorEventsCount = 0
-  let ensembleStuckTimer: ReturnType<typeof setTimeout> | null = null
+  // the process emits stderr (`gemini-error`) + an `init` stdout
+  // event (`{"type":"init", ...}`) + occasionally one or two more
+  // small structured events, and then sits there FOREVER without
+  // producing actual response content. The process never exits, so
+  // EW6's close-handler markRunExited doesn't fire, and the
+  // ensemble round stalls on "Thinking…" indefinitely.
+  //
+  // EW7 first attempt counted events and killed when count ≤ 1.
+  // Chris's repro showed Gemini emits ≥ 2 events during the stuck
+  // state — init + another small structured event — so the count
+  // gate slipped past and the timer never fired the kill.
+  //
+  // EW12 — Switch from event-count to event-IDLE-time. Track
+  // `lastOrchestratorEventAt`. A polling timer checks how long
+  // it's been since the last event; if more than
+  // GEMINI_STUCK_IDLE_MS without a single new event, declare the
+  // process stuck and kill. This works regardless of how many
+  // events Gemini emits during its initial burst — as long as the
+  // burst stops cleanly and no further events arrive, we detect
+  // it. Solo Gemini chats don't run this code path.
+  const GEMINI_STUCK_IDLE_MS = 30_000
+  const GEMINI_STUCK_POLL_MS = 5_000
+  let lastOrchestratorEventAt = Date.now()
+  let ensembleStuckTimer: ReturnType<typeof setInterval> | null = null
   const feedOrchestrator = payload.ensembleRun
     ? (chunk: string): void => {
         ensembleLineBuffer += chunk
@@ -10147,7 +10160,7 @@ async function runGeminiProvider(
           try {
             const parsed = JSON.parse(trimmed)
             ensembleOrchestratorRef?.handleProviderOutput('gemini', route, parsed)
-            orchestratorEventsCount += 1
+            lastOrchestratorEventAt = Date.now()
           } catch {
             // Not parseable JSON (e.g. a stray log line) — skip silently;
             // the orchestrator only needs the structured events.
@@ -10156,45 +10169,40 @@ async function runGeminiProvider(
       }
     : null
   if (payload.ensembleRun) {
-    // 60-second stuck-process timeout. The init event arrives ~1s
-    // after spawn; a real response typically follows within a few
-    // seconds. If after 60s we have ≤ 1 events (just init or
-    // nothing), Gemini is stuck. Kill the process so the close
-    // handler can finalize the run.
-    ensembleStuckTimer = setTimeout(() => {
-      if (orchestratorEventsCount <= 1) {
-        appendDurableRunEventForRoute(
-          'gemini',
-          route,
-          'provider_error',
-          'raw',
-          'Gemini stuck — no content within 60s, terminating',
-          {
-            error:
-              'Gemini did not produce a response within 60 seconds after init. ' +
-              'This usually means the CLI hit a stderr error and stayed alive ' +
-              'without exiting. Terminating so the ensemble round can continue.'
-          },
-          'provider'
-        )
-        publishRunEvent(
-          'gemini-error',
-          'gemini',
-          {
-            provider: 'gemini',
-            error: 'Gemini stuck — no content within 60s; terminating.',
-            ...route
-          },
-          event.sender
-        )
-        try {
-          child.kill('SIGTERM')
-        } catch {
-          // Kill can fail if the process already died on its own;
-          // the close handler will run either way.
-        }
+    ensembleStuckTimer = setInterval(() => {
+      const idleMs = Date.now() - lastOrchestratorEventAt
+      if (idleMs < GEMINI_STUCK_IDLE_MS) return
+      appendDurableRunEventForRoute(
+        'gemini',
+        route,
+        'provider_error',
+        'raw',
+        `Gemini stuck — no events for ${Math.round(idleMs / 1000)}s, terminating`,
+        {
+          error:
+            `Gemini stopped emitting events ${Math.round(idleMs / 1000)} seconds ago. ` +
+            'The CLI is still alive but unresponsive (often a workspace / cwd error ' +
+            'in global ensemble chats). Terminating so the ensemble round can continue.'
+        },
+        'provider'
+      )
+      publishRunEvent(
+        'gemini-error',
+        'gemini',
+        {
+          provider: 'gemini',
+          error: `Gemini stuck — no events for ${Math.round(idleMs / 1000)}s; terminating.`,
+          ...route
+        },
+        event.sender
+      )
+      try {
+        child.kill('SIGTERM')
+      } catch {
+        // Kill can fail if the process already died on its own;
+        // the close handler will run either way.
       }
-    }, 60_000)
+    }, GEMINI_STUCK_POLL_MS)
   }
 
   child.stdout?.on('data', (data) => {
@@ -10237,10 +10245,11 @@ async function runGeminiProvider(
   })
 
   child.on('close', (code) => {
-    // 1.0.5-EW7 — Clear the stuck-process safety timer; we no
-    // longer need it once the process actually closes.
+    // 1.0.5-EW7 / EW12 — Clear the stuck-process safety timer; we
+    // no longer need it once the process actually closes. EW12
+    // switched setTimeout → setInterval so use clearInterval.
     if (ensembleStuckTimer) {
-      clearTimeout(ensembleStuckTimer)
+      clearInterval(ensembleStuckTimer)
       ensembleStuckTimer = null
     }
     // Drain any partial-line tail through the ensemble bridge before
@@ -10288,10 +10297,10 @@ async function runGeminiProvider(
   })
 
   child.on('error', (err) => {
-    // 1.0.5-EW7 — Clear the stuck-process safety timer; nothing
-    // to monitor once the spawn itself failed.
+    // 1.0.5-EW7 / EW12 — Clear the stuck-process safety timer;
+    // nothing to monitor once the spawn itself failed.
     if (ensembleStuckTimer) {
-      clearTimeout(ensembleStuckTimer)
+      clearInterval(ensembleStuckTimer)
       ensembleStuckTimer = null
     }
     const error = `Failed to start process: ${err.message}`
