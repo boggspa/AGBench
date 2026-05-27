@@ -6091,6 +6091,22 @@ function App(): React.JSX.Element {
     }
   }
   const [attachedWindow, setAttachedWindow] = useState<AttachedWindowSnapshot | null>(null)
+  // 1.0.5-AU — Track which chat owns the current attachment so we
+  // can auto-detach when the user switches away. Pre-AU the
+  // `attachedWindow` state was app-global: attach in Chat A, switch
+  // to Chat B, and the Screen Watch button in B still showed
+  // "Watching <app>" because the renderer state hadn't reset. Worse,
+  // tools called from Chat B would observe Chat A's stream — a real
+  // cross-chat leak.
+  //
+  // Conservative scoping: the attachment belongs to the chat it was
+  // created in. Switching to ANY other chat triggers a detach so each
+  // chat starts with a clean slate. Per-chat sticky attachments
+  // (switch back to Chat A and the attachment reactivates) are
+  // deferred to 1.0.6 — they need main-side state restructuring +
+  // Swift daemon re-attach plumbing that's more than this slice can
+  // safely land.
+  const attachedWindowOwnerChatIdRef = useRef<string | null>(null)
   useEffect(() => {
     if (!diffActionMenuOpen) return
     const closeFromPointer = (event: MouseEvent): void => {
@@ -9075,6 +9091,9 @@ function App(): React.JSX.Element {
       }
       if (result.snapshot) {
         setAttachedWindow(result.snapshot)
+        // 1.0.5-AU — Record the chat that owns this attachment so
+        // the cross-chat auto-detach effect knows when to clear.
+        attachedWindowOwnerChatIdRef.current = currentChat?.appChatId || null
       }
     } finally {
       setIsAttachingWindow(false)
@@ -9083,6 +9102,9 @@ function App(): React.JSX.Element {
 
   const handleDetachWindow = async () => {
     setAttachedWindow(null)
+    // 1.0.5-AU — Clear ownership marker too so a subsequent
+    // chat-switch effect doesn't try to detach again.
+    attachedWindowOwnerChatIdRef.current = null
     try {
       await window.api.attachWindowDetach()
     } catch {
@@ -9090,6 +9112,30 @@ function App(): React.JSX.Element {
       // detach is best-effort.
     }
   }
+
+  // 1.0.5-AU — Auto-detach when the active chat changes to anything
+  // other than the chat that owns the current attachment. Keeps
+  // each chat's Screen Watch surface honest: if you attached in
+  // Chat A and switched to Chat B, the chip should not show
+  // "Watching <app>" anymore, and Chat B's tools should not be
+  // able to observe Chat A's stream.
+  //
+  // Triggered on every `currentChat?.appChatId` change, including
+  // initial mount (no-op when no attachment exists yet) and chat
+  // creation (when switching from null to a new chat — also a
+  // no-op because the previous chatId was null and the
+  // attachedWindow is null too).
+  useEffect(() => {
+    const currentChatId = currentChat?.appChatId || null
+    const ownerChatId = attachedWindowOwnerChatIdRef.current
+    if (!attachedWindow) return
+    if (!ownerChatId) return
+    if (ownerChatId === currentChatId) return
+    // Different chat is active — detach. handleDetachWindow clears
+    // both the React state and the ref + sends the IPC.
+    void handleDetachWindow()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentChat?.appChatId])
 
   const handleComposerDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault()
