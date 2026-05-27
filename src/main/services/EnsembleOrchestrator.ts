@@ -645,6 +645,7 @@ export class EnsembleOrchestrator {
       )
       return { status: 'queued', roundId: existing.roundId }
     }
+    this.cancelPersistedWakeupsOnUserInput(input.chatId)
     const roundId = this.beginRound(
       input.chatId,
       prompt,
@@ -1049,6 +1050,13 @@ export class EnsembleOrchestrator {
       wakeup.roundId,
       `${participant.role || providerLabel(participant.provider)} woke after app restart (${wakeup.wakeAt}).`
     )
+    if (!participant.linkedProviderSessionId) {
+      this.appendRoundStatus(
+        wakeup.chatId,
+        wakeup.roundId,
+        `${participant.role || providerLabel(participant.provider)} is resuming from AGBench transcript context; no native provider session id was available.`
+      )
+    }
     void this.runRound(runtime, [participant])
     return true
   }
@@ -1122,6 +1130,23 @@ export class EnsembleOrchestrator {
     }
     this.updateSleepingRoundState(runtime.chatId, runtime.roundId)
     this.signalWakeWaiter(runtime)
+  }
+
+  private cancelPersistedWakeupsOnUserInput(chatId: string): void {
+    const chat = this.deps.getChat(chatId)
+    if (!chat?.ensemble) return
+    const wakeups = Object.values(chat.ensemble.wakeups || {}).filter(
+      (wakeup) => wakeup.status === 'pending' && wakeup.cancelOnUserInput !== false
+    )
+    if (wakeups.length === 0) return
+    const affectedRoundIds = new Set<string>()
+    for (const wakeup of wakeups) {
+      affectedRoundIds.add(wakeup.roundId)
+      this.markWakeupCancelled(wakeup, 'cancelled by user input')
+    }
+    for (const roundId of affectedRoundIds) {
+      this.updateSleepingRoundState(chatId, roundId)
+    }
   }
 
   private updateSleepingRoundState(chatId: string, roundId: string): void {
@@ -1937,6 +1962,13 @@ export class EnsembleOrchestrator {
             runtime.roundId,
             `${participant.role || providerLabel(participant.provider)} woke for scheduled continuation (${wakeup.wakeAt}).`
           )
+          if (!participant.linkedProviderSessionId) {
+            this.appendRoundStatus(
+              runtime.chatId,
+              runtime.roundId,
+              `${participant.role || providerLabel(participant.provider)} is resuming from AGBench transcript context; no native provider session id was available.`
+            )
+          }
           await this.runRound(runtime, [participant])
           return
         }

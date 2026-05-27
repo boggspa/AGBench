@@ -117,6 +117,7 @@ function makeSettings(): AppSettings {
 }
 
 function makeHarness(options: {
+  initialChat?: ChatRecord
   dispatch?: (payload: AgentRunPayload) => Promise<{ dispatched: boolean; appRunId: string }>
   /**
    * 1.0.4-AD — optional probe injection. When set, the orchestrator
@@ -132,7 +133,9 @@ function makeHarness(options: {
   scheduleWakeupTimer?: (wakeup: EnsembleWakeupRecord) => void
   cancelWakeupTimer?: (wakeupId: string) => void
 } = {}) {
-  let chat = makeChat()
+  let chat = options.initialChat
+    ? (JSON.parse(JSON.stringify(options.initialChat)) as ChatRecord)
+    : makeChat()
   let counter = 0
   const dispatched: AgentRunPayload[] = []
   const dispatch = vi.fn(async (payload: AgentRunPayload) => {
@@ -318,6 +321,47 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.dispatched[2].ensembleRun?.participantId).toBe('claude')
     expect(harness.dispatched[2].prompt).toContain('[Scheduled wakeup]')
     expect(harness.dispatched[2].prompt).toContain('Waiting for logs.')
+    expect(
+      harness.chat.messages.some((message) =>
+        message.content.includes('no native provider session id was available')
+      )
+    ).toBe(true)
+  })
+
+  it('cancels persisted user-input wakeups before starting a new round', async () => {
+    const cancelledTimers: string[] = []
+    const harness = makeHarness()
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start and sleep.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const scheduled = harness.orchestrator.scheduleWakeupForRun(harness.dispatched[0].appRunId, {
+      delayMs: 60_000,
+      reason: 'User will add context.'
+    })
+    expect(scheduled.ok).toBe(true)
+    const wakeupId = scheduled.wakeup!.wakeupId
+
+    const restarted = makeHarness({
+      initialChat: harness.chat,
+      cancelWakeupTimer: (id) => cancelledTimers.push(id)
+    })
+    restarted.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'New user input should cancel sleepers.',
+      event: { sender: {} as Electron.WebContents }
+    })
+
+    expect(restarted.chat.ensemble?.wakeups?.[wakeupId]).toMatchObject({
+      status: 'cancelled',
+      message: 'cancelled by user input'
+    })
+    expect(cancelledTimers).toEqual([wakeupId])
+    expect(restarted.chat.ensemble?.activeRound?.prompt).toBe(
+      'New user input should cancel sleepers.'
+    )
   })
 
   it('rejects a second pending wakeup for the same participant and round', async () => {
