@@ -2321,26 +2321,32 @@ function WelcomeUsageDashboard({
     },
     { label: '24H Tkns', value: formatCompactUsageNumber(data.tokens24h) }
   ]
+  /*
+    1.0.5-EW48 — Reordered into three semantic rows for the new
+    3-column dense grid (was a single 7-column row with awkward
+    7+2 wrap after EW44 pushed the count to 9). Each row groups
+    a coherent data family so a glance at the grid reads as
+    "calendar · time · volume" rather than a chip soup:
+
+      Row 1 (Calendar) : Current streak · Longest streak · Active days
+      Row 2 (Duration) : Longest thread · Cumulative wall time · Peak hour
+      Row 3 (Volume)   : Sessions · Messages · Total tokens
+  */
   const denseStatItems = [
+    // Row 1 — calendar metrics (days-based, always lifetime).
     { label: 'Current streak', value: `${data.currentStreak || 0}d` },
     { label: 'Longest streak', value: `${data.longestStreak || 0}d` },
-    /*
-      1.0.5-EW44 — Longest single thread + cumulative wall-clock
-      time. Both lifetime metrics (never range-scoped) so they
-      sit alongside the streak chips. Derived from existing
-      `UsageRecord.durationMs` via Math.max + sum in
-      `buildWelcomeUsageDashboardData`; no new persisted state.
-      `formatDashboardDuration` scales s → m → h → d so the chip
-      reads cleanly across the full range from a 30-second one-
-      shot to a multi-day cumulative.
-    */
+    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) },
+    // Row 2 — duration metrics (time-based; first two are lifetime
+    // EW44 additions, Peak hour is range-scoped to the 30-day
+    // window).
     { label: 'Longest thread', value: formatDashboardDuration(data.longestThreadMs) },
     { label: 'Cumulative wall time', value: formatDashboardDuration(data.totalWallTimeMs) },
     { label: 'Peak hour', value: data.peakHour },
+    // Row 3 — volume metrics (count-based, range-scoped).
     { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
     { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
-    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) },
-    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) }
+    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) }
   ]
 
   return (

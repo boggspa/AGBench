@@ -5373,13 +5373,19 @@ button.sidebar-item {
   gap: 5px;
 }
 
-/* Welcome L9 — dense bottom row holds 7 supporting stats. Switch to
- * 7 columns when the viewport has room, wrap below `min-content`.
- * `auto-fit` would also work but locks all chips to the widest one;
- * an explicit 7-up keeps them looking like a row, not a wrap pile. */
+/* 1.0.5-EW48 — Dense stat grid reorganised from 7-column to
+ * 3-column after EW44 added Longest Thread + Cumulative wall
+ * time pushed the chip count to 9 and the 7-up layout wrapped
+ * to an unbalanced 7 + 2 with the trailing chips sitting in a
+ * sea of empty whitespace. 3 × 3 lays the 9 stats out as three
+ * cohesive rows (grouped by data family in `denseStatItems`'s
+ * order: Calendar · Duration · Volume). Wider chips mean labels
+ * no longer truncate, so the `-webkit-line-clamp: 2` on
+ * `.welcome-usage-stat--dense span` becomes unnecessary — see
+ * the EW48 follow-up on that rule below. */
 .welcome-usage-stat-grid--dense {
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
 }
 
 .welcome-usage-stat {
@@ -5420,33 +5426,29 @@ button.sidebar-item {
   font-weight: 650;
 }
 
-/* Welcome L9 — dense chip styling: tighter, smaller text so the row
- * of 7 fits cleanly under the hero row.
- *
- * Labels use mixed case (uppercase is ~15% wider) and are allowed to
- * wrap to two lines as a graceful fallback when the viewport pinches
- * a single chip below the single-line width of the longest label.
- * `-webkit-line-clamp: 2` caps wrapping at two lines so an unusually
- * long future label can never push the value off the chip; anything
- * beyond two lines ellipsises. The base `.welcome-usage-stat span`
- * rule below sets `white-space: nowrap` for the docked layout —
- * override it here so the dense row can wrap. */
+/* 1.0.5-EW48 — Dense chip styling. EW48 reorganised the dense
+ * grid from 7-up to 3-up so each chip gets ~3× the horizontal
+ * room it had before. The label can now sit on a single line
+ * comfortably for every current entry ("Cumulative wall time"
+ * is the longest at 20 characters and fits at the 3-up width).
+ * Drop the `-webkit-line-clamp: 2` clamp the 7-up layout needed
+ * — wrapping is no longer the common case, and the simpler
+ * single-line + ellipsis fallback (inherited from the base
+ * `.welcome-usage-stat span` rule below) reads cleaner. Bump
+ * label + value font sizes a touch since we have the room.
+ * Increased min-height + padding so the chip's vertical mass
+ * matches its new horizontal weight. */
 .welcome-usage-stat--dense {
-  min-height: 50px;
-  padding: 5px 7px;
+  min-height: 64px;
+  padding: 10px 12px;
 }
 .welcome-usage-stat--dense span {
-  font-size: calc(var(--font-size-xs) - 1px);
-  white-space: normal;
-  line-height: 1.15;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  font-size: var(--font-size-xs);
+  line-height: 1.2;
 }
 .welcome-usage-stat--dense strong {
-  margin-top: 2px;
-  font-size: calc(var(--font-size-md) - 2px);
+  margin-top: 4px;
+  font-size: var(--font-size-md);
 }
 
 .welcome-usage-stat span {
