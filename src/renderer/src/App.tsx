@@ -13045,6 +13045,20 @@ function App(): React.JSX.Element {
   const handlePaletteCommand = (item: CommandPaletteItem) => {
     setIsCommandPaletteOpen(false)
     setCommandPaletteQuery('')
+    // 1.0.4-AT6 — when an ensemble chat has a selected participant,
+    // route diagnostic slash commands (`/status`, `/model`,
+    // `/permissions`, `/mcp`, `/resume`, `/fork`) at THAT
+    // participant's provider rather than the chat-level provider.
+    // Pre-AT6 these commands always read `currentProvider`, so
+    // running `/status` from an ensemble where Codex was the
+    // chat-level provider but the selected chip was a Claude
+    // participant showed Codex's status, not Claude's. The
+    // effective provider is also passed to `refreshProviderMetadata`
+    // so the right-tab data reflects the targeted participant.
+    const slashTargetProvider: ProviderId =
+      isCurrentEnsembleChat && selectedParticipant
+        ? selectedParticipant.provider
+        : currentProvider
     // Composer-unification (Phase J1): renderer-side action items
     // dispatch to local handlers instead of running through the
     // provider command bridge. These are the Gemini quick-toggle
@@ -13067,7 +13081,7 @@ function App(): React.JSX.Element {
           return
       }
     }
-    if (currentProvider === 'codex') {
+    if (slashTargetProvider === 'codex') {
       if (item.command === '/status' || item.command === '/permissions') {
         setRightTab('safety')
       } else if (
@@ -13084,13 +13098,23 @@ function App(): React.JSX.Element {
       } else if (item.command === '/review') {
         void handleReviewCurrentDiff()
       } else if (item.command === '/fast') {
+        // Codex-specific toggle — stays chat-level since fast mode
+        // is a chat composer pick, not a per-participant setting.
         if (codexSupportsFast) {
           const nextTier = codexServiceTier === 'fast' ? '' : 'fast'
           setCodexServiceTier(nextTier)
           rememberCurrentChatComposerSelection({ codexServiceTier: nextTier })
         }
       } else if (item.command === '/fork') {
-        const threadId = currentChat?.linkedProviderSessionId
+        // 1.0.4-AT1 + AT6 — fork sources from the selected
+        // participant's `linkedProviderSessionId` in ensemble (the
+        // AT1 routing helper handles the chat-vs-participant write
+        // direction; here we just pick the right source thread to
+        // fork against).
+        const threadId =
+          isCurrentEnsembleChat && selectedParticipant?.provider === 'codex'
+            ? selectedParticipant.linkedProviderSessionId
+            : currentChat?.linkedProviderSessionId
         if (threadId) {
           void handleForkCodexThread(threadId)
         } else {
@@ -13100,12 +13124,12 @@ function App(): React.JSX.Element {
       }
       return
     }
-    if (currentProvider === 'claude' || currentProvider === 'kimi') {
+    if (slashTargetProvider === 'claude' || slashTargetProvider === 'kimi') {
       if (item.command === '/status' || item.command === '/permissions') {
-        void refreshProviderMetadata(currentProvider)
+        void refreshProviderMetadata(slashTargetProvider)
         setRightTab('safety')
       } else if (item.command === '/model') {
-        void refreshProviderMetadata(currentProvider)
+        void refreshProviderMetadata(slashTargetProvider)
         setRightTab('capabilities')
       } else if (item.command === '/diff') {
         setRightTab('diff')
