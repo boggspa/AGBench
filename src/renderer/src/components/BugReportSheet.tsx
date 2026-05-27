@@ -113,6 +113,12 @@ const SURFACE_OPTIONS = [
   'Transcript',
   'Composer',
   'Ensemble',
+  // 1.0.4 — new surfaces shipped this release. Splitting them
+  // out of the generic 'Ensemble' bucket so testers can target
+  // bug reports at the specific subsurface they were using.
+  'Work Session',
+  'Scout Pass',
+  'Screen Watch',
   'Inspector',
   'Settings',
   'Model Usage',

@@ -481,7 +481,10 @@ export function FirstLaunchSheet({
           <h3 className="first-launch-sheet-section-title">4. Try Ensemble chats</h3>
           <p className="first-launch-sheet-section-helper">
             New Ensemble puts multiple provider participants in one shared transcript. Turn mode
-            keeps one active speaker at a time; Continuous mode lets the panel keep moving.
+            keeps one active speaker at a time; Continuous mode lets the panel keep moving. Hit the
+            <strong> Work Session</strong> button in the composer to run a supervised
+            multi-round autonomy session with one of five presets (One-shot review · Architecture
+            panel · Scout pass · Implementation review · Long-running work session).
           </p>
           <div className="first-launch-sheet-ensemble-preview" aria-label="Ensemble row preview">
             <div className="first-launch-sheet-ensemble-strip">
@@ -551,6 +554,21 @@ export function FirstLaunchSheet({
             <li>
               <strong>Send a focused report.</strong> The <code>!</code> button captures current
               surface, provider, workspace, theme, and Ensemble context into the local bug log.
+            </li>
+            <li>
+              <strong>Screen Watch.</strong> The eye-on-screen icon in the composer's timecode
+              row picks a macOS window for the AI to see. Click again to detach. A small pulse
+              dot signals a live capture is running.
+            </li>
+            <li>
+              <strong>Per-participant retry.</strong> If an Ensemble participant fails (rate
+              limit, transient socket flake, etc.), open its chip's ⋯ menu for a Retry action
+              that re-dispatches just that participant against the last user prompt.
+            </li>
+            <li>
+              <strong>Cumulative session timecode.</strong> Composer's lower-left shows
+              <em> two </em>
+              counters: per-run elapsed time and total wall-time across every run in this chat.
             </li>
           </ul>
         </section>
