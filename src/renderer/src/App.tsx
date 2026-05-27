@@ -2100,7 +2100,12 @@ const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
   const heading: WelcomeHeadingCopy = context.isGlobalChat
     ? {
         beforeWorkspace: `New ${context.providerLabel} `,
-        workspaceName: 'global chat',
+        // 1.0.4-AS6 — capitalise as a proper noun. Pre-AS6 read
+        // "New Claude global chat." which felt sentence-case in the
+        // middle of a Title-Cased heading; the workspace-name slot
+        // is bold/glow-styled like the workspace name on
+        // workspace-bound chats and reads naturally as Title Case.
+        workspaceName: 'Global Chat',
         afterWorkspace: '.'
       }
     : {
@@ -16408,7 +16413,7 @@ function App(): React.JSX.Element {
                     {isCurrentGlobalChat ? (
                       <>
                         <span>New Ensemble chat in </span>
-                        <strong className={workspaceNameClass}>global chat</strong>
+                        <strong className={workspaceNameClass}>Global Chat</strong>
                         <span>.</span>
                       </>
                     ) : (
