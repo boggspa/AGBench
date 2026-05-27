@@ -203,6 +203,12 @@ export type EnsembleParticipantStatus =
   | 'skipped'
   | 'cancelled'
   /**
+   * 1.0.5-Phase-N — participant voluntarily paused via
+   * `schedule_wakeup`. This is Ensemble state only; RunManager
+   * still treats provider processes as running / exited.
+   */
+  | 'sleeping'
+  /**
    * 1.0.4-AD — pre-flight health check ran at round start and the
    * participant's runtime / socket / binary couldn't be verified.
    * Distinct from `failed` (which fires after dispatch starts and the
@@ -296,6 +302,8 @@ export interface EnsembleRoundState {
    * existing code that checks length doesn't need null guards.
    */
   queuedPrompts?: string[]
+  sleepingParticipantIds?: string[]
+  pendingWakeupIds?: string[]
   participants: EnsembleRoundParticipantState[]
 }
 
@@ -361,6 +369,27 @@ export interface EnsembleRoundSummaryRecord {
   capturedAt: string
 }
 
+export type EnsembleWakeupStatus = 'pending' | 'fired' | 'cancelled' | 'expired'
+
+export interface EnsembleWakeupRecord {
+  wakeupId: string
+  chatId: string
+  roundId: string
+  participantId: string
+  provider: ProviderId
+  role?: string
+  runId?: string
+  scheduledAt: string
+  wakeAt: string
+  status: EnsembleWakeupStatus
+  reason?: string
+  cancelOnUserInput?: boolean
+  firedAt?: string
+  cancelledAt?: string
+  expiredAt?: string
+  message?: string
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
@@ -424,6 +453,12 @@ export interface EnsembleConfig {
    * summary.
    */
   roundSummaries?: Record<string, EnsembleRoundSummaryRecord>
+  /**
+   * 1.0.5-Phase-N — persisted pending/fired/cancelled wakeups for
+   * Ensemble participants. These records are the source of truth for
+   * restart recovery; timers are only in-memory accelerators.
+   */
+  wakeups?: Record<string, EnsembleWakeupRecord>
 }
 
 /**
@@ -1249,6 +1284,10 @@ export interface ChatRun {
   ensembleParticipantId?: string
   ensembleRole?: string
   ensembleOrder?: number
+  ensembleSleepWakeupId?: string
+  ensembleSleepUntil?: string
+  ensembleSleepReason?: string
+  ensembleSleepResumeWarning?: string
 }
 
 export interface ChatRecord {
