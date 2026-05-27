@@ -5936,6 +5936,27 @@ function App(): React.JSX.Element {
   // Caret position of the `@` (or `-` of `-@`) that opened the menu —
   // used to splice the picked mention back over the trigger.
   const mentionAnchorIndexRef = useRef<number | null>(null)
+  /**
+   * 1.0.4-AQ3 — composer textarea selection ref + epoch.
+   *
+   * Captures `{ start, end }` immediately on every `onChange` so a
+   * post-commit layout effect can restore the caret if React's
+   * controlled-input caret preservation didn't fire correctly. The
+   * preservation glitches when the textarea's className flips
+   * mid-keystroke — specifically when `composerHasMention` flips
+   * `false → true` once an `@token` resolves, adding the
+   * `has-mention-overlay` class AND mounting the
+   * `ComposerHighlightOverlay` sibling in the same commit. The
+   * class-change + sibling-mount race against React's caret-keep
+   * heuristic and the caret can land at the end of the text instead
+   * of where the user was typing.
+   *
+   * The epoch ensures we only attempt restoration when the user
+   * actually changed the value (not on unrelated re-renders triggered
+   * by other state).
+   */
+  const composerSelectionRef = useRef<{ start: number; end: number } | null>(null)
+  const composerCaretRestoreEpochRef = useRef(0)
   // Which trigger fired the popover. `'mention'` (`@`) → sub-agents
   // (normal chats) or participants (ensemble); `'file-mention'`
   // (`-@`) → workspace files + external grants. Tracked alongside
@@ -6118,6 +6139,41 @@ function App(): React.JSX.Element {
   const setPrompt = (value: string) => {
     setChatPromptDraft(currentChatIdRef.current || currentComposerChatId, value)
   }
+  // 1.0.4-AQ3 — restore the composer textarea's caret position
+  // after each `prompt` change. React's controlled-input caret
+  // preservation glitches when the textarea's className flips
+  // mid-keystroke (specifically when `composerHasMention` flips
+  // `false → true` once an `@token` resolves to a participant).
+  // The class change adds `position: relative` + `color: transparent`
+  // and the `ComposerHighlightOverlay` sibling mounts in the same
+  // commit; both happen in React's commit phase BEFORE the
+  // browser has a chance to keep the caret where the user was
+  // typing, and the caret can land at the end of the text instead.
+  //
+  // The fix: snapshot the caret position in `onChange` (before
+  // React reconciles), then this layout effect re-applies it
+  // post-commit if it doesn't already match. Only runs when the
+  // textarea is focused (otherwise we'd hijack the caret from
+  // other inputs that share renders).
+  useLayoutEffect(() => {
+    const ta = composerTextareaRef.current
+    const stored = composerSelectionRef.current
+    if (!ta || !stored) return
+    // Only restore when the textarea is the active element. If
+    // focus moved elsewhere (slash-picker click, mention popover,
+    // send button), the snapshot is stale and we'd jump the caret
+    // into a backgrounded input on next focus.
+    if (typeof document !== 'undefined' && document.activeElement !== ta) return
+    // Skip if React already preserved the caret correctly.
+    if (ta.selectionStart === stored.start && ta.selectionEnd === stored.end) return
+    try {
+      ta.setSelectionRange(stored.start, stored.end)
+    } catch {
+      // Some browsers throw if the textarea is disabled/readonly
+      // at the moment of restore. The user re-typed; they can
+      // retry. Better than a thrown error breaking the round.
+    }
+  }, [prompt, composerCaretRestoreEpochRef.current])
   const getCurrentComposerStateChatId = (): string | null =>
     currentChatIdRef.current || currentComposerChatId
   const setImageAttachments = (
@@ -16387,6 +16443,17 @@ function App(): React.JSX.Element {
                       value={prompt}
                 onChange={(e) => {
                   const nextValue = e.target.value
+                  // 1.0.4-AQ3 — snapshot the caret position from
+                  // the change event BEFORE React reconciles. The
+                  // restoration layout effect below reads this ref
+                  // and re-applies the caret after the className
+                  // flip + overlay mount that can land mid-keystroke
+                  // when an `@token` resolves.
+                  composerSelectionRef.current = {
+                    start: e.target.selectionStart ?? nextValue.length,
+                    end: e.target.selectionEnd ?? nextValue.length
+                  }
+                  composerCaretRestoreEpochRef.current += 1
                   setPrompt(nextValue)
                   // Composer popover coordinator: scan the text before the
                   // caret for a leading `/<query>` token (start-of-line or
