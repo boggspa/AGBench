@@ -10002,9 +10002,18 @@ async function runGeminiProvider(
       route
     )
   }
+  // 1.0.5-EW21 — Pass `isEnsembleRun` so ensemble participants
+  // always get a fresh session. The orchestrator rebuilds full
+  // transcript context every turn (buildEnsembleParticipantPrompt),
+  // so CLI session resume is redundant for ensemble participants;
+  // attempting to resume a stale id (from a turn whose cwd no
+  // longer matches the current spawn cwd) fails with exit 42
+  // "Invalid session identifier". Solo Gemini keeps current
+  // plan-mode resume behavior unaffected.
   const resumePolicy = resolveGeminiCliResumePolicy(
     effectiveApprovalMode,
-    payload.providerSessionId
+    payload.providerSessionId,
+    Boolean(payload.ensembleRun)
   )
   if (resumePolicy.skippedReason) {
     sendAgentCompatLine(
