@@ -257,12 +257,22 @@ describe('buildWelcomeUsageDashboardData headline stats — range scoping (Welco
     const all = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
     expect(all.sessions).toBe(4) // 3 burst chats + 1 recent
     expect(all.activeDays).toBe(6) // 5-day burst + today
+    // 1.0.5-EW50 — `favoriteModel` now flows through the shared
+    // `humaniseModelId` resolver, so a known id becomes its
+    // canonical display name. `gpt-5-codex` isn't in the known
+    // mapping table (the canonical Codex ids start at gpt-5.2),
+    // so it falls back to the raw id — keeping this assertion
+    // intact while documenting the contract for future Codex
+    // entries.
     expect(all.favoriteModel).toBe('gpt-5-codex')
 
     const day = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
     expect(day.sessions).toBe(1) // just the recent-chat
     expect(day.activeDays).toBe(1) // just today
-    expect(day.favoriteModel).toBe('gemini-3-flash-preview') // burst dropped
+    // 1.0.5-EW50 — `gemini-3-flash-preview` IS in the known
+    // mapping table, so the favorite-model chip now reads as
+    // "Gemini 3 Flash Preview" rather than the raw CLI id.
+    expect(day.favoriteModel).toBe('Gemini 3 Flash Preview')
   })
 
   it('keeps current + longest streak ON THE LIFETIME calendar regardless of range', () => {

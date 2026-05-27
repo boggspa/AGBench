@@ -28,6 +28,7 @@ import type {
   WorkspaceRecord
 } from '../../../main/store/types'
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
+import { humaniseModelId } from '../lib/modelDisplayName'
 import {
   summariseCodexStatus,
   summariseGeminiStatus,
@@ -3820,8 +3821,19 @@ export function SettingsPanel({
                               className={`settings-model-comparison-dot provider-${entry.provider}`}
                               aria-hidden
                             />
+                            {/*
+                              1.0.5-EW50 — Humanise the CLI/API model id via
+                              the shared `humaniseModelId` resolver so the
+                              Settings → Model Usage list reads as
+                              "Gemini 3 Flash Preview" instead of
+                              "gemini-3-flash-preview". Tooltip keeps the
+                              raw id for power-users who want the canonical
+                              CLI name. Falls back to the raw id when no
+                              mapping exists (e.g. brand-new models the
+                              table hasn't been extended for yet).
+                            */}
                             <span className="settings-model-comparison-name" title={entry.model}>
-                              {entry.model}
+                              {humaniseModelId(entry.provider, entry.model)}
                             </span>
                             <span className="settings-model-comparison-tokens">
                               {formatLargeNumber(entry.inputTokens)} in ·{' '}
@@ -3837,7 +3849,7 @@ export function SettingsPanel({
                             aria-valuemin={0}
                             aria-valuemax={100}
                             aria-valuenow={percent}
-                            aria-label={`${entry.model} accounts for ${percent.toFixed(1)}% of model usage in the last 30 days`}
+                            aria-label={`${humaniseModelId(entry.provider, entry.model)} accounts for ${percent.toFixed(1)}% of model usage in the last 30 days`}
                           >
                             <span
                               className={`settings-model-comparison-fill provider-${entry.provider}`}

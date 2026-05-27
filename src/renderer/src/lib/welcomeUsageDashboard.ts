@@ -4,6 +4,7 @@ import type {
   UsageRecord,
   WorkspaceRecord
 } from '../../../main/store/types'
+import { humaniseModelId } from './modelDisplayName'
 
 export type WelcomeUsageTab = 'overview' | 'models'
 /**
@@ -262,17 +263,16 @@ const shouldSurfaceModelInBreakdown = (provider: ProviderId, model: string): boo
  * Friendly label for the per-model meter row. Falls back to the raw
  * model id when no provider-specific rename applies, so unfamiliar
  * models stay readable.
+ *
+ * 1.0.5-EW50 — Delegates to the shared `humaniseModelId` resolver
+ * in `lib/modelDisplayName.ts` so the Favorite Model chip, the
+ * Model Comparisons tab, and the Settings → Model Usage list all
+ * use the same mapping table. Pre-EW50 this function only mapped
+ * Kimi ids; every other provider fell through to the raw CLI id,
+ * which read as developer-y noise in the user-facing chip.
  */
-const labelForBreakdownModel = (provider: ProviderId, model: string): string => {
-  const trimmed = (model || '').trim().toLowerCase()
-  if (provider === 'kimi') {
-    if (trimmed === 'kimi-k2.6') return 'Kimi K2.6'
-    if (trimmed === 'kimi-k2.6-thinking' || trimmed === 'kimi-k2-thinking') {
-      return 'Kimi K2.6 Thinking'
-    }
-  }
-  return model
-}
+const labelForBreakdownModel = (provider: ProviderId, model: string): string =>
+  humaniseModelId(provider, model)
 
 const inferProviderFromModelName = (model: string): ProviderId => {
   const normalized = model.toLowerCase()
