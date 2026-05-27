@@ -6,3 +6,5 @@ out
 .eslintcache
 *.log*
 *.tsbuildinfo
+for-tester/
+for-tester.zip
