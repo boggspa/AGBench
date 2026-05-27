@@ -26782,39 +26782,22 @@ input:disabled, select:disabled, textarea:disabled {
   color: inherit;
   font: inherit;
   cursor: pointer;
-  border-radius: 999px 0 0 999px;
+  /* 1.0.5-EW22 — was `999px 0 0 999px` pre-EW22 because the chip
+   * had an inline `⋯` overflow button sibling that filled the
+   * right half of the pill. EW22 removed the inline overflow,
+   * so the body is always fully rounded now. */
+  border-radius: 999px;
   /* 1.0.4-AQ2 — see chip-level rule above. */
   user-select: none;
   -webkit-user-select: none;
 }
 
-/* Selected chip without an overflow button still rounds the body
- * fully. CSS-level rule: when the only child is the body (no
- * `.ensemble-above-chip-overflow` sibling), round both ends. */
-.ensemble-above-chip:not(.is-selected) .ensemble-above-chip-body {
-  border-radius: 999px;
-}
-
-.ensemble-above-chip-overflow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 26px;
-  margin-right: 2px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 16px;
-  font-weight: 700;
-  cursor: pointer;
-  border-radius: 0 999px 999px 0;
-}
-
-.ensemble-above-chip-overflow:hover {
-  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
-  color: var(--text-primary);
-}
+/* 1.0.5-EW22 — `.ensemble-above-chip-overflow` (the inline ⋯
+ * button) was removed; the popover is now opened by clicking a
+ * second time on the already-selected chip. Old rules removed.
+ * `.ensemble-above-chip:not(.is-selected) .ensemble-above-chip-body`
+ * (the half-rounded fix) is also unneeded now — the body above
+ * handles its own rounding unconditionally. */
 
 .ensemble-above-add-participant {
   display: inline-flex;
@@ -26844,14 +26827,62 @@ input:disabled, select:disabled, textarea:disabled {
   opacity: 0.45;
 }
 
-.ensemble-above-chip:hover {
-  border-color: color-mix(in srgb, var(--accent-color) 50%, var(--border-color));
+/* 1.0.5-EW22 — "-" remove-selected sibling button. Same shape as
+ * `+` so the pair reads as a unified roster control. Hover tints
+ * a soft destructive red rather than the accent so the gesture's
+ * irreversibility is signalled visually before the click lands. */
+.ensemble-above-remove-participant {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+  border: 1px solid color-mix(in srgb, var(--border-color) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-elevated) 55%, transparent);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1;
 }
 
+.ensemble-above-remove-participant:hover:not(:disabled) {
+  border-color: color-mix(in srgb, #e5484d 55%, var(--border-color));
+  color: #e5484d;
+  background: color-mix(in srgb, #e5484d 10%, transparent);
+}
+
+.ensemble-above-remove-participant:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* 1.0.5-EW22 — Drop the visible-on-hover border. Chips are now
+ * satellites (no pill), so the hover affordance is the cursor +
+ * a very faint accent halo. Kept under-stated so it doesn't
+ * compete with the selected-chip glow for the user's attention. */
+.ensemble-above-chip:hover {
+  border-color: transparent;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent-color) 22%, transparent);
+}
+
+/* 1.0.5-EW22 — Selected chip is now a satellite with a glow halo
+ * rather than the pre-EW22 border + accent fill + 1px ring combo.
+ * Two box-shadow layers:
+ *   - First layer: 1px halo that replaces the explicit border.
+ *   - Second layer: spread glow that gives the chip its
+ *     "selected" presence without a hard outline.
+ * Background stays transparent (no pill fill), border stays
+ * transparent (no hard outline). The provider colour comes
+ * through on the role text + status icon as before. */
 .ensemble-above-chip.is-selected {
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 14%, var(--surface-elevated));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 70%, transparent);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 55%, transparent),
+    0 0 16px color-mix(in srgb, var(--accent-color) 40%, transparent);
 }
 
 /* Disabled (`participant.enabled === false`) — the chip is in the
@@ -26970,8 +27001,14 @@ input:disabled, select:disabled, textarea:disabled {
  * above, not the border. Selected chips override this with
  * `--accent-color` (the user's chosen accent from Settings)
  * via the existing `.is-selected` rules. */
+/* 1.0.5-EW22 — Default chip border is now transparent (satellite
+ * chrome). The dashed `.is-dimmed` rule + the explicit `.is-drag-over`
+ * accent border still override this via specificity. Pre-EW22 a
+ * subtle visible border ran by default; users felt the row looked
+ * "boxy" with 12 chips. Stripping it leaves the chips as floating
+ * icon+text+status satellites. */
 .ensemble-above-chip {
-  border-color: color-mix(in srgb, var(--border-color) 75%, transparent);
+  border-color: transparent;
 }
 
 /* Overflow popover (enabled toggle + role rename for the selected chip). */
@@ -27204,10 +27241,14 @@ input:disabled, select:disabled, textarea:disabled {
  * treatment here with light-mode tokens so the focus indicator
  * survives. Same logic for `.is-drag-over` since it shares the
  * accent ring pattern. */
+/* 1.0.5-EW22 — Light-mode selected glow. Same satellite chrome
+ * as dark mode but the spread layer needs slightly more intensity
+ * to read against bright surfaces. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-chip.is-selected {
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color) 14%, var(--surface-2));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 70%, transparent);
+  border-color: transparent;
+  background: transparent;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-color) 65%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent-color) 48%, transparent);
   color: rgba(29, 29, 31, 0.92);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .ensemble-above-chip.is-drag-over {

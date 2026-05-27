@@ -572,17 +572,25 @@ export function EnsembleParticipantsAboveRow({
               isDragging={dragId === participant.id}
               overflowOpen={overflowOpenId === participant.id}
               onClick={() => {
-                onSelectParticipant(participant.id)
-                // Clicking a different chip closes any open overflow.
-                if (overflowOpenId && overflowOpenId !== participant.id) setOverflowOpenId(null)
+                // 1.0.5-EW22 — Second-click-on-selected opens the
+                // popover (replacing the ⋯ overflow button that
+                // used to live inline on the chip and overlapped
+                // into the next chip). First click selects.
+                // Click outside the chip + popover dismisses
+                // (handled by OverflowPopover's outside-click).
+                if (participant.id === selectedParticipantId) {
+                  setOverflowOpenId((curr) =>
+                    curr === participant.id ? null : participant.id
+                  )
+                } else {
+                  onSelectParticipant(participant.id)
+                  if (overflowOpenId && overflowOpenId !== participant.id) {
+                    setOverflowOpenId(null)
+                  }
+                }
               }}
-              onToggleOverflow={() =>
-                setOverflowOpenId((curr) => (curr === participant.id ? null : participant.id))
-              }
               onCloseOverflow={() => setOverflowOpenId(null)}
               onPatch={(patch) => updateParticipant(participant.id, patch)}
-              onRemove={() => removeParticipant(participant.id)}
-              canRemove={participants.length > 1}
               locked={isRoundRunning}
               onDragStart={() => setDragId(participant.id)}
               onDragHover={(overId) => setDragOverId(overId)}
@@ -637,6 +645,38 @@ export function EnsembleParticipantsAboveRow({
       >
         +
       </button>
+      {/*
+        1.0.5-EW22 — "-" remove-selected sibling button. Pairs with
+        "+" on the right edge so the roster's add/remove controls
+        live in one visual locus, freeing the popover from
+        carrying a destructive row. Disabled when no chip is
+        selected, when at the 2-participant floor, or when a round
+        is running (matches `removeParticipant`'s own guards).
+      */}
+      <button
+        type="button"
+        className="ensemble-above-remove-participant"
+        onClick={() => {
+          if (selectedParticipantId) removeParticipant(selectedParticipantId)
+        }}
+        disabled={
+          isRoundRunning ||
+          !selectedParticipantId ||
+          participants.length <= MIN_ENSEMBLE_PARTICIPANTS
+        }
+        title={
+          isRoundRunning
+            ? 'Participant changes are locked while a round is running.'
+            : !selectedParticipantId
+              ? 'Select a participant chip first.'
+              : participants.length <= MIN_ENSEMBLE_PARTICIPANTS
+                ? `Ensembles require at least ${MIN_ENSEMBLE_PARTICIPANTS} participants.`
+                : 'Remove the selected participant'
+        }
+        aria-label="Remove selected Ensemble participant"
+      >
+        −
+      </button>
       <div className="ensemble-above-row-actions">
         {/* "Queued next round" label intentionally not rendered here —
             the queued-messages above-row (sibling in the composer
@@ -679,11 +719,13 @@ interface ParticipantChipProps {
   isDragging: boolean
   overflowOpen: boolean
   onClick: () => void
-  onToggleOverflow: () => void
+  /* 1.0.5-EW22 — `onToggleOverflow` removed; the parent now toggles
+   * overflowOpenId directly when the user clicks an already-selected
+   * chip. `onRemove` / `canRemove` removed too because the popover's
+   * Remove row moved to the row's "-" sibling button (which has
+   * direct access to `removeParticipant` from this component). */
   onCloseOverflow: () => void
   onPatch: (patch: Partial<EnsembleParticipant>) => void
-  onRemove: () => void
-  canRemove: boolean
   locked: boolean
   /**
    * Pointer-based drag callbacks (replaces HTML5 native drag).
@@ -736,11 +778,8 @@ function ParticipantChip({
   isDragging,
   overflowOpen,
   onClick,
-  onToggleOverflow,
   onCloseOverflow,
   onPatch,
-  onRemove,
-  canRemove,
   locked,
   onDragStart,
   onDragHover,
@@ -759,12 +798,10 @@ function ParticipantChip({
       // Left-click only. Right-click / middle-click fall through to
       // the browser default — no drag, no select.
       if (event.button !== 0) return
-      // Don't start a drag when the user is clicking the overflow
-      // affordance — the ⋯ button stops propagation on its own
-      // pointerdown too, but a defensive check here keeps the drag
-      // logic robust if anything between us mishandles the event.
-      const target = event.target as HTMLElement
-      if (target.closest('.ensemble-above-chip-overflow')) return
+      // 1.0.5-EW22 — Pre-EW22 there was a guard here for the inline
+      // `⋯` overflow button. With that button removed (the popover
+      // is now opened by clicking the selected chip a second time),
+      // the guard is no longer needed.
       if (locked) {
         onClick()
         return
@@ -891,32 +928,18 @@ function ParticipantChip({
           <ParticipantStatusIcon status={statusLabel} />
         </span>
       </div>
-      {isSelected && (
-        <button
-          type="button"
-          className="ensemble-above-chip-overflow"
-          // Stop pointerdown propagation so the parent chip's drag
-          // detection doesn't fire when the user is clicking ⋯.
-          onPointerDown={(event) => event.stopPropagation()}
-          onClick={(event) => {
-            event.stopPropagation()
-            onToggleOverflow()
-          }}
-          aria-haspopup="dialog"
-          aria-expanded={overflowOpen}
-          aria-label={`More options for ${getProviderName(participant.provider)}`}
-          title="Toggle enabled / rename role"
-        >
-          ⋯
-        </button>
-      )}
+      {/*
+        1.0.5-EW22 — The inline ⋯ overflow button used to live here.
+        It overlapped into the next chip on dense rows and was an
+        easy mis-click target. Replaced with a "click-twice-on-
+        selected" gesture handled by the parent's chip onClick
+        (see `EnsembleParticipantsAboveRow.tsx` near line 574).
+      */}
       {overflowOpen && (
         <OverflowPopover
           anchor={chipRef.current}
           participant={participant}
           onPatch={onPatch}
-          onRemove={onRemove}
-          canRemove={canRemove}
           locked={locked}
           onClose={onCloseOverflow}
           onRetry={onRetry}
@@ -933,8 +956,8 @@ interface OverflowPopoverProps {
   anchor: HTMLElement | null
   participant: EnsembleParticipant
   onPatch: (patch: Partial<EnsembleParticipant>) => void
-  onRemove: () => void
-  canRemove: boolean
+  /* 1.0.5-EW22 — `onRemove` / `canRemove` removed. Remove gesture
+   * moved to the row's "-" sibling button. */
   locked: boolean
   onClose: () => void
   /** 1.0.4-AT7 — re-dispatch the participant when their last turn
@@ -951,8 +974,6 @@ function OverflowPopover({
   anchor,
   participant,
   onPatch,
-  onRemove,
-  canRemove,
   locked,
   onClose,
   onRetry,
@@ -981,10 +1002,13 @@ function OverflowPopover({
   useEffect(() => {
     const handleClick = (event: MouseEvent): void => {
       if (popoverRef.current?.contains(event.target as Node)) return
-      // Clicking the overflow button itself toggles via onToggleOverflow;
-      // don't double-fire by also closing on outside-click for that hit.
-      const target = event.target as HTMLElement
-      if (target.closest('.ensemble-above-chip-overflow')) return
+      // 1.0.5-EW22 — Clicks on the chip the popover is anchored to
+      // are handled by the chip's own onClick (toggle the popover).
+      // Without this early-return, the mousedown closes the popover
+      // before the pointerup re-opens it — net result of a click-
+      // to-close gesture was visible flicker then re-open. Anchor-
+      // chip clicks fall through; everything else closes.
+      if (anchor && anchor.contains(event.target as Node)) return
       onClose()
     }
     const handleKey = (event: KeyboardEvent): void => {
@@ -999,7 +1023,7 @@ function OverflowPopover({
       document.removeEventListener('mousedown', handleClick, true)
       document.removeEventListener('keydown', handleKey, true)
     }
-  }, [onClose])
+  }, [onClose, anchor])
 
   if (!position) return null
 
@@ -1088,14 +1112,13 @@ function OverflowPopover({
           Cancel wakeup
         </button>
       )}
-      <button
-        type="button"
-        className="ensemble-above-overflow-remove"
-        onClick={onRemove}
-        disabled={locked || !canRemove}
-      >
-        Remove participant
-      </button>
+      {/*
+        1.0.5-EW22 — "Remove participant" moved to a sibling "-"
+        button next to the row's "+" button, so the popover no
+        longer carries the destructive row. Removing from the
+        right-edge sibling is closer to the visual locus where
+        users mentally bind "participant roster controls".
+      */}
       <p className="ensemble-above-overflow-hint">
         {locked
           ? 'Participant membership is locked while a round is running.'
