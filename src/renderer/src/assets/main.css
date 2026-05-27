@@ -4671,28 +4671,24 @@ button.sidebar-item {
  * dark themes share the same `color-mix()` lerps so the glow stays
  * legible without restating theme-specific shadows. */
 /*
- * 1.0.4-AS5 — Ensemble welcome restyle.
+ * 1.0.4-AS5b — Ensemble welcome restyle, second pass.
  *
- * Pre-AS5 the Ensemble welcome card sat inside a tinted container
- * with a multi-provider linear-gradient fill + border + box-shadow.
- * Visually distinctive but heavy — read as a "different surface
- * grammar" from the single-provider welcome (which is a glow-only
- * design with no container). Chris asked to drop the container in
- * favour of a subtle multi-provider GLOW so the two welcome shapes
- * feel like variants of the same surface, not two visually
- * disjoint surfaces.
+ * Pre-AS5 the Ensemble welcome sat inside a tinted container
+ * with a multi-provider gradient + border + box-shadow. AS5 (first
+ * pass) dropped the gradient but kept padding + border-radius +
+ * a directional multi-provider glow halo. Chris flagged that even
+ * the halo + padding makes this read as a distinct surface from
+ * the Workspace/Global welcome. The clean target is fully
+ * satellite — text + provider chain + folder picker floating in
+ * the page with no chrome at all, exactly like the solo welcome.
  *
- * The four `--ensemble-shell-tint-N` custom properties (set on the
- * inline `style` via `ensembleBlendStyle` from App.tsx) still
- * power per-chat tinting — they just feed the new outer glow
- * `box-shadow` stack instead of a gradient fill. No JS-side
- * changes; the visual change is contained in this CSS rule.
- *
- * Note: `padding` + `border-radius` stay so the welcome's inner
- * children (workspace name + provider-chain row + folder picker)
- * keep their hit area + corner radius for transitions; the
- * background just goes transparent and the container's "border"
- * becomes a glow halo emitted outward.
+ * The four `--ensemble-shell-tint-N` custom properties (still set
+ * by `ensembleBlendStyle` from App.tsx) no longer drive any
+ * background / border / shadow on the shell. They remain
+ * available for any future inline accent (the workspace-name
+ * glow at `.workspace-name-glow.workspace-name-glow-ensemble`
+ * already uses the provider variables directly) but the wrapper
+ * itself is now invisible. No JS-side changes.
  */
 .welcome-ensemble-shell {
   --ensemble-shell-tint-1: var(--ensemble-provider-1, var(--text-primary));
@@ -4700,42 +4696,32 @@ button.sidebar-item {
   --ensemble-shell-tint-3: var(--ensemble-provider-3, var(--ensemble-shell-tint-2));
   --ensemble-shell-tint-4: var(--ensemble-provider-4, var(--ensemble-shell-tint-3));
   position: relative;
-  padding: 18px 22px;
-  border-radius: 18px;
-  /* Container itself is invisible (no fill, no border). The
-   * presence stays through the directional box-shadow halo below
-   * — four soft drop-shadows in the four participant providers'
-   * colours pulled out from the four sides. The result reads as
-   * the welcome card "glowing" in the panel's collective colour
-   * signature without claiming a tinted rectangle of real estate. */
+  /* Fully satellite — no padding, border, fill, or shadow. The
+   * welcome reads as floating text + provider-chain row + folder
+   * picker, identical surface grammar to the Workspace/Global
+   * welcome above it. The workspace-name halo at
+   * `.workspace-name-glow.workspace-name-glow-ensemble` is the
+   * only ensemble-specific accent that survives — it's the
+   * one-line "this is the panel" cue and pairs naturally with
+   * the chain row below the headline. */
+  padding: 0;
+  border-radius: 0;
   border: none;
   background: transparent;
-  box-shadow:
-    -22px 0 38px color-mix(in srgb, var(--ensemble-shell-tint-1) 14%, transparent),
-    0 -10px 34px color-mix(in srgb, var(--ensemble-shell-tint-2) 12%, transparent),
-    22px 0 38px color-mix(in srgb, var(--ensemble-shell-tint-3) 14%, transparent),
-    0 10px 34px color-mix(in srgb, var(--ensemble-shell-tint-4) 12%, transparent);
+  box-shadow: none;
 }
 
-/* Single-provider ensemble (rare but possible) — fall back to a
- * single-direction glow so a solo provider doesn't look like a
- * full halo with three transparent stubs. */
+/* Both count-1 fallback and the light-theme override now share
+ * the same fully-satellite treatment. Kept as empty rule blocks
+ * so any future tweak has a single anchor to extend; CSS engines
+ * compile these to no-ops. */
 .welcome-ensemble-shell-count-1 {
-  box-shadow:
-    0 0 40px color-mix(in srgb, var(--ensemble-shell-tint-1) 18%, transparent);
+  /* (intentionally empty — matches the count-N case) */
 }
-
-/* Light themes — lift the glow mix slightly so it stays legible on
- * a light surface (which absorbs more of a soft mid-saturation
- * halo than dark themes do). Same directional shape; just denser. */
 [data-theme="light"] .welcome-ensemble-shell,
 [data-theme="mist"] .welcome-ensemble-shell,
 [data-theme="sage"] .welcome-ensemble-shell {
-  box-shadow:
-    -22px 0 36px color-mix(in srgb, var(--ensemble-shell-tint-1) 22%, transparent),
-    0 -10px 32px color-mix(in srgb, var(--ensemble-shell-tint-2) 18%, transparent),
-    22px 0 36px color-mix(in srgb, var(--ensemble-shell-tint-3) 22%, transparent),
-    0 10px 32px color-mix(in srgb, var(--ensemble-shell-tint-4) 18%, transparent);
+  /* (intentionally empty — matches dark-theme satellite shape) */
 }
 
 /* Workspace-name glow — soft text-shadow for solo-provider welcome
