@@ -3894,17 +3894,23 @@ const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
 // `<$0.01` floor; the floor logic now lives in `formatCost.ts` and
 // is per-currency aware. Callers that previously didn't pass a
 // currency get USD by default — backward-compatible.
+//
+// 1.0.5-EW34 — Threads the user's conservative-overestimate bias
+// percent (sub-slice e) into the same call. Default 0 keeps the
+// behaviour identical for callers that don't pass a bias.
 const formatExplicitCostUsd = (
   costUsd: number,
-  currency: DisplayCurrency = 'USD'
-): string => formatCost(costUsd, currency)
+  currency: DisplayCurrency = 'USD',
+  overestimatePercent: number = 0
+): string => formatCost(costUsd, currency, undefined, overestimatePercent)
 const formatThreadTokenTally = (
   _providerLabel: string,
   tally: ChatTokenTally,
-  currency: DisplayCurrency = 'USD'
+  currency: DisplayCurrency = 'USD',
+  overestimatePercent: number = 0
 ): string | null => {
   if (tally.totalTokens <= 0) return null
-  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency)
+  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
   // Provider label dropped — the user already knows which provider
   // they're talking to (the provider chip is right next to this
   // tally), and the inline real-estate is tight. `_providerLabel`
@@ -3927,7 +3933,8 @@ const formatThreadTokenTally = (
 const formatEnsembleTokenBreakdown = (
   runs: ChatRun[],
   participants: EnsembleParticipant[],
-  currency: DisplayCurrency = 'USD'
+  currency: DisplayCurrency = 'USD',
+  overestimatePercent: number = 0
 ): string | null => {
   if (!runs.length || !participants.length) return null
   const byParticipant = new Map<string, ChatTokenTally>()
@@ -3955,7 +3962,7 @@ const formatEnsembleTokenBreakdown = (
     const tally = byParticipant.get(participant.id)
     if (!tally || tally.totalTokens <= 0) continue
     const label = participant.role || participant.provider
-    const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency)
+    const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency, overestimatePercent)
     lines.push(
       `${label}: ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
     )
@@ -14779,11 +14786,21 @@ function App(): React.JSX.Element {
   // numbers respect their Settings → General choice. Defaults to
   // USD if settings haven't hydrated yet, matching the helper's
   // own fallback.
+  //
+  // 1.0.5-EW34 — same idea for the conservative-overestimate bias
+  // percent (sub-slice e). Clamped at the call site so a stored
+  // value outside 0–25 can't surprise the formatter. Defaults to 0
+  // (no bias) when the setting hasn't hydrated.
   const displayCurrency = (settings?.currency ?? 'USD') as DisplayCurrency
+  const overestimatePercent = Math.max(
+    0,
+    Math.min(25, Number(settings?.currencyOverestimatePercent ?? 0) || 0)
+  )
   const threadTokenTallyLabel = formatThreadTokenTally(
     currentProviderLabel,
     chatTokenTally,
-    displayCurrency
+    displayCurrency,
+    overestimatePercent
   )
   // B1 (1.0.3) — per-participant breakdown for the ensemble tally
   // footer's hover tooltip. Solo chats: `null` (the existing
@@ -14798,13 +14815,15 @@ function App(): React.JSX.Element {
     return formatEnsembleTokenBreakdown(
       currentChat?.runs || [],
       currentChat?.ensemble?.participants || [],
-      displayCurrency
+      displayCurrency,
+      overestimatePercent
     )
   }, [
     isCurrentEnsembleChat,
     currentChat?.runs,
     currentChat?.ensemble?.participants,
-    displayCurrency
+    displayCurrency,
+    overestimatePercent
   ])
   const threadTokenTallyTooltip = ensembleTallyBreakdown
     ? `${contextLabel}\n\n${ensembleTallyBreakdown}`
@@ -16106,6 +16125,7 @@ function App(): React.JSX.Element {
               geminiApiRuntime={geminiApiRuntime}
               chatContextTurns={chatContextTurns}
               currency={displayCurrency}
+              currencyOverestimatePercent={overestimatePercent}
               kimiSanitiserEnabled={settings?.kimiSanitiserEnabled ?? false}
               kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}

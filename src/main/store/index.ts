@@ -123,6 +123,11 @@ const defaultSettings: AppSettings = {
   // USD by default; user can switch to GBP / EUR via Settings →
   // General. Rates are static approximations (see `formatCost.ts`).
   currency: 'USD',
+  // 1.0.5-EW34 — Currency sub-slice (e): conservative-overestimate
+  // bias percent. Default 0 (no change). Slider in Settings →
+  // General lets the user dial 0–25%. Applied in `formatCost.ts`
+  // before FX conversion so the bias is currency-agnostic.
+  currencyOverestimatePercent: 0,
   // 1.0.5-EW26 — Kimi compatibility filter defaults. Off by
   // default; the user opts in from Settings → General when they
   // hit a Moonshot content_filter rejection on an incidental

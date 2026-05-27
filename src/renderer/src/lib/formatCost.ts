@@ -46,6 +46,24 @@ const FLOORS: Record<DisplayCurrency, { threshold: number; label: string }> = {
 }
 
 /**
+ * 1.0.5-EW34 — Conservative-overestimate bias cap. Slider in Settings
+ * → General is constrained to 0-25; we re-clamp here so a malformed
+ * stored value can't break rendering. 25% is enough to cover most
+ * "I want my displayed bill to comfortably over-shoot the real one"
+ * cases without painting wildly-misleading numbers.
+ */
+const OVERESTIMATE_PERCENT_MIN = 0
+const OVERESTIMATE_PERCENT_MAX = 25
+
+function clampOverestimate(percent: number | undefined): number {
+  if (!Number.isFinite(percent ?? 0)) return 0
+  const p = percent ?? 0
+  if (p < OVERESTIMATE_PERCENT_MIN) return OVERESTIMATE_PERCENT_MIN
+  if (p > OVERESTIMATE_PERCENT_MAX) return OVERESTIMATE_PERCENT_MAX
+  return p
+}
+
+/**
  * Format a USD amount for display in the user's chosen currency.
  *
  * Returns:
@@ -61,15 +79,30 @@ const FLOORS: Record<DisplayCurrency, { threshold: number; label: string }> = {
  * @param locale  Optional locale override. Defaults to system locale
  *                (`undefined` → `Intl.NumberFormat` picks the
  *                browser/Electron locale).
+ * @param overestimatePercent  1.0.5-EW34 — Conservative-overestimate
+ *   bias percent (sub-slice e). When non-zero, the USD figure is
+ *   multiplied by `1 + (clamped / 100)` BEFORE FX conversion so the
+ *   bias is currency-agnostic. Clamped to 0-25. Default 0 (no bias —
+ *   identical to pre-EW34 behaviour).
  */
 export function formatCost(
   usd: number,
   currency: DisplayCurrency = 'USD',
-  locale?: string
+  locale?: string,
+  overestimatePercent: number = 0
 ): string {
   if (!Number.isFinite(usd) || usd <= 0) return ''
+  // Apply the overestimate first (in USD-space) so the bias is
+  // currency-agnostic — a 5% bias means "5% more cost" regardless
+  // of whether the user is viewing in USD / GBP / EUR. We also
+  // apply it BEFORE the floor check because if a bias actually
+  // pushes a tiny amount past the 1¢ floor (e.g. $0.0099 at +5%
+  // = $0.0104), the user expects to see the real biased number
+  // rather than the "tiny" label.
+  const bias = clampOverestimate(overestimatePercent)
+  const biased = bias > 0 ? usd * (1 + bias / 100) : usd
   const rate = FX_RATES_PER_USD[currency] ?? 1
-  const converted = usd * rate
+  const converted = biased * rate
   const floor = FLOORS[currency]
   if (converted < floor.threshold) return floor.label
   try {
@@ -99,9 +132,10 @@ export function formatCost(
 export function formatCostAlwaysOn(
   usd: number,
   currency: DisplayCurrency = 'USD',
-  locale?: string
+  locale?: string,
+  overestimatePercent: number = 0
 ): string {
-  const formatted = formatCost(usd, currency, locale)
+  const formatted = formatCost(usd, currency, locale, overestimatePercent)
   if (formatted) return formatted
   try {
     return new Intl.NumberFormat(locale, {

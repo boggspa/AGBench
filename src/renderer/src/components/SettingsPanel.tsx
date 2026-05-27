@@ -89,6 +89,11 @@ interface SettingsPanelProps {
    * provider event payloads in USD; conversion is renderer-side
    * via `src/renderer/src/lib/formatCost.ts`. */
   currency: 'USD' | 'GBP' | 'EUR'
+  /** 1.0.5-EW34 — Currency sub-slice (e): conservative-overestimate
+   * bias percent (0–25). Slider in the General tab; applied in
+   * `formatCost.ts` before FX conversion. Optional because older
+   * settings files won't have the key. */
+  currencyOverestimatePercent?: number
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
   /** 1.0.5-EW26 — User's additional trigger keywords (newline-
@@ -177,6 +182,8 @@ interface SettingsPanelProps {
     chatContextTurns?: number
     /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
     currency?: 'USD' | 'GBP' | 'EUR'
+    /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
+    currencyOverestimatePercent?: number
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
     /** 1.0.5-EW26 — User additions to the trigger keyword list. */
@@ -1097,6 +1104,7 @@ export function SettingsPanel({
   geminiApiRuntime,
   chatContextTurns,
   currency,
+  currencyOverestimatePercent,
   kimiSanitiserEnabled,
   kimiSanitiserCustomKeywords,
   claudeBinaryPath,
@@ -2043,6 +2051,46 @@ export function SettingsPanel({
                   Used for cost displays on per-participant chips and the chat-level cumulative
                   tally. Rates are static approximations — provider pricing is sampled in USD
                   and converted at display time. Live FX refresh is on the 1.0.6 roadmap.
+                </p>
+              </div>
+
+              {/*
+                1.0.5-EW34 — Currency sub-slice (e): conservative-
+                overestimate bias. Slider 0–25%. When non-zero, every
+                cost display is multiplied by `1 + percent/100` BEFORE
+                FX conversion, so displayed cost over-shoots the real
+                bill by exactly that bias. Useful for users who want
+                their on-screen running total to be a safe upper
+                bound rather than the literal billed amount. Slider
+                bounds match `OVERESTIMATE_PERCENT_MAX` in formatCost.
+              */}
+              <div className="settings-group">
+                <label className="settings-label">
+                  Conservative overestimate
+                  <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
+                    {`+${Math.max(0, Math.min(25, currencyOverestimatePercent ?? 0))}%`}
+                  </span>
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={25}
+                  step={1}
+                  value={Math.max(0, Math.min(25, currencyOverestimatePercent ?? 0))}
+                  onChange={(e) =>
+                    onChange({
+                      currencyOverestimatePercent: Math.max(
+                        0,
+                        Math.min(25, Number(e.target.value) || 0)
+                      )
+                    })
+                  }
+                  style={{ width: '100%' }}
+                />
+                <p className="settings-hint">
+                  {(currencyOverestimatePercent ?? 0) > 0
+                    ? `+${currencyOverestimatePercent ?? 0}% safety bias applied to all cost displays. Useful when you want the on-screen running total to safely over-shoot the real bill.`
+                    : 'Optional. Multiplies every cost display by 1 + your chosen percent (0–25%) so the displayed running total is a safe upper bound rather than the literal billed amount. Defaults to 0 (no bias).'}
                 </p>
               </div>
 

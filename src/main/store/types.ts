@@ -936,6 +936,18 @@ export interface AppSettings {
    * Rates are static approximations (no live FX lookup yet — that's
    * deferred to 1.0.6 sub-slice c). USD is the default. */
   currency: 'USD' | 'GBP' | 'EUR'
+  /** 1.0.5-EW34 — Currency sub-slice (e): conservative-overestimate
+   * mode. When non-zero, cost displays are multiplied by
+   * `1 + (percent / 100)` BEFORE FX conversion, so a `$0.10` actual
+   * cost renders as `$0.11` with a 10% safety bias. Useful for
+   * users who want their displayed cost to over-shoot the real bill
+   * (so a session that "looks like" $5 has actually spent under
+   * that). Clamped to 0–25 at the slider UI; we also clamp
+   * defensively in `formatCost` so a stored value outside the
+   * range can't break rendering. Default 0 (no bias). Optional
+   * field so older settings files / test fixtures don't need to
+   * round-trip a value they never set. */
+  currencyOverestimatePercent?: number
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are
    * scanned by `src/main/lib/kimiSanitiser.ts` and any sentence
