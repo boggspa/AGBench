@@ -6283,6 +6283,23 @@ button.sidebar-item {
   color: color-mix(in srgb, var(--accent) 72%, var(--text-primary));
 }
 
+/* 1.0.4-AR10 — cumulative session timecode. Renders directly right of
+ * the per-run timecode in the telemetry row. Visually muted relative
+ * to the primary timecode so the eye anchors on "current run elapsed"
+ * first; the cumulative reads as supplemental context. When running,
+ * it inherits the accent tint just like the primary so both rows
+ * track activity in sync. */
+.composer-run-timecode--cumulative {
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+  min-width: 94px;
+}
+.composer-run-timecode--cumulative[data-running="true"] {
+  color: color-mix(in srgb, var(--accent) 48%, var(--text-secondary));
+}
+.composer-run-timecode--cumulative .composer-control-icon {
+  opacity: 0.55;
+}
+
 .composer-scheduler-controls {
   display: inline-flex;
   align-items: center;

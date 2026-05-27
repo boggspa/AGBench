@@ -1874,6 +1874,82 @@ function ComposerRunTimecode({
   )
 }
 
+/**
+ * 1.0.4-AR10 — cumulative session timecode. Sits directly right of
+ * the per-run timecode. Pre-AR10 there was only the per-run
+ * timecode that reset to 00:00:00:00 on every run boundary, which
+ * made it hard to tell at a glance how much wall time you'd
+ * accumulated across an extended panel session. The cumulative
+ * timecode is derived purely from `chat.runs[]` start/end stamps:
+ *
+ *   - `cumulativeBaseMs` = Σ (endedAt - startedAt) for every
+ *     completed run in this chat.
+ *   - When a run is currently running, the component adds
+ *     `now - startedAt` to the base on each tick.
+ *   - When idle (no running run), the readout pauses at the base.
+ *
+ * Computed-from-state means it survives reloads automatically and
+ * doesn't need its own persisted accumulator. Downtime between
+ * runs is naturally excluded.
+ */
+export function computeCumulativeRunBaseMs(runs: readonly ChatRun[] | undefined): number {
+  if (!runs || runs.length === 0) return 0
+  let total = 0
+  for (const run of runs) {
+    if (!run.startedAt) continue
+    const start = Date.parse(run.startedAt)
+    if (!Number.isFinite(start)) continue
+    if (!run.endedAt) continue
+    const end = Date.parse(run.endedAt)
+    if (!Number.isFinite(end)) continue
+    total += Math.max(0, end - start)
+  }
+  return total
+}
+
+function ComposerCumulativeTimecode({
+  running,
+  startedAt,
+  cumulativeBaseMs
+}: {
+  running: boolean
+  startedAt?: string | null
+  cumulativeBaseMs: number
+}) {
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    if (!running) {
+      setNow(Date.now())
+      return
+    }
+    setNow(Date.now())
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
+  }, [running, startedAt])
+
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
+  const liveDelta = running && Number.isFinite(startedAtMs) ? Math.max(0, now - startedAtMs) : 0
+  const totalMs = cumulativeBaseMs + liveDelta
+  const label = formatRunTimecodeDuration(totalMs)
+
+  return (
+    <span
+      className="composer-run-timecode composer-run-timecode--cumulative"
+      data-running={running ? 'true' : 'false'}
+      title={
+        running
+          ? 'Cumulative session wall time (current run + all prior runs in this chat)'
+          : 'Cumulative session wall time (sum of every run in this chat). Paused between runs.'
+      }
+      aria-label={`Cumulative session wall time ${label}`}
+    >
+      <ClockSymbolIcon />
+      <span>{label}</span>
+    </span>
+  )
+}
+
 const formatRunStatusLabel = (status?: string): string => {
   if (!status) return 'Unknown'
   if (status === 'success' || status === 'completed') return 'Complete'
@@ -14247,6 +14323,14 @@ function App(): React.JSX.Element {
     () => buildChatTokenTally(currentChat?.runs || []),
     [currentChat?.runs]
   )
+  // 1.0.4-AR10 — cumulative session timecode base. Derived from the
+  // sealed run records (`endedAt - startedAt` per run, summed) so it
+  // survives reloads automatically and pauses naturally between runs
+  // (the in-flight run is added live inside the component itself).
+  const cumulativeRunBaseMs = useMemo(
+    () => computeCumulativeRunBaseMs(currentChat?.runs),
+    [currentChat?.runs]
+  )
   const cumulativeChatTokens = chatTokenTally.totalTokens
   const latestRunLimits = extractUsageLimits(currentRun?.stats)
   const contextModelId = currentRun?.actualModel || currentRun?.requestedModel || selectedModelType
@@ -18271,6 +18355,11 @@ function App(): React.JSX.Element {
                 <ComposerRunTimecode
                   running={isCurrentChatRunning}
                   startedAt={composerRunTimecodeStartedAt}
+                />
+                <ComposerCumulativeTimecode
+                  running={isCurrentChatRunning}
+                  startedAt={composerRunTimecodeStartedAt}
+                  cumulativeBaseMs={cumulativeRunBaseMs}
                 />
                 {threadTokenTallyLabel && (
                   <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
