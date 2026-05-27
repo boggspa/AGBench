@@ -53,7 +53,10 @@ const PATH_PARAM_KEYS = [
   'target_file',
   'target_file_path'
 ]
-type ActivityTimelineItem =
+// 1.0.4-AS2 — exported so the ensemble-collapse predicate test
+// can assert the shape of `buildTimelineItems`'s output without
+// touching the React render tree.
+export type ActivityTimelineItem =
   | { type: 'activity'; activity: ToolActivity }
   | { type: 'compact-group'; id: string; activities: ToolActivity[] }
 
@@ -707,25 +710,83 @@ function isCompactGroupCandidate(activity: ToolActivity): boolean {
   return activity.category === 'read' || isSearchActivity(activity)
 }
 
-function buildTimelineItems(activities: ToolActivity[]): ActivityTimelineItem[] {
+/**
+ * 1.0.4-AS2 — Ensemble-mode collapse predicate. In Ensemble chats
+ * we collapse EVERY terminal activity (any non-running, non-pending
+ * status across all categories) into the compact group above the
+ * currently-running one — pattern (a) from the user's three
+ * options: "Only the currently-running activity stays expanded;
+ * everything terminal collapses into a `▾ N activities` group
+ * above it."
+ *
+ * Errors are NOT compacted (they want to remain individually
+ * visible so the user can act on them). Running + pending stay
+ * inline so the active step is always readable.
+ */
+function isEnsembleCollapseCandidate(activity: ToolActivity): boolean {
+  if (activity.status === 'error' || activity.status === 'running' || activity.status === 'pending')
+    return false
+  // 1.0.4-AS2 — `ensemble_yield` activities stay inline even in
+  // Ensemble chats. They're the social glue between turns
+  // (provider-tinted target chip + role name) carrying high-signal
+  // routing info, not the same category of "every-turn noise" that
+  // file reads / shell calls produce. Collapsing them would hide
+  // the @target chip the user relies on to follow the conversation.
+  // Match every aliased form: bare `ensemble_yield`,
+  // `mcp_AGBench_ensemble_yield` (Codex), `mcp__AGBench__ensemble_yield`
+  // (Claude), and any future namespaced variant.
+  const tool = (activity.toolName || '').toLowerCase()
+  if (tool.includes('ensemble_yield')) return false
+  return true
+}
+
+/**
+ * 1.0.4-AS2 — `buildTimelineItems` is now provider/chat-mode aware.
+ *
+ * Default (single-provider chats): preserves the existing
+ * read/search compact-group pattern with a min-group-size of 3
+ * — the chats stay scannable when there are lots of activities
+ * but small bursts inline naturally.
+ *
+ * Ensemble (`collapseAllTerminal: true`): every terminal
+ * activity (any non-running, non-error status across every
+ * category — read, write, shell, search, task) collapses into
+ * the same compact group, and the threshold drops to 1 so even a
+ * single completed activity collapses. The currently-running
+ * activity stays expanded inline. Errors stay individually
+ * visible so the user can act on them.
+ *
+ * The render component (`ActivityCompactGroup`) already handles
+ * heterogeneous category mixes via its `visibleFamilies` icon
+ * array — we just feed it more diverse activities.
+ */
+export function buildTimelineItems(
+  activities: ToolActivity[],
+  options: { collapseAllTerminal?: boolean } = {}
+): ActivityTimelineItem[] {
   const items: ActivityTimelineItem[] = []
   let index = 0
 
+  const isCandidate = options.collapseAllTerminal
+    ? isEnsembleCollapseCandidate
+    : isCompactGroupCandidate
+  const minGroupSize = options.collapseAllTerminal ? 1 : 3
+
   while (index < activities.length) {
     const activity = activities[index]
-    if (!isCompactGroupCandidate(activity)) {
+    if (!isCandidate(activity)) {
       items.push({ type: 'activity', activity })
       index += 1
       continue
     }
 
     const group: ToolActivity[] = []
-    while (index < activities.length && isCompactGroupCandidate(activities[index])) {
+    while (index < activities.length && isCandidate(activities[index])) {
       group.push(activities[index])
       index += 1
     }
 
-    if (group.length >= 3) {
+    if (group.length >= minGroupSize) {
       items.push({ type: 'compact-group', id: `${group[0].id}-${group.length}`, activities: group })
     } else {
       for (const groupedActivity of group) {
@@ -773,15 +834,37 @@ function ActivityCompactGroup({
 }) {
   const [expanded, setExpanded] = useState(false)
   const searchCount = activities.filter(isSearchActivity).length
-  const readCount = activities.length - searchCount
+  const readCount = activities.filter(
+    (a) => a.category === 'read' && !isSearchActivity(a)
+  ).length
+  // 1.0.4-AS2 — count "everything else" so heterogeneous Ensemble
+  // compact groups (which include write/shell/task activities, not
+  // just read/search) get an accurate header. Pre-AS2 the label
+  // always said "Read N files" even when the group was actually
+  // 3 writes + 2 shells — left over from when the group was
+  // read/search-only.
+  const otherCount = activities.length - searchCount - readCount
   const durationMs = getActivityDurationTotal(activities)
-  const label =
-    searchCount > 0 && readCount > 0
-      ? `Read ${readCount} ${readCount === 1 ? 'file' : 'files'} and searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
-      : searchCount > 0
-        ? `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
-        : `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`
-  const primaryCategory = searchCount > readCount ? 'search' : 'read'
+  const label = (() => {
+    if (otherCount === 0) {
+      // Pure read/search group — preserve the descriptive
+      // single-provider phrasing.
+      if (searchCount > 0 && readCount > 0) {
+        return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'} and searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+      }
+      if (searchCount > 0) {
+        return `Searched ${searchCount} ${searchCount === 1 ? 'time' : 'times'}`
+      }
+      return `Read ${readCount} ${readCount === 1 ? 'file' : 'files'}`
+    }
+    // 1.0.4-AS2 — heterogeneous (Ensemble) group: generic
+    // "N activities" header. The icon array below carries the
+    // category mix.
+    const total = activities.length
+    return `${total} ${total === 1 ? 'activity' : 'activities'}`
+  })()
+  const primaryCategory: 'search' | 'read' =
+    otherCount === 0 && searchCount > readCount ? 'search' : 'read'
   const chips = activities
     .map(
       (activity) =>
@@ -1307,7 +1390,12 @@ export function ActivityStack({
   }, [activities, childThreads])
 
   if (!activities || activities.length === 0) return null
-  const timelineItems = buildTimelineItems(topLevelActivities)
+  // 1.0.4-AS2 — Ensemble chats collapse every terminal activity into
+  // the compact group so only the currently-running one stays
+  // expanded inline. Pattern (a) from Chris's three options. Solo
+  // chats keep the existing read/search compact-group behavior.
+  const collapseAllTerminal = chat?.chatKind === 'ensemble'
+  const timelineItems = buildTimelineItems(topLevelActivities, { collapseAllTerminal })
 
   const resolveThreadActivities = (thread: ChildAgentThread): ToolActivity[] => {
     return thread.toolActivityIds
