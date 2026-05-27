@@ -26594,6 +26594,26 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: var(--font-size-sm);
 }
 
+/* 1.0.4-AT7 — Retry participant action in the chip's overflow
+ * popover. Accent-tinted (not danger-tinted) so it reads as a
+ * recovery affordance distinct from Remove. Only renders when the
+ * chip strip computed `isRetryable` and the host passed an
+ * `onRetry` callback. */
+.ensemble-above-overflow-retry {
+  align-self: flex-start;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border-color));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: color-mix(in srgb, var(--accent) 82%, var(--text-primary));
+  cursor: pointer;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 700;
+}
+.ensemble-above-overflow-retry:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
 .ensemble-above-overflow-remove {
   align-self: flex-start;
   border: 1px solid color-mix(in srgb, var(--danger, #c44a4a) 35%, var(--border-color));

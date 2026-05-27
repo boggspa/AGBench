@@ -210,6 +210,15 @@ interface EnsembleParticipantsAboveRowProps {
    * disabled.
    */
   onStopWorkSession?: () => void
+  /**
+   * 1.0.4-AT7 — re-dispatch a single participant whose last turn
+   * failed/timed-out/was unreachable. The caller decides how to
+   * source the retry prompt (typically the chat's last user
+   * prompt) and what dispatch path to use (e.g. DM via
+   * `runEnsembleRound({ dmTargetParticipantId })`). When omitted,
+   * the overflow popover hides the Retry row.
+   */
+  onRetryParticipant?: (participantId: string) => void
 }
 
 export function EnsembleParticipantsAboveRow({
@@ -218,7 +227,8 @@ export function EnsembleParticipantsAboveRow({
   onSelectParticipant,
   onChatChange,
   onSkipActive,
-  onStopWorkSession
+  onStopWorkSession,
+  onRetryParticipant
 }: EnsembleParticipantsAboveRowProps): React.JSX.Element | null {
   if (chat.chatKind !== 'ensemble' || !chat.ensemble) return null
 
@@ -455,6 +465,17 @@ export function EnsembleParticipantsAboveRow({
           // status label.
           const lastFailureReason =
             state?.lastFailureReason || (state?.status === 'failed' ? state?.reason : '') || ''
+          // 1.0.4-AT7 — retryable when the participant's last turn
+          // exited in a failure state. The Retry row in the overflow
+          // popover re-dispatches the chat's last user prompt as a
+          // DM to this participant via the AT4-extended
+          // `runEnsembleRound` IPC path. Active and idle participants
+          // don't get a Retry row (active = currently speaking, idle
+          // = ready to go on next dispatch).
+          const isRetryable =
+            !active &&
+            (state?.status === 'failed' || state?.status === 'unreachable') &&
+            !isRoundRunning
           return (
             <ParticipantChip
               key={participant.id}
@@ -482,6 +503,11 @@ export function EnsembleParticipantsAboveRow({
               onDragStart={() => setDragId(participant.id)}
               onDragHover={(overId) => setDragOverId(overId)}
               onDragEnd={(droppedOnId) => handleReorder(participant.id, droppedOnId)}
+              onRetry={
+                isRetryable && onRetryParticipant
+                  ? () => onRetryParticipant(participant.id)
+                  : undefined
+              }
             />
           )
         })}
@@ -572,6 +598,14 @@ interface ParticipantChipProps {
   onDragStart: () => void
   onDragHover: (overParticipantId: string | null) => void
   onDragEnd: (droppedOnParticipantId: string | null) => void
+  /**
+   * 1.0.4-AT7 — re-dispatch this participant after a failed /
+   * unreachable turn. The chip strip computes whether retry is
+   * applicable (status is failure-ish, no round running, etc.)
+   * and only passes a callback when the action is valid; undefined
+   * means "no retry row in the overflow popover".
+   */
+  onRetry?: () => void
 }
 
 function ParticipantChip({
@@ -592,7 +626,8 @@ function ParticipantChip({
   locked,
   onDragStart,
   onDragHover,
-  onDragEnd
+  onDragEnd,
+  onRetry
 }: ParticipantChipProps): React.JSX.Element {
   const chipRef = useRef<HTMLDivElement | null>(null)
   // Slug the status onto the class so CSS can colour-code the pill
@@ -743,6 +778,7 @@ function ParticipantChip({
           canRemove={canRemove}
           locked={locked}
           onClose={onCloseOverflow}
+          onRetry={onRetry}
         />
       )}
     </div>
@@ -757,6 +793,9 @@ interface OverflowPopoverProps {
   canRemove: boolean
   locked: boolean
   onClose: () => void
+  /** 1.0.4-AT7 — re-dispatch the participant when their last turn
+   * failed. Optional; when omitted, the Retry row is hidden. */
+  onRetry?: () => void
 }
 
 function OverflowPopover({
@@ -766,7 +805,8 @@ function OverflowPopover({
   onRemove,
   canRemove,
   locked,
-  onClose
+  onClose,
+  onRetry
 }: OverflowPopoverProps): React.JSX.Element | null {
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const [position, setPosition] = useState<{ left: number; top: number } | null>(null)
@@ -843,6 +883,25 @@ function OverflowPopover({
           placeholder={`${getProviderName(participant.provider)} role`}
         />
       </label>
+      {onRetry && (
+        // 1.0.4-AT7 — Retry the participant's last turn. The strip
+        // gates visibility on `status === 'failed' || 'unreachable'`
+        // and `!isRoundRunning`, so this button only appears when
+        // retry is actually a sensible action. Clicking it
+        // re-dispatches as a DM via the AT4-extended
+        // `runEnsembleRound` IPC path; the round closes on this
+        // single participant's response.
+        <button
+          type="button"
+          className="ensemble-above-overflow-retry"
+          onClick={() => {
+            onRetry()
+            onClose()
+          }}
+        >
+          Retry participant
+        </button>
+      )}
       <button
         type="button"
         className="ensemble-above-overflow-remove"

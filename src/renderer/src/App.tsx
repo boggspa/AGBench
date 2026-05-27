@@ -16810,6 +16810,39 @@ function App(): React.JSX.Element {
                       void window.api.skipEnsembleParticipant(currentChat.appChatId)
                     }}
                     onStopWorkSession={() => void handleStopWorkSession()}
+                    onRetryParticipant={(participantId) => {
+                      // 1.0.4-AT7 — re-dispatch the named participant
+                      // as a DM with the chat's last user prompt.
+                      // The orchestrator already supports DM scoping
+                      // (`runEnsembleRound({ dmTargetParticipantId })`)
+                      // so this fires a brand-new round limited to
+                      // the failed participant — they get one more
+                      // try without rerunning the whole panel.
+                      // Fall back to a quiet info log when there's
+                      // no prior user prompt to retry against.
+                      if (!currentChat) return
+                      const lastUserMessage = [...(currentChat.messages || [])]
+                        .reverse()
+                        .find((m) => m.role === 'user')
+                      const retryPrompt = lastUserMessage?.content?.trim()
+                      if (!retryPrompt) {
+                        setRawLogs((prev) => [
+                          ...prev,
+                          {
+                            type: 'info',
+                            content:
+                              'Retry: no prior user prompt on this chat to re-dispatch with.'
+                          }
+                        ])
+                        return
+                      }
+                      void window.api.runEnsembleRound({
+                        chatId: currentChat.appChatId,
+                        prompt: retryPrompt,
+                        mode: 'normal',
+                        dmTargetParticipantId: participantId
+                      })
+                    }}
                   />
                 )}
                 {/*
