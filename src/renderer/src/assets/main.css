@@ -26333,6 +26333,45 @@ input:disabled, select:disabled, textarea:disabled {
    * ring) actually read as drag affordances. */
   user-select: none;
   -webkit-user-select: none;
+  /* 1.0.4-AT1 — establish positioning context for the linked-
+   * session dot indicator (`::after`) so participants with an
+   * active provider thread show a small accent dot at the
+   * chip's top-right corner. */
+  position: relative;
+}
+
+/* 1.0.4-AT1 — linked-session indicator. When a participant has a
+ * resumable provider session id stored (`linkedProviderSessionId`),
+ * the chip's `data-linked-session="true"` attribute is set by
+ * EnsembleParticipantsAboveRow. The ::after dot floats at the
+ * chip's top-right corner, ~5px tall, in the chip's provider tint.
+ * Subtle by design — the chip's primary visual job stays role +
+ * status, and the dot just adds a quiet "this participant has
+ * persistent context" signal. The tooltip carries the actual
+ * session id for users who hover. */
+.ensemble-above-chip[data-linked-session="true"]::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--provider-color, var(--accent));
+  box-shadow: 0 0 0 1.5px var(--background, var(--surface-base));
+  pointer-events: none;
+}
+.ensemble-above-chip.provider-codex[data-linked-session="true"]::after {
+  background: var(--provider-codex-color, var(--accent));
+}
+.ensemble-above-chip.provider-claude[data-linked-session="true"]::after {
+  background: var(--provider-claude-color, var(--accent));
+}
+.ensemble-above-chip.provider-gemini[data-linked-session="true"]::after {
+  background: var(--provider-gemini-color, var(--accent));
+}
+.ensemble-above-chip.provider-kimi[data-linked-session="true"]::after {
+  background: var(--provider-kimi-color, var(--accent));
 }
 
 .ensemble-above-chip-body {

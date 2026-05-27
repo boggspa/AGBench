@@ -1,6 +1,7 @@
 import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
+import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
 import {
@@ -7920,17 +7921,60 @@ function App(): React.JSX.Element {
 
   const linkCodexThreadToCurrentChat = async (threadId: string) => {
     if (!currentChat || !threadId) return
-    const updatedChat: ChatRecord = {
-      ...currentChat,
+    // 1.0.4-AT1 — route the linkage decision through the shared
+    // helper. In Ensemble chats with a matching-provider selected
+    // participant, the thread id binds to the participant's
+    // `linkedProviderSessionId` instead of the chat-level field.
+    // Pre-AT1 every `/resume` clobbered the chat-level field even
+    // when the user clearly meant "resume Codex#2's session", which
+    // poisoned sub-thread recall + transcript export downstream.
+    const routing = resolveSessionLinkRouting({
+      chat: currentChat,
       provider: 'codex',
-      linkedProviderSessionId: threadId
+      selectedParticipant: isCurrentEnsembleChat ? selectedParticipant : null
+    })
+    if (routing.warning) {
+      setRawLogs((prev) => [...prev, { type: 'info', content: routing.warning! }])
+    }
+    let updatedChat: ChatRecord
+    if (routing.target === 'participant' && routing.participantId && currentChat.ensemble) {
+      // Patch the selected participant's `linkedProviderSessionId`
+      // in place. The chat's own `linkedProviderSessionId` is left
+      // alone so multi-participant ensembles keep independent
+      // provider sessions per participant.
+      const patchedParticipants = (currentChat.ensemble.participants || []).map((p) =>
+        p.id === routing.participantId
+          ? { ...p, linkedProviderSessionId: threadId }
+          : p
+      )
+      updatedChat = {
+        ...currentChat,
+        ensemble: {
+          ...currentChat.ensemble,
+          participants: patchedParticipants,
+          updatedAt: new Date().toISOString()
+        }
+      }
+    } else {
+      updatedChat = {
+        ...currentChat,
+        provider: 'codex',
+        linkedProviderSessionId: threadId
+      }
     }
     setCurrentChat(updatedChat)
     setChats((prev) =>
       prev.map((chat) => (chat.appChatId === updatedChat.appChatId ? updatedChat : chat))
     )
     await window.api.saveChat(updatedChat)
-    setRawLogs((prev) => [...prev, { type: 'info', content: `Linked Codex thread: ${threadId}` }])
+    const linkScope =
+      routing.target === 'participant'
+        ? ` to participant ${routing.participantId}`
+        : ''
+    setRawLogs((prev) => [
+      ...prev,
+      { type: 'info', content: `Linked Codex thread${linkScope}: ${threadId}` }
+    ])
   }
 
   const handleResumeCodexThread = async (threadId: string) => {

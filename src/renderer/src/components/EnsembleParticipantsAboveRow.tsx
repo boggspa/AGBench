@@ -670,9 +670,19 @@ function ParticipantChip({
     <div
       ref={chipRef}
       data-participant-id={participant.id}
+      data-linked-session={participant.linkedProviderSessionId ? 'true' : undefined}
       onPointerDown={handlePointerDown}
       className={`ensemble-above-chip provider-${participant.provider} ${isSelected ? 'is-selected' : ''} ${dimmed ? 'is-dimmed' : ''} ${isDragOver ? 'is-drag-over' : ''} ${isDragging ? 'is-dragging' : ''}`}
-      title={`${getProviderName(participant.provider)} — ${participant.role || 'Participant'}`}
+      // 1.0.4-AT1 — surface the participant's linked provider
+      // session in the tooltip so the user can verify which thread
+      // the next dispatch will resume against. Pre-AT1 there was
+      // no chip-level signal at all; users had to dig into the
+      // participant's detail popover to see linkage state.
+      title={
+        participant.linkedProviderSessionId
+          ? `${getProviderName(participant.provider)} — ${participant.role || 'Participant'} · Linked session: ${participant.linkedProviderSessionId}`
+          : `${getProviderName(participant.provider)} — ${participant.role || 'Participant'}`
+      }
     >
       {/*
         Body is a `<div role="button">`, not a `<button>` element.
