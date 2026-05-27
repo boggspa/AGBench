@@ -59,9 +59,23 @@ export function getOrderedEnsembleParticipants(
   // cap), which broke users who deliberately tightened their panel to 3.
   // Now a numeric config value wins as long as it's a reasonable size;
   // garbage values (NaN / 0 / negative) fall back to the global cap.
+  //
+  // 1.0.5-EW5 — Legacy heal. Chats created on older builds may have a
+  // stale stored maxParticipants (6 from the 1.0.3-era, 8 from the
+  // 1.0.4-AR2-era) that's now smaller than the actual enabled
+  // participant count — because the chip strip's add button always
+  // respected the GLOBAL MAX, not the chat's stored max. The
+  // chip strip persist (EnsembleParticipantsAboveRow → persist)
+  // now ratchets the stored max up on every operation, but a
+  // chat with 12 participants already on disk under the old cap
+  // would silently truncate to 6 on dispatch until the user
+  // toggled something. Floor the effective cap at the enabled
+  // participant count so the actual panel always speaks.
   const rawMax = Math.floor(Number(config.maxParticipants))
+  const enabledCount = (config.participants || []).filter((p) => p.enabled).length
+  const desiredFloor = Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.max(2, enabledCount))
   const maxParticipants = Number.isFinite(rawMax) && rawMax >= 2
-    ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, rawMax)
+    ? Math.min(MAX_ENSEMBLE_PARTICIPANTS, Math.max(rawMax, desiredFloor))
     : MAX_ENSEMBLE_PARTICIPANTS
   const enabled = (config.participants || [])
     .filter((participant) => participant.enabled)

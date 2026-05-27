@@ -102,9 +102,23 @@ describe('Ensemble prompt composition', () => {
 
   // 1.0.4-AR2 — pre-AR2 the prompt-builder treated any
   // `maxParticipants <= 4` as legacy data and fell back to the
-  // global ceiling. AR2 honors the per-chat value as long as it's
-  // in [2, 8], so a stored 4 now correctly clamps to 4 participants.
-  it('honors per-chat maxParticipants=4 (no silent expansion to the global cap)', () => {
+  // global ceiling. AR2 honored the per-chat value as long as it's
+  // in [2, 8].
+  //
+  // 1.0.5-EW5 — Semantics shifted: when stored `maxParticipants` is
+  // smaller than the actual enabled-participant count, the cap is
+  // healed up to the enabled count rather than truncating the
+  // panel. Rationale: there's no UI to deliberately set a cap
+  // SMALLER than the enabled participant count — the chip strip
+  // bounds the panel by `participants.length < MAX_ENSEMBLE_PARTICIPANTS`
+  // and the persist ratchets max up to participants.length on
+  // every operation. The only way to get `max < enabled` is a
+  // legacy chat from the 1.0.3 / 1.0.4 era where the global cap
+  // was 6 / 8 — those chats should heal to dispatch every chip
+  // their user has visible, not silently truncate to a number
+  // they can't see being applied. The previous test asserted the
+  // truncating behaviour; this one asserts the heal.
+  it('heals a stale maxParticipants up to the enabled-participant count', () => {
     const sixParticipantLegacy: EnsembleConfig = {
       ...ensemble,
       maxParticipants: 4,
@@ -140,11 +154,14 @@ describe('Ensemble prompt composition', () => {
       ]
     }
 
+    // All 6 enabled participants come through despite stored max=4.
     expect(getOrderedEnsembleParticipants(sixParticipantLegacy).map((p) => p.id)).toEqual([
       'claude',
       'codex',
       'gemini',
-      'codex-2'
+      'codex-2',
+      'claude-2',
+      'gemini-2'
     ])
   })
 

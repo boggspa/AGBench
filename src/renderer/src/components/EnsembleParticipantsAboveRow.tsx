@@ -297,13 +297,31 @@ export function EnsembleParticipantsAboveRow({
     // to the default whenever they toggled a participant. Fall back
     // to the ceiling only when the stored value is missing /
     // nonsensical / out of range.
+    //
+    // 1.0.5-EW5 — Bump the stored cap up to at least the current
+    // participant count. Pre-EW5 a chat created on the 8-cap build
+    // (or 6-cap pre-AR2) kept its stale stored cap forever even
+    // after the user added participants past that cap via the
+    // chip strip (the chip strip's add button uses the GLOBAL
+    // MAX_ENSEMBLE_PARTICIPANTS, not the chat's stored max). The
+    // chat ended up with participants.length=12 and
+    // maxParticipants=6 — the chip strip showed all 12 but the
+    // prompt builder's slice cut at 6, so participants 7-12
+    // silently never spoke and never ran the pre-flight health
+    // probe. Ratchet the stored cap up here so the two stay in
+    // sync; we only ever GROW, never shrink, so a user's
+    // deliberately-tightened panel still survives normal toggles.
     const existingMax = chat.ensemble?.maxParticipants
-    const clampedMax =
+    const preservedMax =
       Number.isFinite(existingMax) &&
       (existingMax as number) >= MIN_ENSEMBLE_PARTICIPANTS &&
       (existingMax as number) <= MAX_ENSEMBLE_PARTICIPANTS
         ? (existingMax as number)
         : MAX_ENSEMBLE_PARTICIPANTS
+    const clampedMax = Math.min(
+      MAX_ENSEMBLE_PARTICIPANTS,
+      Math.max(preservedMax, nextParticipants.length)
+    )
     const nextChat: ChatRecord = {
       ...chat,
       ensemble: {
