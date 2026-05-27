@@ -20,6 +20,59 @@
 import type { ExternalPathGrant } from '../../../main/store/types'
 import type { ExternalPathGitMetadata } from '../lib/ExternalPathRepoDetect'
 import { describeExternalPath } from '../lib/ExternalPathRepoDetect'
+import { getProviderName } from './Sidebar'
+
+/**
+ * 1.0.5-EW42b — Derive a human-readable "where did this grant
+ * come from?" label from the `grant.id` prefix, the `provider`,
+ * and the `createdAt` ISO timestamp.
+ *
+ * Grant id prefixes:
+ *   - `runtime-${ts}-${rand}`               → agent's tool call
+ *                                             tripped the runtime
+ *                                             external-path
+ *                                             detector + the user
+ *                                             approved.
+ *   - `proactive-${ts}-${provider}-${rand}` → 1.0.5-EW42a: user
+ *                                             clicked "Grant
+ *                                             read access to
+ *                                             another folder…" in
+ *                                             the composer
+ *                                             workspace switcher.
+ *   - `${digits}-${rand}` (legacy)          → manual picker from
+ *                                             pre-EW42a code
+ *                                             paths (now gone, but
+ *                                             persisted grants
+ *                                             from older sessions
+ *                                             may still match).
+ *
+ * The tooltip line answers the user's "what triggered this?"
+ * question — historically the banner appeared mysteriously, and
+ * EW42b makes the trigger visible via hover.
+ */
+export function buildExternalPathOriginTooltip(grant: ExternalPathGrant): string {
+  const providerName = getProviderName(grant.provider)
+  const accessLabel = grant.access === 'write' ? 'edit access' : 'read access'
+  const origin = (() => {
+    if (grant.id.startsWith('proactive-')) {
+      return 'You granted this via the composer workspace switcher.'
+    }
+    if (grant.id.startsWith('runtime-')) {
+      return `${providerName} requested access during a tool call; you approved it.`
+    }
+    return `Granted manually via an older picker.`
+  })()
+  const when = (() => {
+    try {
+      const ts = new Date(grant.createdAt)
+      if (Number.isNaN(ts.getTime())) return grant.createdAt
+      return ts.toLocaleString()
+    } catch {
+      return grant.createdAt
+    }
+  })()
+  return `${providerName} · ${accessLabel} · ${when}\n${origin}`
+}
 
 interface ExternalPathDiffStats {
   additions: number
@@ -105,19 +158,31 @@ export function ExternalPathAboveRow({
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
   const isWrite = grant.access === 'write'
-  const accessLabel = isWrite ? 'edit' : 'read'
+  // 1.0.5-EW42b — `accessLabel` was used here pre-EW42b to build
+  // a minimal `<path> (<accessLabel> access)` title. EW42b
+  // replaces that with the richer multi-line tooltip below
+  // (provider + access verb + timestamp + origin source), so the
+  // separate variable is no longer needed.
   const hasDiff =
     diffStats &&
     (diffStats.filesChanged > 0 ||
       diffStats.additions > 0 ||
       diffStats.deletions > 0)
+  // 1.0.5-EW42b — Build a rich tooltip that explains what created
+  // this grant (composer-proactive vs. agent-approval vs. legacy
+  // manual picker), which provider it's scoped to, and when it
+  // was issued. Hover on the whole row shows the path + this
+  // origin block; hover on the access pill shows the same block
+  // narrowed to the access label so the most relevant signal sits
+  // where the user's eye lands.
+  const originTooltip = buildExternalPathOriginTooltip(grant)
 
   return (
     <div
       className="composer-above-bar composer-above-bar-secondary style-unified"
       data-external-path-grant-id={grant.id}
       data-external-path-is-repo={descriptor.isRepo ? 'true' : 'false'}
-      title={`${grant.path} (${accessLabel} access)`}
+      title={`${grant.path}\n\n${originTooltip}`}
     >
       <span className="composer-above-bar-branch">
         {descriptor.isRepo ? <BranchGlyph /> : <FileGlyph />}
@@ -150,7 +215,7 @@ export function ExternalPathAboveRow({
           )}
         </>
       )}
-      <span className="composer-above-bar-secondary-access">
+      <span className="composer-above-bar-secondary-access" title={originTooltip}>
         {isWrite ? 'edit access' : 'read access'}
       </span>
       <button
