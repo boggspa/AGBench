@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildEnsembleParticipantPrompt,
+  formatRoundModeInstructions,
   formatSameProviderDisambiguationNote,
   formatToolTraceSummary,
   getOrderedEnsembleParticipants
@@ -805,5 +806,75 @@ describe('Ensemble synthesizer + last-round summary (AT8)', () => {
     // Should contain a truncated chunk, NOT the full 3000-char blob.
     expect(prompt).toContain('xxxxxxxxxx')
     expect(prompt.length).toBeLessThan(longSummary.length + 4000)
+  })
+})
+
+/*
+ * 1.0.4-AR13 — explicit round-mode model.
+ *
+ * Four modes — `targeted | roundtable | chair-summary | rebuttal`
+ * — extending the implicit roundtable behavior that was the only
+ * pre-AR13 shape. `targeted` overlaps with the existing DM path
+ * and is enforced at the orchestrator level; the other three
+ * adjust the participant prompt.
+ */
+describe('formatRoundModeInstructions (AR13)', () => {
+  it('returns no lines for roundtable (the default)', () => {
+    expect(
+      formatRoundModeInstructions({ ...ensemble, roundMode: 'roundtable' }, 'codex')
+    ).toEqual([])
+  })
+
+  it('returns no lines when roundMode is undefined (back-compat)', () => {
+    expect(formatRoundModeInstructions(ensemble, 'codex')).toEqual([])
+  })
+
+  it('returns no lines for targeted (orchestrator handles routing, no participant rule needed)', () => {
+    expect(
+      formatRoundModeInstructions({ ...ensemble, roundMode: 'targeted' }, 'codex')
+    ).toEqual([])
+  })
+
+  it('emits a synthesizer-flavored rule for chair-summary when current participant IS the synthesizer', () => {
+    const lines = formatRoundModeInstructions(
+      { ...ensemble, roundMode: 'chair-summary', synthesizerParticipantId: 'codex' },
+      'codex'
+    )
+    expect(lines.join('\n')).toContain('CHAIR-SUMMARY')
+    expect(lines.join('\n')).toContain('You speak last')
+  })
+
+  it('emits a non-synthesizer rule for chair-summary when current participant is NOT the synthesizer', () => {
+    const lines = formatRoundModeInstructions(
+      { ...ensemble, roundMode: 'chair-summary', synthesizerParticipantId: 'codex' },
+      'claude'
+    )
+    expect(lines.join('\n')).toContain('CHAIR-SUMMARY')
+    expect(lines.join('\n')).toContain('chair / synthesizer')
+  })
+
+  it('emits a rebuttal rule asking the participant to respond to the prior turn', () => {
+    const lines = formatRoundModeInstructions(
+      { ...ensemble, roundMode: 'rebuttal' },
+      'codex'
+    )
+    expect(lines.join('\n')).toContain('REBUTTAL')
+    expect(lines.join('\n')).toContain('IMMEDIATELY-PRIOR')
+  })
+
+  it('integrates the chair-summary rule into the full participant prompt', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: {
+        ...ensemble,
+        roundMode: 'chair-summary',
+        synthesizerParticipantId: 'codex'
+      },
+      participant: ensemble.participants.find((p) => p.id === 'codex')!,
+      currentPrompt: 'Make a plan.',
+      roundId: 'round-1'
+    })
+    expect(prompt).toContain('CHAIR-SUMMARY')
+    expect(prompt).toContain('SYNTHESIZER')
   })
 })

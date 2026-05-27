@@ -321,10 +321,44 @@ export interface EnsembleRunIdentity {
   order: number
 }
 
+/**
+ * 1.0.4-AR13 — explicit round-mode model.
+ *
+ * Orthogonal to `EnsembleOrchestrationMode` (turn_bound /
+ * continuous) which describes whether participants can hand
+ * work back and forth. `EnsembleRoundMode` describes the
+ * STRUCTURE of a single round:
+ *
+ *   - `targeted`       — only the named participant speaks
+ *                        (overlaps with the existing
+ *                        `dmTargetParticipantId` DM path; this is
+ *                        the explicit name for it).
+ *   - `roundtable`     — every enabled participant speaks once,
+ *                        no special structure. Default.
+ *   - `chair-summary`  — the synthesizer participant (AT8) goes
+ *                        LAST and is explicitly told to
+ *                        summarise the prior turns.
+ *   - `rebuttal`       — each participant responds to a
+ *                        designated peer's last contribution
+ *                        rather than starting from the user's
+ *                        original prompt.
+ *
+ * Undefined reads as `'roundtable'` (the pre-AR13 default).
+ */
+export type EnsembleRoundMode =
+  | 'targeted'
+  | 'roundtable'
+  | 'chair-summary'
+  | 'rebuttal'
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
   orchestrationMode?: EnsembleOrchestrationMode
+  /** 1.0.4-AR13 — see `EnsembleRoundMode` for semantics. Undefined
+   * reads as `'roundtable'` so all pre-AR13 chats keep their
+   * existing structure. */
+  roundMode?: EnsembleRoundMode
   maxContinuationHops?: number
   participants: EnsembleParticipant[]
   sessionActivityLedger?: SessionActivityLedgerEntry[]

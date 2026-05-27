@@ -300,6 +300,17 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
           '- You are the designated SYNTHESIZER for this ensemble. After your normal response, append a structured summary block titled "Round summary:" containing four short lines: `Decisions:` (what was decided this round), `Corrections:` (any earlier panel claims this round needed to correct), `Open risks:` (unresolved concerns the user should know about), `Next action:` (what the panel recommends next). Keep each line under ~120 chars; this summary propagates to every participant in the following round.'
         ]
       : []),
+    // 1.0.4-AR13 — round-mode instructions. `roundtable` is the
+    // default and adds no extra rule (every participant speaks
+    // normally). `targeted` is handled at the orchestrator level
+    // (DM routing); we don't add a participant-side rule since
+    // only the target is dispatched. `chair-summary` tells the
+    // designated synthesizer to wait for all prior turns + then
+    // recap, and tells the others to wrap up cleanly so the
+    // chair has a coherent set to summarise. `rebuttal` asks
+    // each participant to respond to the prior participant's
+    // last paragraph rather than re-answer the user.
+    ...formatRoundModeInstructions(input.config, input.participant.id),
     // 1.0.4-AT8 — prior round summary block. When the config has a
     // non-empty `lastRoundSummary` from the previous round's
     // synthesizer, prepend it so every participant sees the same
@@ -661,4 +672,50 @@ function shortModelLabel(provider: ProviderId, model: string | undefined): strin
 
 function sanitizeText(value: unknown): string {
   return String(value || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim()
+}
+
+/**
+ * 1.0.4-AR13 — round-mode instruction builder.
+ *
+ * Returns an array of zero or more rule lines describing the
+ * current round's structure for the calling participant. The
+ * caller spreads the return into the larger rules array so the
+ * default (`'roundtable'`) and unknown modes contribute
+ * nothing and the prompt stays lean.
+ *
+ * Exported so the prompt-builder unit tests can pin the lines
+ * each mode produces in isolation.
+ */
+export function formatRoundModeInstructions(
+  config: EnsembleConfig,
+  currentParticipantId: string
+): string[] {
+  const mode = config.roundMode || 'roundtable'
+  if (mode === 'roundtable' || mode === 'targeted') {
+    // `roundtable` is the implicit default — no extra rule.
+    // `targeted` is enforced at the orchestrator level (only
+    // the named participant gets dispatched), so a
+    // participant-side rule would just be noise.
+    return []
+  }
+  if (mode === 'chair-summary') {
+    const isSynthesizer = config.synthesizerParticipantId === currentParticipantId
+    if (isSynthesizer) {
+      return [
+        '',
+        '- Round mode: CHAIR-SUMMARY. You speak last as the chair. Wait until every other participant has spoken; then recap their conclusions, surface disagreements, and propose the consensus path. Do NOT introduce new tool calls of your own beyond what is needed to reconcile the prior turns.'
+      ]
+    }
+    return [
+      '',
+      '- Round mode: CHAIR-SUMMARY. Another participant (the designated chair / synthesizer) will speak last and recap. Wrap your turn cleanly so the chair has a coherent block to summarise — close with a one-line takeaway rather than an open question.'
+    ]
+  }
+  if (mode === 'rebuttal') {
+    return [
+      '',
+      "- Round mode: REBUTTAL. Respond to the IMMEDIATELY-PRIOR participant's contribution rather than re-answering the user's original prompt from scratch. Surface what you agree with, what you'd correct, and what's missing. The user's prompt is the topic; the prior turn is the artifact you're critiquing."
+    ]
+  }
+  return []
 }
