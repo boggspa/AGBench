@@ -393,6 +393,60 @@ describe('EnsembleOrchestrator', () => {
     expect(duplicate.error).toContain('already has a pending wakeup')
   })
 
+  it('rejects wakeups beyond the 7-day delay cap', async () => {
+    // 1.0.5-N4 — Node's setTimeout silently clamps delays >2^31-1 ms
+    // (~24.86 days) to 1ms, which would make a far-future wakeup
+    // fire IMMEDIATELY. Guard at schedule-time so the agent gets a
+    // structured rejection instead of a silently-broken wakeup.
+    const scheduled: EnsembleWakeupRecord[] = []
+    const harness = makeHarness({
+      scheduleWakeupTimer: (wakeup) => scheduled.push(wakeup)
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000
+    const result = harness.orchestrator.scheduleWakeupForRun(runId, {
+      delayMs: thirtyDaysMs
+    })
+    expect(result.ok).toBe(false)
+    expect(result.error).toContain('max delay is 7 days')
+    expect(result.error).toContain('~30 days')
+
+    // No timer scheduled, no persisted record, run not put to sleep.
+    expect(scheduled).toEqual([])
+    expect(harness.chat.ensemble?.wakeups).toBeUndefined()
+    expect(harness.chat.ensemble?.activeRound?.participants[0].status).not.toBe('sleeping')
+  })
+
+  it('accepts a wakeup exactly at the 7-day delay cap', async () => {
+    // Boundary check — the cap is *strictly less than or equal to*
+    // MAX_WAKEUP_DELAY_MS, so exactly-7-days must still succeed.
+    const scheduled: EnsembleWakeupRecord[] = []
+    const harness = makeHarness({
+      scheduleWakeupTimer: (wakeup) => scheduled.push(wakeup)
+    })
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const runId = harness.dispatched[0].appRunId!
+
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000
+    const result = harness.orchestrator.scheduleWakeupForRun(runId, {
+      delayMs: sevenDaysMs
+    })
+    expect(result.ok).toBe(true)
+    expect(scheduled).toHaveLength(1)
+  })
+
   it('persists and forwards image attachments for ensemble rounds', async () => {
     const harness = makeHarness()
 

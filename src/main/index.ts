@@ -16576,7 +16576,7 @@ function mcpToolDefinitions() {
     {
       name: 'schedule_wakeup',
       description:
-        'In Ensemble Mode, pause this participant and schedule it to resume later in the same active round. Active participant runs only; unavailable from parallel scout-pass lanes. Provide wakeAt (ISO), delayMs, or delaySeconds.',
+        'In Ensemble Mode, pause this participant and schedule it to resume later in the same active round. Active participant runs only; unavailable from parallel scout-pass lanes. Provide wakeAt (ISO), delayMs, or delaySeconds. Maximum delay 7 days — schedule sequential wakeups (one now, another on resume) for longer horizons.',
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,

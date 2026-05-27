@@ -913,11 +913,22 @@ export class EnsembleOrchestrator {
         error: `Participant already has a pending wakeup for this round (${existing.wakeupId}).`
       }
     }
-    const wakeAtMs = resolveWakeAtMs(input, this.deps.now())
+    const nowMs = this.deps.now()
+    const wakeAtMs = resolveWakeAtMs(input, nowMs)
     if (!Number.isFinite(wakeAtMs)) {
       return {
         ok: false,
         error: 'schedule_wakeup requires wakeAt, delayMs, or delaySeconds.'
+      }
+    }
+    // 1.0.5-N4 — Reject far-future wakeups before they hit the
+    // Node setTimeout clamp. See MAX_WAKEUP_DELAY_MS for context.
+    const requestedDelayMs = wakeAtMs - nowMs
+    if (requestedDelayMs > MAX_WAKEUP_DELAY_MS) {
+      const requestedDays = Math.round(requestedDelayMs / (24 * 60 * 60 * 1000))
+      return {
+        ok: false,
+        error: `schedule_wakeup max delay is 7 days; requested ~${requestedDays} days. Schedule sequential wakeups (one now, another on resume) for longer horizons.`
       }
     }
     const nowIso = this.deps.nowIso()
@@ -2830,6 +2841,18 @@ function formatParticipantHealthHeader(
   })
   return `${PARTICIPANT_HEALTH_TAG}\n${lines.join('\n')}`
 }
+
+/**
+ * 1.0.5-N4 — Maximum wakeup delay. Node's `setTimeout` silently
+ * clamps delays > 2³¹−1 ms (~24.86 days) to 1ms, which would make
+ * a far-future wakeup fire IMMEDIATELY instead of at the requested
+ * time. We cap at 7 days here — generous enough for any plausible
+ * long-running task, and forces agents to be explicit about
+ * longer horizons via sequential wakeups (schedule one, work, on
+ * resume schedule another) rather than passing 30+ days as a
+ * single delay and getting bitten by the Node clamp.
+ */
+export const MAX_WAKEUP_DELAY_MS = 7 * 24 * 60 * 60 * 1000
 
 function resolveWakeAtMs(input: ScheduleWakeupInput, nowMs: number): number {
   const delayMs =
