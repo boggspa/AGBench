@@ -120,6 +120,10 @@ const api = {
   ) => ipcRenderer.invoke('respond-agent-approval', requestId, action),
   writeGeminiInput: (data: string) => ipcRenderer.invoke('write-gemini-input', data),
   getDiff: (workspace: string) => ipcRenderer.invoke('get-diff', workspace),
+  openWorkspacePopout: (input: {
+    kind: 'file-editor' | 'diff-studio'
+    workspacePath: string
+  }) => ipcRenderer.invoke('open-workspace-popout', input) as Promise<{ ok: true }>,
   listWorkspaceFiles: (workspace: string) => ipcRenderer.invoke('list-workspace-files', workspace),
   readWorkspaceFile: (workspace: string, path: string) =>
     ipcRenderer.invoke('read-workspace-file', workspace, path),

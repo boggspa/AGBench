@@ -221,6 +221,7 @@ import {
 } from './EditorAdapters'
 
 let mainWindow: BrowserWindow | null = null
+const workspacePopoutWindows = new Map<string, BrowserWindow>()
 let geminiProcess: ChildProcess | null = null
 let geminiSessionProcess: pty.IPty | null = null
 let codexClient: CodexAppServerClient | null = null
@@ -18408,6 +18409,108 @@ function createWindow(): void {
   }
 }
 
+type WorkspacePopoutKind = 'file-editor' | 'diff-studio'
+
+function parseWorkspacePopoutInput(input: unknown): {
+  kind: WorkspacePopoutKind
+  workspacePath: string
+} {
+  if (!isRecord(input)) {
+    throw new Error('Popout request is invalid.')
+  }
+  const kind = input.kind === 'file-editor' || input.kind === 'diff-studio' ? input.kind : null
+  if (!kind) {
+    throw new Error('Popout kind is invalid.')
+  }
+  const workspacePath = requireRegisteredWorkspace(
+    requireNonEmptyString(input.workspacePath, 'Workspace'),
+    'Workspace'
+  )
+  return { kind, workspacePath }
+}
+
+async function loadWorkspacePopoutWindow(
+  win: BrowserWindow,
+  kind: WorkspacePopoutKind,
+  workspacePath: string
+): Promise<void> {
+  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+    const target = new URL(process.env['ELECTRON_RENDERER_URL'])
+    target.searchParams.set('popout', kind)
+    target.searchParams.set('workspace', workspacePath)
+    await win.loadURL(target.toString())
+    return
+  }
+  await win.loadFile(join(__dirname, '../renderer/index.html'), {
+    query: {
+      popout: kind,
+      workspace: workspacePath
+    }
+  })
+}
+
+async function openWorkspacePopout(input: unknown): Promise<{ ok: true }> {
+  const { kind, workspacePath } = parseWorkspacePopoutInput(input)
+  const key = `${kind}:${workspacePath}`
+  const existing = workspacePopoutWindows.get(key)
+  if (existing && !existing.isDestroyed()) {
+    if (existing.isMinimized()) existing.restore()
+    existing.focus()
+    return { ok: true }
+  }
+
+  const isMac = process.platform === 'darwin'
+  const settings = AppStore.getSettings()
+  const useGlassWindow =
+    isMac &&
+    (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
+    !settings.reduceTransparency
+  const title = kind === 'file-editor' ? 'AGBench File Editor' : 'AGBench Diff Studio'
+  const win = new BrowserWindow({
+    width: kind === 'file-editor' ? 980 : 1120,
+    height: kind === 'file-editor' ? 720 : 760,
+    minWidth: 720,
+    minHeight: 480,
+    show: false,
+    autoHideMenuBar: true,
+    title,
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    vibrancy: resolveNativeVibrancy(useGlassWindow),
+    backgroundMaterial:
+      !isMac &&
+      (settings.appearanceMode === 'native_glass' || settings.appearanceMode === 'soft_glass') &&
+      !settings.reduceTransparency
+        ? 'acrylic'
+        : undefined,
+    visualEffectState: 'active',
+    transparent: false,
+    backgroundColor: useGlassWindow ? '#00000000' : '#1e1e1e',
+    ...(process.platform === 'linux' ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      allowRunningInsecureContent: false,
+      experimentalFeatures: false
+    }
+  })
+
+  workspacePopoutWindows.set(key, win)
+  win.webContents.setWindowOpenHandler((details) => {
+    openSafeShellTargetDetached(details.url)
+    return { action: 'deny' }
+  })
+  win.on('ready-to-show', () => win.show())
+  win.on('closed', () => {
+    if (workspacePopoutWindows.get(key) === win) {
+      workspacePopoutWindows.delete(key)
+    }
+  })
+  await loadWorkspacePopoutWindow(win, kind, workspacePath)
+  return { ok: true }
+}
+
 if (isGeminiMcpBridgeProcess) {
   startGeminiMcpBridgeProcess()
 } else {
@@ -21102,6 +21205,10 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle('get-diff', async (_, workspace: string) => {
       return getWorkspaceDiff(requireRegisteredWorkspace(workspace))
+    })
+
+    ipcMain.handle('open-workspace-popout', async (_, input: unknown) => {
+      return openWorkspacePopout(input)
     })
 
     ipcMain.handle('get-workspace-change-sets', async (_, filter?: WorkspaceChangeFilter) => {

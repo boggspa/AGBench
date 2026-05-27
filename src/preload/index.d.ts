@@ -328,6 +328,10 @@ declare global {
         diffText?: string
         summaries?: any[]
       }>
+      openWorkspacePopout: (input: {
+        kind: 'file-editor' | 'diff-studio'
+        workspacePath: string
+      }) => Promise<{ ok: true }>
       listWorkspaceFiles: (workspace: string) => Promise<WorkspaceFileEntry[]>
       readWorkspaceFile: (workspace: string, path: string) => Promise<WorkspaceFileReadResult>
       writeWorkspaceFile: (

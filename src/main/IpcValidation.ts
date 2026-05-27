@@ -172,6 +172,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'write-gemini-session': ['string'],
   'resize-gemini-session': ['number', 'number'],
   'get-diff': ['workspacePath'],
+  'open-workspace-popout': ['object'],
   'get-workspace-change-sets': ['optionalObject'],
   'capture-snapshot': ['workspacePath'],
   'compute-run-diff': ['runId', 'any', 'any', 'optionalObject'],

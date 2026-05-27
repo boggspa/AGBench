@@ -16115,6 +16115,40 @@ function App(): React.JSX.Element {
               className="chat-corner-btn"
               type="button"
               onClick={() => {
+                const workspacePath = currentWorkspace?.path
+                if (!workspacePath) return
+                void window.api.openWorkspacePopout({
+                  kind: 'file-editor',
+                  workspacePath
+                })
+              }}
+              title="Open file editor in new window"
+              aria-label="Open file editor in new window"
+              disabled={!hasWorkspaceContext}
+            >
+              <span className="chat-corner-symbol">↗</span>
+            </button>
+            <button
+              className="chat-corner-btn"
+              type="button"
+              onClick={() => {
+                const workspacePath = currentWorkspace?.path
+                if (!workspacePath) return
+                void window.api.openWorkspacePopout({
+                  kind: 'diff-studio',
+                  workspacePath
+                })
+              }}
+              title="Open Diff Studio in new window"
+              aria-label="Open Diff Studio in new window"
+              disabled={!hasWorkspaceContext}
+            >
+              <span className="chat-corner-symbol">Δ</span>
+            </button>
+            <button
+              className="chat-corner-btn"
+              type="button"
+              onClick={() => {
                 const nextShowInspector = !appearance.showInspector
                 if (nextShowInspector && window.innerWidth <= 1180 && showFileEditor) {
                   setShowFileEditor(false)
