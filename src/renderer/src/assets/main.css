@@ -13753,14 +13753,29 @@ input:disabled, select:disabled, textarea:disabled {
  * appearance-mode treatments here closes that gap. We keep the
  * footer's existing `border-top` divider (the model-usage card uses
  * its own card border + radius which the footer doesn't have).
+ *
+ * 1.0.5-EW3a — First EW3 pass didn't take visibly. Two pieces were
+ * missing: (1) the .sidebar-footer had no stacking context of its
+ * own, so the nested backdrop-filter inside the already-frosted
+ * .app-sidebar parent rendered as a no-op (the card works because
+ * .model-usage-summary has `position: relative` baked in). Adding
+ * `position: relative; isolation: isolate` gives the footer the
+ * same stacking-context isolation the card has. (2) The soft_glass
+ * gradient mismatched at the boundary — the card's gradient ends
+ * at 0.01 (its bottom edge) but the footer's gradient was starting
+ * at 0.04 (its top edge), so the footer read as a sudden
+ * brightness step UP. Drop the gradient overlay on the footer and
+ * use a flat tint that continues the card's bottom-edge value.
  */
+.app-sidebar .sidebar-footer {
+  position: relative;
+  isolation: isolate;
+}
 [data-appearance="solid"] .app-sidebar .sidebar-footer {
   background: color-mix(in srgb, var(--app-bg-elevated) 92%, transparent);
 }
 [data-appearance="soft_glass"] .app-sidebar .sidebar-footer {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
+  background: color-mix(in srgb, var(--sidebar-bg) 36%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
 }
