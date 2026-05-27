@@ -156,6 +156,10 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
   const selfReflective = Boolean(input.config.selfReflective)
   const workspaceStanza = formatWorkspaceStanza(input.chat, selfReflective)
+  // 1.0.4-AR8 — when the workspace stanza is suspended (null), the
+  // dependent deictic rule that references "Round subject:" is also
+  // skipped. Either both ship together or neither does.
+  const hasWorkspaceStanza = workspaceStanza !== null
   const sessionEventsStanza = formatSessionEventsStanza(input.config)
   const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
 
@@ -169,7 +173,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         ? `Continuous. You may hand work to another participant with @mentions or ensemble_yield(target), capped at ${continuationHops}/${maxContinuationHops} extra handoffs this round.`
         : 'Turn-bound. Each participant speaks at most once; @mentions and ensemble_yield(target) only reorder participants who have not spoken yet.'
     }`,
-    workspaceStanza,
+    ...(workspaceStanza ? [workspaceStanza] : []),
     ...(sessionEventsStanza ? [sessionEventsStanza] : []),
     '',
     'Participant roster:',
@@ -194,17 +198,29 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     // Without this note, panelists were confused about whether a Plan
     // Mode invocation gates the entire round or only the speaker.
     '- Plan Mode and Ensemble Mode compose: Plan Mode is a per-participant permission posture (this run only); Ensemble Mode is the orchestration mode. If your approval mode is `plan`, respect the read-only posture even within an ensemble round — produce a plan, do not execute. Other participants may still operate at their default permission preset; their posture is not yours.',
-    selfReflective
-      // 1.0.4-AF — self-reflective deictic rule. When the ensemble is
-      // in `selfReflective: true` (`/discuss` or `/meta` composer
-      // prefix), the orientation flips: the panel is discussing
-      // AGBench itself, so "this app / this repo / this project"
-      // should resolve to the harness. Workspace files are still
-      // readable but the conversation is meta-level. This matches the
-      // user's intent when they explicitly open a "talk about
-      // AGBench" round.
-      ? '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to AGBench / the harness / this ensemble — the panel is in self-reflective mode (the user opened the round with `/discuss` or `/meta`). The bound workspace is incidental context; the conversation is about AGBench itself.'
-      : '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. If `Round subject:` says no workspace is bound, ask the user which project they mean before assuming. Discuss AGBench only when the user explicitly references it by name.',
+    // 1.0.4-AF / AR8 — deictic-resolution rule. Three branches:
+    //
+    //  - Self-reflective (`/discuss` / `/meta`): orientation flips
+    //    to AGBench itself; deictic phrases resolve to the harness.
+    //    Workspace files stay readable but the conversation is
+    //    meta-level. Rule always emitted.
+    //  - Workspace-bound non-self-reflective: deictic phrases anchor
+    //    to the bound workspace's Round subject. Always emitted.
+    //  - No workspace + non-self-reflective (AR8 suspension): rule
+    //    omitted entirely. Pre-AR8 we shipped a hybrid version with
+    //    "ask the user which project they mean before assuming" that
+    //    felt out-of-place in a conversational global chat. The
+    //    participant can still naturally ask for context when they
+    //    need it.
+    ...(selfReflective
+      ? [
+          '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to AGBench / the harness / this ensemble — the panel is in self-reflective mode (the user opened the round with `/discuss` or `/meta`). The bound workspace is incidental context; the conversation is about AGBench itself.'
+        ]
+      : hasWorkspaceStanza
+        ? [
+            '- Deictic references ("this app", "this repo", "this project", "the codebase") refer to the active workspace named in `Round subject:` above, NOT to AGBench / the harness / the ensemble itself. Discuss AGBench only when the user explicitly references it by name.'
+          ]
+        : []),
     // 1.0.4 — explicit `@user` handoff. Ends the round immediately
     // when the orchestrator sees it; bypasses participant
     // auto-promotion. Use when the speaker genuinely needs human
@@ -371,7 +387,24 @@ function messageTag(message: ChatMessage): string {
  * top "highest ROI" recommendation. Round subject as a single
  * anchor line every participant reads identically.
  */
-function formatWorkspaceStanza(chat: ChatRecord, selfReflective = false): string {
+/**
+ * 1.0.4-AR8 — meta-round suspension for non-workspace cases.
+ *
+ * `formatWorkspaceStanza` now returns `null` when there is no
+ * workspace bound AND the round isn't self-reflective. The
+ * `Round subject:` stanza is meta-round overhead that only earns
+ * its keep when there's a project to anchor deictic references to;
+ * in a genuine global / conversational chat ("what's the best
+ * way to do X") it just injects noise + a "ask the user which
+ * project they mean" rule that contradicts the conversational
+ * intent.
+ *
+ * Caller logic: when this returns null, skip both the stanza
+ * itself AND the dependent deictic rule. Self-reflective mode
+ * is unaffected (always emits an AGBench-harness stanza), and
+ * any workspace-bound case is unaffected.
+ */
+function formatWorkspaceStanza(chat: ChatRecord, selfReflective = false): string | null {
   if (selfReflective) {
     // 1.0.4-AF — self-reflective round. The panel is explicitly
     // discussing AGBench itself, so the workspace stanza calls that
@@ -390,7 +423,10 @@ function formatWorkspaceStanza(chat: ChatRecord, selfReflective = false): string
   }
   const path = (chat.workspacePath || '').trim()
   if (!path) {
-    return 'Round subject: No workspace bound — system / global chat. If the user references "this app / this repo / this project", ask which project they mean before assuming AGBench.'
+    // 1.0.4-AR8 — suspended. No workspace + non-self-reflective =
+    // conversational global chat, no project deictic anchor to
+    // enforce. Caller skips the stanza and the dependent rule.
+    return null
   }
   // Last path segment is the project name. `path.split('/').pop()`
   // would break on trailing slashes; use the regex form so a path

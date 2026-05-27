@@ -412,7 +412,14 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).not.toContain('Continuation-hop budget is nearly exhausted')
   })
 
-  it('emits the no-workspace fallback when the chat has no workspacePath', () => {
+  // 1.0.4-AR8 — meta-round suspension. When the chat has no workspace
+  // AND the round isn't self-reflective, the Round-subject stanza
+  // AND the workspace-anchored deictic rule are BOTH omitted. In a
+  // genuine conversational global chat there's no project anchor to
+  // enforce, so injecting "ask which project they mean" friction was
+  // counterproductive. The self-reflective AGBench-harness branch
+  // remains unchanged (separate test below).
+  it('1.0.4-AR8: suspends the Round-subject stanza for non-workspace non-self-reflective chats', () => {
     const globalChat = { ...chat(), workspacePath: undefined, scope: 'global' as const }
     const prompt = buildEnsembleParticipantPrompt({
       chat: globalChat,
@@ -421,8 +428,11 @@ describe('Ensemble prompt composition', () => {
       currentPrompt: 'What about this app?',
       roundId: 'round-1'
     })
-    expect(prompt).toContain('No workspace bound')
-    expect(prompt).toContain('ask which project')
+    expect(prompt).not.toContain('Round subject:')
+    expect(prompt).not.toContain('No workspace bound')
+    expect(prompt).not.toContain('ask which project')
+    // The workspace-anchored deictic rule must also be omitted.
+    expect(prompt).not.toContain('refer to the active workspace named in `Round subject:`')
   })
 
   it('1.0.4-AF: always includes the Plan/Ensemble precedence note in the Rules', () => {
