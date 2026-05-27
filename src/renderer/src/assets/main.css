@@ -8397,6 +8397,52 @@ button.diff-file-row {
   from { opacity: 0.55; }
   to   { opacity: 1; }
 }
+
+/*
+ * 1.0.4-AS1 — shimmer/pulse staleness override.
+ *
+ * When the renderer can prove an activity is no longer actively
+ * running (`data-stale="true"` set by `isActivityShimmerStale`),
+ * neutralize the shimmer-sweep AND the icon-pulse so the row
+ * reads as a quiet, completed entry — even if its `data-status`
+ * is still stuck on `"running"` due to a missed status update or
+ * a TTL exceedance (4-minute cliff).
+ *
+ * Two motivations:
+ *
+ *  1. **Renderer state lag.** When `endedAt` / `durationMs` are
+ *     set but `status` didn't transition (a state-merge race in
+ *     the activity record), the row would otherwise shimmer
+ *     forever. The detection above (`isActivityShimmerStale`)
+ *     catches that case via terminal-field presence, and this CSS
+ *     gives it visual closure.
+ *
+ *  2. **Long-thread visual cost.** Hundreds of stale-running rows
+ *     in a long Ensemble session each running their own 2.4s
+ *     shimmer + 1.4s icon-pulse animation forever adds up. Once a
+ *     row is past the 4-minute TTL we kill both animations so the
+ *     transcript scrolls without commanding attention from
+ *     anything that finished a long time ago.
+ *
+ * The override targets `data-stale="true"` regardless of
+ * `data-status` so it's robust to any future status value we
+ * decide a stale row should report (`stuck`, `unknown`, etc.).
+ * Color stays at `--text-primary` so the row stays readable
+ * (we're removing the loud animation, not the content).
+ */
+.activity-row[data-stale="true"] .activity-label,
+.activity-row[data-stale="true"] .activity-label-main,
+.activity-row[data-stale="true"] .activity-label-main strong,
+.activity-row[data-stale="true"] .activity-inline-command {
+  animation: none;
+  background: none;
+  color: var(--text-primary);
+  -webkit-text-fill-color: var(--text-primary);
+}
+.activity-row[data-stale="true"] .activity-category-icon {
+  animation: none;
+  opacity: 0.62;
+}
 [data-reduce-motion="true"] .activity-row[data-status="running"] .activity-category-icon {
   animation: none;
 }

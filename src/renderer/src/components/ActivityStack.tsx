@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   ChatRecord,
   ChildAgentThread,
@@ -1181,6 +1181,82 @@ function ChildAgentSpawnBlock({ threads }: { threads: ChildAgentThread[] }) {
   )
 }
 
+/**
+ * 1.0.4-AS1 — shimmer-sweep + icon-pulse expiration.
+ *
+ * Two regimes:
+ *
+ *  1. **Definitive terminal data on the activity record.** If
+ *     `endedAt` or `durationMs` is set we treat the activity as
+ *     done for VISUAL purposes regardless of what `status` says.
+ *     This catches the renderer-side race where the orchestrator
+ *     wrote `endedAt` + flipped status in the same update but only
+ *     the `endedAt` arrived in our copy of the record. Status
+ *     conversion to `success` / `error` etc. owns the icon /
+ *     category re-skin; this flag just kills the shimmer + pulse.
+ *
+ *  2. **TTL safety net for "stuck running" activities.** If no
+ *     terminal field is set BUT the activity started more than
+ *     `SHIMMER_TTL_MS` ago, we still drop the loud shimmer-sweep
+ *     so a row that never received its terminal update can't
+ *     command the user's attention forever. The icon-pulse stays
+ *     attenuated but visible so genuinely long-running shells
+ *     (notarize, ship scripts) still read as "alive".
+ *
+ * The TTL is generous (4 minutes) because the explicit
+ * notarize/ship class of tool routinely takes 90-180s; we want a
+ * cliff well past that so the shimmer carries through real work.
+ * Past 4 minutes is rare enough that suppressing the sweep is a
+ * net win — the icon + the activity row itself are still visible.
+ */
+const SHIMMER_TTL_MS = 4 * 60 * 1000
+
+export function isActivityShimmerStale(
+  activity: Pick<ToolActivity, 'status' | 'startedAt' | 'endedAt' | 'durationMs'>,
+  now: number
+): boolean {
+  if (activity.status !== 'running' && activity.status !== 'pending') return false
+  // Terminal field present despite status saying otherwise — the
+  // activity is done; we just haven't received the matching status
+  // update yet.
+  if (activity.endedAt) return true
+  if (typeof activity.durationMs === 'number' && activity.durationMs > 0) return true
+  // TTL safety net.
+  if (!activity.startedAt) return false
+  const startedAt = Date.parse(activity.startedAt)
+  if (!Number.isFinite(startedAt)) return false
+  return now - startedAt > SHIMMER_TTL_MS
+}
+
+/**
+ * 1.0.4-AS1 — periodic tick that drives staleness re-evaluation
+ * when nothing else triggers a re-render. Only schedules the
+ * interval while at least one activity is potentially still
+ * running; once everything is terminal the timer naturally
+ * cleans up. Tick cadence is 15s — well below the 4-minute TTL
+ * cliff so the visual transition is observed promptly without
+ * incurring per-row timers.
+ */
+function useShimmerStaleTick(activities: readonly ToolActivity[] | undefined): number {
+  const [now, setNow] = useState(() => Date.now())
+  const hasMaybeRunning = useMemo(() => {
+    if (!activities || activities.length === 0) return false
+    return activities.some(
+      (a) =>
+        (a.status === 'running' || a.status === 'pending') &&
+        !a.endedAt &&
+        (typeof a.durationMs !== 'number' || a.durationMs <= 0)
+    )
+  }, [activities])
+  useEffect(() => {
+    if (!hasMaybeRunning) return
+    setNow(Date.now())
+    const handle = window.setInterval(() => setNow(Date.now()), 15_000)
+    return () => window.clearInterval(handle)
+  }, [hasMaybeRunning])
+  return now
+}
+
 export function ActivityStack({
   activities,
   workspacePath,
@@ -1190,6 +1266,12 @@ export function ActivityStack({
   chat,
   compactDensity = false
 }: ActivityStackProps) {
+  // 1.0.4-AS1 — drive the shimmer/pulse staleness check. The
+  // returned `now` is consumed by InlineActivityRow via `Date.now()`
+  // at render time — the tick's role is purely to keep the parent
+  // re-rendering at a steady 15s cadence while any activity could
+  // still be in flight.
+  useShimmerStaleTick(activities)
   // 1.0.4 — ensemble participants are forwarded down to ActivityRow
   // so an `ensemble_yield(target: ...)` activity can render the target
   // as a provider-tinted `@<role>` chip. Memoised against the
@@ -1698,7 +1780,17 @@ function ActivityRow({
   // transcript reads as a uniform vertical list at one text scale.
   const isInlineActivity = true
   const canExpand = hasExpandableDetail(activity, renderInputs)
-  const showInlinePulse = activity.status === 'running' || activity.status === 'pending'
+  // 1.0.4-AS1 — derive shimmer/pulse staleness at render time. The
+  // `Date.now()` read is fine here because the parent ActivityStack
+  // ticks every 15s while any activity might still be in flight
+  // (`useShimmerStaleTick`). Stale activities keep their original
+  // `data-status` so the icon / category UX doesn't suddenly assert
+  // success or error we can't confirm; the CSS rules for the
+  // shimmer + pulse animations are the only thing that changes,
+  // gated by `data-stale="true"`.
+  const isShimmerStale = isActivityShimmerStale(activity, Date.now())
+  const showInlinePulse =
+    (activity.status === 'running' || activity.status === 'pending') && !isShimmerStale
 
   // Phase L5 slice 3 — toggle path forwards the click's mod-key
   // state so the parent's single-open coordinator can distinguish
@@ -1721,6 +1813,7 @@ function ActivityRow({
         className={`activity-row activity-row-inline ${expanded ? 'expanded' : 'collapsed'}${!canExpand ? ' no-expand' : ''}${showInlinePulse ? ' is-pulsing' : ''}`}
         data-category={activity.category || 'unknown'}
         data-status={activity.status}
+        data-stale={isShimmerStale ? 'true' : undefined}
         data-provider={provider || 'unknown'}
         role={canExpand ? 'button' : undefined}
         tabIndex={canExpand ? 0 : -1}
