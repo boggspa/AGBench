@@ -15,6 +15,7 @@ function makeSettings(overrides: Partial<AppSettings> = {}): AppSettings {
     ensembleModeEnabled: true,
     geminiCheckpointingEnabled: false,
     chatContextTurns: 6,
+    currency: 'USD',
     appearanceMode: 'solid',
     visualEffectStyle: 'auto',
     themeAppearance: 'system',

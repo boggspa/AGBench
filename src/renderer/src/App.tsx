@@ -10,6 +10,8 @@ import {
 } from './lib/scheduledEnsembleSnapshot'
 import { classifyError, redactLog } from './lib/ErrorClassifier'
 import { shouldBackfillRunStats } from './lib/RunStatsBackfill'
+// 1.0.5-EW25 — User-currency cost formatting helper.
+import { formatCost, type DisplayCurrency } from './lib/formatCost'
 import {
   AppSettings,
   WorkspaceRecord,
@@ -3860,15 +3862,22 @@ const buildChatTokenTally = (runs: ChatRun[] = []): ChatTokenTally => {
     { inputTokens: 0, outputTokens: 0, totalTokens: 0, explicitCostUsd: 0 }
   )
 }
-const formatExplicitCostUsd = (costUsd: number): string => {
-  if (!Number.isFinite(costUsd) || costUsd <= 0) return ''
-  if (costUsd < 0.01) return '<$0.01'
-  if (costUsd < 1) return `$${costUsd.toFixed(2)}`
-  return `$${costUsd.toFixed(2)}`
-}
-const formatThreadTokenTally = (_providerLabel: string, tally: ChatTokenTally): string | null => {
+// 1.0.5-EW25 — Routes through `formatCost` so the user's selected
+// display currency wins. Pre-EW25 this hard-coded the `$` symbol +
+// `<$0.01` floor; the floor logic now lives in `formatCost.ts` and
+// is per-currency aware. Callers that previously didn't pass a
+// currency get USD by default — backward-compatible.
+const formatExplicitCostUsd = (
+  costUsd: number,
+  currency: DisplayCurrency = 'USD'
+): string => formatCost(costUsd, currency)
+const formatThreadTokenTally = (
+  _providerLabel: string,
+  tally: ChatTokenTally,
+  currency: DisplayCurrency = 'USD'
+): string | null => {
   if (tally.totalTokens <= 0) return null
-  const cost = formatExplicitCostUsd(tally.explicitCostUsd)
+  const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency)
   // Provider label dropped — the user already knows which provider
   // they're talking to (the provider chip is right next to this
   // tally), and the inline real-estate is tight. `_providerLabel`
@@ -3890,7 +3899,8 @@ const formatThreadTokenTally = (_providerLabel: string, tally: ChatTokenTally): 
  */
 const formatEnsembleTokenBreakdown = (
   runs: ChatRun[],
-  participants: EnsembleParticipant[]
+  participants: EnsembleParticipant[],
+  currency: DisplayCurrency = 'USD'
 ): string | null => {
   if (!runs.length || !participants.length) return null
   const byParticipant = new Map<string, ChatTokenTally>()
@@ -3918,7 +3928,7 @@ const formatEnsembleTokenBreakdown = (
     const tally = byParticipant.get(participant.id)
     if (!tally || tally.totalTokens <= 0) continue
     const label = participant.role || participant.provider
-    const cost = formatExplicitCostUsd(tally.explicitCostUsd)
+    const cost = formatExplicitCostUsd(tally.explicitCostUsd, currency)
     lines.push(
       `${label}: ${formatContextTokens(tally.inputTokens)} in / ${formatContextTokens(tally.outputTokens)} out${cost ? ` · ${cost}` : ''}`
     )
@@ -5614,6 +5624,8 @@ type SettingsPanelUpdate = {
   // GeminiApiRuntimeMode in main/store/types.ts. Defaults to 'auto'.
   geminiApiRuntime?: GeminiApiRuntimeMode
   chatContextTurns?: number
+  /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
+  currency?: AppSettings['currency']
   claudeBinaryPath?: string
   kimiBinaryPath?: string
   agenticServices?: AgenticServicesSettings
@@ -7490,6 +7502,14 @@ function App(): React.JSX.Element {
     if (nextChatContextTurns !== undefined) {
       setChatContextTurns(nextChatContextTurns)
       settingsPatch.chatContextTurns = nextChatContextTurns
+    }
+
+    // 1.0.5-EW25 — Currency selection. No local state to mirror
+    // (the `displayCurrency` const derives from `settings?.currency`
+    // on each render), just persist the patch through the IPC
+    // pipeline like every other AppSettings field.
+    if (next.currency !== undefined) {
+      settingsPatch.currency = next.currency
     }
 
     if (next.mode !== undefined) {
@@ -14655,7 +14675,16 @@ function App(): React.JSX.Element {
   const contextUsedPercent =
     contextWindowSize > 0 ? Math.min(100, (cumulativeChatTokens / contextWindowSize) * 100) : 0
   const contextLabel = `${formatContextTokens(cumulativeChatTokens)} / ${formatContextTokens(contextWindowSize)} context`
-  const threadTokenTallyLabel = formatThreadTokenTally(currentProviderLabel, chatTokenTally)
+  // 1.0.5-EW25 — pass the user's display currency through so cost
+  // numbers respect their Settings → General choice. Defaults to
+  // USD if settings haven't hydrated yet, matching the helper's
+  // own fallback.
+  const displayCurrency = (settings?.currency ?? 'USD') as DisplayCurrency
+  const threadTokenTallyLabel = formatThreadTokenTally(
+    currentProviderLabel,
+    chatTokenTally,
+    displayCurrency
+  )
   // B1 (1.0.3) — per-participant breakdown for the ensemble tally
   // footer's hover tooltip. Solo chats: `null` (the existing
   // `contextLabel` stays as the tooltip). Ensemble chats: a
@@ -14668,9 +14697,15 @@ function App(): React.JSX.Element {
     if (!isCurrentEnsembleChat) return null
     return formatEnsembleTokenBreakdown(
       currentChat?.runs || [],
-      currentChat?.ensemble?.participants || []
+      currentChat?.ensemble?.participants || [],
+      displayCurrency
     )
-  }, [isCurrentEnsembleChat, currentChat?.runs, currentChat?.ensemble?.participants])
+  }, [
+    isCurrentEnsembleChat,
+    currentChat?.runs,
+    currentChat?.ensemble?.participants,
+    displayCurrency
+  ])
   const threadTokenTallyTooltip = ensembleTallyBreakdown
     ? `${contextLabel}\n\n${ensembleTallyBreakdown}`
     : contextLabel
@@ -15970,6 +16005,7 @@ function App(): React.JSX.Element {
               geminiCheckpointingEnabled={geminiCheckpointingEnabled}
               geminiApiRuntime={geminiApiRuntime}
               chatContextTurns={chatContextTurns}
+              currency={displayCurrency}
               claudeBinaryPath={claudeBinaryPath}
               kimiBinaryPath={kimiBinaryPath}
               agenticServices={agenticServices}

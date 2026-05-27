@@ -84,6 +84,11 @@ interface SettingsPanelProps {
    * {@link GeminiApiRuntimeMode} in store/types.ts. */
   geminiApiRuntime: GeminiApiRuntimeMode
   chatContextTurns: number
+  /** 1.0.5-EW25 — User-selected display currency for cost / token-
+   * spend chips. The underlying value still comes verbatim from
+   * provider event payloads in USD; conversion is renderer-side
+   * via `src/renderer/src/lib/formatCost.ts`. */
+  currency: 'USD' | 'GBP' | 'EUR'
   claudeBinaryPath: string
   kimiBinaryPath: string
   agenticServices: AgenticServicesSettings
@@ -165,6 +170,8 @@ interface SettingsPanelProps {
     geminiCheckpointingEnabled?: boolean
     geminiApiRuntime?: GeminiApiRuntimeMode
     chatContextTurns?: number
+    /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
+    currency?: 'USD' | 'GBP' | 'EUR'
     claudeBinaryPath?: string
     kimiBinaryPath?: string
     agenticServices?: AgenticServicesSettings
@@ -1080,6 +1087,7 @@ export function SettingsPanel({
   geminiCheckpointingEnabled,
   geminiApiRuntime,
   chatContextTurns,
+  currency,
   claudeBinaryPath,
   kimiBinaryPath,
   agenticServices,
@@ -1997,6 +2005,33 @@ export function SettingsPanel({
                 <p className="settings-hint">
                   Max recent user/assistant turns to include with each prompt for continuity. 0
                   sends only the current message.
+                </p>
+              </div>
+
+              {/*
+                1.0.5-EW25 — Display currency for cost / token-spend
+                chips. Providers report cost in USD; the renderer
+                converts to the user's chosen currency via
+                `formatCost.ts`. Rates are static approximations —
+                live FX lookup is deferred to 1.0.6 sub-slice c.
+              */}
+              <div className="settings-group">
+                <label className="settings-label">Display currency</label>
+                <select
+                  className="settings-select"
+                  value={currency ?? 'USD'}
+                  onChange={(e) =>
+                    onChange({ currency: e.target.value as 'USD' | 'GBP' | 'EUR' })
+                  }
+                >
+                  <option value="USD">US Dollar (USD)</option>
+                  <option value="GBP">British Pound (GBP)</option>
+                  <option value="EUR">Euro (EUR)</option>
+                </select>
+                <p className="settings-hint">
+                  Used for cost displays on per-participant chips and the chat-level cumulative
+                  tally. Rates are static approximations — provider pricing is sampled in USD
+                  and converted at display time. Live FX refresh is on the 1.0.6 roadmap.
                 </p>
               </div>
 

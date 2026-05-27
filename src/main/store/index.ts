@@ -119,6 +119,10 @@ const defaultSettings: AppSettings = {
   transcriptFontFamily:
     '"SF Pro", "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Roboto, Arial, sans-serif',
   composerFontFamily: 'match-transcript',
+  // 1.0.5-EW25 — Display currency for cost / token-spend chips.
+  // USD by default; user can switch to GBP / EUR via Settings →
+  // General. Rates are static approximations (see `formatCost.ts`).
+  currency: 'USD',
   reduceTransparency: false,
   reduceMotion: false,
   compactDensity: false,

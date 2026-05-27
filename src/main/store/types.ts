@@ -929,6 +929,13 @@ export interface AppSettings {
   composerStyle: ComposerStyle
   transcriptFontFamily?: string
   composerFontFamily?: string
+  /** 1.0.5-EW25 — Display currency for cost / token-spend chips.
+   * The underlying USD value comes verbatim from provider event
+   * payloads (`cost_usd`); the renderer converts to the user's
+   * chosen display currency via `src/renderer/src/lib/formatCost.ts`.
+   * Rates are static approximations (no live FX lookup yet — that's
+   * deferred to 1.0.6 sub-slice c). USD is the default. */
+  currency: 'USD' | 'GBP' | 'EUR'
   funFxEnabled: boolean
   funFxMode: FunFxMode
   advancedFx: AdvancedFxSettings

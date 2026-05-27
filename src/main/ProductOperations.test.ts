@@ -20,6 +20,7 @@ const baseSettings: AppSettings = {
   ensembleModeEnabled: true,
   geminiCheckpointingEnabled: false,
   chatContextTurns: 6,
+  currency: 'USD',
   appearanceMode: 'soft_glass',
   visualEffectStyle: 'auto',
   themeAppearance: 'system',

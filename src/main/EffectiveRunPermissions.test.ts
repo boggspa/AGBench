@@ -10,6 +10,7 @@ function settings(overrides: Partial<AppSettings> = {}): AppSettings {
     ensembleModeEnabled: true,
     geminiCheckpointingEnabled: false,
     chatContextTurns: 8,
+    currency: 'USD',
     appearanceMode: 'solid',
     visualEffectStyle: 'classic',
     themeAppearance: 'system',
