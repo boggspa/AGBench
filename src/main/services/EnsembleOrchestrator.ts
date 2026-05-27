@@ -474,6 +474,25 @@ function pairEnsembleToolResult(
   }
 }
 
+/**
+ * 1.0.5-EW43a — Runtime-only structured queue entry. Carries both
+ * the prompt string (already enriched with `promptWithAttachment
+ * References` so any persistence/read-back retains the text refs)
+ * AND the structured image-attachment array. The chat-round state
+ * still persists only the prompt strings (the renderer reads that
+ * shape and would be confused by structured entries), so the
+ * `updateChatRound` mirror sites map `entries.map(e => e.prompt)`
+ * when writing back. Recovery after app restart loses the
+ * attachment objects (the prompt strings survive); for live
+ * mid-session queueing — the user's actual symptom — the runtime
+ * structure keeps attachments intact through the dequeue + new-
+ * round dispatch.
+ */
+interface QueuedRoundEntry {
+  prompt: string
+  imageAttachments: EnsembleImageAttachment[]
+}
+
 interface ActiveRoundRuntime {
   chatId: string
   roundId: string
@@ -490,8 +509,22 @@ interface ActiveRoundRuntime {
    * that limit during the 1.0.3 smoke and confirmed the
    * accidental-steer caused a parallel Codex run that broke MCP
    * routing. Accumulating instead of overwriting fixes both.
+   *
+   * 1.0.5-EW43a — Each entry now carries both the prompt string
+   * (already enriched with `promptWithAttachmentReferences` so the
+   * text references survive any persistence round-trip) AND the
+   * structured attachment objects. Pre-EW43a the runtime queue
+   * was `string[]`, so when the user sent a message with
+   * attachments during a running round the attachment objects
+   * were dropped at the enqueue point — the next-round dispatch
+   * at line 2131 then fired with `imageAttachments: []` and the
+   * agent received only the prompt's text references, with no
+   * actual image data attached. The chat-round state mirror at
+   * `updateChatRound` still persists `queuedPrompts: string[]`
+   * (the renderer reads that shape for the queued-messages
+   * above-row, and the persistence type stays back-compat).
    */
-  queuedPrompts: string[]
+  queuedPrompts: QueuedRoundEntry[]
   activeRunId?: string
   /**
    * 1.0.4-AK5 — set of run ids currently in flight for a parallel
@@ -629,8 +662,20 @@ export class EnsembleOrchestrator {
       // Multi-entry queue: append rather than overwrite. The
       // chat-round state mirrors the runtime's `queuedPrompts` so the
       // renderer's stack picks up every entry.
-      existing.queuedPrompts.push(promptWithAttachmentReferences(prompt, imageAttachments))
-      const nextQueuedPrompts = [...existing.queuedPrompts]
+      //
+      // 1.0.5-EW43a — push a structured entry so the dequeue site
+      // (line ~2150) can carry the attachments through to the
+      // follow-up round. The prompt string still gets the
+      // `promptWithAttachmentReferences` treatment so the
+      // persisted/displayed form retains the text references the
+      // renderer + transcript expect. Persistence to chat round
+      // state below maps `e => e.prompt` to keep the back-compat
+      // `string[]` shape that the renderer reads.
+      existing.queuedPrompts.push({
+        prompt: promptWithAttachmentReferences(prompt, imageAttachments),
+        imageAttachments
+      })
+      const nextQueuedPrompts = existing.queuedPrompts.map((entry) => entry.prompt)
       this.updateChatRound(input.chatId, (round) =>
         round
           ? {
@@ -768,8 +813,12 @@ export class EnsembleOrchestrator {
     if (!trimmed) return false
     const runtime = this.roundsByChatId.get(chatId)
     if (!runtime || runtime.cancelled) return false
-    runtime.queuedPrompts.push(trimmed)
-    const nextQueuedPrompts = [...runtime.queuedPrompts]
+    // 1.0.5-EW43a — autonomous follow-ups don't carry attachments
+    // (the `ensemble_continue` MCP tool schema doesn't accept
+    // them), so the entry's `imageAttachments` is always empty.
+    // Persisted shape mapped to `string[]` for renderer back-compat.
+    runtime.queuedPrompts.push({ prompt: trimmed, imageAttachments: [] })
+    const nextQueuedPrompts = runtime.queuedPrompts.map((entry) => entry.prompt)
     this.updateChatRound(chatId, (round) =>
       round ? { ...round, queuedPrompts: nextQueuedPrompts } : round
     )
@@ -1055,7 +1104,19 @@ export class EnsembleOrchestrator {
       prompt: round.prompt,
       imageAttachments: [],
       cancelled: false,
-      queuedPrompts: [...(round.queuedPrompts || [])],
+      // 1.0.5-EW43a — persisted shape is `string[]`; runtime
+      // wants `QueuedRoundEntry[]`. Wakeup recovery has no
+      // attachment metadata stored (the persisted form lost the
+      // structured objects across the app-quit boundary), so each
+      // restored entry gets an empty attachment array. Mid-session
+      // attachment delivery is preserved through the live queue;
+      // app-restart-mid-queue users will see only the prompt's
+      // text references — known limitation, acceptable for
+      // 1.0.5.
+      queuedPrompts: (round.queuedPrompts || []).map((prompt) => ({
+        prompt,
+        imageAttachments: []
+      })),
       orchestrationMode: round.orchestrationMode || chat.ensemble.orchestrationMode || 'turn_bound',
       continuationHops: round.continuationHops || 0,
       maxContinuationHops: round.maxContinuationHops || chat.ensemble.maxContinuationHops || DEFAULT_CONTINUATION_HOP_LIMIT,
@@ -1453,8 +1514,13 @@ export class EnsembleOrchestrator {
      * Carry-over queue from a previous round's `queuedPrompts` (FIFO
      * after we shifted off `prompt`). Lets the chain continue
      * through every queued message until the queue drains.
+     *
+     * 1.0.5-EW43a — structured entries (was `string[]` pre-EW43a)
+     * so per-entry image attachments propagate through every
+     * follow-up round, not just the first. Persistence into chat-
+     * round state maps `e => e.prompt` for renderer back-compat.
      */
-    carryOverQueue: string[] = [],
+    carryOverQueue: QueuedRoundEntry[] = [],
     /**
      * 1.0.4-AF — `/discuss` (alias `/meta`) prefix detected at
      * startRound. Stashed on the runtime so every
@@ -1517,8 +1583,17 @@ export class EnsembleOrchestrator {
       // Surface any carry-over queue on the chat record so the
       // renderer's queued-messages above-row reflects everything
       // still pending. Mirrors `runtime.queuedPrompts` below.
+      //
+      // 1.0.5-EW43a — persisted shape stays `string[]` (renderer
+      // reads that for the queued-above-row); strip the
+      // structured attachment objects via map here. The runtime
+      // mirror lower in this method keeps the structured form so
+      // the dispatch path can deliver the attachments.
       ...(carryOverQueue.length > 0
-        ? { queuedPrompt: carryOverQueue[0], queuedPrompts: [...carryOverQueue] }
+        ? {
+            queuedPrompt: carryOverQueue[0].prompt,
+            queuedPrompts: carryOverQueue.map((entry) => entry.prompt)
+          }
         : {})
     }
     const userMessage: ChatMessage = {
@@ -2122,13 +2197,28 @@ export class EnsembleOrchestrator {
     // Work Session terminal state is in effect we drop the queue
     // entirely — the session is over, queued prompts would re-arm
     // it.
-    const [nextPrompt, ...remainingQueue] = sessionTerminal
-      ? ([] as string[])
+    //
+    // 1.0.5-EW43a — `runtime.queuedPrompts` is now structured
+    // `QueuedRoundEntry[]` so the per-entry image attachments
+    // carry through to the follow-up round's dispatch. Pre-EW43a
+    // this site dequeued bare strings and called `beginRound`
+    // with `imageAttachments: []` — meaning a user who sent a
+    // message with attachments DURING a running round saw the
+    // attachments dropped silently when the queue drained.
+    const [nextEntry, ...remainingQueue] = sessionTerminal
+      ? ([] as QueuedRoundEntry[])
       : runtime.queuedPrompts
     this.finishRound(runtime.chatId, runtime.roundId, runtime.cancelled ? 'cancelled' : 'completed')
     this.clearRuntimeIfCurrent(runtime)
-    if (nextPrompt && !runtime.cancelled && !sessionTerminal) {
-      this.beginRound(runtime.chatId, nextPrompt, runtime.sender, undefined, [], remainingQueue)
+    if (nextEntry && !runtime.cancelled && !sessionTerminal) {
+      this.beginRound(
+        runtime.chatId,
+        nextEntry.prompt,
+        runtime.sender,
+        undefined,
+        nextEntry.imageAttachments,
+        remainingQueue
+      )
     }
   }
 

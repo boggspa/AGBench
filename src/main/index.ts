@@ -7718,6 +7718,20 @@ async function runKimiProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   ]
   appendKimiModelArgs(args, model)
   appendKimiThinkingArgs(args, payload.kimiThinking)
+  // 1.0.5-EW43b — Pre-EW43b the Kimi print-mode fallback ignored
+  // `payload.imagePaths` entirely. Wire mode handles attachments
+  // via structured `image_url` objects in the chat-completions
+  // request (line ~7349), but the print-mode CLI fallback is
+  // pure argv — so attachments were silently dropped if Wire mode
+  // failed to start. Kimi CLI is derived from Claude's CLI shape
+  // (same `--image <path>` flag), so we use the same translation
+  // as `buildClaudeCliArgs` does. If Kimi's CLI ever diverges
+  // from Claude's image flag, this is the single site to update.
+  for (const imagePath of payload.imagePaths || []) {
+    if (imagePath && imagePath.trim()) {
+      args.push('--image', imagePath.trim())
+    }
+  }
   // Phase J1 composer-unification: same External Path grants → --add-dir
   // translation as the wire-mode spawn path above.
   args.push(...externalPathGrantsToCliAddDirArgs(payload.externalPathGrants))
