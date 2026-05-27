@@ -15390,7 +15390,11 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 .app-sidebar .model-usage-summary {
-  max-height: 240px;
+  /* 1.0.5-EW10 — Old 240px cap removed. ModelUsageCard.css line ~131
+   * sets the canonical height/max-height via the JS-driven
+   * `--model-usage-sidebar-height` CSS var (allowing up to 960px or
+   * 100vh − 56px, whichever is smaller). Leaving overflow: auto so
+   * the scroll behaviour stays consistent. */
   overflow: auto;
 }
 
@@ -17347,9 +17351,21 @@ input:disabled, select:disabled, textarea:disabled {
   flex-shrink: 0;
 }
 
-/* Sidebar model usage: show real provider/model entries with more vertical room. */
+/* Sidebar model usage: show real provider/model entries with more
+ * vertical room.
+ *
+ * 1.0.5-EW10 — Bumped the max-height upper bound 680 → 960 to match
+ * the JS-side SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx:48). Chris
+ * caught: the user could drag the resize handle to ~680px but no
+ * further, even though the JS state allowed up to 960px. The handle
+ * fired the resize but this CSS rule clamped the rendered height
+ * back to 680. ModelUsageCard.css line ~131 already has
+ * `max-height: none` on the more-specific `--sidebar` variant, but
+ * the cascade order was letting this less-specific rule win. With
+ * the same 960px upper bound here, the cap is consistent regardless
+ * of which rule wins. */
 .app-sidebar .model-usage-summary {
-  max-height: clamp(380px, 46vh, 680px);
+  max-height: clamp(380px, 46vh, 960px);
   min-height: min(360px, 42vh);
   overflow-y: auto;
 }
