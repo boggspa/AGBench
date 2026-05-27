@@ -12448,6 +12448,24 @@ input:disabled, select:disabled, textarea:disabled {
   background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
+.run-card-resume-warning {
+  /* 1.0.5-N6 — small chip beside the status badge for runs that
+   * resumed from a wakeup with no native provider session id, i.e.
+   * the agent's working memory came from the AGBench transcript
+   * only. Sits in the same row as status + id; warning tone but
+   * dimmer than tone-warning so it doesn't outshout the real
+   * status badge. */
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, var(--warning) 22%, transparent);
+  background: color-mix(in srgb, var(--warning) 6%, transparent);
+  color: color-mix(in srgb, var(--warning) 88%, var(--text-muted));
+  border-radius: 6px;
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  text-transform: lowercase;
+  cursor: help;
+}
+
 .run-card-id {
   color: var(--text-muted);
   font-family: var(--font-mono);

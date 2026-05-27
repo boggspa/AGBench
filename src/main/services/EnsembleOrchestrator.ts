@@ -1619,8 +1619,16 @@ export class EnsembleOrchestrator {
       const resumeWakeup =
         runtime.resumeWakeup?.participantId === participant.id ? runtime.resumeWakeup : undefined
       if (resumeWakeup) runtime.resumeWakeup = undefined
+      // 1.0.5-N6 — A wakeup-resume run with no linked provider
+      // session is re-establishing the agent's working memory from
+      // the AGBench transcript only. Surface that on the new run so
+      // the RunCard renders a small "transcript resumed" chip.
+      const sleepResumeWarning =
+        resumeWakeup && !participant.linkedProviderSessionId
+          ? 'Resumed from AGBench transcript context; no native provider session id was available.'
+          : undefined
 
-      const run = this.seedParticipantRun(chat, runtime, participant)
+      const run = this.seedParticipantRun(chat, runtime, participant, { sleepResumeWarning })
       runtime.activeRunId = run.runId
       const completion = new Promise<EnsembleParticipantStatus>((resolve) => {
         run.completion = resolve
@@ -2216,7 +2224,8 @@ export class EnsembleOrchestrator {
   private seedParticipantRun(
     chat: ChatRecord,
     runtime: ActiveRoundRuntime,
-    participant: EnsembleParticipant
+    participant: EnsembleParticipant,
+    options: { sleepResumeWarning?: string } = {}
   ): ActiveParticipantRun {
     const startedAt = this.deps.nowIso()
     const runId = this.deps.createRunId(participant.provider)
@@ -2238,7 +2247,12 @@ export class EnsembleOrchestrator {
       ...(participant.provider === 'gemini' && participant.geminiAuthProfileId
         ? { geminiAuthProfileId: participant.geminiAuthProfileId }
         : {}),
-      ...(participant.linkedProviderSessionId ? { providerThreadId: participant.linkedProviderSessionId } : {})
+      ...(participant.linkedProviderSessionId ? { providerThreadId: participant.linkedProviderSessionId } : {}),
+      // 1.0.5-N6 — Surface the "resumed from transcript context"
+      // signal on the run itself so the RunCard can render a small
+      // warning chip beside the status. The transcript status row
+      // is easy to scroll past; this chip rides with the run.
+      ...(options.sleepResumeWarning ? { ensembleSleepResumeWarning: options.sleepResumeWarning } : {})
     }
     const activeRun: ActiveParticipantRun = {
       chatId: chat.appChatId,

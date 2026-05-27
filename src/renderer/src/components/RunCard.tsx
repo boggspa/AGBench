@@ -84,6 +84,19 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
             {getProviderLabel(provider)}
           </span>
           <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
+          {run.ensembleSleepResumeWarning && (
+            // 1.0.5-N6 — Wakeup resumed from transcript context
+            // only (no native provider session id available). The
+            // tooltip carries the full explanation; the chip just
+            // flags that the agent's working memory is
+            // reconstructed.
+            <span
+              className="run-card-resume-warning"
+              title={run.ensembleSleepResumeWarning}
+            >
+              transcript-resumed
+            </span>
+          )}
           <span className="run-card-id" title={run.runId}>
             #{shortRunId(run.runId)}
           </span>

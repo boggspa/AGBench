@@ -326,6 +326,51 @@ describe('EnsembleOrchestrator', () => {
         message.content.includes('no native provider session id was available')
       )
     ).toBe(true)
+    // 1.0.5-N6 — The resumed run carries the warning on the
+    // ChatRun itself so the RunCard surfaces a transcript-resumed
+    // chip beside the status. Claude in the fixture has no
+    // linkedProviderSessionId, so the warning is set.
+    const claudeRuns = harness.chat.runs.filter(
+      (entry) => entry.ensembleParticipantId === 'claude'
+    )
+    expect(claudeRuns.length).toBeGreaterThanOrEqual(2)
+    expect(claudeRuns[claudeRuns.length - 1].ensembleSleepResumeWarning).toContain(
+      'no native provider session id was available'
+    )
+  })
+
+  it('omits the resume warning when the participant has a linked provider session', async () => {
+    // 1.0.5-N6 negative case. With a linkedProviderSessionId set,
+    // the resume is native (Codex sessionId / Claude resumeId etc.)
+    // — no warning needed.
+    const scheduled: EnsembleWakeupRecord[] = []
+    const harness = makeHarness({
+      scheduleWakeupTimer: (wakeup) => scheduled.push(wakeup)
+    })
+    harness.chat.ensemble!.participants[0].linkedProviderSessionId = 'claude-session-abc'
+    harness.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start and sleep.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(1))
+    const claudeRunId = harness.dispatched[0].appRunId!
+    harness.orchestrator.scheduleWakeupForRun(claudeRunId, { delayMs: 60_000 })
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(2))
+    harness.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() =>
+      expect(harness.chat.ensemble?.activeRound?.pendingWakeupIds).toHaveLength(1)
+    )
+    expect(harness.orchestrator.handleWakeupFired(scheduled[0].wakeupId)).toBe(true)
+    await vi.waitFor(() => expect(harness.dispatched).toHaveLength(3))
+    const claudeRuns = harness.chat.runs.filter(
+      (entry) => entry.ensembleParticipantId === 'claude'
+    )
+    expect(claudeRuns[claudeRuns.length - 1].ensembleSleepResumeWarning).toBeUndefined()
   })
 
   it('cancels persisted user-input wakeups before starting a new round', async () => {
