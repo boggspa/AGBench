@@ -69,6 +69,11 @@ import {
   refreshFxRates,
   startFxRateScheduler
 } from './services/FxRateService'
+import {
+  getCurrentProviderRates,
+  loadPersistedProbeResults,
+  probeAllProviderRates
+} from './services/ProviderRateService'
 import { MainProcessActionExecutor } from './BridgeActionExecutor'
 import { makeBridgeRunEventSink } from './BridgeRunEventSink'
 import { codexUsageToStats, extractProviderUsage, mergeProviderUsage } from './ProviderRunStats'
@@ -18982,6 +18987,23 @@ if (isGeminiMcpBridgeProcess) {
     startFxRateScheduler()
 
     /*
+     * 1.0.5-EW38 — Currency sub-slice (d): provider rate
+     * foundation. Loads any persisted probe results from the last
+     * run, then fires a fresh probe in the background. Best-
+     * effort — the baked-in rate table is always present, so the
+     * renderer's eventual cost-estimation surfaces have a usable
+     * source of truth even with no probe data.
+     */
+    void loadPersistedProbeResults().then(() => {
+      void probeAllProviderRates().catch((error) => {
+        console.warn(
+          'Provider rate probe failed:',
+          error instanceof Error ? error.message : error
+        )
+      })
+    })
+
+    /*
      * F4 (1.0.3) — explicit application menu.
      *
      * Suppresses the recurring NSMenu warning:
@@ -21008,6 +21030,18 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle('fx-rates:refresh', async (_event, force: boolean = false) => {
       return refreshFxRates(Boolean(force))
     })
+
+    /*
+     * 1.0.5-EW38 — Currency sub-slice (d): expose the per-provider
+     * rate snapshot. `providerRates:get` always returns the
+     * baked-in baseline (so cost-estimation features can rely on
+     * it even before any probe completes); the optional `probe`
+     * field carries the last best-effort scrape results. The
+     * `providerRates:probe` handler triggers a fresh probe — wired
+     * for a future Settings → Providers "refresh rates" surface.
+     */
+    ipcMain.handle('providerRates:get', () => getCurrentProviderRates())
+    ipcMain.handle('providerRates:probe', async () => probeAllProviderRates())
 
     ipcMain.handle('list-agent-threads', async (_, provider: ProviderId, params: any = {}) => {
       if (provider !== 'codex') {

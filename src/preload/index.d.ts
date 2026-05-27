@@ -269,6 +269,11 @@ declare global {
         source: 'live' | 'cached' | 'fallback'
         errorMessage?: string
       }>
+      // 1.0.5-EW38 — Per-provider rate snapshot (baseline + probe).
+      // Loose typing for the renderer; concrete shapes live in
+      // src/main/services/ProviderRateService.ts.
+      getProviderRates: () => Promise<unknown>
+      probeProviderRates: () => Promise<unknown>
       getAgentModels: (provider: ProviderId) => Promise<
         Array<{
           id: string

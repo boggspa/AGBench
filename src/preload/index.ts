@@ -81,6 +81,14 @@ const api = {
       source: 'live' | 'cached' | 'fallback'
       errorMessage?: string
     }>,
+  // 1.0.5-EW38 — Currency sub-slice (d): per-provider rate
+  // snapshot. The renderer can read this for future cost-estimation
+  // features (pre-flight estimate, per-model price comparison) —
+  // not surfaced in any UI yet in 1.0.5. The `probe` field surfaces
+  // last best-effort scrape results so a settings UI can warn
+  // about possible drift.
+  getProviderRates: () => ipcRenderer.invoke('providerRates:get'),
+  probeProviderRates: () => ipcRenderer.invoke('providerRates:probe'),
   getAgentModels: (provider: ProviderId) => ipcRenderer.invoke('get-agent-models', provider),
   getAgentRateLimits: (provider: ProviderId) =>
     ipcRenderer.invoke('get-agent-rate-limits', provider),
