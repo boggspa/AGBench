@@ -6255,6 +6255,71 @@ button.sidebar-item {
   text-align: right;
 }
 
+/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button in the
+ * composer telemetry row. Pre-AS3 the attached-window UX was an
+ * inline pill in the action row showing the app name + ×. The
+ * pill burnt ~120px of horizontal real estate even when the user
+ * was just glancing at the chat, so this single-icon button
+ * replaces it: an eye-on-screen glyph sized to match the clock
+ * symbols beside it, click toggles attach/detach, tooltip
+ * surfaces the attached app name.
+ *
+ * States:
+ *  - default (not attached): muted secondary tone
+ *  - attached (no stream): accent tint
+ *  - streaming: accent tint + a small pulsing dot indicator at the
+ *    top-right (carries forward the at-a-glance "live capture"
+ *    cue from the retired pill)
+ */
+.composer-screen-watch-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: color-mix(in srgb, var(--text-secondary) 70%, transparent);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+.composer-screen-watch-button:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+.composer-screen-watch-button.is-attached {
+  color: color-mix(in srgb, var(--accent) 78%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.composer-screen-watch-button.is-attached.is-streaming {
+  /* Same accent base as plain-attached, just a little stronger to
+   * reinforce the "active capture" state alongside the dot. */
+  color: color-mix(in srgb, var(--accent) 90%, var(--text-primary));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+}
+.composer-screen-watch-button .composer-control-icon {
+  width: 14px;
+  height: 14px;
+}
+.composer-screen-watch-button-dot {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 1.5px var(--composer-bg, var(--surface-base));
+  animation: composer-screen-watch-pulse 1.4s ease-in-out infinite;
+}
+@keyframes composer-screen-watch-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 .composer-thread-token-tally {
   max-width: min(260px, 28vw);
   color: color-mix(in srgb, var(--text-secondary) 82%, transparent);

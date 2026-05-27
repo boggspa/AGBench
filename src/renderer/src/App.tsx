@@ -1162,6 +1162,41 @@ function ClockSymbolIcon() {
   )
 }
 
+/**
+ * 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) themed icon.
+ *
+ * An eye-on-screen glyph: rounded screen frame containing a small
+ * pupil. Reads as "watching what's on screen" — pairs with the
+ * Appwatch/Appshots feature's "the AI can see this window"
+ * function. Sits in the composer telemetry row at 16x16, styled
+ * to the same stroke weight as the clock symbol beside it.
+ */
+function ScreenWatchSymbolIcon() {
+  return (
+    <span className="sf-symbol-icon composer-control-icon" aria-hidden>
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {/* Display frame (rounded rectangle representing the
+         * watched window's chrome). */}
+        <rect x="2.1" y="3" width="11.8" height="8.2" rx="1.4" />
+        {/* Stand — tiny baseline under the screen. */}
+        <path d="M6.3 13h3.4" />
+        {/* Eye/pupil inside the screen: this is the "watch"
+         * semantic. The outer arc evokes a closed eyelid; the inner
+         * circle is the iris. */}
+        <path d="M4.5 7.2 Q8 4.6 11.5 7.2" />
+        <circle cx="8" cy="7.4" r="1.05" />
+      </svg>
+    </span>
+  )
+}
+
 function ModelSymbolIcon() {
   return (
     <span className="sf-symbol-icon composer-control-icon" aria-hidden>
@@ -17767,62 +17802,12 @@ function App(): React.JSX.Element {
                         />
                       )
                     })()}
-                    {attachedWindow ? (
-                      <button
-                        className={
-                          attachedWindow.streaming
-                            ? 'composer-attached-window-pill is-streaming'
-                            : 'composer-attached-window-pill'
-                        }
-                        type="button"
-                        title={
-                          attachedWindow.streaming
-                            ? `Streaming ${attachedWindow.windowMeta.applicationName || 'window'} at ${attachedWindow.streaming.fps}fps — click to detach (stops the stream)`
-                            : `Detach ${attachedWindow.windowMeta.applicationName || 'window'}: ${attachedWindow.windowMeta.title || '(untitled)'}`
-                        }
-                        aria-label={
-                          attachedWindow.streaming
-                            ? 'Stop live capture and detach window'
-                            : 'Detach attached window'
-                        }
-                        onClick={handleDetachWindow}
-                        data-composer-control="attach"
-                        data-streaming={attachedWindow.streaming ? 'true' : 'false'}
-                      >
-                        {attachedWindow.streaming && (
-                          // The pulsing dot is the at-a-glance signal that a
-                          // continuous SCStream is running against this
-                          // window. CSS handles the pulse animation; we just
-                          // own the markup. Aria-hidden so screen readers
-                          // get the textual fps/buffer readout below.
-                          <span className="composer-attached-window-pill-dot" aria-hidden="true" />
-                        )}
-                        <span className="composer-attached-window-pill-app">
-                          {attachedWindow.windowMeta.applicationName ||
-                            attachedWindow.windowMeta.bundleID ||
-                            'window'}
-                        </span>
-                        {attachedWindow.streaming ? (
-                          // Monospace fps · frame-count readout. We don't
-                          // surface the title in the streaming variant
-                          // because the dot + readout already occupy the
-                          // visual budget the pill has.
-                          <span className="composer-attached-window-pill-readout">
-                            {attachedWindow.streaming.fps}fps ·{' '}
-                            {attachedWindow.streaming.frameCount}f
-                          </span>
-                        ) : (
-                          attachedWindow.windowMeta.title && (
-                            <span className="composer-attached-window-pill-title">
-                              {attachedWindow.windowMeta.title}
-                            </span>
-                          )
-                        )}
-                        <span className="composer-attached-window-pill-x" aria-hidden="true">
-                          ×
-                        </span>
-                      </button>
-                    ) : null}
+                    {/* 1.0.4-AS3 — the old name-pill (Application × ) is gone;
+                      the attached-window affordance now lives in the
+                      composer telemetry row as a Screen Watch icon
+                      button (see further down). Removing it from this
+                      action-row position avoids visually competing with
+                      the model picker / send button. */}
                     {isCurrentEnsembleChat && currentChat?.ensemble && (
                       <span
                         className="composer-ensemble-mode"
@@ -18588,6 +18573,42 @@ function App(): React.JSX.Element {
                   startedAt={composerRunTimecodeStartedAt}
                   cumulativeBaseMs={cumulativeRunBaseMs}
                 />
+                {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
+                  Pre-AS3 the attached-window UX was an inline pill in the
+                  action row that took ~120px and showed the app name +
+                  title + close glyph. Chris asked for a single themed
+                  SVG icon button here in the telemetry row instead,
+                  with the picker behind a click rather than a visible
+                  name pill. Click toggles attach/detach; the tooltip
+                  surfaces the attached app name; a small pulse dot
+                  signals an active SCStream (kept the at-a-glance
+                  "live capture" cue from the old pill). */}
+                <button
+                  type="button"
+                  className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}`}
+                  onClick={() => {
+                    if (attachedWindow) void handleDetachWindow()
+                    else void handleAttachWindow()
+                  }}
+                  title={
+                    attachedWindow
+                      ? attachedWindow.streaming
+                        ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
+                        : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
+                      : 'Screen Watch — click to pick a window for the AI to see'
+                  }
+                  aria-label={
+                    attachedWindow
+                      ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
+                      : 'Open Screen Watch picker'
+                  }
+                  data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
+                >
+                  <ScreenWatchSymbolIcon />
+                  {attachedWindow?.streaming && (
+                    <span className="composer-screen-watch-button-dot" aria-hidden="true" />
+                  )}
+                </button>
                 {threadTokenTallyLabel && (
                   <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
                     {threadTokenTallyLabel}
