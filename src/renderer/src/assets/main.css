@@ -6281,6 +6281,28 @@ button.sidebar-item {
   color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
 }
 
+/* 1.0.5-EW28 — Anchor the timecodes + Appwatch icon to the left
+ * when there's no token-tally chip pushing things right.
+ *
+ * Chris noticed: on the welcome screen (and on any chat that
+ * hasn't accumulated 1k+ tokens yet), the run timecode +
+ * cumulative timecode + Screen Watch icon would spread across
+ * the full composer width via `justify-content: space-between`.
+ * In an active chat with cost data, the tally chip's
+ * `margin-left: auto` (line 6291) absorbs the slack and pulls
+ * the trio together on the left automatically — so the layout
+ * "self-fixes" once tokens land but reads oddly before then.
+ *
+ * The row already carries `data-has-token-tally="false"` from
+ * the renderer; flipping justify-content based on that attribute
+ * gives the welcome / pre-tokens state the same left-grouped
+ * presentation an active chat has, without changing layout when
+ * the tally is present (the `margin-left: auto` on the tally
+ * itself still wins inside a flex-start row). */
+.composer-telemetry-row[data-has-token-tally="false"] {
+  justify-content: flex-start;
+}
+
 .composer-telemetry-row .composer-run-timecode {
   justify-content: flex-start;
   min-width: 116px;
@@ -17863,17 +17885,41 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 
+/* 1.0.5-EW27 — Satellite "+" button in the Claude shell.
+ *
+ * Chris caught: in both light and dark mode, the Claude shell's
+ * `+` (composer-plus-picker) button rendered as a visible square
+ * container — visible border / background — which broke the
+ * "satellite chrome" aesthetic the rest of the Claude shell
+ * adopted in 1.0.4 (mention overlays, chip strip, etc. are all
+ * naked typography on the composer surface).
+ *
+ * Pre-EW27 the Claude rule already cleared the base
+ * `.composer-image-picker-btn`'s visible border + background, but
+ * the Claude `:hover` rule re-introduced a background fill — and
+ * focus state inherited container styling from the base rule.
+ *
+ * EW27 strips both default and hover container chrome. The "+"
+ * sits as a floating glyph with a hover *color* change only (no
+ * background fill, no border, no transform). Click target stays
+ * at 26x26 via the explicit dimensions so the touch area is
+ * unchanged. `transform: none` defeats the base rule's hover
+ * `translateY(-1px)` so the glyph doesn't bounce. */
 [data-composer-style="claude"] .composer-image-picker-btn {
   width: 26px;
   height: 26px;
   background: transparent;
   border: 0;
-  border-radius: 6px;
-  color: color-mix(in srgb, #ffffff 58%, transparent);
+  border-radius: 0;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+  transform: none;
 }
-[data-composer-style="claude"] .composer-image-picker-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #ffffff 8%, transparent);
-  color: #ffffff;
+[data-composer-style="claude"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="claude"] .composer-image-picker-btn:focus-visible {
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  transform: none;
 }
 
 /* Model picker styled like "Sonnet 4.6 · High" minimal */
