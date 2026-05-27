@@ -120,7 +120,10 @@ import {
   getDefaultEnsembleParticipantConfig,
   resolveEnsembleParticipantSettings
 } from './lib/ensembleProviderDefaults'
-import { rebindWelcomeEnsembleChatToWorkspace } from './lib/ensembleWelcomeWorkspace'
+import {
+  rebindWelcomeEnsembleChatToGlobal,
+  rebindWelcomeEnsembleChatToWorkspace
+} from './lib/ensembleWelcomeWorkspace'
 import { withSessionActivityLedger } from './lib/sessionActivityLedger'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
@@ -8772,15 +8775,28 @@ function App(): React.JSX.Element {
     // who switched to global would land on a Codex single-provider
     // welcome screen — losing their ensemble configuration intent.
     //
-    // Now: if the user was on an ensemble chat, call
-    // `createEnsembleChat()` with NO workspace args so the main
-    // process produces a `scope: 'global'` ensemble chat. We bypass
-    // `handleNewEnsemble()` here because that helper derives the
-    // workspace from `currentWorkspace`, which is still set when
-    // the user clicks "No Workspace" from the workspace browser —
-    // it would create a workspace-bound ensemble instead of the
-    // intended global one.
+    // 1.0.5-EW4 — AQ5 preserved chatKind but still LOST the user's
+    // ensemble setup (participants, roles, models, reasoning) by
+    // creating a brand-new global ensemble chat with defaults. For
+    // the welcome-chat case we now rebind the current chat in
+    // place to `scope: 'global'` + clear workspace fields, keeping
+    // every participant + the ensemble config. The
+    // `rebindWelcomeEnsembleChatToGlobal` helper returns null when
+    // the rebind isn't applicable (non-welcome, non-Ensemble, or
+    // already global), in which case we fall back to the old
+    // create-new path below.
     if (isCurrentEnsembleChat) {
+      const rebound = rebindWelcomeEnsembleChatToGlobal(currentChat, isWelcomeChat)
+      if (rebound) {
+        const chatWithLedger = currentChat
+          ? withSessionActivityLedger(currentChat, rebound)
+          : rebound
+        setCurrentWorkspace(null)
+        currentWorkspaceIdRef.current = null
+        updateChatById(chatWithLedger.appChatId, () => chatWithLedger)
+        await selectGlobalChat(chatWithLedger)
+        return
+      }
       const newChat = await window.api.createEnsembleChat()
       const allChats = await window.api.getChats()
       const mergedChats = allChats.some((chat) => chat.appChatId === newChat.appChatId)
