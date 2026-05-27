@@ -277,6 +277,80 @@ export interface EnsembleRoundParticipantState {
   lastFailureReason?: string
 }
 
+/**
+ * 1.0.5-C1 — Concurrent lane lifecycle. Same set of terminal
+ * states as `EnsembleParticipantStatus`, but scoped to a single
+ * dispatch attempt rather than the participant's overall round
+ * state. A participant can have multiple lifetime lanes within a
+ * round (e.g. cancelled + retried) — the lane id is the stable
+ * key, the participant id groups them.
+ *
+ * `awaiting-approval` is a concurrent-specific status: an
+ * approval gate is open against this lane and the dispatch is
+ * paused until the user resolves it (or another lane's approval
+ * cascade unblocks it).
+ *
+ * `blocked` means a write-intent conflict surfaced from the
+ * per-workspace registry (1.0.5-C2): another lane already holds
+ * a write lock on a resource this lane wants to write to.
+ */
+export type ConcurrentLaneStatus =
+  | 'pending'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'blocked'
+  | 'awaiting-approval'
+
+/**
+ * 1.0.5-C1 — Concurrent lane intent. `none` means the lane is
+ * purely conversational (no tool calls planned). `read` means it
+ * intends to read but not modify. `write` means it intends to
+ * mutate filesystem / external state. The registry uses this to
+ * decide whether to grant or block a write-intent acquisition;
+ * `read` lanes never block each other.
+ *
+ * The intent is a hint, not a contract — the actual approvals +
+ * write-intent registry enforce the underlying safety.
+ */
+export type ConcurrentLaneIntent = 'none' | 'read' | 'write'
+
+/**
+ * 1.0.5-C1 — Concurrent Ensemble lane record. Bookkeeping seam
+ * for multi-writer execution. Persisted on
+ * `EnsembleRoundState.lanes` keyed by `laneId`. Serial dispatch
+ * paths NEVER populate this — they keep using
+ * `activeParticipantId` + `participants[].status` as the source
+ * of truth. Concurrent dispatch (gated behind
+ * `AGBENCH_CONCURRENT_LANES`) populates a lane per dispatched
+ * participant.
+ */
+export interface ConcurrentLane {
+  /** Stable lane id (`lane-${roundId}-${participantId}-${attempt}`). */
+  laneId: string
+  participantId: string
+  runId?: string
+  provider: ProviderId
+  status: ConcurrentLaneStatus
+  /** Hint of what this lane plans to do; informs write-intent acquisition. */
+  intent: ConcurrentLaneIntent
+  startedAt: string
+  endedAt?: string
+  /** Provider-side session id, when the adapter supports session resume. */
+  providerSessionId?: string | null
+  /** Count of approvals open against this lane. Bumped when an approval
+   * registers, decremented on resolve/timeout/cancel. UI uses this to
+   * show "(N pending)" on the lane chip. */
+  approvalsQueued?: number
+  /** When the user (or another orchestrator path) requested cancel.
+   * The lane stays in its current status until the underlying adapter
+   * confirms the cancel; then it transitions to `'cancelled'`. */
+  cancellationRequestedAt?: string
+  /** Last failure or block reason, surfaced in tooltips. */
+  reason?: string
+}
+
 export interface EnsembleRoundState {
   roundId: string
   status: 'running' | 'completed' | 'cancelled' | 'failed'
@@ -287,6 +361,28 @@ export interface EnsembleRoundState {
   orchestrationMode?: EnsembleOrchestrationMode
   continuationHops?: number
   maxContinuationHops?: number
+  /**
+   * 1.0.5-C1 — Concurrent-mode lane records, keyed by `laneId`.
+   * Only populated when the round dispatched in concurrent mode
+   * (`concurrentMode === true` AND the
+   * `AGBENCH_CONCURRENT_LANES` env flag is on). Serial dispatch
+   * leaves this undefined; readers should treat
+   * `participants[].status` as authoritative when `lanes` is
+   * absent or empty.
+   */
+  lanes?: Record<string, ConcurrentLane>
+  /**
+   * 1.0.5-C1 — Round-level concurrent-mode flag. When `true` the
+   * orchestrator dispatches all eligible participants in parallel
+   * lanes; serial-write-conflict pauses fire as the
+   * write-intent registry detects collisions. Default `undefined`
+   * (treated as serial) so existing rounds keep their behaviour.
+   *
+   * Refused when the env gate is off — the orchestrator's
+   * `startRound` rejects with a structured error rather than
+   * silently falling back to serial.
+   */
+  concurrentMode?: boolean
   /**
    * Legacy single-prompt queue (1.0.3 ship). Kept for back-compat
    * with persisted round records — the orchestrator's new path uses
