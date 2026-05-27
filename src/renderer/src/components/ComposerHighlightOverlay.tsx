@@ -81,6 +81,71 @@ export function ComposerHighlightOverlay({
   const overlayRef = useRef<HTMLDivElement>(null)
   const contentRef = useRef<HTMLDivElement>(null)
 
+  /**
+   * 1.0.4-AR1 — listener attachment is its own effect, scoped to
+   * `[textareaRef]`. Previously the scroll+resize listeners were
+   * registered inside the metric-sync effect that re-ran on EVERY
+   * `value` change (every keystroke), tearing down + re-attaching
+   * the listeners between every character. That worked for
+   * mouse-wheel scrolls but the browser's input-driven
+   * auto-scroll-to-caret in `<textarea>` does NOT always fire a
+   * standalone `scroll` event in Chromium — it folds the scroll
+   * adjustment into the same input dispatch, so by the time our
+   * metric-sync effect ran the listener was gone for the duration
+   * of the synchronous teardown / reattach. On long prompts the
+   * overlay ended up perpetually pinned to the top because the
+   * crucial scroll signal slipped between the listener's edges.
+   *
+   * The fix is twofold:
+   *   1. Attach the scroll listener exactly once (per textarea
+   *      ref). It survives every keystroke without churn.
+   *   2. Add a sibling `input` listener that schedules a
+   *      `requestAnimationFrame(syncScroll)` so the next animation
+   *      frame — AFTER the browser has finished its post-input
+   *      auto-scroll — re-reads `textarea.scrollTop` and updates
+   *      the transform. Belt-and-braces with the standalone
+   *      `scroll` listener; either path is enough on its own.
+   *
+   * The metric-sync effect below stays value-dependent because the
+   * content's min-height tracks `textarea.scrollHeight`, which only
+   * changes when the text content changes.
+   */
+  useLayoutEffect(() => {
+    const textarea = textareaRef.current
+    const content = contentRef.current
+    if (!textarea || !content) return
+
+    const syncScroll = (): void => {
+      content.style.transform = composerHighlightScrollTransform(
+        textarea.scrollLeft,
+        textarea.scrollTop
+      )
+    }
+
+    let rafId: number | null = null
+    const scheduleSync = (): void => {
+      if (rafId !== null) return
+      rafId = requestAnimationFrame(() => {
+        rafId = null
+        syncScroll()
+      })
+    }
+
+    syncScroll()
+    textarea.addEventListener('scroll', syncScroll, { passive: true })
+    // Input listener catches the input-driven auto-scroll-to-caret
+    // that Chromium folds into the input dispatch without firing a
+    // separate scroll event. The rAF defers the read until after
+    // the browser has finished any post-input layout adjustments.
+    textarea.addEventListener('input', scheduleSync, { passive: true })
+
+    return () => {
+      textarea.removeEventListener('scroll', syncScroll)
+      textarea.removeEventListener('input', scheduleSync)
+      if (rafId !== null) cancelAnimationFrame(rafId)
+    }
+  }, [textareaRef])
+
   useLayoutEffect(() => {
     const textarea = textareaRef.current
     const overlay = overlayRef.current
@@ -131,17 +196,15 @@ export function ComposerHighlightOverlay({
       content.style.minHeight = `${Math.max(textarea.scrollHeight, textarea.clientHeight)}px`
     }
 
-    const syncScroll = (): void => {
-      content.style.transform = composerHighlightScrollTransform(
-        textarea.scrollLeft,
-        textarea.scrollTop
-      )
-    }
-
-    // Initial sync
+    // Initial style sync + an immediate scroll mirror so the
+    // first paint of a freshly-mounted overlay aligns with whatever
+    // scroll position the textarea is already at (e.g. restoring a
+    // long draft from cache).
     syncStyles()
-    syncScroll()
-    textarea.addEventListener('scroll', syncScroll, { passive: true })
+    content.style.transform = composerHighlightScrollTransform(
+      textarea.scrollLeft,
+      textarea.scrollTop
+    )
 
     // Catch any subsequent style change that affects the textarea's
     // size. `ResizeObserver` fires when content-box / border-box
@@ -154,11 +217,13 @@ export function ComposerHighlightOverlay({
         ? null
         : new ResizeObserver(() => {
             syncStyles()
-            syncScroll()
+            content.style.transform = composerHighlightScrollTransform(
+              textarea.scrollLeft,
+              textarea.scrollTop
+            )
           })
     observer?.observe(textarea)
     return () => {
-      textarea.removeEventListener('scroll', syncScroll)
       observer?.disconnect()
     }
   }, [textareaRef, syncEpoch, value])

@@ -44,4 +44,33 @@ describe('ComposerHighlightOverlay', () => {
     expect(html).toContain('composer-mention-token')
     expect(html).toContain('@Reviewer')
   })
+
+  /*
+   * 1.0.4-AR1 — pure-function coverage for the scroll-sync helper.
+   *
+   * The bug pre-AR1: the listener attachment was hosted inside the
+   * value-dep effect, so every keystroke tore down + re-attached
+   * the scroll listener. Chromium's input-driven
+   * auto-scroll-to-caret inside `<textarea>` does not always emit
+   * a separate `scroll` event — sometimes it folds the scroll
+   * adjustment into the same input dispatch — so on long prompts
+   * the overlay stayed pinned to the top while the textarea below
+   * scrolled.
+   *
+   * The fix splits attachment into a textareaRef-only effect and
+   * adds a sibling `input` listener that schedules
+   * `requestAnimationFrame(syncScroll)`. The transform math
+   * itself stays in this small pure helper, which lets us pin
+   * its behavior here without a DOM. Live-wiring is covered by
+   * the structural snapshot above + the manual smoke test in the
+   * dev app.
+   */
+  it('coerces non-finite scroll offsets (NaN / Infinity) to a no-op transform', () => {
+    expect(composerHighlightScrollTransform(Number.NaN, Number.NaN)).toBe('translate3d(0px, 0px, 0)')
+    expect(composerHighlightScrollTransform(Infinity, -Infinity)).toBe('translate3d(0px, 0px, 0)')
+  })
+
+  it('emits identical-shape transforms for every offset (no fallthrough on large pixels)', () => {
+    expect(composerHighlightScrollTransform(1024, 4096)).toBe('translate3d(-1024px, -4096px, 0)')
+  })
 })
