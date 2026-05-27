@@ -5495,11 +5495,17 @@ button.sidebar-item {
 /* Phase K-followup — Provider mix ribbon. Four-segment horizontal
  * bar under the dashboard header showing the proportional token
  * share of each provider. Width-as-share is the strongest possible
- * visual signal that this is a multi-provider tool. */
+ * visual signal that this is a multi-provider tool.
+ *
+ * 1.0.5-EW44 — Doubled the meter's thickness (4px → 8px,
+ * border-radius 3 → 5) so the gradient is legible at a glance
+ * without the user having to lean in. Segment rounding matched.
+ * Per the user's "make it thicker" ask: the bar was reading as a
+ * decorative hairline; at 8px it reads as a proper status meter. */
 .welcome-usage-provider-ribbon {
   display: flex;
-  height: 4px;
-  border-radius: 3px;
+  height: 8px;
+  border-radius: 5px;
   overflow: hidden;
   margin: 0 0 10px;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--panel-border) 30%, transparent);
@@ -5512,10 +5518,10 @@ button.sidebar-item {
 /* Slight rounded edges on the leftmost and rightmost segments so
  * the ribbon looks like a single pill rather than a tile strip. */
 .welcome-usage-provider-ribbon-seg:first-child {
-  border-radius: 3px 0 0 3px;
+  border-radius: 5px 0 0 5px;
 }
 .welcome-usage-provider-ribbon-seg:last-child {
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 5px 5px 0;
 }
 
 .welcome-usage-heatmap {

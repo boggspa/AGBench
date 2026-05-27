@@ -81,6 +81,30 @@ export interface WelcomeUsageDashboardData {
   activeDays: number
   currentStreak: number
   longestStreak: number
+  /**
+   * 1.0.5-EW44 — Longest single thread/run duration ever recorded
+   * by the user, in milliseconds. Each `UsageRecord.durationMs` is
+   * "auditioned" against the running max via a simple
+   * `Math.max(...lifetimeDurations)` over the unfiltered lifetime
+   * record set — no per-run storage of every duration is needed
+   * beyond what `UsageRecord` already keeps. Always-lifetime (never
+   * range-scoped) so the chip reads as a personal record across
+   * the user's whole history, matching the
+   * Current/Longest-streak semantics.
+   *
+   * Zero when the user has no usage history yet (or no record
+   * carried a positive durationMs).
+   */
+  longestThreadMs: number
+  /**
+   * 1.0.5-EW44 — Cumulative wall-clock time across all threads
+   * ever, in milliseconds. Sum of `UsageRecord.durationMs` over the
+   * unfiltered lifetime record set. Always-lifetime so the chip
+   * keeps growing across sessions; like `longestThreadMs`, the
+   * dashboard surfaces this alongside the streak chips so the
+   * "all-time" subset is visually grouped.
+   */
+  totalWallTimeMs: number
   peakHour: string
   favoriteModel: string
   /**
@@ -145,6 +169,48 @@ const formatHourLabel = (dayKey: string, hour: number): string => {
   const dayLabel = date.toLocaleDateString([], { month: 'short', day: 'numeric' })
   const hourLabel = date.toLocaleTimeString([], { hour: 'numeric' })
   return `${dayLabel} ${hourLabel}`
+}
+
+/**
+ * 1.0.5-EW44 — Compact human-readable duration formatter for the
+ * welcome dashboard stats. The existing `formatDuration` in
+ * `TurnReceiptCard.tsx` caps at minutes ("12m 34s"); for
+ * dashboard metrics that can span hours/days (Longest thread,
+ * Cumulative wall time across a user's whole history) we need a
+ * fuller scale that drops down to days when the value is large.
+ *
+ * Picked to read at a glance — two units max, no decimals, never
+ * showing zero-valued tail units ("3h" not "3h 0m"; "5d" not
+ * "5d 0h").
+ *
+ *   0           → '0s'
+ *   < 1s        → '<1s'      (avoid "0.4s" being mis-read as 0s)
+ *   < 1 min     → '32s'
+ *   < 1 hour    → '12m 34s' or '12m' when seconds round to 0
+ *   < 24 hours  → '3h 12m' or '3h'
+ *   ≥ 24 hours  → '5d 3h' or '5d'
+ *
+ * Exported so the App.tsx stat-chip renderer (and any future
+ * cumulative-time surface) can format consistently.
+ */
+export function formatDashboardDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0s'
+  if (ms < 1000) return '<1s'
+  const totalSeconds = Math.round(ms / 1000)
+  if (totalSeconds < 60) return `${totalSeconds}s`
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) {
+    const seconds = totalSeconds % 60
+    return seconds === 0 ? `${totalMinutes}m` : `${totalMinutes}m ${seconds}s`
+  }
+  const totalHours = Math.floor(totalMinutes / 60)
+  if (totalHours < 24) {
+    const minutes = totalMinutes % 60
+    return minutes === 0 ? `${totalHours}h` : `${totalHours}h ${minutes}m`
+  }
+  const days = Math.floor(totalHours / 24)
+  const hours = totalHours % 24
+  return hours === 0 ? `${days}d` : `${days}d ${hours}h`
 }
 
 const formatUsageDateLabel = (dayKey: string): string => {
@@ -298,10 +364,26 @@ export const buildWelcomeUsageDashboardData = (
   // calendar of activity even when the rest of the dashboard is
   // showing 24h / 7d / 30d.
   const lifetimeActiveDayKeys = new Set<string>()
+  // 1.0.5-EW44 — Longest single-thread duration + cumulative
+  // wall-clock time. Both are lifetime metrics derived from the
+  // existing `UsageRecord.durationMs` field — no new storage
+  // needed. The "longest thread" pass is the gating-principle the
+  // user asked for: every record auditions, the max wins, no
+  // per-run history beyond what's already kept.
+  let longestThreadMs = 0
+  let totalWallTimeMs = 0
   for (const record of records) {
     if (record.usageKind === 'reset_hint') continue
     lifetimeActiveDayKeys.add(dayKeyFromTimestamp(record.timestamp))
+    const duration = Number(record.durationMs)
+    if (Number.isFinite(duration) && duration > 0) {
+      if (duration > longestThreadMs) longestThreadMs = duration
+      totalWallTimeMs += duration
+    }
   }
+  // Re-walk the original lifetime-active-day loop body that EW44
+  // absorbed into the for-loop above. Keep the chat-message
+  // iteration intact (no durationMs there to merge in).
   for (const chat of chats) {
     for (const message of chat.messages || []) {
       const ts = new Date(message.timestamp || '').getTime()
@@ -593,6 +675,8 @@ export const buildWelcomeUsageDashboardData = (
     activeDays: activeDayKeys.size,
     currentStreak,
     longestStreak,
+    longestThreadMs,
+    totalWallTimeMs,
     peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
     favoriteModel,
     favoriteProject,

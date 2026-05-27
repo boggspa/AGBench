@@ -6,6 +6,7 @@ import {
   HEATMAP_DAY_COUNT,
   HEATMAP_HOUR_COUNT,
   buildWelcomeUsageDashboardData,
+  formatDashboardDuration,
   mixProviderColors
 } from './welcomeUsageDashboard'
 
@@ -623,5 +624,136 @@ describe('mixProviderColors', () => {
     const dominantCodex = mixProviderColors({ gemini: 10, codex: 90, claude: 0, kimi: 0 }, palette)
     // color-mix(in srgb, <gemini> 10%, <codex> 90%) → codex weight should appear with a high number.
     expect(dominantCodex).toMatch(/#6366F1 9[0-9]%/)
+  })
+})
+
+describe('formatDashboardDuration (1.0.5-EW44)', () => {
+  // The dashboard's stat chip needs a duration formatter that
+  // scales smoothly from a sub-second tick all the way to a multi-
+  // day cumulative. Verify each tier of the scale + the boundary
+  // behaviour that keeps chips reading cleanly.
+  it('returns 0s for zero / negative / non-finite inputs', () => {
+    expect(formatDashboardDuration(0)).toBe('0s')
+    expect(formatDashboardDuration(-100)).toBe('0s')
+    expect(formatDashboardDuration(Number.NaN)).toBe('0s')
+    expect(formatDashboardDuration(Number.POSITIVE_INFINITY)).toBe('0s')
+  })
+
+  it('emits <1s for sub-second durations (avoids misleading "0s")', () => {
+    expect(formatDashboardDuration(1)).toBe('<1s')
+    expect(formatDashboardDuration(400)).toBe('<1s')
+    expect(formatDashboardDuration(999)).toBe('<1s')
+  })
+
+  it('emits seconds in the [1s, 1m) range', () => {
+    expect(formatDashboardDuration(1000)).toBe('1s')
+    expect(formatDashboardDuration(32 * 1000)).toBe('32s')
+    expect(formatDashboardDuration(59 * 1000)).toBe('59s')
+  })
+
+  it('rolls up to minutes at 60s', () => {
+    expect(formatDashboardDuration(60 * 1000)).toBe('1m')
+  })
+
+  it('emits "Xm Ys" in the [1m, 1h) range, hiding the seconds tail when it would be zero', () => {
+    expect(formatDashboardDuration(12 * 60_000 + 34 * 1000)).toBe('12m 34s')
+    expect(formatDashboardDuration(5 * 60_000)).toBe('5m')
+    expect(formatDashboardDuration(59 * 60_000 + 59 * 1000)).toBe('59m 59s')
+  })
+
+  it('rolls up to hours at 60m', () => {
+    expect(formatDashboardDuration(60 * 60_000)).toBe('1h')
+  })
+
+  it('emits "Xh Ym" in the [1h, 24h) range, hiding the minutes tail when it would be zero', () => {
+    expect(formatDashboardDuration(3 * 3_600_000 + 12 * 60_000)).toBe('3h 12m')
+    expect(formatDashboardDuration(2 * 3_600_000)).toBe('2h')
+    expect(formatDashboardDuration(23 * 3_600_000 + 59 * 60_000)).toBe('23h 59m')
+  })
+
+  it('rolls up to days at 24h', () => {
+    expect(formatDashboardDuration(24 * 3_600_000)).toBe('1d')
+  })
+
+  it('emits "Xd Yh" for multi-day durations, hiding the hours tail when it would be zero', () => {
+    expect(formatDashboardDuration(5 * 86_400_000 + 3 * 3_600_000)).toBe('5d 3h')
+    expect(formatDashboardDuration(7 * 86_400_000)).toBe('7d')
+    // Cumulative-wall-time grows large; verify the formatter handles
+    // a realistic upper bound (≈ a year of continuous use).
+    expect(formatDashboardDuration(365 * 86_400_000)).toBe('365d')
+  })
+})
+
+describe('buildWelcomeUsageDashboardData longest-thread + cumulative-wall-time (1.0.5-EW44)', () => {
+  const NOW = new Date(2026, 4, 15, 14, 30).getTime()
+
+  it('returns zero for both metrics when there are no usage records', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.longestThreadMs).toBe(0)
+    expect(data.totalWallTimeMs).toBe(0)
+  })
+
+  it('picks the maximum durationMs across all records as longestThreadMs', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', timestamp: NOW - 1_000_000, durationMs: 5_000 }),
+      baseRecord({ id: 'r2', timestamp: NOW - 2_000_000, durationMs: 42_000 }),
+      baseRecord({ id: 'r3', timestamp: NOW - 3_000_000, durationMs: 17_000 })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.longestThreadMs).toBe(42_000)
+  })
+
+  it('sums durationMs across all records for totalWallTimeMs', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', timestamp: NOW - 1_000_000, durationMs: 5_000 }),
+      baseRecord({ id: 'r2', timestamp: NOW - 2_000_000, durationMs: 42_000 }),
+      baseRecord({ id: 'r3', timestamp: NOW - 3_000_000, durationMs: 17_000 })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.totalWallTimeMs).toBe(5_000 + 42_000 + 17_000)
+  })
+
+  it('always uses the LIFETIME record set, never the range-scoped subset (matches longest-streak semantics)', () => {
+    // One record well outside the 24h window; if longestThread
+    // were range-scoped it would miss this.
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old-marathon',
+        timestamp: NOW - 30 * 24 * 3_600_000, // 30 days ago
+        durationMs: 10 * 60_000 // 10 minute run
+      }),
+      baseRecord({ id: 'recent-tiny', timestamp: NOW - 60_000, durationMs: 2_000 })
+    ]
+    const data24h = buildWelcomeUsageDashboardData(records, [], '24h', NOW)
+    expect(data24h.longestThreadMs).toBe(10 * 60_000)
+    expect(data24h.totalWallTimeMs).toBe(10 * 60_000 + 2_000)
+  })
+
+  it('ignores reset_hint records', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', durationMs: 5_000 }),
+      baseRecord({
+        id: 'reset',
+        usageKind: 'reset_hint',
+        durationMs: 999_999 // would dominate if not filtered
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.longestThreadMs).toBe(5_000)
+    expect(data.totalWallTimeMs).toBe(5_000)
+  })
+
+  it('skips records with missing / non-finite / non-positive durationMs', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', durationMs: 5_000 }),
+      baseRecord({ id: 'r2', durationMs: 0 }),
+      baseRecord({ id: 'r3', durationMs: Number.NaN as unknown as number }),
+      baseRecord({ id: 'r4', durationMs: -100 as unknown as number })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.longestThreadMs).toBe(5_000)
+    // Only the valid 5_000ms contributes — invalid entries don't
+    // poison the sum with NaN or shrink it via negative values.
+    expect(data.totalWallTimeMs).toBe(5_000)
   })
 })

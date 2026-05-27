@@ -207,6 +207,7 @@ import {
 import {
   buildWelcomeUsageDashboardData,
   formatCompactUsageNumber,
+  formatDashboardDuration,
   mixProviderColors,
   type WelcomeUsageDashboardData,
   type WelcomeUsageTab
@@ -2323,6 +2324,18 @@ function WelcomeUsageDashboard({
   const denseStatItems = [
     { label: 'Current streak', value: `${data.currentStreak || 0}d` },
     { label: 'Longest streak', value: `${data.longestStreak || 0}d` },
+    /*
+      1.0.5-EW44 — Longest single thread + cumulative wall-clock
+      time. Both lifetime metrics (never range-scoped) so they
+      sit alongside the streak chips. Derived from existing
+      `UsageRecord.durationMs` via Math.max + sum in
+      `buildWelcomeUsageDashboardData`; no new persisted state.
+      `formatDashboardDuration` scales s → m → h → d so the chip
+      reads cleanly across the full range from a 30-second one-
+      shot to a multi-day cumulative.
+    */
+    { label: 'Longest thread', value: formatDashboardDuration(data.longestThreadMs) },
+    { label: 'Cumulative wall time', value: formatDashboardDuration(data.totalWallTimeMs) },
     { label: 'Peak hour', value: data.peakHour },
     { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
     { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
