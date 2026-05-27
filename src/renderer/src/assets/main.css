@@ -325,6 +325,64 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+/*
+ * 1.0.5-SB5 — Drag-and-drop pin affordances.
+ *
+ * - `[data-dragging="true"]` on the chat tile being dragged
+ *   dims + rotates slightly so the user has feedback the
+ *   pointer is carrying a payload.
+ * - `[data-pin-drop="active"]` on the Pinned section
+ *   container (or the empty-state placeholder) glows in the
+ *   accent colour so the drop target is unmistakable.
+ * - `.sidebar-pin-drop-placeholder` is the empty-state hint
+ *   that surfaces above Recents when the Pinned section has
+ *   no entries yet and a non-pinned chat is being dragged.
+ */
+.sidebar-recents-item[data-dragging='true'],
+.sidebar-ensemble-item[data-dragging='true'],
+.sidebar-chat-item[data-dragging='true'] {
+  opacity: 0.55;
+  transform: rotate(-1deg);
+  transition:
+    opacity 80ms ease-out,
+    transform 80ms ease-out;
+}
+.sidebar-pinned-section[data-pin-drop='active'] {
+  outline: 2px dashed var(--accent, color-mix(in srgb, var(--text-primary) 50%, transparent));
+  outline-offset: 4px;
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--accent, var(--text-primary)) 6%, transparent);
+}
+.sidebar-pin-drop-placeholder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 14px var(--space-md);
+  margin-bottom: var(--space-sm);
+  border: 2px dashed color-mix(in srgb, var(--text-primary) 28%, transparent);
+  border-radius: var(--radius-md, 10px);
+  background: color-mix(in srgb, var(--text-primary) 3%, transparent);
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+  font-size: var(--font-size-xs);
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out,
+    color 120ms ease-out;
+}
+.sidebar-pin-drop-placeholder[data-pin-drop='active'] {
+  border-color: var(--accent, var(--text-primary));
+  background: color-mix(in srgb, var(--accent, var(--text-primary)) 10%, transparent);
+  color: var(--text-primary);
+}
+.sidebar-pin-drop-placeholder-glyph {
+  font-size: 1.05em;
+  line-height: 1;
+  color: color-mix(in srgb, var(--accent, var(--text-primary)) 80%, transparent);
+}
+.sidebar-pin-drop-placeholder-copy {
+  flex: 1;
+}
+
 .sidebar-pinned-list,
 .sidebar-recents-list,
 .sidebar-active-runs-list {

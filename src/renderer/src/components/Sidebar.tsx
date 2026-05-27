@@ -735,6 +735,22 @@ export function Sidebar({
 }: SidebarProps) {
   const [hoveredWorkspace, setHoveredWorkspace] = useState<string | null>(null)
   const [newMenuOpen, setNewMenuOpen] = useState(false)
+  /*
+   * 1.0.5-SB5 — Drag-and-drop pinning state. `draggedChatId`
+   * carries the id of the chat currently being dragged so the
+   * Pinned section + its empty-state drop hint know whether to
+   * render. `pinDropActive` flips true when the cursor crosses
+   * the Pinned drop target so the section gets a visual
+   * highlight (CSS `[data-pin-drop="active"]`). Both reset on
+   * `dragend` regardless of whether the drop succeeded.
+   *
+   * The custom MIME type prevents accidental triggers from
+   * external drags (image files into the sidebar etc.) — only
+   * payloads carrying `application/x-agbench-chat-id` count as
+   * a sidebar drag.
+   */
+  const [draggedChatId, setDraggedChatId] = useState<string | null>(null)
+  const [pinDropActive, setPinDropActive] = useState(false)
   // 1.0.3 sidebar rename — single source of "which chat is being
   // edited right now". Helper component reads + writes via the start /
   // commit / cancel callbacks below. Null when nothing is being
@@ -840,14 +856,23 @@ export function Sidebar({
     () => workspaces.filter((workspace) => workspace.pinned === true),
     [workspaces]
   )
+  /*
+   * 1.0.5-SB5 — Pinned chats now include Ensemble chats. Pre-SB5
+   * `pinnedChats` filtered from `regularChats` (which excludes
+   * chatKind === 'ensemble'), so pinning an Ensemble via the
+   * overflow menu set the flag but the chat never surfaced in
+   * the Pinned section. Lift the filter to the full chat list +
+   * subtract pinned ensembles from the Ensembles section below
+   * so they don't render twice.
+   */
   const pinnedChats = useMemo(
-    () => regularChats.filter((chat) => chat.pinned === true && !chat.archived),
-    [regularChats]
+    () => chats.filter((chat) => chat.pinned === true && !chat.archived),
+    [chats]
   )
   const recentChats = useMemo(() => selectRecentChats(regularChats, { limit: 5 }), [regularChats])
   const visibleEnsembleChats = isSidebarSearchActive
-    ? ensembleChats.filter((chat) => chatMatchesSearch(chat, sidebarSearchQuery))
-    : ensembleChats
+    ? ensembleChats.filter((chat) => !chat.pinned && chatMatchesSearch(chat, sidebarSearchQuery))
+    : ensembleChats.filter((chat) => !chat.pinned)
 
   const visiblePinnedWorkspaces = isSidebarSearchActive
     ? pinnedWorkspaces.filter((workspace) => workspaceMatchesSearch(workspace, sidebarSearchQuery))
@@ -865,6 +890,128 @@ export function Sidebar({
   // (Pinned / Recents / Workspace-expanded / Global sections). All
   // affordances now live in the per-tile three-dots overflow menu,
   // wired via `buildChatMenuItems` / `buildWorkspaceMenuItems`.
+
+  /*
+   * 1.0.5-SB5 — Drag-and-drop pinning. Returns the prop bag a
+   * chat tile spreads onto its outer element to participate in
+   * the drag interaction. Disabled (returns empty) when the
+   * chat is currently being renamed or `onTogglePinChat` isn't
+   * wired — protects the rename input from accidentally
+   * starting a drag, and skips DnD entirely on read-only views.
+   *
+   * Sets the custom MIME type `application/x-agbench-chat-id`
+   * with the chat's appChatId so the drop handler can read it
+   * back. Also sets `text/plain` to the chat title as a
+   * courtesy for external drag-receivers (e.g. dragging into a
+   * text editor pastes the title); the drop logic ignores
+   * text/plain.
+   */
+  const getChatTileDragProps = (
+    chat: ChatRecord
+  ): {
+    draggable: boolean
+    onDragStart?: (event: React.DragEvent<HTMLElement>) => void
+    onDragEnd?: () => void
+    'data-dragging'?: 'true' | undefined
+  } => {
+    // Skip if pin handler isn't wired, the chat is currently
+    // being renamed, OR the chat is already pinned — pinned
+    // chats have no useful drag-to-pin gesture (drop on Pinned
+    // would be a no-op; drop reordering is future work).
+    if (!onTogglePinChat || editingChatId === chat.appChatId || chat.pinned) {
+      return { draggable: false }
+    }
+    return {
+      draggable: true,
+      onDragStart: (event) => {
+        event.dataTransfer.effectAllowed = 'move'
+        event.dataTransfer.setData('application/x-agbench-chat-id', chat.appChatId)
+        event.dataTransfer.setData('text/plain', chat.title)
+        setDraggedChatId(chat.appChatId)
+      },
+      onDragEnd: () => {
+        setDraggedChatId(null)
+        setPinDropActive(false)
+      },
+      'data-dragging': draggedChatId === chat.appChatId ? 'true' : undefined
+    }
+  }
+
+  /*
+   * 1.0.5-SB5 — Drop-target prop bag for the Pinned section
+   * container (or the empty-state placeholder when the section
+   * has no entries yet). `dragOver` must `preventDefault()` to
+   * accept the drop; the visual feedback flips on/off via
+   * `pinDropActive`. The drop itself reads the chat id from
+   * the dataTransfer + calls `onTogglePinChat` ONLY when the
+   * chat isn't already pinned (drop-to-unpin would be
+   * surprising; users unpin via the menu).
+   */
+  const pinDropProps = {
+    onDragOver: (event: React.DragEvent<HTMLElement>) => {
+      if (!onTogglePinChat) return
+      // Only accept our custom MIME type — ignores arbitrary
+      // external drags. `types` is the API for sniffing
+      // dataTransfer at dragOver time (you can't read `getData`
+      // mid-drag for security reasons).
+      if (!event.dataTransfer.types.includes('application/x-agbench-chat-id')) return
+      event.preventDefault()
+      event.dataTransfer.dropEffect = 'move'
+      if (!pinDropActive) setPinDropActive(true)
+    },
+    onDragEnter: (event: React.DragEvent<HTMLElement>) => {
+      if (!onTogglePinChat) return
+      if (!event.dataTransfer.types.includes('application/x-agbench-chat-id')) return
+      setPinDropActive(true)
+    },
+    onDragLeave: (event: React.DragEvent<HTMLElement>) => {
+      // dragLeave fires when crossing child boundaries inside
+      // the drop target — that's a false negative for
+      // "actually left the drop zone". Only clear when the
+      // pointer leaves the container's bounding rect entirely.
+      const rect = event.currentTarget.getBoundingClientRect()
+      const { clientX, clientY } = event
+      if (
+        clientX < rect.left ||
+        clientX > rect.right ||
+        clientY < rect.top ||
+        clientY > rect.bottom
+      ) {
+        setPinDropActive(false)
+      }
+    },
+    onDrop: (event: React.DragEvent<HTMLElement>) => {
+      if (!onTogglePinChat) return
+      const chatId = event.dataTransfer.getData('application/x-agbench-chat-id')
+      if (!chatId) return
+      event.preventDefault()
+      const chat = chats.find((c) => c.appChatId === chatId)
+      // Skip if chat is gone OR already pinned — drop-to-pin
+      // shouldn't toggle pinned-state to unpinned.
+      if (chat && !chat.pinned) {
+        onTogglePinChat(chatId)
+      }
+      setDraggedChatId(null)
+      setPinDropActive(false)
+    },
+    'data-pin-drop': pinDropActive ? 'active' : undefined
+  }
+
+  /*
+   * 1.0.5-SB5 — Whether to show the "Pin drop zone" empty-state
+   * hint above Recents. Surfaces only when:
+   *   1. A drag is in flight
+   *   2. The chat being dragged isn't already pinned
+   *   3. The Pinned section is currently empty (no workspaces +
+   *      no chats) — when it's non-empty the existing section
+   *      itself is the drop target.
+   */
+  const showPinDropPlaceholder =
+    Boolean(onTogglePinChat) &&
+    draggedChatId !== null &&
+    visiblePinnedWorkspaces.length === 0 &&
+    visiblePinnedChats.length === 0 &&
+    chats.find((c) => c.appChatId === draggedChatId)?.pinned !== true
 
   const renderProviderDot = (provider: ProviderId | undefined): ReactNode => {
     const providerKey = provider || 'gemini'
@@ -1378,7 +1525,7 @@ export function Sidebar({
         </div>
 
         {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
-          <div className="sidebar-pinned-section">
+          <div className="sidebar-pinned-section" {...pinDropProps}>
             <div className="sidebar-section-header">
               <button
                 type="button"
@@ -1457,6 +1604,24 @@ export function Sidebar({
           </div>
         )}
 
+        {/*
+          1.0.5-SB5 — Empty-state drop placeholder. Surfaces only
+          while a non-pinned chat is being dragged AND the
+          Pinned section is currently empty. Without this, a
+          fresh user with nothing pinned has no visible drop
+          target and discovers drag-to-pin only by accident.
+        */}
+        {showPinDropPlaceholder && (
+          <div className="sidebar-pin-drop-placeholder" {...pinDropProps} role="region" aria-label="Drop here to pin">
+            <span className="sidebar-pin-drop-placeholder-glyph" aria-hidden>
+              ☆
+            </span>
+            <span className="sidebar-pin-drop-placeholder-copy">
+              Drop here to pin
+            </span>
+          </div>
+        )}
+
         {visibleRecentChats.length > 0 && (
           <div className="sidebar-recents-section">
             <div className="sidebar-section-header">
@@ -1490,6 +1655,7 @@ export function Sidebar({
                       }
                     }}
                     title={chat.title}
+                    {...getChatTileDragProps(chat)}
                   >
                     {renderProviderDot(chat.provider)}
                     <SidebarChatTitleEditable
@@ -1582,6 +1748,7 @@ export function Sidebar({
                     key={`ensemble-${chat.appChatId}`}
                     className={`sidebar-item sidebar-chat-item sidebar-ensemble-item ${currentChat?.appChatId === chat.appChatId ? 'active' : ''} ${isRunning ? 'running' : ''}`}
                     onClick={() => onSelectChat(chat)}
+                    {...getChatTileDragProps(chat)}
                   >
                     <span className="sidebar-chat-copy" title={chat.title}>
                       <span className="sidebar-chat-title-line">
