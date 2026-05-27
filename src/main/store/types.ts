@@ -299,6 +299,20 @@ export interface EnsembleRoundState {
   participants: EnsembleRoundParticipantState[]
 }
 
+export type SessionActivityChangedBy = 'user' | 'orchestrator' | 'system'
+export type SessionActivityScope = 'session' | 'round' | 'participant'
+
+export interface SessionActivityLedgerEntry {
+  id: string
+  timestamp: string
+  changedBy: SessionActivityChangedBy
+  scope: SessionActivityScope
+  target?: string
+  oldValue?: string | null
+  newValue?: string | null
+  reason?: string
+}
+
 export interface EnsembleRunIdentity {
   roundId: string
   participantId: string
@@ -313,6 +327,7 @@ export interface EnsembleConfig {
   orchestrationMode?: EnsembleOrchestrationMode
   maxContinuationHops?: number
   participants: EnsembleParticipant[]
+  sessionActivityLedger?: SessionActivityLedgerEntry[]
   activeRound?: EnsembleRoundState
   updatedAt?: string
   /**

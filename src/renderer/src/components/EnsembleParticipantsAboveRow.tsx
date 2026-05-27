@@ -38,6 +38,7 @@ import type {
   ProviderId
 } from '../../../main/store/types'
 import { getDefaultEnsembleParticipantConfig } from '../lib/ensembleProviderDefaults'
+import { withSessionActivityLedger } from '../lib/sessionActivityLedger'
 import { getProviderName, ProviderBadgeIcon } from './Sidebar'
 
 const MAX_ENSEMBLE_PARTICIPANTS = 6
@@ -230,7 +231,7 @@ export function EnsembleParticipantsAboveRow({
   }
 
   const persist = (nextParticipants: EnsembleParticipant[]): void => {
-    onChatChange({
+    const nextChat: ChatRecord = {
       ...chat,
       ensemble: {
         ...chat.ensemble!,
@@ -238,7 +239,8 @@ export function EnsembleParticipantsAboveRow({
         participants: nextParticipants.map((p, idx) => ({ ...p, order: idx + 1 })),
         updatedAt: new Date().toISOString()
       }
-    })
+    }
+    onChatChange(withSessionActivityLedger(chat, nextChat))
   }
 
   const addParticipant = (): void => {

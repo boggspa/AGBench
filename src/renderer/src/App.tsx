@@ -114,6 +114,7 @@ import {
   resolveEnsembleParticipantSettings
 } from './lib/ensembleProviderDefaults'
 import { rebindWelcomeEnsembleChatToWorkspace } from './lib/ensembleWelcomeWorkspace'
+import { withSessionActivityLedger } from './lib/sessionActivityLedger'
 // EnsembleSetupSheet retired in 1.0.3 — the bottom-pinned modal had a
 // z-index race with the picker popovers and the form felt foreign. All
 // per-participant config now lives inline in the composer above-row
@@ -7781,20 +7782,23 @@ function App(): React.JSX.Element {
       await handleSelectExistingWorkspace(ws)
       return
     }
+    const chatWithLedger = currentChat
+      ? withSessionActivityLedger(currentChat, rebound)
+      : rebound
 
     setCurrentWorkspace(ws)
     currentWorkspaceIdRef.current = ws.id
-    updateChatById(rebound.appChatId, () => rebound)
-    await refreshUsageSummary(ws.id, getChatProvider(rebound))
+    updateChatById(chatWithLedger.appChatId, () => chatWithLedger)
+    await refreshUsageSummary(ws.id, getChatProvider(chatWithLedger))
     setDiff(null)
     setRunDiff(null)
     setRunCompleteNotice(null)
-    setRawLogs(rawLogsByChatIdRef.current.get(rebound.appChatId) || [])
-    hydrateThreadRawLogsFromEvents(rebound.appChatId)
+    setRawLogs(rawLogsByChatIdRef.current.get(chatWithLedger.appChatId) || [])
+    hydrateThreadRawLogsFromEvents(chatWithLedger.appChatId)
     setShowFallbackUX(false)
     setSessionTrust(false)
     setIsThinking(runningChatIds.has(rebound.appChatId))
-    void refreshProviderMetadata(getChatProvider(rebound), ws.path)
+    void refreshProviderMetadata(getChatProvider(chatWithLedger), ws.path)
     const tr = await window.api.checkTrust(ws.path)
     setTrustResult(tr)
   }
@@ -13654,7 +13658,7 @@ function App(): React.JSX.Element {
   const updateSelectedParticipant = useCallback(
     (patch: Partial<EnsembleParticipant>) => {
       if (!isCurrentEnsembleChat || !selectedParticipant || !currentChat?.ensemble) return
-      const nextChat: ChatRecord = {
+      const patchedChat: ChatRecord = {
         ...currentChat,
         ensemble: {
           ...currentChat.ensemble,
@@ -13664,6 +13668,7 @@ function App(): React.JSX.Element {
           updatedAt: new Date().toISOString()
         }
       }
+      const nextChat = withSessionActivityLedger(currentChat, patchedChat)
       chatByIdRef.current.set(nextChat.appChatId, nextChat)
       setCurrentChat((prev) =>
         prev?.appChatId === nextChat.appChatId ? nextChat : prev
@@ -13678,16 +13683,19 @@ function App(): React.JSX.Element {
   const updateCurrentEnsembleOrchestrationMode = useCallback(
     (mode: EnsembleOrchestrationMode) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
-      updateChatById(currentChat.appChatId, (source) => ({
-        ...source,
-        ensemble: {
-          ...source.ensemble!,
-          orchestrationMode: mode,
-          maxParticipants: 6,
-          maxContinuationHops: source.ensemble!.maxContinuationHops || 6,
-          updatedAt: new Date().toISOString()
+      updateChatById(currentChat.appChatId, (source) => {
+        const patched: ChatRecord = {
+          ...source,
+          ensemble: {
+            ...source.ensemble!,
+            orchestrationMode: mode,
+            maxParticipants: 6,
+            maxContinuationHops: source.ensemble!.maxContinuationHops || 6,
+            updatedAt: new Date().toISOString()
+          }
         }
-      }))
+        return withSessionActivityLedger(source, patched)
+      })
     },
     [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble]
   )
@@ -13703,14 +13711,17 @@ function App(): React.JSX.Element {
   const handleConfirmWorkSession = useCallback(
     ({ config, initialPrompt }: WorkSessionSetupConfirmInput) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
-      updateChatById(currentChat.appChatId, (source) => ({
-        ...source,
-        ensemble: {
-          ...source.ensemble!,
-          workSession: config,
-          updatedAt: new Date().toISOString()
+      updateChatById(currentChat.appChatId, (source) => {
+        const patched: ChatRecord = {
+          ...source,
+          ensemble: {
+            ...source.ensemble!,
+            workSession: config,
+            updatedAt: new Date().toISOString()
+          }
         }
-      }))
+        return withSessionActivityLedger(source, patched)
+      })
       setShowWorkSessionSheet(false)
       // Pre-fill the composer with the initial prompt so the user
       // can scan it once before launching. Setting via setPrompt
@@ -13733,7 +13744,7 @@ function App(): React.JSX.Element {
     updateChatById(currentChat.appChatId, (source) => {
       const session = source.ensemble?.workSession
       if (!session) return source
-      return {
+      const patched: ChatRecord = {
         ...source,
         ensemble: {
           ...source.ensemble!,
@@ -13746,6 +13757,7 @@ function App(): React.JSX.Element {
           updatedAt: new Date().toISOString()
         }
       }
+      return withSessionActivityLedger(source, patched)
     })
   }, [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble?.workSession, updateChatById])
   // Ensemble round-complete notice — fires once when the round

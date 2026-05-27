@@ -147,6 +147,34 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).not.toContain('multiple participants from the same provider')
   })
 
+  it('includes orchestrator-written session activity events in the round header', () => {
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: {
+        ...ensemble,
+        sessionActivityLedger: [
+          {
+            id: 'event-1',
+            timestamp: '2026-05-27T20:04:00.000Z',
+            changedBy: 'user',
+            scope: 'participant',
+            target: 'claude',
+            oldValue: 'Claude / Explorer',
+            newValue: 'Claude / Architect',
+            reason: 'Participant role/name changed.'
+          }
+        ]
+      },
+      participant: ensemble.participants[0],
+      currentPrompt: 'Continue.',
+      roundId: 'round-1'
+    })
+
+    expect(prompt).toContain('Session events:')
+    expect(prompt).toContain('User claude: Claude / Explorer -> Claude / Architect')
+    expect(prompt).toContain('Participant role/name changed.')
+  })
+
   it('emits a Round subject stanza naming the active workspace', () => {
     // 1.0.4 — Claude/Explorer's introspective feedback after picking
     // up AGBench-meta context instead of the bound workspace. The

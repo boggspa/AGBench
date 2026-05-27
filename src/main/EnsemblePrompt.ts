@@ -145,6 +145,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
   const selfReflective = Boolean(input.config.selfReflective)
   const workspaceStanza = formatWorkspaceStanza(input.chat, selfReflective)
+  const sessionEventsStanza = formatSessionEventsStanza(input.config)
   const transcript = buildTaggedTranscript(input.chat.messages || [], input.chatContextTurns || 8)
 
   return [
@@ -158,6 +159,7 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
         : 'Turn-bound. Each participant speaks at most once; @mentions and ensemble_yield(target) only reorder participants who have not spoken yet.'
     }`,
     workspaceStanza,
+    ...(sessionEventsStanza ? [sessionEventsStanza] : []),
     '',
     'Participant roster:',
     roster || '- No other enabled participants.',
@@ -261,6 +263,40 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '',
     `Respond now as [${participantLabel}].`
   ].join('\n')
+}
+
+function formatSessionEventsStanza(config: EnsembleConfig): string {
+  const events = (config.sessionActivityLedger || []).slice(-8)
+  if (events.length === 0) return ''
+  return [
+    'Session events:',
+    ...events.map((event) => {
+      const time = formatSessionEventTime(event.timestamp)
+      const actor = titleCase(event.changedBy)
+      const target = event.target ? `${sanitizeText(event.target)}: ` : ''
+      const transition =
+        event.oldValue !== undefined || event.newValue !== undefined
+          ? `${formatSessionValue(event.oldValue)} -> ${formatSessionValue(event.newValue)}`
+          : ''
+      const reason = event.reason ? ` (${sanitizeText(event.reason)})` : ''
+      return `  ${time} - ${actor} ${target}${transition}${reason}`.trimEnd()
+    })
+  ].join('\n')
+}
+
+function formatSessionEventTime(timestamp: string): string {
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return 'time unknown'
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
+function formatSessionValue(value: string | null | undefined): string {
+  const text = sanitizeText(value)
+  return text || 'unset'
+}
+
+function titleCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function buildTaggedTranscript(messages: ChatMessage[], contextTurns: number): string {
