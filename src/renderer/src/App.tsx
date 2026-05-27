@@ -1,5 +1,6 @@
 import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
@@ -4699,11 +4700,12 @@ interface WelcomeWorkspacePickerProps {
 
 /**
  * Number of most-recent workspaces to surface as inline chips before
- * the rest spill into the popover. Five feels right — enough to cover
- * the typical 2-3 active projects + a handful of recent ones, but not
- * so many that the welcome hero stretches past the composer width.
+ * the rest spill into the popover. Four chips comfortably cover the
+ * typical 2-3 active projects + 1 recent without crowding the welcome
+ * hero (was 5 in 1.0.3-1.0.4 — slightly too wide for the welcome
+ * surface, reduced in 1.0.5).
  */
-const WELCOME_WORKSPACE_INLINE_LIMIT = 5
+const WELCOME_WORKSPACE_INLINE_LIMIT = 4
 
 function WelcomeWorkspacePicker({
   workspaces,
@@ -4717,6 +4719,17 @@ function WelcomeWorkspacePicker({
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
+  // 1.0.5-W1 — Position state for the portaled popover. The pre-1.0.5
+  // version rendered the popover as an absolutely-positioned child of
+  // the welcome-workspace-picker, which got trapped beneath the
+  // composer-area's z-index: 4 stacking context (the composer above-
+  // row + chip strip sit above the welcome). Portalling through
+  // document.body fully escapes the welcome's stacking context;
+  // we just need to compute fixed-position coordinates from the
+  // trigger's bounding rect on open + window resize.
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
+    null
+  )
 
   // Close on outside click + Escape, so the popover behaves like every
   // other dropdown in the app (slash menu, mention picker, etc.).
@@ -4740,6 +4753,37 @@ function WelcomeWorkspacePicker({
     return () => {
       document.removeEventListener('mousedown', handlePointerDown)
       document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [popoverOpen])
+
+  // 1.0.5-W1 — Compute popover position from the trigger's bounding
+  // rect on open + on window resize. The popover sits below the
+  // trigger, centered horizontally on it, clamped to the viewport
+  // edges so it stays on-screen on narrow windows.
+  useLayoutEffect(() => {
+    if (!popoverOpen) {
+      setPopoverPosition(null)
+      return
+    }
+    const computePosition = (): void => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+      const rect = trigger.getBoundingClientRect()
+      const popoverWidth = 320 // approx; matches the popover's max-width hint
+      const margin = 8
+      const idealLeft = rect.left + rect.width / 2 - popoverWidth / 2
+      const clampedLeft = Math.max(
+        margin,
+        Math.min(window.innerWidth - popoverWidth - margin, idealLeft)
+      )
+      setPopoverPosition({ left: clampedLeft, top: rect.bottom + 6 })
+    }
+    computePosition()
+    window.addEventListener('resize', computePosition)
+    window.addEventListener('scroll', computePosition, true)
+    return () => {
+      window.removeEventListener('resize', computePosition)
+      window.removeEventListener('scroll', computePosition, true)
     }
   }, [popoverOpen])
 
@@ -4787,11 +4831,27 @@ function WelcomeWorkspacePicker({
         >
           Browse…
         </button>
-        {popoverOpen && (
+      </div>
+      {popoverOpen &&
+        popoverPosition &&
+        createPortal(
+          // 1.0.5-W1 — Render through document.body so the popover
+          // escapes the welcome screen's stacking context (the
+          // composer above-row + chip strip sit at z-index 4 from the
+          // welcome's perspective and would otherwise paint over this).
+          // Fixed positioning + computed coords keep the popover
+          // anchored to the trigger; computePosition re-fires on
+          // window resize / scroll.
           <div
             ref={popoverRef}
-            className="welcome-workspace-popover"
+            className="welcome-workspace-popover welcome-workspace-popover--portaled"
             role="menu"
+            style={{
+              position: 'fixed',
+              left: `${popoverPosition.left}px`,
+              top: `${popoverPosition.top}px`,
+              transform: 'none'
+            }}
           >
             {overflow.length > 0 && (
               <div className="welcome-workspace-popover-section">
@@ -4847,9 +4907,9 @@ function WelcomeWorkspacePicker({
                 </span>
               </button>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
-      </div>
     </div>
   )
 }

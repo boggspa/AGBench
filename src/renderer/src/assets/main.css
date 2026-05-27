@@ -4482,12 +4482,18 @@ button.sidebar-item {
  * frosted near-white in light themes via the `color-mix` against
  * `--panel-elevated-bg` / `--surface-1` tokens. */
 .welcome-workspace-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 50%;
-  transform: translateX(-50%);
+  /* 1.0.5-W1 — Portaled through document.body. Pre-1.0.5 this lived
+   * as an absolutely-positioned child of the welcome picker and got
+   * trapped beneath the composer above-row + chip strip's z-index 4
+   * stacking context. Now position: fixed + coordinates computed
+   * from the trigger's bounding rect, painted at the root of the
+   * DOM. The z-index 9999 keeps us above other portaled popovers
+   * (slash menu, mention picker, etc.) when both happen to be open
+   * — the welcome popover is a navigational action that should
+   * always be reachable. */
+  position: fixed;
   min-width: 240px;
-  max-width: 380px;
+  max-width: 320px;
   padding: 6px;
   display: flex;
   flex-direction: column;
@@ -4500,7 +4506,7 @@ button.sidebar-item {
     inset 0 1px 0 color-mix(in srgb, var(--text-primary) 6%, transparent);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
-  z-index: 1000;
+  z-index: 9999;
   color: var(--text-primary);
   font-size: calc(var(--font-size-xs) + 1px);
   isolation: isolate;
