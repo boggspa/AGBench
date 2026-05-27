@@ -36,8 +36,19 @@ describe('buildPendingSubThreadResultContextBlock', () => {
     expect(block).toContain('Pending sub-thread result context')
     expect(block).toContain('untrusted child-agent output')
     expect(block).toContain('Result from Codex sub-thread "Build check"')
-    expect(block).toContain('<subthread_result id="sub-1">')
+    expect(block).toContain('<subthread_result id="sub-1" encoding="markdown-fence">')
     expect(block).toContain('All tests passed.')
+  })
+
+  it('wraps nested child-agent fences in a promoted opaque markdown block', () => {
+    const nested = ['Notes:', '```json', '{"ok": true}', '```'].join('\n')
+    const block = buildPendingSubThreadResultContextBlock(
+      [message({ role: 'assistant', content: 'Delegated.' }), subThreadReturn(nested)],
+      'continue'
+    )
+
+    expect(block).toContain('```` markdown')
+    expect(block).toContain(nested)
   })
 
   it('does not repeat results already followed by an assistant reply', () => {

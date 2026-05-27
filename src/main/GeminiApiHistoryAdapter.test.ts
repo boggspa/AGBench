@@ -146,7 +146,24 @@ describe('chatMessagesToGeminiContents', () => {
     expect(out[1].role).toBe('user')
     expect(textOf(out[1])).toContain('AGBench sub-thread result "Build check"')
     expect(textOf(out[1])).toContain('untrusted child-agent output')
+    expect(textOf(out[1])).toContain('<subthread_result id="sub-1" encoding="markdown-fence">')
     expect(textOf(out[1])).toContain('Sub-thread says tests passed.')
+  })
+
+  it('replays sub-thread returns with promoted fences for nested markdown blocks', () => {
+    const nested = ['```bash', 'npm test', '```'].join('\n')
+    const out = chatMessagesToGeminiContents([
+      msg('tool', nested, {
+        metadata: {
+          kind: 'subThreadReturn',
+          subThreadId: 'sub-1',
+          subThreadTitle: 'Build check'
+        }
+      })
+    ])
+
+    expect(textOf(out[0])).toContain('```` markdown')
+    expect(textOf(out[0])).toContain(nested)
   })
 
   it('skips error messages', () => {

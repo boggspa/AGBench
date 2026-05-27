@@ -1,5 +1,6 @@
 import type { ChatMessage, ProviderId } from './store/types'
 import { AGENTBENCH_MCP_TOOL_LIST } from './AgentbenchMcpTools'
+import { truncateOpaqueMarkdown, wrapOpaqueMarkdownBlock } from './MarkdownFenceSerializer'
 
 /**
  * Prompt-composition utilities (Phase B3 step 1).
@@ -70,15 +71,22 @@ function providerDisplayName(provider: unknown): string {
 
 function truncatePendingSubThreadResult(value: string): string {
   if (value.length <= MAX_PENDING_SUBTHREAD_RESULT_CHARS) return value
-  return (
-    value.slice(0, MAX_PENDING_SUBTHREAD_RESULT_CHARS) +
-    `\n[truncated ${value.length - MAX_PENDING_SUBTHREAD_RESULT_CHARS} chars]`
-  )
+  return truncateOpaqueMarkdown(value, MAX_PENDING_SUBTHREAD_RESULT_CHARS, {
+    marker: `[truncated ${value.length - MAX_PENDING_SUBTHREAD_RESULT_CHARS} chars]`
+  })
 }
 
 function subThreadReturnPayloadText(content: string): string {
-  const tagged = content.match(/<subthread_result(?:\s[^>]*)?>\n?([\s\S]*)\n?<\/subthread_result>/)
-  return (tagged?.[1] || content).trim()
+  const tagged = content.match(/<subthread_result(?:\s[^>]*)?>([\s\S]*?)<\/subthread_result>/)
+  if (!tagged) return content
+  let inner = tagged[1]
+  if (inner.startsWith('\n')) inner = inner.slice(1)
+  if (inner.endsWith('\n')) inner = inner.slice(0, -1)
+  return inner
+}
+
+function opaqueSubThreadPayloadBlock(content: string): string {
+  return wrapOpaqueMarkdownBlock(truncatePendingSubThreadResult(content), 'markdown')
 }
 
 export function buildPendingSubThreadResultContextBlock(
@@ -110,8 +118,8 @@ export function buildPendingSubThreadResultContextBlock(
     lines.push(
       '',
       `Result from ${provider} sub-thread "${title}" (id=${id}):`,
-      `<subthread_result id="${id}">`,
-      truncatePendingSubThreadResult(subThreadReturnPayloadText(message.content)),
+      `<subthread_result id="${id}" encoding="markdown-fence">`,
+      opaqueSubThreadPayloadBlock(subThreadReturnPayloadText(message.content)),
       '</subthread_result>'
     )
   }
