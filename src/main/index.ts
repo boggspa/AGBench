@@ -1148,6 +1148,51 @@ function globalRunCwd(): string {
   return canonicalPath(app.getPath('home'))
 }
 
+// 1.0.5-EW17 — Isolated cwd for global-mode Gemini CLI runs.
+//
+// Gemini CLI does an aggressive workspace scan on startup: it
+// shells out to ripgrep, and when ripgrep is missing it falls
+// back to GrepTool, which walks the cwd recursively to build an
+// initial file inventory. Pointing it at `$HOME` (what
+// `globalRunCwd()` returns for global-mode runs) means scanning
+// `~/Library`, `~/Documents`, `~/Pictures`, etc. — millions of
+// files. In Chris's repro the scan didn't finish within 3 minutes
+// and EW15's stuck-process detector fired the kill. The other
+// CLIs (Codex, Claude SDK, Kimi) don't do a recursive workspace
+// scan on startup, so they're unaffected by `$HOME` cwd.
+//
+// Fix: give Gemini a dedicated tiny directory in the AGBench user
+// data folder. The scan completes instantly because the dir
+// contains nothing the user cares about. File-system tool calls
+// for global-mode Gemini already require explicit external path
+// grants (resolved upstream), so isolating cwd doesn't reduce
+// capability — if anything it improves the safety model because
+// Gemini's "I can see all these files" mental baseline gets reset
+// to "I see an empty workspace, I need tools to read user files".
+function globalGeminiCwd(): string {
+  const dir = join(app.getPath('userData'), 'global-gemini-cwd')
+  try {
+    fsSync.mkdirSync(dir, { recursive: true })
+    // Stamp a marker file so the directory isn't truly empty —
+    // some CLI heuristics treat "0 files" as a misconfiguration
+    // and emit warnings. The marker is harmless and stable.
+    const marker = join(dir, '.agbench-global-cwd')
+    if (!fsSync.existsSync(marker)) {
+      fsSync.writeFileSync(
+        marker,
+        'AGBench-managed isolated cwd for global-mode Gemini CLI runs. ' +
+          'Do not delete or modify — recreated on demand if missing.\n'
+      )
+    }
+  } catch {
+    // If we can't create the dir (sandbox / permissions / disk
+    // full), fall back to `$HOME` rather than crashing the run.
+    // Worst case the user is back where they were before EW17.
+    return globalRunCwd()
+  }
+  return canonicalPath(dir)
+}
+
 function requireGlobalChat(chatId: unknown, label = 'Global chat'): ChatRecord {
   const id = requireNonEmptyString(chatId, label)
   const chat = AppStore.getChat(id)
@@ -10096,8 +10141,22 @@ async function runGeminiProvider(
   )
   markGeminiAuthProfileUsed(payload.geminiAuthProfileId || getDefaultGeminiAuthProfileId())
 
+  // 1.0.5-EW17 — In global-mode runs, swap the spawn cwd from
+  // `$HOME` (what `globalRunCwd()` set on payload.workspace) to a
+  // dedicated isolated dir. Gemini CLI scans its cwd recursively
+  // at startup (ripgrep → GrepTool fallback). Scanning `$HOME`
+  // hangs the process for 3+ minutes; scanning an empty AGBench-
+  // managed dir completes instantly. We deliberately do NOT
+  // overwrite `payload.workspace` itself — downstream sites
+  // (MCP bridge setup, image-attachment dirname resolution,
+  // `--include-directories` plumbing above) still want the user's
+  // intended workspace path, and the global-mode case already
+  // handles "no real workspace" by gating writes off and skipping
+  // workspace-scoped tools. The only thing we change is where the
+  // CLI process itself thinks it's standing.
+  const spawnCwd = payload.scope === 'global' ? globalGeminiCwd() : payload.workspace!
   const child = spawn(resolved.binaryPath, args, {
-    cwd: payload.workspace!,
+    cwd: spawnCwd,
     shell: false,
     env
   })
