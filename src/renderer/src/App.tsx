@@ -151,6 +151,7 @@ import {
   extractRunTouchedFiles,
   type RunLane
 } from './lib/RunLanes'
+import { formatOpaqueMarkdownPromptSection } from './lib/HandoffPrompt'
 import { resolveContextWindow, formatContextTokens } from './lib/contextWindows'
 import { rawLogFromRunEvent, type RawLogEntry } from './lib/rawLogEntry'
 import { findNextRunnableQueueIndex } from './lib/runQueueScheduling'
@@ -12129,9 +12130,12 @@ function App(): React.JSX.Element {
       selectedFiles.length > 0
         ? `Files touched: ${selectedFiles.slice(0, 24).join(', ')}`
         : 'Files touched: none recorded.',
-      `Prior request: ${sourcePrompt}`,
+      formatOpaqueMarkdownPromptSection('Prior request', sourcePrompt),
       latestAssistantMessage?.content
-        ? `Latest assistant summary:\n${latestAssistantMessage.content}`
+        ? formatOpaqueMarkdownPromptSection(
+            'Latest assistant summary',
+            latestAssistantMessage.content
+          )
         : ''
     ]
       .filter(Boolean)
