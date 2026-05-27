@@ -2017,6 +2017,19 @@ Next action:
   // Slice D (1.0.3) — per-participant reasoning + fast-mode + thinking
   // flow through the dispatch payload so each provider adapter sees
   // its own settings. Verifies the orchestrator-side wiring.
+  // 1.0.4-M regression guard. The task ("Per-participant model not
+  // persisting to dispatch") was opened mid-1.0.4 when the renderer's
+  // CombinedModelPicker only wrote chat-level state; the dispatch
+  // path then ignored per-participant `participant.model` values. The
+  // pull-through fix landed implicitly via the Model-tag M1-M5 +
+  // participant-scoped picker work (`updateSelectedParticipant` at
+  // App.tsx:14417 writes `{ model: nextModel }` directly into
+  // `chat.ensemble.participants[i].model`, and the orchestrator's
+  // dispatch payload at `EnsembleOrchestrator.ts:1747` reads from
+  // that same field). This test pins the END of the chain — set
+  // `participant.model` on the chat record, observe the dispatch
+  // payload carries it. Close this regression guard and you reopen
+  // the original bug.
   it('threads per-participant model + reasoning + fast-mode through dispatch', async () => {
     const harness = makeHarness()
     harness.chat.ensemble!.participants = [
