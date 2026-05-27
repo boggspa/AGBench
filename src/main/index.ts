@@ -8303,6 +8303,32 @@ function externalPathGrantsToCliAddDirArgs(grants?: ExternalPathGrant[]): string
   return args
 }
 
+/**
+ * 1.0.5-EW42c — Gemini CLI variant. Gemini doesn't recognise the
+ * `--add-dir` flag that Claude / Kimi use; its equivalent is
+ * `--include-directories` (plural — the same flag already in use
+ * for image-attachment parent dirs at the `runGeminiProvider` call
+ * site). Pre-EW42c we were emitting `--add-dir` to Gemini via
+ * `externalPathGrantsToCliAddDirArgs`, which Gemini silently
+ * ignored — so `ExternalPathGrant`s for Gemini-routed turns were
+ * cosmetic only (the grant existed in the chat metadata + showed
+ * up in the `ExternalPathAboveRow` banner, but the agent's actual
+ * filesystem scope didn't include the path, forcing fallback to
+ * shell commands). With this helper, Gemini participants now
+ * receive `--include-directories <path>` per grant, matching the
+ * sandbox enforcement Codex / Claude / Kimi already had.
+ */
+function externalPathGrantsToGeminiIncludeDirArgs(grants?: ExternalPathGrant[]): string[] {
+  const args: string[] = []
+  const seen = new Set<string>()
+  for (const grant of normalizeExternalPathGrants(grants)) {
+    if (seen.has(grant.path)) continue
+    seen.add(grant.path)
+    args.push('--include-directories', grant.path)
+  }
+  return args
+}
+
 function codexSandboxPolicyForMode(
   approvalMode: string | undefined,
   workspace: string,
@@ -18400,12 +18426,18 @@ function appendGeminiCliSessionArgs(
   externalPathGrants?: ExternalPathGrant[]
 ): string | null {
   args.push('--approval-mode', approvalMode)
-  // Phase J1 composer-unification: cross-provider External Path picker
-  // grants get translated into Gemini CLI's `--add-dir <path>` flag.
-  // Codex still translates the same grants through its sandbox policy
-  // — both paths are fed from the same `payload.externalPathGrants`
-  // array so the composer pill just works regardless of provider.
-  args.push(...externalPathGrantsToCliAddDirArgs(externalPathGrants))
+  // 1.0.5-EW42c — Gemini CLI uses `--include-directories <path>`
+  // for filesystem-scope extensions, NOT the `--add-dir` flag that
+  // Claude / Kimi accept. Pre-EW42c this site called
+  // `externalPathGrantsToCliAddDirArgs` (the shared Claude/Kimi
+  // helper), so the args list got `--add-dir <path>` entries which
+  // Gemini silently ignored — making the
+  // `ExternalPathAboveRow` banner's "READ ACCESS" chip cosmetic
+  // for Gemini participants (the agent's sandbox didn't actually
+  // include the granted path, forcing fallback to shell). The new
+  // helper emits the correct flag so Gemini's sandbox scope now
+  // matches Codex / Claude / Kimi enforcement.
+  args.push(...externalPathGrantsToGeminiIncludeDirArgs(externalPathGrants))
 
   // Sandbox vs. AGBench MCP bridge: Gemini CLI's `--sandbox` flag wraps
   // the agent in macOS `sandbox-exec` with a seatbelt profile that
