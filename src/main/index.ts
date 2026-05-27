@@ -5788,6 +5788,21 @@ function extractProviderText(event: any): string {
   const payload = params.payload || event.payload || {}
   if (event.type === 'content_block_delta' && event.delta?.type === 'text_delta')
     return event.delta.text || ''
+  // 1.0.5-S1 — Claude Agent SDK partial messages. When the SDK call
+  // passes `includePartialMessages: true` we get `stream_event` frames
+  // (SDKPartialAssistantMessage) whose `event` field carries the raw
+  // Anthropic message-stream event. We care about
+  // content_block_delta / text_delta — pull the incremental chunk so
+  // Claude streams text token-by-token like Codex does, instead of
+  // dumping the entire response in one cumulative `assistant` event
+  // at the end of the turn. The dedup logic in
+  // handleCliProviderJsonEvent already drops the trailing cumulative
+  // event safely (slice-to-empty when text === accumulated).
+  if (event.type === 'stream_event') {
+    const inner = event.event || {}
+    if (inner.type === 'content_block_delta' && inner.delta?.type === 'text_delta')
+      return inner.delta.text || ''
+  }
   if (event.type === 'assistant' || event.type === 'message' || event.type === 'message_delta')
     return contentPartsToText(event.message?.content || event.content || event.delta)
   if (event.type === 'result' && typeof event.result === 'string') return event.result
@@ -6048,6 +6063,19 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const text = extractProviderText(event)
   if (text) {
     let delta = text
+    // Dedup: when Claude (without partial messages) or Kimi emits a
+    // cumulative envelope that re-states the whole assistant text,
+    // slice off the prefix we already streamed and emit only the
+    // remainder.
+    //
+    // 1.0.5-S1 — With `includePartialMessages: true` (see
+    // tryRunClaudeSdk), Claude also emits incremental `stream_event`
+    // chunks. Those chunks are NOT cumulative, so `text.startsWith(
+    // state.assistantText)` is false and the slice doesn't fire —
+    // delta stays as the new chunk. When the trailing cumulative
+    // `assistant` envelope arrives at end-of-turn, it WILL match the
+    // accumulated text exactly, slice to "", and the `if (delta)`
+    // guard below drops it — no double-emission.
     if (state.assistantText && text.startsWith(state.assistantText)) {
       delta = text.slice(state.assistantText.length)
     }
@@ -6664,6 +6692,18 @@ async function tryRunClaudeSdk(
       abortController: controller,
       canUseTool: (toolNameOrRequest: unknown, input?: unknown) =>
         canUseClaudeSdkTool(event.sender, route, payload, toolNameOrRequest, input),
+      // 1.0.5-S1 — Streaming parity with Codex. Without this flag the
+      // SDK only yields a single cumulative `SDKAssistantMessage` per
+      // turn carrying the entire response — Claude appears to "think
+      // silently then dump the answer" while Codex scrolls past
+      // token-by-token. With it, the SDK also yields incremental
+      // `stream_event` frames (SDKPartialAssistantMessage) whose
+      // content_block_delta / text_delta events carry per-chunk text.
+      // extractProviderText reads those chunks; the existing dedup at
+      // the call site in handleCliProviderJsonEvent harmlessly slices
+      // the trailing cumulative `assistant` envelope to empty so we
+      // don't double-emit the final response.
+      includePartialMessages: true,
       ...(pathToClaudeCodeExecutable ? { pathToClaudeCodeExecutable } : {}),
       ...(payload.imagePaths?.length ? { images: payload.imagePaths } : {}),
       ...(thinkingBudgetSdk ? { maxThinkingTokens: thinkingBudgetSdk } : {}),
