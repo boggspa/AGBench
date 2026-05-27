@@ -236,6 +236,58 @@ describe('Ensemble prompt composition', () => {
     expect(prompt).not.toContain('multiple participants from the same provider')
   })
 
+  it('1.0.5-EW18: roster lines surface @Role and @Model aliases inline', () => {
+    // Regression: pre-EW18 the roster listed participants by
+    // "Provider / Role" only, leaving agents to infer how to @-tag
+    // each panelist from a generic rule. They reached for the
+    // provider name (`@gemini`) even when 3 different Gemini
+    // participants were on the panel. EW18 surfaces the canonical
+    // alias inline so the agent sees exactly what to write.
+    const ensembleWithModels: EnsembleConfig = {
+      ...ensemble,
+      participants: ensemble.participants.map((p) => {
+        if (p.provider === 'claude') return { ...p, model: 'claude-sonnet-4-6' }
+        if (p.provider === 'codex') return { ...p, model: 'gpt-5.5' }
+        if (p.provider === 'gemini') return { ...p, model: 'gemini-2.5-flash-lite' }
+        return p
+      })
+    }
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensembleWithModels,
+      participant: ensembleWithModels.participants[0],
+      currentPrompt: 'Please review this.',
+      roundId: 'round-1'
+    })
+    // Each roster line has an "address with @X or @Y" hint —
+    // role first, model second.
+    expect(prompt).toContain('@Reviewer')
+    expect(prompt).toContain('@Worker')
+    expect(prompt).toContain('@Researcher')
+    expect(prompt).toMatch(/address with @Reviewer or @/)
+    expect(prompt).toMatch(/address with @Worker or @/)
+    expect(prompt).toMatch(/address with @Researcher or @/)
+  })
+
+  it('1.0.5-EW18: rules block tells agents to prefer @Role / @Model over @provider', () => {
+    // Regression for the same shape — even without models on the
+    // panel, the rules section must include the directive nudging
+    // agents away from bare provider names when alternatives
+    // exist.
+    const prompt = buildEnsembleParticipantPrompt({
+      chat: chat(),
+      config: ensemble,
+      participant: ensemble.participants[0],
+      currentPrompt: 'Please review this.',
+      roundId: 'round-1'
+    })
+    // The new rule line. Match the role-name + model-name
+    // phrasing without locking the exact wording — we want this
+    // resilient to future copy edits, just not to deletion.
+    expect(prompt).toMatch(/prefer.*role name.*model name/i)
+    expect(prompt).toMatch(/bare provider name.*non-deterministic/i)
+  })
+
   it('includes orchestrator-written session activity events in the round header', () => {
     const prompt = buildEnsembleParticipantPrompt({
       chat: chat(),

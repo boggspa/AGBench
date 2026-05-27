@@ -276,6 +276,28 @@ export class BridgeDaemonClient {
       this.proc.on('error', (err) => {
         finishErr(err)
       })
+
+      // 1.0.5-EW19 — Attach swallow-only `error` listeners on each
+      // stdio stream. EW14 fixed the synchronous + write-callback
+      // EPIPE paths in `notify`, but Node ALSO emits a separate
+      // `'error'` event on the underlying Pipe stream when the
+      // remote end (the daemon) closes while a write is buffered.
+      // Without a listener Node escalates that to
+      // `uncaughtException` — i.e. the user's Electron error
+      // dialog on quit. Stdin EPIPE during shutdown is expected
+      // and harmless; stdout/stderr listeners are belt-and-braces
+      // for any future write path through these streams.
+      this.proc.stdin?.on('error', (_err) => {
+        // Intentionally empty — see comment above.
+      })
+      this.proc.stdout?.on('error', (_err) => {
+        // Defensive; stdout is read-only from our side so EPIPE
+        // shouldn't fire here, but absorbing keeps us robust to
+        // upstream Node changes.
+      })
+      this.proc.stderr?.on('error', (_err) => {
+        // Defensive; same reasoning as stdout.
+      })
     })
   }
 

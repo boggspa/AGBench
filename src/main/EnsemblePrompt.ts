@@ -17,6 +17,13 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
 const MAX_MESSAGE_CHARS = 4000
 const MAX_TRANSCRIPT_CHARS = 24000
 import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
+// 1.0.5-EW18 — Pull canonical alias set from the shared resolver so
+// the prompt's "address with @X or @Y" hints exactly match the
+// strings the renderer + orchestrator will recognise. Otherwise we
+// risked telling agents to write `@Sonnet 4.7` while the resolver
+// only knew `@Sonnet 4.6`, which Codex / Claude would dutifully
+// follow into a routing failure.
+import { getParticipantAliases } from './services/EnsembleMentionAlias'
 
 // 1.0.4-AR2 — mirror of the renderer ceiling
 // (`EnsembleParticipantsAboveRow.MAX_ENSEMBLE_PARTICIPANTS`). Keep
@@ -193,7 +200,54 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
           marker = ' (you)'
         }
       }
-      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}`
+      // 1.0.5-EW18 — Surface the preferred @-mention aliases inline
+      // on each roster line so agents see exactly what to type.
+      // Without this, prompts only told agents "use role or model
+      // name" as an abstract rule and they fell back to `@gemini`
+      // even when 3 different Gemini participants were on the
+      // panel (Chris's repro: Claude wrote "@gemini, @gemini,
+      // @gemini" in a single sentence to address Merchant /
+      // Cleaner / Teacher). The hint string pulls the canonical
+      // aliases from the shared resolver — same set the route
+      // matcher uses — and prefers the role + first model alias
+      // because those are the unambiguous forms. The bare provider
+      // name is intentionally NOT included in the hint: agents
+      // can still write `@gemini` and it will resolve (to one of
+      // the Gemini participants, non-deterministically), but the
+      // prompt nudges them toward the deterministic forms.
+      const roleHint = (participant.role || '').trim()
+      const aliases = getParticipantAliases(participant)
+      // Aliases come back lowercased + space-normalised. Filter out
+      // the participant id (long, opaque) and the bare provider
+      // name (the form we want to discourage); keep role + model
+      // forms only. Title-case role for display; keep model
+      // aliases in their native shape.
+      const providerKey = participant.provider.toLowerCase()
+      const roleKey = roleHint.toLowerCase()
+      // Skip the concat variants (e.g. `flashlite`) when the spaced
+      // form (`flash lite`) is also present — the spaced form is
+      // the one the user sees in chip strips and is the more
+      // readable hint. Both resolve fine, this is purely cosmetic.
+      const hasSpacedSibling = (a: string): boolean =>
+        !a.includes(' ') && aliases.some((b) => b !== a && b.replace(/\s+/g, '') === a)
+      const modelAliases = aliases.filter(
+        (a) =>
+          a !== providerKey &&
+          a !== roleKey &&
+          a !== participant.id.toLowerCase() &&
+          !hasSpacedSibling(a)
+      )
+      // Pick at most one model alias to keep the line scannable —
+      // the resolver matches all variants, this is just the hint.
+      const modelHintRaw = modelAliases[0] || ''
+      const titleCase = (s: string): string =>
+        s.replace(/(^|\s)\S/g, (m) => m.toUpperCase())
+      const hintTokens = [
+        roleHint ? `@${roleHint}` : '',
+        modelHintRaw ? `@${titleCase(modelHintRaw)}` : ''
+      ].filter(Boolean)
+      const hint = hintTokens.length ? ` — address with ${hintTokens.join(' or ')}` : ''
+      return `${participant.order}. ${providerLabel(participant.provider)} / ${participant.role || 'Participant'}${marker}${hint}`
     })
     .join('\n')
   const disambigNote = formatSameProviderDisambiguationNote(orderedParticipants)
@@ -228,6 +282,18 @@ export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput):
     '',
     'Rules:',
     '- Everyone sees the same tagged transcript. @mentions are routing hints, not private messages.',
+    // 1.0.5-EW18 — Strong tagging-form directive. The roster lines
+    // above now carry "address with @Role or @Model" hints; this
+    // rule reinforces them. Pre-EW18 agents reached for `@codex`
+    // / `@gemini` / `@claude` even when the panel had 3 same-
+    // provider participants, producing ambiguous "@gemini,
+    // @gemini, @gemini" addresses that resolved non-
+    // deterministically. The role and model forms are
+    // unambiguous and route directly to the intended participant.
+    // Provider name as a fallback still works for single-provider-
+    // per-role panels — we mention it last so agents don't think
+    // it's banned, just deprecated.
+    '- When tagging another participant, prefer the **role name** (e.g. `@Farmer`, `@Merchant`) or the **model name** (e.g. `@Sonnet 4.6`, `@Flash Lite`) shown in the roster — both forms route deterministically to the specific participant you mean. Use the bare provider name (`@gemini`, `@claude`) only when the panel has just one participant from that provider; with multiple same-provider participants the bare provider name resolves non-deterministically and your message may reach the wrong panelist.',
     '- If another participant should handle this turn, call ensemble_yield with a short reason and optional target.',
     '- In Continuous mode, only request another handoff when more agent work is genuinely useful; otherwise return control to the user.',
     '- Respect your permission preset. Read-only roles should not attempt file or shell mutations.',
