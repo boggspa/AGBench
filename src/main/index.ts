@@ -55,6 +55,7 @@ import {
   type ParticipantProbeResult
 } from './services/EnsembleOrchestrator'
 import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
+import { SoloChatWakeupService } from './SoloChatWakeupService'
 import {
   appendBugReport,
   type BugReportSubmission as BugReportSubmissionInput
@@ -532,6 +533,12 @@ let approvalService: ApprovalService | null = null
 let runCoordinatorRef: RunCoordinator | null = null
 let ensembleOrchestratorRef: EnsembleOrchestrator | null = null
 let wakeupTimerServiceRef: WakeupTimerService | null = null
+// 1.0.5-EW37 — Solo-chat wakeup service. Extends the Phase N
+// wakeup infrastructure off the ensemble-only path so a solo chat
+// can also pause + resume itself via `schedule_wakeup`. Set in
+// `app.whenReady` alongside the ensemble orchestrator + wakeup
+// timer; the consumer (`schedule_wakeup` MCP handler) null-checks.
+let soloChatWakeupServiceRef: SoloChatWakeupService | null = null
 
 function ensembleWakeupsEnabled(): boolean {
   const value = process.env.AGBENCH_ENSEMBLE_WAKEUPS
@@ -2467,7 +2474,8 @@ function handleEnsembleWakeupTimerFired(wakeupId: string): void {
   if (ensembleOrchestratorRef?.handleWakeupFired(wakeupId)) return
   const wakeup = findPersistedEnsembleWakeup(wakeupId)
   if (!wakeup || wakeup.status !== 'pending') {
-    console.warn(`Wakeup fired with no pending persisted Ensemble wakeup: ${wakeupId}`)
+    // 1.0.5-EW37 — Not an ensemble wakeup. Try the solo lane.
+    void handleSoloWakeupTimerFired(wakeupId)
     return
   }
   if (tryResumePersistedEnsembleWakeup(wakeup)) return
@@ -2476,6 +2484,27 @@ function handleEnsembleWakeupTimerFired(wakeupId: string): void {
     new Date().toISOString(),
     'No active Ensemble runtime was available when the wakeup fired.'
   )
+}
+
+/**
+ * 1.0.5-EW37 — Fire handler for solo-chat wakeups. Routed through
+ * the central `handleEnsembleWakeupTimerFired` so the timer service
+ * doesn't need to know which lane owns a given wakeupId; we just
+ * try ensemble first, fall through to solo.
+ */
+async function handleSoloWakeupTimerFired(wakeupId: string): Promise<void> {
+  if (!soloChatWakeupServiceRef) {
+    console.warn(
+      `Wakeup fired but solo wakeup service is not initialised yet: ${wakeupId}`
+    )
+    return
+  }
+  const handled = await soloChatWakeupServiceRef.handleWakeupFired(wakeupId)
+  if (!handled) {
+    console.warn(
+      `Wakeup fired with no matching persisted record (ensemble or solo): ${wakeupId}`
+    )
+  }
 }
 
 function recoverPersistedEnsembleWakeups(): void {
@@ -2491,6 +2520,33 @@ function recoverPersistedEnsembleWakeups(): void {
         action.wakeup,
         action.expiredAt,
         'Wakeup expired during startup recovery.'
+      )
+    }
+  }
+}
+
+/**
+ * 1.0.5-EW37 — Boot-time recovery for solo-chat wakeups. Same shape
+ * as the ensemble path but iterates the solo records and uses the
+ * solo service's `expireWakeup` for past-grace expiration. Pending
+ * future + pending-but-within-grace records get armed via the
+ * shared `WakeupTimerService`; the fire handler then runs the
+ * solo continuation dispatch.
+ */
+function recoverPersistedSoloChatWakeups(): void {
+  if (!soloChatWakeupServiceRef) return
+  const actions = classifyWakeupRecovery(soloChatWakeupServiceRef.getAllPersistedWakeups(), {
+    nowMs: Date.now(),
+    nowIso: new Date().toISOString()
+  })
+  for (const action of actions) {
+    if (action.action === 'arm' || action.action === 'fire') {
+      wakeupTimerServiceRef?.schedule(action.wakeup)
+    } else {
+      soloChatWakeupServiceRef.expireWakeup(
+        action.wakeup,
+        action.expiredAt,
+        'Solo-chat wakeup expired during startup recovery.'
       )
     }
   }
@@ -14899,43 +14955,81 @@ async function executeGeminiMcpTool(
         tool: 'list_ensemble_participants'
       })
     } else if (toolName === 'schedule_wakeup') {
-      const result = ensembleWakeupsEnabled()
-        ? ensembleOrchestratorRef?.scheduleWakeupForRun(context.appRunId, {
-            wakeAt: optionalString(args.wakeAt || args.wake_at || args.at),
-            delayMs: optionalNumber(args.delayMs || args.delay_ms),
-            delaySeconds: optionalNumber(args.delaySeconds || args.delay_seconds || args.seconds),
-            reason: optionalString(args.reason),
-            cancelOnUserInput:
-              args.cancelOnUserInput !== undefined
-                ? Boolean(args.cancelOnUserInput)
-                : args.cancel_on_user_input !== undefined
-                  ? Boolean(args.cancel_on_user_input)
-                  : undefined
-          }) || {
+      // 1.0.5-EW37 — Route to ensemble or solo lane based on the
+      // calling chat's kind. Both lanes share the same gate and
+      // the same underlying timer/recovery substrate; the split
+      // is purely about where the persisted record lives (under
+      // `chat.ensemble.wakeups` vs `chat.soloWakeups`) and what
+      // happens on fire (resume an ensemble round vs dispatch a
+      // standalone continuation run).
+      const wakeupInput = {
+        wakeAt: optionalString(args.wakeAt || args.wake_at || args.at),
+        delayMs: optionalNumber(args.delayMs || args.delay_ms),
+        delaySeconds: optionalNumber(args.delaySeconds || args.delay_seconds || args.seconds),
+        reason: optionalString(args.reason),
+        cancelOnUserInput:
+          args.cancelOnUserInput !== undefined
+            ? Boolean(args.cancelOnUserInput)
+            : args.cancel_on_user_input !== undefined
+              ? Boolean(args.cancel_on_user_input)
+              : undefined
+      }
+      let result: { ok: boolean; error?: string; wakeup?: unknown; message?: string }
+      if (!ensembleWakeupsEnabled()) {
+        result = {
+          ok: false,
+          error: 'schedule_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+        }
+      } else {
+        const callingChat = context.appChatId ? AppStore.getChat(context.appChatId) : undefined
+        if (callingChat?.chatKind === 'ensemble') {
+          result = ensembleOrchestratorRef?.scheduleWakeupForRun(
+            context.appRunId,
+            wakeupInput
+          ) || { ok: false, error: 'Ensemble orchestrator is not available.' }
+        } else if (callingChat && soloChatWakeupServiceRef) {
+          result = soloChatWakeupServiceRef.scheduleWakeup(
+            callingChat.appChatId,
+            parentProvider,
+            context.appRunId,
+            wakeupInput
+          )
+        } else {
+          result = {
             ok: false,
-            error: 'Ensemble orchestrator is not available.'
+            error: 'No chat context available for this wakeup request.'
           }
-        : {
-            ok: false,
-            error: 'schedule_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
-          }
+        }
+      }
       toolIsError = result.ok === false
       text = mcpJson({
         ...result,
         tool: 'schedule_wakeup'
       })
     } else if (toolName === 'cancel_wakeup') {
-      const result = ensembleWakeupsEnabled()
-        ? ensembleOrchestratorRef?.cancelWakeupForRun(context.appRunId, {
-            wakeupId: optionalString(args.wakeupId || args.wakeup_id)
-          }) || {
-            ok: false,
-            error: 'Ensemble orchestrator is not available.'
-          }
-        : {
-            ok: false,
-            error: 'cancel_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
-          }
+      // 1.0.5-EW37 — Same routing as schedule_wakeup: try ensemble
+      // first (if the chat is ensemble), else solo. We don't have
+      // a wakeupId-to-lane map so we use chat.chatKind as the
+      // routing key.
+      const cancelWakeupId = optionalString(args.wakeupId || args.wakeup_id)
+      let result: { ok: boolean; error?: string; cancelled?: unknown; message?: string }
+      if (!ensembleWakeupsEnabled()) {
+        result = {
+          ok: false,
+          error: 'cancel_wakeup is behind the AGBENCH_ENSEMBLE_WAKEUPS safety flag.'
+        }
+      } else {
+        const callingChat = context.appChatId ? AppStore.getChat(context.appChatId) : undefined
+        if (callingChat?.chatKind === 'ensemble') {
+          result = ensembleOrchestratorRef?.cancelWakeupForRun(context.appRunId, {
+            wakeupId: cancelWakeupId
+          }) || { ok: false, error: 'Ensemble orchestrator is not available.' }
+        } else if (callingChat && soloChatWakeupServiceRef) {
+          result = soloChatWakeupServiceRef.cancelWakeup(callingChat.appChatId, cancelWakeupId)
+        } else {
+          result = { ok: false, error: 'No chat context available for this wakeup cancel.' }
+        }
+      }
       toolIsError = result.ok === false
       text = mcpJson({
         ...result,
@@ -21123,7 +21217,33 @@ if (isGeminiMcpBridgeProcess) {
       scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
       cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId)
     })
-    if (ensembleWakeupsEnabled()) recoverPersistedEnsembleWakeups()
+    // 1.0.5-EW37 — Solo-chat wakeup service. Same shared timer +
+    // recovery substrate as ensemble; dispatches a continuation
+    // `AgentRunPayload` via the run coordinator when a wakeup
+    // fires. Construction order matters: must come AFTER
+    // `runCoordinator` exists (used in `dispatchRun` dep) but
+    // BEFORE `recoverPersistedEnsembleWakeups` so the fire-time
+    // chain can hop to the solo service if needed.
+    soloChatWakeupServiceRef = new SoloChatWakeupService({
+      getChat: (chatId) => AppStore.getChat(chatId),
+      saveChat: saveAndBroadcastChat,
+      listChats: () => AppStore.getChats(),
+      dispatchRun: (payload) =>
+        runCoordinator.dispatch(payload, { sender: mainWindow!.webContents }),
+      scheduleWakeupTimer: (wakeup) => wakeupTimerServiceRef?.schedule(wakeup),
+      cancelWakeupTimer: (wakeupId) => wakeupTimerServiceRef?.cancel(wakeupId),
+      createRunId: createFallbackRunId,
+      now: () => Date.now(),
+      nowIso: () => new Date().toISOString()
+    })
+    if (ensembleWakeupsEnabled()) {
+      recoverPersistedEnsembleWakeups()
+      // 1.0.5-EW37 — Solo wakeups gated behind the same flag as
+      // ensemble for now. Once the feature is considered stable
+      // both lanes will move out from behind AGBENCH_ENSEMBLE_WAKEUPS
+      // together.
+      recoverPersistedSoloChatWakeups()
+    }
     const dispatchAgentRun = (
       payload: AgentRunPayload,
       event: Electron.IpcMainInvokeEvent

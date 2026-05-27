@@ -390,6 +390,35 @@ export interface EnsembleWakeupRecord {
   message?: string
 }
 
+/**
+ * 1.0.5-EW37 — Solo-chat wakeup record. Mirrors `EnsembleWakeupRecord`
+ * minus the ensemble-specific routing fields (`roundId`,
+ * `participantId`, `role`). Persisted on `ChatRecord.soloWakeups`
+ * so it survives app restart via the same recovery flow as the
+ * ensemble path.
+ *
+ * Reuses `EnsembleWakeupStatus` — same lifecycle of
+ * `pending → fired/cancelled/expired`.
+ */
+export interface SoloChatWakeupRecord {
+  wakeupId: string
+  chatId: string
+  provider: ProviderId
+  /** Optional — the solo run that scheduled the wakeup. Used by the
+   * fire handler to seed the continuation run's prompt with the
+   * original reason and (where possible) reuse the provider session
+   * via `chat.linkedProviderSessionId`. */
+  runId?: string
+  scheduledAt: string
+  wakeAt: string
+  status: EnsembleWakeupStatus
+  reason?: string
+  cancelOnUserInput?: boolean
+  firedAt?: string
+  cancelledAt?: string
+  expiredAt?: string
+}
+
 export interface EnsembleConfig {
   enabled: boolean
   maxParticipants: number
@@ -1343,6 +1372,21 @@ export interface ChatRecord {
   providerMetadata?: Record<string, unknown>
   linkedGeminiSessionId?: string
   ensemble?: EnsembleConfig
+  /**
+   * 1.0.5-EW37 — Solo-chat wakeup records. Mirror of
+   * `ensemble.wakeups` for solo chats: the agent calls
+   * `schedule_wakeup`, we persist the record here, and on fire the
+   * `SoloChatWakeupService` dispatches a continuation prompt
+   * against this chat using its existing
+   * `linkedProviderSessionId`. Only populated for chats where
+   * `chatKind !== 'ensemble'` (ensemble chats use the path under
+   * `ensemble.wakeups`).
+   *
+   * Keyed by `wakeupId` so the recovery classifier on app boot
+   * can iterate across all chats uniformly without caring whether
+   * the source was ensemble or solo.
+   */
+  soloWakeups?: Record<string, SoloChatWakeupRecord>
   requestedModel?: string
   lastActualModel?: string
   messages: ChatMessage[]

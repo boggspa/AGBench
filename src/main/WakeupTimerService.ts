@@ -1,11 +1,25 @@
-import type { EnsembleWakeupRecord } from './store/types'
+import type { EnsembleWakeupRecord, EnsembleWakeupStatus } from './store/types'
 
 export const WAKEUP_RECOVERY_GRACE_MS = 60 * 60 * 1000
 
-export type WakeupRecoveryAction =
-  | { action: 'arm'; wakeup: EnsembleWakeupRecord }
-  | { action: 'fire'; wakeup: EnsembleWakeupRecord }
-  | { action: 'expire'; wakeup: EnsembleWakeupRecord; expiredAt: string }
+/**
+ * 1.0.5-EW37 — Minimal structural shape the timer service + recovery
+ * classifier read from a wakeup record. Pre-EW37 this was hard-typed
+ * to `EnsembleWakeupRecord`; widening to a structural minimum lets
+ * the same service drive both ensemble + solo-chat wakeups without
+ * a parallel implementation. Both record types in `store/types`
+ * already include these fields.
+ */
+export interface WakeupRecordLike {
+  wakeupId: string
+  wakeAt: string
+  status: EnsembleWakeupStatus
+}
+
+export type WakeupRecoveryAction<T extends WakeupRecordLike = EnsembleWakeupRecord> =
+  | { action: 'arm'; wakeup: T }
+  | { action: 'fire'; wakeup: T }
+  | { action: 'expire'; wakeup: T; expiredAt: string }
 
 interface WakeupTimerServiceDeps {
   now?: () => number
@@ -28,7 +42,7 @@ export class WakeupTimerService {
     this.onFire = deps.onFire
   }
 
-  schedule(wakeup: EnsembleWakeupRecord): void {
+  schedule(wakeup: WakeupRecordLike): void {
     if (wakeup.status !== 'pending') return
     this.cancel(wakeup.wakeupId)
     const delayMs = Math.max(0, new Date(wakeup.wakeAt).getTime() - this.now())
@@ -39,7 +53,7 @@ export class WakeupTimerService {
     this.timers.set(wakeup.wakeupId, handle)
   }
 
-  replace(wakeup: EnsembleWakeupRecord): void {
+  replace(wakeup: WakeupRecordLike): void {
     this.schedule(wakeup)
   }
 
@@ -71,13 +85,13 @@ export class WakeupTimerService {
   }
 }
 
-export function classifyWakeupRecovery(
-  wakeups: Iterable<EnsembleWakeupRecord>,
+export function classifyWakeupRecovery<T extends WakeupRecordLike>(
+  wakeups: Iterable<T>,
   options: { nowMs: number; graceMs?: number; nowIso?: string }
-): WakeupRecoveryAction[] {
+): WakeupRecoveryAction<T>[] {
   const graceMs = options.graceMs ?? WAKEUP_RECOVERY_GRACE_MS
   const nowIso = options.nowIso || new Date(options.nowMs).toISOString()
-  const actions: WakeupRecoveryAction[] = []
+  const actions: WakeupRecoveryAction<T>[] = []
   for (const wakeup of wakeups) {
     if (wakeup.status !== 'pending') continue
     const wakeMs = new Date(wakeup.wakeAt).getTime()
