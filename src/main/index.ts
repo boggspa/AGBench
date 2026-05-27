@@ -10198,6 +10198,20 @@ async function runGeminiProvider(
       { code },
       'provider'
     )
+    // 1.0.5-EW6 — Mark the run exited on the ensemble orchestrator
+    // so an ensemble Gemini participant gets finalised. Pre-EW6 the
+    // legacy Gemini PTY/CLI path only called runManager.finish, not
+    // the orchestrator's markRunExited — the per-participant
+    // completion promise (set up in EnsembleOrchestrator.runRound)
+    // never resolved, and the round stalled on "Thinking…"
+    // indefinitely until cancelled. The agent-compat exit helper
+    // (sendAgentCompatExit, ~line 7929) does this correctly for
+    // every other provider; legacy Gemini PTY was the only path
+    // missing the call.
+    ensembleOrchestratorRef?.markRunExited(
+      route.appRunId,
+      typeof code === 'number' ? code : -1
+    )
     publishRunEvent('gemini-exit', 'gemini', { provider: 'gemini', code, ...route }, event.sender)
     if (geminiProcess === child) {
       geminiProcess = null
@@ -10233,6 +10247,11 @@ async function runGeminiProvider(
       { code: -1 },
       'provider'
     )
+    // 1.0.5-EW6 — Same orchestrator finalisation as the close
+    // handler above. Spawn failures are the worst case for a
+    // hang because the process never even produced output, so
+    // feedOrchestrator never ran and there's no fallback signal.
+    ensembleOrchestratorRef?.markRunExited(route.appRunId, -1)
     publishRunEvent(
       'gemini-exit',
       'gemini',

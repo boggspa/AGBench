@@ -67,6 +67,7 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'create-ensemble-chat': ['optionalObject'],
   'run-ensemble-round': ['object'],
   'cancel-ensemble-round': ['chatId'],
+  'skip-ensemble-participant': ['chatId'],
   'create-sub-thread': ['object'],
   'get-sub-threads': ['chatId'],
   'save-chat': ['object'],
