@@ -6388,9 +6388,30 @@ button.sidebar-item {
   justify-content: space-between;
   gap: var(--space-sm);
   min-height: 18px;
+  /* 1.0.5-EW30 — Subtle divider above the telemetry row so the
+   * Permissions/Provider/Model row visually separates from the
+   * Timecode/Appwatch/token-tally row. Pre-EW30 these two
+   * sibling rows had no separator and read as a continuous
+   * blob of inline controls. The divider sits 5px above the
+   * row (the existing top margin) and uses a low-opacity
+   * border-color so it reads as quiet structure rather than a
+   * hard rule. Claude shell explicitly opts out via the
+   * shell-specific override block below — its native composer
+   * aesthetic is satellite chrome with no internal dividers. */
+  margin: 0 8px;
+  padding: 5px 2px 0;
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 38%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
+}
+
+/* 1.0.5-EW30 — Claude shell opts out of the divider above the
+ * telemetry row. Native Claude Code's composer is satellite-
+ * chromed throughout; an internal rule line would fight the
+ * surrounding aesthetic. */
+[data-composer-style="claude"] .composer-telemetry-row {
+  border-top: 0;
   margin: 5px 8px 0;
   padding: 0 2px;
-  color: color-mix(in srgb, var(--text-secondary) 78%, transparent);
 }
 
 /* 1.0.5-EW28 — Anchor the timecodes + Appwatch icon to the left
@@ -18181,6 +18202,28 @@ input:disabled, select:disabled, textarea:disabled {
   border: 0;
   color: color-mix(in srgb, #ffffff 58%, transparent);
 }
+
+/* 1.0.5-EW31 — Nudge the Claude shell's send / stop / steer
+ * glyphs upward by 1.5px. Chris caught: the ↵ return-arrow
+ * icon sat slightly low inside its action button's bounding
+ * box in both light and dark mode. Cause is the SF Symbol's
+ * own baseline — the glyph art is bottom-weighted so visual
+ * center sits below geometric center. Other shells aren't
+ * affected because their action buttons have a visible filled
+ * background that grounds the icon visually; the Claude
+ * shell's transparent satellite chrome makes the offset
+ * obvious. Apply only inside Claude shell so other shells'
+ * action buttons stay as-is. */
+[data-composer-style="claude"] .composer-action-btn .sf-symbol-icon {
+  transform: translateY(-1.5px);
+}
+[data-composer-style="claude"] .composer-action-btn:hover:not(:disabled) .sf-symbol-icon {
+  /* Preserve the EW31 nudge under the base rule's
+   * `scale(1.06)` hover effect — combine both transforms so
+   * the glyph stays nudged AND scaled on hover. */
+  transform: translateY(-1.5px) scale(1.06);
+}
+
 [data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
   background: transparent;
   border: 0;
