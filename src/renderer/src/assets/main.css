@@ -24733,6 +24733,54 @@ input:disabled, select:disabled, textarea:disabled {
   color: rgba(0, 104, 62, 0.96);
 }
 
+/*
+ * 1.0.5-AR12d (tester report) — Light-mode overrides for the
+ * Turn / Continuous / Work Session ensemble-mode toggle row
+ * across the four themed shells (codex / claude / gemini /
+ * kimi). The base rules at lines ~17944 / 18264 / 19436 / 19643
+ * hardcode `color: color-mix(in srgb, #ffffff ...)` for the
+ * idle + hover + active states because the themed shells were
+ * designed for their native dark composer chrome (Codex CLI,
+ * Claude Code, etc.). When the user switches to a light app
+ * theme, those white-on-white labels become invisible — the
+ * selected pill survives because of its tinted fill, but the
+ * unselected siblings disappear.
+ *
+ * Fix flips the text colour to a dark, opacity-matched palette
+ * mirroring the standard `--text-secondary` (0.62 alpha) and
+ * `--text-primary` (0.92 alpha) tokens. Active-state background
+ * fills are preserved per-shell (each shell keeps its accent
+ * pill) — only the text colour shifts.
+ *
+ * The terminal shell already has its own light-mode override
+ * block immediately above (it uses a green palette to stay
+ * on-brand); these rules cover the remaining four shells.
+ */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]):is(
+  [data-composer-style="codex"],
+  [data-composer-style="claude"],
+  [data-composer-style="gemini"],
+  [data-composer-style="kimi"]
+) [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: rgba(18, 21, 27, 0.62);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]):is(
+  [data-composer-style="codex"],
+  [data-composer-style="claude"],
+  [data-composer-style="gemini"],
+  [data-composer-style="kimi"]
+) [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: rgba(18, 21, 27, 0.92);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]):is(
+  [data-composer-style="codex"],
+  [data-composer-style="claude"],
+  [data-composer-style="gemini"],
+  [data-composer-style="kimi"]
+) [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: rgba(18, 21, 27, 0.96);
+}
+
 /* ----------------------------------------------------------------
  * 3) TICKET-STUB SHELL
  *    Composer reads like a cinema ticket — cream paper backdrop,
