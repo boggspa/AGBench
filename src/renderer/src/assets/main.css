@@ -4800,27 +4800,37 @@ button.sidebar-item {
 .ensemble-hierarchy-chain {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 6px 8px;
   align-items: center;
   justify-content: center;
   margin: 18px auto 0;
-  max-width: 720px;
+  /* 1.0.5-EW2 — max-width bumped 720 → 880 so 6 slimmed tiles
+   * fit per row at the 12-participant cap. Below 6 tiles the
+   * chain renders tighter than the pre-EW2 layout because
+   * tile widths shrank from 120 → 78 min-width. */
+  max-width: 880px;
 }
 .ensemble-hierarchy-chain-step {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
 }
 .ensemble-hierarchy-tile {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 14px;
-  border-radius: 12px;
+  /* 1.0.5-EW2 — Slim tile to match the in-chat chip strip
+   * aesthetic. Pre-EW2: 9px 14px padding, 120px min-width, 12px
+   * radius, 9px gap — chunky and wrapped to 4 tiles per row at
+   * the 720px max-width. Slimming lets 6 tiles fit per row at
+   * the new 880px max-width without losing the role/provider
+   * subtitle stack. */
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 10px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 72%, transparent);
   background: color-mix(in srgb, var(--surface-elevated) 78%, transparent);
   color: var(--text-primary);
-  min-width: 120px;
+  min-width: 78px;
 }
 .ensemble-hierarchy-tile.provider-claude {
   border-color: color-mix(in srgb, var(--provider-claude, #d68a4d) 48%, var(--panel-border));
@@ -4841,19 +4851,27 @@ button.sidebar-item {
   min-width: 0;
 }
 .ensemble-hierarchy-tile-role {
-  font-size: var(--font-size-sm);
+  /* 1.0.5-EW2 — Slightly tighter role label inside the slimmed
+   * tile. The role is still the dominant visual element; the
+   * provider subtitle below carries the ALL-CAPS provider name
+   * for disambiguation. */
+  font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 700;
   color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .ensemble-hierarchy-tile-provider {
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-secondary);
 }
 .ensemble-hierarchy-arrow {
-  font-size: 18px;
-  color: color-mix(in srgb, var(--text-secondary) 60%, transparent);
+  font-size: 14px;
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
   user-select: none;
 }
 .welcome-hero-ensemble-empty {
@@ -26516,12 +26534,15 @@ input:disabled, select:disabled, textarea:disabled {
   min-width: 0;
 }
 
-.ensemble-above-row-chips.is-wrapped .ensemble-above-add-participant {
-  /* In grid mode the "+ add" button would stretch to fill a full
-   * column (1/6 of the strip) by default. Pin it to the start of
-   * its cell so it stays compact next to whichever chip preceded
-   * it, matching the visual rhythm of the flex layout. */
-  justify-self: start;
+/* 1.0.5-EW2 — The "+ add participant" button is now a SIBLING of
+ * `.ensemble-above-row-chips` (was a child pre-EW2). At wrap mode
+ * the button used to take a grid cell and forced a third row at
+ * 12 participants. Pinning it to the right of the row instead
+ * keeps the 6×2 grid clean. `flex: 0 0 auto` stops it from
+ * shrinking; `align-self: center` keeps it vertically centred
+ * against either a single-row or wrapped chip strip. */
+.ensemble-above-row > .ensemble-above-add-participant {
+  flex: 0 0 auto;
   align-self: center;
 }
 

@@ -588,23 +588,37 @@ export function EnsembleParticipantsAboveRow({
             />
           )
         })}
-        <button
-          type="button"
-          className="ensemble-above-add-participant"
-          onClick={addParticipant}
-          disabled={!canAddParticipant}
-          title={
-            isRoundRunning
-              ? 'Participant changes are locked while a round is running.'
-              : participants.length >= MAX_ENSEMBLE_PARTICIPANTS
-                ? 'Ensembles support up to eight participants.'
-                : 'Add another participant'
-          }
-          aria-label="Add Ensemble participant"
-        >
-          +
-        </button>
       </div>
+      {/*
+        1.0.5-EW2 — The "+ add participant" button lives OUTSIDE
+        the chip strip / grid. Pre-EW2 the button was inside
+        `.ensemble-above-row-chips`, which took a grid cell in the
+        wrapped layout and forced a third row at 12 participants
+        (6 + 6 chips + 1 standalone "+" cell). Sibling placement
+        + flex layout on the parent `.ensemble-above-row` pins
+        the button to the right edge of the row at all counts,
+        matching the existing `.ensemble-above-row-actions`
+        right-justified pattern. At low counts (1-6) the button
+        sits at the far-right while chips stay centred in their
+        flex slot — same visual logic as Stop Ensemble + queued-
+        prompt indicator.
+      */}
+      <button
+        type="button"
+        className="ensemble-above-add-participant"
+        onClick={addParticipant}
+        disabled={!canAddParticipant}
+        title={
+          isRoundRunning
+            ? 'Participant changes are locked while a round is running.'
+            : participants.length >= MAX_ENSEMBLE_PARTICIPANTS
+              ? `Ensembles support up to ${MAX_ENSEMBLE_PARTICIPANTS} participants.`
+              : 'Add another participant'
+        }
+        aria-label="Add Ensemble participant"
+      >
+        +
+      </button>
       <div className="ensemble-above-row-actions">
         {/* "Queued next round" label intentionally not rendered here —
             the queued-messages above-row (sibling in the composer
