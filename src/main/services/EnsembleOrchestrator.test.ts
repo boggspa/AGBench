@@ -1649,11 +1649,16 @@ Next action:
     expect(claudeState?.status).toBe('unreachable')
     expect(claudeState?.lastFailureReason).toBe('Claude CLI binary not found on PATH')
 
-    // Transcript carries one consolidated participant-health header.
+    // Transcript carries one consolidated participant-health card.
+    // 1.0.5-EW29: emission kind is now `ensembleParticipantHealth`
+    // (was `ensembleRoundStatus` pre-EW29) so the renderer can
+    // route to a structured chip-strip card instead of a plain
+    // system-message text block. The text-form fallback still
+    // lives on `content` for log / export / debug consumers.
     const probeNote = harness.chat.messages.find(
       (message) =>
         message.role === 'system' &&
-        message.metadata?.kind === 'ensembleRoundStatus' &&
+        message.metadata?.kind === 'ensembleParticipantHealth' &&
         typeof message.content === 'string' &&
         message.content.startsWith('[participant-health]') &&
         message.content.includes('Claude / Reviewer')
@@ -1661,6 +1666,10 @@ Next action:
     expect(probeNote?.content).toContain('Claude CLI binary not found on PATH')
     expect(probeNote?.content).toContain('(ENOENT)')
     expect(probeNote?.content).toContain('Codex / Worker: ok')
+    // 1.0.5-EW29 — structured entries available for renderer.
+    const entries = (probeNote?.metadata as { entries?: Array<unknown> })?.entries
+    expect(Array.isArray(entries)).toBe(true)
+    expect(entries?.length).toBe(2)
   })
 
   it('1.0.4-AD: treats a probe that throws as unreachable rather than crashing the round', async () => {
@@ -1732,16 +1741,23 @@ Next action:
     )
     expect(fallbackNote).toBeDefined()
     // One consolidated probe header should list both participants.
+    // 1.0.5-EW29: kind is now `ensembleParticipantHealth`.
     const probeNotes = harness.chat.messages.filter(
       (message) =>
         message.role === 'system' &&
-        message.metadata?.kind === 'ensembleRoundStatus' &&
+        message.metadata?.kind === 'ensembleParticipantHealth' &&
         typeof message.content === 'string' &&
         message.content.startsWith('[participant-health]\n')
     )
     expect(probeNotes).toHaveLength(1)
     expect(probeNotes[0].content).toContain('Claude / Reviewer: unreachable')
     expect(probeNotes[0].content).toContain('Codex / Worker: unreachable')
+    // 1.0.5-EW29 — structured entries on the metadata.
+    const entries = (probeNotes[0].metadata as {
+      entries?: Array<{ status: string; provider: string; role: string }>
+    })?.entries
+    expect(entries?.every((e) => e.status === 'unreachable')).toBe(true)
+    expect(entries?.length).toBe(2)
   })
 
   it('closes the round immediately when a speaker uses @user', async () => {

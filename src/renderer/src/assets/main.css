@@ -3796,6 +3796,118 @@ button.sidebar-item {
   width: min(100%, 900px);
 }
 
+/* 1.0.5-EW29 — Participant-health card. Replaces the pre-EW29
+ * "System\n[participant-health]\n  Codex / Worker: ok\n  ..." text
+ * block with a compact card showing a header + chip strip. Chip
+ * strip mirrors the chip layouts in `.ensemble-above-row-chips`
+ * so the visual vocabulary stays consistent across the app. */
+.participant-health-card {
+  width: min(100%, 900px);
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 60%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 50%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+}
+.participant-health-card.all-ok {
+  /* Subtle green-tinted left rail when every participant is
+   * reachable. Helps the user skim a long transcript and see
+   * "yep, the panel was healthy here" without parsing chips. */
+  border-left: 3px solid color-mix(in srgb, #2ea043 55%, transparent);
+}
+.participant-health-card.has-failures {
+  /* Amber rail when any participant came back unreachable. The
+   * chip strip below shows WHICH one(s). */
+  border-left: 3px solid color-mix(in srgb, #f0a93f 65%, transparent);
+}
+.participant-health-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-primary);
+}
+.participant-health-card-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, currentColor 60%, transparent);
+}
+.participant-health-card.all-ok .participant-health-card-icon {
+  color: #2ea043;
+}
+.participant-health-card.has-failures .participant-health-card-icon {
+  color: #f0a93f;
+}
+.participant-health-card-title {
+  font-weight: 600;
+  font-size: var(--font-size-sm);
+}
+.participant-health-card-count {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
+}
+.participant-health-card-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.participant-health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px 3px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-base) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--panel-border) 50%, transparent);
+  font-size: var(--font-size-xs);
+  color: var(--text-primary);
+  /* Provider tint is supplied by per-provider rules below; chip
+   * defaults to neutral so unknown providers degrade gracefully. */
+}
+.participant-health-chip-label {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+.participant-health-chip-status {
+  font-size: var(--font-size-xs);
+  margin-left: 1px;
+  color: color-mix(in srgb, currentColor 50%, transparent);
+}
+.participant-health-chip-status.status-ok {
+  color: #2ea043;
+}
+.participant-health-chip-status.status-unreachable {
+  color: #f0a93f;
+}
+.participant-health-chip.status-unreachable {
+  /* Slight amber wash + dashed border on the chip itself so an
+   * unreachable participant stands out at a glance even before
+   * the user reads the chip text or the status glyph. */
+  border-style: dashed;
+  background: color-mix(in srgb, #f0a93f 8%, transparent);
+}
+/* Per-provider tints — mirror the existing chip-strip palette so
+ * the same Provider/Role chip reads the same in both places. */
+.participant-health-chip.provider-codex {
+  color: var(--provider-codex-color, var(--text-primary));
+}
+.participant-health-chip.provider-claude {
+  color: var(--provider-claude-color, var(--text-primary));
+}
+.participant-health-chip.provider-gemini {
+  color: var(--provider-gemini-color, var(--text-primary));
+}
+.participant-health-chip.provider-kimi {
+  color: var(--provider-kimi-color, var(--text-primary));
+}
+
 .subthread-return-card {
   width: min(100%, 860px);
   border: 1px solid rgb(var(--agent-accent-rgb) / 0.2);

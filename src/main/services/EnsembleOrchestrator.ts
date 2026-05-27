@@ -2392,7 +2392,16 @@ export class EnsembleOrchestrator {
         result: await probe(participant).catch((err: unknown) => probeErrorToResult(err))
       }))
     )
-    this.appendRoundStatus(runtime.chatId, runtime.roundId, formatParticipantHealthHeader(results))
+    // 1.0.5-EW29 — Emit the participant-health header as a
+    // structured message the renderer can render as a card
+    // (matching the tool-call / ensemble-block visual treatment)
+    // instead of as plain system-message text. The orchestrator
+    // still includes the human-readable string as `content` so
+    // anything that reads `message.content` (logs, debug dumps,
+    // future agent-prompt context) keeps working — the renderer
+    // just sees `metadata.kind === 'ensembleParticipantHealth'`
+    // and picks a card component over the default bubble.
+    this.appendParticipantHealthCard(runtime.chatId, runtime.roundId, results)
     return {
       reachable: results
         .filter(({ result }) => result.reachable)
@@ -2747,6 +2756,62 @@ export class EnsembleOrchestrator {
           metadata: {
             kind: 'ensembleRoundStatus',
             ensembleRoundId: roundId
+          }
+        }
+      ],
+      updatedAt: this.deps.now()
+    })
+  }
+
+  /**
+   * 1.0.5-EW29 — Structured participant-health header.
+   *
+   * Replaces the pre-EW29 plain-text variant of `appendRoundStatus`
+   * for the per-round health pre-flight summary. The transcript
+   * renderer routes on `metadata.kind === 'ensembleParticipantHealth'`
+   * to draw a chip-strip card (provider tints, status icons,
+   * compact header) instead of the muted "System" text block.
+   * The text variant is kept on `content` as a fallback for
+   * anything that still reads `message.content` directly (logs,
+   * exports, debugging).
+   */
+  private appendParticipantHealthCard(
+    chatId: string,
+    roundId: string,
+    results: Array<{ participant: EnsembleParticipant; result: ParticipantProbeResult }>
+  ): void {
+    const chat = this.deps.getChat(chatId)
+    if (!chat?.ensemble) return
+    const timestamp = this.deps.nowIso()
+    const entries = results.map(({ participant, result }) => ({
+      participantId: participant.id,
+      provider: participant.provider,
+      role: (participant.role || 'Participant').trim(),
+      status: result.reachable ? ('ok' as const) : ('unreachable' as const),
+      reason: result.reachable ? undefined : result.reason,
+      underlyingCode: result.reachable ? undefined : result.underlyingCode
+    }))
+    const okCount = entries.filter((e) => e.status === 'ok').length
+    const totalCount = entries.length
+    this.deps.saveChat({
+      ...chat,
+      messages: [
+        ...chat.messages,
+        {
+          id: `ensemble-participant-health-${roundId}`,
+          role: 'system',
+          // Keep the human-readable text on `content` as the
+          // fallback / debug surface — same string the pre-EW29
+          // path emitted, so existing logs / exports don't lose
+          // information.
+          content: formatParticipantHealthHeader(results),
+          timestamp,
+          metadata: {
+            kind: 'ensembleParticipantHealth',
+            ensembleRoundId: roundId,
+            entries,
+            okCount,
+            totalCount
           }
         }
       ],

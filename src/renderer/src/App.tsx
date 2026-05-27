@@ -137,6 +137,10 @@ import { isSubThreadReturnMessage } from './components/SubThreadReturnCardModel'
 import { WorkspaceAccessControls } from './components/WorkspaceAccessControls'
 import { SubThreadDelegationCard } from './components/SubThreadDelegationCard'
 import { isSubThreadDelegationMessage } from './components/SubThreadDelegationCardModel'
+// 1.0.5-EW29 — Participant-health pre-flight card. Renders the
+// per-round reachability summary as a chip strip instead of a
+// plain "System" text block. See `ParticipantHealthCard.tsx`.
+import { ParticipantHealthCard } from './components/ParticipantHealthCard'
 import { SubThreadStatusTicker } from './components/SubThreadStatusTicker'
 import { AgentMentionMenu } from './components/AgentMentionMenu'
 import {
@@ -5196,6 +5200,17 @@ const TranscriptPanel = memo(
                     chat={currentChat || undefined}
                     compactDensity={compactDensity}
                   />
+                ) : msg.metadata?.kind === 'ensembleParticipantHealth' ? (
+                  /*
+                    1.0.5-EW29 — Structured participant-health pre-flight
+                    summary. Rendered as a chip-strip card instead of a
+                    plain system-message bubble. The card component
+                    derives everything it needs (provider, role, status,
+                    failure reason) from `msg.metadata.entries`. The
+                    text variant on `msg.content` is the fallback for
+                    older transcripts / exports.
+                  */
+                  <ParticipantHealthCard key={msg.id} message={msg} />
                 ) : (
                   <div
                     key={msg.id}
