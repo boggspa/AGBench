@@ -64,7 +64,9 @@ export function getOrderedEnsembleParticipants(
     .filter((participant) => participant.enabled)
     .sort((a, b) => a.order - b.order || providerLabel(a.provider).localeCompare(providerLabel(b.provider)))
     .slice(0, Math.max(1, maxParticipants))
-  if (!currentPrompt || /@all\b/i.test(currentPrompt)) return enabled
+  if (!currentPrompt || /@all\b/i.test(currentPrompt)) {
+    return applyChairSummaryOrder(enabled, config)
+  }
 
   const prompt = currentPrompt.toLowerCase()
   const mentioned = new Set<string>()
@@ -80,11 +82,28 @@ export function getOrderedEnsembleParticipants(
       mentioned.add(participant.id)
     }
   }
-  if (mentioned.size === 0) return enabled
-  return [
+  if (mentioned.size === 0) return applyChairSummaryOrder(enabled, config)
+  return applyChairSummaryOrder([
     ...enabled.filter((participant) => mentioned.has(participant.id)),
     ...enabled.filter((participant) => !mentioned.has(participant.id))
-  ]
+  ], config)
+}
+
+function applyChairSummaryOrder(
+  participants: EnsembleParticipant[],
+  config: EnsembleConfig
+): EnsembleParticipant[] {
+  if (config.roundMode !== 'chair-summary' || !config.synthesizerParticipantId) {
+    return participants
+  }
+  const idx = participants.findIndex(
+    (participant) => participant.id === config.synthesizerParticipantId
+  )
+  if (idx < 0 || idx === participants.length - 1) return participants
+  const next = [...participants]
+  const [synthesizer] = next.splice(idx, 1)
+  next.push(synthesizer)
+  return next
 }
 
 export function buildEnsembleParticipantPrompt(input: BuildEnsemblePromptInput): string {

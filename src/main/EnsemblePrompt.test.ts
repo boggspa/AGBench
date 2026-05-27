@@ -87,6 +87,19 @@ describe('Ensemble prompt composition', () => {
     ])
   })
 
+  it('moves the configured synthesizer last in chair-summary rounds', () => {
+    const ordered = getOrderedEnsembleParticipants({
+      ...ensemble,
+      roundMode: 'chair-summary',
+      synthesizerParticipantId: 'claude'
+    })
+    expect(ordered.map((participant) => participant.id)).toEqual([
+      'codex',
+      'gemini',
+      'claude'
+    ])
+  })
+
   // 1.0.4-AR2 — pre-AR2 the prompt-builder treated any
   // `maxParticipants <= 4` as legacy data and fell back to the
   // global ceiling. AR2 honors the per-chat value as long as it's

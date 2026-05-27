@@ -30,8 +30,8 @@ import {
   classifyDispatchError,
   formatAllUnreachableNote,
   formatDispatchFailureNote,
-  formatProbeFailureNote,
   formatYieldTargetUnreachableNote,
+  PARTICIPANT_HEALTH_TAG,
   type DispatchFailureReason
 } from '../EnsembleErrors'
 import type { ScoutBriefRecord } from '../ScoutBrief'
@@ -497,6 +497,7 @@ interface ActiveRoundRuntime {
    * briefs.
    */
   scoutBriefs?: ScoutBriefRecord[]
+  unreachableParticipantIds?: Set<string>
   orchestrationMode: EnsembleOrchestrationMode
   continuationHops: number
   maxContinuationHops: number
@@ -1110,6 +1111,28 @@ export class EnsembleOrchestrator {
     // for-loop iterated `participants` directly; reordering required
     // a queue + while-loop pattern.
     const remaining: EnsembleParticipant[] = [...participants]
+    let dispatchAttempts = 0
+    let unreachableFailures = 0
+    if (this.deps.probeParticipant && remaining.length > 0 && !runtime.cancelled) {
+      const health = await this.probeParticipantsForRound(runtime, remaining)
+      dispatchAttempts += health.unreachable.length
+      unreachableFailures += health.unreachable.length
+      remaining.length = 0
+      remaining.push(...health.reachable)
+      if (health.unreachable.length > 0) {
+        runtime.unreachableParticipantIds = new Set(
+          health.unreachable.map(({ participant }) => participant.id)
+        )
+        for (const { participant, result } of health.unreachable) {
+          this.markParticipantUnreachable(
+            runtime.chatId,
+            runtime.roundId,
+            participant,
+            result.reason || `${participant.provider} runtime not reachable`
+          )
+        }
+      }
+    }
 
     // 1.0.4-AK5 — Parallel Scout Pass.
     //
@@ -1172,8 +1195,6 @@ export class EnsembleOrchestrator {
     // `kind: 'unreachable'`. If the round exhausts `remaining` with
     // every attempt unreachable, we emit a final "no reachable
     // participants left" note so the user knows to re-launch.
-    let dispatchAttempts = 0
-    let unreachableFailures = 0
     while (remaining.length > 0) {
       if (runtime.cancelled) break
       const chat = this.deps.getChat(runtime.chatId)
@@ -1181,72 +1202,6 @@ export class EnsembleOrchestrator {
       const participant = remaining.shift()!
       const wasYieldTarget = yieldedTargetParticipantId === participant.id
       yieldedTargetParticipantId = null
-
-      // 1.0.4-AD — pre-flight health check. Before we seed the
-      // participant run or hand anything to dispatch, probe the
-      // provider's runtime (Codex app-server socket, Claude SDK/CLI
-      // binary, Gemini CLI/PTY, Kimi bridge). If the probe says
-      // unreachable, mark the participant + emit a transcript note and
-      // route past — same self-heal path as the existing dispatch-
-      // failure branch, but caught at the round start so we never
-      // burn a runId on a participant we can't talk to.
-      //
-      // Probe is optional via deps so the unit-test harness can leave
-      // it undefined and exercise the pre-1.0.4-AD code path.
-      // Production wiring (main/index.ts) implements it via the
-      // existing `resolveCliProviderBinary` / `getCodexClient` /
-      // `GeminiMcpBridge` / `KimiMcpBridge` helpers.
-      if (this.deps.probeParticipant) {
-        const probeResult = await this.deps
-          .probeParticipant(participant)
-          .catch((err: unknown) => {
-            // A probe that THROWS is itself a reachability signal —
-            // the probe couldn't decide, so treat as unreachable
-            // rather than letting the throw take down the round.
-            const message = err instanceof Error ? err.message : String(err)
-            const code =
-              typeof (err as { code?: unknown })?.code === 'string'
-                ? ((err as { code?: string }).code as string)
-                : undefined
-            return {
-              reachable: false,
-              reason: message,
-              ...(code ? { underlyingCode: code } : {})
-            } as ParticipantProbeResult
-          })
-        if (!probeResult.reachable) {
-          dispatchAttempts += 1
-          unreachableFailures += 1
-          const reasonText =
-            probeResult.reason ||
-            `${participant.provider} runtime not reachable`
-          const note = formatProbeFailureNote(
-            participant,
-            reasonText,
-            probeResult.underlyingCode
-          )
-          if (wasYieldTarget) {
-            this.appendRoundStatus(
-              runtime.chatId,
-              runtime.roundId,
-              formatYieldTargetUnreachableNote(
-                participant,
-                probeResult.underlyingCode || 'UNREACHABLE',
-                remaining[0] || null
-              )
-            )
-          } else {
-            this.appendRoundStatus(runtime.chatId, runtime.roundId, note)
-          }
-          this.markParticipantUnreachable(
-            runtime.chatId,
-            runtime.roundId,
-            participant,
-            reasonText
-          )
-          continue
-        }
-      }
 
       const run = this.seedParticipantRun(chat, runtime, participant)
       runtime.activeRunId = run.runId
@@ -1870,6 +1825,7 @@ export class EnsembleOrchestrator {
     statusMessage: string
   ): boolean {
     if (runtime.orchestrationMode !== 'continuous') return false
+    if (runtime.unreachableParticipantIds?.has(participant.id)) return false
     if (runtime.continuationHops >= runtime.maxContinuationHops) {
       if (!runtime.continuationLimitNotified) {
         runtime.continuationLimitNotified = true
@@ -1898,6 +1854,33 @@ export class EnsembleOrchestrator {
       `${statusMessage} Continuous handoff ${runtime.continuationHops}/${runtime.maxContinuationHops}.`
     )
     return true
+  }
+
+  private async probeParticipantsForRound(
+    runtime: ActiveRoundRuntime,
+    participants: EnsembleParticipant[]
+  ): Promise<{
+    reachable: EnsembleParticipant[]
+    unreachable: Array<{ participant: EnsembleParticipant; result: ParticipantProbeResult }>
+  }> {
+    const probe = this.deps.probeParticipant
+    if (!probe) return { reachable: participants, unreachable: [] }
+    const results = await Promise.all(
+      participants.map(async (participant) => ({
+        participant,
+        result: await probe(participant).catch((err: unknown) => probeErrorToResult(err))
+      }))
+    )
+    this.appendRoundStatus(runtime.chatId, runtime.roundId, formatParticipantHealthHeader(results))
+    return {
+      reachable: results
+        .filter(({ result }) => result.reachable)
+        .map(({ participant }) => participant),
+      unreachable: results.filter(
+        (entry): entry is { participant: EnsembleParticipant; result: ParticipantProbeResult } =>
+          !entry.result.reachable
+      )
+    }
   }
 
   private finalizeRun(
@@ -2368,6 +2351,32 @@ function updateRoundParticipant(
       participant.participantId === participantId ? { ...participant, ...partial } : participant
     )
   }
+}
+
+function probeErrorToResult(err: unknown): ParticipantProbeResult {
+  const message = err instanceof Error ? err.message : String(err)
+  const code =
+    typeof (err as { code?: unknown })?.code === 'string'
+      ? ((err as { code?: string }).code as string)
+      : undefined
+  return {
+    reachable: false,
+    reason: message,
+    ...(code ? { underlyingCode: code } : {})
+  }
+}
+
+function formatParticipantHealthHeader(
+  results: Array<{ participant: EnsembleParticipant; result: ParticipantProbeResult }>
+): string {
+  const lines = results.map(({ participant, result }) => {
+    const who = `${providerLabel(participant.provider)} / ${participant.role || 'Participant'}`
+    if (result.reachable) return `  ${who}: ok`
+    const reason = result.reason || `${participant.provider} runtime not reachable`
+    const code = result.underlyingCode ? ` (${result.underlyingCode})` : ''
+    return `  ${who}: unreachable${code} - ${reason}`
+  })
+  return `${PARTICIPANT_HEALTH_TAG}\n${lines.join('\n')}`
 }
 
 function statusToRunStatus(status: EnsembleParticipantStatus): string {

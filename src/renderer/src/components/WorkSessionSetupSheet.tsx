@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   EnsembleParticipant,
+  EnsembleRoundMode,
   PermissionPresetId,
   ProviderId,
   WorkSessionConfig
@@ -53,9 +54,29 @@ const PERMISSION_PRESET_OPTIONS: { value: PermissionPresetId; label: string; hin
 const DEFAULT_MAX_ROUNDS = 38
 const DEFAULT_MAX_DURATION_MS = 6 * 60 * 60 * 1000
 
+const ROUND_MODE_OPTIONS: { value: Exclude<EnsembleRoundMode, 'targeted'>; label: string; hint: string }[] = [
+  {
+    value: 'roundtable',
+    label: 'Roundtable',
+    hint: 'Every allowed participant speaks in order.'
+  },
+  {
+    value: 'chair-summary',
+    label: 'Chair summary',
+    hint: 'A synthesizer speaks last and writes the round summary.'
+  },
+  {
+    value: 'rebuttal',
+    label: 'Rebuttal',
+    hint: 'Participants respond to the previous speaker.'
+  }
+]
+
 export interface WorkSessionSetupConfirmInput {
   config: WorkSessionConfig
   initialPrompt: string
+  roundMode: Exclude<EnsembleRoundMode, 'targeted'>
+  synthesizerParticipantId?: string
 }
 
 interface WorkSessionSetupSheetProps {
@@ -69,6 +90,8 @@ interface WorkSessionSetupSheetProps {
   /** Optional preset to pre-populate. Useful when re-opening an
    * existing session config to edit. */
   initial?: Partial<WorkSessionConfig> & { initialPrompt?: string }
+  initialRoundMode?: EnsembleRoundMode
+  initialSynthesizerParticipantId?: string
   onConfirm: (input: WorkSessionSetupConfirmInput) => void
   onCancel: () => void
 }
@@ -78,6 +101,8 @@ export function WorkSessionSetupSheet({
   participants,
   providerLabel,
   initial,
+  initialRoundMode,
+  initialSynthesizerParticipantId,
   onConfirm,
   onCancel
 }: WorkSessionSetupSheetProps): React.JSX.Element | null {
@@ -114,6 +139,14 @@ export function WorkSessionSetupSheet({
   const [enableScoutPass, setEnableScoutPass] = useState<boolean>(
     initial?.enableScoutPass ?? false
   )
+  const [roundMode, setRoundMode] = useState<Exclude<EnsembleRoundMode, 'targeted'>>(
+    initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
+      ? initialRoundMode
+      : 'roundtable'
+  )
+  const [synthesizerParticipantId, setSynthesizerParticipantId] = useState<string | undefined>(
+    initialSynthesizerParticipantId || initial?.leadParticipantId || enabledParticipants[0]?.id
+  )
 
   const [errors, setErrors] = useState<string[]>([])
   const objectiveRef = useRef<HTMLTextAreaElement | null>(null)
@@ -133,10 +166,18 @@ export function WorkSessionSetupSheet({
     setMaxRoundsPerProvider(initial?.maxRoundsPerProvider ?? DEFAULT_MAX_ROUNDS)
     setMaxDurationMs(initial?.maxDurationMs ?? DEFAULT_MAX_DURATION_MS)
     setEnableScoutPass(initial?.enableScoutPass ?? false)
+    setRoundMode(
+      initialRoundMode === 'chair-summary' || initialRoundMode === 'rebuttal'
+        ? initialRoundMode
+        : 'roundtable'
+    )
+    setSynthesizerParticipantId(
+      initialSynthesizerParticipantId || initial?.leadParticipantId || enabledParticipants[0]?.id
+    )
     setErrors([])
     // Focus objective on open so the user can type immediately.
     setTimeout(() => objectiveRef.current?.focus(), 50)
-  }, [isOpen, initial, initialAllowed, enabledParticipants])
+  }, [isOpen, initial, initialAllowed, enabledParticipants, initialRoundMode, initialSynthesizerParticipantId])
 
   // Esc dismisses the sheet — matches BugReportSheet behaviour.
   useEffect(() => {
@@ -177,6 +218,9 @@ export function WorkSessionSetupSheet({
     if (maxRoundsPerProvider < 1 || !Number.isFinite(maxRoundsPerProvider)) {
       validationErrors.push('Rounds-per-provider must be at least 1.')
     }
+    if (roundMode === 'chair-summary' && !synthesizerParticipantId) {
+      validationErrors.push('Choose a synthesizer for chair-summary mode.')
+    }
 
     if (validationErrors.length > 0) {
       setErrors(validationErrors)
@@ -201,7 +245,12 @@ export function WorkSessionSetupSheet({
       roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0 },
       totalRoundsUsed: 0
     }
-    onConfirm({ config, initialPrompt: trimmedPrompt })
+    onConfirm({
+      config,
+      initialPrompt: trimmedPrompt,
+      roundMode,
+      ...(synthesizerParticipantId ? { synthesizerParticipantId } : {})
+    })
   }, [
     objective,
     acceptanceCriteria,
@@ -212,6 +261,8 @@ export function WorkSessionSetupSheet({
     maxRoundsPerProvider,
     maxDurationMs,
     enableScoutPass,
+    roundMode,
+    synthesizerParticipantId,
     enabledParticipants.length,
     onConfirm
   ])
@@ -275,6 +326,10 @@ export function WorkSessionSetupSheet({
                     }
                     if (o.enableScoutPass !== undefined) {
                       setEnableScoutPass(o.enableScoutPass)
+                    }
+                    if (o.synthesizerRequirement === 'required') {
+                      setRoundMode('chair-summary')
+                      setSynthesizerParticipantId(leadId || enabledParticipants[0]?.id)
                     }
                     if (o.acceptanceCriteriaHint && !acceptanceCriteria.trim()) {
                       setAcceptanceCriteria(o.acceptanceCriteriaHint)
@@ -354,6 +409,45 @@ export function WorkSessionSetupSheet({
                 </div>
               )}
             </div>
+          </div>
+          <div className="work-session-row">
+            <label className="work-session-field">
+              <span className="work-session-field-label">Round mode</span>
+              <select
+                className="work-session-field-select"
+                value={roundMode}
+                onChange={(e) =>
+                  setRoundMode(e.target.value as Exclude<EnsembleRoundMode, 'targeted'>)
+                }
+              >
+                {ROUND_MODE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <span className="work-session-field-hint">
+                {ROUND_MODE_OPTIONS.find((option) => option.value === roundMode)?.hint}
+              </span>
+            </label>
+            <label className="work-session-field">
+              <span className="work-session-field-label">Synthesizer</span>
+              <select
+                className="work-session-field-select"
+                value={synthesizerParticipantId || ''}
+                onChange={(e) => setSynthesizerParticipantId(e.target.value || undefined)}
+                disabled={roundMode !== 'chair-summary'}
+              >
+                {enabledParticipants.map((participant) => (
+                  <option key={participant.id} value={participant.id}>
+                    {providerLabel(participant.provider)} / {participant.role || 'Participant'}
+                  </option>
+                ))}
+              </select>
+              <span className="work-session-field-hint">
+                Used only for chair-summary rounds.
+              </span>
+            </label>
           </div>
           <div className="work-session-row">
             <label className="work-session-field">

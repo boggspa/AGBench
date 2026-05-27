@@ -1141,21 +1141,18 @@ Next action:
     expect(claudeState?.status).toBe('unreachable')
     expect(claudeState?.lastFailureReason).toBe('Claude CLI binary not found on PATH')
 
-    // Transcript carries the structured probe-failure note —
-    // contains the participant label, the probe reason, the posix
-    // code in parens, AND the "Skipping for this round" recovery hint
-    // (same wording shared with `formatDispatchFailureNote`).
+    // Transcript carries one consolidated participant-health header.
     const probeNote = harness.chat.messages.find(
       (message) =>
         message.role === 'system' &&
         message.metadata?.kind === 'ensembleRoundStatus' &&
         typeof message.content === 'string' &&
-        message.content.includes('health check failed') &&
+        message.content.startsWith('[participant-health]') &&
         message.content.includes('Claude / Reviewer')
     )
     expect(probeNote?.content).toContain('Claude CLI binary not found on PATH')
     expect(probeNote?.content).toContain('(ENOENT)')
-    expect(probeNote?.content).toContain('Skipping for this round')
+    expect(probeNote?.content).toContain('Codex / Worker: ok')
   })
 
   it('1.0.4-AD: treats a probe that throws as unreachable rather than crashing the round', async () => {
@@ -1226,15 +1223,17 @@ Next action:
         message.content.includes('No reachable participants left')
     )
     expect(fallbackNote).toBeDefined()
-    // Both per-participant probe-failure notes should also be present.
+    // One consolidated probe header should list both participants.
     const probeNotes = harness.chat.messages.filter(
       (message) =>
         message.role === 'system' &&
         message.metadata?.kind === 'ensembleRoundStatus' &&
         typeof message.content === 'string' &&
-        message.content.includes('health check failed')
+        message.content.startsWith('[participant-health]\n')
     )
-    expect(probeNotes).toHaveLength(2)
+    expect(probeNotes).toHaveLength(1)
+    expect(probeNotes[0].content).toContain('Claude / Reviewer: unreachable')
+    expect(probeNotes[0].content).toContain('Codex / Worker: unreachable')
   })
 
   it('closes the round immediately when a speaker uses @user', async () => {

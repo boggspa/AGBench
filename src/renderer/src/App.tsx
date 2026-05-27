@@ -14280,7 +14280,12 @@ function App(): React.JSX.Element {
   // already clears queuedPrompts; we then flip the session status
   // to 'cancelled' so the round-end check finalises cleanly.
   const handleConfirmWorkSession = useCallback(
-    ({ config, initialPrompt }: WorkSessionSetupConfirmInput) => {
+    ({
+      config,
+      initialPrompt,
+      roundMode,
+      synthesizerParticipantId
+    }: WorkSessionSetupConfirmInput) => {
       if (!isCurrentEnsembleChat || !currentChat?.ensemble) return
       updateChatById(currentChat.appChatId, (source) => {
         const patched: ChatRecord = {
@@ -14288,6 +14293,8 @@ function App(): React.JSX.Element {
           ensemble: {
             ...source.ensemble!,
             workSession: config,
+            roundMode,
+            synthesizerParticipantId,
             updatedAt: new Date().toISOString()
           }
         }
@@ -18869,6 +18876,8 @@ function App(): React.JSX.Element {
                 }
               : undefined
           }
+          initialRoundMode={currentChat.ensemble.roundMode || 'roundtable'}
+          initialSynthesizerParticipantId={currentChat.ensemble.synthesizerParticipantId}
           onConfirm={handleConfirmWorkSession}
           onCancel={() => setShowWorkSessionSheet(false)}
         />
