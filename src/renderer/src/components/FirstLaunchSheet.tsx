@@ -445,32 +445,164 @@ export function FirstLaunchSheet({
               </label>
             </div>
 
+            {/*
+              1.0.5-EW32 — Use the same rich composer preview as
+              Settings → Appearance. Pre-EW32 the onboarding sheet
+              had its own minimal placeholder (`first-launch-sheet-
+              preview-composer`) that looked nearly identical across
+              the 9 composer styles — defeats the point of letting
+              users pick a shell on first launch. Switched to the
+              `settings-composer-preview-card` structure that
+              SettingsPanel uses; the CSS for that card already
+              renders the per-shell flourishes (above-bar layout,
+              inline pickers, action button placement etc.). The
+              `first-launch-sheet-composer-preview` wrapper class
+              stays for the onboarding-specific outer spacing.
+            */}
             <div className="first-launch-sheet-composer-preview" aria-label="Composer preview">
               <div
-                className="first-launch-sheet-preview-transcript"
-                data-provider={composerPreview.provider}
+                className="settings-composer-preview-card"
+                data-composer-style={composerStyle}
+                data-interface-style={composerStyle}
               >
-                <span>{composerPreview.providerLabel}</span>
-                <p>
-                  This is how assistant text, inline <code>code</code>, and file names will read
-                  in your transcript.
-                </p>
-              </div>
-              <div className="first-launch-sheet-preview-user-bubble">
-                Can you compare a few providers in one thread?
-              </div>
-              <div className={`first-launch-sheet-preview-composer interface-${composerStyle}`}>
-                <div className="first-launch-sheet-preview-above-bar">
-                  <span>Preview workspace · main</span>
-                  <span>2 files changed</span>
+                <div className="settings-composer-preview-transcript">
+                  <span className="settings-composer-preview-speaker">
+                    {composerPreview.providerLabel}
+                  </span>
+                  <p>
+                    Assistant transcript text uses this typeface, including inline code, file
+                    names, and longer status lines.
+                  </p>
+                  <div className="settings-composer-preview-tool-row" aria-hidden="true">
+                    <span>Edited</span>
+                    <code>src/renderer/src/App.tsx</code>
+                    <strong>+42</strong>
+                    <em>-8</em>
+                  </div>
                 </div>
-                <div className="first-launch-sheet-preview-input" aria-hidden="true">
-                  {composerPreview.placeholder}
-                </div>
-                <div className="first-launch-sheet-preview-footer">
-                  <span>{composerPreview.permissionLabel}</span>
-                  <span>{composerPreview.providerLabel}</span>
-                  <span>{composerPreview.modelLabel}</span>
+                <div
+                  className={`composer-area settings-composer-preview-area interface-${composerStyle}`}
+                  aria-label={`${composerPreview.providerLabel} composer preview`}
+                >
+                  <div className="composer-above-bar-stack">
+                    <div className="composer-above-bar style-unified">
+                      <span className="composer-above-bar-branch">
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <circle cx="4" cy="3.5" r="1.6" />
+                          <circle cx="4" cy="12.5" r="1.6" />
+                          <circle cx="12" cy="7" r="1.6" />
+                          <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
+                        </svg>
+                        <span>
+                          Preview workspace ·{' '}
+                          <em className="composer-above-bar-secondary-branch">main</em>
+                        </span>
+                      </span>
+                      <span className="composer-above-bar-files-cluster">
+                        <span className="composer-above-bar-files">
+                          <strong>2</strong> files changed
+                        </span>
+                        <span className="composer-above-bar-stats">
+                          <span className="composer-diff-add">+42</span>
+                          <span className="composer-diff-del">-8</span>
+                        </span>
+                      </span>
+                      <button
+                        type="button"
+                        className="composer-above-bar-action"
+                        tabIndex={-1}
+                        aria-hidden="true"
+                      >
+                        Review changes
+                      </button>
+                    </div>
+                  </div>
+                  <div className="composer-surface settings-composer-preview-surface">
+                    <div className="composer-chips" aria-hidden="true">
+                      <span className="composer-chip">Branch: main</span>
+                      <span className="composer-chip accent">Preview only</span>
+                    </div>
+                    <div
+                      className="composer-textarea settings-composer-preview-textarea"
+                      aria-hidden="true"
+                      style={{ minHeight: '60px' }}
+                    >
+                      {composerPreview.placeholder}
+                    </div>
+                    <div className="composer-control-footer settings-composer-preview-footer">
+                      <div className="composer-inline-pickers">
+                        <div className="composer-inline-pickers-left" aria-hidden="true">
+                          <button
+                            type="button"
+                            className="composer-picker-label settings-composer-preview-control"
+                            data-composer-control="attach"
+                            tabIndex={-1}
+                          >
+                            +
+                          </button>
+                          <span
+                            className="composer-picker-label settings-composer-preview-control"
+                            data-composer-control="provider"
+                          >
+                            {composerPreview.providerLabel}
+                          </span>
+                          <span
+                            className="composer-picker-label settings-composer-preview-control"
+                            data-composer-control="permission"
+                          >
+                            {composerPreview.permissionLabel}
+                          </span>
+                          <span
+                            className="composer-picker-label settings-composer-preview-control"
+                            data-composer-control="model"
+                          >
+                            {composerPreview.modelLabel}
+                          </span>
+                        </div>
+                        <div className="composer-inline-actions" aria-hidden="true">
+                          <span className="context-wheel settings-composer-preview-context">
+                            <svg viewBox="0 0 18 18" width="18" height="18">
+                              <circle
+                                cx="9"
+                                cy="9"
+                                r="6.6"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                opacity="0.22"
+                              />
+                              <path
+                                d="M9 2.4a6.6 6.6 0 0 1 5.4 10.4"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </span>
+                          <span className="composer-thread-token-tally">44%</span>
+                          <button
+                            type="button"
+                            className="composer-action-btn run-btn"
+                            tabIndex={-1}
+                            aria-label="Preview send button"
+                          >
+                            ↑
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

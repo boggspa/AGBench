@@ -275,15 +275,25 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Active profile: work-gemini')
   })
 
-  it('§3 preview composer does not carry the composer-area className', () => {
-    // Regression guard: the preview previously mounted with the
-    // `composer-area` className to inherit chrome from the real composer's
-    // rules, but `.composer-area` itself sets `position: absolute; left: 0;
-    // right: 0; pointer-events: none;` for docking inside the chat pane.
-    // Inside the FirstLaunchSheet's static modal grid, that escaped the
-    // card and stretched a click-through strip across the full window
-    // width. Keep the className list lean — the preview ships its own
-    // `.first-launch-sheet-preview-composer` styles.
+  it('§3 preview composer renders the rich settings-style card (1.0.5-EW32)', () => {
+    // 1.0.5-EW32 — Pre-EW32 the onboarding sheet used a minimal
+    // placeholder (`first-launch-sheet-preview-composer`) that
+    // looked nearly identical across the 9 composer styles. The
+    // original guard test here pinned that by asserting
+    // `composer-area` was NOT present (because the docking CSS
+    // `position: absolute` had previously escaped the card).
+    //
+    // EW32 reuses the Settings → Appearance rich-preview card
+    // (`.settings-composer-preview-card`) instead, which DOES
+    // carry the `composer-area` className — but scoped via
+    // `.settings-composer-preview-area` so the docking-escape
+    // regression is no longer possible (the absolute positioning
+    // is overridden at the .settings-composer-preview-card
+    // level). Updated assertion: confirm the rich preview card +
+    // its `data-composer-style` are present, and that the
+    // composer-area lives inside the
+    // `.settings-composer-preview-area` wrapper rather than
+    // free-floating in the modal grid.
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
         open={true}
@@ -296,9 +306,11 @@ describe('FirstLaunchSheet', () => {
         composerStyle="claude"
       />
     )
-    const match = html.match(/class="([^"]*first-launch-sheet-preview-composer[^"]*)"/)
-    expect(match).toBeTruthy()
-    expect(match![1]).not.toMatch(/\bcomposer-area\b/)
+    // The rich preview card with its data-attribute is present.
+    expect(html).toMatch(/settings-composer-preview-card[^"]*"[^>]*data-composer-style="claude"/)
+    // The composer-area className is now intentional, scoped via
+    // the settings-composer-preview-area override.
+    expect(html).toMatch(/composer-area[^"]*settings-composer-preview-area/)
   })
 
   it('renders the footer Skip + Got it buttons', () => {
