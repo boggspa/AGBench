@@ -424,6 +424,109 @@ describe('EnsembleOrchestrator', () => {
     expect(harness.chat.ensemble?.activeRound?.participants[0].status).not.toBe('sleeping')
   })
 
+  it('resumes a persisted wakeup after a simulated app restart', async () => {
+    // 1.0.5-N3 integration smoke. Exercises the end-to-end recovery
+    // path that prior tests covered only at the unit boundary
+    // (WakeupTimerService.classifyWakeupRecovery + the in-process
+    // wake test). Models the full chain:
+    //
+    //   1) Pre-restart: claude schedules a wakeup, gets finalised
+    //      as sleeping; codex runs.
+    //   2) Simulated restart: new harness gets harness1.chat as
+    //      initialChat. The orchestrator has no in-memory
+    //      ActiveRoundRuntime for the chat — only the persisted
+    //      pending wakeup survives.
+    //   3) `resumePersistedWakeup(...)` reconstructs the runtime,
+    //      flips the wakeup to fired with the recovery message,
+    //      re-dispatches the participant with the resume prompt,
+    //      and appends the "woke after app restart" status row.
+    const harness1 = makeHarness({ scheduleWakeupTimer: () => {} })
+    harness1.orchestrator.startRound({
+      chatId: 'ensemble-chat',
+      prompt: 'Start and survive a restart.',
+      event: { sender: {} as Electron.WebContents }
+    })
+    await vi.waitFor(() => expect(harness1.dispatched).toHaveLength(1))
+    const claudeRunId = harness1.dispatched[0].appRunId!
+    const sleepResult = harness1.orchestrator.scheduleWakeupForRun(claudeRunId, {
+      delayMs: 60_000,
+      reason: 'Waiting on background job.'
+    })
+    expect(sleepResult.ok).toBe(true)
+    const wakeupId = sleepResult.wakeup!.wakeupId
+
+    // Codex runs while claude sleeps; the round stays 'running'
+    // because the wakeup is still pending.
+    await vi.waitFor(() => expect(harness1.dispatched).toHaveLength(2))
+    harness1.orchestrator.handleProviderOutput(
+      'codex',
+      { appRunId: harness1.dispatched[1].appRunId, appChatId: 'ensemble-chat' },
+      { type: 'result', status: 'success' }
+    )
+    await vi.waitFor(() => {
+      expect(harness1.chat.ensemble?.activeRound?.status).toBe('running')
+      expect(harness1.chat.ensemble?.activeRound?.pendingWakeupIds).toEqual([wakeupId])
+    })
+
+    // Simulated restart. The orchestrator below has no in-memory
+    // runtime for this chat — only the persisted pending wakeup.
+    const restarted = makeHarness({ initialChat: harness1.chat })
+    const pending = restarted.chat.ensemble!.wakeups![wakeupId]
+    expect(pending.status).toBe('pending')
+
+    const ok = restarted.orchestrator.resumePersistedWakeup(
+      pending,
+      {} as Electron.WebContents
+    )
+    expect(ok).toBe(true)
+
+    // Wakeup record was flipped to fired with the recovery marker.
+    const fired = restarted.chat.ensemble!.wakeups![wakeupId]
+    expect(fired.status).toBe('fired')
+    expect(fired.firedAt).toBeDefined()
+    expect(fired.message).toBe('recovered after app restart')
+
+    // Claude was re-dispatched, with the resume prompt threaded in.
+    await vi.waitFor(() => expect(restarted.dispatched).toHaveLength(1))
+    expect(restarted.dispatched[0].ensembleRun?.participantId).toBe('claude')
+    expect(restarted.dispatched[0].prompt).toContain('[Scheduled wakeup]')
+    expect(restarted.dispatched[0].prompt).toContain('Waiting on background job.')
+
+    // The transcript carries the woke-after-restart status row.
+    expect(
+      restarted.chat.messages.some((message) =>
+        message.content.includes('woke after app restart')
+      )
+    ).toBe(true)
+  })
+
+  it('refuses to resume a persisted wakeup whose status is no longer pending', () => {
+    // Guards the early-return at the top of resumePersistedWakeup.
+    // A wakeup that already fired / cancelled / expired must not
+    // re-arm if recovery happens to fire a second time (e.g. user
+    // toggled the flag off and back on, or two recoveries race).
+    const harness = makeHarness()
+    const fired: EnsembleWakeupRecord = {
+      wakeupId: 'wake-already-fired',
+      chatId: 'ensemble-chat',
+      roundId: harness.chat.ensemble!.activeRound?.roundId || 'round-stale',
+      participantId: 'claude',
+      provider: 'claude',
+      role: 'Reviewer',
+      runId: 'claude-run-0',
+      scheduledAt: '2026-05-24T00:00:01.000Z',
+      wakeAt: '2026-05-24T00:01:01.000Z',
+      status: 'fired',
+      firedAt: '2026-05-24T00:01:02.000Z'
+    }
+    const ok = harness.orchestrator.resumePersistedWakeup(
+      fired,
+      {} as Electron.WebContents
+    )
+    expect(ok).toBe(false)
+    expect(harness.dispatched).toHaveLength(0)
+  })
+
   it('accepts a wakeup exactly at the 7-day delay cap', async () => {
     // Boundary check — the cap is *strictly less than or equal to*
     // MAX_WAKEUP_DELAY_MS, so exactly-7-days must still succeed.
