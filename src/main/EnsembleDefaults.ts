@@ -69,12 +69,15 @@ export function createDefaultEnsembleConfig(activeProvider?: ProviderId): Ensemb
 
   return {
     enabled: true,
-    // 1.0.4-AR2 — track the new global ceiling (was 6). The
-    // DEFAULT_ENSEMBLE_ROLES seed yields 4 enabled participants
-    // (claude / codex / gemini / kimi) so the user starts with a
-    // 4-of-8 panel and has headroom to add specialists without
-    // raising the cap. Hard min on the remove path is 2.
-    maxParticipants: 8,
+    // 1.0.4-AR2 — track the global ceiling (was 6).
+    // 1.0.5-EW1 — ceiling raised 8 → 12. The DEFAULT_ENSEMBLE_ROLES
+    // seed yields 4 enabled participants (claude / codex / gemini /
+    // kimi) so the user starts with a 4-of-12 panel and has plenty
+    // of headroom to add specialists / extra Claudes / etc. before
+    // hitting the cap. The chip strip wraps at 7+ to a 6-column
+    // second row, so even a fully-loaded 12-participant panel
+    // stays navigable. Hard min on the remove path is 2.
+    maxParticipants: 12,
     orchestrationMode: 'turn_bound',
     maxContinuationHops: 6,
     participants,

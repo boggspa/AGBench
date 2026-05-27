@@ -26476,6 +26476,55 @@ input:disabled, select:disabled, textarea:disabled {
   justify-content: center;
 }
 
+/* 1.0.5-EW1 — At 7+ participants the chip strip wraps to a second
+ * row. Pre-EW1 the strip clipped chips off the left edge silently
+ * (unreachable participants). Switch from the centered horizontal
+ * flex layout to a fixed 6-column grid that wraps to row 2 cleanly:
+ *
+ *   7 participants → 6 chips on row 1 + 1 on row 2 (with the
+ *                    "+ add" button beside it on row 2)
+ *   8–11           → wraps as expected
+ *   12             → 6 + 6, no "+" (panel is at cap)
+ *
+ * `minmax(0, 1fr)` lets grid items shrink past their intrinsic
+ * width — chip labels truncate via the chip-role overflow rules
+ * below rather than forcing the grid wider than its container.
+ * overflow-x: hidden replaces the horizontal scroll we had on the
+ * flex layout — there's nothing to scroll to in a 2-row grid. */
+.ensemble-above-row-chips.is-wrapped {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-auto-flow: row;
+  justify-content: stretch;
+  overflow-x: hidden;
+  row-gap: 6px;
+}
+
+.ensemble-above-row-chips.is-wrapped .ensemble-above-chip {
+  /* In grid mode chip widths are dictated by the column track
+   * (1/6 of the strip width). Without min-width: 0 + the role
+   * truncation below, a long role like "Implementation Reviewer"
+   * would force the column wider than its 1fr share. */
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ensemble-above-row-chips.is-wrapped .ensemble-above-chip-role {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.ensemble-above-row-chips.is-wrapped .ensemble-above-add-participant {
+  /* In grid mode the "+ add" button would stretch to fill a full
+   * column (1/6 of the strip) by default. Pin it to the start of
+   * its cell so it stays compact next to whichever chip preceded
+   * it, matching the visual rhythm of the flex layout. */
+  justify-self: start;
+  align-self: center;
+}
+
 /* Slice F v2 (1.0.3) — the chip wrapper is now a `<div>` (not a
  * <button>) because the chip hosts BOTH a click-to-select body
  * AND an overflow `⋯` action when selected. The inner body

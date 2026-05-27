@@ -148,6 +148,32 @@ describe('Ensemble prompt composition', () => {
     ])
   })
 
+  // 1.0.5-EW1 — global ceiling raised 8 → 12. A panel with a
+  // 12-participant roster + `maxParticipants: 12` must keep all 12
+  // through the prompt builder; pre-EW1 the constant would have
+  // silently clamped to 8 and the user would lose 4 participants
+  // from the prompt context without warning.
+  it('honors a 12-participant panel at the new global ceiling', () => {
+    const extras = Array.from({ length: 9 }, (_, idx) => ({
+      id: `extra-${idx + 1}`,
+      provider: 'codex' as const,
+      enabled: true,
+      role: `Extra ${idx + 1}`,
+      instructions: `Extra worker ${idx + 1}.`,
+      order: 4 + idx,
+      permissionPresetId: 'workspace_write' as const
+    }))
+    const twelveParticipant: EnsembleConfig = {
+      ...ensemble,
+      maxParticipants: 12,
+      participants: [...ensemble.participants, ...extras]
+    }
+    const ids = getOrderedEnsembleParticipants(twelveParticipant).map((p) => p.id)
+    expect(ids).toHaveLength(12)
+    expect(ids.slice(0, 3)).toEqual(['claude', 'codex', 'gemini'])
+    expect(ids).toContain('extra-9')
+  })
+
   // 1.0.4-AR2 — `maxParticipants` of 0 / NaN / negative is treated as
   // missing data and falls back to the global ceiling so a corrupted
   // config can't accidentally produce a 0-participant slice.

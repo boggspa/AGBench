@@ -24,7 +24,10 @@ import { formatScoutBriefsForPrompt, type ScoutBriefRecord } from './ScoutBrief'
 // add a participant the prompt builder then silently truncates,
 // confusing the user about why a participant they enabled never
 // spoke.
-const MAX_ENSEMBLE_PARTICIPANTS = 8
+//
+// 1.0.5-EW1 — Ceiling raised 8 → 12 in step with the renderer
+// (chip strip now wraps at 7+ to a 6-column second row).
+const MAX_ENSEMBLE_PARTICIPANTS = 12
 
 export interface BuildEnsemblePromptInput {
   chat: ChatRecord

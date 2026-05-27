@@ -48,8 +48,21 @@ import { getProviderName, ProviderBadgeIcon } from './Sidebar'
 // `removeParticipant` below at `<= 2` so a panel is never reduced to
 // a solo speaker — keeps the ensemble distinct from a single-provider
 // chat throughout its lifecycle.
-const MAX_ENSEMBLE_PARTICIPANTS = 8
+//
+// 1.0.5-EW1 — Ceiling raised again 8 → 12. The chip strip now wraps
+// to a second row at 7+ participants (see CSS: .is-wrapped → grid
+// with 6 equal-width columns) instead of overflowing horizontally,
+// so the strip stays navigable up to the new cap. Agents can
+// sub-delegate via delegate_to_subthread for fanouts wider than the
+// panel — 12 named peers is plenty even for heavy collaborative
+// tasks.
+const MAX_ENSEMBLE_PARTICIPANTS = 12
 const MIN_ENSEMBLE_PARTICIPANTS = 2
+// 1.0.5-EW1 — Threshold at which the chip strip switches from the
+// centered horizontal flex layout to a 6-column grid that wraps to
+// a second row. 7 = "more chips than fit cleanly on one row at
+// readable size".
+const ENSEMBLE_CHIPS_WRAP_THRESHOLD = 7
 
 /**
  * Monoline status icon for a participant chip (1.0.3 polish).
@@ -477,7 +490,16 @@ export function EnsembleParticipantsAboveRow({
           )}
         </div>
       )}
-      <div className="ensemble-above-row-chips">
+      <div
+        className={`ensemble-above-row-chips ${
+          // 1.0.5-EW1 — Switch to the wrapping grid layout at 7+
+          // participants so the strip never clips. Below the
+          // threshold we keep the centred horizontal flex layout —
+          // most ensembles live there.
+          participants.length >= ENSEMBLE_CHIPS_WRAP_THRESHOLD ? 'is-wrapped' : ''
+        }`}
+        data-participant-count={participants.length}
+      >
         {participants.map((participant) => {
           const state = activeRound?.participants.find(
             (item) => item.participantId === participant.id
