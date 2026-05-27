@@ -20481,6 +20481,134 @@ if (isGeminiMcpBridgeProcess) {
       }
     )
 
+    /**
+     * 1.0.5-EW42a — Proactive external-path grant from the composer.
+     *
+     * Pre-EW42a the ONLY way to create an `ExternalPathGrant` was
+     * reactive: an agent's tool call hit an out-of-workspace path,
+     * the runtime detector flagged it, the approval modal opened,
+     * and the user picked "Grant read/edit". That made the
+     * `ExternalPathAboveRow` banner appear mysterious to users —
+     * they didn't know what created it because they didn't
+     * actively create it themselves. It also meant the user
+     * couldn't pre-grant a sibling repo before an agent tried to
+     * touch it.
+     *
+     * This handler is the proactive path: the user clicks "Grant
+     * read access to another folder…" in the composer workspace
+     * switcher's popover, an OS folder picker opens, and on
+     * confirm we issue one grant per participant-provider in the
+     * current chat (or just the chat's primary provider for
+     * single-provider chats), then persist + broadcast so the
+     * `ExternalPathAboveRow` banner appears immediately.
+     *
+     * For Ensemble chats with N participants spanning K unique
+     * providers, we emit K grants (one per provider) targeting
+     * the same path — the existing dispatcher already filters
+     * grants by `grant.provider === participant.provider` so this
+     * is the natural shape.
+     */
+    ipcMain.handle(
+      'external-path:pick-and-persist',
+      async (
+        _event,
+        payload: { chatId?: string; access?: 'read' | 'write' }
+      ): Promise<
+        | { ok: true; grants: ExternalPathGrant[]; path: string }
+        | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
+      > => {
+        if (!mainWindow) return { ok: false, reason: 'no-window' }
+        const chatId = optionalString(payload?.chatId)
+        if (!chatId) return { ok: false, reason: 'no-chat' }
+        const chat = AppStore.getChat(chatId)
+        if (!chat) return { ok: false, reason: 'no-chat' }
+
+        const access: 'read' | 'write' = payload?.access === 'write' ? 'write' : 'read'
+
+        // Determine which providers should receive the grant.
+        // Ensemble: all enabled participants' providers (deduped,
+        // order-preserving so the first-spawned provider gets the
+        // first grant id — keeps the chat metadata diff stable).
+        // Single-provider: the chat's primary provider.
+        const targetProviders: ProviderId[] = []
+        if (chat.chatKind === 'ensemble' && chat.ensemble?.participants?.length) {
+          const seen = new Set<ProviderId>()
+          for (const participant of chat.ensemble.participants) {
+            if (!participant.enabled) continue
+            if (seen.has(participant.provider)) continue
+            seen.add(participant.provider)
+            targetProviders.push(participant.provider)
+          }
+        } else if (chat.provider) {
+          targetProviders.push(chat.provider)
+        }
+        if (targetProviders.length === 0) {
+          return { ok: false, reason: 'no-provider' }
+        }
+
+        const accessVerb = access === 'write' ? 'can edit' : 'can read'
+        const dialogResult = await dialog.showOpenDialog(mainWindow, {
+          title: `Select folder agents in this chat ${accessVerb}`,
+          message: `Issues a ${
+            access === 'write' ? 'read+write' : 'read-only'
+          } grant scoped to this chat. ${
+            targetProviders.length > 1
+              ? `One grant per panelist provider (${targetProviders
+                  .map((p) => providerLabel(p))
+                  .join(', ')}).`
+              : ''
+          }`,
+          properties: ['openFile', 'openDirectory', 'createDirectory'],
+          securityScopedBookmarks: process.platform === 'darwin'
+        } as Electron.OpenDialogOptions)
+        if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+          return { ok: false, reason: 'cancelled' }
+        }
+
+        const selectedPath = resolve(dialogResult.filePaths[0])
+        let kind: ExternalPathGrant['kind'] = 'file'
+        try {
+          const stat = await fs.stat(selectedPath)
+          kind = stat.isDirectory() ? 'directory' : 'file'
+        } catch {
+          kind = 'file'
+        }
+        const bookmark = Array.isArray((dialogResult as any).bookmarks)
+          ? (dialogResult as any).bookmarks[0]
+          : undefined
+
+        const now = Date.now()
+        const newGrants: ExternalPathGrant[] = targetProviders.map((provider) =>
+          issueExternalPathGrant({
+            id: `proactive-${now}-${provider}-${randomBytes(4).toString('hex')}`,
+            provider,
+            workspaceId: undefined,
+            chatId,
+            path: selectedPath,
+            kind,
+            access,
+            duration: 'thisThread',
+            securityScopedBookmark: bookmark,
+            createdAt: new Date(now).toISOString()
+          })
+        )
+
+        const existing = collectExternalPathGrantsFromMetadata(chat.providerMetadata)
+        const updatedChat: ChatRecord = {
+          ...chat,
+          providerMetadata: canonicalizeExternalPathGrantMetadata(chat.providerMetadata, [
+            ...existing,
+            ...newGrants
+          ]),
+          updatedAt: now
+        }
+        AppStore.saveChat(updatedChat)
+        safeSendToWebContents(mainWindow, 'chat-updated', updatedChat)
+
+        return { ok: true, grants: newGrants, path: selectedPath }
+      }
+    )
+
     ipcMain.handle(
       'list-workspace-files',
       async (_, workspace: string): Promise<WorkspaceFileEntry[]> => {

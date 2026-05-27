@@ -231,6 +231,20 @@ declare global {
         access?: 'read' | 'write',
         provider?: string
       ) => Promise<ExternalPathGrant | null>
+      /**
+       * 1.0.5-EW42a — Proactive external-path grant from composer
+       * workspace switcher. Opens an OS folder picker, issues one
+       * grant per unique participant-provider on the chat, and
+       * persists to the chat's metadata. Broadcasts chat-updated
+       * so the ExternalPathAboveRow banner appears immediately.
+       */
+      pickAndPersistExternalPathGrant: (payload: {
+        chatId: string
+        access?: 'read' | 'write'
+      }) => Promise<
+        | { ok: true; grants: ExternalPathGrant[]; path: string }
+        | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
+      >
       probeExternalPath: (
         absolutePath: string
       ) => Promise<{ isRepo: boolean; repoRoot: string; branch?: string } | null>

@@ -19,6 +19,29 @@ const api = {
   selectExternalPathGrant: (access: 'read' | 'write' = 'read', provider?: string) =>
     ipcRenderer.invoke('select-external-path-grant', access, provider),
   /**
+   * 1.0.5-EW42a — Proactive external-path grant from the composer's
+   * workspace switcher. Opens an OS folder picker, then for each
+   * unique participant-provider on the chat (or the chat's primary
+   * provider for single-provider chats) issues an
+   * `ExternalPathGrant` and persists it to the chat's metadata.
+   * Broadcasts the updated chat so the renderer's
+   * `ExternalPathAboveRow` banner appears immediately.
+   *
+   * Returns `{ ok: true, grants, path }` on success;
+   * `{ ok: false, reason }` for the empty / cancelled / no-chat /
+   * no-window cases. The renderer doesn't need the grants payload
+   * (the chat-updated event re-renders everything) but it's
+   * returned in case a caller wants to surface a toast like
+   * "Granted read access to <basename>".
+   */
+  pickAndPersistExternalPathGrant: (payload: {
+    chatId: string
+    access?: 'read' | 'write'
+  }): Promise<
+    | { ok: true; grants: unknown[]; path: string }
+    | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
+  > => ipcRenderer.invoke('external-path:pick-and-persist', payload),
+  /**
    * Slice 1 of the external-path-redesign arc. Renderer asks main to
    * look at an absolute path and report whether it's a git repo (and
    * what branch is checked out). Used by the new stacked above-rows

@@ -4998,6 +4998,16 @@ interface ComposerWorkspaceSwitcherProps {
   onAddNewWorkspace: () => void
   /** Switch to a workspace-less (global / system) chat. */
   onSelectNoWorkspace: () => void
+  /**
+   * 1.0.5-EW42a — Grant a *secondary* folder read access without
+   * switching the primary workspace. Issues an `ExternalPathGrant`
+   * per chat-provider, persists it to the chat, and the
+   * `ExternalPathAboveRow` banner appears immediately. Optional
+   * because welcome-state chats don't have a saved chat record
+   * yet (no chatId to attach grants to); when the parent doesn't
+   * supply this, the menu row stays hidden.
+   */
+  onGrantReadAccessFolder?: () => void
 }
 
 function ComposerWorkspaceSwitcher({
@@ -5005,7 +5015,8 @@ function ComposerWorkspaceSwitcher({
   currentWorkspace,
   onPickExisting,
   onAddNewWorkspace,
-  onSelectNoWorkspace
+  onSelectNoWorkspace,
+  onGrantReadAccessFolder
 }: ComposerWorkspaceSwitcherProps): React.JSX.Element {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -5166,6 +5177,34 @@ function ComposerWorkspaceSwitcher({
                 </span>
                 <span className="welcome-workspace-popover-row-name">Add new workspace…</span>
               </button>
+              {/*
+                1.0.5-EW42a — Proactive read-only grant for a SECONDARY
+                folder, without switching the primary workspace. The
+                user clicks → OS folder picker → one `ExternalPathGrant`
+                per chat-provider gets issued + persisted → the
+                `ExternalPathAboveRow` banner appears immediately
+                showing the new folder + branch + READ ACCESS chip.
+                Hidden for welcome-state chats (no saved chat record
+                to attach grants to yet) — the parent passes
+                `onGrantReadAccessFolder` only when the current chat
+                has an `appChatId`.
+              */}
+              {onGrantReadAccessFolder && (
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                  onClick={() => handleSelectFromPopover(onGrantReadAccessFolder)}
+                  title="Grant agents in this chat read-only access to a folder outside the workspace"
+                >
+                  <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                    👁
+                  </span>
+                  <span className="welcome-workspace-popover-row-name">
+                    Grant read access to another folder…
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 role="menuitem"
@@ -9015,6 +9054,39 @@ function App(): React.JSX.Element {
     if (ws) {
       setWorkspaces(await window.api.getWorkspaces())
       await handleSelectExistingWorkspace(ws)
+    }
+  }
+
+  /**
+   * 1.0.5-EW42a — Proactive read-only grant for a secondary folder.
+   * Opens an OS folder picker via main; main issues one
+   * `ExternalPathGrant` per chat-provider, persists to the chat's
+   * metadata, broadcasts chat-updated → the `ExternalPathAboveRow`
+   * banner appears immediately. No state-management on the renderer
+   * side: the broadcast re-renders. Errors are swallowed because
+   * the cancel + invalid-state paths return structured `ok: false`
+   * results, not throws.
+   */
+  const handleGrantReadAccessFolder = async () => {
+    const chatId = currentChat?.appChatId
+    if (!chatId) return
+    try {
+      const result = await window.api.pickAndPersistExternalPathGrant({
+        chatId,
+        access: 'read'
+      })
+      if (!result.ok) {
+        // 'cancelled' is the common path; 'no-chat' / 'no-provider'
+        // / 'no-window' are defensive. No UI surface needed for any
+        // of them — the user already knows they cancelled, and the
+        // other reasons indicate an impossible-state we can't show
+        // anything meaningful for.
+        return
+      }
+      // Banner appears via the main → renderer chat-updated
+      // broadcast; nothing else to do on this side.
+    } catch (err) {
+      console.warn('[external-path:pick-and-persist] failed', err)
     }
   }
 
@@ -19314,6 +19386,16 @@ function App(): React.JSX.Element {
                     onPickExisting={handleSelectExistingWorkspace}
                     onAddNewWorkspace={handleSelectWorkspace}
                     onSelectNoWorkspace={handleNewGlobalChat}
+                    /*
+                      1.0.5-EW42a — Only surface "Grant read access to
+                      another folder…" when the chat has a saved
+                      record we can attach grants to. Welcome-state
+                      chats and ephemeral states get the menu without
+                      this row.
+                    */
+                    onGrantReadAccessFolder={
+                      currentChat?.appChatId ? handleGrantReadAccessFolder : undefined
+                    }
                   />
                 )}
                 {threadTokenTallyLabel && (
