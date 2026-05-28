@@ -142,7 +142,13 @@ const ONBOARDING_THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }>
   { value: 'cyber', label: 'Cyber' },
   { value: 'candy', label: 'Candy' },
   { value: 'mist', label: 'Mist' },
-  { value: 'sage', label: 'Sage' }
+  { value: 'sage', label: 'Sage' },
+  // 1.0.5-EW65 — Surface the EW54/EW61 premium-stone themes
+  // in the first-launch picker so new users see them at the
+  // onboarding moment (the original window when most theme
+  // exploration happens).
+  { value: 'obsidian', label: 'Obsidian' },
+  { value: 'alabaster', label: 'Alabaster' }
 ]
 
 const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }> = [
@@ -154,7 +160,13 @@ const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }
   { value: 'modular', label: 'Modular' },
   { value: 'terminal', label: 'Terminal' },
   { value: 'stub', label: 'Ticket stub' },
-  { value: 'satellite', label: 'Satellite' }
+  { value: 'satellite', label: 'Satellite' },
+  // 1.0.5-EW65 — Pair the EW55/EW61 premium composer styles
+  // with their themes in the picker. Both are theme-immune so
+  // they work paired with any theme; presenting them adjacent
+  // in the list keeps the picker honest about the family.
+  { value: 'obsidian', label: 'Obsidian' },
+  { value: 'alabaster', label: 'Alabaster' }
 ]
 
 const ONBOARDING_BUBBLE_OPTIONS: Array<{ value: UserBubbleColor; label: string }> = [
@@ -208,6 +220,28 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
         modelLabel: 'K2.6',
         permissionLabel: 'Read workspace',
         placeholder: 'Type "/" to use quick actions'
+      }
+    case 'obsidian':
+      // 1.0.5-EW65 — Premium dark composer. Placeholder reads
+      // restrained on purpose; the rim-shine chase animation +
+      // solid charcoal fill carry the identity in the preview.
+      return {
+        provider: 'codex',
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Premium',
+        placeholder: 'Compose…'
+      }
+    case 'alabaster':
+      // 1.0.5-EW65 — Polar twin of Obsidian. Same restrained
+      // preview copy; the cream fill + charcoal rim chase
+      // carry the identity.
+      return {
+        provider: 'codex',
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Premium',
+        placeholder: 'Compose…'
       }
     default:
       return {
