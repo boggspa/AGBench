@@ -1,7 +1,34 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { validateIpcArgs } from './IpcValidation'
+import { validateIpcArgs, IPC_ARGUMENT_SCHEMAS } from './IpcValidation'
 
 describe('IpcValidation', () => {
+  // `installIpcValidation` wraps EVERY `ipcMain.handle(channel, …)` and
+  // calls `validateIpcArgs`, which THROWS "No IPC schema registered for
+  // <channel>" when the channel is missing from IPC_ARGUMENT_SCHEMAS — so
+  // the handler crashes the first time it's invoked. This has bitten
+  // twice as a latent runtime crash (external-path:pick-and-persist in
+  // EW71, fx-rates:get later). This test statically extracts every
+  // handled channel from `index.ts` and asserts each is registered, so
+  // the whole class is caught at build time instead of by users.
+  it('registers an arg schema for every ipcMain.handle channel', () => {
+    const source = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf8')
+    const handled = new Set<string>()
+    const re = /ipcMain\.handle\(\s*['"`]([^'"`]+)['"`]/g
+    let match: RegExpExecArray | null
+    while ((match = re.exec(source)) !== null) {
+      const channel = match[1]
+      // Skip dynamically-composed channel names (template interpolation);
+      // those can't be statically registered.
+      if (channel.includes('${')) continue
+      handled.add(channel)
+    }
+    expect(handled.size).toBeGreaterThan(0)
+    const missing = [...handled].filter((channel) => !(channel in IPC_ARGUMENT_SCHEMAS)).sort()
+    expect(missing).toEqual([])
+  })
+
   it('accepts valid run-agent payloads', () => {
     expect(() =>
       validateIpcArgs('run-agent', [

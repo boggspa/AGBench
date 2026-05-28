@@ -51,7 +51,7 @@ const RUN_QUEUE_STATUSES = new Set([
 ])
 const BUG_REPORT_SEVERITIES = new Set(['info', 'minor', 'major', 'blocking'])
 
-const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
+export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'get-settings': [],
   'update-settings': ['settingsPatch'],
   'upsert-agentic-workspace-grant': ['provider', 'workspacePath', 'string'],
@@ -94,6 +94,33 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'repair-product-install': [],
   'set-appearance-mode': ['any'],
   'get-host-weather': [],
+  'fx-rates:get': [],
+  'fx-rates:refresh': ['optionalBoolean'],
+  'providerRates:get': [],
+  'providerRates:probe': [],
+  // Auto-update service (no-arg snapshot/control channels).
+  'update-snapshot': [],
+  'check-for-updates': [],
+  'download-update': [],
+  'install-update-on-quit': [],
+  'install-update-now': [],
+  // Agent-question modal replies (the payload object carries questionId).
+  'answer-agent-question': ['optionalObject'],
+  'cancel-agent-question': ['optionalObject'],
+  // Runtime profiles + handoff cards (store CRUD).
+  'save-runtime-profile': ['optionalObject'],
+  'delete-runtime-profile': ['nonEmptyString'],
+  'save-handoff-card': ['optionalObject'],
+  'update-handoff-card': ['nonEmptyString', 'optionalObject'],
+  'delete-handoff-card': ['nonEmptyString'],
+  // Provider API-key storage + login (handlers coerce defensively).
+  'store-claude-api-key': ['optionalString'],
+  'clear-claude-api-key': [],
+  'trigger-claude-login': [],
+  'store-kimi-api-key': ['optionalString'],
+  'clear-kimi-api-key': [],
+  // GitHub PR creation (optional payload with target path / options).
+  'create-github-pr': ['optionalObject'],
   'agentic-yolo-get': [],
   'agentic-yolo-set': ['boolean'],
   'get-file-icon': ['string'],
