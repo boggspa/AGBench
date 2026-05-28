@@ -128,7 +128,7 @@
 .app-sidebar .model-usage-summary--sidebar {
   margin: auto calc(var(--space-md) * -1) calc(var(--space-sm) * -1);
   padding: 10px var(--space-md) 12px;
-  height: min(var(--model-usage-sidebar-height, clamp(380px, 46vh, 960px)), calc(100vh - 56px));
+  height: min(var(--model-usage-sidebar-height, clamp(420px, 56vh, 1080px)), calc(100vh - 56px));
   max-height: none;
   min-height: 0;
   flex: 0 0 auto;

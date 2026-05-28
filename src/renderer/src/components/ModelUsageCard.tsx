@@ -45,9 +45,9 @@ interface ModelUsageCardProps {
 
 const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
 const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'guigemini-sidebar-model-usage-height'
-const SIDEBAR_USAGE_DEFAULT_HEIGHT = 420
+const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
 const SIDEBAR_USAGE_MIN_HEIGHT = 220
-const SIDEBAR_USAGE_MAX_HEIGHT = 960
+const SIDEBAR_USAGE_MAX_HEIGHT = 1080
 const SIDEBAR_USAGE_RESIZE_STEP = 24
 
 function clampSidebarUsageHeight(height: number, maxHeight = SIDEBAR_USAGE_MAX_HEIGHT): number {

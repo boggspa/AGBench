@@ -1,34 +1,27 @@
 /*
  * GrokCreditsMeter — Grok SUBSCRIPTION-CREDIT usage (1.0.6-GU).
  *
- * This is deliberately NOT a token/cost meter. SuperGrok / grok.com CLI
- * auth bills against a subscription credit pool (a percent + reset
- * window), and there is no noninteractive command to read it — the only
- * safe source is the interactive `/usage` → "Show Usage" screen, captured
- * via PTY in the main process (no prompt is ever sent → no model call /
- * credit consumption). The probe is expensive (spawns + scrapes a TUI),
- * so this meter is MANUAL-REFRESH: it probes once on mount and again only
- * when the user presses Refresh.
+ * NOT a token/cost meter. SuperGrok / grok.com CLI auth bills against a
+ * subscription credit pool (a percent + reset window) with no noninteractive
+ * command, so the only safe source is the interactive `/usage` → "Show Usage"
+ * screen captured via PTY in the main process (no prompt is ever sent → no
+ * model call / credit consumption). The probe is expensive (spawns + scrapes a
+ * TUI), so it runs once on mount (plus one cold-start retry); there is no
+ * manual refresh button — the meter sits in the Model Usage card and reuses the
+ * same DOM/classes as the other providers' quota rows so it reads as a sibling.
  *
- * Monochrome by design — grok's accent (`--provider-grok-color`) aliases
- * to the active theme's primary text colour, so the bar reads black on
- * light themes and white on dark themes.
+ * Monochrome by design — grok's accent (`--provider-grok-color`) aliases to the
+ * active theme's primary text colour (white on dark, black on light).
  *
- * Structure mirrors GrokUsage.ts itself: a PURE presentational view
- * (`GrokCreditsMeterView`, SSR-testable across every display state) wrapped
- * by an impure shell (`GrokCreditsMeter`) that owns the probe + state. The
- * parent only mounts the shell when the gated Grok provider is available,
- * so neither carries a gate of its own.
- *
- * "Stale" here means we're showing the last KNOWN-GOOD snapshot because the
- * most recent refresh either threw or came back unavailable — a transient
- * failure never blanks a previously-captured reading.
+ * Pure presentational view (`GrokCreditsMeterView`, SSR-testable) + impure
+ * probe shell. The parent only mounts the shell when the gated Grok adapter is
+ * registered. "Stale" = showing the last known-good reading because the latest
+ * probe failed/returned unavailable.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GrokUsageSnapshot } from '../../../main/grok/GrokUsage'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { QuotaProgressBar } from './QuotaProgressBar'
-import './GrokCreditsMeter.css'
 
 export interface GrokCreditsMeterViewProps {
   /** The snapshot to display (may be a prior known-good one when stale). */
@@ -37,101 +30,92 @@ export interface GrokCreditsMeterViewProps {
   errored: boolean
   /** True when `snapshot` is a prior reading shown after a failed refresh. */
   stale: boolean
-  onRefresh: () => void
 }
 
-/** Pure presentational meter — no IPC, no state, no clock. */
+/** Pure presentational meter — no IPC, no state. Mirrors the Model Usage
+ * Card's provider/quota markup so it inherits the same styling. */
 export function GrokCreditsMeterView({
   snapshot,
   loading,
   errored,
-  stale,
-  onRefresh
+  stale
 }: GrokCreditsMeterViewProps): React.ReactElement {
   const observed = snapshot?.confidence === 'observed'
   const percent = snapshot?.creditsUsedPercent ?? null
-  // For a "<1%" band (display present, percent null) we keep the bar near
-  // empty and let the raw display carry the meaning — never invent a number.
+  // For a "<1%" band (display present, percent null) keep the bar near empty
+  // and let the raw display carry the meaning — never invent a number.
   const fraction =
     percent != null && Number.isFinite(percent) ? Math.max(0, Math.min(1, percent / 100)) : 0
   const display = snapshot?.creditsUsedDisplay || '0%'
+  const payText =
+    snapshot?.payAsYouGoEnabled != null
+      ? `Pay as you go: ${snapshot.payAsYouGoEnabled ? 'enabled' : 'disabled'}`
+      : 'Subscription credits'
+  const metaText = stale ? `${payText} · stale` : payText
 
   return (
-    <div className={`grok-credits-meter${observed && stale ? ' is-stale' : ''}`}>
-      <div className="grok-credits-header">
-        <span className="grok-credits-provider">
-          <ProviderLogoTile provider="grok" size={20} />
-          <span className="grok-credits-provider-name">Grok</span>
+    <div className="model-usage-item provider-grok quota-only">
+      <div className="model-usage-provider-heading">
+        <span className="sidebar-provider-label provider-grok">
+          <ProviderLogoTile provider="grok" />
+          <span className="model-usage-provider-name">Grok</span>
           {snapshot?.planLabel ? (
-            <span className="grok-credits-plan">{snapshot.planLabel}</span>
+            <span className="model-usage-tier-badge">{snapshot.planLabel}</span>
           ) : null}
         </span>
-        <button
-          type="button"
-          className="grok-credits-refresh"
-          onClick={onRefresh}
-          disabled={loading}
-          title="Re-read Grok subscription credits from the CLI"
-        >
-          {loading ? 'Checking…' : 'Refresh'}
-        </button>
       </div>
-
-      <div className="grok-credits-label">Subscription credits</div>
-
-      {observed ? (
-        <>
-          <div className="grok-credits-row">
-            <span className="grok-credits-used">{display}</span>
-            <span className="grok-credits-used-suffix">used</span>
-            {snapshot?.resetAtText ? (
-              <span className="grok-credits-reset">resets {snapshot.resetAtText}</span>
-            ) : null}
+      <div className="model-usage-window-list">
+        {observed ? (
+          <div className="model-usage-window" title="Grok subscription credits">
+            <div className="model-usage-window-row">
+              <span className="model-usage-window-label">Credits</span>
+              {snapshot?.resetAtText ? (
+                <span className="model-usage-window-reset">resets {snapshot.resetAtText}</span>
+              ) : null}
+              <span className="model-usage-window-percent">{display}</span>
+            </div>
+            <QuotaProgressBar fraction={fraction} accent="var(--provider-grok-color)" />
+            <div className="model-usage-window-meta">
+              <span>{metaText}</span>
+            </div>
           </div>
-          <QuotaProgressBar fraction={fraction} accent="var(--provider-grok-color)" emphasised />
-          <div className="grok-credits-meta">
-            {snapshot?.payAsYouGoEnabled != null ? (
-              <span>Pay as you go: {snapshot.payAsYouGoEnabled ? 'enabled' : 'disabled'}</span>
-            ) : (
-              <span />
-            )}
-            {stale ? <span className="grok-credits-stamp">Stale · last refresh failed</span> : null}
-          </div>
-        </>
-      ) : (
-        <div className="grok-credits-unavailable">
-          {loading ? (
-            <span className="grok-credits-unavailable-title">Reading Grok usage…</span>
-          ) : (
-            <>
-              <span className="grok-credits-unavailable-title">Usage unavailable</span>
-              <span className="grok-credits-hint">
-                {errored
-                  ? 'Could not read the Grok CLI. Refresh to retry.'
-                  : 'Run /usage in the Grok CLI to view subscription credits, or Refresh to retry.'}
+        ) : (
+          <div className="model-usage-window" title="Grok subscription credits">
+            <div className="model-usage-window-row">
+              <span className="model-usage-window-label">Credits</span>
+              <span className="model-usage-window-percent">{loading ? '…' : '—'}</span>
+            </div>
+            <div className="model-usage-window-meta">
+              <span>
+                {loading
+                  ? 'Reading subscription credits…'
+                  : errored
+                    ? 'Could not read the Grok CLI'
+                    : 'Usage unavailable'}
               </span>
-            </>
-          )}
-        </div>
-      )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
 
-/** Stateful shell: owns the manual-refresh PTY probe + render state. */
+/** Stateful shell: owns the on-mount PTY probe + render state (no button). */
 export function GrokCreditsMeter(): React.ReactElement {
-  // `result` is the latest probe outcome; `lastObserved` is the last
-  // known-good reading we fall back to (so a transient failure never blanks
-  // an existing meter). `loading` starts true because we always probe on mount.
   const [result, setResult] = useState<GrokUsageSnapshot | null>(null)
   const [lastObserved, setLastObserved] = useState<GrokUsageSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [errored, setErrored] = useState(false)
   const mountedRef = useRef(true)
+  const retriedRef = useRef(false)
+  // Holds the latest runProbe so the retry timer can re-invoke it without
+  // runProbe referencing itself (which the hooks linter forbids).
+  const runProbeRef = useRef<() => void>(() => {})
 
-  // The async-only probe core: sets state exclusively from promise callbacks,
-  // so it is safe to call directly from the mount effect (no synchronous
-  // setState in the effect body → no cascading-render warning).
+  // Async-only probe core: sets state exclusively from promise callbacks, so it
+  // is safe to call from the mount effect. Tolerates a flaky cold start by
+  // retrying once (keeping the spinner up) before settling on "unavailable".
   const runProbe = useCallback(() => {
     const api = typeof window !== 'undefined' ? window.api : undefined
     if (typeof api?.probeGrokUsage !== 'function') {
@@ -147,21 +131,32 @@ export function GrokCreditsMeter(): React.ReactElement {
       .then((snap) => {
         if (!mountedRef.current) return
         setResult(snap)
-        if (snap.confidence === 'observed') setLastObserved(snap)
+        if (snap.confidence === 'observed') {
+          setLastObserved(snap)
+          setLoading(false)
+          return
+        }
+        if (!retriedRef.current) {
+          retriedRef.current = true
+          window.setTimeout(() => mountedRef.current && runProbeRef.current(), 1500)
+        } else {
+          setLoading(false)
+        }
       })
       .catch(() => {
-        if (mountedRef.current) setErrored(true)
-      })
-      .finally(() => {
-        if (mountedRef.current) setLoading(false)
+        if (!mountedRef.current) return
+        if (!retriedRef.current) {
+          retriedRef.current = true
+          window.setTimeout(() => mountedRef.current && runProbeRef.current(), 1500)
+        } else {
+          setErrored(true)
+          setLoading(false)
+        }
       })
   }, [])
 
-  // Manual refresh (event handler — synchronous setState is fine here).
-  const refresh = useCallback(() => {
-    setLoading(true)
-    setErrored(false)
-    runProbe()
+  useEffect(() => {
+    runProbeRef.current = runProbe
   }, [runProbe])
 
   useEffect(() => {
@@ -176,17 +171,9 @@ export function GrokCreditsMeter(): React.ReactElement {
   // Prefer a fresh observed result; otherwise fall back to the last good one.
   const display = resultObserved ? result : (lastObserved ?? result)
   const displayObserved = display?.confidence === 'observed'
-  // Stale when we're showing a prior good reading because the latest refresh
-  // failed (threw → errored) or came back unavailable (!resultObserved).
   const stale = displayObserved && (errored || !resultObserved)
 
   return (
-    <GrokCreditsMeterView
-      snapshot={display}
-      loading={loading}
-      errored={errored}
-      stale={stale}
-      onRefresh={refresh}
-    />
+    <GrokCreditsMeterView snapshot={display} loading={loading} errored={errored} stale={stale} />
   )
 }
