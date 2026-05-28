@@ -162,9 +162,10 @@ import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { buildProviderAuthStatusV2 } from './ProviderAuthStatus'
-import { experimentalGrokProviderEnabled } from './grokGate'
+import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
 import { buildGrokCliArgs } from './grok/GrokCliArgs'
-import { grokEventToRunEvents } from './grok/GrokStreamingJson'
+import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
+import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
   createProviderAdapterRegistry,
   defaultProviderDescriptor,
@@ -6226,24 +6227,30 @@ function emitCliProviderThinkingEvent(state: CliProviderStreamState, text: strin
 // src/main/grok/GrokStreamingJson.ts mapper. Translate each normalized event
 // onto the existing CLI run-event sink (content → assistant text, thought →
 // the shared thinking trace, end → captured session id for resume).
+// Map one normalized Grok run event onto the existing CLI run-event sink.
+// Shared by the headless (G3) and ACP (G4) paths. The `result` event is
+// intentionally NOT emitted here — each path synthesizes the canonical result
+// + exit on process close.
+function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRunEvent) {
+  if (evt.sessionId) updateCliProviderSession(state, evt.sessionId)
+  if (evt.type === 'content' && evt.text) {
+    state.assistantText = `${state.assistantText || ''}${evt.text}`
+    sendAgentCompatLine(
+      state.sender,
+      'grok',
+      { type: 'content', text: evt.text, provider: 'grok' },
+      state
+    )
+  } else if (evt.type === 'thinking' && evt.text) {
+    emitCliProviderThinkingEvent(state, evt.text)
+  } else if (evt.type === 'provider_warning' && evt.text) {
+    sendAgentCompatError(state.sender, 'grok', evt.text, state)
+  }
+}
+
 function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
   for (const evt of grokEventToRunEvents({ json: event as Record<string, unknown> })) {
-    if (evt.sessionId) updateCliProviderSession(state, evt.sessionId)
-    if (evt.type === 'content' && evt.text) {
-      state.assistantText = `${state.assistantText || ''}${evt.text}`
-      sendAgentCompatLine(
-        state.sender,
-        'grok',
-        { type: 'content', text: evt.text, provider: 'grok' },
-        state
-      )
-    } else if (evt.type === 'thinking' && evt.text) {
-      emitCliProviderThinkingEvent(state, evt.text)
-    } else if (evt.type === 'provider_warning' && evt.text) {
-      sendAgentCompatError(state.sender, 'grok', evt.text, state)
-    }
-    // 'result' (Grok's `end`) → runCliProviderProcess synthesizes the canonical
-    // result + exit on process close; we only needed the session id above.
+    applyGrokRunEvent(state, evt)
   }
 }
 
@@ -7122,6 +7129,12 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
 // (composeRunPrompt already skips both for plan mode).
 async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
   const route = routeWithRunId('grok', payload)
+  // 1.0.6-G4 — route through the ACP transport when its sub-gate is on; the
+  // headless streaming-json path below stays the default + fallback.
+  if (grokAcpEnabled()) {
+    await runGrokAcpProvider(event, payload)
+    return
+  }
   // Defense-in-depth: IpcValidation PROVIDERS, assertProviderId, and the adapter
   // registry are all gated, but refuse here too if the gate is somehow off.
   if (!experimentalGrokProviderEnabled()) {
@@ -7161,6 +7174,124 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
       AGENTBENCH_PARENT_PROVIDER: 'grok',
       AGENTBENCH_RUN_ID: route.appRunId || '',
       AGENTBENCH_CHAT_ID: route.appChatId || ''
+    }
+  })
+}
+
+// 1.0.6-G4 — read-only Grok over ACP (`grok agent stdio`, bidirectional
+// JSON-RPC). GrokAcpClient drives initialize → session/new → session/prompt and
+// streams session/update onto the same run-event sink as the headless path
+// (applyGrokRunEvent). Gated behind grokAcpEnabled(); headless stays fallback.
+// No MCP / tool mediation yet (read-only) — that's G5.
+async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
+  const route = routeWithRunId('grok', payload)
+  if (!experimentalGrokProviderEnabled()) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(event.sender, 'grok', 'Grok provider is not enabled.', route)
+    sendAgentCompatExit(event.sender, 'grok', 1, route)
+    return
+  }
+  const resolved = await resolveCliProviderBinary('grok', payload.runtimeProfile)
+  if (!resolved.binaryPath) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(event.sender, 'grok', resolved.error || 'Grok CLI is not configured.', route)
+    sendAgentCompatLine(
+      event.sender,
+      'grok',
+      { type: 'result', status: 'failed', stats: {}, provider: 'grok', setupRequired: true },
+      route
+    )
+    sendAgentCompatExit(event.sender, 'grok', 1, route)
+    return
+  }
+  const binaryPath = resolved.binaryPath
+  const model = normalizeCliProviderModel('grok', payload.model)
+  const state: CliProviderStreamState = {
+    provider: 'grok',
+    sender: event.sender,
+    startedAt: Date.now(),
+    model,
+    fallback: false,
+    completed: false,
+    assistantText: '',
+    providerSessionId: payload.providerSessionId || null,
+    approvalMode: payload.approvalMode,
+    sessionTrust: Boolean(payload.sessionTrust),
+    externalPathGrants: payload.externalPathGrants,
+    runtimeProfileId: payload.runtimeProfileId,
+    effectivePermissions: payload.effectivePermissions,
+    ensembleRun: payload.ensembleRun,
+    ...route
+  }
+  registerRunSession(
+    'grok',
+    event.sender,
+    route,
+    payload.scope === 'global' ? undefined : payload.workspace,
+    state,
+    payload.providerSessionId || null
+  )
+  sendAgentCompatLine(
+    event.sender,
+    'grok',
+    {
+      type: 'init',
+      session_id: state.providerSessionId || '',
+      model,
+      timestamp: new Date().toISOString(),
+      provider: 'grok',
+      fallback: false
+    },
+    state
+  )
+
+  runGrokAcpTurn({
+    prompt: payload.prompt,
+    cwd: payload.workspace!,
+    spawnProcess: () => {
+      const child = spawn(binaryPath, ['--no-auto-update', 'agent', 'stdio'], {
+        cwd: payload.workspace!,
+        shell: false,
+        env: createCliEnv(
+          {
+            FORCE_COLOR: '0',
+            NO_COLOR: '1',
+            AGENTBENCH_PARENT_PROVIDER: 'grok',
+            AGENTBENCH_RUN_ID: route.appRunId || '',
+            AGENTBENCH_CHAT_ID: route.appChatId || ''
+          },
+          binaryPath
+        )
+      })
+      // NOTE: do NOT end stdin — ACP keeps the stdio channel open for requests.
+      return child as unknown as AcpChildProcess
+    },
+    onProcess: (child) => {
+      const proc = child as unknown as ReturnType<typeof spawn>
+      runManager.attachProcess(route.appRunId!, proc)
+      cliProviderProcesses.set('grok', proc)
+    },
+    onEvent: (evt) => applyGrokRunEvent(state, evt),
+    onClose: (code, turnComplete) => {
+      if (!state.completed) {
+        state.completed = true
+        sendAgentCompatLine(
+          event.sender,
+          'grok',
+          {
+            type: 'result',
+            status: turnComplete ? 'success' : 'failed',
+            stats: { ...(state.tokenUsage || {}), duration_ms: Date.now() - state.startedAt },
+            provider: 'grok',
+            providerThreadId: state.providerSessionId || undefined,
+            fallback: false
+          },
+          state
+        )
+        sendAgentCompatExit(event.sender, 'grok', turnComplete ? 0 : (code ?? 1), state)
+      }
+      if (cliProviderProcesses.get('grok')) cliProviderProcesses.delete('grok')
+      runManager.finish(route.appRunId!, turnComplete ? 'completed' : 'failed')
     }
   })
 }
