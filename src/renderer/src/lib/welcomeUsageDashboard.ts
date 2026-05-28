@@ -853,10 +853,23 @@ export const buildWelcomeUsageDashboardData = (
     workspaceAggregate.entries()
   )
     .map(([key, bucket]) => {
+      // 1.0.5-EW51 follow-up — Humanise the global-chats
+      // sentinel workspace id (used by `GeminiApiProvider` +
+      // `AppStore.recordUsage` for global-scope runs that have
+      // no real workspace attribution). Renderer-side App.tsx
+      // exports `GLOBAL_USAGE_WORKSPACE_ID = '__agentbench_global
+      // _chats__'`; we inline the literal here so the lib stays
+      // free of renderer imports (the lib runs in tests too,
+      // where App.tsx isn't loadable). The constant only ever
+      // changes if the persistence layer renames the sentinel,
+      // and the test suite would catch the divergence.
+      const GLOBAL_CHATS_WORKSPACE_KEY = '__agentbench_global_chats__'
       const displayName =
         key === NO_WORKSPACE_KEY
           ? 'No workspace'
-          : workspaces.find((w) => w.id === key)?.displayName || key
+          : key === GLOBAL_CHATS_WORKSPACE_KEY
+            ? 'Global Chat'
+            : workspaces.find((w) => w.id === key)?.displayName || key
       return {
         workspaceId: key,
         displayName,

@@ -985,6 +985,26 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
     expect(none?.displayName).toBe('No workspace')
   })
 
+  it('humanises the __agentbench_global_chats__ sentinel as "Global Chat"', () => {
+    // 1.0.5-EW51 follow-up. The internal sentinel workspaceId
+    // for global-scope runs (used by GeminiApiProvider +
+    // AppStore.recordUsage) shouldn't leak through to the
+    // user-facing card. This test pins the contract so a
+    // future rename of the sentinel would fail loudly.
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'global-1',
+        workspaceId: '__agentbench_global_chats__',
+        totalTokens: 5_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const row = data.workspaceCostBreakdown.find(
+      (ws) => ws.workspaceId === '__agentbench_global_chats__'
+    )
+    expect(row?.displayName).toBe('Global Chat')
+  })
+
   it('computes shareOfTotalCost as a percentage of all-workspace cost (or 0 when totalCost is 0)', () => {
     const records: UsageRecord[] = [
       baseRecord({
