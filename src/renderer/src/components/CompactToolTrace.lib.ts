@@ -26,6 +26,8 @@ export function providerLabel(provider: ProviderId | undefined): string {
       return 'Gemini'
     case 'kimi':
       return 'Kimi'
+    case 'grok':
+      return 'Grok'
     default:
       return provider
   }

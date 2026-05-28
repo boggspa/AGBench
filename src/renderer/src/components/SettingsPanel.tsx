@@ -4153,6 +4153,7 @@ export function SettingsPanel({
             if (provider === 'codex') return 'Codex'
             if (provider === 'claude') return 'Claude'
             if (provider === 'kimi') return 'Kimi'
+            if (provider === 'grok') return 'Grok'
             return 'Gemini'
           }
           // Rough cost estimate gated on whether the per-row stats

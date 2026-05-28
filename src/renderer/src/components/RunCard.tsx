@@ -199,6 +199,7 @@ function getProviderLabel(provider: ProviderId): string {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
   return 'Gemini'
 }
 

@@ -65,6 +65,7 @@ function providerDisplayName(provider: unknown): string {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
   if (provider === 'gemini') return 'Gemini'
   return 'Sub-thread'
 }
