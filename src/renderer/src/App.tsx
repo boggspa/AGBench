@@ -6256,6 +6256,14 @@ function useTranscriptVirtualization(params: {
   const observerRef = useRef<ResizeObserver | null>(null)
   const measureRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
+  // Timestamp of the last user scroll + the measure-tick seen by the last
+  // layout pass. Together they gate the pre-paint anchor correction so it
+  // fires ONLY when a height change moved content above the viewport while
+  // the user is at rest — never on a scroll-driven render, where writing
+  // scrollTop would snap back to a one-frame-stale anchor and fight the
+  // user's active scroll (the cause of "scroll-up shows blank").
+  const lastScrollAtRef = useRef(0)
+  const prevMeasureTickRef = useRef(0)
 
   // Re-render signals. State (not refs) so a change forces a recompute;
   // the heavy work is gone (only the small window mounts) so a per-frame
@@ -6323,6 +6331,7 @@ function useTranscriptVirtualization(params: {
         scrollRafRef.current = null
         const el = scrollRef.current
         if (!el) return
+        lastScrollAtRef.current = performance.now()
         const bucketChanged = readMetricsInto(el)
         // Capture the anchor from the CURRENT position in terms of the
         // last-rendered heights, so a later measurement-driven re-render
@@ -6390,9 +6399,24 @@ function useTranscriptVirtualization(params: {
     const scroller = scrollRef.current
     if (!scroller) return
 
-    // Phase 1 — keep the anchored row visually fixed. Skipped while
-    // bottom-pinned (the App machinery owns scrollTop there).
-    if (!autoFollowRef?.current && anchorRef.current) {
+    // The anchor correction must run ONLY when a measurement changed
+    // heights since the last layout pass AND the user is not mid-scroll.
+    // Running it on a scroll-driven render would write scrollTop back to
+    // a one-frame-stale anchor and fight the user's active scroll — the
+    // bug that left blank space above instead of loading older rows.
+    const measurementsChanged = prevMeasureTickRef.current !== measureTick
+    prevMeasureTickRef.current = measureTick
+    const recentlyScrolled = performance.now() - lastScrollAtRef.current < 160
+
+    // Phase 1 — keep the anchored row visually fixed across a height
+    // change above the viewport. Skipped while bottom-pinned (the App
+    // machinery owns scrollTop there) or while a scroll is in flight.
+    if (
+      measurementsChanged &&
+      !recentlyScrolled &&
+      !autoFollowRef?.current &&
+      anchorRef.current
+    ) {
       const anchorId = anchorRef.current.rowId
       const idx = rowsRef.current.findIndex((r) => r.id === anchorId)
       if (idx >= 0) {
