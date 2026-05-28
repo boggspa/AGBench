@@ -23861,6 +23861,7 @@ input:disabled, select:disabled, textarea:disabled {
   -webkit-backdrop-filter: none !important;
 }
 
+.app-sidebar .sidebar-active-runs-section .sidebar-section-title,
 .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
 .app-sidebar .sidebar-chats-header .sidebar-section-title,
 .app-sidebar .sidebar-recents-section .sidebar-section-title,
@@ -23876,6 +23877,7 @@ input:disabled, select:disabled, textarea:disabled {
   line-height: 1.15;
 }
 
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-active-runs-section .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-workspace-scroll .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-chats-header .sidebar-section-title,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .app-sidebar .sidebar-recents-section .sidebar-section-title,
