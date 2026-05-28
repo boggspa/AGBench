@@ -1655,6 +1655,18 @@ export interface ChatRun {
   rawEventsFile?: string
   diffSnapshot?: string
   runDiff?: RunDiffResult
+  /**
+   * 1.0.6-TV7 — per-WRITE-workspace file-change summaries for this run,
+   * keyed by absolute workspace path. Populated at run end from the
+   * run's tool-reported diffs (the same source that drives the WRITE
+   * workspace rows + the "this run" summary view), so multi-workspace
+   * runs are reviewable per workspace in Diff Studio (TV8). `runDiff`
+   * stays the authoritative snapshot diff for the PRIMARY workspace;
+   * this is additive and best-effort (absent when no WRITE workspace
+   * changed). A snapshot-based RunDiffResult per path is a future
+   * upgrade gated on main-process external-path snapshot support.
+   */
+  runDiffByPath?: Record<string, DiffFileSummary[]>
   workspaceChangeSetId?: string
   preSnapshot?: WorkspaceSnapshot
   postSnapshot?: WorkspaceSnapshot

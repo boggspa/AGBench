@@ -82,6 +82,15 @@ interface InspectorProps {
   diffView: 'this_run' | 'workspace'
   setDiffView: (v: 'this_run' | 'workspace') => void
   runDiff: DiffFileSummary[] | null
+  /**
+   * 1.0.6-TV8 — per-WRITE-workspace file-change summaries for the run
+   * being inspected (from `ChatRun.runDiffByPath`, TV7), keyed by
+   * absolute path. When this holds entries the Diff Studio "this run"
+   * view gains a Workspaces selector so each WRITE workspace is
+   * reviewable independently; with zero/one entry the selector is hidden
+   * and the tab renders exactly as before.
+   */
+  workspaceRunDiffByPath?: Record<string, DiffFileSummary[]>
   diffRefreshStatus: string
   rawLogs: Array<{
     type: 'stdout' | 'stderr' | 'tool' | 'info'
@@ -416,7 +425,32 @@ function useGeminiCapabilities(workspacePath?: string) {
   return { capabilities, isLoading, error, refreshCapabilities }
 }
 
+/** Short label for a workspace path (basename), for the TV8 selector. */
+function workspaceShortLabel(path: string): string {
+  const cleaned = path.replace(/[\\/]+$/, '')
+  const base = cleaned.split(/[\\/]/).pop()
+  return base && base.length > 0 ? base : cleaned
+}
+
 function DiffTab(props: InspectorProps) {
+  // 1.0.6-TV8 — additional WRITE workspaces that recorded changes this
+  // run. The selector + secondary-workspace rendering only engage when
+  // there is at least one; otherwise the tab is byte-for-byte as before.
+  const workspacePaths = Object.keys(props.workspaceRunDiffByPath || {})
+  const hasWorkspaceDiffs = workspacePaths.length > 0
+  // 'primary' = the existing run/workspace diff; any other value is an
+  // absolute WRITE path keyed in `workspaceRunDiffByPath`.
+  const [selectedWorkspace, setSelectedWorkspace] = useState<string>('primary')
+  // Selection is only meaningful in the "this run" view; the Workspace
+  // view always shows the primary workspace's live git diff.
+  const showingSecondary =
+    props.diffView === 'this_run' &&
+    selectedWorkspace !== 'primary' &&
+    Boolean(props.workspaceRunDiffByPath?.[selectedWorkspace])
+  const effectiveDiff = showingSecondary
+    ? { type: 'changes', summaries: props.workspaceRunDiffByPath![selectedWorkspace] }
+    : props.activeDiff
+
   return (
     <div className="diff-studio">
       <div className="diff-studio-toolbar">
@@ -424,7 +458,7 @@ function DiffTab(props: InspectorProps) {
           <button
             className={`btn btn-sm ${props.diffView === 'this_run' ? '' : 'btn-ghost'}`}
             onClick={() => props.setDiffView('this_run')}
-            disabled={!props.runDiff}
+            disabled={!props.runDiff && !hasWorkspaceDiffs}
           >
             This run
           </button>
@@ -434,6 +468,22 @@ function DiffTab(props: InspectorProps) {
           >
             Workspace
           </button>
+          {props.diffView === 'this_run' && hasWorkspaceDiffs && (
+            <select
+              className="diff-workspace-select"
+              aria-label="Workspace to review"
+              value={selectedWorkspace}
+              onChange={(e) => setSelectedWorkspace(e.target.value)}
+              title="Review changes per WRITE workspace"
+            >
+              <option value="primary">Primary workspace</option>
+              {workspacePaths.map((path) => (
+                <option key={path} value={path} title={path}>
+                  {workspaceShortLabel(path)}
+                </option>
+              ))}
+            </select>
+          )}
           {props.diffRefreshStatus && (
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--success)' }}>
               {props.diffRefreshStatus}
@@ -449,7 +499,10 @@ function DiffTab(props: InspectorProps) {
         </button>
       </div>
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        <DiffViewer diff={props.activeDiff} workspacePath={props.workspacePath} />
+        <DiffViewer
+          diff={effectiveDiff}
+          workspacePath={showingSecondary ? selectedWorkspace : props.workspacePath}
+        />
       </div>
     </div>
   )

@@ -8862,6 +8862,21 @@ button.sidebar-item {
   background: color-mix(in srgb, var(--panel-elevated-bg) 62%, transparent);
 }
 
+/* 1.0.6-TV8 — per-WRITE-workspace selector in the Diff Studio "this run"
+ * toolbar. Only renders for multi-workspace runs. Sized to match the
+ * adjacent btn-sm toggles. */
+.diff-workspace-select {
+  height: 24px;
+  max-width: 180px;
+  padding: 0 var(--space-xs);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--panel-border);
+  background: color-mix(in srgb, var(--panel-elevated-bg) 80%, transparent);
+  color: var(--text-primary);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
 .diff-file-list {
   flex: 0 0 auto;
   max-height: 35%;

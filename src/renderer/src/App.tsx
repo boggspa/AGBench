@@ -213,6 +213,7 @@ import {
   type VirtualRow,
   type VirtualWindow
 } from './lib/TranscriptVirtualWindow'
+import { buildRunDiffByPath } from './lib/RunWorkspaceDiff'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
@@ -12224,6 +12225,30 @@ function App(): React.JSX.Element {
         return updated
       })
 
+      // 1.0.6-TV7 — per-WRITE-workspace run diff summaries. Additive +
+      // fully isolated from the primary snapshot diff below: derived
+      // from the just-finalised chat's tool-reported changes (no
+      // filesystem snapshot, no IPC), so a failure here can never block
+      // or corrupt the authoritative primary-path diff. Stored on the
+      // run as `runDiffByPath` for Diff Studio's Workspaces selector
+      // (TV8); omitted entirely when no WRITE workspace changed.
+      try {
+        updateChatById(completedRunChatId, (source) => {
+          const grants = normalizeExternalPathGrants(
+            collectExternalPathGrantsFromMetadata(source.providerMetadata)
+          )
+          const byPath = buildRunDiffByPath(source.messages, grants)
+          if (Object.keys(byPath).length === 0) return source
+          const runs = [...(source.runs || [])]
+          const idx = runs.findIndex((run) => run.runId === completedRunId)
+          if (idx < 0) return source
+          runs[idx] = { ...runs[idx], runDiffByPath: byPath }
+          return { ...source, runs }
+        })
+      } catch {
+        /* per-workspace diff is best-effort; never blocks the primary path */
+      }
+
       if (completedRunDiffUnavailable) {
         if (isVisibleCompletedRun()) {
           setRunDiff(null)
@@ -20982,6 +21007,7 @@ function App(): React.JSX.Element {
               diffView={diffView}
               setDiffView={setDiffView}
               runDiff={runDiff}
+              workspaceRunDiffByPath={currentRun?.runDiffByPath}
               diffRefreshStatus={diffRefreshStatus}
               rawLogs={rawLogs}
               rawFilter={rawFilter}
