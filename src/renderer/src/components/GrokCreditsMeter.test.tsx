@@ -54,8 +54,13 @@ describe('GrokCreditsMeterView', () => {
     expect(html).not.toContain('>1%<')
   })
 
-  it('shows the reset window verbatim when present', () => {
+  it('shows the reset window when present', () => {
     const html = render({ snapshot: snap('Credits used: 0%\nResets: May 31, 16:00 PT') })
+    expect(html).toContain('resets May 31, 16:00 PT')
+  })
+
+  it('tidies a collapsed reset window for display', () => {
+    const html = render({ snapshot: snap('Credits used: 0%\nResets: May31,16:00PT') })
     expect(html).toContain('resets May 31, 16:00 PT')
   })
 
@@ -64,12 +69,12 @@ describe('GrokCreditsMeterView', () => {
     expect(html).not.toContain('resets ')
   })
 
-  it('surfaces the plan label (tier badge) and pay-as-you-go state', () => {
+  it('shows the plan label (tier badge) but never the pay-as-you-go line', () => {
     const html = render({
       snapshot: snap('Free credits with SuperGrok\nCredits used: 2%\nPay as you go: disabled')
     })
     expect(html).toContain('Free credits with SuperGrok')
-    expect(html).toContain('Pay as you go: disabled')
+    expect(html).not.toContain('Pay as you go')
   })
 
   it('renders an unavailable state', () => {

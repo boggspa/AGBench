@@ -23,6 +23,19 @@ import type { GrokUsageSnapshot } from '../../../main/grok/GrokUsage'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { QuotaProgressBar } from './QuotaProgressBar'
 
+/** The captured /usage reset window sometimes comes back with collapsed
+ * spacing (e.g. "May31,16:00PT") depending on how the TUI rendered it. Tidy
+ * it for display — inserts spaces at month/day, time/timezone, and comma
+ * boundaries — without mangling already well-spaced text (idempotent). */
+function formatResetWindow(text: string): string {
+  return text
+    .replace(/([A-Za-z])(\d)/g, '$1 $2')
+    .replace(/(\d)([A-Za-z]{2,})/g, '$1 $2')
+    .replace(/,(?=\S)/g, ', ')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
+
 export interface GrokCreditsMeterViewProps {
   /** The snapshot to display (may be a prior known-good one when stale). */
   snapshot: GrokUsageSnapshot | null
@@ -47,11 +60,7 @@ export function GrokCreditsMeterView({
   const fraction =
     percent != null && Number.isFinite(percent) ? Math.max(0, Math.min(1, percent / 100)) : 0
   const display = snapshot?.creditsUsedDisplay || '0%'
-  const payText =
-    snapshot?.payAsYouGoEnabled != null
-      ? `Pay as you go: ${snapshot.payAsYouGoEnabled ? 'enabled' : 'disabled'}`
-      : 'Subscription credits'
-  const metaText = stale ? `${payText} · stale` : payText
+  const metaText = stale ? 'Subscription credits · stale' : 'Subscription credits'
 
   return (
     <div className="model-usage-item provider-grok quota-only">
@@ -70,7 +79,9 @@ export function GrokCreditsMeterView({
             <div className="model-usage-window-row">
               <span className="model-usage-window-label">Credits</span>
               {snapshot?.resetAtText ? (
-                <span className="model-usage-window-reset">resets {snapshot.resetAtText}</span>
+                <span className="model-usage-window-reset">
+                  resets {formatResetWindow(snapshot.resetAtText)}
+                </span>
               ) : null}
               <span className="model-usage-window-percent">{display}</span>
             </div>
