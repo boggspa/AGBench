@@ -6,7 +6,7 @@ import type {
 } from '../../../main/store/types'
 import { humaniseModelId } from './modelDisplayName'
 
-export type WelcomeUsageTab = 'overview' | 'models' | 'workspaces'
+export type WelcomeUsageTab = 'overview' | 'models' | 'workspaces' | 'providers'
 
 /**
  * 1.0.5-EW51 — Per-workspace cumulative cost + token breakdown
@@ -52,6 +52,26 @@ export interface DailyCostBucket {
   dayLabel: string
   tokens: number
   costUsd: number
+}
+
+/**
+ * 1.0.5-EW52 — One card on the "Providers" dashboard tab. Built
+ * from the same `recordsAfterReset` walk as the existing
+ * provider-token totals — but rolled up with cost so the
+ * Providers tab can show "tokens · cost · share" parity with
+ * the Workspaces tab. Always emits all four canonical providers
+ * (zero-filled for any provider the user hasn't run yet) so the
+ * tab's card list reads as a stable roster rather than a sparse
+ * set that grows over time.
+ */
+export interface ProviderCostBreakdownEntry {
+  provider: ProviderId
+  /** Human-readable label ("Codex" / "Claude" / "Gemini" / "Kimi"). */
+  displayName: string
+  tokens: number
+  costUsd: number
+  /** Percentage of post-reset cost. 0–100. Zero when no cost. */
+  shareOfTotalCost: number
 }
 /**
  * Time-window discriminator for the welcome dashboard. `24h` was added in
@@ -196,6 +216,22 @@ export interface WelcomeUsageDashboardData {
    * so the chart's x-axis stays uniform.
    */
   dailyCostBreakdown: DailyCostBucket[]
+  /**
+   * 1.0.5-EW52 — Per-provider cumulative cost + token breakdown
+   * for the "Providers" tab. Always 4 entries (codex / claude /
+   * gemini / kimi), sorted DESC by cost so the dominant
+   * provider lands at the top. Zero-filled for providers with
+   * no post-reset activity.
+   */
+  providerCostBreakdown: ProviderCostBreakdownEntry[]
+  /**
+   * 1.0.5-EW52 — Cumulative wall-clock time across all runs
+   * that started in the last 24 hours, in milliseconds. Drives
+   * the giant timecode below the Providers tab's card list.
+   * Distinct from `totalWallTimeMs` (which is lifetime-from-
+   * reset) — this is a tight rolling 24h slice.
+   */
+  wallTime24hMs: number
   peakHour: string
   favoriteModel: string
   /**
@@ -514,6 +550,27 @@ export const buildWelcomeUsageDashboardData = (
   const dailyCostAggregate = new Map<string, { tokens: number; costUsd: number }>()
   const dailyCostCutoff = now - DASHBOARD_COST_CHART_DAY_COUNT * 24 * 60 * 60 * 1000
   const NO_WORKSPACE_KEY = '__no_workspace'
+  // 1.0.5-EW52 — Per-provider aggregate (tokens + cost) for the
+  // new "Providers" dashboard tab. Initialised with all four
+  // canonical providers so the card list is a stable roster
+  // regardless of which providers the user has actually run.
+  // Cost source is the same `explicitCostUsd` field the
+  // Workspaces tab uses (Codex / Claude / Kimi populate it via
+  // chat-completions; Gemini often leaves it 0 — that's a real
+  // signal worth surfacing, not noise).
+  const providerCostAggregate: Record<ProviderId, { tokens: number; costUsd: number }> = {
+    codex: { tokens: 0, costUsd: 0 },
+    claude: { tokens: 0, costUsd: 0 },
+    gemini: { tokens: 0, costUsd: 0 },
+    kimi: { tokens: 0, costUsd: 0 }
+  }
+  // 1.0.5-EW52 — Cumulative wall time across runs whose
+  // timestamp is within the last 24 hours. Distinct from
+  // `totalWallTimeMs` (lifetime-from-reset). Rolling 24h slice
+  // so the giant timecode on the Providers tab tracks "how much
+  // time did agents spend running for me today".
+  let wallTime24hMs = 0
+  const wallTime24hCutoff = now - 24 * 60 * 60 * 1000
   for (const record of recordsAfterReset) {
     if (record.usageKind === 'reset_hint') continue
     lifetimeActiveDayKeys.add(dayKeyFromTimestamp(record.timestamp))
@@ -545,6 +602,38 @@ export const buildWelcomeUsageDashboardData = (
       dayBucket.tokens += Number(record.totalTokens) || 0
       if (hasCost) dayBucket.costUsd += cost
       dailyCostAggregate.set(dayKey, dayBucket)
+    }
+    // EW52 per-provider bucket — narrow `record.provider` to
+    // our canonical set so a malformed record doesn't grow the
+    // aggregate map with junk keys. Unknown / missing provider
+    // silently drops (matches the broader dashboard's
+    // posture).
+    const recordProvider = record.provider as ProviderId | undefined
+    if (
+      recordProvider === 'codex' ||
+      recordProvider === 'claude' ||
+      recordProvider === 'gemini' ||
+      recordProvider === 'kimi'
+    ) {
+      providerCostAggregate[recordProvider].tokens += Number(record.totalTokens) || 0
+      if (hasCost) providerCostAggregate[recordProvider].costUsd += cost
+    }
+  }
+  // EW52 24h wall-time slice — separate walk against the RAW
+  // record set (not `recordsAfterReset`). The giant timecode
+  // is meant as a "right now" pulse, so it has to keep
+  // counting even if the user reset the dashboard recently.
+  // Skip `reset_hint` markers (they have no duration and
+  // shouldn't contribute anyway).
+  for (const record of records) {
+    if (record.usageKind === 'reset_hint') continue
+    const duration = Number(record.durationMs)
+    if (
+      record.timestamp >= wallTime24hCutoff &&
+      Number.isFinite(duration) &&
+      duration > 0
+    ) {
+      wallTime24hMs += duration
     }
   }
   // Re-walk the original lifetime-active-day loop body that EW44
@@ -899,6 +988,44 @@ export const buildWelcomeUsageDashboardData = (
     })
   }
 
+  // 1.0.5-EW52 — Build the per-provider breakdown from the
+  // aggregate map. Always 4 entries (one per canonical
+  // provider) so the Providers tab card list is a stable
+  // roster — even an unused provider gets a 0-token card,
+  // which surfaces "you haven't tried Kimi yet" usefully.
+  // Sorted DESC by cost (tokens tiebreaker, then alpha by
+  // provider name for stable cross-provider ordering when
+  // everything's zero).
+  const totalProviderCost = Object.values(providerCostAggregate).reduce(
+    (sum, bucket) => sum + bucket.costUsd,
+    0
+  )
+  const providerDisplayNames: Record<ProviderId, string> = {
+    codex: 'Codex',
+    claude: 'Claude',
+    gemini: 'Gemini',
+    kimi: 'Kimi'
+  }
+  const providerCostBreakdown: ProviderCostBreakdownEntry[] = (
+    Object.keys(providerCostAggregate) as ProviderId[]
+  )
+    .map((provider) => ({
+      provider,
+      displayName: providerDisplayNames[provider],
+      tokens: providerCostAggregate[provider].tokens,
+      costUsd: providerCostAggregate[provider].costUsd,
+      shareOfTotalCost:
+        totalProviderCost > 0
+          ? (providerCostAggregate[provider].costUsd / totalProviderCost) * 100
+          : 0
+    }))
+    .sort(
+      (a, b) =>
+        b.costUsd - a.costUsd ||
+        b.tokens - a.tokens ||
+        a.displayName.localeCompare(b.displayName)
+    )
+
   const sessionsCount = sessionIds.size
   // 1.0.5-EW49 — Three derived metrics, computed once we have the
   // primary aggregates above. All gated on `sessionsCount > 0` so
@@ -927,6 +1054,8 @@ export const buildWelcomeUsageDashboardData = (
     tokensPerSession,
     workspaceCostBreakdown,
     dailyCostBreakdown,
+    providerCostBreakdown,
+    wallTime24hMs,
     peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
     favoriteModel,
     favoriteProject,

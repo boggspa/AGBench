@@ -1102,3 +1102,167 @@ describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart',
     expect(chartTotal).toBeCloseTo(0.1, 5)
   })
 })
+
+describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time', () => {
+  const NOW = new Date(2026, 4, 15, 14, 30).getTime()
+  const HOUR = 60 * 60 * 1000
+  const DAY = 24 * HOUR
+
+  it('always emits 4 canonical providers in cost breakdown, even with no records', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.providerCostBreakdown).toHaveLength(4)
+    const providers = data.providerCostBreakdown.map((entry) => entry.provider).sort()
+    expect(providers).toEqual(['claude', 'codex', 'gemini', 'kimi'])
+    // Zero-token / zero-cost providers still appear with the canonical
+    // display name and 0 share so the card list is a stable roster.
+    for (const entry of data.providerCostBreakdown) {
+      expect(entry.tokens).toBe(0)
+      expect(entry.costUsd).toBe(0)
+      expect(entry.shareOfTotalCost).toBe(0)
+    }
+  })
+
+  it('sums tokens + cost per provider from records', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        provider: 'codex',
+        totalTokens: 12_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.6 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        provider: 'codex',
+        totalTokens: 4_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.2 as any
+      } as never),
+      baseRecord({
+        id: 'r3',
+        provider: 'claude',
+        totalTokens: 8_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.3 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const codex = data.providerCostBreakdown.find((p) => p.provider === 'codex')
+    const claude = data.providerCostBreakdown.find((p) => p.provider === 'claude')
+    const gemini = data.providerCostBreakdown.find((p) => p.provider === 'gemini')
+    expect(codex?.tokens).toBe(16_000)
+    expect(codex?.costUsd).toBeCloseTo(0.8, 5)
+    expect(claude?.tokens).toBe(8_000)
+    expect(claude?.costUsd).toBeCloseTo(0.3, 5)
+    // Gemini sees no records this run — still in the roster at 0.
+    expect(gemini?.tokens).toBe(0)
+    expect(gemini?.costUsd).toBe(0)
+  })
+
+  it('sorts provider breakdown DESC by cost', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        provider: 'gemini',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.05 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        provider: 'kimi',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 1.2 as any
+      } as never),
+      baseRecord({
+        id: 'r3',
+        provider: 'codex',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.4 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    // Sorted DESC: kimi (1.2) > codex (0.4) > gemini (0.05) > claude (0).
+    expect(data.providerCostBreakdown[0].provider).toBe('kimi')
+    expect(data.providerCostBreakdown[1].provider).toBe('codex')
+    expect(data.providerCostBreakdown[2].provider).toBe('gemini')
+    expect(data.providerCostBreakdown[3].provider).toBe('claude')
+  })
+
+  it('computes shareOfTotalCost as a percentage of all-provider cost (or 0 when total is 0)', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        provider: 'codex',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.75 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        provider: 'claude',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.25 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const codex = data.providerCostBreakdown.find((p) => p.provider === 'codex')
+    const claude = data.providerCostBreakdown.find((p) => p.provider === 'claude')
+    expect(codex?.shareOfTotalCost).toBeCloseTo(75, 1)
+    expect(claude?.shareOfTotalCost).toBeCloseTo(25, 1)
+    // Zero-cost providers share = 0.
+    const gemini = data.providerCostBreakdown.find((p) => p.provider === 'gemini')
+    expect(gemini?.shareOfTotalCost).toBe(0)
+  })
+
+  it('sums wallTime24hMs from durationMs within the rolling 24-hour window', () => {
+    const records: UsageRecord[] = [
+      // Inside the 24h window — counted.
+      baseRecord({
+        id: 'recent-1',
+        timestamp: NOW - 2 * HOUR,
+        durationMs: 90_000 // 1m 30s
+      }),
+      baseRecord({
+        id: 'recent-2',
+        timestamp: NOW - 12 * HOUR,
+        durationMs: 30_000 // 30s
+      }),
+      // Outside the 24h window — NOT counted, even though it's still
+      // within the 30-day chart window.
+      baseRecord({
+        id: 'old',
+        timestamp: NOW - 5 * DAY,
+        durationMs: 600_000 // 10m, should not count
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.wallTime24hMs).toBe(120_000) // 90s + 30s
+  })
+
+  it('uses raw record timestamps for the 24h window even when statResetAt is later (24h is a rolling slice, not a personal-best metric)', () => {
+    // The reset cutoff applies to lifetime-from-reset stats (cost
+    // breakdown, totals), but the 24h wall-time timecode is meant
+    // as a "what happened in the last 24h" pulse — so it's
+    // independent of the reset.
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'pre-reset-but-recent',
+        timestamp: NOW - 1 * HOUR,
+        durationMs: 60_000
+      })
+    ]
+    const RESET_AT = NOW - 30 * 60 * 1000 // reset 30 min ago
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, [], RESET_AT)
+    // Record is older than the reset, so workspace / provider
+    // breakdowns drop it, but wallTime24hMs still picks it up.
+    expect(data.wallTime24hMs).toBe(60_000)
+  })
+
+  it('emits 0 wallTime24hMs and zeroed provider breakdown when no records exist', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.wallTime24hMs).toBe(0)
+    for (const entry of data.providerCostBreakdown) {
+      expect(entry.tokens).toBe(0)
+      expect(entry.costUsd).toBe(0)
+    }
+  })
+})

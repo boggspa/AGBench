@@ -1205,6 +1205,20 @@ export interface AppSettings {
      * this count. Default 8; clamped 4–20 at the slider UI.
      */
     workspacesShown?: number
+    /**
+     * 1.0.5-EW52 — Providers tab visibility (default true).
+     * When false, the Providers tab hides from the dashboard
+     * tab strip and the auto-cycle skips it. The underlying
+     * data is still computed — toggling back doesn't re-cost.
+     */
+    providersTabEnabled?: boolean
+    /**
+     * 1.0.5-EW52 — Auto-cycle the dashboard tabs in a loop
+     * every N seconds while the welcome screen is mounted.
+     * Default 180 (3 minutes). 0 / undefined disables the
+     * cycle. Range 30–3600 enforced by the slider UI.
+     */
+    autoCycleSeconds?: number
   }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are

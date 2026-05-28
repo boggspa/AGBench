@@ -2250,8 +2250,39 @@ const WELCOME_USAGE_TABS: Array<{
   // the FolderSymbolIcon (already imported as the welcome
   // workspace-picker icon) so the tab visually echoes the
   // workspace concept without a new asset.
-  { value: 'workspaces', label: 'Workspaces', Icon: FolderSymbolIcon }
+  { value: 'workspaces', label: 'Workspaces', Icon: FolderSymbolIcon },
+  // 1.0.5-EW52 — Providers tab. Per-provider tokens + cost
+  // cards (four canonical providers, always shown) above a
+  // giant 24H wall-time timecode display. Different shape from
+  // Workspaces (which has a 30d chart underneath) — the
+  // timecode emphasises "how much agent-time happened today"
+  // as a single legible glyph.
+  { value: 'providers', label: 'Providers', Icon: ProviderTabIcon }
 ]
+
+// 1.0.5-EW52 — Lightweight icon for the Providers tab. Same
+// stroke language as the other tab icons (1.4 weight, rounded
+// caps/joins). Renders as three stacked horizontal bars — a
+// nod to the "multiple providers in parallel" identity.
+function ProviderTabIcon(): React.JSX.Element {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="2" y="3.5" width="12" height="2" rx="1" />
+      <rect x="2" y="7" width="9" height="2" rx="1" />
+      <rect x="2" y="10.5" width="11" height="2" rx="1" />
+    </svg>
+  )
+}
 
 // Welcome L7 — range toggle retired. The dashboard now locks to a
 // fixed 30-day rolling window that matches the sidebar UsageHeatmap.
@@ -2275,7 +2306,9 @@ function WelcomeUsageDashboard({
   overestimatePercent,
   dashboardStatVisibility,
   workspacesTabEnabled,
-  workspacesShown
+  workspacesShown,
+  providersTabEnabled,
+  autoCycleSeconds
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
@@ -2297,6 +2330,13 @@ function WelcomeUsageDashboard({
    */
   workspacesTabEnabled?: boolean
   workspacesShown?: number
+  /**
+   * 1.0.5-EW52 — Providers tab on/off + auto-cycle interval.
+   * Providers default visible; auto-cycle defaults to 180s
+   * (3 min). Auto-cycle 0 / undefined disables looping.
+   */
+  providersTabEnabled?: boolean
+  autoCycleSeconds?: number
 }) {
   const resolvedCurrency: DisplayCurrency = displayCurrency || 'USD'
   const resolvedOverestimate = Math.max(
@@ -2308,6 +2348,43 @@ function WelcomeUsageDashboard({
     4,
     Math.min(20, Number(workspacesShown ?? 8) || 8)
   )
+  const resolvedProvidersEnabled = providersTabEnabled !== false
+  // Auto-cycle: 0/undefined = disabled, else clamp 30–3600.
+  const resolvedAutoCycleSeconds = (() => {
+    const raw = Number(autoCycleSeconds)
+    if (!Number.isFinite(raw) || raw <= 0) return autoCycleSeconds === undefined ? 180 : 0
+    return Math.max(30, Math.min(3600, Math.round(raw)))
+  })()
+
+  // 1.0.5-EW52 — Auto-cycle the dashboard tabs every N seconds
+  // while the welcome screen is mounted. The interval runs in
+  // setInterval; on each tick we advance to the next visible
+  // tab. Visibility is recomputed each tick so the user
+  // toggling a tab off in Settings is honoured live. We
+  // intentionally don't pause on user click — the user said
+  // "loop", we loop. A pause-on-interaction tweak is a small
+  // follow-up if usage proves the auto-jump feels intrusive.
+  const visibleTabValues = useMemo(() => {
+    return WELCOME_USAGE_TABS.filter((option) => {
+      if (option.value === 'workspaces') return resolvedWorkspacesEnabled
+      if (option.value === 'providers') return resolvedProvidersEnabled
+      return true
+    }).map((option) => option.value)
+  }, [resolvedWorkspacesEnabled, resolvedProvidersEnabled])
+  useEffect(() => {
+    if (!resolvedAutoCycleSeconds || visibleTabValues.length < 2) return
+    const intervalId = setInterval(() => {
+      // Use a callback-style state read so we don't capture a
+      // stale `tab` value in the closure. `onTabChange` is the
+      // setter the parent owns; calling it with the next tab
+      // moves the dashboard forward by one slot.
+      const currentIndex = visibleTabValues.indexOf(tab)
+      const nextIndex = (currentIndex + 1) % visibleTabValues.length
+      const nextTab = visibleTabValues[nextIndex] ?? visibleTabValues[0]
+      if (nextTab && nextTab !== tab) onTabChange(nextTab)
+    }, resolvedAutoCycleSeconds * 1000)
+    return () => clearInterval(intervalId)
+  }, [resolvedAutoCycleSeconds, visibleTabValues, tab, onTabChange])
   // Phase K-followup — Provider color palette + mixed rail colour.
   // Each stat chip carries a thin top rail in this colour. The mix
   // is computed from this dashboard's per-provider token totals so
@@ -2435,12 +2512,14 @@ function WelcomeUsageDashboard({
     <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
       <div className="welcome-usage-dashboard-header">
         <div className="welcome-usage-tabs" role="tablist" aria-label="Usage view">
-          {WELCOME_USAGE_TABS.filter((option) =>
-            // 1.0.5-EW51 — Hide the Workspaces tab when the
-            // user toggled it off in Settings. The Statistics +
-            // Model Comparisons tabs are always shown.
-            option.value === 'workspaces' ? resolvedWorkspacesEnabled : true
-          ).map((option) => {
+          {WELCOME_USAGE_TABS.filter((option) => {
+            // 1.0.5-EW51/EW52 — Hide the Workspaces / Providers
+            // tab when the user toggled it off in Settings. The
+            // Statistics + Model Comparisons tabs always show.
+            if (option.value === 'workspaces') return resolvedWorkspacesEnabled
+            if (option.value === 'providers') return resolvedProvidersEnabled
+            return true
+          }).map((option) => {
             const Icon = option.Icon
             return (
               <button
@@ -2597,7 +2676,7 @@ function WelcomeUsageDashboard({
             </div>
           )}
         </div>
-      ) : (
+      ) : tab === 'workspaces' ? (
         /*
           1.0.5-EW51 — Workspaces tab. Two-section layout:
             1. Scrollable list of per-workspace cards (top N from
@@ -2607,6 +2686,10 @@ function WelcomeUsageDashboard({
             2. 30-day daily cost chart below. SVG bars, height
                scaled to the max-cost day in the window. Hover
                surfaces date + token + cost via the bar's title.
+
+          (1.0.5-EW52 — Promoted from catch-all to an explicit
+           `tab === 'workspaces'` branch so the Providers tab can
+           own the catch-all slot below.)
         */
         <div className="welcome-usage-workspaces">
           {data.workspaceCostBreakdown.length === 0 ? (
@@ -2753,6 +2836,114 @@ function WelcomeUsageDashboard({
               })()}
             </>
           )}
+        </div>
+      ) : (
+        /*
+          1.0.5-EW52 — Providers tab. Per-provider card list at
+          the top (4 cards, always shown — even zero-token
+          providers stay visible because "you haven't tried
+          Kimi" is itself useful information). Below the cards:
+          a giant timecode showing the cumulative wall-clock
+          time across runs in the last 24 hours, framed as a
+          single dominant glyph rather than the small "Avg
+          session" chip on the Statistics tab.
+        */
+        <div className="welcome-usage-providers">
+          <div
+            className="welcome-usage-providers-list"
+            role="list"
+            aria-label="Provider cost breakdown"
+          >
+            {data.providerCostBreakdown.map((entry) => {
+              const share = Math.max(0, Math.min(100, entry.shareOfTotalCost))
+              const fillWidth = `${Math.max(2, share)}%`
+              return (
+                <div
+                  key={entry.provider}
+                  role="listitem"
+                  className={`welcome-usage-provider-card provider-${entry.provider}`}
+                  title={`${entry.displayName} · ${formatCompactUsageNumber(entry.tokens)} tokens · ${formatCost(
+                    entry.costUsd,
+                    resolvedCurrency,
+                    undefined,
+                    resolvedOverestimate
+                  )}`}
+                >
+                  <div className="welcome-usage-provider-card-row">
+                    <span className="welcome-usage-provider-card-name">
+                      <span
+                        className={`welcome-usage-provider-card-dot provider-${entry.provider}`}
+                        aria-hidden
+                      />
+                      {entry.displayName}
+                    </span>
+                    <span className="welcome-usage-provider-card-totals">
+                      <span className="welcome-usage-provider-card-tokens">
+                        {formatCompactUsageNumber(entry.tokens)} tokens
+                      </span>
+                      <strong className="welcome-usage-provider-card-cost">
+                        {formatCost(
+                          entry.costUsd,
+                          resolvedCurrency,
+                          undefined,
+                          resolvedOverestimate
+                        )}
+                      </strong>
+                    </span>
+                  </div>
+                  <div
+                    className="welcome-usage-provider-card-track"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={share}
+                    aria-label={`${entry.displayName} accounts for ${share.toFixed(1)}% of post-reset cost`}
+                  >
+                    <span
+                      className={`welcome-usage-provider-card-fill provider-${entry.provider}`}
+                      style={{ width: fillWidth }}
+                    />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {(() => {
+            /*
+              Giant 24H wall-time timecode. Format mirrors the
+              composer's AR10 cumulative session timecode style
+              but in HH:MM:SS only (no centiseconds — at this
+              scale the second-level precision is honest).
+              Padded to 2 digits per slot so the readout has a
+              fixed width regardless of magnitude — the digits
+              don't reflow as time accumulates.
+            */
+            const ms = Math.max(0, Number(data.wallTime24hMs) || 0)
+            const totalSeconds = Math.floor(ms / 1000)
+            const hours = Math.floor(totalSeconds / 3600)
+            const minutes = Math.floor((totalSeconds % 3600) / 60)
+            const seconds = totalSeconds % 60
+            const pad = (n: number): string => String(n).padStart(2, '0')
+            const timecode = `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`
+            return (
+              <div
+                className="welcome-usage-providers-timecode"
+                aria-label={`Wall time across all runs in the last 24 hours: ${timecode}`}
+              >
+                <div className="welcome-usage-providers-timecode-label">24H Wall Time</div>
+                <div className="welcome-usage-providers-timecode-readout" role="timer">
+                  <span className="welcome-usage-providers-timecode-segment">{pad(hours)}</span>
+                  <span className="welcome-usage-providers-timecode-sep">:</span>
+                  <span className="welcome-usage-providers-timecode-segment">{pad(minutes)}</span>
+                  <span className="welcome-usage-providers-timecode-sep">:</span>
+                  <span className="welcome-usage-providers-timecode-segment">{pad(seconds)}</span>
+                </div>
+                <div className="welcome-usage-providers-timecode-sub">
+                  Cumulative wall-clock time across runs in the rolling 24-hour window.
+                </div>
+              </div>
+            )
+          })()}
         </div>
       )}
     </section>
@@ -17413,6 +17604,18 @@ function App(): React.JSX.Element {
                 */
                 workspacesTabEnabled={settings?.dashboardStatPrefs?.workspacesTabEnabled}
                 workspacesShown={settings?.dashboardStatPrefs?.workspacesShown}
+                /*
+                  1.0.5-EW52 — Providers tab on/off + auto-cycle
+                  cadence (seconds; 0 disables). Both come from
+                  AppSettings.dashboardStatPrefs. The dashboard
+                  rotates through enabled tabs only while a
+                  welcome screen is mounted — the setInterval
+                  lives inside <WelcomeUsageDashboard>, so it
+                  unmounts automatically when the welcome region
+                  disappears.
+                */
+                providersTabEnabled={settings?.dashboardStatPrefs?.providersTabEnabled}
+                autoCycleSeconds={settings?.dashboardStatPrefs?.autoCycleSeconds}
               />
             </div>
           )}

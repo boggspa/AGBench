@@ -112,6 +112,13 @@ interface SettingsPanelProps {
     workspacesTabEnabled?: boolean
     /** 1.0.5-EW51 — max workspace cards shown (default 8, range 4–20). */
     workspacesShown?: number
+    /** 1.0.5-EW52 — show/hide the Providers tab (default true). */
+    providersTabEnabled?: boolean
+    /** 1.0.5-EW52 — auto-cycle through dashboard tabs every N
+     * seconds while a welcome screen is mounted. 0 disables;
+     * undefined defaults to 180 (3 minutes). Clamped 30–3600
+     * client-side. */
+    autoCycleSeconds?: number
   }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
@@ -217,6 +224,11 @@ interface SettingsPanelProps {
       workspacesTabEnabled?: boolean
       /** 1.0.5-EW51 — max workspace cards on Workspaces tab. */
       workspacesShown?: number
+      /** 1.0.5-EW52 — show/hide the Providers tab. */
+      providersTabEnabled?: boolean
+      /** 1.0.5-EW52 — auto-cycle through dashboard tabs every N
+       * seconds (0 disables, undefined defaults to 180s). */
+      autoCycleSeconds?: number
     }
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
@@ -2310,6 +2322,128 @@ export function SettingsPanel({
                   <p className="settings-hint">
                     The Workspaces tab shows up to this many workspace cost cards
                     (scrollable when there are more). Defaults to 8; clamped 4–20.
+                  </p>
+                </div>
+                {/*
+                  1.0.5-EW52 — Providers tab + auto-cycle controls.
+                  The fourth dashboard tab (per-provider token /
+                  cost cards + giant 24H wall-time timecode) gets
+                  the same visibility toggle as Workspaces. Below
+                  it, an auto-cycle slider rotates through enabled
+                  tabs every N seconds while a welcome screen is
+                  mounted. Defaults: Providers visible, auto-cycle
+                  on at 180s (3 min). Auto-cycle 0 disables the
+                  loop entirely.
+                */}
+                <div className="settings-dashboard-stats-group settings-dashboard-providers-group">
+                  <div className="settings-dashboard-stats-group-label">Providers tab</div>
+                  <ul className="settings-dashboard-stats-list">
+                    <li className="settings-dashboard-stats-row">
+                      <span className="settings-dashboard-stats-name">Show Providers tab</span>
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={dashboardStatPrefs?.providersTabEnabled !== false}
+                          onChange={(e) => {
+                            onChange({
+                              dashboardStatPrefs: {
+                                ...(dashboardStatPrefs || {}),
+                                providersTabEnabled: e.target.checked
+                              }
+                            })
+                          }}
+                        />
+                        <span className="settings-toggle-label">
+                          {dashboardStatPrefs?.providersTabEnabled !== false ? 'Visible' : 'Hidden'}
+                        </span>
+                      </label>
+                    </li>
+                  </ul>
+                  {(() => {
+                    // Auto-cycle resolved value: undefined → 180s default.
+                    // 0 → user explicitly disabled. Anything else clamps
+                    // to 30–600 for the slider (the dashboard side
+                    // accepts up to 3600 if the user edits settings
+                    // JSON directly, but the slider UI tops out at
+                    // 10 minutes — auto-cycling slower than that
+                    // feels indistinguishable from manual).
+                    const raw = dashboardStatPrefs?.autoCycleSeconds
+                    const resolved =
+                      raw === undefined ? 180 : Math.max(0, Number(raw) || 0)
+                    const cycleEnabled = resolved > 0
+                    const sliderValue = cycleEnabled
+                      ? Math.max(30, Math.min(600, resolved))
+                      : 180
+                    return (
+                      <>
+                        <ul className="settings-dashboard-stats-list">
+                          <li className="settings-dashboard-stats-row">
+                            <span className="settings-dashboard-stats-name">
+                              Auto-cycle dashboard tabs
+                            </span>
+                            <label className="settings-toggle">
+                              <input
+                                type="checkbox"
+                                checked={cycleEnabled}
+                                onChange={(e) => {
+                                  onChange({
+                                    dashboardStatPrefs: {
+                                      ...(dashboardStatPrefs || {}),
+                                      autoCycleSeconds: e.target.checked
+                                        ? sliderValue
+                                        : 0
+                                    }
+                                  })
+                                }}
+                              />
+                              <span className="settings-toggle-label">
+                                {cycleEnabled ? 'On' : 'Off'}
+                              </span>
+                            </label>
+                          </li>
+                        </ul>
+                        {cycleEnabled && (
+                          <>
+                            <label className="settings-label settings-dashboard-providers-cycle-label">
+                              Cycle every
+                              <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
+                                {sliderValue >= 60
+                                  ? `${Math.floor(sliderValue / 60)}m${
+                                      sliderValue % 60 > 0 ? ` ${sliderValue % 60}s` : ''
+                                    }`
+                                  : `${sliderValue}s`}
+                              </span>
+                            </label>
+                            <input
+                              type="range"
+                              min={30}
+                              max={600}
+                              step={30}
+                              value={sliderValue}
+                              onChange={(e) => {
+                                const next = Math.max(
+                                  30,
+                                  Math.min(600, Number(e.target.value) || 180)
+                                )
+                                onChange({
+                                  dashboardStatPrefs: {
+                                    ...(dashboardStatPrefs || {}),
+                                    autoCycleSeconds: next
+                                  }
+                                })
+                              }}
+                              style={{ width: '100%' }}
+                              aria-label="Dashboard tab auto-cycle interval in seconds"
+                            />
+                          </>
+                        )}
+                      </>
+                    )
+                  })()}
+                  <p className="settings-hint">
+                    While a welcome screen is open, the dashboard rotates through visible
+                    tabs at this cadence. Background chats don't cycle. Defaults to 3 minutes;
+                    range 30 seconds – 10 minutes.
                   </p>
                 </div>
               </div>
