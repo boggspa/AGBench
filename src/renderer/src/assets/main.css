@@ -27023,6 +27023,30 @@ input:disabled, select:disabled, textarea:disabled {
   animation: status-shimmer-sweep 2.6s linear infinite;
 }
 
+/* ============================================================
+ * 1.0.6-EW73 — Flatten the ensemble run-header provider + status
+ * chips. Keep the provider-tinted name ("Claude") and the
+ * tone-coloured status ("Done" / "Failed") TEXT, but drop the pill
+ * container (fill, border, rim-shine glow, padding, radius) so they
+ * read as plain coloured labels. Colours come from the
+ * `.provider-X` / `.tone-X` + light-theme rules and are left
+ * untouched — only the chrome is stripped.
+ *
+ * `.tone-running` is intentionally excluded: its animated
+ * shimmer-sweep container is a deliberate "this run is live" signal,
+ * so it keeps its fill. Placed last + `!important` so it beats the
+ * base, per-provider/tone, and light-theme chrome.
+ * ============================================================ */
+.run-card-provider,
+.run-card-status:not(.tone-running) {
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
 /* Sidebar "Running" pill — quieter than the run-card variant above
  * which paints in accent. The sidebar already carries the busy-dot
  * + age label, so the pill itself just reads as "this thread is
