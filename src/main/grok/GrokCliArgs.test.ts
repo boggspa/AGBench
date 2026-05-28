@@ -76,10 +76,15 @@ describe('buildGrokCliArgs', () => {
     expect(buildGrokCliArgs(base)).toContain('--disable-web-search')
   })
 
-  it('appends --model only when not a default placeholder', () => {
+  it('forwards --model only for genuine Grok model ids', () => {
     expect(buildGrokCliArgs(base)).not.toContain('--model')
     expect(buildGrokCliArgs({ ...base, model: 'default' })).not.toContain('--model')
     expect(buildGrokCliArgs({ ...base, model: 'cli-default' })).not.toContain('--model')
+    // Regression guard (G3e): a model id carried over from another provider's
+    // picker (e.g. Gemini's 'flash-lite') must NOT be forwarded — Grok rejects
+    // unknown ids and the run fails with "unknown model id".
+    expect(buildGrokCliArgs({ ...base, model: 'flash-lite' })).not.toContain('--model')
+    expect(buildGrokCliArgs({ ...base, model: 'claude-opus-4-7' })).not.toContain('--model')
     const args = buildGrokCliArgs({ ...base, model: 'grok-code-fast-1' })
     expect(args[args.indexOf('--model') + 1]).toBe('grok-code-fast-1')
   })

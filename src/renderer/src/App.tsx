@@ -8621,6 +8621,7 @@ function App(): React.JSX.Element {
     if (provider === 'codex') return codexModels[0]?.id || CODEX_DEFAULT_MODEL
     if (provider === 'claude') return 'default'
     if (provider === 'kimi') return KIMI_DEFAULT_MODEL
+    if (provider === 'grok') return 'cli-default'
     return 'flash-lite'
   }
 
@@ -8633,6 +8634,9 @@ function App(): React.JSX.Element {
     if (provider === 'codex') return isCodexModelId(modelId)
     if (provider === 'claude') return isClaudeModelId(modelId)
     if (provider === 'kimi') return isKimiModelId(modelId)
+    // Grok (gated, read-only): only the CLI-default sentinel or a genuine grok
+    // model id is valid — never a model carried over from another provider.
+    if (provider === 'grok') return modelId === 'cli-default' || modelId.startsWith('grok')
     return isGeminiModelId(modelId)
   }
 

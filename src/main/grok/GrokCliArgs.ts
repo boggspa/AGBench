@@ -47,7 +47,11 @@ export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
   for (const rule of GROK_READ_ONLY_DENY_RULES) {
     args.push('--deny', rule)
   }
-  if (input.model && input.model !== 'default' && input.model !== 'cli-default') {
+  // Only forward genuine Grok model ids (e.g. grok-code-fast-1). The composer's
+  // CLI-default option — and any model id that leaked in from another provider's
+  // picker (e.g. Gemini's 'flash-lite') — must NOT be passed: Grok rejects
+  // unknown ids and the whole run fails. Real Grok model wiring is a later slice.
+  if (input.model && input.model.startsWith('grok')) {
     args.push('--model', input.model)
   }
   const effort = normalizeGrokEffortFlag(input.reasoningEffort)
