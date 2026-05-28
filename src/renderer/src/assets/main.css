@@ -26577,6 +26577,186 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
+ * 1.0.6-EW68 — Two-container composer split (Obsidian + Alabaster).
+ *
+ * `.composer-bottom-controls` (the JSX wrapper added around the
+ * control-footer + telemetry-row) is `display: contents` by
+ * default, so it vanishes from layout and the other nine shells
+ * render exactly as before — the two rows stay effective flex
+ * children of `.composer-surface`.
+ *
+ * For Obsidian + Alabaster the surface stops being the single lit
+ * rect: it goes transparent (keeping its existing flex-column +
+ * `gap`), and the textarea-wrap + bottom-controls each become their
+ * own lit rect — same fill / rim / static-glow as the old surface,
+ * plus the animated rim-chase moved onto BOTH inner containers. The
+ * shared `@property --obsidian-rim-angle` + `obsidian-rim-chase`
+ * keyframes keep the two rects' chases in lockstep. Doubled-
+ * attribute selectors (0,2,x) + later source order beat the
+ * existing surface rect rules; `::before { content: none }` cancels
+ * the old surface chase.
+ * ============================================================ */
+.composer-bottom-controls {
+  display: contents;
+}
+
+/* ---- Obsidian: surface → transparent shell; two inner rects ---- */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface {
+  background: transparent !important;
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-composer-style="obsidian"] .composer-surface::before {
+  content: none;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-textarea-wrap,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-bottom-controls {
+  position: relative;
+  background: var(--obsidian-composer-fill);
+  border: 1px solid var(--obsidian-composer-border);
+  border-radius: var(--obsidian-composer-radius);
+  box-shadow:
+    inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim),
+    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.85),
+    0 8px 24px -12px rgba(0, 0, 0, 0.7),
+    var(--obsidian-composer-glow);
+  transition: box-shadow 220ms ease, border-color 220ms ease;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-textarea-wrap {
+  padding: 0 6px 2px;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-bottom-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 6px 8px;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-textarea-wrap:focus-within {
+  box-shadow:
+    inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim-strong),
+    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.7),
+    0 10px 28px -10px rgba(0, 0, 0, 0.75),
+    0 0 36px rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+[data-composer-style="obsidian"] .composer-textarea-wrap::before,
+[data-composer-style="obsidian"] .composer-bottom-controls::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--obsidian-composer-rim-width) * -1);
+  border-radius: calc(var(--obsidian-composer-radius) + var(--obsidian-composer-rim-width));
+  padding: var(--obsidian-composer-rim-width);
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(255, 255, 255, 0.55) 310deg,
+    rgba(255, 255, 255, 0.95) 340deg,
+    rgba(255, 255, 255, 0.55) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--obsidian-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.92;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="obsidian"] .composer-textarea-wrap::before,
+  [data-composer-style="obsidian"] .composer-bottom-controls::before {
+    animation: none;
+  }
+}
+
+/* ---- Alabaster: same split, cream fill + charcoal chase ---- */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface {
+  background: transparent !important;
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+[data-composer-style="alabaster"] .composer-surface::before {
+  content: none;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-textarea-wrap,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-bottom-controls {
+  position: relative;
+  background: var(--alabaster-composer-fill);
+  border: 1px solid var(--alabaster-composer-border);
+  border-radius: var(--alabaster-composer-radius);
+  box-shadow:
+    inset 0 var(--alabaster-composer-rim-width) 0 var(--alabaster-composer-rim),
+    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.06),
+    0 8px 24px -12px rgba(60, 50, 30, 0.12),
+    var(--alabaster-composer-glow);
+  transition: box-shadow 220ms ease, border-color 220ms ease;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-textarea-wrap {
+  padding: 0 6px 2px;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-bottom-controls {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-sm);
+  padding: 6px 8px;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-textarea-wrap:focus-within {
+  box-shadow:
+    inset 0 var(--alabaster-composer-rim-width) 0 var(--alabaster-composer-rim-strong),
+    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.05),
+    0 10px 28px -10px rgba(60, 50, 30, 0.16),
+    0 0 36px rgba(180, 160, 120, 0.08);
+  border-color: rgba(18, 21, 27, 0.22);
+}
+[data-composer-style="alabaster"] .composer-textarea-wrap::before,
+[data-composer-style="alabaster"] .composer-bottom-controls::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--alabaster-composer-rim-width) * -1);
+  border-radius: calc(var(--alabaster-composer-radius) + var(--alabaster-composer-rim-width));
+  padding: var(--alabaster-composer-rim-width);
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(0, 0, 0, 0.45) 310deg,
+    rgba(0, 0, 0, 0.85) 340deg,
+    rgba(0, 0, 0, 0.45) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--alabaster-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.78;
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="alabaster"] .composer-textarea-wrap::before,
+  [data-composer-style="alabaster"] .composer-bottom-controls::before {
+    animation: none;
+  }
+}
+
+/* ============================================================
  * NEW-SHELL VISUAL FIXES (Phase J7 follow-up)
  *
  * Three issues surfaced after the four new shells shipped:

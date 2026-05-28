@@ -18857,6 +18857,19 @@ function App(): React.JSX.Element {
                   })
                 }}
               />
+              {/*
+                1.0.6-EW68 — Two-container composer split (Obsidian +
+                Alabaster only). The control-footer (send row + Row A:
+                Turn/Continuous/Work-Session + provider + model +
+                approval) and the telemetry-row (Row B: timecode +
+                workspace + token tally) are wrapped here so those two
+                shells can render them as a SECOND lit rect below the
+                textarea rect. For the other nine shells this wrapper is
+                `display: contents`, so it vanishes from layout and the
+                two rows stay effective children of `.composer-surface`
+                exactly as before.
+              */}
+              <div className="composer-bottom-controls">
               <div className="composer-control-footer">
                 {imageAttachments.length > 0 && (
                   <div className="composer-image-strip">
@@ -20328,6 +20341,8 @@ function App(): React.JSX.Element {
                     {threadTokenTallyLabel}
                   </span>
                 )}
+              </div>
+              {/* 1.0.6-EW68 — close .composer-bottom-controls */}
               </div>
               {/*
                 Composer-unification (Phase J1): removed the codex-style
