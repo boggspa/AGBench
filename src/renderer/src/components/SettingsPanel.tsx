@@ -30,6 +30,10 @@ import type {
 import { resolveGeminiRuntimeStatus } from '../lib/GeminiRuntimeStatus'
 import { humaniseModelId } from '../lib/modelDisplayName'
 import {
+  getDashboardStatsByGroup,
+  isDashboardStatVisible
+} from '../lib/dashboardStatRegistry'
+import {
   summariseCodexStatus,
   summariseGeminiStatus,
   summariseProviderApiKeyStatus,
@@ -95,6 +99,16 @@ interface SettingsPanelProps {
    * `formatCost.ts` before FX conversion. Optional because older
    * settings files won't have the key. */
   currencyOverestimatePercent?: number
+  /**
+   * 1.0.5-EW49 — Dashboard statistics preferences. Per-stat
+   * show/hide map + a global "reset all" timestamp. See
+   * `src/renderer/src/lib/dashboardStatRegistry.ts` for the
+   * canonical stat-key set.
+   */
+  dashboardStatPrefs?: {
+    visibility?: Record<string, boolean>
+    resetAt?: number
+  }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
   /** 1.0.5-EW26 — User's additional trigger keywords (newline-
@@ -185,6 +199,17 @@ interface SettingsPanelProps {
     currency?: 'USD' | 'GBP' | 'EUR'
     /** 1.0.5-EW34 — Conservative-overestimate bias percent (0–25). */
     currencyOverestimatePercent?: number
+    /**
+     * 1.0.5-EW49 — Per-stat visibility map / global "reset all"
+     * timestamp. Patches merge into AppSettings; passing a
+     * partial visibility object replaces the whole map (the
+     * persistence layer merges the rest from the existing
+     * settings via the standard `update-settings` IPC).
+     */
+    dashboardStatPrefs?: {
+      visibility?: Record<string, boolean>
+      resetAt?: number
+    }
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
     /** 1.0.5-EW26 — User additions to the trigger keyword list. */
@@ -1106,6 +1131,7 @@ export function SettingsPanel({
   chatContextTurns,
   currency,
   currencyOverestimatePercent,
+  dashboardStatPrefs,
   kimiSanitiserEnabled,
   kimiSanitiserCustomKeywords,
   claudeBinaryPath,
@@ -2093,6 +2119,130 @@ export function SettingsPanel({
                     ? `+${currencyOverestimatePercent ?? 0}% safety bias applied to all cost displays. Useful when you want the on-screen running total to safely over-shoot the real bill.`
                     : 'Optional. Multiplies every cost display by 1 + your chosen percent (0–25%) so the displayed running total is a safe upper bound rather than the literal billed amount. Defaults to 0 (no bias).'}
                 </p>
+              </div>
+
+              {/*
+                1.0.5-EW49 — Dashboard statistics controls. Lists
+                every chip in the welcome dashboard's dense stat
+                grid (12 total, grouped by family) with a per-
+                stat show/hide toggle, plus a single "Reset all
+                dashboard stats" action at the bottom. Per-stat
+                reset deferred to a future EW49b — the global
+                reset covers the main user intent ("zero my
+                dashboard back to today") without the invasive
+                builder threading per-stat reset would need.
+              */}
+              <div className="settings-group settings-dashboard-stats">
+                <label className="settings-label">Dashboard statistics</label>
+                <p className="settings-hint">
+                  Toggle which chips appear in the welcome dashboard's stat grid.
+                  Hidden chips stay tracked in the background — re-enable any time
+                  to see their data again.
+                </p>
+                {(['calendar', 'duration', 'volume', 'spend'] as const).map((group) => {
+                  const stats = getDashboardStatsByGroup(group)
+                  if (stats.length === 0) return null
+                  const groupLabel =
+                    group === 'calendar'
+                      ? 'Calendar'
+                      : group === 'duration'
+                        ? 'Duration'
+                        : group === 'volume'
+                          ? 'Volume'
+                          : 'Spend'
+                  return (
+                    <div key={group} className="settings-dashboard-stats-group">
+                      <div className="settings-dashboard-stats-group-label">{groupLabel}</div>
+                      <ul className="settings-dashboard-stats-list">
+                        {stats.map((stat) => {
+                          const visible = isDashboardStatVisible(
+                            dashboardStatPrefs?.visibility,
+                            stat.key
+                          )
+                          return (
+                            <li key={stat.key} className="settings-dashboard-stats-row">
+                              <span className="settings-dashboard-stats-name">{stat.label}</span>
+                              <label className="settings-toggle">
+                                <input
+                                  type="checkbox"
+                                  checked={visible}
+                                  onChange={(e) => {
+                                    const nextVisibility = {
+                                      ...(dashboardStatPrefs?.visibility || {}),
+                                      [stat.key]: e.target.checked
+                                    }
+                                    onChange({
+                                      dashboardStatPrefs: {
+                                        ...(dashboardStatPrefs || {}),
+                                        visibility: nextVisibility
+                                      }
+                                    })
+                                  }}
+                                />
+                                <span className="settings-toggle-label">
+                                  {visible ? 'Visible' : 'Hidden'}
+                                </span>
+                              </label>
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    </div>
+                  )
+                })}
+                <div className="settings-dashboard-stats-reset">
+                  <button
+                    type="button"
+                    className="settings-button settings-button-danger"
+                    onClick={() => {
+                      if (
+                        typeof window !== 'undefined' &&
+                        typeof window.confirm === 'function' &&
+                        !window.confirm(
+                          'Reset all dashboard stats? This zeroes every chip back to today — older history is filtered out of future computations. Visibility is unchanged.'
+                        )
+                      ) {
+                        return
+                      }
+                      onChange({
+                        dashboardStatPrefs: {
+                          ...(dashboardStatPrefs || {}),
+                          resetAt: Date.now()
+                        }
+                      })
+                    }}
+                  >
+                    Reset all dashboard stats
+                  </button>
+                  {dashboardStatPrefs?.resetAt && dashboardStatPrefs.resetAt > 0 && (
+                    <span className="settings-hint settings-dashboard-stats-reset-hint">
+                      Stats currently filtered to records on or after{' '}
+                      {new Date(dashboardStatPrefs.resetAt).toLocaleString()}.{' '}
+                      <button
+                        type="button"
+                        className="settings-button settings-button-link"
+                        onClick={() => {
+                          onChange({
+                            dashboardStatPrefs: {
+                              ...(dashboardStatPrefs || {}),
+                              resetAt: 0
+                            }
+                          })
+                        }}
+                      >
+                        Clear reset
+                      </button>
+                    </span>
+                  )}
+                </div>
+                {/*
+                  EW49b roadmap note: per-stat reset (one button
+                  per stat) would replace the single timestamp
+                  with a `Record<string, number>`. Defer until
+                  the builder supports per-stat filtering — see
+                  the EW49 CHANGELOG entry for the deferral
+                  rationale.
+                */}
               </div>
 
               {/*

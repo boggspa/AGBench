@@ -212,6 +212,7 @@ import {
   type WelcomeUsageDashboardData,
   type WelcomeUsageTab
 } from './lib/welcomeUsageDashboard'
+import { isDashboardStatVisible } from './lib/dashboardStatRegistry'
 
 type SkyWeatherKind =
   | 'clear'
@@ -2261,12 +2262,29 @@ const providerModelColorClass = (provider: ProviderId): string => `provider-${pr
 function WelcomeUsageDashboard({
   data,
   tab,
-  onTabChange
+  onTabChange,
+  displayCurrency,
+  overestimatePercent,
+  dashboardStatVisibility
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
   onTabChange: (tab: WelcomeUsageTab) => void
+  // 1.0.5-EW49 — Currency + overestimate bias passed in so the
+  // EW49 "Total cost" chip can route through `formatCost` with
+  // the user's preferences. Defaults to USD + 0 if the caller
+  // omits them (e.g. tests or older callers).
+  displayCurrency?: DisplayCurrency
+  overestimatePercent?: number
+  // Per-stat visibility (true/false/undefined-defaults-to-true).
+  // Hidden stats are dropped from the dense grid render below.
+  dashboardStatVisibility?: Record<string, boolean>
 }) {
+  const resolvedCurrency: DisplayCurrency = displayCurrency || 'USD'
+  const resolvedOverestimate = Math.max(
+    0,
+    Math.min(25, Number(overestimatePercent ?? 0) || 0)
+  )
   // Phase K-followup — Provider color palette + mixed rail colour.
   // Each stat chip carries a thin top rail in this colour. The mix
   // is computed from this dashboard's per-provider token totals so
@@ -2332,22 +2350,63 @@ function WelcomeUsageDashboard({
       Row 2 (Duration) : Longest thread · Cumulative wall time · Peak hour
       Row 3 (Volume)   : Sessions · Messages · Total tokens
   */
-  const denseStatItems = [
+  // 1.0.5-EW49 — Twelve entries to balance the 3-column grid to
+  // 4×3. Each item carries a stable `key` (from
+  // `dashboardStatRegistry.ts`) used by Settings → General for
+  // per-stat show/hide. Row 4 (Spend) is EW49 new: Total cost,
+  // Avg session, Tokens/session.
+  const denseStatItemsAll = [
     // Row 1 — calendar metrics (days-based, always lifetime).
-    { label: 'Current streak', value: `${data.currentStreak || 0}d` },
-    { label: 'Longest streak', value: `${data.longestStreak || 0}d` },
-    { label: 'Active days', value: formatCompactUsageNumber(data.activeDays) },
-    // Row 2 — duration metrics (time-based; first two are lifetime
-    // EW44 additions, Peak hour is range-scoped to the 30-day
-    // window).
-    { label: 'Longest thread', value: formatDashboardDuration(data.longestThreadMs) },
-    { label: 'Cumulative wall time', value: formatDashboardDuration(data.totalWallTimeMs) },
-    { label: 'Peak hour', value: data.peakHour },
+    { key: 'currentStreak', label: 'Current streak', value: `${data.currentStreak || 0}d` },
+    { key: 'longestStreak', label: 'Longest streak', value: `${data.longestStreak || 0}d` },
+    { key: 'activeDays', label: 'Active days', value: formatCompactUsageNumber(data.activeDays) },
+    // Row 2 — duration metrics (Longest thread + Cumulative
+    // wall time are lifetime EW44 additions; Peak hour is
+    // range-scoped to the 30-day window).
+    {
+      key: 'longestThreadMs',
+      label: 'Longest thread',
+      value: formatDashboardDuration(data.longestThreadMs)
+    },
+    {
+      key: 'totalWallTimeMs',
+      label: 'Cumulative wall time',
+      value: formatDashboardDuration(data.totalWallTimeMs)
+    },
+    { key: 'peakHour', label: 'Peak hour', value: data.peakHour },
     // Row 3 — volume metrics (count-based, range-scoped).
-    { label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
-    { label: 'Messages', value: formatCompactUsageNumber(data.messages) },
-    { label: 'Total tokens', value: formatCompactUsageNumber(data.totalTokens) }
+    { key: 'sessions', label: 'Sessions', value: formatCompactUsageNumber(data.sessions) },
+    { key: 'messages', label: 'Messages', value: formatCompactUsageNumber(data.messages) },
+    {
+      key: 'totalTokens',
+      label: 'Total tokens',
+      value: formatCompactUsageNumber(data.totalTokens)
+    },
+    // Row 4 — spend / efficiency metrics (1.0.5-EW49 new
+    // additions). Total cost flows through `formatCost` so it
+    // honours the user's currency + overestimate bias; Avg
+    // session uses the same scale-smart duration formatter as
+    // Longest thread / Cumulative wall time; Tokens / session
+    // is a compact count.
+    {
+      key: 'totalCostUsd',
+      label: 'Total cost',
+      value: formatCost(data.totalCostUsd, resolvedCurrency, undefined, resolvedOverestimate)
+    },
+    {
+      key: 'avgSessionMs',
+      label: 'Avg session',
+      value: formatDashboardDuration(data.avgSessionMs)
+    },
+    {
+      key: 'tokensPerSession',
+      label: 'Tokens / session',
+      value: formatCompactUsageNumber(data.tokensPerSession)
+    }
   ]
+  const denseStatItems = denseStatItemsAll.filter((item) =>
+    isDashboardStatVisible(dashboardStatVisibility, item.key)
+  )
 
   return (
     <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
@@ -5987,6 +6046,12 @@ type SettingsPanelUpdate = {
   chatContextTurns?: number
   /** 1.0.5-EW25 — Display currency for cost / token-spend chips. */
   currency?: AppSettings['currency']
+  /**
+   * 1.0.5-EW49 — Dashboard statistics preferences (per-stat
+   * visibility map + global "reset all" timestamp). See
+   * AppSettings.dashboardStatPrefs for the persisted shape.
+   */
+  dashboardStatPrefs?: AppSettings['dashboardStatPrefs']
   /** 1.0.5-EW26 — Kimi compatibility filter. */
   kimiSanitiserEnabled?: AppSettings['kimiSanitiserEnabled']
   kimiSanitiserCustomKeywords?: AppSettings['kimiSanitiserCustomKeywords']
@@ -7922,6 +7987,17 @@ function App(): React.JSX.Element {
     // pipeline like every other AppSettings field.
     if (next.currency !== undefined) {
       settingsPatch.currency = next.currency
+    }
+    // 1.0.5-EW49 — Dashboard stat prefs (visibility map / global
+    // reset timestamp). The patch sets the whole object at once
+    // so partial updates still need the caller to spread the
+    // existing prefs (which Settings does via
+    // `...(dashboardStatPrefs || {})` before mutating just the
+    // changed field). No local state mirror — the
+    // `denseStatItems` filter + dashboard builder both read from
+    // `settings?.dashboardStatPrefs` directly on each render.
+    if (next.dashboardStatPrefs !== undefined) {
+      settingsPatch.dashboardStatPrefs = next.dashboardStatPrefs
     }
 
     // 1.0.5-EW26 — Kimi compatibility filter. Same persist-only
@@ -15985,9 +16061,24 @@ function App(): React.JSX.Element {
   // `workspaces` is passed so the dashboard can resolve `favoriteProject`
   // — the display-name of the workspace with the most tokens in-window
   // (Welcome L9 hero chip).
+  // 1.0.5-EW49 — Pass the user's global "reset all dashboard
+  // stats" timestamp (from AppSettings.dashboardStatPrefs.resetAt)
+  // into the builder so every computation honours the cutoff.
+  // `0` / undefined preserves the pre-EW49 "include all history"
+  // behaviour. The visibility map is applied at the chip
+  // renderer (further down), not the builder.
+  const dashboardStatResetAt = Number(settings?.dashboardStatPrefs?.resetAt || 0)
   const welcomeUsageDashboardData = useMemo(
-    () => buildWelcomeUsageDashboardData(usageRecords, chats, '30d', undefined, workspaces),
-    [usageRecords, chats, workspaces]
+    () =>
+      buildWelcomeUsageDashboardData(
+        usageRecords,
+        chats,
+        '30d',
+        undefined,
+        workspaces,
+        dashboardStatResetAt
+      ),
+    [usageRecords, chats, workspaces, dashboardStatResetAt]
   )
   // Welcome L6 — the outer guard uses `lifetimeHasActivity` so the
   // dashboard (and its range toggle) stay mounted even when the
@@ -16602,6 +16693,7 @@ function App(): React.JSX.Element {
               chatContextTurns={chatContextTurns}
               currency={displayCurrency}
               currencyOverestimatePercent={overestimatePercent}
+              dashboardStatPrefs={settings?.dashboardStatPrefs}
               kimiSanitiserEnabled={settings?.kimiSanitiserEnabled ?? false}
               kimiSanitiserCustomKeywords={settings?.kimiSanitiserCustomKeywords ?? ''}
               claudeBinaryPath={claudeBinaryPath}
@@ -17117,6 +17209,18 @@ function App(): React.JSX.Element {
                 data={welcomeUsageDashboardData}
                 tab={welcomeUsageTab}
                 onTabChange={setWelcomeUsageTab}
+                /*
+                  1.0.5-EW49 — Thread the user's currency + EW34
+                  overestimate bias + EW49 per-stat visibility map
+                  into the dashboard so the Total cost chip
+                  formats correctly and hidden chips drop from
+                  the dense grid. The global reset timestamp is
+                  applied earlier (passed to
+                  buildWelcomeUsageDashboardData above).
+                */
+                displayCurrency={displayCurrency}
+                overestimatePercent={overestimatePercent}
+                dashboardStatVisibility={settings?.dashboardStatPrefs?.visibility}
               />
             </div>
           )}

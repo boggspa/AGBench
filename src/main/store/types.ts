@@ -1170,6 +1170,28 @@ export interface AppSettings {
    * field so older settings files / test fixtures don't need to
    * round-trip a value they never set. */
   currencyOverestimatePercent?: number
+  /**
+   * 1.0.5-EW49 — Dashboard statistics preferences. Two slots:
+   *   - `visibility` (per-stat boolean map): hide a chip to
+   *     remove it from the dense grid without losing the
+   *     underlying data. Re-enable any time. Default: every
+   *     stat visible (`undefined` entry resolves to `true`).
+   *   - `resetAt` (single epoch-ms timestamp): user clicked
+   *     "Reset all dashboard stats" — every stat that supports
+   *     reset filters its input records by
+   *     `record.timestamp >= resetAt`. Default: `0` / undefined
+   *     means "no reset, include all history".
+   * The shared key set is enumerated in
+   * `src/renderer/src/lib/dashboardStatRegistry.ts` so the
+   * Settings UI + dashboard renderer + builder stay in sync.
+   * Per-stat reset (one button per stat) is deferred to EW49b
+   * because the builder threading would touch every stat
+   * computation invasively.
+   */
+  dashboardStatPrefs?: {
+    visibility?: Record<string, boolean>
+    resetAt?: number
+  }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are
    * scanned by `src/main/lib/kimiSanitiser.ts` and any sentence

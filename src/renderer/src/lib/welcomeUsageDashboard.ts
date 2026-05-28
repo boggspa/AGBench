@@ -106,6 +106,29 @@ export interface WelcomeUsageDashboardData {
    * "all-time" subset is visually grouped.
    */
   totalWallTimeMs: number
+  /**
+   * 1.0.5-EW49 — Total cost in USD across all records the
+   * current stat reset window covers. Derived from
+   * `UsageRecord.explicitCostUsd` (or per-provider rate when
+   * explicit is absent). Always lifetime-from-reset; ignores the
+   * 30-day range. Zero when nothing has an attributable cost.
+   * Formatted via `formatCost` in the chip renderer.
+   */
+  totalCostUsd: number
+  /**
+   * 1.0.5-EW49 — Average session duration in milliseconds.
+   * Computed as `totalWallTimeMs / sessions` over the same
+   * record set that drives those two stats. Zero when no
+   * sessions yet (avoid divide-by-zero). Formatted via
+   * `formatDashboardDuration`.
+   */
+  avgSessionMs: number
+  /**
+   * 1.0.5-EW49 — Average tokens per session. `totalTokens /
+   * sessions`. Zero when no sessions. Formatted as a compact
+   * usage number ("12k", "3.4M").
+   */
+  tokensPerSession: number
   peakHour: string
   favoriteModel: string
   /**
@@ -337,13 +360,45 @@ export const buildWelcomeUsageDashboardData = (
    * `displayName`. Pass `[]` (or omit) to skip the workspace dimension —
    * `favoriteProject` then degrades to `'n/a'`.
    */
-  workspaces: Pick<WorkspaceRecord, 'id' | 'displayName'>[] = []
+  workspaces: Pick<WorkspaceRecord, 'id' | 'displayName'>[] = [],
+  /**
+   * 1.0.5-EW49 — Global "reset all dashboard stats" timestamp
+   * (epoch ms). When set + non-zero, every record older than
+   * this is dropped from the underlying source set before any
+   * stat is computed — so the dashboard reads as if the user's
+   * usage history started at `statResetAt`. Pass `0` (or omit)
+   * for the default "include all history" behaviour. Per-stat
+   * reset (one cutoff per stat) is deferred to EW49b — the
+   * single-timestamp shape is the simpler MVP and serves the
+   * main user intent ("zero my dashboard back to today").
+   */
+  statResetAt: number = 0
 ): WelcomeUsageDashboardData => {
   const cutoff = getWelcomeUsageRangeCutoff(range, now)
-  const runRecords = records
+  // 1.0.5-EW49 — Apply the global reset cutoff to the source
+  // record set BEFORE any range scoping or per-stat aggregation.
+  // Every downstream computation (sessions, tokens, streaks,
+  // longest thread, etc.) inherits the filter naturally — no
+  // per-stat threading needed. Range-scoped stats then apply
+  // the additional range cutoff on top.
+  const resetCutoff =
+    Number.isFinite(statResetAt) && statResetAt > 0 ? statResetAt : 0
+  const recordsAfterReset =
+    resetCutoff > 0 ? records.filter((record) => record.timestamp >= resetCutoff) : records
+  const chatsAfterReset =
+    resetCutoff > 0
+      ? chats.map((chat) => ({
+          ...chat,
+          messages: (chat.messages || []).filter((message) => {
+            const ts = new Date(message.timestamp || '').getTime()
+            return Number.isFinite(ts) && ts >= resetCutoff
+          })
+        }))
+      : chats
+  const runRecords = recordsAfterReset
     .filter((record) => record.usageKind !== 'reset_hint')
     .filter((record) => record.timestamp >= cutoff)
-  const messageEvents = chats.flatMap((chat) =>
+  const messageEvents = chatsAfterReset.flatMap((chat) =>
     (chat.messages || [])
       .map((message) => {
         const timestamp = new Date(message.timestamp || '').getTime()
@@ -372,7 +427,15 @@ export const buildWelcomeUsageDashboardData = (
   // per-run history beyond what's already kept.
   let longestThreadMs = 0
   let totalWallTimeMs = 0
-  for (const record of records) {
+  // 1.0.5-EW49 — Total cost in USD across all post-reset
+  // records. `explicitCostUsd` is the per-record cost field
+  // emitted by providers that report it (currently Claude +
+  // Codex + Kimi via the chat-completions endpoint; Gemini
+  // doesn't always populate it). We sum what's available and
+  // skip records that lack the field — surfacing a real-vs-
+  // partial signal honestly via the magnitude.
+  let totalCostUsd = 0
+  for (const record of recordsAfterReset) {
     if (record.usageKind === 'reset_hint') continue
     lifetimeActiveDayKeys.add(dayKeyFromTimestamp(record.timestamp))
     const duration = Number(record.durationMs)
@@ -380,11 +443,15 @@ export const buildWelcomeUsageDashboardData = (
       if (duration > longestThreadMs) longestThreadMs = duration
       totalWallTimeMs += duration
     }
+    const cost = Number((record as unknown as Record<string, unknown>).explicitCostUsd ?? 0)
+    if (Number.isFinite(cost) && cost > 0) {
+      totalCostUsd += cost
+    }
   }
   // Re-walk the original lifetime-active-day loop body that EW44
   // absorbed into the for-loop above. Keep the chat-message
   // iteration intact (no durationMs there to merge in).
-  for (const chat of chats) {
+  for (const chat of chatsAfterReset) {
     for (const message of chat.messages || []) {
       const ts = new Date(message.timestamp || '').getTime()
       if (Number.isFinite(ts)) lifetimeActiveDayKeys.add(dayKeyFromTimestamp(ts))
@@ -661,15 +728,31 @@ export const buildWelcomeUsageDashboardData = (
   // this, a 24h range that happens to be empty would unmount the
   // dashboard wholesale and the user would lose access to the toggle
   // even though their lifetime history is rich.
+  // 1.0.5-EW49 — `lifetimeHasActivity` honours the global reset.
+  // If the user resets all stats, the dashboard's "lifetime" set
+  // becomes "everything from the reset point". An older record
+  // pre-dating the reset shouldn't make the dashboard claim
+  // lifetime activity exists when the visible stats are all zero.
   const lifetimeHasActivity =
-    records.some((record) => record.usageKind !== 'reset_hint') ||
-    chats.some((chat) => (chat.messages || []).length > 0)
+    recordsAfterReset.some((record) => record.usageKind !== 'reset_hint') ||
+    chatsAfterReset.some((chat) => (chat.messages || []).length > 0)
+
+  const sessionsCount = sessionIds.size
+  // 1.0.5-EW49 — Three derived metrics, computed once we have the
+  // primary aggregates above. All gated on `sessionsCount > 0` so
+  // we don't surface NaN / Infinity values when the user just
+  // installed the app or has no in-range activity. The average
+  // session duration is sum-of-wall-time / sessions; tokens per
+  // session is the same shape but for tokens.
+  const avgSessionMs = sessionsCount > 0 ? Math.round(totalWallTimeMs / sessionsCount) : 0
+  const tokensPerSession =
+    sessionsCount > 0 ? Math.round(totalTokens / sessionsCount) : 0
 
   return {
     hasActivity,
     lifetimeHasActivity,
     tokens24h,
-    sessions: sessionIds.size,
+    sessions: sessionsCount,
     messages: messageEvents.length || runRecords.length * 2,
     totalTokens,
     activeDays: activeDayKeys.size,
@@ -677,6 +760,9 @@ export const buildWelcomeUsageDashboardData = (
     longestStreak,
     longestThreadMs,
     totalWallTimeMs,
+    totalCostUsd,
+    avgSessionMs,
+    tokensPerSession,
     peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
     favoriteModel,
     favoriteProject,

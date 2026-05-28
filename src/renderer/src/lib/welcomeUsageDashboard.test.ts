@@ -767,3 +767,136 @@ describe('buildWelcomeUsageDashboardData longest-thread + cumulative-wall-time (
     expect(data.totalWallTimeMs).toBe(5_000)
   })
 })
+
+describe('buildWelcomeUsageDashboardData EW49 new stats + global reset', () => {
+  const NOW = new Date(2026, 4, 15, 14, 30).getTime()
+
+  it('returns zero for the three new stats when there are no usage records', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.totalCostUsd).toBe(0)
+    expect(data.avgSessionMs).toBe(0)
+    expect(data.tokensPerSession).toBe(0)
+  })
+
+  it('sums explicitCostUsd across records into totalCostUsd', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        timestamp: NOW - 1_000_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.42 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        timestamp: NOW - 2_000_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 1.58 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.totalCostUsd).toBeCloseTo(2.0, 5)
+  })
+
+  it('computes avgSessionMs as totalWallTimeMs / sessions', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        timestamp: NOW - 60_000,
+        chatId: 'chat-A',
+        durationMs: 10_000
+      }),
+      baseRecord({
+        id: 'r2',
+        timestamp: NOW - 30_000,
+        chatId: 'chat-B',
+        durationMs: 30_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.sessions).toBe(2)
+    expect(data.totalWallTimeMs).toBe(40_000)
+    expect(data.avgSessionMs).toBe(20_000)
+  })
+
+  it('computes tokensPerSession as totalTokens / sessions', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        timestamp: NOW - 60_000,
+        chatId: 'chat-A',
+        totalTokens: 1_000
+      }),
+      baseRecord({
+        id: 'r2',
+        timestamp: NOW - 30_000,
+        chatId: 'chat-B',
+        totalTokens: 3_000
+      })
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.sessions).toBe(2)
+    expect(data.totalTokens).toBe(4_000)
+    expect(data.tokensPerSession).toBe(2_000)
+  })
+
+  it('avoids divide-by-zero — avgSessionMs and tokensPerSession are 0 when sessions is 0', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.sessions).toBe(0)
+    expect(data.avgSessionMs).toBe(0)
+    expect(data.tokensPerSession).toBe(0)
+  })
+
+  it('global statResetAt filters records older than the cutoff out of EVERY stat', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old',
+        timestamp: NOW - 7 * 24 * 3_600_000,
+        chatId: 'chat-old',
+        totalTokens: 100_000,
+        durationMs: 60_000
+      }),
+      baseRecord({
+        id: 'recent',
+        timestamp: NOW - 60_000,
+        chatId: 'chat-recent',
+        totalTokens: 5_000,
+        durationMs: 10_000
+      })
+    ]
+    // Reset 3 days ago → old record dropped, recent kept.
+    const resetAt = NOW - 3 * 24 * 3_600_000
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, [], resetAt)
+    expect(data.sessions).toBe(1) // only chat-recent
+    expect(data.totalTokens).toBe(5_000)
+    expect(data.totalWallTimeMs).toBe(10_000)
+    expect(data.longestThreadMs).toBe(10_000)
+  })
+
+  it('statResetAt = 0 (or omitted) is the back-compat "include all history" path', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', timestamp: NOW - 1_000_000, totalTokens: 100 }),
+      baseRecord({ id: 'r2', timestamp: NOW - 2_000_000, totalTokens: 200 })
+    ]
+    const noReset = buildWelcomeUsageDashboardData(records, [], '30d', NOW, [], 0)
+    const omitted = buildWelcomeUsageDashboardData(records, [], '30d', NOW, [])
+    expect(noReset.totalTokens).toBe(300)
+    expect(omitted.totalTokens).toBe(300)
+  })
+
+  it('statResetAt of a future timestamp drops every record (defensive, no NaN)', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', timestamp: NOW - 60_000, totalTokens: 1_000 })
+    ]
+    const data = buildWelcomeUsageDashboardData(
+      records,
+      [],
+      '30d',
+      NOW,
+      [],
+      NOW + 1_000_000 // future cutoff
+    )
+    expect(data.sessions).toBe(0)
+    expect(data.totalTokens).toBe(0)
+    expect(data.lifetimeHasActivity).toBe(false)
+  })
+})

@@ -11061,6 +11061,66 @@ button.diff-file-row {
   -webkit-column-span: all;
 }
 
+/* 1.0.5-EW49 — Dashboard statistics show/hide + reset section.
+ * Sits inside the General tab between the currency overestimate
+ * slider and the Kimi compatibility filter. Lists 12 chip toggles
+ * grouped by data family (calendar / duration / volume / spend)
+ * with a single global Reset button at the bottom. */
+.settings-dashboard-stats-group {
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+  border-top: 1px dashed color-mix(in srgb, var(--panel-border) 40%, transparent);
+}
+.settings-dashboard-stats-group:first-of-type {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.settings-dashboard-stats-group-label {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 80%, transparent);
+  margin-bottom: var(--space-xs);
+}
+.settings-dashboard-stats-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-dashboard-stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--panel-bg) 35%, transparent);
+}
+.settings-dashboard-stats-row:hover {
+  background: color-mix(in srgb, var(--panel-bg) 60%, transparent);
+}
+.settings-dashboard-stats-name {
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+}
+.settings-dashboard-stats-reset {
+  margin-top: var(--space-md);
+  padding-top: var(--space-sm);
+  border-top: 1px solid color-mix(in srgb, var(--panel-border) 30%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  align-items: flex-start;
+}
+.settings-dashboard-stats-reset-hint {
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-secondary) 85%, transparent);
+}
+
 .settings-provider-auth-overview {
   background:
     linear-gradient(
