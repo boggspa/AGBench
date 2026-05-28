@@ -5508,6 +5508,12 @@ interface ComposerWorkspaceSwitcherProps {
    * "Add a workspace" section stays hidden.
    */
   onAddFolder?: (access: ExternalPathGrant['access']) => void
+  /**
+   * 1.0.6-EW67 — Active composer shell, mirrored onto the portal
+   * root as `shell-${composerStyle}` so the theme-immune Obsidian /
+   * Alabaster popover CSS reaches this body-portaled popover.
+   */
+  composerStyle?: AppSettings['composerStyle']
 }
 
 /**
@@ -5534,7 +5540,8 @@ function ComposerWorkspaceSwitcher({
   repoMetadata,
   onReorderWorkspaces,
   onRemoveWorkspacePath,
-  onAddFolder
+  onAddFolder,
+  composerStyle
 }: ComposerWorkspaceSwitcherProps): React.JSX.Element {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -5765,7 +5772,9 @@ function ComposerWorkspaceSwitcher({
         createPortal(
           <div
             ref={popoverRef}
-            className="welcome-workspace-popover welcome-workspace-popover--portaled composer-workspace-popover"
+            className={`welcome-workspace-popover welcome-workspace-popover--portaled composer-workspace-popover shell-${
+              composerStyle || 'default'
+            }`}
             role="menu"
             style={{
               position: 'fixed',
@@ -18763,6 +18772,7 @@ function App(): React.JSX.Element {
                 anchorRef={composerTextareaRef}
                 query={slashQuery}
                 commands={composerSlashCommands}
+                composerStyle={appearance.composerStyle}
                 onDismiss={() => {
                   setSlashMenuOpen(false)
                   setSlashQuery('')
@@ -18773,6 +18783,7 @@ function App(): React.JSX.Element {
               <AgentMentionMenu
                 chat={currentChat || undefined}
                 provider={currentProvider}
+                composerStyle={appearance.composerStyle}
                 workspacePath={currentWorkspace?.path}
                 externalPathGrants={externalPathGrants}
                 /*
@@ -20302,6 +20313,7 @@ function App(): React.JSX.Element {
                     */
                     additionalGrants={externalPathGrants}
                     repoMetadata={externalPathRepoMetadata}
+                    composerStyle={appearance.composerStyle}
                     onReorderWorkspaces={
                       currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
                     }

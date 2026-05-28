@@ -27983,6 +27983,83 @@ input:disabled, select:disabled, textarea:disabled {
   flex: 1;
 }
 
+/* ============================================================
+ * 1.0.6-EW67 — Theme-immune composer picker popovers.
+ *
+ * The combined model / permission / "+" pickers, the slash menu,
+ * the @-mention menu, and the composer workspace popover are all
+ * portaled to document.body — OUTSIDE the composer subtree — so
+ * they inherit the APP THEME's text + surface tokens instead of
+ * the composer style's. The Obsidian + Alabaster composer shells
+ * are deliberately theme-immune everywhere else, so in the
+ * opposite app theme their picker text turned unreadable (e.g.
+ * Alabaster's cream popover with dark-theme near-white text).
+ *
+ * Each portal root now carries `shell-${composerStyle}`. These
+ * rules pin the popover to the shell's own palette regardless of
+ * `data-theme`.
+ *
+ * Technique: redefine the text / surface CUSTOM PROPERTIES on the
+ * popover root, so every descendant that reads var(--text-primary)
+ * / var(--panel-border) / etc. inherits the shell-correct value
+ * (no need to enumerate every child class). Then pin the popover's
+ * own background / border / colour / shadow directly so the fill is
+ * solid + theme-immune. `--accent` is intentionally left inherited
+ * — it stays provider-tinted (these roots also carry `provider-X`).
+ *
+ * Placed AFTER the base + `:is([data-theme="light"]…)` popover
+ * rules so the equal-specificity (0,2,0) shell rules win on source
+ * order; the `--*composer-fill` vars resolve because their
+ * defining `[data-composer-style]` attribute lives on <html>, an
+ * ancestor of the body-portaled popover.
+ * ============================================================ */
+.composer-combined-picker-popover.shell-obsidian,
+.composer-slash-menu.shell-obsidian,
+.agent-mention-menu.shell-obsidian,
+.composer-workspace-popover.shell-obsidian {
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.64);
+  --text-tertiary: rgba(255, 255, 255, 0.48);
+  --text-muted: rgba(255, 255, 255, 0.46);
+  --surface-text: rgba(255, 255, 255, 0.92);
+  --panel-bg: var(--obsidian-composer-fill);
+  --panel-elevated-bg: var(--obsidian-composer-fill);
+  --panel-border: var(--obsidian-composer-border);
+  --surface-1: var(--obsidian-composer-fill);
+  --surface-2: var(--obsidian-composer-fill);
+  --surface-border: var(--obsidian-composer-border);
+  background: var(--obsidian-composer-fill);
+  border-color: var(--obsidian-composer-border);
+  color: rgba(255, 255, 255, 0.92);
+  color-scheme: dark;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.composer-combined-picker-popover.shell-alabaster,
+.composer-slash-menu.shell-alabaster,
+.agent-mention-menu.shell-alabaster,
+.composer-workspace-popover.shell-alabaster {
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.64);
+  --text-tertiary: rgba(18, 21, 27, 0.5);
+  --text-muted: rgba(18, 21, 27, 0.5);
+  --surface-text: rgba(18, 21, 27, 0.92);
+  --panel-bg: var(--alabaster-composer-fill);
+  --panel-elevated-bg: var(--alabaster-composer-fill);
+  --panel-border: var(--alabaster-composer-border);
+  --surface-1: var(--alabaster-composer-fill);
+  --surface-2: var(--alabaster-composer-fill);
+  --surface-border: var(--alabaster-composer-border);
+  background: var(--alabaster-composer-fill);
+  border-color: var(--alabaster-composer-border);
+  color: rgba(18, 21, 27, 0.92);
+  color-scheme: light;
+  box-shadow:
+    0 18px 44px rgba(60, 50, 30, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
 /* Per-shell trigger chrome ------------------------------------ */
 
 [data-composer-style="codex"] .composer-combined-picker-trigger {

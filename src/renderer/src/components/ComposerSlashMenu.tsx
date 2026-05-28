@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { ComposerStyle } from '../../../main/store/types'
 import {
   COMPOSER_SLASH_GROUP_ORDER,
   filterComposerSlashCommands,
@@ -21,6 +22,13 @@ interface ComposerSlashMenuProps {
   onPick: (command: ComposerSlashCommand) => void
   /** Dismiss without picking (Escape, click outside, blur). */
   onDismiss: () => void
+  /**
+   * 1.0.6-EW67 — Active composer shell, mirrored onto the portal
+   * root as `shell-${composerStyle}`. The popover is portaled to
+   * document.body (outside the composer subtree), so this class is
+   * how the theme-immune Obsidian / Alabaster popover CSS reaches it.
+   */
+  composerStyle?: ComposerStyle
 }
 
 /**
@@ -52,7 +60,8 @@ export function ComposerSlashMenu({
   query,
   commands,
   onPick,
-  onDismiss
+  onDismiss,
+  composerStyle
 }: ComposerSlashMenuProps) {
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const [highlight, setHighlight] = useState(0)
@@ -172,7 +181,7 @@ export function ComposerSlashMenu({
   return createPortal(
     <div
       ref={popoverRef}
-      className="composer-slash-menu"
+      className={`composer-slash-menu shell-${composerStyle || 'default'}`}
       role="listbox"
       aria-label="Slash command picker"
       style={{

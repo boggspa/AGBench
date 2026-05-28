@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import type {
   ChatRecord,
   ChildAgentThread,
+  ComposerStyle,
   EnsembleParticipant,
   ExternalPathGrant,
   ProviderId,
@@ -68,6 +69,12 @@ interface AgentMentionMenuProps {
   onPick: (mention: ComposerMentionPick) => void
   /** Dismiss without picking. */
   onDismiss: () => void
+  /**
+   * 1.0.6-EW67 — Active composer shell, mirrored onto the portal
+   * root as `shell-${composerStyle}` so the theme-immune Obsidian /
+   * Alabaster popover CSS reaches this body-portaled menu.
+   */
+  composerStyle?: ComposerStyle
 }
 
 export function filterComposerMentionCandidates(
@@ -115,7 +122,8 @@ export function AgentMentionMenu({
   triggerKind = 'mention',
   ensembleParticipants,
   onPick,
-  onDismiss
+  onDismiss,
+  composerStyle
 }: AgentMentionMenuProps): React.JSX.Element | null {
   const popoverRef = useRef<HTMLDivElement | null>(null)
   const workspaceFileCacheRef = useRef<Map<string, WorkspaceFileEntry[]>>(new Map())
@@ -325,7 +333,7 @@ export function AgentMentionMenu({
   return createPortal(
     <div
       ref={popoverRef}
-      className="agent-mention-menu"
+      className={`agent-mention-menu shell-${composerStyle || 'default'}`}
       role="listbox"
       aria-label="Mentions"
       style={{
