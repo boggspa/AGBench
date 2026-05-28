@@ -25809,7 +25809,9 @@ input:disabled, select:disabled, textarea:disabled {
     0 0 64px rgba(255, 255, 255, 0.02);
   /* Chase animation duration. Slow on purpose — the brief
    * said "really slow". 12s = one full lap per "epic" beat. */
-  --obsidian-rim-chase-duration: 12s;
+  /* 1.0.6-EW72 — slightly slower drift (was 12s) to pair with the
+   * subtler, longer-tailed chase gradient below. */
+  --obsidian-rim-chase-duration: 16s;
 }
 
 /* 1.0.5-EW59 — Theme-immune Obsidian composer subtree.
@@ -25969,10 +25971,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(255, 255, 255, 0.55) 310deg,
-    rgba(255, 255, 255, 0.95) 340deg,
-    rgba(255, 255, 255, 0.55) 360deg
+    transparent 150deg,
+    rgba(255, 255, 255, 0.07) 250deg,
+    rgba(255, 255, 255, 0.22) 322deg,
+    rgba(255, 255, 255, 0.5) 351deg,
+    transparent 360deg
   );
   /* Mask-composite: keep only the rim strip — cut out the
    * inner content area. Padding controls the thickness, now
@@ -26079,10 +26082,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(255, 255, 255, 0.5) 310deg,
-    rgba(255, 255, 255, 0.85) 340deg,
-    rgba(255, 255, 255, 0.5) 360deg
+    transparent 150deg,
+    rgba(255, 255, 255, 0.06) 250deg,
+    rgba(255, 255, 255, 0.2) 322deg,
+    rgba(255, 255, 255, 0.44) 351deg,
+    transparent 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -26296,7 +26300,8 @@ input:disabled, select:disabled, textarea:disabled {
    * from a soft north-window quality of light. */
   --alabaster-composer-glow: 0 0 28px rgba(180, 160, 120, 0.06),
     0 0 64px rgba(180, 160, 120, 0.03);
-  --alabaster-rim-chase-duration: 12s;
+  /* 1.0.6-EW72 — slightly slower drift (was 12s); matches obsidian. */
+  --alabaster-rim-chase-duration: 16s;
 }
 
 /* Theme-immune subtree — mirror of EW59's obsidian block.
@@ -26391,10 +26396,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(0, 0, 0, 0.45) 310deg,
-    rgba(0, 0, 0, 0.85) 340deg,
-    rgba(0, 0, 0, 0.45) 360deg
+    transparent 150deg,
+    rgba(0, 0, 0, 0.06) 250deg,
+    rgba(0, 0, 0, 0.2) 322deg,
+    rgba(0, 0, 0, 0.45) 351deg,
+    transparent 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -26461,10 +26467,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(0, 0, 0, 0.40) 310deg,
-    rgba(0, 0, 0, 0.75) 340deg,
-    rgba(0, 0, 0, 0.40) 360deg
+    transparent 150deg,
+    rgba(0, 0, 0, 0.05) 250deg,
+    rgba(0, 0, 0, 0.18) 322deg,
+    rgba(0, 0, 0, 0.4) 351deg,
+    transparent 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -26661,10 +26668,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(255, 255, 255, 0.55) 310deg,
-    rgba(255, 255, 255, 0.95) 340deg,
-    rgba(255, 255, 255, 0.55) 360deg
+    transparent 150deg,
+    rgba(255, 255, 255, 0.07) 250deg,
+    rgba(255, 255, 255, 0.22) 322deg,
+    rgba(255, 255, 255, 0.5) 351deg,
+    transparent 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
@@ -26739,10 +26747,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
-    transparent 260deg,
-    rgba(0, 0, 0, 0.45) 310deg,
-    rgba(0, 0, 0, 0.85) 340deg,
-    rgba(0, 0, 0, 0.45) 360deg
+    transparent 150deg,
+    rgba(0, 0, 0, 0.06) 250deg,
+    rgba(0, 0, 0, 0.2) 322deg,
+    rgba(0, 0, 0, 0.45) 351deg,
+    transparent 360deg
   );
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
