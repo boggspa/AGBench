@@ -25491,11 +25491,11 @@ input:disabled, select:disabled, textarea:disabled {
   --obsidian-composer-rim: rgba(255, 255, 255, 0.28);
   --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.42);
   --obsidian-composer-border: rgba(255, 255, 255, 0.10);
-  /* 1.0.5-EW57 — Radius matched to the above-rows (was 14px
-   * with rows at 6px). Same crisp satellite-card read for the
-   * whole stack now. */
-  --obsidian-composer-radius: 6px;
-  --obsidian-composer-radius-rows: 6px;
+  /* 1.0.5-EW59 — Marginally larger corners (was 6px). Reads a
+   * touch softer / more premium without losing the satellite-
+   * card crispness. Composer body + rows both bump together. */
+  --obsidian-composer-radius: 8px;
+  --obsidian-composer-radius-rows: 8px;
   --obsidian-composer-rim-width: 2px;
   /* Subtle white ambient glow — the surface looks lit. */
   --obsidian-composer-glow: 0 0 28px rgba(255, 255, 255, 0.05),
@@ -25503,6 +25503,86 @@ input:disabled, select:disabled, textarea:disabled {
   /* Chase animation duration. Slow on purpose — the brief
    * said "really slow". 12s = one full lap per "epic" beat. */
   --obsidian-rim-chase-duration: 12s;
+}
+
+/* 1.0.5-EW59 — Theme-immune Obsidian composer subtree.
+ *
+ * Boss-brief: "Obsidian Composer Shell should remain unique and
+ * NOT adjust to different themes" — in light mode many composer
+ * descendants were turning near-invisible because light-theme
+ * rules elsewhere in main.css ("4 files changed", "Branch: main",
+ * picker labels, etc.) shipped dark text colors that disappear
+ * on the dark obsidian fill.
+ *
+ * Strategy: scope dark-mode token values to the ENTIRE composer
+ * subtree (composer-area + all detached above-rows) so any
+ * descendant reading `var(--text-primary)` / `var(--panel-bg)`
+ * / etc. picks up the dark-mode value regardless of which app
+ * theme is active. The transcript / sidebar / dashboard sit
+ * outside this subtree so they're unaffected by the override.
+ *
+ * The explicit !important overrides below this block target
+ * specific light-theme selectors that hard-code colors directly
+ * (don't use the cascade) — those need element-level !important
+ * to lose to our doubled-attribute specificity. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-area,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-stack,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .queued-messages-above-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-create-pr-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface {
+  /* Text tokens — dark-mode values, regardless of app theme. */
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.66);
+  --text-tertiary: rgba(255, 255, 255, 0.48);
+  --text-muted: rgba(255, 255, 255, 0.34);
+  /* Surface tokens — point at the obsidian fill. Any child
+   * that paints with `var(--panel-bg)` etc. now picks up
+   * obsidian's dark gray instead of light-theme white. */
+  --panel-bg: var(--obsidian-composer-fill);
+  --panel-elevated-bg: var(--obsidian-composer-fill);
+  --panel-border: var(--obsidian-composer-border);
+  --composer-bg: var(--obsidian-composer-fill);
+  --composer-bg-solid: var(--obsidian-composer-fill);
+  --composer-glass-bg: var(--obsidian-composer-fill);
+  --composer-glass-border: var(--obsidian-composer-border);
+  --composer-border: var(--obsidian-composer-border);
+  --surface-1: var(--obsidian-composer-fill);
+  --surface-2: var(--obsidian-composer-fill);
+  --surface-border: var(--obsidian-composer-border);
+  color: rgba(255, 255, 255, 0.86);
+  /* Tell the browser this subtree is dark — affects native
+   * form controls (date picker, scrollbars) so they don't
+   * render with light-mode chrome on dark backgrounds. */
+  color-scheme: dark;
+}
+
+/* Force dark-mode text + transparent fills on the specific
+ * descendants that light-theme rules elsewhere in main.css
+ * target by exact selector with hard-coded colors. Each line
+ * below corresponds to a `:is([data-theme="light"], ...)`
+ * rule that would otherwise win. Our doubled-attribute
+ * `[data-composer-style="obsidian"][data-composer-style="obsidian"]`
+ * is 0,3,1; the light-theme rules are 0,2,1; we win cleanly. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-branch,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-files,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-files strong,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-stats,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar-action {
+  background: transparent !important;
+  background-image: none !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+/* Diff +/- semantic colors stay readable on dark — bump the
+ * green / red towards their light-on-dark variants so they
+ * pop against the obsidian fill. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-diff-add {
+  color: #6dd58a !important;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-diff-del {
+  color: #ff8a8a !important;
 }
 
 /* 1.0.5-EW57 — Doubled-attribute selector specificity trick.
