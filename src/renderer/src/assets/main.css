@@ -31718,3 +31718,113 @@ input:disabled, select:disabled, textarea:disabled {
   .composer-surface {
   background: #202124 !important;
 }
+
+/* 1.0.6-EW78 — final Alabaster/Codex seam, summary-card contrast,
+ * and Kimi solid-shell enforcement. */
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > * {
+  margin-bottom: 0;
+}
+
+[data-theme="alabaster"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row)
+  > *:not(:first-child) {
+  border-top-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card {
+  color: rgba(18, 21, 27, 0.78) !important;
+  background: rgba(255, 254, 250, 0.9) !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  box-shadow: 0 18px 44px rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card
+  :is(
+    .run-complete-metadata strong,
+    .run-complete-summary-header strong,
+    .file-change-summary-header strong,
+    .run-complete-summary-item strong
+  ) {
+  color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-complete-card
+  :is(
+    .run-complete-metadata span,
+    .run-complete-time-row,
+    .run-complete-summary-item,
+    .file-change-summary-meta,
+    .file-change-summary-path,
+    .file-change-summary-status
+  ) {
+  color: rgba(44, 48, 58, 0.72) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.run-complete-summary-card, .file-change-summary-card) {
+  background: rgba(255, 255, 252, 0.58) !important;
+  border-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.run-complete-summary-grid, .file-change-summary-header, .file-change-summary-item) {
+  border-color: rgba(18, 21, 27, 0.1) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .run-copy-btn {
+  color: rgba(18, 21, 27, 0.74) !important;
+  background: rgba(255, 255, 255, 0.58) !important;
+  border-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  color: rgba(235, 237, 242, 0.88) !important;
+  background: #202124 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.22) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before,
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::after {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+  box-shadow: none !important;
+}
+
+[data-composer-style="kimi"] .app-transcript.chat-kind-ensemble .composer-surface {
+  background: #202124 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-composer-style="kimi"]
+  .app-transcript.chat-kind-ensemble
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: #1f2023 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
