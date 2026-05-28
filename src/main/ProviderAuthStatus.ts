@@ -135,6 +135,15 @@ function deriveAuthState(
     }
   }
 
+  if (provider === 'grok') {
+    // Read-only G3 does not probe Grok credentials (no token-file reads).
+    // An unauthenticated run surfaces its own error on stderr at run time.
+    return {
+      authState: 'not-observable',
+      authReason: 'Grok auth not probed (read-only)'
+    }
+  }
+
   // kimi
   if (apiKeyConfigured) return { authState: 'authenticated' }
   return { authState: 'missing', authReason: 'No Kimi API key stored' }

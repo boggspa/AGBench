@@ -990,6 +990,7 @@ export type ProviderAdapterTransport =
   | 'codex-app-server'
   | 'claude-sdk-or-cli'
   | 'kimi-wire-or-cli'
+  | 'grok-cli'
 
 export type ProviderAdapterRunChannel = 'run-agent'
 

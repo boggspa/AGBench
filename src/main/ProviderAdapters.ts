@@ -90,6 +90,7 @@ export function providerLabel(provider: ProviderId): string {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
   return 'Gemini'
 }
 
@@ -170,6 +171,37 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         speedTiers: [],
         imageAttachments: false,
         contextInjection: true,
+        sessionResumption: false,
+        perThreadMcp: false
+      }
+    }
+  }
+  if (provider === 'grok') {
+    // Gated, read-only G3. Conservative capabilities: plan-mode only, no
+    // app-managed approvals, no MCP bridge, no session resume yet (those land
+    // in G5/G6). Without this branch grok would inherit the Claude default
+    // below, advertising providerManagedMcp/sessionResumption it does not have.
+    return {
+      provider,
+      label: providerLabel(provider),
+      transport: 'grok-cli',
+      runChannel: 'run-agent',
+      capabilitySource: 'provider',
+      features: {
+        persistentSessions: false,
+        appManagedApprovals: false,
+        workspaceGrants: false,
+        agentBenchMcpBridge: false,
+        providerManagedMcp: false,
+        nativeThreadTools: false,
+        hostCommandFallback: false
+      },
+      capabilities: {
+        approvalModes: ['plan'],
+        reasoningEffort: true,
+        speedTiers: [],
+        imageAttachments: false,
+        contextInjection: false,
         sessionResumption: false,
         perThreadMcp: false
       }

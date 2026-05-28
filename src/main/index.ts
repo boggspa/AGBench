@@ -4373,7 +4373,10 @@ async function getAgentStatusSnapshotDirect(provider: ProviderId): Promise<any> 
       error: accountStatus?.error
     }
   }
-  if (provider === 'claude' || provider === 'kimi') {
+  if (provider === 'claude' || provider === 'kimi' || provider === 'grok') {
+    // Grok (gated, G3) is a local CLI provider — route to the generic CLI
+    // status (binary/version probe) instead of falling through to the
+    // hardcoded gemini snapshot below, which would mislabel it as Gemini.
     return getCliProviderStatus(provider)
   }
   const geminiStatus = await getCliProviderStatus('gemini')
