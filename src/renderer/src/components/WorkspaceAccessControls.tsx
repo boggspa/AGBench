@@ -29,6 +29,7 @@
  *    runtimes; Kimi support is pending and would need its own toggle).
  */
 
+import { memo } from 'react'
 import type {
   ProviderId,
   WorkspaceRecord,
@@ -98,7 +99,16 @@ function WorktreeGlyph(): React.JSX.Element {
 // the new CombinedPermissionsPicker call site in App.tsx — no
 // shared utility needed here anymore.
 
-export function WorkspaceAccessControls(
+/*
+ * 1.0.5-EW53 — Wrapped in React.memo at the export. With the
+ * onGeminiWorktreeToggle prop now wrapped in useCallback at the
+ * call site, all incoming props are referentially stable across
+ * App re-renders. Skipping this subtree on every composer keystroke
+ * cuts the most expensive non-transcript reconciliation work in
+ * long threads, where the workspace pill also pulls in the worktree
+ * label + diff-unavailable warning each render.
+ */
+function WorkspaceAccessControlsImpl(
   props: WorkspaceAccessControlsProps
 ): React.JSX.Element | null {
   const {
@@ -169,3 +179,9 @@ export function WorkspaceAccessControls(
     </div>
   )
 }
+
+// 1.0.5-EW53 — Public memo'd export. Default shallow compare suffices
+// once the App.tsx call site wraps `onGeminiWorktreeToggle` in
+// useCallback. The remaining props (provider, currentWorkspace,
+// flags, labels) are all primitives or stable refs.
+export const WorkspaceAccessControls = memo(WorkspaceAccessControlsImpl)

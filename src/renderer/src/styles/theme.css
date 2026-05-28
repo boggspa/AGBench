@@ -425,6 +425,96 @@
   --theme-chroma-3: #c2c8d4;
 }
 
+/* 1.0.5-EW54 — "Obsidian" theme. The design brief was a charcoal
+ * postmodern dark mode where the *border* carries the identity
+ * (crisp 1px lit rim along every panel's top edge) and the *fill*
+ * stays a deep warm-leaning near-black with a subtle peach/copper
+ * halo gradient leaking in at the top + bottom. Distinct from
+ * `graphite` (which trends colder, flatter, and old-aqua-tinged).
+ *
+ *   --app-bg: deeper than dark, slight warmth (#080709)
+ *   --app-bg-elevated: a touch lifted (#0e0c11)
+ *   composer / panels: very dark fills with low translucency so
+ *     the glassmorphic blur reads as depth, not haze
+ *   --composer-glass-border: warm soft-copper rim
+ *   accents: brushed-pewter silver with a faint warm fall-off
+ *
+ * `--obsidian-rim-shine` is the per-element rim variable. The
+ * matching CSS hook at the bottom of this file applies a
+ * `box-shadow: inset 0 1px 0 var(--obsidian-rim-shine)` to panels
+ * so the lit-from-above read works on every elevated surface.
+ * The `rimshine` composer style at the top of main.css opts into
+ * the same variable so the look pairs naturally with — but isn't
+ * limited to — this theme. */
+[data-theme="obsidian"] {
+  --app-bg: #08070a;
+  --app-bg-elevated: #0e0c11;
+  --content-bg: rgba(12, 11, 16, 0.96);
+  --sidebar-bg: rgba(20, 18, 24, 0.55);
+  --panel-bg: rgba(22, 20, 26, 0.60);
+  --panel-elevated-bg: rgba(34, 31, 38, 0.66);
+  --composer-bg: rgba(22, 20, 26, 0.68);
+  --composer-glass-bg: rgba(22, 20, 26, 0.34);
+  --composer-glass-border: rgba(255, 196, 166, 0.16);
+  --accent: #c8c0d2;
+  --accent-hover: #ddd5e6;
+  --theme-chroma-1: #c8c0d2;
+  --theme-chroma-2: #d8a07a;
+  --theme-chroma-3: #6f6878;
+  /* Warm halo wash that leaks in at the top + bottom of panels
+   * (peach/copper hint, very low alpha) to evoke the dusk-glow
+   * the brief screenshots showed bleeding into the dark fill. */
+  --obsidian-halo-warm: rgba(255, 170, 134, 0.08);
+  --obsidian-halo-warm-strong: rgba(255, 170, 134, 0.14);
+  /* The signature rim: 1px lit edge at the top of every panel /
+   * card / composer surface. White-tinted-warm at low alpha so
+   * it reads as light catching brushed metal, not as a hard
+   * border. */
+  --obsidian-rim-shine: rgba(255, 232, 214, 0.16);
+  --obsidian-rim-shine-strong: rgba(255, 232, 214, 0.26);
+  /* Optional inner shadow at the bottom edge — sells the
+   * "lit from above" read when paired with the rim. */
+  --obsidian-base-shadow: 0 1px 0 rgba(0, 0, 0, 0.55) inset,
+    0 -10px 24px -12px rgba(0, 0, 0, 0.4) inset;
+  /* The faint dusk-pink ambient wash painted behind the whole
+   * app-bg. Set as a backgroundImage layer in the body rule
+   * below. */
+  --obsidian-ambient-gradient:
+    radial-gradient(120% 60% at 50% 0%, rgba(255, 158, 128, 0.06), transparent 70%),
+    radial-gradient(120% 50% at 50% 100%, rgba(255, 158, 128, 0.04), transparent 70%);
+}
+
+/* Paint the ambient dusk-gradient over the body when obsidian
+ * is active. The gradient is fixed (so it doesn't scroll with
+ * content) and feathered into transparency so the rest of the
+ * surface reads as deep charcoal. */
+[data-theme="obsidian"] body,
+[data-theme="obsidian"] {
+  background-image: var(--obsidian-ambient-gradient);
+  background-attachment: fixed;
+}
+
+/* The rim-shine hook — applied to every elevated surface when
+ * obsidian is the active theme. `box-shadow` with an inset
+ * 1px top stripe gives the lit-rim effect without changing the
+ * box model (no extra border to fight with existing panel
+ * border rules). Composes with whatever box-shadow each
+ * element already has via comma-stacking. */
+[data-theme="obsidian"] .panel,
+[data-theme="obsidian"] .panel-elevated,
+[data-theme="obsidian"] .sidebar,
+[data-theme="obsidian"] .composer-surface,
+[data-theme="obsidian"] .welcome-usage-dashboard,
+[data-theme="obsidian"] .welcome-usage-provider-card,
+[data-theme="obsidian"] .welcome-usage-workspace-card,
+[data-theme="obsidian"] .welcome-usage-stat,
+[data-theme="obsidian"] .welcome-usage-cost-chart,
+[data-theme="obsidian"] .welcome-usage-providers-timecode {
+  box-shadow:
+    inset 0 1px 0 var(--obsidian-rim-shine),
+    0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
 [data-theme="rainbow"],
 [data-theme="twilight"],
 [data-theme="cyber"] {
@@ -502,6 +592,17 @@
   --theme-chroma-1: #62d8ff;
   --theme-chroma-2: #4cc38a;
   --theme-chroma-3: #ff5fa2;
+}
+
+/* 1.0.5-EW54 — Obsidian chroma trio. Pewter / copper / smoke,
+ * tuned to read on the warm-leaning charcoal base. The copper
+ * is the lone "warm" beat that ties back to the ambient halo
+ * gradient; pewter + smoke stay restrained so the rim shine
+ * remains the primary visual moment. */
+[data-theme="obsidian"] {
+  --theme-chroma-1: #c8c0d2;
+  --theme-chroma-2: #d8a07a;
+  --theme-chroma-3: #6f6878;
 }
 
 /* Accent overrides */

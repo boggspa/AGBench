@@ -8912,7 +8912,13 @@ function App(): React.JSX.Element {
     }))
   }
 
-  const handleGeminiWorktreeToggle = async () => {
+  // 1.0.5-EW53 — useCallback'd so WorkspaceAccessControls (now
+  // memo'd) doesn't re-render on every keystroke. Deps narrow to
+  // the only values the body genuinely closes over (currentWorkspace
+  // + isRunning); state setters and imported helpers are stable.
+  // `persistentSessionActiveRef` is read via `.current` lazily — no
+  // dep needed.
+  const handleGeminiWorktreeToggle = useCallback(async () => {
     if (!currentWorkspace || isRunning) {
       return
     }
@@ -8950,7 +8956,15 @@ function App(): React.JSX.Element {
         }
       ])
     }
-  }
+  }, [currentWorkspace, isRunning])
+  // 1.0.5-EW53 — Stable wrapper for the `() => void` prop signature
+  // on WorkspaceAccessControls. The inner handler returns a Promise;
+  // wrapping each call site in an inline arrow created a fresh
+  // function identity every render and defeated the parent's memo
+  // wrapper. This callback is stable as long as the inner handler is.
+  const onGeminiWorktreeToggleProp = useCallback((): void => {
+    void handleGeminiWorktreeToggle()
+  }, [handleGeminiWorktreeToggle])
 
   const refreshCodexThreads = async () => {
     if (typeof window.api.listAgentThreads !== 'function') {
@@ -17666,7 +17680,7 @@ function App(): React.JSX.Element {
                 isCurrentComposerLocked={isCurrentComposerLocked}
                 hasWorkspaceContext={hasWorkspaceContext}
                 currentGeminiWorktree={currentGeminiWorktree}
-                onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
+                onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
                 worktreeToggleLabel={worktreeToggleLabel}
                 worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
               />
@@ -17971,7 +17985,7 @@ function App(): React.JSX.Element {
                     isCurrentComposerLocked={isCurrentComposerLocked}
                     hasWorkspaceContext={hasWorkspaceContext}
                     currentGeminiWorktree={currentGeminiWorktree}
-                    onGeminiWorktreeToggle={() => void handleGeminiWorktreeToggle()}
+                    onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
                     worktreeToggleLabel={worktreeToggleLabel}
                     worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
                   />
@@ -18410,7 +18424,16 @@ function App(): React.JSX.Element {
                 provider={currentProvider}
                 workspacePath={currentWorkspace?.path}
                 externalPathGrants={externalPathGrants}
-                prompt={prompt}
+                /*
+                  1.0.5-EW53 — Dropped `prompt={prompt}` from this
+                  spread. The prop was never declared on
+                  AgentMentionMenuProps (the destructure doesn't
+                  pick it up), so the menu never read it — but
+                  passing it down made every keystroke flow a
+                  fresh string into JSX reconciliation. Once the
+                  menu is wrapped in memo (TODO), removing the
+                  unused prop keeps the prop diff clean.
+                */
                 open={mentionMenuOpen}
                 anchorRef={composerTextareaRef}
                 query={mentionQuery}

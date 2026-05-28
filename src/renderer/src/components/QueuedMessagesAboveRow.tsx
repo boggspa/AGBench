@@ -35,7 +35,7 @@
  * Max 5 visible before scroll (overflow: auto on the inner list).
  */
 
-import { useCallback, useRef, useState } from 'react'
+import { memo, useCallback, useRef, useState } from 'react'
 import type { ChatRecord, ProviderId } from '../../../main/store/types'
 import { ProviderBadgeIcon, getProviderName } from './Sidebar'
 import { MentionHighlightedText } from './MentionHighlightedText'
@@ -87,7 +87,18 @@ function resolveDmRoleLabel(
   return participant.role?.trim() || getProviderName(participant.provider)
 }
 
-export function QueuedMessagesAboveRow({
+/*
+ * 1.0.5-EW53 — Wrapped in React.memo to skip re-renders triggered
+ * by unrelated parent (App) state changes. The composer draft state
+ * lives at App-level, so every keystroke re-runs the App render
+ * body; without memo here, this component also re-renders on every
+ * keystroke even though its props (chat, entries, the four handlers)
+ * are all `useMemo`/`useCallback`'d at the call site and don't
+ * change. With memo, typing in the composer no longer drags this
+ * subtree through the reconciler. Helps most on long threads where
+ * the queue list has many entries to diff.
+ */
+function QueuedMessagesAboveRowImpl({
   chat,
   entries,
   onEdit,
@@ -146,6 +157,12 @@ export function QueuedMessagesAboveRow({
     </div>
   )
 }
+
+// 1.0.5-EW53 — Public memo'd export. Default shallow compare is
+// fine because all incoming props are stable: `chat` is a ChatRecord
+// reference (changes only on chat switch), `entries` is useMemo'd,
+// and the four handlers are useCallback'd at the App.tsx call site.
+export const QueuedMessagesAboveRow = memo(QueuedMessagesAboveRowImpl)
 
 interface QueuedMessageRowProps {
   entry: QueuedMessageRowEntry

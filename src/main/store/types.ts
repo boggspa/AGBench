@@ -24,6 +24,17 @@ export type ThemeAppearance =
   | 'candy'
   | 'mist'
   | 'sage'
+  /**
+   * 1.0.5-EW54 — "Obsidian" theme. Deep warm-leaning charcoal base
+   * with subtle peach/copper halo gradients leaking in at the top
+   * and bottom edges, and crisp 1px lit "rim shine" borders on
+   * every panel. Glassmorphic panel translucency. Distinct from
+   * `graphite` (which trends colder + flatter) — this is the
+   * "premium postmodern" reading of dark mode the design brief
+   * called for: light catches the lip of every surface rather
+   * than the fill itself carrying the identity.
+   */
+  | 'obsidian'
 export type ThemeCornerStyle = 'rounded' | 'hard'
 export type ThemeAccentStyle =
   | 'system'
@@ -81,6 +92,17 @@ export type ComposerStyle =
   /** Satellite: everything floats; all containers, borders, and
    * fills go invisible. Layout intact, chrome stripped. */
   | 'satellite'
+  /**
+   * 1.0.5-EW54 — "Rimshine" composer style. Deep charcoal fill,
+   * crisp 1px lit top-edge border (the "rim shine") that evokes
+   * light catching the lip of brushed metal / polished glass, and
+   * a soft inner vignette at the bottom edge for the lit-from-
+   * above read. All other chrome is suppressed — restraint is the
+   * point. Pairs with the `obsidian` theme; works on any dark
+   * theme. The brief used the words "charcoal rimshine premium"
+   * verbatim; this style maps to that triplet.
+   */
+  | 'rimshine'
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'

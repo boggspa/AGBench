@@ -316,7 +316,11 @@ const THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
   { value: 'cyber', label: 'Cyber' },
   { value: 'candy', label: 'Candy' },
   { value: 'mist', label: 'Mist' },
-  { value: 'sage', label: 'Sage' }
+  { value: 'sage', label: 'Sage' },
+  // 1.0.5-EW54 — "Obsidian": charcoal base + warm dusk halos +
+  // crisp lit rim borders. The "premium postmodern" reading of
+  // dark mode (vs Graphite's colder old-aqua palette).
+  { value: 'obsidian', label: 'Obsidian' }
 ]
 const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
   { value: 'system', label: 'System' },
@@ -417,6 +421,20 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     value: 'satellite',
     label: 'Satellite',
     helper: 'All containers invisible — every element floats freely on the page.'
+  },
+  /*
+    1.0.5-EW54 — "Rimshine" composer style. Translation of a
+    design-brief phrase ("charcoal rimshine premium") into a
+    concrete shell: charcoal fill + crisp 1px lit top-edge rim +
+    soft inner vignette + suppressed chrome elsewhere. Pairs
+    naturally with the new Obsidian theme but works on any dark
+    theme via fallback variables.
+  */
+  {
+    value: 'rimshine',
+    label: 'Rimshine',
+    helper:
+      'Charcoal fill with a crisp 1px lit top-edge "rim shine" border. Premium dark composer; pairs with the Obsidian theme.'
   }
 ]
 
@@ -461,6 +479,15 @@ function getComposerPreviewMeta(style: ComposerStyle): {
         modelLabel: 'Shell',
         permissionLabel: 'Ask before tools',
         placeholder: 'run task --describe'
+      }
+    case 'rimshine':
+      // 1.0.5-EW54 — Premium preview copy. The placeholder reads
+      // restrained on purpose; "Premium" labels the surface itself.
+      return {
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Premium',
+        placeholder: 'Compose…'
       }
     default:
       return {

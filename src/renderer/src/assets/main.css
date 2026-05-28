@@ -25427,6 +25427,113 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
+ * 1.0.5-EW54 — "Rimshine" composer style.
+ *
+ * Brief vocabulary: "charcoal rimshine premium". The look pairs
+ * naturally with the `obsidian` theme but works on any dark
+ * theme because the rim-shine variables fall back to neutral
+ * white-tint values that read on any near-black fill.
+ *
+ *   - Deep charcoal fill (slightly darker than the default
+ *     composer fill so the lit rim has something to contrast
+ *     against).
+ *   - Crisp 1px lit top-edge "rim" — `inset 0 1px 0 var(...)`.
+ *     This is the signature beat. On obsidian the rim picks up
+ *     the warm-leaning copper-white variable; on other dark
+ *     themes it falls back to a neutral white tint.
+ *   - Soft inner vignette at the bottom edge — sells the
+ *     "lit from above" read.
+ *   - Restraint everywhere else: no extra borders, no glassy
+ *     gloss, no chrome around picker buttons. Premium = quiet.
+ *   - Rounded corners that catch the highlight (the rim has
+ *     to wrap nicely; sharp corners would chip the lit edge).
+ * ============================================================ */
+[data-composer-style="rimshine"] .composer-surface {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0%, transparent 30%),
+    color-mix(in srgb, var(--app-bg-elevated, #0e0c11) 88%, #000000);
+  border: 1px solid color-mix(in srgb, var(--composer-glass-border, rgba(255, 232, 214, 0.16)) 60%, transparent);
+  border-radius: 14px;
+  box-shadow:
+    /* The rim — lit top edge, the brief's whole point. Uses the
+     * obsidian variable when active, falls back to a neutral
+     * white tint on every other dark theme so this style stays
+     * usable theme-agnostic. */
+    inset 0 1px 0 var(--obsidian-rim-shine, rgba(255, 250, 244, 0.14)),
+    /* Soft inner vignette at the bottom — lit-from-above cue. */
+    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.55),
+    /* External shadow stays subtle; premium = quiet. */
+    0 8px 24px -12px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 220ms ease, border-color 220ms ease;
+}
+[data-composer-style="rimshine"] .composer-surface:focus-within {
+  /* On focus the rim shine intensifies (lifts the highlight a
+   * touch) and the bottom vignette softens. Subtle — the
+   * highlight is the whole spirit of the brief, so we lean into
+   * it rather than adding a coloured border ring. */
+  box-shadow:
+    inset 0 1px 0 var(--obsidian-rim-shine-strong, rgba(255, 250, 244, 0.24)),
+    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.4),
+    0 10px 28px -10px rgba(0, 0, 0, 0.6);
+  border-color: color-mix(in srgb, var(--composer-glass-border, rgba(255, 232, 214, 0.2)) 85%, transparent);
+}
+[data-composer-style="rimshine"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  color: var(--text-primary);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  /* Slight downward nudge so the caret sits below the rim
+   * highlight rather than chipping into it. */
+  padding-top: 12px;
+}
+[data-composer-style="rimshine"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+}
+/* Above-bar pills go transparent + lose their borders so the
+ * surface reads as a single uninterrupted lit-edged slab. The
+ * primary action (send) keeps its identity though — premium
+ * doesn't mean invisible, it means restrained. */
+[data-composer-style="rimshine"] .composer-above-bar {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+[data-composer-style="rimshine"] .composer-picker-label,
+[data-composer-style="rimshine"] .composer-picker-command,
+[data-composer-style="rimshine"] .composer-image-picker-btn,
+[data-composer-style="rimshine"] .composer-control-button,
+[data-composer-style="rimshine"] .composer-schedule-label,
+[data-composer-style="rimshine"] .composer-runtime-profile {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 4px 8px;
+  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+}
+[data-composer-style="rimshine"] .composer-picker-label:hover,
+[data-composer-style="rimshine"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="rimshine"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="rimshine"] .composer-control-button:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+  border-radius: 8px;
+}
+/* Send button keeps its capsule shape but the accent edge picks
+ * up the same rim language — a soft inset highlight on top so
+ * the button reads as cut from the same material as the
+ * surface. */
+[data-composer-style="rimshine"] .composer-action-btn.run-btn,
+[data-composer-style="rimshine"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
+  border: 0;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 6px 18px color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+/* ============================================================
  * NEW-SHELL VISUAL FIXES (Phase J7 follow-up)
  *
  * Three issues surfaced after the four new shells shipped:
