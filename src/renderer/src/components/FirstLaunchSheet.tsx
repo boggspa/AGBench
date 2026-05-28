@@ -422,6 +422,7 @@ export function FirstLaunchSheet({
           </p>
           <div
             className="first-launch-sheet-preference-card"
+            data-theme={themeAppearance}
             data-composer-style={composerStyle}
             data-user-bubble-color={userBubbleColor}
           >
@@ -496,6 +497,7 @@ export function FirstLaunchSheet({
             <div className="first-launch-sheet-composer-preview" aria-label="Composer preview">
               <div
                 className="settings-composer-preview-card"
+                data-theme={themeAppearance}
                 data-composer-style={composerStyle}
                 data-interface-style={composerStyle}
               >

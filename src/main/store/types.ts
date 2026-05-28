@@ -60,12 +60,24 @@ export type ThemeAccentStyle =
   | 'yellow'
 /**
  * Tool-call icon accent override. `system` = follow theme accent
- * (default). The four named overrides target an explicit colour
- * for the tool-call icons only, leaving the rest of the UI on the
- * user's chosen theme accent. CSS seam: `--tool-call-icon-accent`
- * + `[data-tool-icon-accent="X"]` rules in `theme.css`.
+ * (default). Named overrides target an explicit colour for the
+ * tool-call icons only, leaving the rest of the UI on the user's
+ * chosen theme accent. CSS seam: `--tool-call-icon-accent` +
+ * `[data-tool-icon-accent="X"]` rules in `theme.css`.
  */
-export type ToolIconAccent = 'system' | 'red' | 'amber' | 'cyan' | 'violet'
+export type ToolIconAccent =
+  | 'system'
+  | 'blue'
+  | 'purple'
+  | 'pink'
+  | 'orange'
+  | 'green'
+  | 'red'
+  | 'yellow'
+  | 'graphite'
+  | 'amber'
+  | 'cyan'
+  | 'violet'
 /**
  * User chat-bubble colour. `system` (default) keeps the current
  * neutral elevated-surface look. The named overrides tint both the

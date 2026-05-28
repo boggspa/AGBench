@@ -339,14 +339,21 @@ const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
 ]
 /**
  * Tool-icon accent. `system` (default) keeps the icons on the
- * theme accent. The four named overrides pin the icons to a
- * dedicated colour while leaving the rest of the UI on the
- * user's accent choice — useful for tester debug or for users
- * who want the tool-call ledger to read as a distinct surface.
+ * theme accent. Named overrides pin the icons to a dedicated
+ * colour while leaving the rest of the UI on the user's accent
+ * choice — useful for tester debug or for users who want the
+ * tool-call ledger to read as a distinct surface.
  */
 const TOOL_ICON_ACCENT_OPTIONS: Array<{ value: ToolIconAccent; label: string }> = [
   { value: 'system', label: 'Match accent' },
+  { value: 'blue', label: 'Blue' },
+  { value: 'purple', label: 'Purple' },
+  { value: 'pink', label: 'Pink' },
+  { value: 'orange', label: 'Orange' },
+  { value: 'green', label: 'Green' },
   { value: 'red', label: 'Red' },
+  { value: 'yellow', label: 'Yellow' },
+  { value: 'graphite', label: 'Graphite' },
   { value: 'amber', label: 'Amber' },
   { value: 'cyan', label: 'Cyan' },
   { value: 'violet', label: 'Violet' }
@@ -1593,23 +1600,6 @@ export function SettingsPanel({
                 </p>
               </div>
 
-              <div className="settings-group">
-                <label className="settings-label">Prompt bubble</label>
-                <select
-                  className="settings-select"
-                  value={promptSurfaceStyle}
-                  onChange={(e) =>
-                    onChange({ promptSurfaceStyle: e.target.value as PromptSurfaceStyle })
-                  }
-                >
-                  {PROMPT_SURFACE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
               <div className="settings-group settings-composer-preview-group">
                 <label className="settings-label">Composer Preview</label>
                 <div className="settings-composer-preview-controls">
@@ -1739,6 +1729,7 @@ export function SettingsPanel({
 
                 <div
                   className="settings-composer-preview-card"
+                  data-theme={themeAppearance}
                   data-composer-style={composerStyle}
                   data-interface-style={composerStyle}
                 >
@@ -1980,6 +1971,22 @@ export function SettingsPanel({
                         Compact density
                         <small>Tighter spacing throughout the interface.</small>
                       </span>
+                    </label>
+                    <label className="settings-effects-field">
+                      <span className="settings-field-label">Prompt bubble</span>
+                      <select
+                        className="settings-select"
+                        value={promptSurfaceStyle}
+                        onChange={(e) =>
+                          onChange({ promptSurfaceStyle: e.target.value as PromptSurfaceStyle })
+                        }
+                      >
+                        {PROMPT_SURFACE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
                   </section>
 

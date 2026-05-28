@@ -12356,6 +12356,17 @@ button.diff-file-row {
   line-height: 1.35;
 }
 
+.settings-effects-field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+  padding-top: 2px;
+}
+
+.settings-effects-field .settings-select {
+  width: min(220px, 100%);
+}
+
 .settings-effects-primary-toggle {
   margin-bottom: 2px;
 }
@@ -12638,7 +12649,14 @@ button.diff-file-row {
  * "this option = match your accent"; the named overrides preview
  * the exact override colour the option would apply. */
 .tool-icon-accent-system { --dot-color: var(--accent); }
+.tool-icon-accent-blue     { --dot-color: #5a8cff; }
+.tool-icon-accent-purple   { --dot-color: #bf7cff; }
+.tool-icon-accent-pink     { --dot-color: #ff5fa2; }
+.tool-icon-accent-orange   { --dot-color: #ff9b54; }
+.tool-icon-accent-green    { --dot-color: #4cc38a; }
 .tool-icon-accent-red    { --dot-color: #e65b62; }
+.tool-icon-accent-yellow   { --dot-color: #f2c94c; }
+.tool-icon-accent-graphite { --dot-color: #9da6b8; }
 .tool-icon-accent-amber  { --dot-color: #f2a64c; }
 .tool-icon-accent-cyan   { --dot-color: #4cb8d0; }
 .tool-icon-accent-violet { --dot-color: #bf7cff; }
@@ -31568,4 +31586,135 @@ input:disabled, select:disabled, textarea:disabled {
   .composer-ensemble-mode-button.is-active {
   background: rgba(169, 189, 85, 0.7) !important;
   color: #0a0a0c !important;
+}
+
+/* 1.0.6-EW77 — Final extreme-theme polish for provider shells.
+ * Keep this after EW76: these are deliberately narrower overrides for
+ * the last screenshots Chris flagged. */
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) > * {
+  margin-bottom: 0;
+}
+
+[data-theme="obsidian"][data-composer-style="codex"]
+  .composer-above-bar-stack:has(.ensemble-above-row) > *:not(:first-child) {
+  border-top-color: rgba(18, 21, 27, 0.12) !important;
+}
+
+/* Claude's shell is intentionally a textarea bubble plus satellite
+ * footer. EW76's shared Codex/Claude container paint made the footer
+ * look like a second filled panel in Alabaster/Obsidian; restore the
+ * split treatment and explicitly invert footer text against the page. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="claude"] .composer-surface {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-textarea {
+  background: #1d1d20 !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  color: rgba(255, 255, 255, 0.94) !important;
+  caret-color: rgba(255, 255, 255, 0.96) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.42) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-textarea {
+  background: #f6f5f1 !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  color: rgba(18, 21, 27, 0.94) !important;
+  caret-color: rgba(18, 21, 27, 0.96) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-textarea::placeholder {
+  color: rgba(18, 21, 27, 0.42) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-bottom-controls) {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-telemetry-row, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally) {
+  color: rgba(18, 21, 27, 0.86) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  :is(.composer-control-footer, .composer-inline-pickers, .composer-inline-pickers-left, .composer-inline-actions, .composer-telemetry-row, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally) {
+  color: rgba(255, 255, 255, 0.86) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="model"], [data-composer-control="ensemble-mode"]) {
+  border-color: rgba(18, 21, 27, 0.16) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  :is([data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="model"], [data-composer-control="ensemble-mode"]) {
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"]
+  [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  background: rgba(18, 21, 27, 0.12) !important;
+  color: rgba(18, 21, 27, 0.96) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"]
+  [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  background: rgba(255, 255, 255, 0.16) !important;
+  color: #ffffff !important;
+}
+
+[data-theme="alabaster"][data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled),
+[data-theme="alabaster"][data-composer-style="claude"] .composer-action-btn.stop-btn:not(:disabled) {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+[data-theme="obsidian"][data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled),
+[data-theme="obsidian"][data-composer-style="claude"] .composer-action-btn.stop-btn:not(:disabled) {
+  color: rgba(18, 21, 27, 0.72) !important;
+}
+
+/* Kimi keeps the Kimi solid-gray shell on extreme app themes. The
+ * previous compatibility pass used a translucent gradient, which let
+ * Gemini-like system ambience bleed through the upper rows. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: #1f2023 !important;
+  background-image: none !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::before,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row)::after {
+  display: none !important;
+  background: none !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  .composer-surface {
+  background: #202124 !important;
 }
