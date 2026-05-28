@@ -51,58 +51,69 @@ describe('parseGrokStreamChunk', () => {
 describe('grokEventToRunEvents', () => {
   const json = (obj: Record<string, unknown>): GrokStreamLine => ({ json: obj })
 
-  it('maps a Claude-shaped assistant message to a content event', () => {
-    const events = grokEventToRunEvents(
-      json({ type: 'assistant', message: { content: [{ type: 'text', text: 'Hello world' }] } })
-    )
-    expect(events).toEqual([{ type: 'content', text: 'Hello world', raw: expect.anything() }])
-  })
-
-  it('maps a content_block_delta to a content event (streaming partials)', () => {
-    const events = grokEventToRunEvents(
-      json({ type: 'content_block_delta', delta: { type: 'text_delta', text: 'lo' } })
-    )
-    expect(events).toEqual([{ type: 'content', text: 'lo', raw: expect.anything() }])
-  })
-
-  it('maps a system init event to an init event carrying the session id', () => {
-    const events = grokEventToRunEvents(json({ type: 'system', subtype: 'init', session_id: 's1' }))
-    expect(events).toEqual([{ type: 'init', sessionId: 's1', raw: expect.anything() }])
-  })
-
-  it('maps a final result event to a result event (+ content when result text is present)', () => {
-    const events = grokEventToRunEvents(
-      json({ type: 'result', subtype: 'success', result: 'final answer', session_id: 's1' })
-    )
-    expect(events).toEqual([
-      { type: 'content', text: 'final answer', raw: expect.anything() },
-      { type: 'result', status: 'success', sessionId: 's1', raw: expect.anything() }
+  it('maps a Grok text token to a content event', () => {
+    expect(grokEventToRunEvents(json({ type: 'text', data: 'Hi' }))).toEqual([
+      { type: 'content', text: 'Hi', raw: expect.anything() }
     ])
   })
 
+  it('maps a Grok thought token to a thinking event', () => {
+    expect(grokEventToRunEvents(json({ type: 'thought', data: 'The user said hi.' }))).toEqual([
+      { type: 'thinking', text: 'The user said hi.', raw: expect.anything() }
+    ])
+  })
+
+  it('maps the terminal end event to a result event carrying the session id', () => {
+    const events = grokEventToRunEvents(
+      json({
+        type: 'end',
+        stopReason: 'EndTurn',
+        sessionId: '019e708b-f82a-77a1-8836-9e3d2a025bf0',
+        requestId: '2b4fc376-c1fd-45d8-abdf-e4831f550a5c'
+      })
+    )
+    expect(events).toEqual([
+      {
+        type: 'result',
+        status: 'success',
+        sessionId: '019e708b-f82a-77a1-8836-9e3d2a025bf0',
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('reconstructs the assistant answer from a real token stream', () => {
+    // Captured shape from grok 0.2.3: thought tokens, then text tokens, then end.
+    const lines = [
+      { type: 'thought', data: 'Greeting.' },
+      { type: 'text', data: 'Hi' },
+      { type: 'text', data: '!' },
+      { type: 'text', data: ' How can I help?' },
+      { type: 'end', stopReason: 'EndTurn', sessionId: 's1' }
+    ]
+    const answer = lines
+      .flatMap((line) => grokEventToRunEvents({ json: line }))
+      .filter((evt) => evt.type === 'content')
+      .map((evt) => evt.text)
+      .join('')
+    expect(answer).toBe('Hi! How can I help?')
+  })
+
   it('maps an error event to a provider_warning', () => {
-    const events = grokEventToRunEvents(json({ type: 'error', message: 'boom' }))
+    const events = grokEventToRunEvents(json({ type: 'error', data: 'boom' }))
     expect(events[0].type).toBe('provider_warning')
     expect(events[0].text).toBe('boom')
   })
 
   it('surfaces a non-JSON line verbatim as content (never drops output)', () => {
-    const events = grokEventToRunEvents({ nonJson: 'plain stderr-ish line' })
-    expect(events).toEqual([
+    expect(grokEventToRunEvents({ nonJson: 'plain stderr-ish line' })).toEqual([
       { type: 'content', text: 'plain stderr-ish line\n', raw: 'plain stderr-ish line' }
     ])
   })
 
-  it('ignores an unknown event type with no text', () => {
-    expect(grokEventToRunEvents(json({ type: 'mystery', foo: 1 }))).toEqual([])
-  })
-
-  it('still surfaces text from an unrecognized but text-bearing event', () => {
-    const events = grokEventToRunEvents(json({ type: 'agent_output', text: 'surprise' }))
-    expect(events).toEqual([{ type: 'content', text: 'surprise', raw: expect.anything() }])
-  })
-
-  it('returns nothing for an empty line', () => {
+  it('ignores unknown event types and empty tokens', () => {
+    expect(grokEventToRunEvents(json({ type: 'tool_use', foo: 1 }))).toEqual([])
+    expect(grokEventToRunEvents(json({ type: 'text' }))).toEqual([])
     expect(grokEventToRunEvents({})).toEqual([])
   })
 })

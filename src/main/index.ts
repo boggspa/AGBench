@@ -164,6 +164,7 @@ import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { buildProviderAuthStatusV2 } from './ProviderAuthStatus'
 import { experimentalGrokProviderEnabled } from './grokGate'
 import { buildGrokCliArgs } from './grok/GrokCliArgs'
+import { grokEventToRunEvents } from './grok/GrokStreamingJson'
 import {
   createProviderAdapterRegistry,
   defaultProviderDescriptor,
@@ -6220,7 +6221,37 @@ function emitCliProviderThinkingEvent(state: CliProviderStreamState, text: strin
   )
 }
 
+// 1.0.6-G3g — Grok's streaming-json is its own shape (`{type,data}` tokens +
+// a terminal `{type:'end',sessionId}`), parsed by the unit-tested
+// src/main/grok/GrokStreamingJson.ts mapper. Translate each normalized event
+// onto the existing CLI run-event sink (content → assistant text, thought →
+// the shared thinking trace, end → captured session id for resume).
+function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
+  for (const evt of grokEventToRunEvents({ json: event as Record<string, unknown> })) {
+    if (evt.sessionId) updateCliProviderSession(state, evt.sessionId)
+    if (evt.type === 'content' && evt.text) {
+      state.assistantText = `${state.assistantText || ''}${evt.text}`
+      sendAgentCompatLine(
+        state.sender,
+        'grok',
+        { type: 'content', text: evt.text, provider: 'grok' },
+        state
+      )
+    } else if (evt.type === 'thinking' && evt.text) {
+      emitCliProviderThinkingEvent(state, evt.text)
+    } else if (evt.type === 'provider_warning' && evt.text) {
+      sendAgentCompatError(state.sender, 'grok', evt.text, state)
+    }
+    // 'result' (Grok's `end`) → runCliProviderProcess synthesizes the canonical
+    // result + exit on process close; we only needed the session id above.
+  }
+}
+
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
+  if (state.provider === 'grok') {
+    handleGrokStreamEvent(state, event)
+    return
+  }
   const sessionId = extractProviderSessionId(event)
   updateCliProviderSession(state, sessionId)
   const usage = extractProviderUsage(state.provider, event)

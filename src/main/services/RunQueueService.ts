@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { experimentalGrokProviderEnabled } from '../grokGate'
 import type { RunQueueJobInput } from '../RunQueue'
 import type { RunSession } from '../RunManager'
 import type {
@@ -227,6 +228,13 @@ export class RunQueueService {
 function assertProviderId(value: unknown): ProviderId {
   if (typeof value === 'string' && PROVIDER_IDS.has(value as ProviderId)) {
     return value as ProviderId
+  }
+  // 1.0.6-G3f — grok is accepted only when the experimental gate is on. The
+  // normal run-dispatch path requests a run-queue job, so this must admit grok
+  // (when gated) or the streamed assistant message has no placeholder to render
+  // into, even though the run itself completes.
+  if (value === 'grok' && experimentalGrokProviderEnabled()) {
+    return 'grok'
   }
   throw new Error('Provider is invalid.')
 }
