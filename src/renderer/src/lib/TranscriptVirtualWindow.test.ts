@@ -1,0 +1,450 @@
+import { describe, it, expect } from 'vitest'
+import type { ChatMessage, ToolActivity } from '../../../main/store/types'
+import {
+  ESTIMATED_ROW_HEIGHT_PX,
+  RUN_BOUNDARY_HEIGHT_PX,
+  DEFAULT_OVERSCAN_PX,
+  WIDTH_BUCKET_PX,
+  widthBucket,
+  classifyRowType,
+  contentVersion,
+  estimatedHeightFor,
+  projectRows,
+  measurementKey,
+  getRowHeight,
+  sumHeights,
+  selectWindow,
+  computeAnchorDelta,
+  windowReachesEnd,
+  type VirtualRow
+} from './TranscriptVirtualWindow'
+
+// --- fixtures -------------------------------------------------------------
+
+function msg(overrides: Partial<ChatMessage> & { id: string }): ChatMessage {
+  return {
+    role: 'assistant',
+    content: '',
+    timestamp: '2026-01-01T00:00:00.000Z',
+    ...overrides
+  }
+}
+
+function activity(overrides: Partial<ToolActivity> & { id: string }): ToolActivity {
+  return {
+    toolName: 'shell',
+    displayName: 'Shell',
+    category: 'shell',
+    status: 'success',
+    ...overrides
+  }
+}
+
+/** Build a uniform-height array of `n` rows for window math. */
+function uniformHeights(n: number, h: number): number[] {
+  return Array.from({ length: n }, () => h)
+}
+
+describe('TranscriptVirtualWindow', () => {
+  describe('widthBucket', () => {
+    it('quantises the content width by the default step', () => {
+      expect(widthBucket(0)).toBe(0)
+      expect(widthBucket(WIDTH_BUCKET_PX - 1)).toBe(0)
+      expect(widthBucket(WIDTH_BUCKET_PX)).toBe(1)
+      expect(widthBucket(WIDTH_BUCKET_PX * 3 + 5)).toBe(3)
+    })
+
+    it('reuses the same bucket for a resize that does not cross a boundary', () => {
+      // A few-px resize inside one bucket must NOT invalidate cached
+      // measurements — that is the whole point of bucketing.
+      expect(widthBucket(640)).toBe(widthBucket(640 + WIDTH_BUCKET_PX - 1))
+    })
+
+    it('changes bucket once the width crosses a boundary (real reflow)', () => {
+      expect(widthBucket(640)).not.toBe(widthBucket(640 + WIDTH_BUCKET_PX))
+    })
+
+    it('honours a custom step', () => {
+      expect(widthBucket(250, 100)).toBe(2)
+    })
+
+    it('defends against non-finite / non-positive widths', () => {
+      expect(widthBucket(Number.NaN)).toBe(0)
+      expect(widthBucket(Number.POSITIVE_INFINITY)).toBe(0)
+      expect(widthBucket(-100)).toBe(0)
+    })
+  })
+
+  describe('classifyRowType', () => {
+    it('classifies a sub-thread delegation (system + metadata.kind) before the role fallback', () => {
+      const m = msg({ id: 'd', role: 'system', metadata: { kind: 'subThreadDelegation' } })
+      expect(classifyRowType(m)).toBe('delegation')
+    })
+
+    it('classifies a sub-thread return carried on a system message', () => {
+      const m = msg({ id: 'r', role: 'system', metadata: { kind: 'subThreadReturn' } })
+      expect(classifyRowType(m)).toBe('return')
+    })
+
+    it('classifies a tool-role return as a return, NOT a tool row', () => {
+      // The renderer detects sub-thread returns first even though they
+      // ride on `role: 'tool'`; the row model must agree or the wrong
+      // card (ActivityStack) would be projected.
+      const m = msg({ id: 'r2', role: 'tool', metadata: { kind: 'subThreadReturn' } })
+      expect(classifyRowType(m)).toBe('return')
+    })
+
+    it('classifies a plain tool message as a tool row', () => {
+      expect(classifyRowType(msg({ id: 't', role: 'tool' }))).toBe('tool')
+    })
+
+    it('classifies an ensemble participant-health card', () => {
+      const m = msg({ id: 'p', role: 'system', metadata: { kind: 'ensembleParticipantHealth' } })
+      expect(classifyRowType(m)).toBe('participantHealth')
+    })
+
+    it('classifies the role-based bubbles', () => {
+      expect(classifyRowType(msg({ id: 'u', role: 'user' }))).toBe('user')
+      expect(classifyRowType(msg({ id: 'e', role: 'error' }))).toBe('error')
+      expect(classifyRowType(msg({ id: 'a', role: 'assistant' }))).toBe('assistant')
+      expect(classifyRowType(msg({ id: 's', role: 'system' }))).toBe('system')
+    })
+  })
+
+  describe('contentVersion', () => {
+    it('encodes role initial + content length for text rows', () => {
+      expect(contentVersion(msg({ id: 'a', role: 'assistant', content: 'hello' }))).toBe('a:5')
+      expect(contentVersion(msg({ id: 'u', role: 'user', content: 'hi' }))).toBe('u:2')
+    })
+
+    it('changes when streamed text grows, stays equal when text is identical', () => {
+      const before = msg({ id: 'a', role: 'assistant', content: 'hello' })
+      const grown = msg({ id: 'a', role: 'assistant', content: 'hello world' })
+      const same = msg({ id: 'a', role: 'assistant', content: 'hello' })
+      expect(contentVersion(grown)).not.toBe(contentVersion(before))
+      expect(contentVersion(same)).toBe(contentVersion(before))
+    })
+
+    it('encodes count + statuses + output length for tool rows', () => {
+      const m = msg({
+        id: 't',
+        role: 'tool',
+        toolActivities: [
+          activity({ id: '1', status: 'running', outputPreview: 'abc' }),
+          activity({ id: '2', status: 'success', resultSummary: 'de' })
+        ]
+      })
+      // 2 activities, statuses "running|success|", output len 3 + 2 = 5
+      expect(contentVersion(m)).toBe('t:2:running|success|:5')
+    })
+
+    it('changes when a tool activity status flips (running -> success collapses height)', () => {
+      const running = msg({
+        id: 't',
+        role: 'tool',
+        toolActivities: [activity({ id: '1', status: 'running' })]
+      })
+      const done = msg({
+        id: 't',
+        role: 'tool',
+        toolActivities: [activity({ id: '1', status: 'success' })]
+      })
+      expect(contentVersion(done)).not.toBe(contentVersion(running))
+    })
+
+    it('changes when a tool activity reveals more output', () => {
+      const a = msg({
+        id: 't',
+        role: 'tool',
+        toolActivities: [activity({ id: '1', status: 'running', outputPreview: 'a' })]
+      })
+      const b = msg({
+        id: 't',
+        role: 'tool',
+        toolActivities: [activity({ id: '1', status: 'running', outputPreview: 'aaaa' })]
+      })
+      expect(contentVersion(b)).not.toBe(contentVersion(a))
+    })
+
+    it('handles a tool row with no activities and empty content defensively', () => {
+      expect(contentVersion(msg({ id: 't', role: 'tool' }))).toBe('t:0::0')
+      expect(contentVersion(msg({ id: 'a', content: undefined as unknown as string }))).toBe('a:0')
+    })
+  })
+
+  describe('estimatedHeightFor', () => {
+    it('returns the per-type estimate', () => {
+      expect(estimatedHeightFor('assistant', false)).toBe(ESTIMATED_ROW_HEIGHT_PX.assistant)
+      expect(estimatedHeightFor('user', false)).toBe(ESTIMATED_ROW_HEIGHT_PX.user)
+    })
+
+    it('adds the run-boundary band when a RunCard renders above the block', () => {
+      expect(estimatedHeightFor('assistant', true)).toBe(
+        ESTIMATED_ROW_HEIGHT_PX.assistant + RUN_BOUNDARY_HEIGHT_PX
+      )
+    })
+  })
+
+  describe('projectRows', () => {
+    it('produces one row per message with stable ids equal to message.id, in order', () => {
+      const messages = [
+        msg({ id: 'm1', role: 'user', content: 'hi' }),
+        msg({ id: 'm2', role: 'assistant', content: 'yo' }),
+        msg({ id: 'm3', role: 'tool', toolActivities: [activity({ id: 'a' })] })
+      ]
+      const rows = projectRows(messages)
+      expect(rows.map((r) => r.id)).toEqual(['m1', 'm2', 'm3'])
+      expect(rows.map((r) => r.index)).toEqual([0, 1, 2])
+      expect(rows.map((r) => r.rowType)).toEqual(['user', 'assistant', 'tool'])
+    })
+
+    it('is deterministic — re-projecting the same messages yields identical ids + versions', () => {
+      const messages = [msg({ id: 'm1', content: 'a' }), msg({ id: 'm2', content: 'bb' })]
+      const first = projectRows(messages)
+      const second = projectRows(messages)
+      expect(second.map((r) => r.id)).toEqual(first.map((r) => r.id))
+      expect(second.map((r) => r.contentVersion)).toEqual(first.map((r) => r.contentVersion))
+    })
+
+    it('changes ONLY the streaming row contentVersion, leaving siblings byte-identical', () => {
+      // The core virtualisation invariant: a streamed token must
+      // invalidate one row's measurement, never the whole list.
+      const before = [
+        msg({ id: 'a', role: 'user', content: 'question' }),
+        msg({ id: 'b', role: 'assistant', content: 'partial' }),
+        msg({ id: 'c', role: 'user', content: 'tail' })
+      ]
+      const after = [
+        msg({ id: 'a', role: 'user', content: 'question' }),
+        msg({ id: 'b', role: 'assistant', content: 'partial answer' }),
+        msg({ id: 'c', role: 'user', content: 'tail' })
+      ]
+      const rb = projectRows(before)
+      const ra = projectRows(after)
+      expect(ra[0].contentVersion).toBe(rb[0].contentVersion)
+      expect(ra[2].contentVersion).toBe(rb[2].contentVersion)
+      expect(ra[1].contentVersion).not.toBe(rb[1].contentVersion)
+    })
+
+    it('marks run-boundary rows and inflates their estimate', () => {
+      const messages = [msg({ id: 'm1', role: 'user' }), msg({ id: 'm2', role: 'assistant' })]
+      const rows = projectRows(messages, new Set(['m2']))
+      expect(rows[0].hasRunBoundary).toBe(false)
+      expect(rows[1].hasRunBoundary).toBe(true)
+      expect(rows[1].estimatedHeight).toBe(
+        ESTIMATED_ROW_HEIGHT_PX.assistant + RUN_BOUNDARY_HEIGHT_PX
+      )
+    })
+
+    it('treats a null/absent run-boundary set as no boundaries', () => {
+      const rows = projectRows([msg({ id: 'm1' })], null)
+      expect(rows[0].hasRunBoundary).toBe(false)
+    })
+
+    it('skips malformed entries (missing id / non-array input)', () => {
+      expect(projectRows(undefined as unknown as ChatMessage[])).toEqual([])
+      const rows = projectRows([
+        msg({ id: 'ok' }),
+        { role: 'assistant', content: '', timestamp: '' } as unknown as ChatMessage
+      ])
+      expect(rows.map((r) => r.id)).toEqual(['ok'])
+    })
+  })
+
+  describe('measurementKey', () => {
+    it('combines id, content version, width bucket and expansion bit', () => {
+      expect(measurementKey('m1', 'a:5', 8, false)).toBe('m1|a:5|8|0')
+      expect(measurementKey('m1', 'a:5', 8, true)).toBe('m1|a:5|8|1')
+    })
+
+    it('invalidates when the content version changes (streamed token)', () => {
+      expect(measurementKey('m1', 'a:5', 8, false)).not.toBe(measurementKey('m1', 'a:6', 8, false))
+    })
+
+    it('invalidates when the width bucket changes (reflow)', () => {
+      expect(measurementKey('m1', 'a:5', 8, false)).not.toBe(measurementKey('m1', 'a:5', 9, false))
+    })
+
+    it('invalidates when the expansion bit changes (ActivityStack expand/collapse)', () => {
+      expect(measurementKey('m1', 'a:5', 8, false)).not.toBe(measurementKey('m1', 'a:5', 8, true))
+    })
+  })
+
+  describe('getRowHeight', () => {
+    const row: VirtualRow = {
+      id: 'm1',
+      index: 0,
+      rowType: 'assistant',
+      contentVersion: 'a:5',
+      estimatedHeight: ESTIMATED_ROW_HEIGHT_PX.assistant,
+      hasRunBoundary: false
+    }
+
+    it('returns the measured height when the cache holds the exact key', () => {
+      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 321]])
+      expect(getRowHeight(row, cache, 8, false)).toBe(321)
+    })
+
+    it('falls back to the estimate when the geometry key differs', () => {
+      // Measured at a different width bucket → not comparable → estimate.
+      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 321]])
+      expect(getRowHeight(row, cache, 9, false)).toBe(row.estimatedHeight)
+    })
+
+    it('falls back to the estimate for an empty cache', () => {
+      expect(getRowHeight(row, new Map(), 8, false)).toBe(row.estimatedHeight)
+    })
+
+    it('rejects a corrupt (negative / NaN) cached measurement', () => {
+      const cache = new Map<string, number>([
+        [measurementKey('m1', 'a:5', 8, false), Number.NaN]
+      ])
+      expect(getRowHeight(row, cache, 8, false)).toBe(row.estimatedHeight)
+      const neg = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), -5]])
+      expect(getRowHeight(row, neg, 8, false)).toBe(row.estimatedHeight)
+    })
+
+    it('accepts a measured height of 0 (a genuinely collapsed row)', () => {
+      const cache = new Map<string, number>([[measurementKey('m1', 'a:5', 8, false), 0]])
+      expect(getRowHeight(row, cache, 8, false)).toBe(0)
+    })
+  })
+
+  describe('sumHeights', () => {
+    it('sums a half-open slice', () => {
+      expect(sumHeights([10, 20, 30, 40], 1, 3)).toBe(50)
+    })
+
+    it('clamps out-of-range bounds', () => {
+      expect(sumHeights([10, 20, 30], -5, 99)).toBe(60)
+    })
+
+    it('skips non-finite and negative entries', () => {
+      expect(sumHeights([10, Number.NaN, -5, 20], 0, 4)).toBe(30)
+    })
+
+    it('returns 0 for an empty or inverted slice', () => {
+      expect(sumHeights([], 0, 0)).toBe(0)
+      expect(sumHeights([10, 20], 2, 1)).toBe(0)
+    })
+  })
+
+  describe('selectWindow', () => {
+    it('returns an empty window for no rows', () => {
+      expect(selectWindow({ scrollTop: 0, viewportHeight: 500, heights: [] })).toEqual({
+        startIndex: 0,
+        endIndex: 0,
+        topSpacerPx: 0,
+        bottomSpacerPx: 0
+      })
+    })
+
+    it('mounts the top rows with a zero top spacer at scrollTop 0', () => {
+      const heights = uniformHeights(5, 100) // total 500
+      const w = selectWindow({ scrollTop: 0, viewportHeight: 200, heights, overscanPx: 0 })
+      expect(w.startIndex).toBe(0)
+      expect(w.topSpacerPx).toBe(0)
+      // viewport covers rows 0-1; row 2 starts exactly at the boundary.
+      expect(w.endIndex).toBe(2)
+      expect(w.bottomSpacerPx).toBe(300)
+    })
+
+    it('preserves total height: topSpacer + mounted + bottomSpacer === Σ(all heights)', () => {
+      const heights = [120, 80, 300, 60, 200, 90, 150] // total 1000
+      const total = heights.reduce((a, b) => a + b, 0)
+      for (const scrollTop of [0, 100, 350, 700, 9999]) {
+        const w = selectWindow({ scrollTop, viewportHeight: 250, heights, overscanPx: 120 })
+        const mounted = sumHeights(heights, w.startIndex, w.endIndex)
+        expect(w.topSpacerPx + mounted + w.bottomSpacerPx).toBe(total)
+      }
+    })
+
+    it('bottom-follow invariant: at max scroll the last row is mounted and bottomSpacerPx === 0', () => {
+      const heights = uniformHeights(5, 100) // total 500
+      const viewportHeight = 200
+      const maxScroll = 500 - viewportHeight // 300
+      const w = selectWindow({ scrollTop: maxScroll, viewportHeight, heights, overscanPx: 0 })
+      expect(w.endIndex).toBe(5)
+      expect(w.bottomSpacerPx).toBe(0)
+      expect(windowReachesEnd(w, heights.length)).toBe(true)
+    })
+
+    it('extends the mounted band by the overscan', () => {
+      const heights = uniformHeights(10, 100) // total 1000
+      const tight = selectWindow({ scrollTop: 400, viewportHeight: 200, heights, overscanPx: 0 })
+      const loose = selectWindow({ scrollTop: 400, viewportHeight: 200, heights, overscanPx: 150 })
+      expect(loose.startIndex).toBeLessThanOrEqual(tight.startIndex)
+      expect(loose.endIndex).toBeGreaterThanOrEqual(tight.endIndex)
+    })
+
+    it('defaults to DEFAULT_OVERSCAN_PX when overscan is omitted', () => {
+      const heights = uniformHeights(40, 100) // total 4000
+      const w = selectWindow({ scrollTop: 2000, viewportHeight: 400, heights })
+      // window roughly spans [2000-overscan, 2400+overscan]
+      const topOfStart = sumHeights(heights, 0, w.startIndex)
+      expect(topOfStart).toBeLessThanOrEqual(2000 - DEFAULT_OVERSCAN_PX + 100)
+    })
+
+    it('collapses everything into the top spacer when scrolled far past the end', () => {
+      const heights = uniformHeights(5, 100) // total 500
+      const w = selectWindow({ scrollTop: 10000, viewportHeight: 200, heights, overscanPx: 0 })
+      expect(w.startIndex).toBe(5)
+      expect(w.endIndex).toBe(5)
+      expect(w.topSpacerPx).toBe(500)
+      expect(w.bottomSpacerPx).toBe(0)
+    })
+
+    it('defends against non-finite scroll / viewport inputs', () => {
+      const heights = uniformHeights(5, 100)
+      const w = selectWindow({
+        scrollTop: Number.NaN,
+        viewportHeight: Number.POSITIVE_INFINITY,
+        heights,
+        overscanPx: 0
+      })
+      // NaN scrollTop -> 0; infinite viewport clamps to a usable window
+      expect(w.startIndex).toBe(0)
+      expect(w.topSpacerPx).toBe(0)
+    })
+  })
+
+  describe('computeAnchorDelta', () => {
+    it('returns the signed change in the top spacer height', () => {
+      // Rows above the viewport measured TALLER than estimated → top
+      // spacer grew → scrollTop must increase by the same amount so the
+      // visible content does not jump.
+      expect(computeAnchorDelta({ previousTopSpacerPx: 400, nextTopSpacerPx: 460 })).toBe(60)
+    })
+
+    it('is negative when rows above shrink (e.g. ActivityStack collapsed)', () => {
+      expect(computeAnchorDelta({ previousTopSpacerPx: 400, nextTopSpacerPx: 360 })).toBe(-40)
+    })
+
+    it('is zero when the top spacer is unchanged', () => {
+      expect(computeAnchorDelta({ previousTopSpacerPx: 400, nextTopSpacerPx: 400 })).toBe(0)
+    })
+
+    it('treats non-finite inputs as zero', () => {
+      expect(
+        computeAnchorDelta({ previousTopSpacerPx: Number.NaN, nextTopSpacerPx: 100 })
+      ).toBe(100)
+      expect(
+        computeAnchorDelta({ previousTopSpacerPx: 100, nextTopSpacerPx: Number.NaN })
+      ).toBe(-100)
+    })
+  })
+
+  describe('windowReachesEnd', () => {
+    it('is true when the window includes the last row', () => {
+      expect(windowReachesEnd({ startIndex: 3, endIndex: 5, topSpacerPx: 0, bottomSpacerPx: 0 }, 5)).toBe(
+        true
+      )
+    })
+
+    it('is false when rows remain below the window', () => {
+      expect(
+        windowReachesEnd({ startIndex: 0, endIndex: 3, topSpacerPx: 0, bottomSpacerPx: 200 }, 5)
+      ).toBe(false)
+    })
+  })
+})
