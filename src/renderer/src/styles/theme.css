@@ -840,6 +840,94 @@
     linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.18)) !important;
 }
 
+/* ============================================================
+ * 1.0.6-EW80 — Propagate the alabaster "inverse-bizarre" dark
+ * glass from the sidebar to the OTHER chrome panels: the
+ * Inspector sidebar, the File-Editor/Manager sidebar, and the
+ * Chat-Media popover.
+ *
+ * These are working-surfaces in the same family as the dark
+ * sidebar (and the dark Codex/Claude composer), so they should
+ * read as the SAME dark glass with light text. Today they never
+ * got an alabaster branch, so they fall through to the generic
+ * chroma-gradient glass (`--theme-gradient-panel` at the
+ * `[data-appearance="native_glass"] :is(.app-inspector,
+ * .app-file-editor)` rule in main.css) over the light macOS
+ * vibrancy + cool ambient — which reads muddy, and lands the
+ * global dark `--text-primary` as dark-on-dark.
+ *
+ * Mirrors the `.app-sidebar` block above: the token overrides
+ * flip every child to the dark-mode light-text palette (so the
+ * existing token-driven backgrounds + text resolve dark/legible),
+ * and the per-appearance washes paint a substantial dark layer so
+ * the read survives macOS light vibrancy. A solid dark base is
+ * added under the wash (the content panels are denser than the
+ * sidebar, so they can't rely on vibrancy alone for legibility).
+ * Obsidian is deliberately untouched — its panels already read
+ * correctly on the dark base. */
+[data-theme="alabaster"][data-theme="alabaster"]
+  :is(.app-inspector, .app-file-editor, .chat-media-panel) {
+  --sidebar-text: rgba(255, 255, 255, 0.88);
+  --sidebar-text-secondary: rgba(255, 255, 255, 0.58);
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.45);
+  --text-muted: rgba(255, 255, 255, 0.32);
+  --surface-text: rgba(255, 255, 255, 0.92);
+  --surface-text-muted: rgba(255, 255, 255, 0.52);
+  /* Dark surface tokens so the panels' token-driven background
+   * rules (`--panel-bg-solid`, `--composer-glass-bg`, `--bg-primary`,
+   * `--app-bg-sunken` for the code surface, etc.) resolve dark. */
+  --app-bg: #141418;
+  --app-bg-elevated: #1c1c21;
+  --app-bg-sunken: #101014;
+  --bg-primary: #141418;
+  --content-bg: #141418;
+  --panel-bg: rgba(20, 22, 28, 0.46);
+  --panel-bg-solid: #1a1a1d;
+  --panel-elevated-bg: rgba(28, 30, 38, 0.56);
+  --panel-border: rgba(255, 255, 255, 0.10);
+  --surface-1: #1c1c21;
+  --surface-2: #222228;
+  --surface-3: #2a2a31;
+  --surface-border: rgba(255, 255, 255, 0.10);
+  --composer-glass-bg: rgba(20, 22, 28, 0.55);
+  color-scheme: dark;
+}
+
+/* Per-appearance washes — mirror the sidebar, with a dark solid
+ * base added so dense content panels stay legible even when the
+ * vibrancy/content behind them is light. `background` shorthand +
+ * the doubled-theme / appearance specificity beats the generic
+ * `background-image: var(--theme-gradient-panel) !important` and
+ * the base translucent fills. */
+[data-theme="alabaster"][data-appearance="solid"]
+  :is(.app-inspector, .app-file-editor, .chat-media-panel) {
+  background: #17171b !important;
+  background-image: none !important;
+}
+[data-theme="alabaster"][data-appearance="soft_glass"]
+  :is(.app-inspector, .app-file-editor, .chat-media-panel) {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.20), rgba(0, 0, 0, 0.08)),
+    rgba(22, 24, 30, 0.74) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
+}
+[data-theme="alabaster"][data-appearance="native_glass"][data-reduce-transparency="false"]
+  :is(.app-inspector, .app-file-editor, .chat-media-panel) {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.18)),
+    rgba(20, 22, 28, 0.62) !important;
+  border-color: rgba(255, 255, 255, 0.10) !important;
+}
+[data-theme="alabaster"][data-reduce-transparency="true"]
+  :is(.app-inspector, .app-file-editor, .chat-media-panel) {
+  background: #17171b !important;
+  background-image: none !important;
+}
+
 [data-theme="rainbow"],
 [data-theme="twilight"],
 [data-theme="cyber"] {

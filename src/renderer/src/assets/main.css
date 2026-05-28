@@ -31596,6 +31596,14 @@ input:disabled, select:disabled, textarea:disabled {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  /* EW79 — the base codex tab tucks under the surface via
+   * `margin-bottom: -10px` + a 14px `padding-bottom` that the dark
+   * tab fill normally occupies. Once obsidian makes the tab
+   * transparent that padding becomes a page-coloured gap between
+   * the ensemble row and the composer surface. Zero it so the last
+   * row sits flush and the opaque surface (z-index 2) paints over
+   * the small residual overlap. */
+  padding-bottom: 0;
 }
 
 [data-theme="obsidian"][data-composer-style="codex"]
@@ -31726,6 +31734,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+  /* EW79 — see the obsidian twin above: kill the 14px tab padding
+   * that turns into a page-coloured gap once the tab is
+   * transparent, so the ensemble row sits flush against the
+   * composer surface. */
+  padding-bottom: 0;
 }
 
 [data-theme="alabaster"][data-composer-style="codex"]
@@ -31827,4 +31840,108 @@ input:disabled, select:disabled, textarea:disabled {
   background: #1f2023 !important;
   background-image: none !important;
   border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* ============================================================
+ * 1.0.6-EW79 — Claude shell on Alabaster / Obsidian system themes:
+ * the two residual control outliers + the invisible branch label.
+ * (The rest of the Claude shell is already theme-correct under
+ * EW76/EW77/EW78.)
+ *
+ *  (a) The Permissions ("Default Approval") and Model/Reasoning
+ *      ("5.5 Medium") triggers both carry
+ *      `.composer-combined-picker-trigger`. The model chip fills
+ *      from `--panel-bg` — which EW76 sets OPPOSITE to the page
+ *      (dark on alabaster, light on obsidian) — and the permission
+ *      chip uses a hardcoded white tint, so both read as FILLED
+ *      boxes sitting among the transparent OUTLINED pills used by
+ *      provider / workspace / Turn-Continuous. Normalise both to
+ *      the same outlined-pill treatment with page-appropriate ink
+ *      so the footer reads as one coherent control group.
+ *
+ *  (b) The Create-PR row's "workspace · branch" label inherits the
+ *      Claude bare-text colour (faded WHITE, ~line 27496) whose
+ *      light-mode counterpart only covers light/mist/sage — NOT
+ *      obsidian, whose Codex/Claude above-bar is painted WHITE by
+ *      EW76. White-on-white = invisible. Recolour dark for obsidian
+ *      (alabaster keeps a dark above-bar, so faded-white still
+ *      reads there and is left alone).
+ * ============================================================ */
+
+/* (a) Alabaster — light page, so dark ink + dark hairline. */
+[data-theme="alabaster"][data-composer-style="claude"] .composer-combined-picker-trigger {
+  background: transparent !important;
+  border-color: rgba(18, 21, 27, 0.16) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: rgba(18, 21, 27, 0.05) !important;
+  border-color: rgba(18, 21, 27, 0.24) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-primary {
+  color: rgba(18, 21, 27, 0.88) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-suffix {
+  color: rgba(18, 21, 27, 0.56) !important;
+}
+
+/* (a) Obsidian — dark page, so light ink + light hairline. */
+[data-theme="obsidian"][data-composer-style="claude"] .composer-combined-picker-trigger {
+  background: transparent !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-primary {
+  color: rgba(255, 255, 255, 0.90) !important;
+}
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-combined-picker-trigger
+  .composer-combined-picker-trigger-suffix {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+/* (b) Obsidian Create-PR row — recolour the workspace/branch label
+ * dark so it reads on the white above-bar. The `<em>` branch name
+ * inherits this. NOTE: only the BARE-TEXT elements (branch +
+ * summary) — `.composer-above-bar-files` / `-stats` are dark #3a3a3a
+ * pills in the Claude shell (with their own light text), so they're
+ * deliberately excluded to avoid dark-on-dark. */
+[data-theme="obsidian"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(
+    .composer-above-bar-branch,
+    .composer-above-bar-summary
+  ) {
+  color: rgba(18, 21, 27, 0.84) !important;
+}
+
+/* (c) Alabaster Create-PR row — the files/stats pills are #3a3a3a
+ * (line 27990/28001) sitting on the DARK (#1b1b20) Claude above-bar
+ * in alabaster, so the pill barely separates from the bar and the
+ * thin "files changed" / "+95 -0" labels read soft. On obsidian the
+ * same pill sits on a WHITE bar and pops, which is why this only
+ * needs fixing here. Lift the label to near-white and give the pill
+ * a clearer hairline so it reads crisply. (The +/- diff spans keep
+ * their own green/red — this only colours the element + its
+ * <strong> count.) */
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  border-color: rgba(255, 255, 255, 0.16) !important;
+  color: rgba(255, 255, 255, 0.96) !important;
+}
+[data-theme="alabaster"][data-composer-style="claude"]
+  .composer-above-bar
+  :is(.composer-above-bar-files, .composer-above-bar-stats) strong {
+  color: rgba(255, 255, 255, 0.98) !important;
 }
