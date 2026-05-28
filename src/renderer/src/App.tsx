@@ -57,8 +57,11 @@ import {
 import {
   canonicalizeExternalPathGrantMetadata,
   collectExternalPathGrantsFromMetadata,
-  coalesceExternalPathGrants
+  coalesceExternalPathGrants,
+  reorderExternalPathGrantsByPath
 } from '../../main/store/ExternalPathGrants'
+import { describeExternalPath } from './lib/ExternalPathRepoDetect'
+import type { ExternalPathGitMetadata } from './lib/ExternalPathRepoDetect'
 import {
   createToolActivity,
   pairToolResult,
@@ -3184,7 +3187,12 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
       securityScopedBookmark: grant.securityScopedBookmark,
       issuedBy: 'main',
       signature: grant.signature,
-      createdAt: grant.createdAt || new Date().toISOString()
+      createdAt: grant.createdAt || new Date().toISOString(),
+      // 1.0.6-EW66 — preserve the persisted display order through
+      // normalization so a user's drag-reorder survives reload.
+      // `coalesceExternalPathGrants` (below) self-heals any missing
+      // value from createdAt sequence, so undefined is safe here.
+      order: typeof grant.order === 'number' ? grant.order : undefined
     })
   }
   return coalesceExternalPathGrants(grants)
@@ -5466,15 +5474,54 @@ interface ComposerWorkspaceSwitcherProps {
   /** Switch to a workspace-less (global / system) chat. */
   onSelectNoWorkspace: () => void
   /**
-   * 1.0.5-EW42a — Grant a *secondary* folder read access without
-   * switching the primary workspace. Issues an `ExternalPathGrant`
-   * per chat-provider, persists it to the chat, and the
-   * `ExternalPathAboveRow` banner appears immediately. Optional
-   * because welcome-state chats don't have a saved chat record
-   * yet (no chatId to attach grants to); when the parent doesn't
-   * supply this, the menu row stays hidden.
+   * 1.0.6-EW66 — The chat's *additional*-workspace grants (one
+   * `ExternalPathGrant` per chat-provider per path). The picker
+   * de-dupes by path for its "Current workspaces" list, so an
+   * ensemble's N per-provider grants for one folder show as a
+   * single removable + drag-reorderable row.
    */
-  onGrantReadAccessFolder?: () => void
+  additionalGrants?: ExternalPathGrant[]
+  /**
+   * 1.0.6-EW66 — Per-grant git metadata keyed by grant id (from
+   * `useExternalPathRepoMetadata`). Drives the branch label on
+   * each additional-workspace row.
+   */
+  repoMetadata?: Record<string, ExternalPathGitMetadata | null>
+  /**
+   * 1.0.6-EW66 — Persist a new top-to-bottom order of additional-
+   * workspace paths after a drag. Optional — welcome-state chats
+   * (no saved record) don't get the reorder affordance.
+   */
+  onReorderWorkspaces?: (orderedPaths: string[]) => void
+  /**
+   * 1.0.6-EW66 — Remove every grant for a path (the whole
+   * additional workspace). Optional for the same welcome-state
+   * reason as the reorder handler.
+   */
+  onRemoveWorkspacePath?: (path: string) => void
+  /**
+   * 1.0.6-EW66 — Open the OS folder picker and attach the chosen
+   * folder as an *additional* workspace with the given access.
+   * Generalizes the old read-only "Grant read access…" row into a
+   * READ-or-WRITE add. Optional because welcome-state chats have
+   * no chat record to attach grants to yet; when absent, the
+   * "Add a workspace" section stays hidden.
+   */
+  onAddFolder?: (access: ExternalPathGrant['access']) => void
+}
+
+/**
+ * 1.0.6-EW66 — One row in the picker's "Current workspaces" list,
+ * collapsed to a single entry per PATH (an ensemble stores one
+ * grant per enabled participant-provider for the same folder).
+ */
+interface AdditionalWorkspaceEntry {
+  path: string
+  basename: string
+  branch?: string
+  isRepo: boolean
+  access: ExternalPathGrant['access']
+  order: number
 }
 
 function ComposerWorkspaceSwitcher({
@@ -5483,7 +5530,11 @@ function ComposerWorkspaceSwitcher({
   onPickExisting,
   onAddNewWorkspace,
   onSelectNoWorkspace,
-  onGrantReadAccessFolder
+  additionalGrants,
+  repoMetadata,
+  onReorderWorkspaces,
+  onRemoveWorkspacePath,
+  onAddFolder
 }: ComposerWorkspaceSwitcherProps): React.JSX.Element {
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -5491,6 +5542,12 @@ function ComposerWorkspaceSwitcher({
   const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
     null
   )
+  // 1.0.6-EW66 — READ/WRITE choice for the "Add a workspace" action.
+  const [addAccess, setAddAccess] = useState<ExternalPathGrant['access']>('read')
+  // 1.0.6-EW66 — pointer-drag reorder state for the additional-
+  // workspace list (same pattern as QueuedMessagesAboveRow).
+  const [dragPath, setDragPath] = useState<string | null>(null)
+  const [dragOverPath, setDragOverPath] = useState<string | null>(null)
 
   // Same outside-click + Escape dismiss pattern as WelcomeWorkspacePicker.
   useEffect(() => {
@@ -5563,20 +5620,127 @@ function ComposerWorkspaceSwitcher({
     .filter((ws) => ws.id !== currentWorkspace?.id)
     .sort((a, b) => (b.lastOpenedAt || b.createdAt || 0) - (a.lastOpenedAt || a.createdAt || 0))
 
+  // 1.0.6-EW66 — collapse the per-provider grants into one entry
+  // per PATH for the "Current workspaces" list. Order comes from
+  // the shared per-path `order` (assigned by the store); a path is
+  // WRITE if ANY of its grants is write. Branch/basename derive
+  // from whichever grant for the path has resolved git metadata.
+  const additionalEntries = useMemo<AdditionalWorkspaceEntry[]>(() => {
+    const grants = additionalGrants || []
+    const byPath = new Map<string, AdditionalWorkspaceEntry>()
+    for (const grant of grants) {
+      const meta = repoMetadata?.[grant.id] || null
+      const descriptor = describeExternalPath(grant.path, { gitMetadata: meta })
+      const existing = byPath.get(grant.path)
+      if (!existing) {
+        byPath.set(grant.path, {
+          path: grant.path,
+          basename: descriptor.basename,
+          branch: descriptor.isRepo ? descriptor.branch : undefined,
+          isRepo: descriptor.isRepo,
+          access: grant.access,
+          order: typeof grant.order === 'number' ? grant.order : Number.MAX_SAFE_INTEGER
+        })
+        continue
+      }
+      // Upgrade access to write if any grant for the path is write,
+      // and fill in repo metadata if a later grant resolved it.
+      if (grant.access === 'write') existing.access = 'write'
+      if (!existing.isRepo && descriptor.isRepo) {
+        existing.isRepo = true
+        existing.basename = descriptor.basename
+        existing.branch = descriptor.branch
+      }
+      if (typeof grant.order === 'number') {
+        existing.order = Math.min(existing.order, grant.order)
+      }
+    }
+    return [...byPath.values()].sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order
+      return a.path < b.path ? -1 : a.path > b.path ? 1 : 0
+    })
+  }, [additionalGrants, repoMetadata])
+
   const handleSelectFromPopover = (callback: () => void): void => {
     setPopoverOpen(false)
     setTimeout(callback, 0)
   }
 
-  const triggerLabel = currentWorkspace
+  // 1.0.6-EW66 — commit a drag: splice the source path to the
+  // target's slot and hand the new top-to-bottom path order back
+  // to the parent (which rewrites grant `order` + persists).
+  const commitReorder = (sourcePath: string, targetPath: string | null): void => {
+    setDragPath(null)
+    setDragOverPath(null)
+    if (!targetPath || sourcePath === targetPath || !onReorderWorkspaces) return
+    const paths = additionalEntries.map((entry) => entry.path)
+    const fromIdx = paths.indexOf(sourcePath)
+    const toIdx = paths.indexOf(targetPath)
+    if (fromIdx === -1 || toIdx === -1) return
+    const next = [...paths]
+    const [moved] = next.splice(fromIdx, 1)
+    next.splice(toIdx, 0, moved)
+    onReorderWorkspaces(next)
+  }
+
+  const handleRowPointerDown = (sourcePath: string) => (event: React.PointerEvent): void => {
+    if (event.button !== 0 || !onReorderWorkspaces) return
+    const target = event.target as HTMLElement
+    // Don't start a drag from the remove button.
+    if (target.closest('.composer-workspace-row-remove')) return
+    const startX = event.clientX
+    const startY = event.clientY
+    let dragged = false
+    let lastHover: string | null = null
+    const findPathUnderPointer = (x: number, y: number): string | null => {
+      const el = document.elementFromPoint(x, y) as HTMLElement | null
+      const row = el?.closest('.composer-workspace-row[data-workspace-path]') as HTMLElement | null
+      return row?.getAttribute('data-workspace-path') || null
+    }
+    const handleMove = (moveEvent: PointerEvent): void => {
+      const dx = Math.abs(moveEvent.clientX - startX)
+      const dy = Math.abs(moveEvent.clientY - startY)
+      if (!dragged && (dx > 6 || dy > 6)) {
+        dragged = true
+        setDragPath(sourcePath)
+      }
+      if (dragged) {
+        const overPath = findPathUnderPointer(moveEvent.clientX, moveEvent.clientY)
+        if (overPath !== lastHover) {
+          lastHover = overPath
+          setDragOverPath(overPath)
+        }
+      }
+    }
+    const handleUp = (upEvent: PointerEvent): void => {
+      document.removeEventListener('pointermove', handleMove)
+      document.removeEventListener('pointerup', handleUp)
+      document.removeEventListener('pointercancel', handleUp)
+      if (dragged) {
+        const dropPath = findPathUnderPointer(upEvent.clientX, upEvent.clientY)
+        commitReorder(sourcePath, dropPath && dropPath !== sourcePath ? dropPath : null)
+      }
+    }
+    document.addEventListener('pointermove', handleMove)
+    document.addEventListener('pointerup', handleUp)
+    document.addEventListener('pointercancel', handleUp)
+  }
+
+  const primaryLabel = currentWorkspace
     ? currentWorkspace.displayName ||
       currentWorkspace.path.split('/').pop() ||
       'Workspace'
     : 'Pick workspace'
 
+  const additionalCount = additionalEntries.length
+  const triggerLabel =
+    additionalCount > 0 ? `${primaryLabel} +${additionalCount}` : primaryLabel
+
   const titleText = currentWorkspace
-    ? `Switch workspace · ${currentWorkspace.displayName || currentWorkspace.path}`
-    : 'Pick a workspace'
+    ? `Workspaces · ${currentWorkspace.displayName || currentWorkspace.path}${
+        additionalCount > 0 ? ` (+${additionalCount} attached)` : ''
+      }`
+    : 'Manage workspaces'
 
   return (
     <>
@@ -5610,29 +5774,182 @@ function ComposerWorkspaceSwitcher({
               transform: 'none'
             }}
           >
-            {others.length > 0 && (
-              <div className="welcome-workspace-popover-section">
-                <div className="welcome-workspace-popover-header">Switch to workspace</div>
-                {others.map((ws) => (
-                  <button
-                    key={ws.id}
-                    type="button"
-                    role="menuitem"
-                    className="welcome-workspace-popover-row"
-                    onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
-                    title={ws.path}
-                  >
-                    <span className="welcome-workspace-popover-row-name">
-                      {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
-                    </span>
-                    {ws.path && (
-                      <span className="welcome-workspace-popover-row-path">{ws.path}</span>
+            {/*
+              1.0.6-EW66 — "Current workspaces": the chat's primary
+              workspace (PRIMARY badge, not removable) plus any
+              additional folders attached via grants — de-duped by
+              path, sorted by the shared per-path `order`, each with
+              a READ/WRITE badge, a remove (×), and a drag handle for
+              reordering (pointer-drag, persisted via onReorderWorkspaces).
+            */}
+            <div className="welcome-workspace-popover-section composer-workspace-current">
+              <div className="welcome-workspace-popover-header">Current workspaces</div>
+              {currentWorkspace ? (
+                <div
+                  className="composer-workspace-row composer-workspace-row-primary"
+                  title={currentWorkspace.path}
+                >
+                  <span className="composer-workspace-row-main">
+                    <span className="composer-workspace-row-name">{primaryLabel}</span>
+                    {currentWorkspace.path && (
+                      <span className="composer-workspace-row-path">{currentWorkspace.path}</span>
                     )}
+                  </span>
+                  <span className="composer-workspace-badge composer-workspace-badge-primary">
+                    PRIMARY
+                  </span>
+                </div>
+              ) : (
+                <div className="composer-workspace-row composer-workspace-row-empty">
+                  <span className="composer-workspace-row-name">No primary workspace</span>
+                </div>
+              )}
+              {additionalEntries.map((entry) => (
+                <div
+                  key={entry.path}
+                  data-workspace-path={entry.path}
+                  className={`composer-workspace-row composer-workspace-row-additional ${
+                    dragPath === entry.path ? 'is-dragging' : ''
+                  } ${
+                    dragOverPath === entry.path && dragPath !== entry.path ? 'is-drag-over' : ''
+                  }`}
+                  title={entry.path}
+                  onPointerDown={handleRowPointerDown(entry.path)}
+                >
+                  {onReorderWorkspaces && (
+                    <span
+                      className="composer-workspace-drag-handle"
+                      aria-hidden
+                      title="Drag to reorder"
+                    >
+                      ⠿
+                    </span>
+                  )}
+                  <span className="composer-workspace-row-main">
+                    <span className="composer-workspace-row-name">
+                      {entry.basename}
+                      {entry.isRepo && entry.branch ? (
+                        <em className="composer-workspace-row-branch"> · {entry.branch}</em>
+                      ) : null}
+                    </span>
+                    <span className="composer-workspace-row-path">{entry.path}</span>
+                  </span>
+                  <span
+                    className={`composer-workspace-access-badge access-${entry.access}`}
+                    title={
+                      entry.access === 'write'
+                        ? 'Agents in this chat can read AND edit this folder'
+                        : 'Agents in this chat can read this folder'
+                    }
+                  >
+                    {entry.access === 'write' ? 'WRITE' : 'READ'}
+                  </span>
+                  {onRemoveWorkspacePath && (
+                    <button
+                      type="button"
+                      className="composer-workspace-row-remove"
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        onRemoveWorkspacePath(entry.path)
+                      }}
+                      onPointerDown={(event) => event.stopPropagation()}
+                      title={`Remove ${entry.basename} from this chat`}
+                      aria-label={`Remove workspace ${entry.basename}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            {/*
+              1.0.6-EW66 — "Add a workspace": attach an *additional*
+              folder with a per-add READ/WRITE choice. WRITE grants
+              let agents edit the folder (and surface a full diff +
+              Create-PR row); READ grants are reference-only. Hidden
+              for welcome-state chats (no chat record to attach grants
+              to yet) — the parent passes `onAddFolder` only when the
+              chat has an `appChatId`.
+            */}
+            {onAddFolder && (
+              <div className="welcome-workspace-popover-section composer-workspace-add">
+                <div className="welcome-workspace-popover-header">Add a workspace</div>
+                <div
+                  className="composer-workspace-access-toggle"
+                  role="radiogroup"
+                  aria-label="Access for the folder you add"
+                >
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={addAccess === 'read'}
+                    className={`composer-workspace-access-option ${
+                      addAccess === 'read' ? 'is-active' : ''
+                    }`}
+                    onClick={() => setAddAccess('read')}
+                    title="Read-only: agents can view files in the folder"
+                  >
+                    Read
                   </button>
-                ))}
+                  <button
+                    type="button"
+                    role="radio"
+                    aria-checked={addAccess === 'write'}
+                    className={`composer-workspace-access-option ${
+                      addAccess === 'write' ? 'is-active' : ''
+                    }`}
+                    onClick={() => setAddAccess('write')}
+                    title="Read + write: agents can edit files and open PRs for the folder"
+                  >
+                    Write
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
+                  onClick={() => handleSelectFromPopover(() => onAddFolder(addAccess))}
+                  title={
+                    addAccess === 'write'
+                      ? 'Attach a folder agents in this chat can read AND edit'
+                      : 'Attach a folder agents in this chat can read'
+                  }
+                >
+                  <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                    {addAccess === 'write' ? '✎' : '👁'}
+                  </span>
+                  <span className="welcome-workspace-popover-row-name">
+                    Add folder ({addAccess === 'write' ? 'write' : 'read'} access)…
+                  </span>
+                </button>
               </div>
             )}
+            {/*
+              1.0.6-EW66 — "Switch primary": rebind the chat's primary
+              workspace to another known folder, open a brand-new
+              folder as the primary, or drop to a workspace-less
+              system chat. (Distinct from "Add a workspace" above,
+              which keeps the primary and attaches an additional one.)
+            */}
             <div className="welcome-workspace-popover-section welcome-workspace-popover-actions">
+              <div className="welcome-workspace-popover-header">Switch primary workspace</div>
+              {others.map((ws) => (
+                <button
+                  key={ws.id}
+                  type="button"
+                  role="menuitem"
+                  className="welcome-workspace-popover-row"
+                  onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
+                  title={ws.path}
+                >
+                  <span className="welcome-workspace-popover-row-name">
+                    {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                  </span>
+                  {ws.path && (
+                    <span className="welcome-workspace-popover-row-path">{ws.path}</span>
+                  )}
+                </button>
+              ))}
               <button
                 type="button"
                 role="menuitem"
@@ -5642,36 +5959,10 @@ function ComposerWorkspaceSwitcher({
                 <span className="welcome-workspace-popover-row-glyph" aria-hidden>
                   +
                 </span>
-                <span className="welcome-workspace-popover-row-name">Add new workspace…</span>
+                <span className="welcome-workspace-popover-row-name">
+                  Open new folder as workspace…
+                </span>
               </button>
-              {/*
-                1.0.5-EW42a — Proactive read-only grant for a SECONDARY
-                folder, without switching the primary workspace. The
-                user clicks → OS folder picker → one `ExternalPathGrant`
-                per chat-provider gets issued + persisted → the
-                `ExternalPathAboveRow` banner appears immediately
-                showing the new folder + branch + READ ACCESS chip.
-                Hidden for welcome-state chats (no saved chat record
-                to attach grants to yet) — the parent passes
-                `onGrantReadAccessFolder` only when the current chat
-                has an `appChatId`.
-              */}
-              {onGrantReadAccessFolder && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="welcome-workspace-popover-row welcome-workspace-popover-row-action"
-                  onClick={() => handleSelectFromPopover(onGrantReadAccessFolder)}
-                  title="Grant agents in this chat read-only access to a folder outside the workspace"
-                >
-                  <span className="welcome-workspace-popover-row-glyph" aria-hidden>
-                    👁
-                  </span>
-                  <span className="welcome-workspace-popover-row-name">
-                    Grant read access to another folder…
-                  </span>
-                </button>
-              )}
               <button
                 type="button"
                 role="menuitem"
@@ -9565,13 +9856,23 @@ function App(): React.JSX.Element {
    * the cancel + invalid-state paths return structured `ok: false`
    * results, not throws.
    */
-  const handleGrantReadAccessFolder = async () => {
+  /**
+   * 1.0.6-EW66-1c — Attach an *additional* workspace folder with a
+   * caller-chosen access level (read OR write). Generalizes the old
+   * read-only `handleGrantReadAccessFolder`. The IPC
+   * (`external-path:pick-and-persist`) + the per-provider write
+   * enforcement already honour `access: 'write'` (Codex
+   * `writableRoots`, Gemini `hasExternalPathGrantForTarget`,
+   * Claude/Kimi `--add-dir` + approval gate), so no main-process
+   * change is needed — write is free parameterization here.
+   */
+  const handleAddWorkspaceFolder = async (access: ExternalPathGrant['access']) => {
     const chatId = currentChat?.appChatId
     if (!chatId) return
     try {
       const result = await window.api.pickAndPersistExternalPathGrant({
         chatId,
-        access: 'read'
+        access
       })
       if (!result.ok) {
         // 'cancelled' is the common path; 'no-chat' / 'no-provider'
@@ -9581,7 +9882,7 @@ function App(): React.JSX.Element {
         // anything meaningful for.
         return
       }
-      // Banner appears via the main → renderer chat-updated
+      // Banner / diff row appears via the main → renderer chat-updated
       // broadcast; nothing else to do on this side.
     } catch (err) {
       console.warn('[external-path:pick-and-persist] failed', err)
@@ -10169,6 +10470,24 @@ function App(): React.JSX.Element {
 
   const handleRemoveExternalPathGrant = (id: string) => {
     updateExternalPathGrants(externalPathGrants.filter((grant) => grant.id !== id))
+  }
+
+  // 1.0.6-EW66 — Remove ALL grants for a path (an ensemble stores
+  // one grant per enabled participant-provider for the same folder),
+  // so the workspace manager's × removes the whole additional
+  // workspace rather than a single provider's grant.
+  const handleRemoveExternalPathGrantsByPath = (path: string) => {
+    updateExternalPathGrants(externalPathGrants.filter((grant) => grant.path !== path))
+  }
+
+  // 1.0.6-EW66 — Apply a renderer-supplied drag order to the
+  // additional-workspace list. `reorderExternalPathGrantsByPath`
+  // rewrites each grant's per-path `order` to match `orderedPaths`;
+  // the write goes through `updateExternalPathGrants` → saveChat.
+  // `order` sits outside the HMAC signing payload, so rewriting it
+  // never invalidates a grant signature.
+  const handleReorderExternalPathGrants = (orderedPaths: string[]) => {
+    updateExternalPathGrants(reorderExternalPathGrantsByPath(externalPathGrants, orderedPaths))
   }
 
   const handleSelectChat = async (chat: ChatRecord) => {
@@ -19941,15 +20260,23 @@ function App(): React.JSX.Element {
                     onAddNewWorkspace={handleSelectWorkspace}
                     onSelectNoWorkspace={handleNewGlobalChat}
                     /*
-                      1.0.5-EW42a — Only surface "Grant read access to
-                      another folder…" when the chat has a saved
-                      record we can attach grants to. Welcome-state
-                      chats and ephemeral states get the menu without
-                      this row.
+                      1.0.6-EW66 — multi-workspace manager. The
+                      additional-workspace grants + their repo
+                      metadata drive the "Current workspaces" list;
+                      reorder / remove / add-folder are only wired
+                      when the chat has a saved record to attach
+                      grants to (welcome-state chats get the picker
+                      without those affordances).
                     */
-                    onGrantReadAccessFolder={
-                      currentChat?.appChatId ? handleGrantReadAccessFolder : undefined
+                    additionalGrants={externalPathGrants}
+                    repoMetadata={externalPathRepoMetadata}
+                    onReorderWorkspaces={
+                      currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
                     }
+                    onRemoveWorkspacePath={
+                      currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
+                    }
+                    onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
                   />
                 )}
                 {threadTokenTallyLabel && (

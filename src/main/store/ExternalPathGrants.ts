@@ -155,6 +155,25 @@ export function reorderExternalPathGrantsByPath(
     })
 }
 
+/**
+ * 1.0.6-EW66 — Drop the display-only `order` field from grants
+ * bound for an execution / permission payload (provider dispatch
+ * in `ComposerService`, effective-permission resolution in
+ * `EffectiveRunPermissions`). `order` is a renderer concern (the
+ * composer workspace-manager list order) and is excluded from the
+ * HMAC signing payload; it has no meaning in the CLI request
+ * envelope, so execution paths strip it to keep their payloads
+ * minimal and stable.
+ */
+export function stripExternalPathGrantOrder(grants: ExternalPathGrant[]): ExternalPathGrant[] {
+  return grants.map((grant) => {
+    if (grant.order === undefined) return grant
+    const next = { ...grant }
+    delete next.order
+    return next
+  })
+}
+
 export function externalPathGrantMetadataLists(
   metadata: Record<string, unknown> | null | undefined
 ): ExternalPathGrant[] {

@@ -1,6 +1,9 @@
 import type { AgentRunPayload } from '../index'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
-import { coalesceExternalPathGrants } from '../store/ExternalPathGrants'
+import {
+  coalesceExternalPathGrants,
+  stripExternalPathGrantOrder
+} from '../store/ExternalPathGrants'
 import type {
   AppSettings,
   ChatRecord,
@@ -337,7 +340,9 @@ function normalizeComposerExternalPathGrants(
       duration: grant.duration || 'thisThread'
     })
   }
-  return coalesceExternalPathGrants(grants)
+  // 1.0.6-EW66 — `order` is a renderer/display-only field; it has no
+  // meaning in the provider dispatch payload, so strip it here.
+  return stripExternalPathGrantOrder(coalesceExternalPathGrants(grants))
 }
 
 function attachmentPromptAppendix(imagePaths: string[]): string {

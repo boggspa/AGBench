@@ -11,7 +11,10 @@ import type {
   PermissionPresetId,
   ProviderId
 } from './store/types'
-import { coalesceExternalPathGrants } from './store/ExternalPathGrants'
+import {
+  coalesceExternalPathGrants,
+  stripExternalPathGrantOrder
+} from './store/ExternalPathGrants'
 
 const AGENTIC_SERVICE_IDS: AgenticServiceId[] = [
   'shellCommands',
@@ -105,10 +108,14 @@ export function resolveEffectiveRunPermissions(
   const approvalMode =
     input.overrides?.approvalMode || preset.approvalMode || (presetId === 'read_only' ? 'plan' : 'default')
 
-  const externalPathGrants = coalesceExternalPathGrants([
-    ...(input.explicitExternalPathGrants || []),
-    ...(input.overrides?.externalPathGrants || [])
-  ]).filter((grant) => grant.provider === input.provider)
+  // 1.0.6-EW66 — strip the renderer-only `order` field: effective
+  // run permissions feed execution, not the composer workspace list.
+  const externalPathGrants = stripExternalPathGrantOrder(
+    coalesceExternalPathGrants([
+      ...(input.explicitExternalPathGrants || []),
+      ...(input.overrides?.externalPathGrants || [])
+    ])
+  ).filter((grant) => grant.provider === input.provider)
 
   return {
     presetId,
