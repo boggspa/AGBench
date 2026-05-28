@@ -77,6 +77,19 @@ describe('IpcValidation', () => {
     ).toThrow(/absolute workspace/)
   })
 
+  it('rejects the gated Grok provider at the IPC trust boundary (gate off)', () => {
+    // 1.0.6-G2b — 'grok' is a valid ProviderId at the type level, but with
+    // AGBENCH_EXPERIMENTAL_GROK off it is NOT in the IPC PROVIDERS accept-set,
+    // so a grok run payload is rejected at the boundary before any dispatch.
+    // This is the load-bearing guarantee that the gate-off state is inert.
+    // (G3c flips this on when the gate is enabled.)
+    expect(() =>
+      validateIpcArgs('run-agent', [
+        { provider: 'grok', workspace: '/tmp/workspace', prompt: 'hello' }
+      ])
+    ).toThrow(/known provider/)
+  })
+
   it('validates approval actions and external grant access', () => {
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'accept'])).not.toThrow()
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'maybe'])).toThrow(

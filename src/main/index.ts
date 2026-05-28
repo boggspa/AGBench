@@ -583,6 +583,18 @@ export function composerContenteditableEnabled(): boolean {
   const value = process.env.AGBENCH_COMPOSER_CONTENTEDITABLE
   return value === '1' || value === 'true' || value === 'yes'
 }
+/**
+ * 1.0.6-G — Internal experimental gate for the Grok provider arc. Default
+ * OFF: with this unset, 'grok' is a valid ProviderId at the type level but is
+ * rejected at every trust boundary (IPC `PROVIDERS` set, `assertProviderId`,
+ * the provider-adapter registry) and appears in no user-visible list, so the
+ * gate-off state is structurally inert. Set `AGBENCH_EXPERIMENTAL_GROK=1` to
+ * enable the gated read-only Grok runtime (G3).
+ */
+export function experimentalGrokProviderEnabled(): boolean {
+  const value = process.env.AGBENCH_EXPERIMENTAL_GROK
+  return value === '1' || value === 'true' || value === 'yes'
+}
 
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
@@ -4153,6 +4165,9 @@ async function resolveCliProviderBinary(
 
   const pathCandidates = getCliSearchDirs().map((entry) => join(entry, binaryName))
   const commonCandidates = [
+    // Grok installs to ~/.grok/bin by default; check it first so the gated
+    // Grok runtime resolves even in a limited-PATH (packaged) context.
+    ...(provider === 'grok' ? [join(os.homedir(), '.grok', 'bin', binaryName)] : []),
     join(os.homedir(), '.local', 'bin', binaryName),
     join(os.homedir(), '.npm-global', 'bin', binaryName),
     join(os.homedir(), '.bun', 'bin', binaryName),
