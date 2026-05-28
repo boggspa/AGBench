@@ -8965,11 +8965,26 @@ button.sidebar-item {
  * `!important` flags counter the base grid declaration's
  * specificity since both rules target `.app-file-editor`. */
 .popout-body .app-file-editor {
-  width: 100%;
-  max-width: none;
+  /* Fill the popout window. The `!important` + static positioning are
+   * required to beat the main-app responsive rule (`@media (max-width:
+   * 1180px) .app-file-editor { position: absolute; right: 0; width:
+   * min(460px, …) !important }`) which otherwise fires inside a narrow
+   * popout window and pins the panel to the right with a big gap on the
+   * left — only disappearing once the window grows past 1180px. The
+   * popout is its own window, not a docked sidebar, so it should always
+   * span the full width regardless of size. Higher specificity
+   * (`.popout-body .app-file-editor`) lets these win over the media
+   * query's `!important` declaration. */
+  position: static !important;
+  inset: auto !important;
+  z-index: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
   height: 100%;
   padding-top: 0;
   border: 0;
+  box-shadow: none !important;
   background: transparent;
   /* Override the in-app row-stack grid (lines 7846-7847) with
    * a 2-column sidebar+main layout. */
