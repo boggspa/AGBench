@@ -4274,10 +4274,11 @@ const GEMINI_DEFAULT_MODELS = [
   { id: 'flash', label: 'Flash' },
   { id: 'flash-lite', label: 'Flash Lite' }
 ] satisfies CodexModelOption[]
-// 1.0.6-G3d — Grok (gated, read-only). A single CLI-default option for now;
-// real Grok model metadata is a later slice (G10).
+// 1.0.6-G3d/G3g — Grok (gated, read-only). `grok-build` is the real CLI model
+// id (`grok models` → default), shown as its marketing name "Grok 4.3". Fuller
+// model metadata is a later slice (G10).
 const GROK_DEFAULT_MODELS = [
-  { id: 'cli-default', label: 'CLI Default', isDefault: true }
+  { id: 'grok-build', label: 'Grok 4.3', isDefault: true }
 ] satisfies CodexModelOption[]
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
@@ -8621,7 +8622,7 @@ function App(): React.JSX.Element {
     if (provider === 'codex') return codexModels[0]?.id || CODEX_DEFAULT_MODEL
     if (provider === 'claude') return 'default'
     if (provider === 'kimi') return KIMI_DEFAULT_MODEL
-    if (provider === 'grok') return 'cli-default'
+    if (provider === 'grok') return 'grok-build'
     return 'flash-lite'
   }
 
@@ -8634,9 +8635,10 @@ function App(): React.JSX.Element {
     if (provider === 'codex') return isCodexModelId(modelId)
     if (provider === 'claude') return isClaudeModelId(modelId)
     if (provider === 'kimi') return isKimiModelId(modelId)
-    // Grok (gated, read-only): only the CLI-default sentinel or a genuine grok
-    // model id is valid — never a model carried over from another provider.
-    if (provider === 'grok') return modelId === 'cli-default' || modelId.startsWith('grok')
+    // Grok (gated, read-only): only a genuine grok* model id is valid — never a
+    // model carried over from another provider. A legacy 'cli-default' coerces
+    // to the default (grok-build) so the picker shows "Grok 4.3", not blank.
+    if (provider === 'grok') return modelId.startsWith('grok')
     return isGeminiModelId(modelId)
   }
 
