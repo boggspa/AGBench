@@ -25491,7 +25491,10 @@ input:disabled, select:disabled, textarea:disabled {
   --obsidian-composer-rim: rgba(255, 255, 255, 0.28);
   --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.42);
   --obsidian-composer-border: rgba(255, 255, 255, 0.10);
-  --obsidian-composer-radius: 14px;
+  /* 1.0.5-EW57 — Radius matched to the above-rows (was 14px
+   * with rows at 6px). Same crisp satellite-card read for the
+   * whole stack now. */
+  --obsidian-composer-radius: 6px;
   --obsidian-composer-radius-rows: 6px;
   --obsidian-composer-rim-width: 2px;
   /* Subtle white ambient glow — the surface looks lit. */
@@ -25502,17 +25505,33 @@ input:disabled, select:disabled, textarea:disabled {
   --obsidian-rim-chase-duration: 12s;
 }
 
-[data-composer-style="obsidian"] .composer-surface {
+/* 1.0.5-EW57 — Doubled-attribute selector specificity trick.
+ * The base prompt-surface rules at ~line 6399 use selectors like
+ * `[data-prompt-surface="theme"][data-visual-effect="liquid_glass"]
+ *  .composer-surface` which has specificity 0,2,1. My previous
+ * `[data-composer-style="obsidian"] .composer-surface` was only
+ * 0,1,1 — so when the user had `data-prompt-surface="theme"` +
+ * a glass visual effect (the default!), the glass rule won and
+ * the composer kept its translucent fill.
+ *
+ * Doubling `[data-composer-style="obsidian"]` (which always
+ * matches the same root element) bumps my selector to 0,2,1,
+ * matching the prompt-surface rule. My block lives later in
+ * source order, so the cascade picks mine. !important on the
+ * critical declarations (background, backdrop-filter) provides
+ * belt-and-suspenders insurance against any future override
+ * with even higher specificity. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface {
   position: relative;
   /* Solid dark gray. No top-edge tint gradient — that read as
    * a horizon line and made the surface feel uneven. The chase
    * pseudo-element provides the only directional highlight. */
-  background: var(--obsidian-composer-fill);
+  background: var(--obsidian-composer-fill) !important;
   /* Beat any inherited backdrop-filter / blur from
-   * appearance-mode rules; the composer must look fully opaque
-   * regardless of glass mode. */
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+   * appearance-mode + prompt-surface rules; the composer must
+   * look fully opaque regardless of glass mode. */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border: 1px solid var(--obsidian-composer-border);
   border-radius: var(--obsidian-composer-radius);
   box-shadow:
@@ -25527,11 +25546,8 @@ input:disabled, select:disabled, textarea:disabled {
   transition: box-shadow 220ms ease, border-color 220ms ease;
 }
 
-[data-composer-style="obsidian"] .composer-surface:focus-within {
-  /* On focus the rim intensifies + the glow lifts slightly.
-   * The chase keeps running — it doesn't pause on focus
-   * because the user wants to feel the surface stay alive
-   * while they type, not freeze to acknowledge them. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface:focus-within {
+  /* On focus the rim intensifies + the glow lifts slightly. */
   box-shadow:
     inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim-strong),
     inset 0 -12px 24px -16px rgba(0, 0, 0, 0.7),
@@ -25637,13 +25653,17 @@ input:disabled, select:disabled, textarea:disabled {
  * Each row gets its own rim-chase pseudo-element so the
  * shimmer travels every detached card, not just the composer.
  * Same 12s duration so the four perimeters loop in lockstep. */
-[data-composer-style="obsidian"] .composer-above-bar,
-[data-composer-style="obsidian"] .ensemble-above-row,
-[data-composer-style="obsidian"] .queued-messages-above-row,
-[data-composer-style="obsidian"] .composer-create-pr-row {
-  background: var(--obsidian-composer-fill);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+/* Same doubled-attribute trick + !important for the above-row
+ * fills — the per-shell + per-theme rules elsewhere in main.css
+ * apply 0,2,1 specificity, so the satellite rows need the
+ * same bump to win the cascade. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .queued-messages-above-row,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-create-pr-row {
+  background: var(--obsidian-composer-fill) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border: 1px solid var(--obsidian-composer-border);
   border-radius: var(--obsidian-composer-radius-rows);
   box-shadow:
@@ -25702,41 +25722,53 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Satellite picker chrome — the boss-brief wants the Model /
  * Reasoning / Approval / Turn-Continuous-Work Session controls
- * to read as floating text, NOT pill chrome. The Obsidian
- * composer carries the rim identity; the controls inside
- * shouldn't compete with their own borders + fills.
+ * to read as floating text, NOT pill chrome.
  *
- * Strips:
- *   - background (was a panel-bg tinted fill)
- *   - border (was 1px panel-border)
- *   - border-radius (was 999px pill)
- *   - any box-shadow
+ * 1.0.5-EW57 — Use the universal `[data-composer-control]`
+ * attribute selector to catch ALL control triggers at once.
+ * The previous EW56 selector listed individual classes
+ * (.composer-picker-label, .composer-picker-command, etc.)
+ * and missed:
+ *   - .composer-combined-picker-trigger (the Model picker)
+ *   - .composer-combined-picker-trigger (the Approval picker)
+ *     — both of these carry `data-composer-control="model"`
+ *     and `data-composer-control="permission"` respectively.
  *
- * `!important` necessary because some of these classes set the
- * properties at higher specificity (e.g. focus rings, light-
- * theme overrides, per-shell tunings). The Obsidian style is
- * intentionally the most restrained surface in the app, and
- * the chrome flattening has to win cleanly. */
-[data-composer-style="obsidian"] .composer-picker-label,
-[data-composer-style="obsidian"] .composer-picker-command,
-[data-composer-style="obsidian"] .composer-image-picker-btn,
-[data-composer-style="obsidian"] .composer-control-button,
-[data-composer-style="obsidian"] .composer-schedule-label,
-[data-composer-style="obsidian"] .composer-runtime-profile,
-[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"],
-[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+ * `[data-composer-control]` (any value) is set on every
+ * control button via the React component contract, so this
+ * single selector reliably hits all of them. The legacy
+ * class-based selectors stay as a fallback for controls that
+ * don't carry the data attr (.composer-schedule-label,
+ * .composer-runtime-profile).
+ *
+ * Doubled `[data-composer-style="obsidian"]` for the
+ * specificity-trick same as the composer-surface above. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] [data-composer-control],
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-picker-label,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-picker-command,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-image-picker-btn,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-control-button,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-schedule-label,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-runtime-profile,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-combined-picker-trigger,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
   background: transparent !important;
+  background-image: none !important;
   border: 0 !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   padding: 4px 8px;
   color: rgba(255, 255, 255, 0.74);
+  /* Beat any backdrop-filter the base picker styles apply. */
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
-[data-composer-style="obsidian"] .composer-picker-label:hover,
-[data-composer-style="obsidian"] .composer-picker-command:hover:not(:disabled),
-[data-composer-style="obsidian"] .composer-image-picker-btn:hover:not(:disabled),
-[data-composer-style="obsidian"] .composer-control-button:hover:not(:disabled),
-[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+[data-composer-style="obsidian"][data-composer-style="obsidian"] [data-composer-control]:hover:not(:disabled),
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-picker-label:hover,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-combined-picker-trigger:hover:not(:disabled),
+[data-composer-style="obsidian"][data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
   color: #fff !important;
   /* No background — the hover state is just a brighter text
    * weight. Premium = restrained, even on interaction. */
@@ -25746,9 +25778,19 @@ input:disabled, select:disabled, textarea:disabled {
  * (Turn / Continuous / Work Session) needs SOME way to show
  * which mode is selected. Use a 1px bottom underline rather
  * than reintroducing a pill — keeps the satellite read. */
-[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+[data-composer-style="obsidian"][data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
   color: #fff !important;
   box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.4) !important;
+}
+/* Inner pill-suffix spans inside the combined-picker-trigger
+ * (e.g. the "Medium" suffix on "GPT-5.5 · Medium") also
+ * carry their own background tinting — flatten them too. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-combined-picker-trigger-primary,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-combined-picker-trigger-suffix {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
 
 /* Send button keeps its capsule but the accent edge picks up

@@ -573,7 +573,17 @@
  * inherits the light palette without leaking out of the
  * sidebar boundary. Sidebar-bg goes very transparent (0.06)
  * so the dusk halo behind it reads through aggressively. */
-[data-theme="obsidian"] .app-sidebar {
+/* 1.0.5-EW57 — Doubled-attribute specificity trick AND
+ * `!important` on the critical paint declarations. Previous
+ * EW56 attempt used `[data-theme="obsidian"] .app-sidebar`
+ * (specificity 0,1,1), which lost to the
+ * `[data-appearance="X"] .app-sidebar` rules in main.css
+ * (also 0,1,1, but loaded later in source order — main.css
+ * wins ties). The doubled selector takes us to 0,2,1; the
+ * `!important` on `background` plus the explicit per-mode
+ * overrides below ensure the light wash actually paints
+ * regardless of which appearance the user picks. */
+[data-theme="obsidian"][data-theme="obsidian"] .app-sidebar {
   /* Sidebar-specific tokens — light palette. */
   --sidebar-bg: rgba(238, 242, 247, 0.06);
   --sidebar-bg-solid: #eef2f7;
@@ -596,30 +606,33 @@
    * surface itself is light. A subtle dark right-edge replaces
    * it as the visual separator from the transcript. */
   box-shadow:
-    inset 1px 0 0 rgba(255, 255, 255, 0.08),
-    inset -1px 0 0 rgba(18, 21, 27, 0.18);
-  border-right-color: rgba(18, 21, 27, 0.18);
+    inset 1px 0 0 rgba(255, 255, 255, 0.18),
+    inset -1px 0 0 rgba(18, 21, 27, 0.22) !important;
+  border-right-color: rgba(18, 21, 27, 0.22) !important;
 }
 
-/* Per-appearance-mode sidebar tunings. Glass modes get even
- * more transparent so the warm dusk halo reads through the
- * light sidebar strongly. */
+/* Per-appearance-mode sidebar tunings. Glass modes get a
+ * brighter light wash than the EW56 attempt so the light read
+ * is unmistakable even when sitting on top of macOS sidebar
+ * vibrancy (which trends dark on dark-mode systems). */
 [data-theme="obsidian"][data-appearance="solid"] .app-sidebar {
-  background: rgba(238, 242, 247, 0.18);
+  background: rgba(238, 242, 247, 0.42) !important;
 }
 [data-theme="obsidian"][data-appearance="soft_glass"] .app-sidebar {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)),
-    rgba(238, 242, 247, 0.04);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.10)),
+    rgba(238, 242, 247, 0.18) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
 }
 [data-theme="obsidian"][data-appearance="native_glass"] .app-sidebar {
-  /* macOS vibrancy handles the blur — we just paint a hairline
-   * light wash so the system blur reads as light-tinted glass,
-   * not raw vibrancy. */
+  /* macOS vibrancy paints behind via the BrowserWindow's
+   * `vibrancy: 'sidebar'` option — on dark-mode systems this
+   * material is dark, so we paint a substantial light wash on
+   * top to flip the read to light. The previous 0.10 / 0.02
+   * gradient was too faint to overcome the vibrancy. */
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02));
+    linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.20)) !important;
 }
 
 [data-theme="rainbow"],
