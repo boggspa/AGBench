@@ -25720,6 +25720,47 @@ input:disabled, select:disabled, textarea:disabled {
   }
 }
 
+/* 1.0.5-EW58 — Match the Claude shell's above-bar element order
+ * inside the Create-PR row. Default order packs branch → files →
+ * stats left and pushes the action wrap (Review / Create PR) to
+ * the far right via its own `margin-left: auto`, leaving a wide
+ * dead gap in the middle of the obsidian row.
+ *
+ * Claude's layout (per the rules at main.css:26774-26822) is the
+ * tighter "right-anchored trio" pattern:
+ *
+ *   [branch] .................. [files][stats][Review changes]
+ *
+ * Implementation:
+ *   - files: order 8, margin-left: auto — consumes leftover
+ *     space and pushes the trio to the right edge
+ *   - stats: order 9, margin-left: 0 — sits flush with files
+ *   - diff-action-menu-wrap (Review changes): order 10,
+ *     margin-left: 0 — beats the base 17363 `margin-left: auto`
+ *     so the wrap sits tight to stats
+ *   - action button: -6px margin-left to tighten the gap-to-stats
+ *     from 10px to a real-Claude-style 4px effective spacing
+ *
+ * Doubled-attribute selector for the same specificity-trick we
+ * use across the Obsidian shell — beats the base
+ * `.composer-diff-action-menu-wrap { margin-left: auto }` at
+ * 0,1,0 with our 0,2,1. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-above-bar-files {
+  order: 8;
+  margin-left: auto;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-above-bar-stats {
+  order: 9;
+  margin-left: 0;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-diff-action-menu-wrap {
+  order: 10;
+  margin-left: 0;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-above-bar .composer-diff-action-menu-wrap .composer-above-bar-action {
+  margin-left: -6px;
+}
+
 /* Satellite picker chrome — the boss-brief wants the Model /
  * Reasoning / Approval / Turn-Continuous-Work Session controls
  * to read as floating text, NOT pill chrome.
