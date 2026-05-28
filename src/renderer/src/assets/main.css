@@ -31318,3 +31318,254 @@ input:disabled, select:disabled, textarea:disabled {
 .message-actions-chip svg {
   display: block;
 }
+
+/* ============================================================
+ * 1.0.6-EW76 — System-theme composer-shell compatibility.
+ *
+ * Alabaster / Obsidian are APP system themes, not composer shells.
+ * The composer-shell rules above are intentionally distinctive, but
+ * these two app themes sit at the contrast extremes and can leak light
+ * or dark token assumptions into provider shells. Keep this section
+ * narrowly scoped to the four provider shells Chris called out:
+ * Codex, Claude, Gemini, and Kimi. The signed-off Obsidian and
+ * Alabaster composer shells are untouched by these selectors.
+ * ============================================================ */
+
+/* Alabaster app theme: Codex + Claude composer shells keep their dark
+ * textarea/surface treatment, with explicit dark-subtree tokens so typed
+ * text, the mention overlay, and inline controls stay readable. */
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-area,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-above-bar,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .ensemble-above-row,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .queued-messages-above-row,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-create-pr-row {
+  --text-primary: rgba(255, 255, 255, 0.94);
+  --text-secondary: rgba(255, 255, 255, 0.72);
+  --text-tertiary: rgba(255, 255, 255, 0.54);
+  --text-muted: rgba(255, 255, 255, 0.44);
+  --surface-text: rgba(255, 255, 255, 0.92);
+  --surface-text-muted: rgba(255, 255, 255, 0.52);
+  --panel-bg: #151519;
+  --panel-elevated-bg: #1c1c21;
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --composer-bg: #151519;
+  --composer-bg-solid: #151519;
+  --composer-glass-bg: rgba(21, 21, 25, 0.98);
+  --composer-glass-border: rgba(255, 255, 255, 0.14);
+  --composer-border: rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  color-scheme: dark;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface {
+  background: linear-gradient(180deg, #1c1c21 0%, #151519 100%) !important;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight,
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight-content {
+  color: rgba(255, 255, 255, 0.94) !important;
+  caret-color: rgba(255, 255, 255, 0.96);
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.94) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.42) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="ensemble-mode"], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-ensemble-mode-button.is-active {
+  color: rgba(255, 255, 255, 0.96) !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+}
+
+[data-theme="alabaster"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, #1b1b20 0%, #151519 100%) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22) !important;
+  color: rgba(255, 255, 255, 0.88) !important;
+}
+
+/* Obsidian app theme: Codex + Claude swap to a light-mode surface so
+ * their provider shell identity remains legible on the near-black app
+ * background. This is intentionally NOT applied to the Obsidian composer
+ * shell, which stays theme-immune. */
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-area,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-above-bar,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .ensemble-above-row,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .queued-messages-above-row,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-create-pr-row {
+  --text-primary: rgba(18, 21, 27, 0.94);
+  --text-secondary: rgba(18, 21, 27, 0.72);
+  --text-tertiary: rgba(18, 21, 27, 0.56);
+  --text-muted: rgba(18, 21, 27, 0.46);
+  --surface-text: rgba(18, 21, 27, 0.92);
+  --surface-text-muted: rgba(18, 21, 27, 0.54);
+  --panel-bg: #f7f6f2;
+  --panel-elevated-bg: #ffffff;
+  --panel-border: rgba(18, 21, 27, 0.14);
+  --composer-bg: #f7f6f2;
+  --composer-bg-solid: #f7f6f2;
+  --composer-glass-bg: rgba(247, 246, 242, 0.98);
+  --composer-glass-border: rgba(18, 21, 27, 0.14);
+  --composer-border: rgba(18, 21, 27, 0.14);
+  color: rgba(18, 21, 27, 0.9);
+  color-scheme: light;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-surface {
+  background: linear-gradient(180deg, #ffffff 0%, #f3f2ee 100%) !important;
+  border-color: rgba(18, 21, 27, 0.15) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight,
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea-highlight-content {
+  color: rgba(18, 21, 27, 0.94) !important;
+  caret-color: rgba(18, 21, 27, 0.96);
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.94) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"]) .composer-textarea::placeholder {
+  color: rgba(18, 21, 27, 0.42) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.42) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control="model"], [data-composer-control="provider"], [data-composer-control="workspace"], [data-composer-control="ensemble-mode"], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(18, 21, 27, 0.82) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-ensemble-mode-button.is-active {
+  color: rgba(18, 21, 27, 0.96) !important;
+  background: rgba(18, 21, 27, 0.12) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  :is(.composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, #ffffff 0%, #f4f3ef 100%) !important;
+  border-color: rgba(18, 21, 27, 0.14) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.28) !important;
+  color: rgba(18, 21, 27, 0.9) !important;
+}
+
+[data-theme="obsidian"]:is([data-composer-style="codex"], [data-composer-style="claude"])
+  .composer-action-btn.run-btn:not(:disabled) {
+  background: rgba(18, 21, 27, 0.12) !important;
+  color: rgba(18, 21, 27, 0.92) !important;
+}
+
+/* Gemini/Kimi provider shells should keep their own provider chrome in
+ * both extreme app themes. Late light/glass rules otherwise make the
+ * two upper rows look like AGBench native rows while the textarea keeps
+ * the provider shell. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-area,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-above-bar,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .ensemble-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .queued-messages-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-create-pr-row {
+  --text-primary: rgba(246, 249, 255, 0.94);
+  --text-secondary: rgba(246, 249, 255, 0.72);
+  --text-muted: rgba(246, 249, 255, 0.46);
+  --surface-text: rgba(246, 249, 255, 0.92);
+  --surface-text-muted: rgba(246, 249, 255, 0.52);
+  --panel-border: rgba(118, 152, 255, 0.26);
+  --composer-border: rgba(118, 152, 255, 0.28);
+  color: rgba(246, 249, 255, 0.9);
+  color-scheme: dark;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background:
+    radial-gradient(circle at 12% 0%, rgba(90, 140, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(14, 22, 48, 0.98), rgba(6, 10, 24, 0.98)) !important;
+  border-color: rgba(118, 152, 255, 0.28) !important;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.32) !important;
+  color: rgba(246, 249, 255, 0.9) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-textarea, .composer-textarea-highlight, .composer-textarea-highlight-content) {
+  color: rgba(246, 249, 255, 0.94) !important;
+  caret-color: rgba(246, 249, 255, 0.96);
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.94) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-textarea::placeholder {
+  color: rgba(246, 249, 255, 0.42) !important;
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(246, 249, 255, 0.84) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"]
+  .composer-ensemble-mode-button.is-active {
+  background: rgba(90, 140, 255, 0.24) !important;
+  color: #ffffff !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-area,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-above-bar,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .ensemble-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .queued-messages-above-row,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-create-pr-row {
+  --text-primary: rgba(246, 246, 246, 0.94);
+  --text-secondary: rgba(246, 246, 246, 0.72);
+  --text-muted: rgba(246, 246, 246, 0.46);
+  --surface-text: rgba(246, 246, 246, 0.92);
+  --surface-text-muted: rgba(246, 246, 246, 0.52);
+  --panel-border: rgba(255, 255, 255, 0.14);
+  --composer-border: rgba(255, 255, 255, 0.14);
+  color: rgba(246, 246, 246, 0.9);
+  color-scheme: dark;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-surface, .composer-above-bar, .ensemble-above-row, .queued-messages-above-row, .composer-create-pr-row) {
+  background: linear-gradient(180deg, rgba(35, 35, 35, 0.98), rgba(22, 22, 22, 0.98)) !important;
+  border-color: rgba(255, 255, 255, 0.13) !important;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.34) !important;
+  color: rgba(246, 246, 246, 0.9) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-textarea, .composer-textarea-highlight, .composer-textarea-highlight-content) {
+  color: rgba(246, 246, 246, 0.94) !important;
+  caret-color: rgba(246, 246, 246, 0.96);
+  -webkit-text-fill-color: rgba(246, 246, 246, 0.94) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-textarea::placeholder {
+  color: rgba(246, 246, 246, 0.42) !important;
+  -webkit-text-fill-color: rgba(246, 246, 246, 0.42) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  :is(.composer-combined-picker-trigger, .composer-combined-picker-trigger-primary, .composer-combined-picker-trigger-suffix, [data-composer-control], .composer-ensemble-mode-button, .composer-image-picker-btn, .composer-thread-token-tally, .composer-telemetry-row) {
+  color: rgba(246, 246, 246, 0.84) !important;
+}
+
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"]
+  .composer-ensemble-mode-button.is-active {
+  background: rgba(169, 189, 85, 0.7) !important;
+  color: #0a0a0c !important;
+}
