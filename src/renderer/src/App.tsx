@@ -200,6 +200,19 @@ import {
   shouldShowJumpToLatestPill,
   CODE_BLOCK_RESIZE_EVENT
 } from './lib/TranscriptScroll'
+import {
+  TRANSCRIPT_VIRTUALIZATION_ENABLED,
+  DEFAULT_OVERSCAN_PX,
+  projectRows,
+  selectWindow,
+  findScrollAnchor,
+  sumHeights,
+  getRowHeight,
+  measurementKey,
+  widthBucket,
+  type VirtualRow,
+  type VirtualWindow
+} from './lib/TranscriptVirtualWindow'
 import { shouldRunUsageRefresh } from './lib/usageRefresh'
 import { shouldRenderWelcome } from './lib/welcomeState'
 import { shouldCollapseUserMessage, truncateUserMessagePreview } from './lib/UserMessageCollapse'
@@ -5083,6 +5096,23 @@ type TranscriptPanelProps = {
    */
   onCopyMessage: (content: string) => void
   onDeleteMessage: (messageId: string) => void
+  /**
+   * 1.0.6-TV1 — when true, the transcript mounts only the visible window
+   * + overscan (spacer-above / spacer-below) instead of the full message
+   * list. Defaults to {@link TRANSCRIPT_VIRTUALIZATION_ENABLED} when
+   * omitted; tests pass `true` to exercise the windowed path while the
+   * global flag is still off. The non-virtualised branch is byte-for-byte
+   * the original render and is deleted in TV3 after soak.
+   */
+  virtualize?: boolean
+  /**
+   * 1.0.6-TV1 — the App-level auto-follow ref. Read (never written) by
+   * the windowing layer: when engaged the window pins to the bottom (so
+   * the last row is always mounted and the existing snap behaves
+   * identically), and the pre-paint anchor correction runs ONLY when it
+   * is disengaged. A stable ref, so it never perturbs the memo.
+   */
+  autoFollowRef?: React.MutableRefObject<boolean>
 }
 
 /**
@@ -6150,7 +6180,259 @@ function AgentQuestionCard({
   )
 }
 
-const TranscriptPanel = memo(
+/** Stable empty heights array so the disabled path allocates nothing. */
+const EMPTY_TRANSCRIPT_HEIGHTS: number[] = []
+/** Stable empty rows array for the non-virtualised render path. */
+const EMPTY_VIRTUAL_ROWS: VirtualRow[] = []
+
+/**
+ * 1.0.6-TV1 — In-house transcript windowing glue (renderer side).
+ *
+ * Pure window math lives in `lib/TranscriptVirtualWindow.ts`; this hook
+ * is the thin React/DOM layer that drives it inside `TranscriptPanel`.
+ * It mounts only the visible band + overscan and collapses everything
+ * else into a top/bottom spacer, so render work + DOM node count stop
+ * scaling with total chat length.
+ *
+ * Coexistence with the hardened scroll machinery in `App` (`autoFollowRef`
+ * + the four rAF re-pin sites + `lib/TranscriptScroll` predicates):
+ *
+ *   - The scroll container, its refs, `scrollHeight`, and every re-pin
+ *     site are untouched. Spacers + mounted rows always sum to the real
+ *     content height, so `scrollTop = scrollHeight` still means "true
+ *     bottom" and every predicate keeps working byte-for-byte.
+ *   - When auto-follow is engaged (streaming / pinned at the bottom) the
+ *     window is forced to the END (effective scrollTop = totalHeight −
+ *     viewport) so the last row is always mounted and `bottomSpacerPx`
+ *     is 0. The bottom path behaves exactly as the non-virtualised
+ *     transcript and the chat-switch snap never lands on a blank spacer.
+ *   - The single imperative scroll write is the pre-paint anchor
+ *     correction, gated to `!autoFollow`: it pins the row under the
+ *     viewport top across height changes so content above the viewport
+ *     mounting/measuring never makes the visible content jump.
+ *
+ * It attaches a deliberately READ-ONLY passive scroll listener to the
+ * scroller (a documented, intentional deviation from "no second scroll
+ * listener"): it never writes `scrollTop`, never touches `autoFollowRef`,
+ * and schedules no re-pin — it only rAF-coalesces a window-recompute tick
+ * and captures the scroll anchor, so it cannot perturb the auto-follow /
+ * re-pin coalescing. Row growth is measured with a shared `ResizeObserver`
+ * on individual blocks (NOT the scroll container — a block's rect is
+ * independent of the ancestor `scrollTop`, per `TranscriptScroll.ts`), so
+ * the historical observer-feedback loop cannot return.
+ */
+function useTranscriptVirtualization(params: {
+  enabled: boolean
+  rows: VirtualRow[]
+  scrollRef: React.RefObject<HTMLDivElement | null>
+  autoFollowRef?: React.MutableRefObject<boolean>
+  compactDensity: boolean
+}): {
+  window: VirtualWindow
+  blockRef: (el: HTMLDivElement | null) => void
+  spacerBottomRef: React.RefObject<HTMLDivElement | null>
+} {
+  const { enabled, rows, scrollRef, autoFollowRef, compactDensity } = params
+
+  const measurementsRef = useRef<Map<string, number>>(new Map())
+  const scrollTopRef = useRef(0)
+  const viewportRef = useRef(0)
+  const bucketRef = useRef(0)
+  const heightsRef = useRef<number[]>(EMPTY_TRANSCRIPT_HEIGHTS)
+  const rowsRef = useRef<VirtualRow[]>(rows)
+  const anchorRef = useRef<{ rowId: string; offsetWithin: number } | null>(null)
+  const blockElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
+  const spacerBottomRef = useRef<HTMLDivElement>(null)
+  const observerRef = useRef<ResizeObserver | null>(null)
+  const measureRafRef = useRef<number | null>(null)
+  const scrollRafRef = useRef<number | null>(null)
+
+  // Re-render signals. State (not refs) so a change forces a recompute;
+  // the heavy work is gone (only the small window mounts) so a per-frame
+  // recompute is cheap.
+  const [scrollTick, setScrollTick] = useState(0)
+  const [measureTick, setMeasureTick] = useState(0)
+  const bumpScroll = useCallback(() => setScrollTick((t) => (t + 1) % 0x7fffffff), [])
+  const bumpMeasure = useCallback(() => setMeasureTick((t) => (t + 1) % 0x7fffffff), [])
+
+  // Slot heights (measured-or-estimated, gap folded in). Recomputed only
+  // when the rows change or a measurement/bucket/density signal fires —
+  // never on plain scroll, so scrolling stays allocation-light.
+  const heights = useMemo(() => {
+    if (!enabled) return EMPTY_TRANSCRIPT_HEIGHTS
+    const m = measurementsRef.current
+    const bucket = bucketRef.current
+    return rows.map((row) => getRowHeight(row, m, bucket, false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled, rows, measureTick])
+  heightsRef.current = heights
+  rowsRef.current = rows
+
+  // Window selection. Inline (not memoised) because it reads scroll refs;
+  // it re-runs on every tick, which is cheap. When pinned, anchor to the
+  // bottom so the last row is always mounted.
+  const totalHeight = enabled ? sumHeights(heights, 0, heights.length) : 0
+  const pinned = Boolean(autoFollowRef?.current)
+  const effectiveScrollTop = pinned
+    ? Math.max(0, totalHeight - viewportRef.current)
+    : scrollTopRef.current
+  const virtualWindow: VirtualWindow = enabled
+    ? selectWindow({
+        scrollTop: effectiveScrollTop,
+        viewportHeight: viewportRef.current,
+        heights,
+        overscanPx: DEFAULT_OVERSCAN_PX
+      })
+    : { startIndex: 0, endIndex: rows.length, topSpacerPx: 0, bottomSpacerPx: 0 }
+  // Touch the tick so lint sees the dependency and the window recomputes
+  // when the scroll listener fires.
+  void scrollTick
+
+  // Read-only passive scroll + resize listener: refresh metrics, capture
+  // the anchor, and request a window recompute. Never writes scrollTop.
+  useEffect(() => {
+    if (!enabled) return
+    const scroller = scrollRef.current
+    if (!scroller) return
+    const readMetricsInto = (el: HTMLDivElement): boolean => {
+      scrollTopRef.current = el.scrollTop
+      viewportRef.current = el.clientHeight
+      const nextBucket = widthBucket(el.clientWidth)
+      const bucketChanged = nextBucket !== bucketRef.current
+      bucketRef.current = nextBucket
+      return bucketChanged
+    }
+    readMetricsInto(scroller)
+    bumpScroll()
+
+    const refresh = (): void => {
+      if (scrollRafRef.current !== null) return
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null
+        const el = scrollRef.current
+        if (!el) return
+        const bucketChanged = readMetricsInto(el)
+        // Capture the anchor from the CURRENT position in terms of the
+        // last-rendered heights, so a later measurement-driven re-render
+        // can keep this row visually fixed.
+        const a = findScrollAnchor(scrollTopRef.current, heightsRef.current)
+        const anchorRow = rowsRef.current[a.index]
+        anchorRef.current = anchorRow
+          ? { rowId: anchorRow.id, offsetWithin: a.offsetWithin }
+          : null
+        if (bucketChanged) bumpMeasure()
+        bumpScroll()
+      })
+    }
+    scroller.addEventListener('scroll', refresh, { passive: true })
+    window.addEventListener('resize', refresh)
+    return () => {
+      scroller.removeEventListener('scroll', refresh)
+      window.removeEventListener('resize', refresh)
+      if (scrollRafRef.current !== null) {
+        cancelAnimationFrame(scrollRafRef.current)
+        scrollRafRef.current = null
+      }
+    }
+  }, [enabled, scrollRef, bumpScroll, bumpMeasure])
+
+  // Shared ResizeObserver on individual mounted blocks → re-measure on
+  // async growth (CodeMirror, ActivityStack output reveal, image load).
+  useEffect(() => {
+    if (!enabled) return
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => {
+      if (measureRafRef.current !== null) return
+      measureRafRef.current = requestAnimationFrame(() => {
+        measureRafRef.current = null
+        bumpMeasure()
+      })
+    })
+    observerRef.current = ro
+    for (const el of blockElsRef.current.values()) {
+      if (el.isConnected) ro.observe(el)
+    }
+    return () => {
+      ro.disconnect()
+      observerRef.current = null
+      if (measureRafRef.current !== null) {
+        cancelAnimationFrame(measureRafRef.current)
+        measureRafRef.current = null
+      }
+    }
+  }, [enabled, bumpMeasure])
+
+  // Density change alters --space-lg (the row gap baked into slot
+  // heights), so every cached measurement is stale — clear + re-measure.
+  useEffect(() => {
+    if (!enabled) return
+    measurementsRef.current.clear()
+    bumpMeasure()
+  }, [enabled, compactDensity, bumpMeasure])
+
+  // Pre-paint: anchor correction (Phase 1) + slot measurement (Phase 2).
+  // No dependency array — runs after every commit; both phases are cheap
+  // and converge (only fire `bumpMeasure` when a height actually moved).
+  useLayoutEffect(() => {
+    if (!enabled) return
+    const scroller = scrollRef.current
+    if (!scroller) return
+
+    // Phase 1 — keep the anchored row visually fixed. Skipped while
+    // bottom-pinned (the App machinery owns scrollTop there).
+    if (!autoFollowRef?.current && anchorRef.current) {
+      const anchorId = anchorRef.current.rowId
+      const idx = rowsRef.current.findIndex((r) => r.id === anchorId)
+      if (idx >= 0) {
+        const desired = Math.max(
+          0,
+          sumHeights(heightsRef.current, 0, idx) + anchorRef.current.offsetWithin
+        )
+        if (Math.abs(scroller.scrollTop - desired) > 0.5) {
+          scroller.scrollTop = desired
+        }
+      }
+    }
+
+    // Phase 2 — measure mounted slot heights via offsetTop deltas (which
+    // include the row gap), keyed by `measurementKey`. Request one more
+    // pass when something moved; converges once stable.
+    const measurements = measurementsRef.current
+    const bucket = bucketRef.current
+    const mountedRows = rowsRef.current.slice(virtualWindow.startIndex, virtualWindow.endIndex)
+    const spacerBottom = spacerBottomRef.current
+    let changed = false
+    for (let i = 0; i < mountedRows.length; i++) {
+      const row = mountedRows[i]
+      const el = blockElsRef.current.get(row.id)
+      if (!el || !el.isConnected) continue
+      const nextEl =
+        i + 1 < mountedRows.length ? blockElsRef.current.get(mountedRows[i + 1].id) : spacerBottom
+      const slot =
+        nextEl && nextEl.isConnected ? nextEl.offsetTop - el.offsetTop : el.offsetHeight
+      if (!(slot > 0)) continue
+      const key = measurementKey(row.id, row.contentVersion, bucket, false)
+      const prev = measurements.get(key)
+      if (prev === undefined || Math.abs(prev - slot) > 0.5) {
+        measurements.set(key, slot)
+        changed = true
+      }
+    }
+    if (changed) bumpMeasure()
+  })
+
+  const blockRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const id = el.dataset.vrowId
+    if (!id) return
+    blockElsRef.current.set(id, el)
+    observerRef.current?.observe(el)
+  }, [])
+
+  return { window: virtualWindow, blockRef, spacerBottomRef }
+}
+
+export const TranscriptPanel = memo(
   function TranscriptPanel({
     scrollRef,
     contentRef,
@@ -6187,7 +6469,9 @@ const TranscriptPanel = memo(
     compactDensity,
     pendingQueuedAppRunIds,
     onCopyMessage,
-    onDeleteMessage
+    onDeleteMessage,
+    virtualize,
+    autoFollowRef
   }: TranscriptPanelProps) {
     const visibleMessages = useMemo(() => {
       const source = isWelcomeChat ? EMPTY_CHAT_MESSAGES : messages
@@ -6262,15 +6546,62 @@ const TranscriptPanel = memo(
       })
     }
 
+    // 1.0.6-TV1 — windowing. `virtualize` defaults to the global flag;
+    // tests pass it explicitly. When off, `useTranscriptVirtualization`
+    // is inert and the full-list branch below renders exactly as before.
+    const virtualizeEnabled = virtualize ?? TRANSCRIPT_VIRTUALIZATION_ENABLED
+    const virtualRows = useMemo(
+      () =>
+        virtualizeEnabled
+          ? projectRows(visibleMessages, new Set(runBoundaryByMessageId.keys()))
+          : EMPTY_VIRTUAL_ROWS,
+      [virtualizeEnabled, visibleMessages, runBoundaryByMessageId]
+    )
+    const {
+      window: virtualWindow,
+      blockRef: virtualBlockRef,
+      spacerBottomRef
+    } = useTranscriptVirtualization({
+      enabled: virtualizeEnabled,
+      rows: virtualRows,
+      scrollRef,
+      autoFollowRef,
+      compactDensity
+    })
+    // Messages mounted this frame: the window slice when virtualised,
+    // else the full list. Mapped via `row.index` so the slice stays
+    // correct even if `projectRows` skipped a malformed message.
+    const renderedMessages: ChatMessage[] = virtualizeEnabled
+      ? virtualRows
+          .slice(virtualWindow.startIndex, virtualWindow.endIndex)
+          .map((r) => visibleMessages[r.index])
+          .filter((m): m is ChatMessage => Boolean(m))
+      : visibleMessages
+
     return (
       <div className="transcript-scroll" ref={scrollRef}>
-        <div className="transcript-inner" ref={contentRef}>
-          {visibleMessages.map((msg) => {
+        <div
+          className={`transcript-inner${virtualizeEnabled ? ' transcript-virtualized' : ''}`}
+          ref={contentRef}
+        >
+          {virtualizeEnabled && (
+            <div
+              className="vlist-spacer-top"
+              style={{ height: virtualWindow.topSpacerPx }}
+              aria-hidden
+            />
+          )}
+          {renderedMessages.map((msg) => {
             const isDelegationCard = isSubThreadDelegationMessage(msg)
             const isReturnCard = isSubThreadReturnMessage(msg)
             const boundaryRun = runBoundaryByMessageId.get(msg.id)
             return (
-              <div key={`message-block-${msg.id}`} className="transcript-message-block">
+              <div
+                key={`message-block-${msg.id}`}
+                className="transcript-message-block"
+                data-vrow-id={msg.id}
+                ref={virtualizeEnabled ? virtualBlockRef : undefined}
+              >
                 {boundaryRun && (
                   <RunCard
                     run={boundaryRun}
@@ -6531,6 +6862,14 @@ const TranscriptPanel = memo(
               </div>
             )
           })}
+          {virtualizeEnabled && (
+            <div
+              className="vlist-spacer-bottom"
+              ref={spacerBottomRef}
+              style={{ height: virtualWindow.bottomSpacerPx }}
+              aria-hidden
+            />
+          )}
           {/*
             1.0.5-EW36 — Belt-and-braces fallback for the
             `ask_user_question` modal. The primary render path is
@@ -6756,7 +7095,9 @@ const TranscriptPanel = memo(
     previous.runningChatIds === next.runningChatIds &&
     previous.pendingQueuedAppRunIds === next.pendingQueuedAppRunIds &&
     previous.onCopyMessage === next.onCopyMessage &&
-    previous.onDeleteMessage === next.onDeleteMessage
+    previous.onDeleteMessage === next.onDeleteMessage &&
+    previous.virtualize === next.virtualize &&
+    previous.autoFollowRef === next.autoFollowRef
 )
 
 type SettingsPanelUpdate = {
@@ -17993,6 +18334,7 @@ function App(): React.JSX.Element {
               pendingQueuedAppRunIds={pendingQueuedAppRunIds}
               onCopyMessage={handleCopyMessage}
               onDeleteMessage={handleDeleteMessage}
+              autoFollowRef={autoFollowRef}
             />
             </>
           )}

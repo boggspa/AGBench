@@ -5,6 +5,7 @@ import {
   RUN_BOUNDARY_HEIGHT_PX,
   DEFAULT_OVERSCAN_PX,
   WIDTH_BUCKET_PX,
+  TRANSCRIPT_VIRTUALIZATION_ENABLED,
   widthBucket,
   classifyRowType,
   contentVersion,
@@ -16,6 +17,7 @@ import {
   selectWindow,
   computeAnchorDelta,
   windowReachesEnd,
+  findScrollAnchor,
   type VirtualRow
 } from './TranscriptVirtualWindow'
 
@@ -445,6 +447,54 @@ describe('TranscriptVirtualWindow', () => {
       expect(
         windowReachesEnd({ startIndex: 0, endIndex: 3, topSpacerPx: 0, bottomSpacerPx: 200 }, 5)
       ).toBe(false)
+    })
+  })
+
+  describe('findScrollAnchor', () => {
+    const heights = [100, 100, 100, 100, 100] // tops at 0,100,200,300,400
+
+    it('anchors the top row at scrollTop 0', () => {
+      expect(findScrollAnchor(0, heights)).toEqual({ index: 0, offsetWithin: 0 })
+    })
+
+    it('returns the row intersecting the viewport top with its sub-row offset', () => {
+      // scrollTop 250 sits 50px into row 2 (top at 200).
+      expect(findScrollAnchor(250, heights)).toEqual({ index: 2, offsetWithin: 50 })
+    })
+
+    it('treats a row boundary as belonging to the lower row', () => {
+      // At exactly 200, row 2 (top 200, bottom 300) is the first whose
+      // bottom is strictly past 200.
+      expect(findScrollAnchor(200, heights)).toEqual({ index: 2, offsetWithin: 0 })
+    })
+
+    it('anchors the last row when scrolled at/below the end', () => {
+      expect(findScrollAnchor(99999, heights)).toEqual({ index: 4, offsetWithin: 99999 - 400 })
+    })
+
+    it('round-trips with sumHeights: Σ(before anchor) + offsetWithin === scrollTop', () => {
+      // This is the invariant the renderer relies on to restore scroll:
+      // restoring to Σ(heights before anchor.index) + offsetWithin must
+      // reproduce the exact scrollTop the anchor was captured at.
+      for (const scrollTop of [0, 37, 100, 250, 399, 500]) {
+        const a = findScrollAnchor(scrollTop, heights)
+        const restored = sumHeights(heights, 0, a.index) + a.offsetWithin
+        expect(restored).toBeCloseTo(Math.min(scrollTop, 500), 5)
+      }
+    })
+
+    it('defends against empty heights and non-finite scrollTop', () => {
+      expect(findScrollAnchor(100, [])).toEqual({ index: 0, offsetWithin: 0 })
+      expect(findScrollAnchor(Number.NaN, heights)).toEqual({ index: 0, offsetWithin: 0 })
+    })
+  })
+
+  describe('TRANSCRIPT_VIRTUALIZATION_ENABLED', () => {
+    it('defaults OFF in TV1 (full-list render path stays the default)', () => {
+      // TV3 flips this to true after soak. Pinning the default here
+      // makes the flip an explicit, reviewed change rather than a
+      // silent behavioural shift.
+      expect(TRANSCRIPT_VIRTUALIZATION_ENABLED).toBe(false)
     })
   })
 })

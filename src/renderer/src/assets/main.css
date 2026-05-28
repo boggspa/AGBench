@@ -3010,6 +3010,35 @@ button.sidebar-item {
   gap: var(--space-sm);
 }
 
+/*
+ * 1.0.6-TV1 — virtualised transcript layout.
+ *
+ * The non-virtualised transcript spaces its blocks with a flex `gap`,
+ * which lives BETWEEN children and so vanishes when rows are collapsed
+ * into a spacer (the gaps of the hidden rows would silently disappear,
+ * desyncing the spacer height from the real content height). In
+ * virtualised mode we drop the container gap to 0 and re-express the
+ * same spacing as a per-child `margin-bottom`, so each row's slot
+ * height (border-box + margin) is self-contained and measurable via
+ * `offsetTop` deltas — top/bottom spacers then equal a clean sum of
+ * collapsed slot heights with no gap bookkeeping. The spacers carry no
+ * margin: their pixel height already accounts for the collapsed rows.
+ */
+.transcript-inner.transcript-virtualized {
+  gap: 0;
+}
+.transcript-inner.transcript-virtualized > *:not(.vlist-spacer-top):not(.vlist-spacer-bottom) {
+  margin-bottom: var(--space-lg);
+}
+.transcript-inner.transcript-virtualized > .vlist-spacer-top,
+.transcript-inner.transcript-virtualized > .vlist-spacer-bottom {
+  flex: 0 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+
 .gemini-terminal-split {
   position: absolute;
   left: calc(var(--space-lg) * 2);

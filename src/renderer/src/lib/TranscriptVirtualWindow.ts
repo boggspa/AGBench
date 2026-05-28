@@ -89,6 +89,16 @@ export const ESTIMATED_ROW_HEIGHT_PX: Record<VirtualRowType, number> = {
 export const RUN_BOUNDARY_HEIGHT_PX = 44
 
 /**
+ * Master gate for the in-house transcript virtualiser. Default OFF
+ * (TV1): the renderer keeps the byte-for-byte full-list render path and
+ * the windowing code is dormant. TV3 flips this to `true` once the soak
+ * passes; the renderer also accepts a per-instance `virtualize` prop
+ * override so tests can exercise the windowed path while the global
+ * default is still off.
+ */
+export const TRANSCRIPT_VIRTUALIZATION_ENABLED = false
+
+/**
  * Overscan, in CSS px, mounted above + below the strictly-visible
  * window. Pixel-based (not row-count) because transcript rows vary
  * wildly in height. ~1.5 viewports of headroom keeps fast scrolls from
@@ -339,4 +349,44 @@ export function computeAnchorDelta(input: {
  */
 export function windowReachesEnd(window: VirtualWindow, rowCount: number): boolean {
   return window.endIndex >= rowCount
+}
+
+export interface ScrollAnchor {
+  /** Index of the first row intersecting the viewport top. */
+  index: number
+  /** How far the viewport top sits below that row's top edge (px). */
+  offsetWithin: number
+}
+
+/**
+ * Identify the row the viewport top currently sits on, plus the
+ * sub-row offset. This is the anchor the renderer pins across height
+ * changes: capture `{ rowId, offsetWithin }` from the *current*
+ * scrollTop + heights on user scroll, then after a re-render whose
+ * heights changed (a row above the viewport mounted/measured), restore
+ * `scrollTop = Σ(heights before anchor) + offsetWithin`. Because the
+ * anchor row stays visually fixed, content above it can grow/shrink
+ * without the viewport jumping — the gold-standard virtualisation
+ * anchor, and stronger than a bare top-spacer delta (it also absorbs
+ * growth of mounted overscan rows that sit above the viewport).
+ *
+ * Returns the first row whose cumulative bottom is strictly past
+ * `scrollTop`. Defensive against empty / non-finite inputs.
+ */
+export function findScrollAnchor(scrollTop: number, heights: number[]): ScrollAnchor {
+  const hs = Array.isArray(heights) ? heights : []
+  const n = hs.length
+  if (n === 0) return { index: 0, offsetWithin: 0 }
+  const target = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0
+  let cum = 0
+  for (let i = 0; i < n; i++) {
+    const h = Number.isFinite(hs[i]) && hs[i] > 0 ? hs[i] : 0
+    if (cum + h > target) {
+      return { index: i, offsetWithin: target - cum }
+    }
+    cum += h
+  }
+  // Scrolled at/below the end: anchor the last row.
+  const lastIndex = n - 1
+  return { index: lastIndex, offsetWithin: Math.max(0, target - sumHeights(hs, 0, lastIndex)) }
 }
