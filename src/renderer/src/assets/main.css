@@ -6666,8 +6666,15 @@ button.sidebar-item {
   font-family: var(--composer-font-family);
   font-size: calc(var(--font-size-md) + 2px);
   resize: none;
-  min-height: 66px;
-  max-height: 200px;
+  /* 1.0.6 — uniform composer input height across every shell: start at a
+   * SINGLE line, grow with what you type, cap at THREE lines then scroll.
+   * `1.55em` == one line (matches `line-height: 1.55`); `+ 22px` is the
+   * top breathing-room padding. `!important` overrides each shell's
+   * bespoke min-height (48–66px, none of them `!important`) so the slim
+   * single-line default applies everywhere from one place. */
+  min-height: calc(1.55em + 22px) !important;
+  max-height: calc(1.55em * 3 + 22px) !important;
+  overflow-y: auto;
   line-height: 1.55;
   padding: 22px 6px 0;
 }
@@ -32439,15 +32446,59 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--grok-muted) !important;
 }
 
-/* Diff signal — monochrome. Differentiate add/del by weight +
- * opacity rather than green/red. The leading +/- glyphs carry
- * the meaning. */
+/* Create-PR above-row layout — mirror the Codex shell's 3-zone grid so
+ * the row reads: workspace · branch (left), files-changed + diff (centre),
+ * Review/Commit/Create-PR action (right). The default flex layout grouped
+ * the diff next to the branch and split the action into the centre, which
+ * was the wrong order on the Grok shell. Scoped to `.composer-above-bar`
+ * only — the ensemble chip strip + queued rows keep their own layout. */
+[data-composer-style="grok"] .composer-above-bar.style-unified,
+[data-composer-style="grok"] .composer-above-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  column-gap: 0;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-branch {
+  grid-column: 1;
+  justify-self: start;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-files-cluster {
+  grid-column: 2;
+  justify-self: center;
+  display: inline-flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px;
+}
+[data-composer-style="grok"] .composer-above-bar-files-cluster .composer-above-bar-files {
+  order: 1 !important;
+}
+[data-composer-style="grok"] .composer-above-bar-files-cluster .composer-above-bar-stats {
+  order: 2 !important;
+}
+[data-composer-style="grok"] .composer-above-bar > .composer-above-bar-action,
+[data-composer-style="grok"] .composer-above-bar > .composer-diff-action-menu-wrap {
+  grid-column: 3;
+  justify-self: end;
+  margin-left: 0;
+}
+/* The inline WorkspaceAccessControls renders an empty div for non-Gemini
+ * providers; hide it so it doesn't claim a phantom 4th grid track and
+ * shove the action button off-axis (same treatment as the Codex shell). */
+[data-composer-style="grok"] .composer-above-bar > .composer-workspace-access {
+  display: none;
+}
+
+/* Diff signal — coloured to match every other shell: +N green,
+ * −N red (the canonical `.composer-diff-add/del` hues). Keep the
+ * heavier Grok weight for crispness against the monochrome chrome. */
 [data-composer-style="grok"] .composer-diff-add {
-  color: var(--grok-fg) !important;
+  color: #6ddfa8 !important;
   font-weight: 600;
 }
 [data-composer-style="grok"] .composer-diff-del {
-  color: var(--grok-muted) !important;
+  color: #f08080 !important;
   font-weight: 600;
 }
 
