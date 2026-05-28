@@ -108,6 +108,14 @@ const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'select-workspace': [],
   'select-image-files': [],
   'select-external-path-grant': ['externalPathGrantAccess'],
+  // 1.0.6-EW69 — the composer workspace manager's add flows (proactive
+  // read/write folder grant + attach-known-workspace-as-secondary) all
+  // go through this one channel with a single `{ chatId, access?, path? }`
+  // payload. (`['object']` mirrors `compose-run`; the handler does its own
+  // field validation via optionalString/getChat.) This was previously
+  // missing from the registry, so installIpcValidation threw
+  // "No IPC schema registered" the moment any add flow fired.
+  'external-path:pick-and-persist': ['object'],
   'probe-external-path': ['nonEmptyString'],
   'list-workspace-files': ['workspacePath'],
   'read-workspace-file': ['workspacePath', 'filePath'],

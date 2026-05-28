@@ -82,6 +82,26 @@ describe('IpcValidation', () => {
     expect(() => validateIpcArgs('compose-run', ['just a string'])).toThrow()
   })
 
+  // Regression test for the bug reported 2026-05-28 (1.0.6-EW69): the
+  // composer workspace-manager add flows (proactive folder grant +
+  // attach-known-workspace-as-secondary) go through
+  // `external-path:pick-and-persist`, which was never registered in
+  // IPC_ARGUMENT_SCHEMAS — so installIpcValidation threw "No IPC schema
+  // registered for external-path:pick-and-persist" the moment any add
+  // fired. Pin the schema's presence + object-arg shape.
+  it('accepts external-path:pick-and-persist payloads', () => {
+    expect(() =>
+      validateIpcArgs('external-path:pick-and-persist', [{ chatId: 'chat-1', access: 'read' }])
+    ).not.toThrow()
+    expect(() =>
+      validateIpcArgs('external-path:pick-and-persist', [
+        { chatId: 'chat-1', access: 'write', path: '/tmp/workspace' }
+      ])
+    ).not.toThrow()
+    // Non-object args still rejected.
+    expect(() => validateIpcArgs('external-path:pick-and-persist', ['nope'])).toThrow()
+  })
+
   it('accepts ensemble and sub-thread chat IPC payloads', () => {
     expect(() => validateIpcArgs('create-ensemble-chat', [])).not.toThrow()
     expect(() => validateIpcArgs('create-ensemble-chat', [undefined])).not.toThrow()
