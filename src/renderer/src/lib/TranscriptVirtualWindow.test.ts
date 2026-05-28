@@ -490,11 +490,11 @@ describe('TranscriptVirtualWindow', () => {
   })
 
   describe('TRANSCRIPT_VIRTUALIZATION_ENABLED', () => {
-    it('defaults OFF in TV1 (full-list render path stays the default)', () => {
-      // TV3 flips this to true after soak. Pinning the default here
-      // makes the flip an explicit, reviewed change rather than a
-      // silent behavioural shift.
-      expect(TRANSCRIPT_VIRTUALIZATION_ENABLED).toBe(false)
+    it('is ON by default after the TV3 flip', () => {
+      // Pinned here so flipping the global default is always an
+      // explicit, reviewed change. The non-virtualised fallback stays
+      // reachable via the `virtualize={false}` prop until post-soak.
+      expect(TRANSCRIPT_VIRTUALIZATION_ENABLED).toBe(true)
     })
   })
 })

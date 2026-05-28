@@ -89,14 +89,15 @@ export const ESTIMATED_ROW_HEIGHT_PX: Record<VirtualRowType, number> = {
 export const RUN_BOUNDARY_HEIGHT_PX = 44
 
 /**
- * Master gate for the in-house transcript virtualiser. Default OFF
- * (TV1): the renderer keeps the byte-for-byte full-list render path and
- * the windowing code is dormant. TV3 flips this to `true` once the soak
- * passes; the renderer also accepts a per-instance `virtualize` prop
- * override so tests can exercise the windowed path while the global
- * default is still off.
+ * Master gate for the in-house transcript virtualiser. TV3 flips this
+ * ON by default: the transcript now mounts only the visible window +
+ * overscan. The non-virtualised full-list branch is intentionally kept
+ * (NOT deleted) as the instant-revert path through the `virtualize`
+ * prop and as the explicit `virtualize={false}` path the renderer tests
+ * exercise — its deletion is deferred until after live soak confirms no
+ * scroll regressions (the documented post-soak follow-up).
  */
-export const TRANSCRIPT_VIRTUALIZATION_ENABLED = false
+export const TRANSCRIPT_VIRTUALIZATION_ENABLED = true
 
 /**
  * Overscan, in CSS px, mounted above + below the strictly-visible
