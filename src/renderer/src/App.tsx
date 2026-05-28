@@ -6261,6 +6261,12 @@ function useTranscriptVirtualization(params: {
   const observerRef = useRef<ResizeObserver | null>(null)
   const measureRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
+  // Flips true the first time the scroller reports a real scroll position
+  // (the chat-switch snap-to-bottom counts). Before that, `scrollTopRef`
+  // is still 0, so we force the bottom window to avoid flashing the top;
+  // after it, the window tracks the actual scroll position so scroll-up
+  // loads older rows.
+  const hasScrolledRef = useRef(false)
 
   // Re-render signals. State (not refs) so a change forces a recompute;
   // the heavy work is gone (only the small window mounts) so a per-frame
@@ -6286,11 +6292,20 @@ function useTranscriptVirtualization(params: {
   rowsRef.current = rows
 
   // Window selection. Inline (not memoised) because it reads scroll refs;
-  // it re-runs on every tick, which is cheap. When pinned, anchor to the
-  // bottom so the last row is always mounted.
+  // it re-runs on every tick, which is cheap.
+  //
+  // Drive the window from the REAL browser scroll position. The App
+  // scroll machinery keeps `scrollTop` pinned to the bottom while
+  // auto-following / streaming, so reading the live position mounts the
+  // bottom window in that case AND follows the user when they scroll up.
+  // We must NOT force the bottom from the `autoFollow` flag: if it failed
+  // to disengage (or re-engaged), the window stayed welded to the bottom
+  // and scroll-up only revealed the empty top spacer — the reported bug.
+  // The bottom is forced ONLY for the first frames after a chat loads,
+  // before the snap-to-bottom has run and `scrollTopRef` still reads 0.
   const totalHeight = enabled ? sumHeights(heights, 0, heights.length) : 0
-  const pinned = Boolean(autoFollowRef?.current)
-  const effectiveScrollTop = pinned
+  const forceBottomOnLoad = Boolean(autoFollowRef?.current) && !hasScrolledRef.current
+  const effectiveScrollTop = forceBottomOnLoad
     ? Math.max(0, totalHeight - viewportRef.current)
     : scrollTopRef.current
   const virtualWindow: VirtualWindow = enabled
@@ -6328,6 +6343,9 @@ function useTranscriptVirtualization(params: {
         scrollRafRef.current = null
         const el = scrollRef.current
         if (!el) return
+        // The scroller has reported a real position (incl. the
+        // snap-to-bottom): from here the window tracks the live scrollTop.
+        hasScrolledRef.current = true
         const bucketChanged = readMetricsInto(el)
         // Re-baseline the anchor at the new scroll position. Capturing the
         // height-above HERE (not in the layout effect) is what makes the
@@ -6402,9 +6420,15 @@ function useTranscriptVirtualization(params: {
     // (`scrollTop += delta`) so it composes with the user's scroll rather
     // than fighting it: on a scroll-driven render the rAF just re-baselined
     // the anchor, so delta is 0 and scrollTop is left alone; only a real
-    // height change above the anchor produces a non-zero nudge. Skipped
-    // while bottom-pinned (the App machinery owns scrollTop there).
-    if (!autoFollowRef?.current && anchorRef.current) {
+    // height change above the anchor produces a non-zero nudge. Gated on a
+    // REAL "not at the bottom" DOM measure rather than the `autoFollow`
+    // flag — so it runs whenever the user has actually scrolled up
+    // (independent of the flag's state) and is skipped at the bottom,
+    // where the App machinery owns scrollTop.
+    const distanceFromBottom =
+      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+    const atBottom = distanceFromBottom <= 8
+    if (!atBottom && anchorRef.current) {
       const anchor = anchorRef.current
       const idx = rowsRef.current.findIndex((r) => r.id === anchor.rowId)
       if (idx >= 0) {
