@@ -42,10 +42,11 @@ import { join } from 'node:path'
 import { promises as fs } from 'node:fs'
 
 import type { ProviderId } from '../store/types'
+import { experimentalGrokProviderEnabled } from '../grokGate'
 
 /** Snapshot date for the baked-in rate values. Bump alongside the
  * rate values themselves when the manual diligence cycle runs. */
-export const RATE_TABLE_VERSION = '2026-05-27'
+export const RATE_TABLE_VERSION = '2026-05-29'
 
 /**
  * Per-model rate entry. Rates are USD per 1,000,000 tokens (so
@@ -111,13 +112,34 @@ export interface ProviderRateTable {
  * comparable capability.
  */
 export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
-  // Grok (gated, read-only G3): no published per-token rate table yet. The
-  // empty `models` list is also the signal that keeps probeAllProviderRates
-  // from issuing a network fetch for Grok even when the gate is off.
+  // Grok (gated). IMPORTANT: AGBench drives Grok through the SuperGrok CLI
+  // subscription (a credit pool — see GrokUsage's "Subscription credits"
+  // meter), NOT the xAI per-token API. These rates are therefore a PROJECTED
+  // API-equivalent ("what this run would have cost on the xAI API"), not actual
+  // billing. Captured from console.x.ai 2026-05-29. The grok probe is still
+  // gated off when AGBENCH_EXPERIMENTAL_GROK is unset (see probeAllProviderRates).
   grok: {
     provider: 'grok',
-    pricingUrl: '',
-    models: []
+    pricingUrl: 'https://docs.x.ai/docs/models',
+    models: [
+      {
+        modelId: 'grok-build',
+        inputUsdPerMillion: 1.0,
+        outputUsdPerMillion: 2.0,
+        sourceUrl: 'https://docs.x.ai/docs/models',
+        lastVerified: RATE_TABLE_VERSION,
+        notes:
+          'xAI API pricing for grok-build-0.1 (256K ctx) — the CLI default model. PROJECTED API-equivalent; CLI auth bills via subscription credits.'
+      },
+      {
+        modelId: 'grok-4.3',
+        inputUsdPerMillion: 1.25,
+        outputUsdPerMillion: 2.5,
+        sourceUrl: 'https://docs.x.ai/docs/models',
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'xAI API pricing for grok-4.3 (1M ctx). Projected API-equivalent, not actual billing.'
+      }
+    ]
   },
   codex: {
     provider: 'codex',
@@ -154,7 +176,8 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         outputUsdPerMillion: 8.0,
         sourceUrl: 'https://openai.com/api/pricing',
         lastVerified: RATE_TABLE_VERSION,
-        notes: 'Codex-tuned variant; price approximate.'
+        notes:
+          'Codex-tuned variant; price approximate. Retiring 2026-06-02 per OpenAI (GPT-5.3-Codex-Spark is NOT affected).'
       },
       {
         modelId: 'gpt-5.3-codex-spark',
@@ -169,7 +192,8 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         inputUsdPerMillion: 1.0,
         outputUsdPerMillion: 8.0,
         sourceUrl: 'https://openai.com/api/pricing',
-        lastVerified: RATE_TABLE_VERSION
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Retiring 2026-06-02 per OpenAI.'
       }
     ]
   },
@@ -178,12 +202,33 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
     pricingUrl: 'https://www.anthropic.com/pricing',
     models: [
       {
+        modelId: 'claude-opus-4-8',
+        inputUsdPerMillion: 15.0,
+        outputUsdPerMillion: 75.0,
+        cachedInputUsdPerMillion: 1.5,
+        sourceUrl: 'https://www.anthropic.com/pricing',
+        lastVerified: RATE_TABLE_VERSION,
+        notes:
+          'Current-gen Opus (added 2026-05-29). Pricing assumed equal to Opus 4.7 ($15/$75) pending a published rate — verify on the pricing page.'
+      },
+      {
+        modelId: 'claude-opus-4-8-1m',
+        inputUsdPerMillion: 30.0,
+        outputUsdPerMillion: 150.0,
+        cachedInputUsdPerMillion: 3.0,
+        sourceUrl: 'https://www.anthropic.com/pricing',
+        lastVerified: RATE_TABLE_VERSION,
+        notes:
+          '1M context window (~2x standard Opus). Pricing assumed equal to Opus 4.7 1M pending a published rate.'
+      },
+      {
         modelId: 'claude-opus-4-7',
         inputUsdPerMillion: 15.0,
         outputUsdPerMillion: 75.0,
         cachedInputUsdPerMillion: 1.5,
         sourceUrl: 'https://www.anthropic.com/pricing',
-        lastVerified: RATE_TABLE_VERSION
+        lastVerified: RATE_TABLE_VERSION,
+        notes: 'Legacy as of Opus 4.8.'
       },
       {
         modelId: 'claude-opus-4-7-1m',
@@ -192,7 +237,7 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
         cachedInputUsdPerMillion: 3.0,
         sourceUrl: 'https://www.anthropic.com/pricing',
         lastVerified: RATE_TABLE_VERSION,
-        notes: '1M context window surcharge; ~2x standard Opus pricing.'
+        notes: '1M context window surcharge; ~2x standard Opus pricing. Legacy as of Opus 4.8.'
       },
       {
         modelId: 'claude-opus-4-6',
@@ -461,11 +506,13 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
  * snapshot + persists to disk for next-boot warm-start.
  */
 export async function probeAllProviderRates(): Promise<ProviderRatesSnapshot> {
-  // Skip providers with no baked-in models (e.g. gated read-only Grok): there
-  // is nothing to price, so we must not issue a network fetch for them — this
-  // keeps the gate-off state from reaching out for Grok.
+  // Skip providers with no baked-in models, and keep Grok's xAI pricing fetch
+  // gated behind the experimental flag — so a gate-off install never reaches
+  // out to x.ai. (Grok's baked rates stay available for projected cost display
+  // regardless; only the network verification probe is gated.)
+  const grokProbeAllowed = experimentalGrokProviderEnabled()
   const providers = (Object.values(BAKED_IN_RATES) as ProviderRateTable[]).filter(
-    (table) => table.models.length > 0
+    (table) => table.models.length > 0 && (table.provider !== 'grok' || grokProbeAllowed)
   )
   const results = await Promise.all(providers.map(probeOneProvider))
   const resultsMap: Record<ProviderId, ProviderRateProbeResult> = {} as Record<

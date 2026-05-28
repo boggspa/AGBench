@@ -4178,7 +4178,7 @@ const CODEX_DEFAULT_MODELS = [
   },
   {
     id: 'gpt-5.3-codex',
-    label: 'GPT-5.3 Codex',
+    label: 'GPT-5.3 Codex (retiring Jun 2)',
     supportedReasoningEfforts: [
       { reasoningEffort: 'medium' },
       { reasoningEffort: 'high' },
@@ -4197,7 +4197,7 @@ const CODEX_DEFAULT_MODELS = [
   },
   {
     id: 'gpt-5.2',
-    label: 'GPT-5.2',
+    label: 'GPT-5.2 (retiring Jun 2)',
     supportedReasoningEfforts: [
       { reasoningEffort: 'low' },
       { reasoningEffort: 'medium' },
@@ -4231,20 +4231,18 @@ const CLAUDE_DEFAULT_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   {
-    id: 'claude-opus-4-7',
-    label: 'Claude Opus 4.7',
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
     description: 'Most capable — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
     additionalSpeedTiers: ['fast']
   },
   {
-    id: 'claude-opus-4-7-1m',
-    label: 'Claude Opus 4.7 1M',
+    id: 'claude-opus-4-8-1m',
+    label: 'Claude Opus 4.8 1M',
     description: '1M context window — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
-    // 1M variant intentionally excluded from Fast tier per spec:
-    // the 1M-context path doesn't currently offer a paid Fast
-    // option. Only the standard Opus 4.7 + Opus 4.6 do.
+    // 1M variants are intentionally excluded from the paid Fast tier.
   },
   {
     id: 'claude-sonnet-4-6',
@@ -4253,6 +4251,19 @@ const CLAUDE_DEFAULT_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7 Legacy',
+    description: 'Previous Opus — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-7-1m',
+    label: 'Claude Opus 4.7 1M Legacy',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
   {
     id: 'claude-opus-4-6',
     label: 'Claude Opus 4.6 Legacy',
@@ -4289,6 +4300,8 @@ const CLAUDE_MODEL_IDS = new Set([
   'opus',
   'haiku',
   'custom',
+  'claude-opus-4-8',
+  'claude-opus-4-8-1m',
   'claude-opus-4-7',
   'claude-opus-4-7-1m',
   'claude-sonnet-4-6',

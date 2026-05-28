@@ -15,6 +15,8 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   'gpt-5.3-codex-spark': 200_000,
   'gpt-5.2': 400_000,
   // Claude
+  'claude-opus-4-8': 200_000,
+  'claude-opus-4-8-1m': 1_000_000,
   'claude-opus-4-7': 200_000,
   'claude-opus-4-7-1m': 1_000_000,
   'claude-sonnet-4-6': 200_000,
@@ -25,7 +27,10 @@ const CONTEXT_WINDOWS_BY_MODEL: Record<string, number> = {
   opus: 200_000,
   haiku: 200_000,
   // Kimi
-  'kimi-k2.6': 256_000
+  'kimi-k2.6': 256_000,
+  // Grok — grok-build (the CLI default) is the 256K build model; grok-4.3 is 1M.
+  'grok-build': 256_000,
+  'grok-4.3': 1_000_000
 }
 
 const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {

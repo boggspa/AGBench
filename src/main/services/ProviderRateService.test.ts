@@ -93,9 +93,10 @@ describe('BAKED_IN_RATES', () => {
 
   it('every priced entry carries a pricingUrl + at least one model', () => {
     for (const table of Object.values(BAKED_IN_RATES)) {
-      // Gated providers with no published rates (e.g. read-only Grok) ship an
-      // empty models list + empty pricingUrl on purpose — that empty-models
-      // signal is what keeps probeAllProviderRates from fetching for them.
+      // Retained guard: a gated provider with no published rates may ship an
+      // empty models list + empty pricingUrl (the empty-models signal also keeps
+      // probeAllProviderRates from fetching). No provider does so today — Grok
+      // now carries projected xAI API rates — but the invariant stays defensive.
       if (table.models.length === 0) {
         expect(table.pricingUrl).toBe('')
         continue
