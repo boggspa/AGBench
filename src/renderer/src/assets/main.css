@@ -25914,6 +25914,32 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow: none !important;
 }
 
+/* 1.0.5-EW60 — Flatten the ensemble-row add (+) / remove (−)
+ * roster buttons. Base rules give each a 26px circular pill
+ * with border + surface-elevated fill; Obsidian's satellite
+ * read calls for them to look like the rest of the row —
+ * floating glyphs, no container chrome.
+ *
+ * Hover preserves a soft text-color cue (white for +, red for
+ * −) since both interactions are destructive-ish (adding a
+ * participant changes the panel, removing tears one out). */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-add-participant,
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-remove-participant {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-add-participant:hover:not(:disabled) {
+  background: transparent !important;
+  color: #fff !important;
+}
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .ensemble-above-remove-participant:hover:not(:disabled) {
+  background: transparent !important;
+  color: #ff8a8a !important;
+}
+
 /* Send button keeps its capsule but the accent edge picks up
  * the same rim language — bright inset highlight on top so it
  * reads cut from the same material as the surface. */
