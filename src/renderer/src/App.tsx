@@ -16831,6 +16831,16 @@ function App(): React.JSX.Element {
   const sessionRestartReason = persistentSessionNeedsRestart
     ? 'Restart session to apply run mode changes'
     : ''
+  const showComposerBranchChip =
+    Boolean(currentWorkspace?.branch) &&
+    appearance.composerStyle !== 'obsidian' &&
+    appearance.composerStyle !== 'alabaster'
+  const showComposerChips =
+    showComposerBranchChip ||
+    (currentProvider === 'gemini' && currentWorktreeDiffUnavailable) ||
+    (currentProvider === 'gemini' && persistentSessionNeedsRestart) ||
+    Boolean(currentProviderCapabilityWarning) ||
+    queuedRunQueueCount > 0
   const permissionRequestTitle =
     permissionRequestKind === 'workspace_trust'
       ? 'Workspace trust requested'
@@ -18673,33 +18683,35 @@ function App(): React.JSX.Element {
               onDragLeave={handleComposerDragLeave}
               onDrop={handleComposerDrop}
             >
-              <div className="composer-chips">
-                {currentWorkspace?.branch && (
-                  <span className="composer-chip">Branch: {currentWorkspace.branch}</span>
-                )}
-                {currentProvider === 'gemini' && currentWorktreeDiffUnavailable && (
-                  <span className="composer-chip warning">Worktree diff disabled</span>
-                )}
-                {currentProvider === 'gemini' && persistentSessionNeedsRestart && (
-                  <span className="composer-chip warning">{sessionRestartReason}</span>
-                )}
-                {currentProviderCapabilityWarning && (
-                  <span
-                    className="composer-chip warning"
-                    title={currentProviderCapabilityWarning.message}
-                  >
-                    {currentProviderCapabilityWarning.title}
-                  </span>
-                )}
-                {queuedRunQueueCount > 0 && (
-                  <span
-                    className="composer-chip"
-                    title="Durable queued tasks are persisted by AGBench."
-                  >
-                    {queuedRunQueueCount} queued
-                  </span>
-                )}
-              </div>
+              {showComposerChips && (
+                <div className="composer-chips">
+                  {showComposerBranchChip && (
+                    <span className="composer-chip">Branch: {currentWorkspace?.branch}</span>
+                  )}
+                  {currentProvider === 'gemini' && currentWorktreeDiffUnavailable && (
+                    <span className="composer-chip warning">Worktree diff disabled</span>
+                  )}
+                  {currentProvider === 'gemini' && persistentSessionNeedsRestart && (
+                    <span className="composer-chip warning">{sessionRestartReason}</span>
+                  )}
+                  {currentProviderCapabilityWarning && (
+                    <span
+                      className="composer-chip warning"
+                      title={currentProviderCapabilityWarning.message}
+                    >
+                      {currentProviderCapabilityWarning.title}
+                    </span>
+                  )}
+                  {queuedRunQueueCount > 0 && (
+                    <span
+                      className="composer-chip"
+                      title="Durable queued tasks are persisted by AGBench."
+                    >
+                      {queuedRunQueueCount} queued
+                    </span>
+                  )}
+                </div>
+              )}
               {/*
                 Composer-unification (Phase J1): one uniform top-toggles row
                 for every provider. Gemini's persistent-session + checkpoints
