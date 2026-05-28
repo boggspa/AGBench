@@ -77,33 +77,30 @@ describe('IpcValidation', () => {
     ).toThrow(/absolute workspace/)
   })
 
-  it('rejects the gated Grok provider at the IPC trust boundary (gate off)', () => {
-    // 1.0.6-G2b — 'grok' is a valid ProviderId at the type level, but with
-    // AGBENCH_EXPERIMENTAL_GROK off it is NOT in the IPC PROVIDERS accept-set,
-    // so a grok run payload is rejected at the boundary before any dispatch.
-    // This is the load-bearing guarantee that the gate-off state is inert.
-    // (G3c flips this on when the gate is enabled.)
+  it('accepts Grok at the IPC trust boundary by default (flag lifted)', () => {
+    // 1.0.6 — the experimental gate has been lifted: Grok is a first-class
+    // provider admitted at the IPC boundary with no env opt-in.
     expect(() =>
       validateIpcArgs('run-agent', [
         { provider: 'grok', workspace: '/tmp/workspace', prompt: 'hello' }
       ])
-    ).toThrow(/known provider/)
+    ).not.toThrow()
   })
 
-  it('accepts the gated Grok provider at the IPC boundary when the gate is on', () => {
-    // 1.0.6-G3c — with AGBENCH_EXPERIMENTAL_GROK set, the per-call gate admits
-    // grok at the trust boundary so the gated read-only runtime is reachable.
-    const previous = process.env.AGBENCH_EXPERIMENTAL_GROK
-    process.env.AGBENCH_EXPERIMENTAL_GROK = '1'
+  it('rejects Grok at the IPC trust boundary when the kill-switch is set', () => {
+    // 1.0.6 — AGBENCH_DISABLE_GROK=1 is the emergency opt-OUT; it forces grok
+    // back out of the accept-set at the boundary before any dispatch.
+    const previous = process.env.AGBENCH_DISABLE_GROK
+    process.env.AGBENCH_DISABLE_GROK = '1'
     try {
       expect(() =>
         validateIpcArgs('run-agent', [
           { provider: 'grok', workspace: '/tmp/workspace', prompt: 'hello' }
         ])
-      ).not.toThrow()
+      ).toThrow(/known provider/)
     } finally {
-      if (previous === undefined) delete process.env.AGBENCH_EXPERIMENTAL_GROK
-      else process.env.AGBENCH_EXPERIMENTAL_GROK = previous
+      if (previous === undefined) delete process.env.AGBENCH_DISABLE_GROK
+      else process.env.AGBENCH_DISABLE_GROK = previous
     }
   })
 

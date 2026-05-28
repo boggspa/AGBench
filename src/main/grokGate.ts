@@ -4,13 +4,22 @@
 // Electron-heavy index.ts AND the lower-level validation modules
 // (IpcValidation, ChatService, ComposerService) without an import cycle.
 //
-// Default OFF: with AGBENCH_EXPERIMENTAL_GROK unset, 'grok' is a valid
-// ProviderId at the type level but is rejected at every trust boundary (the
-// IPC PROVIDERS accept-set, assertProviderId, the provider-adapter registry)
-// and appears in no user-visible list — so the gate-off state is structurally
-// inert. Set the flag to enable the gated, read-only Grok runtime (G3).
+// 1.0.6 — Grok is now a FIRST-CLASS provider (the experimental gate has been
+// lifted): it is accepted at every trust boundary and appears in the normal
+// provider surfaces by default. An emergency kill-switch remains — set
+// AGBENCH_DISABLE_GROK=1 (or AGBENCH_EXPERIMENTAL_GROK=0) to force it off,
+// e.g. for a regression triage. NOTE: native tool execution (Read/shell/edit
+// mediated through the approval ledger) is still pending G5, and session
+// persistence is pending G6, so Grok runs read-only-ish until those land.
 export function experimentalGrokProviderEnabled(): boolean {
-  const value = process.env.AGBENCH_EXPERIMENTAL_GROK
+  if (isOptOut(process.env.AGBENCH_DISABLE_GROK)) return false
+  // Legacy var, now interpreted as an explicit opt-OUT only (=0/false/no).
+  const legacy = process.env.AGBENCH_EXPERIMENTAL_GROK
+  if (legacy === '0' || legacy === 'false' || legacy === 'no') return false
+  return true
+}
+
+function isOptOut(value: string | undefined): boolean {
   return value === '1' || value === 'true' || value === 'yes'
 }
 
