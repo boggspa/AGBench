@@ -7187,10 +7187,21 @@ function App(): React.JSX.Element {
     Record<string, AgentApprovalRequest[]>
   >({})
   const [isSendConfirming, setIsSendConfirming] = useState(false)
-  const [createPrState, setCreatePrState] = useState<{
+  // 1.0.6-EW66-1d — Create-PR state is now keyed by workspace PATH
+  // so the primary workspace and each WRITE-access additional
+  // workspace track their own pending/success/error independently.
+  // The primary is keyed by `currentWorkspace.path`; write grants by
+  // `grant.path`. (Same-path grants in an ensemble share one entry,
+  // so all rows for a repo reflect that repo's PR state coherently.)
+  type CreatePrState = {
     status: 'idle' | 'pending' | 'success' | 'error'
     message?: string
-  }>({ status: 'idle' })
+  }
+  const [createPrStateByPath, setCreatePrStateByPath] = useState<Record<string, CreatePrState>>({})
+  const getCreatePrState = (path: string | null | undefined): CreatePrState =>
+    (path && createPrStateByPath[path]) || { status: 'idle' }
+  const setCreatePrStateFor = (path: string, next: CreatePrState): void =>
+    setCreatePrStateByPath((prev) => ({ ...prev, [path]: next }))
   const [diffActionMenuOpen, setDiffActionMenuOpen] = useState(false)
   const [isComposerDragOver, setIsComposerDragOver] = useState(false)
   type AttachedWindowSnapshot = {
@@ -17009,39 +17020,50 @@ function App(): React.JSX.Element {
     }
   }
 
-  const handleCreateGithubPr = async () => {
-    if (createPrState.status === 'pending') return
-    const workspacePath = currentWorkspace?.path
+  // 1.0.6-EW66-1d — `targetPath` selects which workspace to open a
+  // PR for. Defaults to the primary workspace; a WRITE-access
+  // additional workspace passes its own `grant.path`. The
+  // `createGithubPr` IPC already accepts `workspacePath`, so this is
+  // pure per-path parameterization. State is tracked per path so
+  // each row's button reflects only its own PR progress.
+  const handleCreateGithubPr = async (targetPath?: string) => {
+    const workspacePath = targetPath || currentWorkspace?.path
     if (!workspacePath) {
-      setCreatePrState({ status: 'error', message: 'Open a workspace to create a PR.' })
-      window.setTimeout(() => setCreatePrState({ status: 'idle' }), 5000)
+      // No path to key state by; surface against the primary slot.
+      const fallbackKey = currentWorkspace?.path || ''
+      setCreatePrStateFor(fallbackKey, {
+        status: 'error',
+        message: 'Open a workspace to create a PR.'
+      })
+      window.setTimeout(() => setCreatePrStateFor(fallbackKey, { status: 'idle' }), 5000)
       return
     }
+    if (getCreatePrState(workspacePath).status === 'pending') return
     if (typeof window.api.createGithubPr !== 'function') {
       setRightTab('diff')
       return
     }
-    setCreatePrState({ status: 'pending' })
+    setCreatePrStateFor(workspacePath, { status: 'pending' })
     try {
       const result = await window.api.createGithubPr({ workspacePath, openInBrowser: true })
       if (result?.ok) {
-        setCreatePrState({
+        setCreatePrStateFor(workspacePath, {
           status: 'success',
           message: result.url ? `Opened ${result.url}` : 'Pull request created.'
         })
       } else {
-        setCreatePrState({
+        setCreatePrStateFor(workspacePath, {
           status: 'error',
           message: result?.error || 'Failed to create pull request.'
         })
       }
     } catch (error) {
-      setCreatePrState({
+      setCreatePrStateFor(workspacePath, {
         status: 'error',
         message: error instanceof Error ? error.message : 'Failed to create pull request.'
       })
     }
-    window.setTimeout(() => setCreatePrState({ status: 'idle' }), 6000)
+    window.setTimeout(() => setCreatePrStateFor(workspacePath, { status: 'idle' }), 6000)
   }
 
   const handlePrimeCommitChangesPrompt = () => {
@@ -18310,27 +18332,30 @@ function App(): React.JSX.Element {
                   />
                   {(() => {
                     const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
+                    // 1.0.6-EW66-1d — primary workspace's PR state is now
+                    // read from the per-path map keyed by its own path.
+                    const primaryPrState = getCreatePrState(currentWorkspace?.path)
                     const createPrLabel =
-                      createPrState.status === 'pending'
+                      primaryPrState.status === 'pending'
                         ? 'Creating…'
-                        : createPrState.status === 'success'
+                        : primaryPrState.status === 'success'
                           ? 'PR opened'
-                          : createPrState.status === 'error'
+                          : primaryPrState.status === 'error'
                             ? 'Retry PR'
                             : 'Create PR'
                     const primaryLabel = hasReviewableDiff ? 'Review changes' : createPrLabel
-                    const actionClassName = `composer-above-bar-action ${createPrState.status === 'pending' ? 'is-pending' : ''} ${createPrState.status === 'error' ? 'is-error' : ''} ${createPrState.status === 'success' ? 'is-success' : ''}`
+                    const actionClassName = `composer-above-bar-action ${primaryPrState.status === 'pending' ? 'is-pending' : ''} ${primaryPrState.status === 'error' ? 'is-error' : ''} ${primaryPrState.status === 'success' ? 'is-success' : ''}`
                     return (
                       <span className="composer-diff-action-menu-wrap">
                         <button
                           type="button"
                           className={actionClassName}
                           onClick={() => setDiffActionMenuOpen((open) => !open)}
-                          disabled={createPrState.status === 'pending'}
+                          disabled={primaryPrState.status === 'pending'}
                           aria-haspopup="menu"
                           aria-expanded={diffActionMenuOpen}
                           title={
-                            createPrState.message ||
+                            primaryPrState.message ||
                             'Choose what to do with the current workspace changes'
                           }
                         >
@@ -18375,11 +18400,11 @@ function App(): React.JSX.Element {
                               role="menuitem"
                               onClick={() => {
                                 setDiffActionMenuOpen(false)
-                                void handleCreateGithubPr()
+                                void handleCreateGithubPr(currentWorkspace?.path)
                               }}
-                              disabled={createPrState.status === 'pending'}
+                              disabled={primaryPrState.status === 'pending'}
                               title={
-                                createPrState.message ||
+                                primaryPrState.message ||
                                 'Run `gh pr create --fill` against the current branch'
                               }
                             >
@@ -18394,8 +18419,13 @@ function App(): React.JSX.Element {
                 {/* Slice 3 of the external-path-redesign arc. One stacked
                   row per external-path grant. Per-grant repo metadata
                   decides whether the row shows branch+repo-name or a
-                  bare basename. Per-repo diff stats + per-repo Create
-                  PR land in slice 6. */}
+                  bare basename.
+
+                  1.0.6-EW66-1d — WRITE grants now also get a per-path
+                  Create-PR action (matching the primary workspace row).
+                  PR state is keyed by `grant.path`, so an ensemble's
+                  several same-path write grants share one repo's PR
+                  progress. READ grants keep the reference-only banner. */}
                 {externalPathGrants.map((grant) => (
                   <ExternalPathAboveRow
                     key={grant.id}
@@ -18403,6 +18433,8 @@ function App(): React.JSX.Element {
                     repoMetadata={externalPathRepoMetadata[grant.id] || null}
                     diffStats={externalPathDiffStatsByGrant[grant.id]}
                     onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
+                    createPrState={getCreatePrState(grant.path)}
+                    onCreatePr={(g) => handleCreateGithubPr(g.path)}
                   />
                 ))}
                 </>

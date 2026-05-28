@@ -28295,6 +28295,22 @@ input:disabled, select:disabled, textarea:disabled {
   color: var(--danger);
 }
 
+/*
+ * 1.0.6-EW66-1d — Create-PR action on a WRITE-access secondary row.
+ * `.composer-above-bar-secondary-access` already carries the
+ * margin-left:auto that right-justifies the trailing cluster, so the
+ * action button must reset its own (inherited) auto margin or the two
+ * would fight for free space. Tightened padding/size keeps it in
+ * proportion with the quieter secondary row while reusing the same
+ * pill chrome as the primary workspace's Create-PR button.
+ */
+.composer-above-bar-secondary .composer-above-bar-action {
+  margin-left: 0;
+  margin-right: 8px;
+  padding: 2px 9px;
+  font-size: calc(var(--font-size-xs) - 0.5px);
+}
+
 /* Tucked Codex tab — when secondary rows are present, the bottom
  * row's tucked-bottom merge should sit ABOVE the composer-surface;
  * intermediate rows lose their bottom radius so they read as one

@@ -90,6 +90,17 @@ interface ExternalPathAboveRowProps {
    */
   diffStats?: ExternalPathDiffStats
   onRevoke: (grant: ExternalPathGrant) => void
+  /**
+   * 1.0.6-EW66-1d — Per-path Create-PR state + handler. When the
+   * grant is WRITE access and `onCreatePr` is supplied, the row
+   * gains a "Create PR" action (matching the primary workspace
+   * row) scoped to this grant's path. READ grants ignore both —
+   * they render the existing reference-only banner. State is keyed
+   * by path in the parent, so all of an ensemble's same-path write
+   * rows reflect one repo's PR progress together.
+   */
+  createPrState?: { status: 'idle' | 'pending' | 'success' | 'error'; message?: string }
+  onCreatePr?: (grant: ExternalPathGrant) => void
 }
 
 function BranchGlyph(): React.JSX.Element {
@@ -154,10 +165,25 @@ export function ExternalPathAboveRow({
   grant,
   repoMetadata,
   diffStats,
-  onRevoke
+  onRevoke,
+  createPrState,
+  onCreatePr
 }: ExternalPathAboveRowProps): React.JSX.Element {
   const descriptor = describeExternalPath(grant.path, { gitMetadata: repoMetadata })
   const isWrite = grant.access === 'write'
+  // 1.0.6-EW66-1d — WRITE grants pointing at a git repo get a
+  // Create-PR action matching the primary workspace row, scoped to
+  // this grant's path. Mirror the primary's label/state machine.
+  const prStatus = createPrState?.status ?? 'idle'
+  const showCreatePr = isWrite && descriptor.isRepo && typeof onCreatePr === 'function'
+  const createPrLabel =
+    prStatus === 'pending'
+      ? 'Creating…'
+      : prStatus === 'success'
+        ? 'PR opened'
+        : prStatus === 'error'
+          ? 'Retry PR'
+          : 'Create PR'
   // 1.0.5-EW42b — `accessLabel` was used here pre-EW42b to build
   // a minimal `<path> (<accessLabel> access)` title. EW42b
   // replaces that with the richer multi-line tooltip below
@@ -218,6 +244,24 @@ export function ExternalPathAboveRow({
       <span className="composer-above-bar-secondary-access" title={originTooltip}>
         {isWrite ? 'edit access' : 'read access'}
       </span>
+      {showCreatePr && (
+        <button
+          type="button"
+          className={`composer-above-bar-action ${prStatus === 'pending' ? 'is-pending' : ''} ${
+            prStatus === 'error' ? 'is-error' : ''
+          } ${prStatus === 'success' ? 'is-success' : ''}`}
+          onClick={() => onCreatePr?.(grant)}
+          disabled={prStatus === 'pending'}
+          title={
+            createPrState?.message ||
+            `Run \`gh pr create --fill\` against ${descriptor.basename}${
+              descriptor.branch ? ` (${descriptor.branch})` : ''
+            }`
+          }
+        >
+          {createPrLabel}
+        </button>
+      )}
       <button
         type="button"
         className="composer-above-bar-secondary-revoke"
