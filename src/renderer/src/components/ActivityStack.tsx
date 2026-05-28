@@ -40,6 +40,16 @@ interface ActivityStackProps {
    * tool cards collapse to their inline form and the turn-receipt
    * tape switches to its one-line summary variant. */
   compactDensity?: boolean
+  /**
+   * 1.0.6-TV2 — optional controlled expansion. When BOTH are provided
+   * the stack's per-row expansion set is owned by the parent instead of
+   * local state, so it survives the unmount/remount cycle of transcript
+   * virtualisation (a tool row scrolled out of the window and back keeps
+   * whatever the user had open). Omit both for the original uncontrolled
+   * behaviour — every existing call site is untouched.
+   */
+  expandedActivityIds?: Set<string>
+  onExpandedActivityIdsChange?: (next: Set<string>) => void
 }
 
 const SEARCH_PARAM_KEYS = ['query', 'search_query', 'pattern', 'regex', 'term']
@@ -1387,7 +1397,9 @@ export function ActivityStack({
   chatId,
   runId,
   chat,
-  compactDensity = false
+  compactDensity = false,
+  expandedActivityIds,
+  onExpandedActivityIdsChange
 }: ActivityStackProps) {
   // 1.0.4-AS1 — drive the shimmer/pulse staleness check. The
   // returned `now` is consumed by InlineActivityRow via `Date.now()`
@@ -1448,7 +1460,30 @@ export function ActivityStack({
   // compactDensity) auto-collapses other rows when one expands;
   // ⌘/Shift click opts into multi-open. The TurnReceiptCard's
   // master toggle expands/collapses ALL expandable rows at once.
-  const [expandedIds, setExpandedIds] = useExpandedIdsState()
+  //
+  // 1.0.6-TV2 — when the parent passes a controlled set + change
+  // handler (transcript virtualisation), defer to those so expansion
+  // survives unmount/remount; otherwise keep the original local state.
+  // The wrapper resolves updater functions against the live value so
+  // every internal call site (`toggleExpand`, expand/collapse-all)
+  // keeps its `setExpandedIds(prev => ...)` shape unchanged.
+  const [localExpandedIds, setLocalExpandedIds] = useExpandedIdsState()
+  const isExpansionControlled =
+    expandedActivityIds !== undefined && onExpandedActivityIdsChange !== undefined
+  const expandedIds = isExpansionControlled ? expandedActivityIds : localExpandedIds
+  const setExpandedIds = (
+    next: Set<string> | ((prev: Set<string>) => Set<string>)
+  ): void => {
+    if (isExpansionControlled) {
+      const resolved =
+        typeof next === 'function'
+          ? (next as (prev: Set<string>) => Set<string>)(expandedActivityIds)
+          : next
+      onExpandedActivityIdsChange(resolved)
+    } else {
+      setLocalExpandedIds(next)
+    }
+  }
   const allowMultiOpen = !compactDensity
   const toggleExpand = (id: string, modKey: boolean): void => {
     setExpandedIds((prev) => {

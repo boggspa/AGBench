@@ -6184,6 +6184,8 @@ function AgentQuestionCard({
 const EMPTY_TRANSCRIPT_HEIGHTS: number[] = []
 /** Stable empty rows array for the non-virtualised render path. */
 const EMPTY_VIRTUAL_ROWS: VirtualRow[] = []
+/** Stable empty expansion set so unopened tool rows share one reference. */
+const EMPTY_ACTIVITY_EXPANSION: Set<string> = new Set()
 
 /**
  * 1.0.6-TV1 — In-house transcript windowing glue (renderer side).
@@ -6227,12 +6229,19 @@ function useTranscriptVirtualization(params: {
   scrollRef: React.RefObject<HTMLDivElement | null>
   autoFollowRef?: React.MutableRefObject<boolean>
   compactDensity: boolean
+  /**
+   * 1.0.6-TV2 — row ids whose tool stack currently has something
+   * expanded. Folded into the measurement-cache key (the geometry bit)
+   * so a collapsed vs expanded row caches distinct heights, and into
+   * the live height lookup so toggling re-flows the spacers.
+   */
+  expandedRowIds?: ReadonlySet<string>
 }): {
   window: VirtualWindow
   blockRef: (el: HTMLDivElement | null) => void
   spacerBottomRef: React.RefObject<HTMLDivElement | null>
 } {
-  const { enabled, rows, scrollRef, autoFollowRef, compactDensity } = params
+  const { enabled, rows, scrollRef, autoFollowRef, compactDensity, expandedRowIds } = params
 
   const measurementsRef = useRef<Map<string, number>>(new Map())
   const scrollTopRef = useRef(0)
@@ -6262,9 +6271,11 @@ function useTranscriptVirtualization(params: {
     if (!enabled) return EMPTY_TRANSCRIPT_HEIGHTS
     const m = measurementsRef.current
     const bucket = bucketRef.current
-    return rows.map((row) => getRowHeight(row, m, bucket, false))
+    return rows.map((row) =>
+      getRowHeight(row, m, bucket, expandedRowIds?.has(row.id) ?? false)
+    )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, rows, measureTick])
+  }, [enabled, rows, measureTick, expandedRowIds])
   heightsRef.current = heights
   rowsRef.current = rows
 
@@ -6411,7 +6422,12 @@ function useTranscriptVirtualization(params: {
       const slot =
         nextEl && nextEl.isConnected ? nextEl.offsetTop - el.offsetTop : el.offsetHeight
       if (!(slot > 0)) continue
-      const key = measurementKey(row.id, row.contentVersion, bucket, false)
+      const key = measurementKey(
+        row.id,
+        row.contentVersion,
+        bucket,
+        expandedRowIds?.has(row.id) ?? false
+      )
       const prev = measurements.get(key)
       if (prev === undefined || Math.abs(prev - slot) > 0.5) {
         measurements.set(key, slot)
@@ -6546,6 +6562,32 @@ export const TranscriptPanel = memo(
       })
     }
 
+    // 1.0.6-TV2 — lifted ActivityStack expansion. Keyed by message id
+    // (the tool row's id), value is the stack's set of open activity
+    // ids. Held here (not inside ActivityStack) so a tool row scrolled
+    // out of the virtualised window and back keeps whatever the user had
+    // expanded — same survival pattern as `expandedUserMessages`.
+    const [activityExpansionByRow, setActivityExpansionByRow] = useState<
+      Map<string, Set<string>>
+    >(new Map())
+    const setActivityExpansionForRow = useCallback((rowId: string, next: Set<string>) => {
+      setActivityExpansionByRow((prev) => {
+        const map = new Map(prev)
+        if (next.size === 0) map.delete(rowId)
+        else map.set(rowId, next)
+        return map
+      })
+    }, [])
+    // Row ids whose tool stack has something open — the measurementKey
+    // geometry bit, so collapsed vs expanded rows cache distinct heights.
+    const expandedRowIds = useMemo(() => {
+      const ids = new Set<string>()
+      for (const [rowId, set] of activityExpansionByRow) {
+        if (set.size > 0) ids.add(rowId)
+      }
+      return ids
+    }, [activityExpansionByRow])
+
     // 1.0.6-TV1 — windowing. `virtualize` defaults to the global flag;
     // tests pass it explicitly. When off, `useTranscriptVirtualization`
     // is inert and the full-list branch below renders exactly as before.
@@ -6566,7 +6608,8 @@ export const TranscriptPanel = memo(
       rows: virtualRows,
       scrollRef,
       autoFollowRef,
-      compactDensity
+      compactDensity,
+      expandedRowIds
     })
     // Messages mounted this frame: the window slice when virtualised,
     // else the full list. Mapped via `row.index` so the slice stays
@@ -6641,6 +6684,10 @@ export const TranscriptPanel = memo(
                     runId={msg.runId || boundaryRun?.runId}
                     chat={currentChat || undefined}
                     compactDensity={compactDensity}
+                    expandedActivityIds={activityExpansionByRow.get(msg.id) ?? EMPTY_ACTIVITY_EXPANSION}
+                    onExpandedActivityIdsChange={(next) =>
+                      setActivityExpansionForRow(msg.id, next)
+                    }
                   />
                 ) : msg.metadata?.kind === 'ensembleParticipantHealth' ? (
                   /*

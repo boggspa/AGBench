@@ -265,3 +265,44 @@ describe('ActivityStack compactDensity routing', () => {
     expect(html).toContain('compact-tool-trace')
   })
 })
+
+describe('ActivityStack controlled expansion (1.0.6-TV2)', () => {
+  it('renders the row collapsed when the controlled set is empty', () => {
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[makeWriteActivity({ id: 'tool-x' })]}
+        provider="codex"
+        expandedActivityIds={new Set()}
+        onExpandedActivityIdsChange={() => {}}
+      />
+    )
+    expect(html).toContain('data-expanded="false"')
+    expect(html).not.toContain('data-expanded="true"')
+  })
+
+  it('renders the row expanded when its id is in the controlled set', () => {
+    // Proves expansion is driven by the parent-owned set, not local
+    // state — the property transcript virtualisation relies on so an
+    // expanded tool row survives scrolling out of the window and back.
+    const html = renderToStaticMarkup(
+      <ActivityStack
+        activities={[makeWriteActivity({ id: 'tool-x' })]}
+        provider="codex"
+        expandedActivityIds={new Set(['tool-x'])}
+        onExpandedActivityIdsChange={() => {}}
+      />
+    )
+    expect(html).toContain('data-expanded="true"')
+  })
+
+  it('still works uncontrolled (no controlled props) — starts collapsed', () => {
+    // Backward-compat guard: every other ActivityStack call site omits
+    // the controlled props and must keep its original local-state
+    // behaviour (rows start collapsed).
+    const html = renderToStaticMarkup(
+      <ActivityStack activities={[makeWriteActivity({ id: 'tool-y' })]} provider="codex" />
+    )
+    expect(html).toContain('data-expanded="false"')
+    expect(html).not.toContain('data-expanded="true"')
+  })
+})
