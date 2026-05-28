@@ -320,7 +320,12 @@ const THEME_OPTIONS: Array<{ value: ThemeAppearance; label: string }> = [
   // 1.0.5-EW54 — "Obsidian": charcoal base + warm dusk halos +
   // crisp lit rim borders. The "premium postmodern" reading of
   // dark mode (vs Graphite's colder old-aqua palette).
-  { value: 'obsidian', label: 'Obsidian' }
+  { value: 'obsidian', label: 'Obsidian' },
+  // 1.0.5-EW61 — "Alabaster": polar inverse of obsidian. Cream
+  // near-white base, cool lavender halos, crisp charcoal rim
+  // borders, dark-translucent sidebar (the inverse bizarre
+  // twin to obsidian's light-on-dark sidebar move).
+  { value: 'alabaster', label: 'Alabaster' }
 ]
 const ACCENT_OPTIONS: Array<{ value: ThemeAccentStyle; label: string }> = [
   { value: 'system', label: 'System' },
@@ -436,6 +441,19 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     label: 'Obsidian',
     helper:
       'Pure black fill with a crisp white rim highlight, slow rim shimmer chase, and matching chrome on the detached rows above. Pairs with the Obsidian theme.'
+  },
+  /*
+    1.0.5-EW61 — "Alabaster" composer style. Polar inverse of
+    obsidian: cream fill, charcoal 2px rim, slow black/charcoal
+    rim-chase, warm-cream outer glow. Theme-immune subtree
+    (locks light-mode tokens regardless of app theme). Pairs
+    with the Alabaster theme.
+  */
+  {
+    value: 'alabaster',
+    label: 'Alabaster',
+    helper:
+      'Cream fill with a crisp charcoal rim, slow black rim shimmer chase, and matching chrome on the detached rows above. Pairs with the Alabaster theme.'
   }
 ]
 
@@ -486,6 +504,15 @@ function getComposerPreviewMeta(style: ComposerStyle): {
       // placeholder reads restrained on purpose; "Premium" labels
       // the surface itself, and the preview surface paints the
       // white rim + chase from the live CSS.
+      return {
+        providerLabel: 'AGBench',
+        modelLabel: 'Auto',
+        permissionLabel: 'Premium',
+        placeholder: 'Compose…'
+      }
+    case 'alabaster':
+      // 1.0.5-EW61 — Alabaster preview copy. Same restraint as
+      // obsidian — the rim + cream surface carry the identity.
       return {
         providerLabel: 'AGBench',
         modelLabel: 'Auto',

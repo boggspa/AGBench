@@ -25955,6 +25955,329 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
+ * 1.0.5-EW61 — "Alabaster" composer style.
+ *
+ * Polar inverse of obsidian. Every value mirrored on the luma
+ * axis. Same design language (rim carries the identity, chase
+ * rotates the perimeter, above-rows inherit the family chrome,
+ * picker chrome flattened to satellite text) — flipped to a
+ * cream / charcoal palette.
+ *
+ *   - Cream fill (#f4f3ef, slight warmth) vs obsidian's dark gray
+ *   - Charcoal 2px rim vs obsidian's 2px white rim
+ *   - Black/charcoal chase arc vs obsidian's white arc
+ *   - Warm-cream outer glow vs obsidian's white outer glow
+ *   - Picker chrome flattened identically
+ *   - Above-rows: same crisp 8px radius, same theme-immune
+ *     subtree (locks light-mode tokens)
+ *
+ * The chase angle uses the SAME `@property --obsidian-rim-angle`
+ * registered above — both styles can share one custom property
+ * since the animation is identical, only the gradient colors
+ * differ.
+ * ============================================================ */
+
+[data-composer-style="alabaster"] {
+  --alabaster-composer-fill: #f4f3ef;
+  --alabaster-composer-rim: rgba(18, 21, 27, 0.20);
+  --alabaster-composer-rim-strong: rgba(18, 21, 27, 0.34);
+  --alabaster-composer-border: rgba(18, 21, 27, 0.12);
+  --alabaster-composer-radius: 8px;
+  --alabaster-composer-radius-rows: 8px;
+  --alabaster-composer-rim-width: 2px;
+  /* Subtle warm-cream ambient glow — the surface looks lit
+   * from a soft north-window quality of light. */
+  --alabaster-composer-glow: 0 0 28px rgba(180, 160, 120, 0.06),
+    0 0 64px rgba(180, 160, 120, 0.03);
+  --alabaster-rim-chase-duration: 12s;
+}
+
+/* Theme-immune subtree — mirror of EW59's obsidian block.
+ * Locks LIGHT-mode tokens (charcoal text on cream) for every
+ * descendant inside the composer area, so the alabaster
+ * composer reads as light-mode regardless of which app theme
+ * is active. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-area,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-stack,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .queued-messages-above-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-create-pr-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface {
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.62);
+  --text-tertiary: rgba(18, 21, 27, 0.45);
+  --text-muted: rgba(18, 21, 27, 0.32);
+  --panel-bg: var(--alabaster-composer-fill);
+  --panel-elevated-bg: var(--alabaster-composer-fill);
+  --panel-border: var(--alabaster-composer-border);
+  --composer-bg: var(--alabaster-composer-fill);
+  --composer-bg-solid: var(--alabaster-composer-fill);
+  --composer-glass-bg: var(--alabaster-composer-fill);
+  --composer-glass-border: var(--alabaster-composer-border);
+  --composer-border: var(--alabaster-composer-border);
+  --surface-1: var(--alabaster-composer-fill);
+  --surface-2: var(--alabaster-composer-fill);
+  --surface-border: var(--alabaster-composer-border);
+  color: rgba(18, 21, 27, 0.86);
+  color-scheme: light;
+}
+
+/* Force light-mode text on the specific dark-theme selectors
+ * elsewhere in main.css that hard-code colors. Doubled
+ * attribute (0,3,1) beats the dark-mode rules at 0,2,1. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-branch,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-files,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-files strong,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-stats,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar-action {
+  background: transparent !important;
+  background-image: none !important;
+  color: rgba(18, 21, 27, 0.86) !important;
+  border-color: rgba(18, 21, 27, 0.10) !important;
+}
+/* Diff +/- colors stay readable on cream — darker green / red. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-diff-add {
+  color: #2a8a4a !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-diff-del {
+  color: #c43a3a !important;
+}
+
+/* Composer surface — same specificity trick (doubled
+ * attribute) + !important for the critical paint props. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface {
+  position: relative;
+  background: var(--alabaster-composer-fill) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid var(--alabaster-composer-border);
+  border-radius: var(--alabaster-composer-radius);
+  box-shadow:
+    inset 0 var(--alabaster-composer-rim-width) 0 var(--alabaster-composer-rim),
+    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.06),
+    0 8px 24px -12px rgba(60, 50, 30, 0.12),
+    var(--alabaster-composer-glow);
+  transition: box-shadow 220ms ease, border-color 220ms ease;
+}
+
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface:focus-within {
+  box-shadow:
+    inset 0 var(--alabaster-composer-rim-width) 0 var(--alabaster-composer-rim-strong),
+    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.05),
+    0 10px 28px -10px rgba(60, 50, 30, 0.16),
+    0 0 36px rgba(180, 160, 120, 0.08),
+    0 0 80px rgba(180, 160, 120, 0.04);
+  border-color: rgba(18, 21, 27, 0.22);
+}
+
+/* Rim-chase pseudo-element — same conic-gradient pattern as
+ * obsidian, but with black/charcoal arc instead of white. The
+ * --obsidian-rim-angle custom property is shared (registered
+ * once at the top of the obsidian block). */
+[data-composer-style="alabaster"] .composer-surface::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--alabaster-composer-rim-width) * -1);
+  border-radius: calc(var(--alabaster-composer-radius) + var(--alabaster-composer-rim-width));
+  padding: var(--alabaster-composer-rim-width);
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(0, 0, 0, 0.45) 310deg,
+    rgba(0, 0, 0, 0.85) 340deg,
+    rgba(0, 0, 0, 0.45) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--alabaster-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="alabaster"] .composer-surface::before {
+    animation: none;
+  }
+}
+
+[data-composer-style="alabaster"] .composer-textarea {
+  background: transparent;
+  border: 0;
+  color: rgba(18, 21, 27, 0.92);
+  font-weight: 400;
+  letter-spacing: 0.005em;
+  padding-top: 12px;
+  position: relative;
+  z-index: 2;
+}
+[data-composer-style="alabaster"] .composer-textarea::placeholder {
+  color: rgba(18, 21, 27, 0.42);
+}
+
+/* Above-bar / detached rows — same cream fill, matching rim,
+ * matching chase. Doubled-attribute + !important so we beat
+ * any prompt-surface or appearance-mode rule. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .queued-messages-above-row,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-create-pr-row {
+  background: var(--alabaster-composer-fill) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border: 1px solid var(--alabaster-composer-border);
+  border-radius: var(--alabaster-composer-radius-rows);
+  box-shadow:
+    inset 0 var(--alabaster-composer-rim-width) 0 var(--alabaster-composer-rim),
+    0 6px 18px -10px rgba(60, 50, 30, 0.10),
+    0 0 18px rgba(180, 160, 120, 0.03);
+  position: relative;
+}
+
+[data-composer-style="alabaster"] .composer-above-bar::before,
+[data-composer-style="alabaster"] .ensemble-above-row::before,
+[data-composer-style="alabaster"] .queued-messages-above-row::before,
+[data-composer-style="alabaster"] .composer-create-pr-row::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--alabaster-composer-rim-width) * -1);
+  border-radius: calc(var(--alabaster-composer-radius-rows) + var(--alabaster-composer-rim-width));
+  padding: var(--alabaster-composer-rim-width);
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(0, 0, 0, 0.40) 310deg,
+    rgba(0, 0, 0, 0.75) 340deg,
+    rgba(0, 0, 0, 0.40) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--alabaster-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.68;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="alabaster"] .composer-above-bar::before,
+  [data-composer-style="alabaster"] .ensemble-above-row::before,
+  [data-composer-style="alabaster"] .queued-messages-above-row::before,
+  [data-composer-style="alabaster"] .composer-create-pr-row::before {
+    animation: none;
+  }
+}
+
+/* Match the Claude above-bar order: files → stats → action
+ * right-anchored trio. Same rules as obsidian EW58. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-above-bar-files {
+  order: 8;
+  margin-left: auto;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-above-bar-stats {
+  order: 9;
+  margin-left: 0;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-diff-action-menu-wrap {
+  order: 10;
+  margin-left: 0;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-above-bar .composer-diff-action-menu-wrap .composer-above-bar-action {
+  margin-left: -6px;
+}
+
+/* Satellite picker chrome — flatten all control triggers
+ * (model / permission / ensemble-mode / etc.) to floating
+ * dark text on the cream surface. Mirror of the obsidian
+ * EW57 flatten. */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] [data-composer-control],
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-picker-label,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-picker-command,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-image-picker-btn,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-control-button,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-schedule-label,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-runtime-profile,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-combined-picker-trigger,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 4px 8px;
+  color: rgba(18, 21, 27, 0.74);
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] [data-composer-control]:hover:not(:disabled),
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-picker-label:hover,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-combined-picker-trigger:hover:not(:disabled),
+[data-composer-style="alabaster"][data-composer-style="alabaster"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: #0a0a0a !important;
+  background: transparent !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: #0a0a0a !important;
+  box-shadow: inset 0 -1px 0 rgba(18, 21, 27, 0.5) !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-combined-picker-trigger-primary,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-combined-picker-trigger-suffix {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Flatten the ensemble-row add/remove roster buttons — same
+ * floating-glyphs treatment as obsidian. Hover preserves the
+ * semantic color cue (dark for +, soft red for −). */
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-add-participant,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-remove-participant {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: rgba(18, 21, 27, 0.56) !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-add-participant:hover:not(:disabled) {
+  background: transparent !important;
+  color: #0a0a0a !important;
+}
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .ensemble-above-remove-participant:hover:not(:disabled) {
+  background: transparent !important;
+  color: #c43a3a !important;
+}
+
+/* Send button — same shape, accent gets a darker inset
+ * highlight so it reads cut from the cream material. */
+[data-composer-style="alabaster"] .composer-action-btn.run-btn,
+[data-composer-style="alabaster"] .composer-action-btn.stop-btn {
+  background: color-mix(in srgb, var(--accent) 90%, transparent);
+  border: 0;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 6px 18px color-mix(in srgb, var(--accent) 22%, transparent),
+    0 0 16px rgba(0, 0, 0, 0.04);
+}
+
+/* ============================================================
  * NEW-SHELL VISUAL FIXES (Phase J7 follow-up)
  *
  * Three issues surfaced after the four new shells shipped:

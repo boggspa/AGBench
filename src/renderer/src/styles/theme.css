@@ -635,6 +635,188 @@
     linear-gradient(180deg, rgba(255, 255, 255, 0.36), rgba(255, 255, 255, 0.20)) !important;
 }
 
+/* ============================================================
+ * 1.0.5-EW61 — "Alabaster" theme. Polar inverse of obsidian.
+ *
+ * Every obsidian value mirrored on the luma axis:
+ *   - Fill: deep near-black → cream near-white
+ *   - Rim: white-tinted-warm hairline → charcoal-tinted-cool hairline
+ *   - Halo: warm peach/copper → cool blue/lavender
+ *   - Sidebar: light translucent (the "bizarre twin") → dark
+ *     translucent (the inverse bizarre twin)
+ *   - Transcript: opaque deep dark slab → opaque cream slab
+ *
+ * Distinct from light / mist / sage by the cool halo + the
+ * dark sidebar inversion + the deliberately premium-stone
+ * cream base (vs cooler iOS-sunlight whites).
+ *
+ * Pairs with the `alabaster` composer style at the bottom of
+ * main.css — both lock their own values and ignore the rest
+ * of the cascade, so you can wear obsidian-composer on
+ * alabaster-theme or vice-versa if you want a brutalist mix. */
+[data-theme="alabaster"] {
+  --app-bg: #f4f3ef;
+  --app-bg-elevated: #fbfaf6;
+  --app-bg-sunken: #ecebe6;
+  /* Transcript fully opaque — mirrors the obsidian decision.
+   * Reading surface should be a calm slab; the sidebar is
+   * where the glass happens. */
+  --content-bg: #f4f3ef;
+  --bg-primary: var(--content-bg);
+  --bg-secondary: var(--app-bg-elevated);
+  /* Sidebar — VERY transparent dark wash (the inverse bizarre
+   * twin to obsidian's very-transparent-light sidebar). The
+   * lavender halo behind it reads through aggressively. */
+  --sidebar-bg: rgba(18, 21, 27, 0.10);
+  --sidebar-bg-solid: #1a1a1d;
+  --panel-bg: rgba(252, 251, 247, 0.74);
+  --panel-bg-solid: #fbfaf6;
+  --panel-elevated-bg: rgba(255, 255, 255, 0.86);
+  --surface-1: #ffffff;
+  --surface-2: #f0efea;
+  --surface-3: #e6e5e0;
+  --surface-border: rgba(18, 21, 27, 0.10);
+  --composer-bg: rgba(255, 255, 255, 0.86);
+  --composer-bg-solid: #ffffff;
+  --composer-glass-bg: rgba(255, 255, 255, 0.62);
+  --composer-glass-border: rgba(18, 21, 27, 0.18);
+  --composer-glass-highlight: rgba(0, 0, 0, 0.04);
+  --composer-glass-vignette: rgba(140, 145, 160, 0.10);
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.62);
+  --text-tertiary: rgba(18, 21, 27, 0.45);
+  --text-muted: rgba(18, 21, 27, 0.32);
+  /* Sidebar tokens — light text on the dark sidebar (the
+   * inverse bizarre move). The .app-sidebar selector below
+   * also scope-overrides these for safety. */
+  --sidebar-text: rgba(255, 255, 255, 0.86);
+  --sidebar-text-secondary: rgba(255, 255, 255, 0.54);
+  --sidebar-border: rgba(255, 255, 255, 0.10);
+  --panel-border: rgba(18, 21, 27, 0.10);
+  --composer-border: rgba(18, 21, 27, 0.12);
+  --shadow-lg: 0 14px 44px rgba(60, 70, 110, 0.10);
+  /* Accent trio — slate / ink / pewter (cool/neutral, the
+   * polar inverse of obsidian's pewter / copper / smoke). */
+  --accent: #5a6172;
+  --accent-hover: #424857;
+  --theme-chroma-1: #5a6172;
+  --theme-chroma-2: #2a3140;
+  --theme-chroma-3: #8a90a0;
+  --theme-wash-soft: 8%;
+  --theme-wash-medium: 13%;
+  --theme-wash-strong: 18%;
+  /* Cool halo wash — lavender/blue at very low alpha. The
+   * polar inverse of obsidian's warm peach/copper halo. */
+  --alabaster-halo-cool: rgba(120, 140, 200, 0.10);
+  --alabaster-halo-cool-strong: rgba(120, 140, 200, 0.18);
+  /* The signature rim — 1px charcoal-tinted shadow on the top
+   * edge of every panel / card / composer surface. Inverse of
+   * the obsidian `--obsidian-rim-shine` (which was a white
+   * tinted-warm low-alpha hairline). */
+  --alabaster-rim-shine: rgba(18, 21, 27, 0.14);
+  --alabaster-rim-shine-strong: rgba(18, 21, 27, 0.24);
+  /* The faint cool ambient wash painted behind the whole app-bg.
+   * Lavender/blue at extreme low alpha; feathered into
+   * transparency so the rest of the surface reads as a calm
+   * cream slab. */
+  --alabaster-ambient-gradient:
+    radial-gradient(120% 60% at 50% 0%, rgba(120, 140, 200, 0.06), transparent 70%),
+    radial-gradient(120% 50% at 50% 100%, rgba(140, 120, 200, 0.04), transparent 70%);
+}
+
+/* Paint the cool lavender ambient gradient behind the app on
+ * alabaster. Fixed (doesn't scroll with content), feathered
+ * into transparency at the edges. */
+[data-theme="alabaster"] body,
+[data-theme="alabaster"] {
+  background-image: var(--alabaster-ambient-gradient);
+  background-attachment: fixed;
+}
+
+/* Rim-shine hook for alabaster — charcoal hairline at the top
+ * edge of every elevated surface. Sidebar deliberately
+ * EXCLUDED here because its block below paints its own
+ * inverse-bizarre shadow (dark-inset-left + light-inset-right). */
+[data-theme="alabaster"] .panel,
+[data-theme="alabaster"] .panel-elevated,
+[data-theme="alabaster"] .composer-surface,
+[data-theme="alabaster"] .welcome-usage-dashboard,
+[data-theme="alabaster"] .welcome-usage-provider-card,
+[data-theme="alabaster"] .welcome-usage-workspace-card,
+[data-theme="alabaster"] .welcome-usage-stat,
+[data-theme="alabaster"] .welcome-usage-cost-chart,
+[data-theme="alabaster"] .welcome-usage-providers-timecode {
+  box-shadow:
+    inset 0 1px 0 var(--alabaster-rim-shine),
+    0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Force the transcript fully opaque on Alabaster regardless of
+ * appearance mode — mirrors the obsidian transcript-opacity
+ * rule. The reading surface stays a calm cream slab; the
+ * sidebar is where the glass happens. */
+[data-theme="alabaster"][data-appearance] .app-transcript,
+[data-theme="alabaster"] .app-transcript {
+  background: #f4f3ef !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* Bizarre two-tone sidebar — the polar inverse of obsidian's
+ * "light sidebar on dark app". Here it's "dark sidebar on
+ * light app". Light text + icons, dark translucent
+ * background, very transparent so the lavender halo bleeds
+ * through. Same doubled-attribute specificity trick as
+ * obsidian for the same reason (beats the appearance-mode
+ * sidebar rules that load later in main.css). */
+[data-theme="alabaster"][data-theme="alabaster"] .app-sidebar {
+  --sidebar-bg: rgba(18, 21, 27, 0.10);
+  --sidebar-bg-solid: #1a1a1d;
+  --sidebar-text: rgba(255, 255, 255, 0.88);
+  --sidebar-text-secondary: rgba(255, 255, 255, 0.58);
+  --sidebar-border: rgba(255, 255, 255, 0.12);
+  /* Scoped overrides of the "global" text vars — every child
+   * of .app-sidebar that reads --text-primary etc. now gets
+   * the dark-mode light-text palette. */
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.62);
+  --text-tertiary: rgba(255, 255, 255, 0.45);
+  --text-muted: rgba(255, 255, 255, 0.32);
+  --panel-border: rgba(255, 255, 255, 0.10);
+  --panel-bg: rgba(20, 22, 28, 0.46);
+  --panel-elevated-bg: rgba(28, 30, 38, 0.56);
+  /* Inverse rim shadow: dark inset on the LEFT edge (interior
+   * highlight), charcoal inset on the right (the visual cut
+   * to the cream transcript). Mirrors obsidian's white-left +
+   * dark-right pattern. */
+  box-shadow:
+    inset 1px 0 0 rgba(0, 0, 0, 0.24),
+    inset -1px 0 0 rgba(18, 21, 27, 0.18) !important;
+  border-right-color: rgba(18, 21, 27, 0.18) !important;
+}
+
+/* Per-appearance-mode sidebar tunings — give each glass mode a
+ * substantial dark wash so the inverse-bizarre read survives
+ * macOS vibrancy (which trends light on light-mode systems). */
+[data-theme="alabaster"][data-appearance="solid"] .app-sidebar {
+  background: rgba(18, 21, 27, 0.38) !important;
+}
+[data-theme="alabaster"][data-appearance="soft_glass"] .app-sidebar {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.06)),
+    rgba(20, 22, 28, 0.22) !important;
+  backdrop-filter: blur(22px) !important;
+  -webkit-backdrop-filter: blur(22px) !important;
+}
+[data-theme="alabaster"][data-appearance="native_glass"] .app-sidebar {
+  /* macOS sidebar vibrancy paints behind — on light-mode
+   * systems this material is light, so we paint a substantial
+   * dark wash on top to flip the read to dark. Mirror of
+   * obsidian's light wash on native_glass. */
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.18)) !important;
+}
+
 [data-theme="rainbow"],
 [data-theme="twilight"],
 [data-theme="cyber"] {

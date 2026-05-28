@@ -35,6 +35,19 @@ export type ThemeAppearance =
    * than the fill itself carrying the identity.
    */
   | 'obsidian'
+  /**
+   * 1.0.5-EW61 — "Alabaster" theme. Polar inverse of `obsidian`.
+   * Where obsidian is volcanic-black glass with white rims and
+   * warm dusk halos, alabaster is translucent cream-white stone
+   * with charcoal rims and cool blue/lavender halos. Same
+   * design language (rim-carries-identity, opaque transcript,
+   * deliberately discordant sidebar) — every value mirrored.
+   * Distinct from `light` / `mist` / `sage` (which trend
+   * cooler, flatter, more "iOS sunlight") — this is the
+   * premium-stone postmodern reading of light mode, paired
+   * with the obsidian composer's polar twin.
+   */
+  | 'alabaster'
 export type ThemeCornerStyle = 'rounded' | 'hard'
 export type ThemeAccentStyle =
   | 'system'
@@ -105,6 +118,16 @@ export type ComposerStyle =
    * "charcoal rimshine premium" map to this style.
    */
   | 'obsidian'
+  /**
+   * 1.0.5-EW61 — "Alabaster" composer style. Polar inverse of
+   * `obsidian`. Cream-white fill, crisp 2px charcoal rim,
+   * subtle warm-cream outer glow, slow black/charcoal rim-
+   * chase animation. Theme-immune subtree (locks light-mode
+   * tokens regardless of app theme) — same family of chrome
+   * as obsidian, every value mirrored on the luma axis.
+   * Pairs natively with the `alabaster` theme.
+   */
+  | 'alabaster'
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
