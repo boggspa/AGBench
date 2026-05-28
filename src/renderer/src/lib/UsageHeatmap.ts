@@ -26,8 +26,12 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
   codex: '#6366F1',
   claude: '#D97706',
   kimi: '#84A33B',
-  // Grok (gated) — neutral graphite, matching its monochrome shell heritage.
-  grok: '#6B7280'
+  // Grok (gated) — monochrome identity. Heatmap cells paint over the
+  // dark sidebar surface, so the "white" end of black/white reads as
+  // a near-white cell (mirrors --provider-grok-color, which adapts to
+  // the active theme where it can; this static hex is the dark-surface
+  // case the heatmap always renders against).
+  grok: '#E5E7EB'
 }
 
 export interface HeatmapCell {

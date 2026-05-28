@@ -51,4 +51,25 @@ describe('ModelUsageCard', () => {
     expect(html).toContain('200 / 200 remaining')
     expect(html).toContain('2000 / 2000 remaining')
   })
+
+  it('renders the existing four providers and does NOT add a Grok meter when Grok is unavailable', () => {
+    // Regression for 1.0.6-GU: the gated Grok subscription-credit meter
+    // must not leak into the card. Under SSR the availability effect never
+    // runs, so `grokAvailable` stays false and the meter is absent — exactly
+    // the gate-off behaviour. The four token/quota meters render unchanged.
+    const summary = [
+      quotaEntry({ provider: 'gemini' }),
+      quotaEntry({ provider: 'codex' }),
+      quotaEntry({ provider: 'claude' }),
+      quotaEntry({ provider: 'kimi' })
+    ]
+    const html = renderToStaticMarkup(<ModelUsageCard usageSummary={summary} />)
+
+    expect(html).toContain('Gemini')
+    expect(html).toContain('Codex')
+    expect(html).toContain('Claude')
+    expect(html).toContain('Kimi')
+    // Grok credits meter stays out unless the gated adapter is registered.
+    expect(html).not.toContain('Subscription credits')
+  })
 })

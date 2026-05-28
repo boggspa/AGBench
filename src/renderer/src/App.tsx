@@ -2413,7 +2413,9 @@ function WelcomeUsageDashboard({
     codex: '#aaa0ff',
     claude: '#ffad64',
     kimi: '#bbcf66',
-    grok: '#9aa0a6'
+    // Grok — monochrome identity; the dashboard rails sit on a dark
+    // surface, so the "white" end of black/white reads here.
+    grok: '#e6e6e8'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||

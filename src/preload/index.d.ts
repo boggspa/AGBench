@@ -42,6 +42,7 @@ import {
 } from '../main/store/types'
 import type { RemoteWorkspaceEntry } from '../main/RemoteWorkspaceAllowlist'
 import type { UpdateStateSnapshot } from '../main/UpdateService'
+import type { GrokUsageSnapshot } from '../main/grok/GrokUsage'
 
 type GeminiCapabilityKind = 'mcp' | 'extensions' | 'skills' | 'agents'
 type GeminiCapabilityFormat = 'json' | 'raw' | 'error'
@@ -306,6 +307,7 @@ declare global {
       importCodexUsageCredential: (filePath?: string) => Promise<any>
       clearCodexUsageCredential: () => Promise<boolean>
       getCodexUsageSnapshot: () => Promise<any>
+      probeGrokUsage: () => Promise<GrokUsageSnapshot>
       createGithubPr: (payload: {
         workspacePath?: string
         title?: string

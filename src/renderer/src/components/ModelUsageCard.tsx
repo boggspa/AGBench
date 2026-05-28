@@ -19,6 +19,7 @@
  * visual ordering.
  */
 import {
+  useEffect,
   useId,
   useRef,
   useState,
@@ -31,6 +32,7 @@ import type { ModelUsageAggregate, UsageWindowAggregate } from '../App'
 import { computeQuotaPace } from '../lib/QuotaPace'
 import { formatResetShort } from '../lib/UsageFormat'
 import { getProviderName } from './Sidebar'
+import { GrokCreditsMeter } from './GrokCreditsMeter'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import { QuotaProgressBar } from './QuotaProgressBar'
 import { UsageHeatmap } from './UsageHeatmap'
@@ -203,11 +205,34 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
   const sidebarHeightRef = useRef<number | null>(sidebarHeightPx)
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
   const [sidebarResizing, setSidebarResizing] = useState(false)
-  if (usageSummary.length === 0) return null
+  // Grok subscription-credit meter gate. Grok is NOT part of the token/cost
+  // `usageSummary` (its credit pool comes from a separate on-demand PTY probe),
+  // so we surface it only when the gated Grok provider adapter is registered.
+  const [grokAvailable, setGrokAvailable] = useState(false)
+  useEffect(() => {
+    let active = true
+    if (typeof window === 'undefined' || typeof window.api?.getProviderAdapters !== 'function') {
+      return
+    }
+    void window.api
+      .getProviderAdapters()
+      .then((adapters) => {
+        if (!active) return
+        const ids = Array.isArray(adapters)
+          ? adapters.map((adapter) => (adapter as { provider?: string } | null)?.provider)
+          : []
+        setGrokAvailable(ids.includes('grok'))
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
   const quotaEntries = sortByProvider(usageSummary).filter(
     (entry) => entry.model === 'usage limits' && (entry.windows?.length || 0) > 0
   )
-  if (quotaEntries.length === 0) return null
+  // Render when there's a token/quota meter OR a gated Grok credit meter to show.
+  if (quotaEntries.length === 0 && !grokAvailable) return null
 
   const isSidebarVariant = variant === 'sidebar'
   const showQuotaEntries = !isSidebarVariant || sidebarExpanded
@@ -345,6 +370,10 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
               <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
             ))}
           </div>
+          {/* 1.0.6-GU — Grok subscription credits (separate data model from
+           * the token/cost meters above; manual-refresh PTY probe). Only
+           * mounts when the gated Grok provider adapter is registered. */}
+          {grokAvailable ? <GrokCreditsMeter /> : null}
         </div>
       </div>
       {/* Phase L6 slice 5 — activity heatmap. Renders the last 30

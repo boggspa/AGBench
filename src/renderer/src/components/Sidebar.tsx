@@ -423,6 +423,7 @@ export function getProviderName(provider?: ProviderId) {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
   return 'Gemini'
 }
 
@@ -492,6 +493,16 @@ export function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
               d="M8 4.7v-.9M9.85 8h.9M6.05 11.3h.9"
               stroke="currentColor"
               strokeWidth="1.1"
+              strokeLinecap="round"
+            />
+          </>
+        ) : providerKey === 'grok' ? (
+          // Grok — the xAI monochrome "X" mark (two crossing strokes).
+          <>
+            <path
+              d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4"
+              stroke="currentColor"
+              strokeWidth="1.3"
               strokeLinecap="round"
             />
           </>

@@ -1,0 +1,339 @@
+import { describe, it, expect } from 'vitest'
+import { parseGrokUsage, stripGrokAnsi, probeGrokUsage, type GrokPtyLike } from './GrokUsage'
+
+// ── Pure parser (the fully-tested core; everything else is impure PTY glue) ──
+
+describe('parseGrokUsage', () => {
+  it('parses a decimal percent from the "Credits used:" form', () => {
+    const s = parseGrokUsage('Credits used: 1.05%')
+    expect(s.creditsUsedPercent).toBe(1.05)
+    expect(s.creditsUsedDisplay).toBe('1.05%')
+    expect(s.confidence).toBe('observed')
+  })
+
+  it('parses an exact 0%', () => {
+    const s = parseGrokUsage('Credits used: 0%')
+    expect(s.creditsUsedPercent).toBe(0)
+    expect(s.creditsUsedDisplay).toBe('0%')
+    expect(s.confidence).toBe('observed')
+  })
+
+  it('preserves the "<1%" band as a display string without inventing a number', () => {
+    const s = parseGrokUsage('Credits used: <1%')
+    expect(s.creditsUsedPercent).toBeNull()
+    expect(s.creditsUsedDisplay).toBe('<1%')
+    expect(s.confidence).toBe('observed')
+  })
+
+  it('parses the status-line "<1% used" form', () => {
+    const s = parseGrokUsage('grok · <1% used · plan')
+    expect(s.creditsUsedDisplay).toBe('<1%')
+    expect(s.creditsUsedPercent).toBeNull()
+    expect(s.confidence).toBe('observed')
+  })
+
+  it('parses the status-line "12% used" form', () => {
+    const s = parseGrokUsage('12% used')
+    expect(s.creditsUsedPercent).toBe(12)
+    expect(s.creditsUsedDisplay).toBe('12%')
+  })
+
+  it('captures an explicit reset window and never fabricates an ISO resetAt', () => {
+    const s = parseGrokUsage('Credits used: 0%\nResets: May 31, 16:00 PT')
+    expect(s.resetAtText).toBe('May 31, 16:00 PT')
+    expect(s.resetAt).toBeNull()
+  })
+
+  it('captures a short "Resets 1 Jun" window (no colon)', () => {
+    const s = parseGrokUsage('Credits used: 0%  Resets 1 Jun')
+    expect(s.resetAtText).toBe('1 Jun')
+  })
+
+  it('stops the reset capture before a trailing pay-as-you-go field on the same line', () => {
+    const s = parseGrokUsage('Resets: May 31, 16:00 PT  Pay as you go: disabled')
+    expect(s.resetAtText).toBe('May 31, 16:00 PT')
+  })
+
+  it('reads the "Free credits with SuperGrok" plan label', () => {
+    const s = parseGrokUsage('Free credits with SuperGrok')
+    expect(s.planLabel).toBe('Free credits with SuperGrok')
+  })
+
+  it('reads a bare "SuperGrok Heavy" plan label', () => {
+    const s = parseGrokUsage('Plan: SuperGrok Heavy')
+    expect(s.planLabel).toBe('SuperGrok Heavy')
+  })
+
+  it('reads pay-as-you-go disabled/enabled (and on/off synonyms)', () => {
+    expect(parseGrokUsage('Pay as you go: disabled').payAsYouGoEnabled).toBe(false)
+    expect(parseGrokUsage('Pay as you go: enabled').payAsYouGoEnabled).toBe(true)
+    expect(parseGrokUsage('Pay as you go: off').payAsYouGoEnabled).toBe(false)
+    expect(parseGrokUsage('Pay as you go: on').payAsYouGoEnabled).toBe(true)
+  })
+
+  it('returns an "unavailable" snapshot when no credit signal is present', () => {
+    const s = parseGrokUsage('Welcome to grok\nType a message to begin')
+    expect(s.confidence).toBe('unavailable')
+    expect(s.creditsUsedDisplay).toBe('')
+    expect(s.creditsUsedPercent).toBeNull()
+    expect(s.resetAtText).toBeNull()
+  })
+
+  it('strips ANSI/VT control sequences before parsing', () => {
+    const raw = '[1m[32mCredits used:[0m 2.5%[0m'
+    const s = parseGrokUsage(raw)
+    expect(s.creditsUsedPercent).toBe(2.5)
+    expect(s.creditsUsedDisplay).toBe('2.5%')
+  })
+
+  it('parses a full multi-field screen (the real "/usage" capture shape)', () => {
+    const screen = [
+      'Free credits with SuperGrok',
+      'Credits used: 1.05%',
+      'Resets: May 31, 16:00 PT',
+      'Pay as you go: disabled'
+    ].join('\n')
+    const s = parseGrokUsage(screen)
+    expect(s).toMatchObject({
+      provider: 'grok',
+      source: 'grok-cli-usage',
+      usageKind: 'subscription_credits',
+      creditsUsedPercent: 1.05,
+      creditsUsedDisplay: '1.05%',
+      resetAtText: 'May 31, 16:00 PT',
+      planLabel: 'Free credits with SuperGrok',
+      payAsYouGoEnabled: false,
+      confidence: 'observed'
+    })
+  })
+
+  it('preserves the provided refreshedAt timestamp', () => {
+    const s = parseGrokUsage('Credits used: 0%', '2026-05-28T12:00:00.000Z')
+    expect(s.refreshedAt).toBe('2026-05-28T12:00:00.000Z')
+  })
+
+  it('always sets stable provider/source/usageKind identifiers', () => {
+    const s = parseGrokUsage('Credits used: 0%')
+    expect(s.provider).toBe('grok')
+    expect(s.source).toBe('grok-cli-usage')
+    expect(s.usageKind).toBe('subscription_credits')
+  })
+
+  it('tolerates empty/garbage input without throwing', () => {
+    expect(parseGrokUsage('').confidence).toBe('unavailable')
+    // @ts-expect-error — defensively accepts non-string at runtime.
+    expect(parseGrokUsage(undefined).confidence).toBe('unavailable')
+  })
+})
+
+describe('stripGrokAnsi', () => {
+  it('removes CSI color sequences but keeps text and spaces', () => {
+    expect(stripGrokAnsi('[1mhello [0mworld')).toBe('hello world')
+  })
+
+  it('removes OSC (title) sequences', () => {
+    expect(stripGrokAnsi(']0;some titletext')).toBe('text')
+  })
+
+  it('converts carriage returns to newlines so line scans survive TUI redraws', () => {
+    expect(stripGrokAnsi('a\rb')).toBe('a\nb')
+  })
+})
+
+// ── Impure PTY probe (driven by a fake terminal + a virtual clock) ───────────
+
+/** A controllable virtual clock so timeout/delay logic is deterministic. */
+class FakeClock {
+  now = 0
+  private timers: { id: number; cb: () => void; at: number }[] = []
+  private seq = 0
+
+  setTimer = (cb: () => void, ms: number): number => {
+    const id = ++this.seq
+    this.timers.push({ id, cb, at: this.now + ms })
+    return id
+  }
+
+  clearTimer = (handle: unknown): void => {
+    this.timers = this.timers.filter((t) => t.id !== handle)
+  }
+
+  /** Fire every due timer in chronological order, honoring nested scheduling. */
+  advance(ms: number): void {
+    const target = this.now + ms
+    for (;;) {
+      const next = this.timers.filter((t) => t.at <= target).sort((a, b) => a.at - b.at)[0]
+      if (!next) break
+      this.timers = this.timers.filter((t) => t.id !== next.id)
+      this.now = next.at
+      next.cb()
+    }
+    this.now = target
+  }
+}
+
+class FakePty implements GrokPtyLike {
+  writes: string[] = []
+  killed = false
+  private dataListener?: (data: string) => void
+  private exitListener?: (event: { exitCode: number }) => void
+
+  onData(listener: (data: string) => void): void {
+    this.dataListener = listener
+  }
+  onExit(listener: (event: { exitCode: number }) => void): void {
+    this.exitListener = listener
+  }
+  write(data: string): void {
+    this.writes.push(data)
+  }
+  kill(): void {
+    this.killed = true
+  }
+
+  /** Test helper: stream a chunk of terminal output to the probe. */
+  emit(data: string): void {
+    this.dataListener?.(data)
+  }
+  /** Test helper: simulate the child exiting. */
+  exit(code = 0): void {
+    this.exitListener?.({ exitCode: code })
+  }
+}
+
+describe('probeGrokUsage', () => {
+  const FIXED_NOW = '2026-05-28T00:00:00.000Z'
+
+  it('resolves an observed snapshot once a credit line streams in', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer
+    })
+
+    pty.emit('Credits used: 1.05%\nResets: May 31, 16:00 PT\nPay as you go: disabled\n')
+    // The probe waits one beat (250ms) for trailing lines, then parses.
+    clock.advance(250)
+
+    const snap = await promise
+    expect(snap.confidence).toBe('observed')
+    expect(snap.creditsUsedPercent).toBe(1.05)
+    expect(snap.resetAtText).toBe('May 31, 16:00 PT')
+    expect(snap.payAsYouGoEnabled).toBe(false)
+    expect(snap.refreshedAt).toBe(FIXED_NOW)
+    expect(pty.killed).toBe(true)
+  })
+
+  it('buffers data split across multiple chunks before the credit regex matches', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer
+    })
+
+    pty.emit('Credits used: ') // no digit yet → no early-out
+    clock.advance(10)
+    pty.emit('1.05%\n') // now the line is complete
+    clock.advance(250)
+
+    const snap = await promise
+    expect(snap.creditsUsedPercent).toBe(1.05)
+    expect(snap.confidence).toBe('observed')
+  })
+
+  it('sends "/usage" then Enter to open the usage screen', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+      readyDelayMs: 100,
+      selectDelayMs: 100,
+      timeoutMs: 1000
+    })
+
+    clock.advance(100)
+    expect(pty.writes).toContain('/usage\r')
+    clock.advance(100)
+    expect(pty.writes).toContain('\r')
+
+    clock.advance(800) // reach the hard timeout
+    const snap = await promise
+    expect(snap.confidence).toBe('unavailable')
+  })
+
+  it('resolves an "unavailable" snapshot on timeout with no data', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+      timeoutMs: 5000
+    })
+
+    clock.advance(5000)
+    const snap = await promise
+    expect(snap.confidence).toBe('unavailable')
+    expect(snap.creditsUsedDisplay).toBe('')
+    expect(pty.killed).toBe(true)
+  })
+
+  it('resolves "unavailable" when the child exits before any usable data', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer
+    })
+
+    pty.exit(0)
+    const snap = await promise
+    expect(snap.confidence).toBe('unavailable')
+  })
+
+  it('resolves "unavailable" (never throws) when spawnPty itself fails', async () => {
+    const snap = await probeGrokUsage({
+      spawnPty: () => {
+        throw new Error('node-pty unavailable')
+      },
+      now: () => FIXED_NOW
+    })
+    expect(snap.confidence).toBe('unavailable')
+    expect(snap.provider).toBe('grok')
+  })
+
+  it('settles only once even if data arrives after an exit', async () => {
+    const pty = new FakePty()
+    const clock = new FakeClock()
+    let resolveCount = 0
+    const promise = probeGrokUsage({
+      spawnPty: () => pty,
+      now: () => FIXED_NOW,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer
+    }).then((s) => {
+      resolveCount += 1
+      return s
+    })
+
+    pty.exit(0)
+    pty.emit('Credits used: 9%\n') // late, post-settle data must be ignored
+    clock.advance(250)
+
+    const snap = await promise
+    expect(resolveCount).toBe(1)
+    expect(snap.confidence).toBe('unavailable')
+  })
+})

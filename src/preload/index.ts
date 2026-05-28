@@ -123,6 +123,7 @@ const api = {
     ipcRenderer.invoke('import-codex-usage-credential', filePath),
   clearCodexUsageCredential: () => ipcRenderer.invoke('clear-codex-usage-credential'),
   getCodexUsageSnapshot: () => ipcRenderer.invoke('get-codex-usage-snapshot'),
+  probeGrokUsage: () => ipcRenderer.invoke('grok-usage:probe'),
   createGithubPr: (payload: {
     workspacePath?: string
     title?: string

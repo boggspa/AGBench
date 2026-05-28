@@ -167,6 +167,12 @@ import { buildGrokCliArgs } from './grok/GrokCliArgs'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
+  probeGrokUsage,
+  parseGrokUsage,
+  type GrokUsageSnapshot,
+  type GrokPtyLike
+} from './grok/GrokUsage'
+import {
   createProviderAdapterRegistry,
   defaultProviderDescriptor,
   providerLabel,
@@ -21063,6 +21069,65 @@ if (isGeminiMcpBridgeProcess) {
 
     ipcMain.handle('get-codex-usage-snapshot', async () => {
       return fetchCodexUsageSnapshot()
+    })
+
+    // Grok subscription-credit usage. UNLIKE the token/cost meters above, this
+    // reports the SuperGrok credit pool (percent + reset window), which has no
+    // noninteractive command — the only safe source is the interactive
+    // `/usage` → "Show Usage" screen captured via PTY. No prompt is ever sent
+    // (no model call / credit consumption); we never read ~/.grok credentials.
+    // Triple-safe: gated behind the experimental flag, returns 'unavailable'
+    // (never throws) when the flag is off or the binary is missing.
+    ipcMain.handle('grok-usage:probe', async (): Promise<GrokUsageSnapshot> => {
+      const now = (): string => new Date().toISOString()
+      if (!experimentalGrokProviderEnabled()) {
+        return parseGrokUsage('', now())
+      }
+      const resolved = await resolveCliProviderBinary('grok')
+      const binaryPath = resolved.binaryPath
+      if (!binaryPath) {
+        return parseGrokUsage('', now())
+      }
+      // A throwaway empty cwd keeps the probe out of any real workspace.
+      let probeCwd = os.tmpdir()
+      try {
+        probeCwd = await fs.mkdtemp(join(os.tmpdir(), 'grok-usage-'))
+      } catch {
+        probeCwd = os.tmpdir()
+      }
+      const isTempDir = probeCwd !== os.tmpdir()
+      try {
+        return await probeGrokUsage({
+          spawnPty: (): GrokPtyLike => {
+            const term = pty.spawn(binaryPath, ['--no-auto-update', '--no-alt-screen'], {
+              name: 'xterm-256color',
+              cols: 100,
+              rows: 30,
+              cwd: probeCwd,
+              env: { ...process.env, TERM: 'xterm-256color', NO_COLOR: '1' } as Record<
+                string,
+                string
+              >
+            })
+            return {
+              onData: (listener) => term.onData(listener),
+              onExit: (listener) => term.onExit((e) => listener({ exitCode: e.exitCode })),
+              write: (data) => term.write(data),
+              kill: () => {
+                try {
+                  term.kill()
+                } catch {
+                  // already gone
+                }
+              }
+            }
+          }
+        })
+      } finally {
+        if (isTempDir) {
+          await fs.rm(probeCwd, { recursive: true, force: true }).catch(() => {})
+        }
+      }
     })
 
     ipcMain.handle(
