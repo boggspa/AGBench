@@ -1,5 +1,6 @@
 import type { AgentRunPayload } from '../index'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
+import { experimentalGrokProviderEnabled } from '../grokGate'
 import {
   coalesceExternalPathGrants,
   stripExternalPathGrantOrder
@@ -225,6 +226,10 @@ export class ComposerService {
 function assertProviderId(value: unknown): ProviderId {
   if (typeof value === 'string' && PROVIDER_IDS.has(value as ProviderId)) {
     return value as ProviderId
+  }
+  // 1.0.6-G3c — grok is accepted only when the experimental gate is on.
+  if (value === 'grok' && experimentalGrokProviderEnabled()) {
+    return 'grok'
   }
   throw new Error('Provider is invalid.')
 }

@@ -1,4 +1,5 @@
 import type { IpcMain } from 'electron'
+import { experimentalGrokProviderEnabled } from './grokGate'
 
 type ArgSpec =
   | 'any'
@@ -295,7 +296,8 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
     throw new Error(`${label} must be an array.`)
   if (
     (spec === 'provider' || spec === 'optionalProvider') &&
-    (typeof value !== 'string' || !PROVIDERS.has(value))
+    (typeof value !== 'string' ||
+      (!PROVIDERS.has(value) && !(value === 'grok' && experimentalGrokProviderEnabled())))
   )
     throw new Error(`${label} must be a known provider.`)
   if (spec === 'approvalAction' && (typeof value !== 'string' || !APPROVAL_ACTIONS.has(value)))
@@ -372,8 +374,7 @@ function validateBugReportPayload(channel: string, value: unknown): void {
     throw new Error(`${channel} bug-report expected must be a string.`)
   if (typeof value.severity !== 'string' || !BUG_REPORT_SEVERITIES.has(value.severity))
     throw new Error(`${channel} bug-report severity must be info, minor, major, or blocking.`)
-  if (!isRecord(value.context))
-    throw new Error(`${channel} bug-report context must be an object.`)
+  if (!isRecord(value.context)) throw new Error(`${channel} bug-report context must be an object.`)
   const ctx = value.context
   for (const key of ['timestamp', 'version', 'provider', 'workspace', 'shell'] as const) {
     if (typeof ctx[key] !== 'string')

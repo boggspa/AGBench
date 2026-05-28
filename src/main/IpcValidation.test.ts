@@ -90,6 +90,23 @@ describe('IpcValidation', () => {
     ).toThrow(/known provider/)
   })
 
+  it('accepts the gated Grok provider at the IPC boundary when the gate is on', () => {
+    // 1.0.6-G3c — with AGBENCH_EXPERIMENTAL_GROK set, the per-call gate admits
+    // grok at the trust boundary so the gated read-only runtime is reachable.
+    const previous = process.env.AGBENCH_EXPERIMENTAL_GROK
+    process.env.AGBENCH_EXPERIMENTAL_GROK = '1'
+    try {
+      expect(() =>
+        validateIpcArgs('run-agent', [
+          { provider: 'grok', workspace: '/tmp/workspace', prompt: 'hello' }
+        ])
+      ).not.toThrow()
+    } finally {
+      if (previous === undefined) delete process.env.AGBENCH_EXPERIMENTAL_GROK
+      else process.env.AGBENCH_EXPERIMENTAL_GROK = previous
+    }
+  })
+
   it('validates approval actions and external grant access', () => {
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'accept'])).not.toThrow()
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'maybe'])).toThrow(

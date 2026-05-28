@@ -162,10 +162,13 @@ import { PermissionService } from './PermissionService'
 import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { buildProviderAuthStatusV2 } from './ProviderAuthStatus'
+import { experimentalGrokProviderEnabled } from './grokGate'
+import { buildGrokCliArgs } from './grok/GrokCliArgs'
 import {
   createProviderAdapterRegistry,
   defaultProviderDescriptor,
-  providerLabel
+  providerLabel,
+  type ProviderAdapter
 } from './ProviderAdapters'
 import {
   buildDiagnosticsSnapshot,
@@ -583,18 +586,9 @@ export function composerContenteditableEnabled(): boolean {
   const value = process.env.AGBENCH_COMPOSER_CONTENTEDITABLE
   return value === '1' || value === 'true' || value === 'yes'
 }
-/**
- * 1.0.6-G — Internal experimental gate for the Grok provider arc. Default
- * OFF: with this unset, 'grok' is a valid ProviderId at the type level but is
- * rejected at every trust boundary (IPC `PROVIDERS` set, `assertProviderId`,
- * the provider-adapter registry) and appears in no user-visible list, so the
- * gate-off state is structurally inert. Set `AGBENCH_EXPERIMENTAL_GROK=1` to
- * enable the gated read-only Grok runtime (G3).
- */
-export function experimentalGrokProviderEnabled(): boolean {
-  const value = process.env.AGBENCH_EXPERIMENTAL_GROK
-  return value === '1' || value === 'true' || value === 'yes'
-}
+// experimentalGrokProviderEnabled() now lives in the pure ./grokGate module
+// (imported above) so the services + IpcValidation can share one gate
+// implementation without importing this Electron-heavy module.
 
 // Late-bound BridgeDaemonClient ref. The daemon is constructed inside the
 // IPC handler block; exposed at module scope so `executeGeminiMcpTool` —
@@ -1134,6 +1128,10 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
 function assertProviderId(value: unknown): ProviderId {
   if (typeof value === 'string' && PROVIDER_IDS.has(value as ProviderId)) {
     return value as ProviderId
+  }
+  // 1.0.6-G3c — grok is accepted only when the experimental gate is on.
+  if (value === 'grok' && experimentalGrokProviderEnabled()) {
+    return 'grok'
   }
   throw new Error('Provider is invalid.')
 }
@@ -7084,6 +7082,58 @@ async function runClaudeProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   })
 }
 
+// 1.0.6-G3c — Gated, READ-ONLY Grok runtime. Reuses the shared CLI streaming
+// machinery (runCliProviderProcess → handleCliProviderJsonEvent), which already
+// parses Claude-Code-shaped events; Grok mirrors that schema. If a smoke run
+// shows Grok's streaming-json diverges, swap in the fixture-tested
+// src/main/grok/GrokStreamingJson.ts mapper via a `state.provider === 'grok'`
+// branch in handleCliProviderJsonEvent. No MCP / preamble in read-only G3
+// (composeRunPrompt already skips both for plan mode).
+async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
+  const route = routeWithRunId('grok', payload)
+  // Defense-in-depth: IpcValidation PROVIDERS, assertProviderId, and the adapter
+  // registry are all gated, but refuse here too if the gate is somehow off.
+  if (!experimentalGrokProviderEnabled()) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(event.sender, 'grok', 'Grok provider is not enabled.', route)
+    sendAgentCompatExit(event.sender, 'grok', 1, route)
+    return
+  }
+  const resolved = await resolveCliProviderBinary('grok', payload.runtimeProfile)
+  if (!resolved.binaryPath) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(
+      event.sender,
+      'grok',
+      resolved.error || 'Grok CLI is not configured.',
+      route
+    )
+    sendAgentCompatLine(
+      event.sender,
+      'grok',
+      { type: 'result', status: 'failed', stats: {}, provider: 'grok', setupRequired: true },
+      route
+    )
+    sendAgentCompatExit(event.sender, 'grok', 1, route)
+    return
+  }
+  // buildGrokCliArgs forces the read-only shape: --permission-mode plan, denies
+  // Bash/Edit/Write, --disable-web-search, never --always-approve.
+  const args = buildGrokCliArgs({
+    prompt: payload.prompt,
+    workspace: payload.workspace!,
+    model: payload.model
+  })
+  runCliProviderProcess(event, 'grok', resolved.binaryPath, args, payload, {
+    fallback: false,
+    extraEnv: {
+      AGENTBENCH_PARENT_PROVIDER: 'grok',
+      AGENTBENCH_RUN_ID: route.appRunId || '',
+      AGENTBENCH_CHAT_ID: route.appChatId || ''
+    }
+  })
+}
+
 /**
  * Phase I3 (Claude initiator): stable per-run path for the temp JSON
  * file consumed by `claude --mcp-config <path>`. Uses `os.tmpdir()`
@@ -10055,7 +10105,7 @@ async function cancelProviderRun(
     return false
   }
 
-  if (provider === 'claude' || provider === 'kimi') {
+  if (provider === 'claude' || provider === 'kimi' || provider === 'grok') {
     const child = cliProviderProcesses.get(provider)
     if (child) {
       child.kill()
@@ -10701,6 +10751,25 @@ async function runGeminiProvider(
   })
 }
 
+// 1.0.6-G3c — The Grok adapter is registered ONLY when the experimental gate
+// is on. Gate off → it is absent → providerAdapters.require('grok') throws →
+// dispatch is impossible. This is the third of the triple-gate (alongside the
+// IpcValidation PROVIDERS accept-set and assertProviderId).
+const grokAdapters: ProviderAdapter<AgentRunPayload, Electron.IpcMainInvokeEvent>[] =
+  experimentalGrokProviderEnabled()
+    ? [
+        {
+          ...defaultProviderDescriptor('grok'),
+          run: ({ event, payload }) => runGrokProvider(event, payload),
+          cancel: (runId) => cancelProviderRun('grok', runId),
+          getStatus: () => getAgentStatusSnapshotDirect('grok'),
+          getMcpStatus: () => getAgentMcpStatusSnapshotDirect('grok'),
+          getCapabilityContract: (request = {}) =>
+            getProviderCapabilityContractDirect('grok', request.workspacePath, request.approvalMode)
+        }
+      ]
+    : []
+
 const providerAdapters = createProviderAdapterRegistry<
   AgentRunPayload,
   Electron.IpcMainInvokeEvent
@@ -10740,7 +10809,8 @@ const providerAdapters = createProviderAdapterRegistry<
     getMcpStatus: () => getAgentMcpStatusSnapshotDirect('kimi'),
     getCapabilityContract: (request = {}) =>
       getProviderCapabilityContractDirect('kimi', request.workspacePath, request.approvalMode)
-  }
+  },
+  ...grokAdapters
 ])
 
 async function readCliVersion(command: string): Promise<string> {
