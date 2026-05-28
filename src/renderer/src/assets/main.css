@@ -28507,6 +28507,93 @@ input:disabled, select:disabled, textarea:disabled {
     inset 0 1px 0 rgba(255, 255, 255, 0.6);
 }
 
+/* ============================================================
+ * 1.0.6-EW81 — Picker popovers on the Alabaster / Obsidian system
+ * THEMES, for the four PROVIDER composer shells (codex / claude /
+ * gemini / kimi).
+ *
+ * These popovers portal to <body>, so they pick up ROOT theme
+ * tokens — but the base popover treatment and the light-frost
+ * `:is([data-theme="light"], [mist], [sage])` variant never cover
+ * the two extreme themes, and the diff-action menu even hardcodes
+ * `color: #fff` (line ~19659). The result is a mismatched
+ * bg/text pairing: white-on-white on Alabaster, dark-on-dark on
+ * Obsidian. The `.shell-obsidian` / `.shell-alabaster` rules above
+ * already solve this for the obsidian/alabaster COMPOSER shells;
+ * this mirrors that treatment for the provider shells, keyed off
+ * the THEME (the `[data-composer-style]` + `[data-theme]` attrs
+ * both live on <html>, an ancestor of the body-portaled popover).
+ *
+ * Drives the fix through the surface/text tokens (so token-based
+ * popovers re-resolve correctly) PLUS an explicit `color` +
+ * `color-scheme` (so the diff-action menu's hardcoded white text
+ * and any system-coloured glyphs follow too). Backgrounds are left
+ * to each popover's own recipe — re-resolved via the corrected
+ * `--panel-elevated-bg` / `--composer-bg-solid` / `--surface-*`
+ * tokens — so the frosted look is preserved. Covers every composer
+ * popover family. Semantic row accents (plan = blue, full-access =
+ * red, etc.) set their own colours and are untouched. */
+[data-theme="alabaster"]:is(
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"]
+  )
+  :is(
+    .composer-combined-picker-popover,
+    .composer-plus-picker-popover,
+    .composer-workspace-popover,
+    .composer-slash-menu,
+    .agent-mention-menu,
+    .composer-diff-action-menu
+  ) {
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.64);
+  --text-tertiary: rgba(18, 21, 27, 0.5);
+  --text-muted: rgba(18, 21, 27, 0.48);
+  --surface-text: rgba(18, 21, 27, 0.92);
+  --surface-text-muted: rgba(18, 21, 27, 0.55);
+  --panel-bg: rgba(252, 251, 247, 0.97);
+  --panel-elevated-bg: rgba(252, 251, 247, 0.98);
+  --composer-bg-solid: #fbfaf6;
+  --surface-1: #ffffff;
+  --surface-2: #f0efea;
+  --panel-border: rgba(18, 21, 27, 0.14);
+  --surface-border: rgba(18, 21, 27, 0.12);
+  color: rgba(18, 21, 27, 0.92) !important;
+  color-scheme: light;
+}
+[data-theme="obsidian"]:is(
+    [data-composer-style="codex"],
+    [data-composer-style="claude"],
+    [data-composer-style="gemini"],
+    [data-composer-style="kimi"]
+  )
+  :is(
+    .composer-combined-picker-popover,
+    .composer-plus-picker-popover,
+    .composer-workspace-popover,
+    .composer-slash-menu,
+    .agent-mention-menu,
+    .composer-diff-action-menu
+  ) {
+  --text-primary: rgba(255, 255, 255, 0.92);
+  --text-secondary: rgba(255, 255, 255, 0.64);
+  --text-tertiary: rgba(255, 255, 255, 0.48);
+  --text-muted: rgba(255, 255, 255, 0.46);
+  --surface-text: rgba(255, 255, 255, 0.92);
+  --surface-text-muted: rgba(255, 255, 255, 0.55);
+  --panel-bg: rgba(30, 28, 35, 0.96);
+  --panel-elevated-bg: rgba(34, 32, 40, 0.97);
+  --composer-bg-solid: #1c1a20;
+  --surface-1: #222028;
+  --surface-2: #2a2832;
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --surface-border: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92) !important;
+  color-scheme: dark;
+}
+
 /* Per-shell trigger chrome ------------------------------------ */
 
 [data-composer-style="codex"] .composer-combined-picker-trigger {
