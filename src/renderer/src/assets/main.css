@@ -32032,3 +32032,493 @@ input:disabled, select:disabled, textarea:disabled {
   :is(.composer-above-bar-files, .composer-above-bar-stats) strong {
   color: rgba(255, 255, 255, 0.98) !important;
 }
+
+/* ============================================================
+ * GROK composer style — visual-only shell.
+ *
+ * Copies the Gemini pill layout + control ordering, but strips
+ * ALL chroma (no blue/green/red/etc.), ALL glass (no
+ * backdrop-filter / translucent fills), and ALL gradients. The
+ * result is strictly monochrome black/white.
+ *
+ * Theme-immune like Obsidian/Alabaster, but bidirectional: a
+ * single `grok` style that reads white-on-black on dark themes
+ * (the default below) and black-on-white on light themes (the
+ * `:is(light, mist, sage, alabaster)` + `prefers-color-scheme`
+ * overrides). All chrome pulls from the `--grok-*` tokens, which
+ * are declared on `[data-composer-style="grok"]` (the <html>
+ * root) so they cascade to the composer, the app-wide
+ * `[data-interface-style="grok"]` chrome, AND the body-portaled
+ * popovers alike.
+ *
+ * Appended at the file foot so its source order beats the broad
+ * light-mode / native-glass shell overrides earlier in the file;
+ * `!important` on the colour-bearing props covers the few of
+ * those that out-specify a plain shell selector (e.g. the
+ * (0,4,0) native-glass light-frost on `.composer-surface`).
+ * ============================================================ */
+
+/* Monochrome token set — dark default (white-on-black). */
+[data-composer-style="grok"] {
+  --grok-bg: #000000;
+  --grok-surface: #111111;
+  --grok-fg: #ffffff;
+  --grok-muted: rgba(255, 255, 255, 0.58);
+  --grok-faint: rgba(255, 255, 255, 0.34);
+  --grok-border: rgba(255, 255, 255, 0.16);
+  --grok-border-strong: rgba(255, 255, 255, 0.5);
+  --grok-hover: rgba(255, 255, 255, 0.08);
+  --grok-fill: rgba(255, 255, 255, 0.1);
+  /* Bright top-edge rim shine — light catching the lip. */
+  --grok-rim: rgba(255, 255, 255, 0.78);
+  --grok-rim-strong: rgba(255, 255, 255, 1);
+}
+/* Light themes flip to black-on-white. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"], [data-theme="alabaster"])[data-composer-style="grok"] {
+  --grok-bg: #ffffff;
+  --grok-surface: #f7f7f7;
+  --grok-fg: #000000;
+  --grok-muted: rgba(0, 0, 0, 0.58);
+  --grok-faint: rgba(0, 0, 0, 0.34);
+  --grok-border: rgba(0, 0, 0, 0.16);
+  --grok-border-strong: rgba(0, 0, 0, 0.42);
+  --grok-hover: rgba(0, 0, 0, 0.06);
+  --grok-fill: rgba(0, 0, 0, 0.08);
+  /* Glossy near-white top lip lifting the surface off the page. */
+  --grok-rim: rgba(255, 255, 255, 0.95);
+  --grok-rim-strong: #ffffff;
+}
+/* `system` theme follows the OS appearance. */
+@media (prefers-color-scheme: light) {
+  [data-theme="system"][data-composer-style="grok"] {
+    --grok-bg: #ffffff;
+    --grok-surface: #f7f7f7;
+    --grok-fg: #000000;
+    --grok-muted: rgba(0, 0, 0, 0.58);
+    --grok-faint: rgba(0, 0, 0, 0.34);
+    --grok-border: rgba(0, 0, 0, 0.16);
+    --grok-border-strong: rgba(0, 0, 0, 0.42);
+    --grok-hover: rgba(0, 0, 0, 0.06);
+    --grok-fill: rgba(0, 0, 0, 0.08);
+    --grok-rim: rgba(255, 255, 255, 0.95);
+    --grok-rim-strong: #ffffff;
+  }
+}
+
+/* Hide the same extra controls Gemini hides. */
+[data-composer-style="grok"] .composer-top-toggles,
+[data-composer-style="grok"] .composer-chips,
+[data-composer-style="grok"] .composer-inline-pickers-left > *:not([data-composer-control="attach"]):not([data-composer-control="ensemble-mode"]):not([data-composer-control="permission"]):not([data-composer-control="model"]):not([data-composer-control="provider"]):not([data-composer-control="workspace"]) {
+  display: none !important;
+}
+
+/* Detached rows above the composer — flat monochrome panels with a
+ * bright top-edge rim shine. */
+[data-composer-style="grok"][data-composer-style="grok"]
+  :is(.composer-above-bar, .ensemble-above-row, .composer-create-pr-row, .queued-messages-above-row) {
+  border-radius: 22px !important;
+  background: var(--grok-surface) !important;
+  border: 1px solid var(--grok-border-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Kill every provider/theme gradient overlay painted on the
+ * composer + its detached rows — the ensemble chip strip's
+ * `::before` tint is the one Grok was still leaking. */
+[data-composer-style="grok"] .composer-above-bar::before,
+[data-composer-style="grok"] .composer-surface::before,
+[data-composer-style="grok"] .ensemble-above-row::before,
+[data-composer-style="grok"] .ensemble-above-row::after,
+[data-composer-style="grok"] .composer-create-pr-row::before,
+[data-composer-style="grok"] .queued-messages-above-row::before {
+  display: none !important;
+  content: none !important;
+  background: none !important;
+  background-image: none !important;
+}
+
+/* Composer surface — flat fill, bright top-edge rim shine, no
+ * glow/glass. The rim is a crisp monochrome highlight (light
+ * catching the lip), not a coloured glow. */
+[data-composer-style="grok"][data-composer-style="grok"] .composer-surface {
+  border-radius: 24px !important;
+  padding: 14px 18px 8px;
+  background: var(--grok-surface) !important;
+  border: 1px solid var(--grok-border-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-surface:focus-within {
+  border-color: var(--grok-rim-strong) !important;
+  box-shadow: inset 0 1px 0 var(--grok-rim-strong) !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-textarea {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 6px 6px 10px;
+  min-height: 48px;
+  font-size: var(--font-size-md);
+  color: var(--grok-fg) !important;
+  -webkit-text-fill-color: var(--grok-fg) !important;
+  caret-color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"][data-composer-style="grok"] .composer-textarea::placeholder {
+  color: var(--grok-faint) !important;
+  -webkit-text-fill-color: var(--grok-faint) !important;
+}
+
+/* Control row — identical ordering to Gemini. */
+[data-composer-style="grok"] .composer-inline-pickers {
+  margin-top: 0;
+}
+[data-composer-style="grok"] .composer-inline-pickers-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+[data-composer-style="grok"] [data-composer-control="attach"] { order: 0; }
+[data-composer-style="grok"] [data-composer-control="permission"] { order: 1; }
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] { order: 2; }
+[data-composer-style="grok"] [data-composer-control="provider"] { order: 3; }
+[data-composer-style="grok"] [data-composer-control="workspace"] { order: 4; }
+[data-composer-style="grok"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+/* Workspace — no container pill; bare label + icon. (Hover gives a
+ * transient highlight, not a persistent outline.) */
+[data-composer-style="grok"] [data-composer-control="workspace"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-muted) !important;
+  border: 0 !important;
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="grok"] [data-composer-control="workspace"]:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] [data-composer-control="workspace"] .composer-control-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  opacity: 0.7;
+}
+
+[data-composer-style="grok"] .composer-image-picker-btn {
+  width: 30px;
+  height: 30px;
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--grok-muted) !important;
+  border-radius: 999px;
+}
+[data-composer-style="grok"] .composer-image-picker-btn:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+
+/* Permission — plain text label. */
+[data-composer-style="grok"] [data-composer-control="permission"] {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 6px;
+  color: var(--grok-muted) !important;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+}
+[data-composer-style="grok"] [data-composer-control="permission"] svg {
+  display: none;
+}
+
+/* Model / Reasoning — no container pill; bare label (primary at full
+ * fg, reasoning suffix muted), like the reference. Hover = transient
+ * highlight only. */
+[data-composer-style="grok"] [data-composer-control="model"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-fg) !important;
+  font-size: calc(var(--font-size-xs) + 1px);
+  font-weight: 500;
+  border: 0 !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"]:hover {
+  background: var(--grok-hover) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] .composer-combined-picker-trigger-suffix {
+  color: var(--grok-muted) !important;
+}
+[data-composer-style="grok"] [data-composer-control="model"] svg {
+  display: none;
+}
+/* Dropdown chevron — drawn with borders (no extra DOM), monochrome.
+ * The trigger is an inline-flex with `gap`, so this `::after` sits
+ * just past the model/reasoning label like the reference. */
+[data-composer-style="grok"] [data-composer-control="model"]::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--grok-muted);
+  border-bottom: 1.5px solid var(--grok-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+[data-composer-style="grok"] [data-composer-control="model"]:hover::after {
+  border-color: var(--grok-fg);
+}
+
+/* Provider — no container pill; bare label. */
+[data-composer-style="grok"] [data-composer-control="provider"] {
+  min-height: 28px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent !important;
+  color: var(--grok-muted) !important;
+  border: 0 !important;
+  font-size: var(--font-size-xs);
+}
+[data-composer-style="grok"] [data-composer-control="provider"]:hover {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+
+/* Turn / Continuous toggle — outline pill, inverse-fill on active. */
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] {
+  min-height: 28px;
+  padding: 1px;
+  border-radius: 999px;
+  background: transparent !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-muted) !important;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  color: var(--grok-muted) !important;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  padding: 3px 10px;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: var(--grok-fg) !important;
+  background: var(--grok-hover) !important;
+}
+[data-composer-style="grok"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: var(--grok-bg) !important;
+  background: var(--grok-fg) !important;
+  font-weight: 600;
+}
+
+/* Send button — inverse-of-surface filled circle (white-on-black
+ * flips to black-on-white via the tokens). No coloured shadow. */
+[data-composer-style="grok"] .composer-action-btn.run-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fg) !important;
+  color: var(--grok-bg) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-action-btn.run-btn:hover:not(:disabled) {
+  background: var(--grok-fg) !important;
+  opacity: 0.85;
+}
+[data-composer-style="grok"] .composer-action-btn.stop-btn:not(:disabled),
+[data-composer-style="grok"] .composer-action-btn.steer-btn:not(:disabled) {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fill) !important;
+  color: var(--grok-fg) !important;
+  border: 1px solid var(--grok-border) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-action-btn:disabled {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--grok-fill) !important;
+  color: var(--grok-faint) !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+/* Above-bar contents — monochrome pills + branch text. */
+[data-composer-style="grok"] .composer-above-bar :is(.composer-above-bar-branch, .composer-above-bar-summary),
+[data-composer-style="grok"] .composer-above-bar-secondary-branch {
+  color: var(--grok-muted) !important;
+}
+[data-composer-style="grok"] .composer-above-bar :is(.composer-above-bar-files, .composer-above-bar-stats) {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--grok-fg) !important;
+}
+[data-composer-style="grok"] .composer-above-bar-action {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: none !important;
+}
+[data-composer-style="grok"] .composer-above-bar-action:hover:not(:disabled) {
+  background: var(--grok-hover) !important;
+  border-color: var(--grok-border-strong) !important;
+}
+[data-composer-style="grok"] .composer-workspace-access-pill {
+  background: transparent !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-muted) !important;
+}
+
+/* Diff signal — monochrome. Differentiate add/del by weight +
+ * opacity rather than green/red. The leading +/- glyphs carry
+ * the meaning. */
+[data-composer-style="grok"] .composer-diff-add {
+  color: var(--grok-fg) !important;
+  font-weight: 600;
+}
+[data-composer-style="grok"] .composer-diff-del {
+  color: var(--grok-muted) !important;
+  font-weight: 600;
+}
+
+/* Inline Review-changes / Create-PR menu (not portaled). */
+[data-composer-style="grok"] .composer-diff-action-menu {
+  background: var(--grok-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-composer-style="grok"] .composer-diff-action-menu button:hover:not(:disabled),
+[data-composer-style="grok"] .composer-diff-action-menu button:focus-visible:not(:disabled) {
+  background: var(--grok-hover) !important;
+}
+
+/* ---- App-wide chrome (`data-interface-style="grok"`) — flat
+ * monochrome sidebar / transcript / bubbles / centred hero. ---- */
+[data-interface-style="grok"] .app-sidebar {
+  background: var(--grok-bg) !important;
+  background-image: none !important;
+  border-right: 1px solid var(--grok-border) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-interface-style="grok"] .app-sidebar .sidebar-header-card {
+  background: transparent !important;
+  border: 0 !important;
+}
+[data-interface-style="grok"] .app-sidebar .sidebar-section-header {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--grok-faint) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item) {
+  background: transparent !important;
+  border-radius: 10px;
+  border: 0 !important;
+  color: var(--grok-muted) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-workspace-item, .sidebar-chat-item, .sidebar-global-chat-item):hover {
+  background: var(--grok-hover) !important;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .app-sidebar :is(.sidebar-chat-item, .sidebar-global-chat-item).active {
+  background: var(--grok-fill) !important;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .app-transcript {
+  background: var(--grok-bg) !important;
+  background-image: none !important;
+}
+[data-interface-style="grok"] .app-transcript::after {
+  display: none !important;
+}
+[data-interface-style="grok"] .message-bubble.user {
+  background: var(--grok-fill) !important;
+  border: 1px solid var(--grok-border) !important;
+  border-radius: 18px;
+  color: var(--grok-fg) !important;
+}
+[data-interface-style="grok"] .message-bubble.assistant {
+  background: transparent !important;
+  border: 0 !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+[data-interface-style="grok"] .welcome-hero {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+[data-interface-style="grok"] .welcome-hero h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 400;
+  color: var(--grok-fg) !important;
+  letter-spacing: -0.01em;
+  text-align: center;
+}
+[data-interface-style="grok"] .welcome-hero h1 strong {
+  font-weight: 600;
+  color: var(--grok-fg) !important;
+  text-shadow: none !important;
+}
+[data-interface-style="grok"] .welcome-hero p {
+  text-align: center;
+  color: var(--grok-muted) !important;
+}
+
+/* ---- Portaled menus — inherit the Grok monochrome palette
+ * (like the `.shell-obsidian` / `.shell-alabaster` rules). The
+ * `--grok-*` tokens resolve because they're declared on <html>,
+ * an ancestor of the body-portaled popover. ---- */
+.composer-combined-picker-popover.shell-grok,
+.composer-plus-picker-popover.shell-grok,
+.composer-workspace-popover.shell-grok,
+.composer-slash-menu.shell-grok,
+.agent-mention-menu.shell-grok {
+  --text-primary: var(--grok-fg);
+  --text-secondary: var(--grok-muted);
+  --text-tertiary: var(--grok-faint);
+  --text-muted: var(--grok-faint);
+  --surface-text: var(--grok-fg);
+  --surface-text-muted: var(--grok-muted);
+  --panel-bg: var(--grok-surface);
+  --panel-elevated-bg: var(--grok-surface);
+  --panel-border: var(--grok-border);
+  --surface-1: var(--grok-surface);
+  --surface-2: var(--grok-bg);
+  --surface-border: var(--grok-border);
+  --accent: var(--grok-fg);
+  background: var(--grok-surface) !important;
+  background-image: none !important;
+  border: 1px solid var(--grok-border) !important;
+  color: var(--grok-fg) !important;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.4) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* Selected/highlighted rows use an inverse-neutral wash, not the
+ * accent tint. */
+.composer-combined-picker-popover.shell-grok .composer-combined-picker-row:hover,
+.composer-combined-picker-popover.shell-grok .composer-combined-picker-row.is-highlighted,
+.composer-workspace-popover.shell-grok .composer-workspace-row:hover,
+.agent-mention-menu.shell-grok .agent-mention-item.is-active,
+.composer-slash-menu.shell-grok .composer-slash-item.is-active {
+  background: var(--grok-hover) !important;
+}

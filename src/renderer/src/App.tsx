@@ -20363,6 +20363,7 @@ function App(): React.JSX.Element {
                           <ClaudeReturnSymbolIcon />
                         ) : appearance.composerStyle === 'codex' ||
                           appearance.composerStyle === 'gemini' ||
+                          appearance.composerStyle === 'grok' ||
                           appearance.composerStyle === 'kimi' ? (
                           <ArrowUpSendIcon />
                         ) : (

@@ -102,6 +102,10 @@ export type ComposerStyle =
   | 'default'
   | 'codex'
   | 'claude'
+  /** Grok: visual-only shell. Copies the Gemini composer layout but
+   * strips all chroma + glass — strictly monochrome black/white,
+   * theme-immune. NOT a provider/runtime. */
+  | 'grok'
   | 'gemini'
   | 'kimi'
   /** Modular: every composer element gets its own floating pill,

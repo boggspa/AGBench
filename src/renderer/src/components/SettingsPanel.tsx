@@ -405,6 +405,12 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     helper: 'Claude-like sidebar, transcript, status bar, and composer hierarchy.'
   },
   {
+    value: 'grok',
+    label: 'Grok shell',
+    helper:
+      'Monochrome Grok-like shell with Gemini-style pill layout and no glass or gradient effects.'
+  },
+  {
     value: 'gemini',
     label: 'Gemini shell',
     helper: 'Gemini-like minimal pill composer, centered welcome, blue focus glow.'
@@ -484,6 +490,13 @@ function getComposerPreviewMeta(style: ComposerStyle): {
         modelLabel: 'Opus 4.7',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
+      }
+    case 'grok':
+      return {
+        providerLabel: 'Grok',
+        modelLabel: 'Fast',
+        permissionLabel: 'Default Approval',
+        placeholder: 'What do you want to know?'
       }
     case 'gemini':
       return {

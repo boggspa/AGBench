@@ -155,6 +155,7 @@ const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }
   { value: 'default', label: 'AGBench native' },
   { value: 'codex', label: 'Codex shell' },
   { value: 'claude', label: 'Claude shell' },
+  { value: 'grok', label: 'Grok shell' },
   { value: 'gemini', label: 'Gemini shell' },
   { value: 'kimi', label: 'Kimi shell' },
   { value: 'modular', label: 'Modular' },
@@ -204,6 +205,17 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
         modelLabel: 'Opus 4.7',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
+      }
+    case 'grok':
+      // Preview-only. Grok is a visual shell, not a provider — keep
+      // `provider: 'gemini'` (its layout heritage) for the preview's
+      // provider class; the Grok CSS strips all chroma anyway.
+      return {
+        provider: 'gemini',
+        providerLabel: 'Grok',
+        modelLabel: 'Fast',
+        permissionLabel: 'Default Approval',
+        placeholder: 'What do you want to know?'
       }
     case 'gemini':
       return {
