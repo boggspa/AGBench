@@ -566,13 +566,24 @@ export function FirstLaunchSheet({
                       <span className="composer-chip">Branch: main</span>
                       <span className="composer-chip accent">Preview only</span>
                     </div>
-                    <div
-                      className="composer-textarea settings-composer-preview-textarea"
-                      aria-hidden="true"
-                      style={{ minHeight: '60px' }}
-                    >
-                      {composerPreview.placeholder}
+                    {/*
+                      1.0.6-EW68/EW70 — wrap the textarea + control rows
+                      in .composer-textarea-wrap / .composer-bottom-controls
+                      so the Obsidian/Alabaster two-rect split + reorder CSS
+                      applies to the preview too. For the other shells these
+                      wrappers are layout-neutral (textarea-wrap is a plain
+                      relative box; bottom-controls is display:contents).
+                    */}
+                    <div className="composer-textarea-wrap">
+                      <div
+                        className="composer-textarea settings-composer-preview-textarea"
+                        aria-hidden="true"
+                        style={{ minHeight: '60px' }}
+                      >
+                        {composerPreview.placeholder}
+                      </div>
                     </div>
+                    <div className="composer-bottom-controls">
                     <div className="composer-control-footer settings-composer-preview-footer">
                       <div className="composer-inline-pickers">
                         <div className="composer-inline-pickers-left" aria-hidden="true">
@@ -625,16 +636,19 @@ export function FirstLaunchSheet({
                             </svg>
                           </span>
                           <span className="composer-thread-token-tally">44%</span>
-                          <button
-                            type="button"
-                            className="composer-action-btn run-btn"
-                            tabIndex={-1}
-                            aria-label="Preview send button"
-                          >
-                            ↑
-                          </button>
+                          <span className="composer-send-cluster">
+                            <button
+                              type="button"
+                              className="composer-action-btn run-btn"
+                              tabIndex={-1}
+                              aria-label="Preview send button"
+                            >
+                              ↑
+                            </button>
+                          </span>
                         </div>
                       </div>
+                    </div>
                     </div>
                   </div>
                 </div>

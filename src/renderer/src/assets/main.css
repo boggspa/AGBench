@@ -26765,6 +26765,94 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
+ * 1.0.6-EW70 — Obsidian/Alabaster bottom-row tidy-up.
+ *
+ *  (a) Reorder row 1's controls (the .composer-inline-pickers-left
+ *      children) via flex `order` keyed off each control's
+ *      data-composer-control: Add · Permissions · Turn/Cont/WS ·
+ *      Provider · Model. The ContextWheel ("context") lives in
+ *      .composer-inline-actions and stays at the row's right edge.
+ *  (b) Lift the send cluster up into the textarea rect's bottom-right
+ *      corner (absolute, anchored to the position:relative
+ *      .composer-bottom-controls; stable because the two rects stack
+ *      with a fixed gap).
+ *  (c) Hide the schedule / runtime top-toggles row.
+ *  (d) Drop the surface padding so both rects span the full composer
+ *      width like the above-bar rows.
+ *
+ * `.composer-send-cluster` is display:contents by default so the nine
+ * other shells are unaffected.
+ * ============================================================ */
+
+/* (a) Row-1 control order + spread. */
+[data-composer-style="obsidian"] .composer-inline-pickers-left,
+[data-composer-style="alabaster"] .composer-inline-pickers-left {
+  flex: 1;
+  overflow: visible;
+}
+[data-composer-style="obsidian"] .composer-inline-pickers-left [data-composer-control="attach"],
+[data-composer-style="alabaster"] .composer-inline-pickers-left [data-composer-control="attach"] {
+  order: 1;
+}
+[data-composer-style="obsidian"] .composer-inline-pickers-left [data-composer-control="permission"],
+[data-composer-style="alabaster"] .composer-inline-pickers-left [data-composer-control="permission"] {
+  order: 2;
+}
+[data-composer-style="obsidian"]
+  .composer-inline-pickers-left
+  [data-composer-control="ensemble-mode"],
+[data-composer-style="alabaster"]
+  .composer-inline-pickers-left
+  [data-composer-control="ensemble-mode"] {
+  order: 3;
+}
+/* Provider opens the right-hand group (pushed off the left cluster). */
+[data-composer-style="obsidian"] .composer-inline-pickers-left [data-composer-control="provider"],
+[data-composer-style="alabaster"] .composer-inline-pickers-left [data-composer-control="provider"] {
+  order: 4;
+  margin-left: auto;
+}
+[data-composer-style="obsidian"] .composer-inline-pickers-left [data-composer-control="model"],
+[data-composer-style="alabaster"] .composer-inline-pickers-left [data-composer-control="model"] {
+  order: 5;
+}
+
+/* (b) Send cluster: layout-neutral wrapper by default; lifted into the
+ * textarea rect's bottom-right for Obsidian/Alabaster. */
+.composer-send-cluster {
+  display: contents;
+}
+[data-composer-style="obsidian"] .composer-send-cluster,
+[data-composer-style="alabaster"] .composer-send-cluster {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: absolute;
+  /* Anchored to .composer-bottom-controls (position:relative). The two
+   * rects stack with `var(--space-sm)` between them, so lifting the
+   * cluster (gap + 10px) above the bottom rect's top edge lands it ~10px
+   * inside the textarea rect's bottom edge — independent of textarea
+   * height. */
+  bottom: calc(100% + var(--space-sm) + 10px);
+  right: 14px;
+  z-index: 4;
+}
+
+/* (c) Hide the schedule / runtime top-toggles row. */
+[data-composer-style="obsidian"] .composer-top-toggles,
+[data-composer-style="alabaster"] .composer-top-toggles {
+  display: none;
+}
+
+/* (d) Full-width rects: drop the surface padding so the textarea +
+ * bottom-controls rects align to the composer's full width, like the
+ * above-bar rows. */
+[data-composer-style="obsidian"][data-composer-style="obsidian"] .composer-surface,
+[data-composer-style="alabaster"][data-composer-style="alabaster"] .composer-surface {
+  padding: 0;
+}
+
+/* ============================================================
  * NEW-SHELL VISUAL FIXES (Phase J7 follow-up)
  *
  * Three issues surfaced after the four new shells shipped:

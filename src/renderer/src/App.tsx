@@ -20205,6 +20205,15 @@ function App(): React.JSX.Element {
                         <span>{steerIndicatorMessage}</span>
                       </span>
                     )}
+                    {/*
+                      1.0.6-EW70 — the run/queue/steer/stop buttons are
+                      wrapped in `.composer-send-cluster` (display:contents
+                      by default, so the nine other shells are unchanged).
+                      Obsidian/Alabaster lift this cluster up into the
+                      textarea rect's bottom-right corner; the ContextWheel
+                      ("context") stays here at the right of the control row.
+                    */}
+                    <span className="composer-send-cluster">
                     {isCurrentChatRunning ? (
                       <>
                         <button
@@ -20315,6 +20324,7 @@ function App(): React.JSX.Element {
                         )}
                       </button>
                     )}
+                    </span>
                   </div>
                 </div>
                 {currentProvider === 'gemini' && !geminiWorkspaceTrustReady && (

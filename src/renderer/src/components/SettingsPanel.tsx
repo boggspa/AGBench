@@ -1812,15 +1812,25 @@ export function SettingsPanel({
                         <span className="composer-chip">Branch: main</span>
                         <span className="composer-chip accent">Preview only</span>
                       </div>
-                      <textarea
-                        className="composer-textarea settings-composer-preview-textarea"
-                        value={composerPreviewText}
-                        onChange={(e) => setComposerPreviewText(e.target.value)}
-                        placeholder={composerPreviewMeta.placeholder}
-                        rows={3}
-                        aria-label="Composer font preview text"
-                        style={{ fontFamily: previewComposerFontFamily }}
-                      />
+                      {/*
+                        1.0.6-EW68/EW70 — .composer-textarea-wrap +
+                        .composer-bottom-controls wrappers so the
+                        Obsidian/Alabaster two-rect split + reorder CSS
+                        applies to this preview (layout-neutral for the
+                        other shells).
+                      */}
+                      <div className="composer-textarea-wrap">
+                        <textarea
+                          className="composer-textarea settings-composer-preview-textarea"
+                          value={composerPreviewText}
+                          onChange={(e) => setComposerPreviewText(e.target.value)}
+                          placeholder={composerPreviewMeta.placeholder}
+                          rows={3}
+                          aria-label="Composer font preview text"
+                          style={{ fontFamily: previewComposerFontFamily }}
+                        />
+                      </div>
+                      <div className="composer-bottom-controls">
                       <div className="composer-control-footer settings-composer-preview-footer">
                         <div className="composer-inline-pickers">
                           <div className="composer-inline-pickers-left" aria-hidden="true">
@@ -1873,16 +1883,19 @@ export function SettingsPanel({
                               </svg>
                             </span>
                             <span className="composer-thread-token-tally">44%</span>
-                            <button
-                              type="button"
-                              className="composer-action-btn run-btn"
-                              tabIndex={-1}
-                              aria-label="Preview send button"
-                            >
-                              ↑
-                            </button>
+                            <span className="composer-send-cluster">
+                              <button
+                                type="button"
+                                className="composer-action-btn run-btn"
+                                tabIndex={-1}
+                                aria-label="Preview send button"
+                              >
+                                ↑
+                              </button>
+                            </span>
                           </div>
                         </div>
+                      </div>
                       </div>
                     </div>
                   </div>
