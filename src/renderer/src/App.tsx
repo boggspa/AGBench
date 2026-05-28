@@ -5509,6 +5509,14 @@ interface ComposerWorkspaceSwitcherProps {
    */
   onAddFolder?: (access: ExternalPathGrant['access']) => void
   /**
+   * 1.0.6-EW69 — Attach an existing KNOWN workspace as an additional
+   * (secondary) workspace with the chosen access, without the OS
+   * folder dialog. Lets the "Add a workspace" section offer one-click
+   * adds for every registered workspace. Gated together with
+   * `onAddFolder` (both need a saved chat record).
+   */
+  onAddKnownWorkspace?: (path: string, access: ExternalPathGrant['access']) => void
+  /**
    * 1.0.6-EW67 — Active composer shell, mirrored onto the portal
    * root as `shell-${composerStyle}` so the theme-immune Obsidian /
    * Alabaster popover CSS reaches this body-portaled popover.
@@ -5541,6 +5549,7 @@ function ComposerWorkspaceSwitcher({
   onReorderWorkspaces,
   onRemoveWorkspacePath,
   onAddFolder,
+  onAddKnownWorkspace,
   composerStyle
 }: ComposerWorkspaceSwitcherProps): React.JSX.Element {
   const [popoverOpen, setPopoverOpen] = useState(false)
@@ -5667,6 +5676,12 @@ function ComposerWorkspaceSwitcher({
       return a.path < b.path ? -1 : a.path > b.path ? 1 : 0
     })
   }, [additionalGrants, repoMetadata])
+
+  // 1.0.6-EW69 — known workspaces eligible to attach as a SECONDARY:
+  // everything except the primary (already in `others`) and anything
+  // already attached as an additional workspace.
+  const attachedPaths = new Set(additionalEntries.map((entry) => entry.path))
+  const addableWorkspaces = others.filter((ws) => ws.path && !attachedPaths.has(ws.path))
 
   const handleSelectFromPopover = (callback: () => void): void => {
     setPopoverOpen(false)
@@ -5872,13 +5887,14 @@ function ComposerWorkspaceSwitcher({
               ))}
             </div>
             {/*
-              1.0.6-EW66 — "Add a workspace": attach an *additional*
-              folder with a per-add READ/WRITE choice. WRITE grants
-              let agents edit the folder (and surface a full diff +
-              Create-PR row); READ grants are reference-only. Hidden
-              for welcome-state chats (no chat record to attach grants
-              to yet) — the parent passes `onAddFolder` only when the
-              chat has an `appChatId`.
+              1.0.6-EW69 — "Add a workspace": attach an *additional*
+              (secondary) workspace with a per-add READ/WRITE choice.
+              The toggle governs both the one-click adds for existing
+              known workspaces AND the OS folder picker for arbitrary
+              folders. WRITE grants let agents edit the folder (and
+              surface a full diff + Create-PR row); READ grants are
+              reference-only. Hidden for welcome-state chats (no chat
+              record to attach grants to yet).
             */}
             {onAddFolder && (
               <div className="welcome-workspace-popover-section composer-workspace-add">
@@ -5886,7 +5902,7 @@ function ComposerWorkspaceSwitcher({
                 <div
                   className="composer-workspace-access-toggle"
                   role="radiogroup"
-                  aria-label="Access for the folder you add"
+                  aria-label="Access for the workspace you add"
                 >
                   <button
                     type="button"
@@ -5913,6 +5929,39 @@ function ComposerWorkspaceSwitcher({
                     Write
                   </button>
                 </div>
+                {/*
+                  1.0.6-EW69 — one-click add for every KNOWN workspace
+                  that isn't the primary and isn't already attached.
+                  Honours the access toggle; no OS dialog needed.
+                */}
+                {onAddKnownWorkspace &&
+                  addableWorkspaces.map((ws) => (
+                    <button
+                      key={ws.id}
+                      type="button"
+                      role="menuitem"
+                      className="welcome-workspace-popover-row composer-workspace-add-known"
+                      onClick={() =>
+                        handleSelectFromPopover(() => onAddKnownWorkspace(ws.path, addAccess))
+                      }
+                      title={`Attach ${ws.displayName || ws.path} as a ${
+                        addAccess === 'write' ? 'read + write' : 'read-only'
+                      } additional workspace`}
+                    >
+                      <span className="welcome-workspace-popover-row-glyph" aria-hidden>
+                        +
+                      </span>
+                      <span className="welcome-workspace-popover-row-name">
+                        {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
+                      </span>
+                      <span
+                        className={`composer-workspace-access-badge access-${addAccess}`}
+                        aria-hidden
+                      >
+                        {addAccess === 'write' ? 'WRITE' : 'READ'}
+                      </span>
+                    </button>
+                  ))}
                 <button
                   type="button"
                   role="menuitem"
@@ -5928,7 +5977,7 @@ function ComposerWorkspaceSwitcher({
                     {addAccess === 'write' ? '✎' : '👁'}
                   </span>
                   <span className="welcome-workspace-popover-row-name">
-                    Add folder ({addAccess === 'write' ? 'write' : 'read'} access)…
+                    Add another folder ({addAccess === 'write' ? 'write' : 'read'} access)…
                   </span>
                 </button>
               </div>
@@ -5949,7 +5998,7 @@ function ComposerWorkspaceSwitcher({
                   role="menuitem"
                   className="welcome-workspace-popover-row"
                   onClick={() => handleSelectFromPopover(() => onPickExisting(ws))}
-                  title={ws.path}
+                  title={`Make ${ws.displayName || ws.path} the primary workspace`}
                 >
                   <span className="welcome-workspace-popover-row-name">
                     {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
@@ -9906,6 +9955,32 @@ function App(): React.JSX.Element {
       // broadcast; nothing else to do on this side.
     } catch (err) {
       console.warn('[external-path:pick-and-persist] failed', err)
+    }
+  }
+
+  /**
+   * 1.0.6-EW69 — Attach an EXISTING known workspace as an additional
+   * (secondary) workspace with the chosen access, WITHOUT the OS
+   * folder dialog. Passes the workspace's path to the same
+   * pick-and-persist IPC (which skips the dialog when `path` is set).
+   * Makes building a multi-workspace set from already-registered
+   * workspaces a one-click action instead of re-picking the folder.
+   */
+  const handleAddKnownWorkspaceAsSecondary = async (
+    workspacePath: string,
+    access: ExternalPathGrant['access']
+  ) => {
+    const chatId = currentChat?.appChatId
+    if (!chatId || !workspacePath) return
+    try {
+      const result = await window.api.pickAndPersistExternalPathGrant({
+        chatId,
+        access,
+        path: workspacePath
+      })
+      if (!result.ok) return
+    } catch (err) {
+      console.warn('[external-path:pick-and-persist] (known path) failed', err)
     }
   }
 
@@ -20334,6 +20409,9 @@ function App(): React.JSX.Element {
                       currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
                     }
                     onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
+                    onAddKnownWorkspace={
+                      currentChat?.appChatId ? handleAddKnownWorkspaceAsSecondary : undefined
+                    }
                   />
                 )}
                 {threadTokenTallyLabel && (

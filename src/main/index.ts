@@ -20558,7 +20558,11 @@ if (isGeminiMcpBridgeProcess) {
       'external-path:pick-and-persist',
       async (
         _event,
-        payload: { chatId?: string; access?: 'read' | 'write' }
+        // 1.0.6-EW69 — `path` (optional): when supplied, skip the OS
+        // folder dialog and grant that exact path (the composer
+        // picker's "attach a known workspace as a secondary" action).
+        // When omitted, open the folder picker as before.
+        payload: { chatId?: string; access?: 'read' | 'write'; path?: string }
       ): Promise<
         | { ok: true; grants: ExternalPathGrant[]; path: string }
         | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
@@ -20592,26 +20596,44 @@ if (isGeminiMcpBridgeProcess) {
           return { ok: false, reason: 'no-provider' }
         }
 
-        const accessVerb = access === 'write' ? 'can edit' : 'can read'
-        const dialogResult = await dialog.showOpenDialog(mainWindow, {
-          title: `Select folder agents in this chat ${accessVerb}`,
-          message: `Issues a ${
-            access === 'write' ? 'read+write' : 'read-only'
-          } grant scoped to this chat. ${
-            targetProviders.length > 1
-              ? `One grant per panelist provider (${targetProviders
-                  .map((p) => providerLabel(p))
-                  .join(', ')}).`
-              : ''
-          }`,
-          properties: ['openFile', 'openDirectory', 'createDirectory'],
-          securityScopedBookmarks: process.platform === 'darwin'
-        } as Electron.OpenDialogOptions)
-        if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
-          return { ok: false, reason: 'cancelled' }
+        // 1.0.6-EW69 — explicit-path add (known workspace → secondary)
+        // bypasses the dialog; otherwise open the OS folder picker.
+        const explicitPath = optionalString(payload?.path)
+        let selectedPath: string
+        let bookmark: string | undefined
+        if (explicitPath) {
+          selectedPath = resolve(explicitPath)
+          try {
+            await fs.stat(selectedPath)
+          } catch {
+            // Path is gone — treat as a no-op (same as a cancelled add).
+            return { ok: false, reason: 'cancelled' }
+          }
+          bookmark = undefined
+        } else {
+          const accessVerb = access === 'write' ? 'can edit' : 'can read'
+          const dialogResult = await dialog.showOpenDialog(mainWindow, {
+            title: `Select folder agents in this chat ${accessVerb}`,
+            message: `Issues a ${
+              access === 'write' ? 'read+write' : 'read-only'
+            } grant scoped to this chat. ${
+              targetProviders.length > 1
+                ? `One grant per panelist provider (${targetProviders
+                    .map((p) => providerLabel(p))
+                    .join(', ')}).`
+                : ''
+            }`,
+            properties: ['openFile', 'openDirectory', 'createDirectory'],
+            securityScopedBookmarks: process.platform === 'darwin'
+          } as Electron.OpenDialogOptions)
+          if (dialogResult.canceled || dialogResult.filePaths.length === 0) {
+            return { ok: false, reason: 'cancelled' }
+          }
+          selectedPath = resolve(dialogResult.filePaths[0])
+          bookmark = Array.isArray((dialogResult as any).bookmarks)
+            ? (dialogResult as any).bookmarks[0]
+            : undefined
         }
-
-        const selectedPath = resolve(dialogResult.filePaths[0])
         let kind: ExternalPathGrant['kind'] = 'file'
         try {
           const stat = await fs.stat(selectedPath)
@@ -20619,9 +20641,6 @@ if (isGeminiMcpBridgeProcess) {
         } catch {
           kind = 'file'
         }
-        const bookmark = Array.isArray((dialogResult as any).bookmarks)
-          ? (dialogResult as any).bookmarks[0]
-          : undefined
 
         const now = Date.now()
         const newGrants: ExternalPathGrant[] = targetProviders.map((provider) =>

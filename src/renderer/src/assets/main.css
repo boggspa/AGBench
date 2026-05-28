@@ -4946,6 +4946,14 @@ button.sidebar-item {
   color: var(--text-primary);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
 }
+/*
+ * 1.0.6-EW69 — one-click "add known workspace as secondary" rows in
+ * the "Add a workspace" section. The trailing access badge echoes the
+ * Read/Write toggle so the user can see what access the click grants.
+ */
+.composer-workspace-add-known .composer-workspace-access-badge {
+  margin-left: auto;
+}
 
 .welcome-hero h1 {
   margin: 0;

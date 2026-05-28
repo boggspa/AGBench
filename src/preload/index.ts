@@ -37,6 +37,10 @@ const api = {
   pickAndPersistExternalPathGrant: (payload: {
     chatId: string
     access?: 'read' | 'write'
+    // 1.0.6-EW69 — optional explicit path: when supplied, main skips the
+    // OS folder dialog and grants this exact path (composer picker's
+    // "attach a known workspace as a secondary" action).
+    path?: string
   }): Promise<
     | { ok: true; grants: unknown[]; path: string }
     | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }

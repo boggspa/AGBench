@@ -241,6 +241,9 @@ declare global {
       pickAndPersistExternalPathGrant: (payload: {
         chatId: string
         access?: 'read' | 'write'
+        // 1.0.6-EW69 — optional explicit path skips the OS dialog
+        // (attach a known workspace as a secondary).
+        path?: string
       }) => Promise<
         | { ok: true; grants: ExternalPathGrant[]; path: string }
         | { ok: false; reason: 'no-chat' | 'cancelled' | 'no-provider' | 'no-window' }
