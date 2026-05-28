@@ -369,11 +369,13 @@ export function ModelUsageCard({ usageSummary, variant = 'card' }: ModelUsageCar
             {quotaEntries.map((entry) => (
               <ProviderUsageBlock key={`${entry.provider}-${entry.model}`} entry={entry} />
             ))}
+            {/* 1.0.6-GU — Grok subscription credits (separate data model from
+             * the token/cost meters above; manual-refresh PTY probe). Only
+             * mounts when the gated Grok provider adapter is registered. Kept
+             * inside the list so the `.model-usage-item + .model-usage-item`
+             * divider lands between Kimi and Grok. */}
+            {grokAvailable ? <GrokCreditsMeter /> : null}
           </div>
-          {/* 1.0.6-GU — Grok subscription credits (separate data model from
-           * the token/cost meters above; manual-refresh PTY probe). Only
-           * mounts when the gated Grok provider adapter is registered. */}
-          {grokAvailable ? <GrokCreditsMeter /> : null}
         </div>
       </div>
       {/* Phase L6 slice 5 — activity heatmap. Renders the last 30

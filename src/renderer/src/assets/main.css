@@ -325,6 +325,14 @@ body {
   margin-bottom: var(--space-sm);
 }
 
+/* Quiet empty-state when the persistent Active runs section has nothing
+ * running — keeps the section anchored under Search without shouting. */
+.sidebar-active-runs-empty {
+  padding: 3px var(--space-sm, 8px);
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--sidebar-text-secondary, var(--text-secondary)) 62%, transparent);
+}
+
 /*
  * 1.0.5-SB5 — Drag-and-drop pin affordances.
  *

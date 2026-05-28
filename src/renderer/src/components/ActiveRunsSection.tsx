@@ -8,14 +8,35 @@ import type {
 
 const ACTIVE_STATUSES: RunQueueJobStatus[] = ['queued', 'starting', 'active']
 
+/** Right-chevron matching the other sidebar section headers (rotates when
+ * expanded). Inlined to avoid a Sidebar ↔ ActiveRunsSection import cycle. */
+function ActiveRunsChevron({ isExpanded }: { isExpanded: boolean }): JSX.Element {
+  return (
+    <span
+      className={`sf-symbol-icon sidebar-tree-chevron ${isExpanded ? 'is-expanded' : ''}`}
+      aria-hidden
+    >
+      <svg
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M6.2 4.7 10 8.1 6.2 11.5" />
+      </svg>
+    </span>
+  )
+}
+
 interface ActiveRunsSectionProps {
   chats: ChatRecord[]
   currentChat: ChatRecord | null
   runningChatIds?: string[]
   onSelectChat: (chat: ChatRecord) => void
-  /** Phase K1 follow-up: when provided, clicking a row navigates to
-   * the chat AND opens the Run Inspector for that runId — skips the
-   * "navigate then scroll to find RunCard" two-step. */
+  /** Reserved: a runId-targeted inspector deep-link. Not wired — clicking a
+   * row now opens the chat THREAD (transcript), not the Run Inspector. */
   onInspectRun?: (runId: string, chatId: string | undefined) => void
 }
 
@@ -23,11 +44,11 @@ export function ActiveRunsSection({
   chats,
   currentChat,
   runningChatIds = [],
-  onSelectChat,
-  onInspectRun
-}: ActiveRunsSectionProps): JSX.Element | null {
+  onSelectChat
+}: ActiveRunsSectionProps): JSX.Element {
   const [jobs, setJobs] = useState<RunQueueJob[]>([])
   const [, setNowTick] = useState(0)
+  const [collapsed, setCollapsed] = useState(false)
   const chatById = useMemo(() => {
     const map = new Map<string, ChatRecord>()
     for (const chat of chats) map.set(chat.appChatId, chat)
@@ -72,46 +93,66 @@ export function ActiveRunsSection({
   }, [refresh])
 
   const visibleJobs = jobs.filter((job) => ACTIVE_STATUSES.includes(job.status))
-  if (visibleJobs.length === 0) return null
 
+  // 1.0.6 — persistent section: always render (so it permanently occupies the
+  // top slot under Search / above Pinned), collapsible like the other
+  // sections, with a quiet empty state when nothing is running.
   return (
     <div className="sidebar-active-runs-section">
       <div className="sidebar-section-header">
-        <h4 className="sidebar-section-title">Active runs</h4>
-        <span className="sidebar-active-runs-count">{visibleJobs.length}</span>
+        <button
+          type="button"
+          className="sidebar-section-header-toggle"
+          onClick={() => setCollapsed((current) => !current)}
+          aria-expanded={!collapsed}
+          title={collapsed ? 'Expand Active runs' : 'Collapse Active runs'}
+        >
+          <ActiveRunsChevron isExpanded={!collapsed} />
+          <h4 className="sidebar-section-title">Active runs</h4>
+        </button>
+        {visibleJobs.length > 0 && (
+          <span className="sidebar-active-runs-count">{visibleJobs.length}</span>
+        )}
       </div>
-      <div className="sidebar-active-runs-list">
-        {visibleJobs.map((job) => {
-          const chat = job.chatId ? chatById.get(job.chatId) || null : null
-          const isCurrent = Boolean(chat && currentChat?.appChatId === chat.appChatId)
-          return (
-            <button
-              key={job.id || job.runId}
-              type="button"
-              className={`sidebar-active-run-row provider-${job.provider || 'gemini'} ${isCurrent ? 'active' : ''}`}
-              onClick={() => {
-                if (chat) onSelectChat(chat)
-                if (onInspectRun && job.runId) onInspectRun(job.runId, job.chatId)
-              }}
-              disabled={!chat}
-              title={chat ? chat.title : job.promptPreview || job.runId}
-            >
-              <span className={`sidebar-active-run-provider provider-${job.provider || 'gemini'}`}>
-                {getProviderLabel(job.provider)}
-              </span>
-              <span className="sidebar-active-run-copy">
-                <span className="sidebar-active-run-workspace">
-                  {getWorkspaceShortName(job, chat)}
+      {!collapsed && (
+        <div className="sidebar-active-runs-list">
+          {visibleJobs.length === 0 && (
+            <div className="sidebar-active-runs-empty">No active runs</div>
+          )}
+          {visibleJobs.map((job) => {
+            const chat = job.chatId ? chatById.get(job.chatId) || null : null
+            const isCurrent = Boolean(chat && currentChat?.appChatId === chat.appChatId)
+            return (
+              <button
+                key={job.id || job.runId}
+                type="button"
+                className={`sidebar-active-run-row provider-${job.provider || 'gemini'} ${isCurrent ? 'active' : ''}`}
+                onClick={() => {
+                  // Open the chat THREAD (transcript), not the Run Inspector.
+                  if (chat) onSelectChat(chat)
+                }}
+                disabled={!chat}
+                title={chat ? chat.title : job.promptPreview || job.runId}
+              >
+                <span
+                  className={`sidebar-active-run-provider provider-${job.provider || 'gemini'}`}
+                >
+                  {getProviderLabel(job.provider)}
                 </span>
-                <span className="sidebar-active-run-elapsed">{formatElapsed(job)}</span>
-              </span>
-              <span className={`sidebar-run-status tone-${statusTone(job.status)}`}>
-                {statusLabel(job.status)}
-              </span>
-            </button>
-          )
-        })}
-      </div>
+                <span className="sidebar-active-run-copy">
+                  <span className="sidebar-active-run-workspace">
+                    {getWorkspaceShortName(job, chat)}
+                  </span>
+                  <span className="sidebar-active-run-elapsed">{formatElapsed(job)}</span>
+                </span>
+                <span className={`sidebar-run-status tone-${statusTone(job.status)}`}>
+                  {statusLabel(job.status)}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }

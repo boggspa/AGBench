@@ -1535,6 +1535,15 @@ export function Sidebar({
           </label>
         </div>
 
+        {/* Active runs — permanently pinned under Search, above Pinned. */}
+        <ActiveRunsSection
+          chats={chats}
+          currentChat={currentChat}
+          runningChatIds={runningChatIds}
+          onSelectChat={onSelectChat}
+          onInspectRun={onInspectRun}
+        />
+
         {(visiblePinnedWorkspaces.length > 0 || visiblePinnedChats.length > 0) && (
           <div className="sidebar-pinned-section" {...pinDropProps}>
             <div className="sidebar-section-header">
@@ -1803,14 +1812,6 @@ export function Sidebar({
             )}
           </div>
         )}
-
-        <ActiveRunsSection
-          chats={chats}
-          currentChat={currentChat}
-          runningChatIds={runningChatIds}
-          onSelectChat={onSelectChat}
-          onInspectRun={onInspectRun}
-        />
 
         <div className="sidebar-workspace-scroll">
           <div className="sidebar-section-header">
