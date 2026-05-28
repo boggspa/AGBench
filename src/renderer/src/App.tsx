@@ -19302,7 +19302,7 @@ function App(): React.JSX.Element {
                 }}
                 placeholder={composerPlaceholder}
                 aria-label={composerAriaLabel}
-                rows={3}
+                rows={1}
                 disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
@@ -20099,7 +20099,7 @@ function App(): React.JSX.Element {
                           onClick={() => setShowWorkSessionSheet(true)}
                           title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
                         >
-                          <span aria-hidden="true">🎯</span> Work Session
+                          Work Session
                         </button>
                         {activeEnsembleOrchestrationMode === 'continuous' && (
                           <span
