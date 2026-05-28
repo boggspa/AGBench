@@ -296,7 +296,8 @@ const emptyProviderTotals = (): Record<ProviderId, number> => ({
   gemini: 0,
   codex: 0,
   claude: 0,
-  kimi: 0
+  kimi: 0,
+  grok: 0
 })
 
 const formatHourLabel = (dayKey: string, hour: number): string => {
@@ -571,7 +572,8 @@ export const buildWelcomeUsageDashboardData = (
     codex: { tokens: 0, costUsd: 0 },
     claude: { tokens: 0, costUsd: 0 },
     gemini: { tokens: 0, costUsd: 0 },
-    kimi: { tokens: 0, costUsd: 0 }
+    kimi: { tokens: 0, costUsd: 0 },
+    grok: { tokens: 0, costUsd: 0 }
   }
   // 1.0.5-EW52 — Cumulative wall time across runs whose
   // timestamp is within the last 24 hours. Distinct from
@@ -1013,7 +1015,8 @@ export const buildWelcomeUsageDashboardData = (
     codex: 'Codex',
     claude: 'Claude',
     gemini: 'Gemini',
-    kimi: 'Kimi'
+    kimi: 'Kimi',
+    grok: 'Grok'
   }
   // 1.0.5-EW52 follow-up — Also compute total provider-tokens
   // so each card's meter can render as share-of-tokens rather
@@ -1041,6 +1044,10 @@ export const buildWelcomeUsageDashboardData = (
           ? (providerCostAggregate[provider].tokens / totalProviderTokensForBreakdown) * 100
           : 0
     }))
+    // Gated providers (Grok) only surface a card once they have real activity,
+    // so the dashboard never shows an empty card for a provider the user
+    // otherwise can't see. The core four always render (even at zero).
+    .filter((entry) => entry.provider !== 'grok' || entry.tokens > 0 || entry.costUsd > 0)
     .sort(
       (a, b) =>
         b.tokens - a.tokens ||

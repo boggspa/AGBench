@@ -11,7 +11,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   gemini: 'Gemini',
   codex: 'Codex',
   claude: 'Claude',
-  kimi: 'Kimi'
+  kimi: 'Kimi',
+  grok: 'Grok'
 }
 
 const MAX_MESSAGE_CHARS = 4000

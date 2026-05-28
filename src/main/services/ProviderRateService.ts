@@ -111,6 +111,14 @@ export interface ProviderRateTable {
  * comparable capability.
  */
 export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
+  // Grok (gated, read-only G3): no published per-token rate table yet. The
+  // empty `models` list is also the signal that keeps probeAllProviderRates
+  // from issuing a network fetch for Grok even when the gate is off.
+  grok: {
+    provider: 'grok',
+    pricingUrl: '',
+    models: []
+  },
   codex: {
     provider: 'codex',
     pricingUrl: 'https://openai.com/api/pricing',
@@ -453,7 +461,12 @@ async function probeOneProvider(table: ProviderRateTable): Promise<ProviderRateP
  * snapshot + persists to disk for next-boot warm-start.
  */
 export async function probeAllProviderRates(): Promise<ProviderRatesSnapshot> {
-  const providers = Object.values(BAKED_IN_RATES) as ProviderRateTable[]
+  // Skip providers with no baked-in models (e.g. gated read-only Grok): there
+  // is nothing to price, so we must not issue a network fetch for them — this
+  // keeps the gate-off state from reaching out for Grok.
+  const providers = (Object.values(BAKED_IN_RATES) as ProviderRateTable[]).filter(
+    (table) => table.models.length > 0
+  )
   const results = await Promise.all(providers.map(probeOneProvider))
   const resultsMap: Record<ProviderId, ProviderRateProbeResult> = {} as Record<
     ProviderId,

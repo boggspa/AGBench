@@ -398,7 +398,10 @@ export class ApprovalService {
         gemini: userSettings.perProviderMs.gemini,
         codex: userSettings.perProviderMs.codex,
         claude: userSettings.perProviderMs.claude,
-        kimi: userSettings.perProviderMs.kimi
+        kimi: userSettings.perProviderMs.kimi,
+        // Grok is read-only (G3) with no user-tunable per-provider timeout
+        // yet (G7); pin to the built-in default so the policy stays complete.
+        grok: 120_000
       },
       mainTimeoutMs: userSettings.mainAuthorityMs
     })

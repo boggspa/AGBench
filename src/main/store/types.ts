@@ -144,7 +144,12 @@ export type ComposerStyle =
    * Pairs natively with the `alabaster` theme.
    */
   | 'alabaster'
-export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
+// 'grok' is gated behind AGBENCH_EXPERIMENTAL_GROK (default off). It is a
+// real ProviderId at the type level (so adapters/records compile), but it is
+// deliberately kept OUT of every user-visible array + validation Set unless
+// the gate is on, so the gate-off state is structurally inert. NOTE: this is
+// distinct from the visual-only `'grok'` ComposerStyle above.
+export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'

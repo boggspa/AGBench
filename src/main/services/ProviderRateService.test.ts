@@ -91,8 +91,15 @@ describe('BAKED_IN_RATES', () => {
     expect(BAKED_IN_RATES.kimi).toBeDefined()
   })
 
-  it('every entry carries a pricingUrl + at least one model', () => {
+  it('every priced entry carries a pricingUrl + at least one model', () => {
     for (const table of Object.values(BAKED_IN_RATES)) {
+      // Gated providers with no published rates (e.g. read-only Grok) ship an
+      // empty models list + empty pricingUrl on purpose — that empty-models
+      // signal is what keeps probeAllProviderRates from fetching for them.
+      if (table.models.length === 0) {
+        expect(table.pricingUrl).toBe('')
+        continue
+      }
       expect(table.pricingUrl).toMatch(/^https?:\/\//)
       expect(table.models.length).toBeGreaterThan(0)
     }

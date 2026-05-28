@@ -25,7 +25,9 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
   gemini: '#2563EB',
   codex: '#6366F1',
   claude: '#D97706',
-  kimi: '#84A33B'
+  kimi: '#84A33B',
+  // Grok (gated) — neutral graphite, matching its monochrome shell heritage.
+  grok: '#6B7280'
 }
 
 export interface HeatmapCell {

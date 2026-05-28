@@ -25,21 +25,27 @@ const TRANSPORT_BY_PROVIDER: Record<ProviderId, ProviderAuthTransport> = {
   gemini: 'cli',
   codex: 'app-server',
   claude: 'sdk',
-  kimi: 'cli'
+  kimi: 'cli',
+  // Grok (gated, G3) runs via the local headless CLI stream.
+  grok: 'cli'
 }
 
 const APPROVAL_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   gemini: true,
   codex: true,
   claude: false,
-  kimi: true
+  kimi: true,
+  // Read-only G3 has no approval flow yet (G5 will add write-capable runs).
+  grok: false
 }
 
 const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   gemini: false,
   codex: true,
   claude: false,
-  kimi: false
+  kimi: false,
+  // No AGBench MCP for Grok until G5.
+  grok: false
 }
 
 export function buildProviderAuthStatusV2(

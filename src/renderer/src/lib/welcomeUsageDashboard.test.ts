@@ -612,26 +612,27 @@ describe('mixProviderColors', () => {
     gemini: '#2563EB',
     codex: '#6366F1',
     claude: '#D97706',
-    kimi: '#84A33B'
+    kimi: '#84A33B',
+    grok: '#6B7280'
   } as const
 
   it('returns empty string when no provider has weight', () => {
-    expect(mixProviderColors({ gemini: 0, codex: 0, claude: 0, kimi: 0 }, palette)).toBe('')
+    expect(mixProviderColors({ gemini: 0, codex: 0, claude: 0, kimi: 0, grok: 0 }, palette)).toBe('')
   })
 
   it('returns the single provider color when only one contributes', () => {
-    expect(mixProviderColors({ gemini: 0, codex: 50, claude: 0, kimi: 0 }, palette)).toBe('#6366F1')
+    expect(mixProviderColors({ gemini: 0, codex: 50, claude: 0, kimi: 0, grok: 0 }, palette)).toBe('#6366F1')
   })
 
   it('builds a nested color-mix() expression that references both providers when two contribute', () => {
-    const result = mixProviderColors({ gemini: 30, codex: 70, claude: 0, kimi: 0 }, palette)
+    const result = mixProviderColors({ gemini: 30, codex: 70, claude: 0, kimi: 0, grok: 0 }, palette)
     expect(result).toContain('color-mix(in srgb,')
     expect(result).toContain('#2563EB')
     expect(result).toContain('#6366F1')
   })
 
   it('weights the dominant provider with a higher percentage in the color-mix expression', () => {
-    const dominantCodex = mixProviderColors({ gemini: 10, codex: 90, claude: 0, kimi: 0 }, palette)
+    const dominantCodex = mixProviderColors({ gemini: 10, codex: 90, claude: 0, kimi: 0, grok: 0 }, palette)
     // color-mix(in srgb, <gemini> 10%, <codex> 90%) → codex weight should appear with a high number.
     expect(dominantCodex).toMatch(/#6366F1 9[0-9]%/)
   })

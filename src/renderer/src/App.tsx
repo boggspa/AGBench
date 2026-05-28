@@ -2412,7 +2412,8 @@ function WelcomeUsageDashboard({
     gemini: '#8eb1ff',
     codex: '#aaa0ff',
     claude: '#ffad64',
-    kimi: '#bbcf66'
+    kimi: '#bbcf66',
+    grok: '#9aa0a6'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
@@ -7618,7 +7619,8 @@ function App(): React.JSX.Element {
     gemini: [],
     codex: [],
     claude: [],
-    kimi: []
+    kimi: [],
+    grok: []
   })
   const usageSummarySignatureRef = useRef('')
   const usageRecordsSignatureRef = useRef('')

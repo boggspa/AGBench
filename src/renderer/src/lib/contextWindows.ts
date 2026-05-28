@@ -32,7 +32,9 @@ const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {
   gemini: 1_048_576,
   codex: 400_000,
   claude: 200_000,
-  kimi: 256_000
+  kimi: 256_000,
+  // Grok (gated) — placeholder until G10 wires real model metadata.
+  grok: 256_000
 }
 
 export function resolveContextWindow(
