@@ -15816,20 +15816,33 @@ input:disabled, select:disabled, textarea:disabled {
   padding-top: 12px;
 }
 
+/* 1.0.5-EW63 — Chrome stripped. Boss-brief: the masthead read
+ * as the only heavily-styled element in an otherwise
+ * typographically-flat sidebar. Removing the gradient fill +
+ * border + drop shadow makes it sit on the bare sidebar bg
+ * exactly the way the section headers below (PINNED, RECENTS,
+ * ENSEMBLES, etc.) do. The `+ New` button keeps its accent
+ * chrome — it's the lone CTA on this row and should retain
+ * visual hierarchy.
+ *
+ * `!important` on the paint declarations defeats the
+ * appearance-mode overrides at lines ~17924 (native_glass)
+ * and ~24554 (native_glass + light theme) which include
+ * `.sidebar-masthead` in a group selector with other
+ * elements (search field, run summary, model usage) — those
+ * group rules still apply to the other elements but lose to
+ * our base on the masthead specifically. */
 .sidebar-masthead {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--sidebar-border) 72%, transparent);
+  border: 0 !important;
   border-radius: 14px;
-  background:
-    linear-gradient(145deg, color-mix(in srgb, var(--text-primary) 7%, transparent), transparent 74%),
-    color-mix(in srgb, var(--panel-elevated-bg) 46%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--text-primary) 7%, transparent),
-    0 10px 28px rgba(0, 0, 0, 0.09);
+  background: transparent !important;
+  background-image: none !important;
+  box-shadow: none !important;
 }
 
 .sidebar-masthead-copy {
@@ -15838,8 +15851,13 @@ input:disabled, select:disabled, textarea:disabled {
   gap: 3px;
 }
 
+/* 1.0.5-EW63 — Accent tint dialled from 86% to 60%. On the
+ * now-transparent masthead the original tint over-popped
+ * against the sidebar background; 60% reads as a secondary
+ * label (the masthead's eyebrow) rather than competing with
+ * the workspace name below it. */
 .sidebar-product-label {
-  color: color-mix(in srgb, var(--accent) 86%, var(--text-primary));
+  color: color-mix(in srgb, var(--accent) 60%, var(--text-primary));
   font-size: 10px;
   font-weight: 760;
   letter-spacing: 0.115em;
