@@ -2242,7 +2242,15 @@ const WELCOME_USAGE_TABS: Array<{
   Icon: () => ReactElement
 }> = [
   { value: 'overview', label: 'Statistics', Icon: OverviewSymbolIcon },
-  { value: 'models', label: 'Model Comparisons', Icon: ModelSymbolIcon }
+  { value: 'models', label: 'Model Comparisons', Icon: ModelSymbolIcon },
+  // 1.0.5-EW51 — Workspaces tab. Shows per-workspace cumulative
+  // token + cost totals (scrollable cards, capped at the user-
+  // configured max from `AppSettings.dashboardStatPrefs
+  // .workspacesShown`) plus a 30-day daily cost chart. Reuses
+  // the FolderSymbolIcon (already imported as the welcome
+  // workspace-picker icon) so the tab visually echoes the
+  // workspace concept without a new asset.
+  { value: 'workspaces', label: 'Workspaces', Icon: FolderSymbolIcon }
 ]
 
 // Welcome L7 — range toggle retired. The dashboard now locks to a
@@ -2265,7 +2273,9 @@ function WelcomeUsageDashboard({
   onTabChange,
   displayCurrency,
   overestimatePercent,
-  dashboardStatVisibility
+  dashboardStatVisibility,
+  workspacesTabEnabled,
+  workspacesShown
 }: {
   data: WelcomeUsageDashboardData
   tab: WelcomeUsageTab
@@ -2279,11 +2289,24 @@ function WelcomeUsageDashboard({
   // Per-stat visibility (true/false/undefined-defaults-to-true).
   // Hidden stats are dropped from the dense grid render below.
   dashboardStatVisibility?: Record<string, boolean>
+  /**
+   * 1.0.5-EW51 — Workspaces tab on/off + max cards shown. The
+   * tab strip filters the Workspaces entry out when the user
+   * disables the tab; the cards list slices to `workspacesShown`
+   * (default 8). Both come from AppSettings.dashboardStatPrefs.
+   */
+  workspacesTabEnabled?: boolean
+  workspacesShown?: number
 }) {
   const resolvedCurrency: DisplayCurrency = displayCurrency || 'USD'
   const resolvedOverestimate = Math.max(
     0,
     Math.min(25, Number(overestimatePercent ?? 0) || 0)
+  )
+  const resolvedWorkspacesEnabled = workspacesTabEnabled !== false
+  const resolvedWorkspacesShown = Math.max(
+    4,
+    Math.min(20, Number(workspacesShown ?? 8) || 8)
   )
   // Phase K-followup — Provider color palette + mixed rail colour.
   // Each stat chip carries a thin top rail in this colour. The mix
@@ -2412,7 +2435,12 @@ function WelcomeUsageDashboard({
     <section className="welcome-usage-dashboard" aria-label="Provider usage overview">
       <div className="welcome-usage-dashboard-header">
         <div className="welcome-usage-tabs" role="tablist" aria-label="Usage view">
-          {WELCOME_USAGE_TABS.map((option) => {
+          {WELCOME_USAGE_TABS.filter((option) =>
+            // 1.0.5-EW51 — Hide the Workspaces tab when the
+            // user toggled it off in Settings. The Statistics +
+            // Model Comparisons tabs are always shown.
+            option.value === 'workspaces' ? resolvedWorkspacesEnabled : true
+          ).map((option) => {
             const Icon = option.Icon
             return (
               <button
@@ -2512,7 +2540,7 @@ function WelcomeUsageDashboard({
           <UsageHeatmap showHeader={false} className="usage-heatmap--welcome" />
           <p className="welcome-usage-footnote">{data.comparisonText}</p>
         </>
-      ) : (
+      ) : tab === 'models' ? (
         /* Welcome L7 — per-model meters replace the per-day stacked
          * bar chart. Each model gets a row with a horizontal meter
          * whose fill is proportional to that model's share of the
@@ -2567,6 +2595,163 @@ function WelcomeUsageDashboard({
             <div className="welcome-usage-empty">
               No model-level usage tracked in the last 30 days.
             </div>
+          )}
+        </div>
+      ) : (
+        /*
+          1.0.5-EW51 — Workspaces tab. Two-section layout:
+            1. Scrollable list of per-workspace cards (top N from
+               settings, default 8). Each card: workspace name on
+               the left, token total + cost on the right, with a
+               share-of-total progress bar underneath.
+            2. 30-day daily cost chart below. SVG bars, height
+               scaled to the max-cost day in the window. Hover
+               surfaces date + token + cost via the bar's title.
+        */
+        <div className="welcome-usage-workspaces">
+          {data.workspaceCostBreakdown.length === 0 ? (
+            <div className="welcome-usage-empty">
+              No workspace-attributed activity tracked since the last reset.
+            </div>
+          ) : (
+            <>
+              <div
+                className="welcome-usage-workspaces-list"
+                role="list"
+                aria-label="Workspace cost breakdown"
+              >
+                {data.workspaceCostBreakdown.slice(0, resolvedWorkspacesShown).map((ws) => {
+                  const share = Math.max(0, Math.min(100, ws.shareOfTotalCost))
+                  const fillWidth = `${Math.max(2, share)}%`
+                  return (
+                    <div
+                      key={ws.workspaceId}
+                      role="listitem"
+                      className="welcome-usage-workspace-card"
+                      title={`${ws.displayName} · ${formatCompactUsageNumber(ws.tokens)} tokens · ${formatCost(
+                        ws.costUsd,
+                        resolvedCurrency,
+                        undefined,
+                        resolvedOverestimate
+                      )}`}
+                    >
+                      <div className="welcome-usage-workspace-card-row">
+                        <span className="welcome-usage-workspace-card-name">
+                          {ws.displayName}
+                        </span>
+                        <span className="welcome-usage-workspace-card-totals">
+                          <span className="welcome-usage-workspace-card-tokens">
+                            {formatCompactUsageNumber(ws.tokens)} tokens
+                          </span>
+                          <strong className="welcome-usage-workspace-card-cost">
+                            {formatCost(
+                              ws.costUsd,
+                              resolvedCurrency,
+                              undefined,
+                              resolvedOverestimate
+                            )}
+                          </strong>
+                        </span>
+                      </div>
+                      <div
+                        className="welcome-usage-workspace-card-track"
+                        role="progressbar"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={share}
+                        aria-label={`${ws.displayName} accounts for ${share.toFixed(1)}% of post-reset cost`}
+                      >
+                        <span
+                          className="welcome-usage-workspace-card-fill"
+                          style={{ width: fillWidth }}
+                        />
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+              {(() => {
+                /*
+                  Daily cost chart. SVG layout chosen over a div
+                  grid so the bars can scale fluidly to whatever
+                  width the dashboard ends up at + we can drop
+                  proper accessible labels per bar. ViewBox uses
+                  a fixed coordinate space (0..30 × 0..100) and
+                  `preserveAspectRatio='none'` lets the bars
+                  stretch horizontally. Height: bars scale
+                  against the max-cost day; if no day has cost
+                  yet (Gemini-only history) we fall back to a
+                  tokens-scaled visualisation so the chart still
+                  reads as activity.
+                */
+                const days = data.dailyCostBreakdown
+                const maxCost = days.reduce((max, day) => Math.max(max, day.costUsd), 0)
+                const maxTokens = days.reduce((max, day) => Math.max(max, day.tokens), 0)
+                const scaleByCost = maxCost > 0
+                const max = scaleByCost ? maxCost : maxTokens
+                const totalCostInWindow = days.reduce((sum, day) => sum + day.costUsd, 0)
+                const totalTokensInWindow = days.reduce((sum, day) => sum + day.tokens, 0)
+                return (
+                  <div className="welcome-usage-cost-chart">
+                    <div className="welcome-usage-cost-chart-header">
+                      <span className="welcome-usage-cost-chart-title">
+                        Daily {scaleByCost ? 'cost' : 'tokens'} · last 30 days
+                      </span>
+                      <span className="welcome-usage-cost-chart-total">
+                        {scaleByCost
+                          ? `${formatCost(totalCostInWindow, resolvedCurrency, undefined, resolvedOverestimate)} total`
+                          : `${formatCompactUsageNumber(totalTokensInWindow)} tokens total`}
+                      </span>
+                    </div>
+                    {max > 0 ? (
+                      <svg
+                        className="welcome-usage-cost-chart-svg"
+                        viewBox={`0 0 ${days.length} 100`}
+                        preserveAspectRatio="none"
+                        role="img"
+                        aria-label={`${days.length}-day ${scaleByCost ? 'cost' : 'token'} chart`}
+                      >
+                        {days.map((day, index) => {
+                          const value = scaleByCost ? day.costUsd : day.tokens
+                          const height = max > 0 ? (value / max) * 96 : 0
+                          const y = 100 - height
+                          const tooltip = `${day.dayLabel} · ${formatCompactUsageNumber(
+                            day.tokens
+                          )} tokens · ${formatCost(
+                            day.costUsd,
+                            resolvedCurrency,
+                            undefined,
+                            resolvedOverestimate
+                          )}`
+                          return (
+                            <rect
+                              key={day.dayKey}
+                              x={index + 0.1}
+                              y={y}
+                              width={0.8}
+                              height={Math.max(0, height)}
+                              className={`welcome-usage-cost-chart-bar${
+                                value > 0 ? ' is-active' : ''
+                              }`}
+                            >
+                              <title>{tooltip}</title>
+                            </rect>
+                          )
+                        })}
+                      </svg>
+                    ) : (
+                      <div className="welcome-usage-empty welcome-usage-cost-chart-empty">
+                        No cost or token activity in the last 30 days.
+                      </div>
+                    )}
+                    <div className="welcome-usage-cost-chart-axis">
+                      <span>{days[0]?.dayLabel}</span>
+                      <span>{days[days.length - 1]?.dayLabel}</span>
+                    </div>
+                  </div>
+                )
+              })()}
+            </>
           )}
         </div>
       )}
@@ -17221,6 +17406,13 @@ function App(): React.JSX.Element {
                 displayCurrency={displayCurrency}
                 overestimatePercent={overestimatePercent}
                 dashboardStatVisibility={settings?.dashboardStatPrefs?.visibility}
+                /*
+                  1.0.5-EW51 — Workspaces tab on/off + max card
+                  count. Both come from
+                  AppSettings.dashboardStatPrefs.
+                */
+                workspacesTabEnabled={settings?.dashboardStatPrefs?.workspacesTabEnabled}
+                workspacesShown={settings?.dashboardStatPrefs?.workspacesShown}
               />
             </div>
           )}

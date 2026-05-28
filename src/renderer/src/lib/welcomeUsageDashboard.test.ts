@@ -900,3 +900,185 @@ describe('buildWelcomeUsageDashboardData EW49 new stats + global reset', () => {
     expect(data.lifetimeHasActivity).toBe(false)
   })
 })
+
+describe('buildWelcomeUsageDashboardData EW51 workspace breakdown + cost chart', () => {
+  const NOW = new Date(2026, 4, 15, 14, 30).getTime()
+  const DAY = 24 * 60 * 60 * 1000
+
+  it('returns an empty workspace list when there are no records', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.workspaceCostBreakdown).toEqual([])
+  })
+
+  it('groups records by workspaceId + sums tokens and cost', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        timestamp: NOW - 1 * DAY,
+        workspaceId: 'ws-A',
+        totalTokens: 10_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.4 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        timestamp: NOW - 2 * DAY,
+        workspaceId: 'ws-A',
+        totalTokens: 5_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.1 as any
+      } as never),
+      baseRecord({
+        id: 'r3',
+        timestamp: NOW - 3 * DAY,
+        workspaceId: 'ws-B',
+        totalTokens: 2_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.05 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.workspaceCostBreakdown).toHaveLength(2)
+    const wsA = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-A')
+    expect(wsA?.tokens).toBe(15_000)
+    expect(wsA?.costUsd).toBeCloseTo(0.5, 5)
+    const wsB = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-B')
+    expect(wsB?.tokens).toBe(2_000)
+    expect(wsB?.costUsd).toBeCloseTo(0.05, 5)
+  })
+
+  it('sorts workspaces DESC by cost with tokens as tiebreaker', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        workspaceId: 'small-cost',
+        totalTokens: 50_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.01 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        workspaceId: 'big-cost',
+        totalTokens: 1_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 5.0 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    expect(data.workspaceCostBreakdown[0].workspaceId).toBe('big-cost')
+    expect(data.workspaceCostBreakdown[1].workspaceId).toBe('small-cost')
+  })
+
+  it('resolves displayName from the workspaces input or falls back to "No workspace" / raw id', () => {
+    const records: UsageRecord[] = [
+      baseRecord({ id: 'r1', workspaceId: 'ws-known', totalTokens: 100 }),
+      baseRecord({ id: 'r2', workspaceId: 'ws-unknown', totalTokens: 200 }),
+      baseRecord({ id: 'r3', workspaceId: undefined as unknown as string, totalTokens: 300 })
+    ]
+    const workspaces = [{ id: 'ws-known', displayName: 'Known Repo' }]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW, workspaces)
+    const known = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-known')
+    const unknown = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-unknown')
+    const none = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === '__no_workspace')
+    expect(known?.displayName).toBe('Known Repo')
+    expect(unknown?.displayName).toBe('ws-unknown')
+    expect(none?.displayName).toBe('No workspace')
+  })
+
+  it('computes shareOfTotalCost as a percentage of all-workspace cost (or 0 when totalCost is 0)', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        workspaceId: 'ws-A',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.6 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        workspaceId: 'ws-B',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.4 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const wsA = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-A')
+    const wsB = data.workspaceCostBreakdown.find((ws) => ws.workspaceId === 'ws-B')
+    expect(wsA?.shareOfTotalCost).toBeCloseTo(60, 1)
+    expect(wsB?.shareOfTotalCost).toBeCloseTo(40, 1)
+
+    // Zero-total case: every entry has 0 share rather than NaN.
+    const noneCostRecord = baseRecord({
+      id: 'rZ',
+      workspaceId: 'ws-A',
+      totalTokens: 1_000
+      // no explicitCostUsd
+    })
+    const noCostData = buildWelcomeUsageDashboardData([noneCostRecord], [], '30d', NOW)
+    expect(noCostData.workspaceCostBreakdown[0].shareOfTotalCost).toBe(0)
+  })
+
+  it('emits exactly 30 daily-cost buckets in chronological order (oldest first)', () => {
+    const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
+    expect(data.dailyCostBreakdown).toHaveLength(30)
+    // First entry should be ~29 days ago; last entry is today.
+    const firstDay = new Date(data.dailyCostBreakdown[0].dayKey + 'T00:00:00').getTime()
+    const lastDay = new Date(
+      data.dailyCostBreakdown[data.dailyCostBreakdown.length - 1].dayKey + 'T00:00:00'
+    ).getTime()
+    expect(lastDay).toBeGreaterThan(firstDay)
+    // ~29 days between first and last
+    const diffDays = Math.round((lastDay - firstDay) / DAY)
+    expect(diffDays).toBe(29)
+  })
+
+  it('zero-fills days with no activity', () => {
+    const records: UsageRecord[] = [
+      // Single record today only.
+      baseRecord({
+        id: 'r1',
+        timestamp: NOW,
+        totalTokens: 1_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.05 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const today = data.dailyCostBreakdown[data.dailyCostBreakdown.length - 1]
+    expect(today.tokens).toBe(1_000)
+    expect(today.costUsd).toBeCloseTo(0.05, 5)
+    // Every other day in the window is zeroed.
+    for (let i = 0; i < data.dailyCostBreakdown.length - 1; i++) {
+      expect(data.dailyCostBreakdown[i].tokens).toBe(0)
+      expect(data.dailyCostBreakdown[i].costUsd).toBe(0)
+    }
+  })
+
+  it('drops records older than 30 days from the daily chart (but still contributes to workspace lifetime totals)', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'old',
+        timestamp: NOW - 60 * DAY,
+        workspaceId: 'ws-A',
+        totalTokens: 100_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 5.0 as any
+      } as never),
+      baseRecord({
+        id: 'recent',
+        timestamp: NOW - 5 * DAY,
+        workspaceId: 'ws-A',
+        totalTokens: 1_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0.1 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    // Workspace tally includes both records.
+    const wsA = data.workspaceCostBreakdown[0]
+    expect(wsA.tokens).toBe(101_000)
+    expect(wsA.costUsd).toBeCloseTo(5.1, 5)
+    // Daily chart only sees the recent record.
+    const chartTotal = data.dailyCostBreakdown.reduce((sum, day) => sum + day.costUsd, 0)
+    expect(chartTotal).toBeCloseTo(0.1, 5)
+  })
+})

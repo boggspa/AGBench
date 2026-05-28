@@ -1191,6 +1191,20 @@ export interface AppSettings {
   dashboardStatPrefs?: {
     visibility?: Record<string, boolean>
     resetAt?: number
+    /**
+     * 1.0.5-EW51 — Workspaces tab on/off. Default: visible. The
+     * tab itself filters the dashboard tab strip; the underlying
+     * data is still computed so toggling it back on doesn't
+     * re-cost anything.
+     */
+    workspacesTabEnabled?: boolean
+    /**
+     * 1.0.5-EW51 — Max number of workspace cards shown in the
+     * scrollable list at the top of the Workspaces tab. The full
+     * sorted list is always computed; the renderer slices to
+     * this count. Default 8; clamped 4–20 at the slider UI.
+     */
+    workspacesShown?: number
   }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle.
    * When true, prompts dispatched to a Kimi participant are

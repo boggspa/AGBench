@@ -6,7 +6,53 @@ import type {
 } from '../../../main/store/types'
 import { humaniseModelId } from './modelDisplayName'
 
-export type WelcomeUsageTab = 'overview' | 'models'
+export type WelcomeUsageTab = 'overview' | 'models' | 'workspaces'
+
+/**
+ * 1.0.5-EW51 — Per-workspace cumulative cost + token breakdown
+ * for the dashboard's "Workspaces" tab. One entry per workspace
+ * that has any post-reset usage records. Sorted DESC by cost
+ * (with tokens as tiebreaker so an OAuth-only provider with zero
+ * recorded cost doesn't bury under another zero-cost workspace).
+ * The renderer caps the visible list at the user-configured max
+ * (`AppSettings.dashboardStatPrefs.workspacesShown`, default 8)
+ * — the full list is still emitted so a future "show all" toggle
+ * is a CSS change rather than a data change.
+ */
+export interface WorkspaceCostBreakdownEntry {
+  workspaceId: string
+  /**
+   * Human-readable name for the row. Falls back to:
+   *   - the workspace's `displayName` if registered
+   *   - `'No workspace'` for records without a workspaceId
+   *     (global chats, runs that landed before workspace
+   *     selection — surfaced explicitly so the user sees
+   *     where the spend went, not silently dropped).
+   *   - the raw workspaceId when the workspace is unknown
+   *     (e.g. removed from the workspaces table but records
+   *     still reference it).
+   */
+  displayName: string
+  tokens: number
+  costUsd: number
+  /** Percentage of the total post-reset cost. 0–100. */
+  shareOfTotalCost: number
+}
+
+/**
+ * 1.0.5-EW51 — One bar in the "Workspaces" tab's 30-day cost
+ * chart. Built as a strict 30-day series (oldest first), with
+ * zero-fill for days that had no usage so the chart's x-axis
+ * stays uniform regardless of activity density.
+ */
+export interface DailyCostBucket {
+  /** YYYY-MM-DD local-day key. */
+  dayKey: string
+  /** Short label for the tooltip / axis ("May 15"). */
+  dayLabel: string
+  tokens: number
+  costUsd: number
+}
 /**
  * Time-window discriminator for the welcome dashboard. `24h` was added in
  * Welcome L3 alongside the range-toggle UI; `all` is the historical
@@ -15,6 +61,13 @@ export type WelcomeUsageTab = 'overview' | 'models'
 export type WelcomeUsageRange = 'all' | '30d' | '7d' | '24h'
 
 export const HEATMAP_DAY_COUNT = 30
+
+/**
+ * 1.0.5-EW51 — Number of daily buckets in the Workspaces tab's
+ * cost chart. Mirrors the heatmap's 30-day window so the two
+ * surfaces on the dashboard share the same rolling cadence.
+ */
+export const DASHBOARD_COST_CHART_DAY_COUNT = 30
 export const HEATMAP_HOUR_COUNT = 24
 
 export interface WelcomeUsageDayCell {
@@ -129,6 +182,20 @@ export interface WelcomeUsageDashboardData {
    * usage number ("12k", "3.4M").
    */
   tokensPerSession: number
+  /**
+   * 1.0.5-EW51 — Per-workspace cumulative cost + token breakdown
+   * for the "Workspaces" tab. Sorted by cost desc; the renderer
+   * slices the first N (default 8). Empty array when no records
+   * carry attribution.
+   */
+  workspaceCostBreakdown: WorkspaceCostBreakdownEntry[]
+  /**
+   * 1.0.5-EW51 — 30-day daily cost/token series for the
+   * Workspaces tab's bar chart. Always exactly 30 entries
+   * (oldest first, today last), zero-filled for inactive days
+   * so the chart's x-axis stays uniform.
+   */
+  dailyCostBreakdown: DailyCostBucket[]
   peakHour: string
   favoriteModel: string
   /**
@@ -435,6 +502,18 @@ export const buildWelcomeUsageDashboardData = (
   // skip records that lack the field — surfacing a real-vs-
   // partial signal honestly via the magnitude.
   let totalCostUsd = 0
+  // 1.0.5-EW51 — Per-workspace + per-day aggregates for the new
+  // "Workspaces" dashboard tab. Built in the same lifetime loop
+  // as the EW49 totals so we get them for free. Workspaces are
+  // keyed by `workspaceId` (special `__no_workspace` sentinel
+  // for global/no-attribution records — surfaced as "No
+  // workspace" rather than silently dropped). Daily buckets are
+  // keyed by local-day YYYY-MM-DD and only populated for
+  // records within the last 30 days (the bar chart's window).
+  const workspaceAggregate = new Map<string, { tokens: number; costUsd: number }>()
+  const dailyCostAggregate = new Map<string, { tokens: number; costUsd: number }>()
+  const dailyCostCutoff = now - DASHBOARD_COST_CHART_DAY_COUNT * 24 * 60 * 60 * 1000
+  const NO_WORKSPACE_KEY = '__no_workspace'
   for (const record of recordsAfterReset) {
     if (record.usageKind === 'reset_hint') continue
     lifetimeActiveDayKeys.add(dayKeyFromTimestamp(record.timestamp))
@@ -444,8 +523,28 @@ export const buildWelcomeUsageDashboardData = (
       totalWallTimeMs += duration
     }
     const cost = Number((record as unknown as Record<string, unknown>).explicitCostUsd ?? 0)
-    if (Number.isFinite(cost) && cost > 0) {
+    const hasCost = Number.isFinite(cost) && cost > 0
+    if (hasCost) {
       totalCostUsd += cost
+    }
+    // EW51 workspace bucket — contribute even when cost is 0
+    // (tokens-only providers like Gemini still get a row on the
+    // Workspaces tab; cost simply renders as "—" or the bias-
+    // adjusted zero from `formatCost`).
+    const wsKey = record.workspaceId || NO_WORKSPACE_KEY
+    const wsBucket = workspaceAggregate.get(wsKey) || { tokens: 0, costUsd: 0 }
+    wsBucket.tokens += Number(record.totalTokens) || 0
+    if (hasCost) wsBucket.costUsd += cost
+    workspaceAggregate.set(wsKey, wsBucket)
+    // EW51 daily bucket — only the last 30 days contribute to
+    // the chart series. Older records hit the workspace tally
+    // (lifetime) but not the chart bars.
+    if (record.timestamp >= dailyCostCutoff) {
+      const dayKey = dayKeyFromTimestamp(record.timestamp)
+      const dayBucket = dailyCostAggregate.get(dayKey) || { tokens: 0, costUsd: 0 }
+      dayBucket.tokens += Number(record.totalTokens) || 0
+      if (hasCost) dayBucket.costUsd += cost
+      dailyCostAggregate.set(dayKey, dayBucket)
     }
   }
   // Re-walk the original lifetime-active-day loop body that EW44
@@ -737,6 +836,56 @@ export const buildWelcomeUsageDashboardData = (
     recordsAfterReset.some((record) => record.usageKind !== 'reset_hint') ||
     chatsAfterReset.some((chat) => (chat.messages || []).length > 0)
 
+  // 1.0.5-EW51 — Materialise the workspace + daily-cost arrays
+  // from the aggregates we built in the lifetime loop above.
+  // Workspaces: resolve displayName from the caller's
+  // `workspaces` slice (fall back to a synthesised label for
+  // unknown / no-workspace records), sort DESC by cost (tokens
+  // tiebreaker), compute share-of-total-cost. Daily series:
+  // zero-fill every day in the rolling 30-day window so the
+  // chart's x-axis stays uniform regardless of activity
+  // density, oldest-first.
+  const totalAllWorkspaceCost = Array.from(workspaceAggregate.values()).reduce(
+    (sum, bucket) => sum + (bucket.costUsd || 0),
+    0
+  )
+  const workspaceCostBreakdown: WorkspaceCostBreakdownEntry[] = Array.from(
+    workspaceAggregate.entries()
+  )
+    .map(([key, bucket]) => {
+      const displayName =
+        key === NO_WORKSPACE_KEY
+          ? 'No workspace'
+          : workspaces.find((w) => w.id === key)?.displayName || key
+      return {
+        workspaceId: key,
+        displayName,
+        tokens: bucket.tokens,
+        costUsd: bucket.costUsd,
+        shareOfTotalCost:
+          totalAllWorkspaceCost > 0 ? (bucket.costUsd / totalAllWorkspaceCost) * 100 : 0
+      }
+    })
+    .sort(
+      (a, b) =>
+        b.costUsd - a.costUsd ||
+        b.tokens - a.tokens ||
+        a.displayName.localeCompare(b.displayName)
+    )
+  const todayDayStart = startOfLocalDay(now)
+  const dailyCostBreakdown: DailyCostBucket[] = []
+  for (let i = DASHBOARD_COST_CHART_DAY_COUNT - 1; i >= 0; i--) {
+    const ts = todayDayStart - i * 24 * 60 * 60 * 1000
+    const dayKey = dayKeyFromTimestamp(ts)
+    const bucket = dailyCostAggregate.get(dayKey) || { tokens: 0, costUsd: 0 }
+    dailyCostBreakdown.push({
+      dayKey,
+      dayLabel: formatUsageDateLabel(dayKey),
+      tokens: bucket.tokens,
+      costUsd: bucket.costUsd
+    })
+  }
+
   const sessionsCount = sessionIds.size
   // 1.0.5-EW49 — Three derived metrics, computed once we have the
   // primary aggregates above. All gated on `sessionsCount > 0` so
@@ -763,6 +912,8 @@ export const buildWelcomeUsageDashboardData = (
     totalCostUsd,
     avgSessionMs,
     tokensPerSession,
+    workspaceCostBreakdown,
+    dailyCostBreakdown,
     peakHour: runRecords.length > 0 ? formatPeakHour(peakHour) : 'n/a',
     favoriteModel,
     favoriteProject,

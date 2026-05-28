@@ -108,6 +108,10 @@ interface SettingsPanelProps {
   dashboardStatPrefs?: {
     visibility?: Record<string, boolean>
     resetAt?: number
+    /** 1.0.5-EW51 — show/hide the Workspaces tab (default true). */
+    workspacesTabEnabled?: boolean
+    /** 1.0.5-EW51 — max workspace cards shown (default 8, range 4–20). */
+    workspacesShown?: number
   }
   /** 1.0.5-EW26 — Kimi (Moonshot) compatibility filter toggle. */
   kimiSanitiserEnabled: boolean
@@ -209,6 +213,10 @@ interface SettingsPanelProps {
     dashboardStatPrefs?: {
       visibility?: Record<string, boolean>
       resetAt?: number
+      /** 1.0.5-EW51 — show/hide the Workspaces tab. */
+      workspacesTabEnabled?: boolean
+      /** 1.0.5-EW51 — max workspace cards on Workspaces tab. */
+      workspacesShown?: number
     }
     /** 1.0.5-EW26 — Kimi compatibility filter on/off. */
     kimiSanitiserEnabled?: boolean
@@ -2243,6 +2251,67 @@ export function SettingsPanel({
                   the EW49 CHANGELOG entry for the deferral
                   rationale.
                 */}
+                {/*
+                  1.0.5-EW51 — Workspaces tab controls. The
+                  third dashboard tab gets a visibility toggle +
+                  max-cards-shown slider here so the user can
+                  hide it entirely or trim the scroll list when
+                  they have lots of workspaces. Defaults: tab
+                  visible (`undefined`/`true`), 8 cards.
+                */}
+                <div className="settings-dashboard-stats-group settings-dashboard-workspaces-group">
+                  <div className="settings-dashboard-stats-group-label">Workspaces tab</div>
+                  <ul className="settings-dashboard-stats-list">
+                    <li className="settings-dashboard-stats-row">
+                      <span className="settings-dashboard-stats-name">Show Workspaces tab</span>
+                      <label className="settings-toggle">
+                        <input
+                          type="checkbox"
+                          checked={dashboardStatPrefs?.workspacesTabEnabled !== false}
+                          onChange={(e) => {
+                            onChange({
+                              dashboardStatPrefs: {
+                                ...(dashboardStatPrefs || {}),
+                                workspacesTabEnabled: e.target.checked
+                              }
+                            })
+                          }}
+                        />
+                        <span className="settings-toggle-label">
+                          {dashboardStatPrefs?.workspacesTabEnabled !== false ? 'Visible' : 'Hidden'}
+                        </span>
+                      </label>
+                    </li>
+                  </ul>
+                  <label className="settings-label settings-dashboard-workspaces-shown-label">
+                    Workspaces shown
+                    <span style={{ marginLeft: 'var(--space-sm)', opacity: 0.7 }}>
+                      {Math.max(4, Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8))}
+                    </span>
+                  </label>
+                  <input
+                    type="range"
+                    min={4}
+                    max={20}
+                    step={1}
+                    value={Math.max(4, Math.min(20, Number(dashboardStatPrefs?.workspacesShown ?? 8) || 8))}
+                    onChange={(e) => {
+                      const next = Math.max(4, Math.min(20, Number(e.target.value) || 8))
+                      onChange({
+                        dashboardStatPrefs: {
+                          ...(dashboardStatPrefs || {}),
+                          workspacesShown: next
+                        }
+                      })
+                    }}
+                    style={{ width: '100%' }}
+                    aria-label="Maximum workspace cards shown on the Workspaces tab"
+                  />
+                  <p className="settings-hint">
+                    The Workspaces tab shows up to this many workspace cost cards
+                    (scrollable when there are more). Defaults to 8; clamped 4–20.
+                  </p>
+                </div>
               </div>
 
               {/*

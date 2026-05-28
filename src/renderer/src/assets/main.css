@@ -5533,6 +5533,152 @@ button.sidebar-item {
   margin-top: 8px;
 }
 
+/* 1.0.5-EW51 — Workspaces tab. Two stacked sections: scrollable
+ * card list of per-workspace cumulative cost + tokens (top N,
+ * default 8) above a 30-day bar chart of daily activity. Layout
+ * mirrors the Statistics tab's "chips above heatmap below" shape
+ * so the two tabs feel like siblings. */
+.welcome-usage-workspaces {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.welcome-usage-workspaces-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Cap visible height at ~6 cards then scroll — workspace count
+   * varies wildly per user, this keeps the chart visible below. */
+  max-height: 360px;
+  overflow-y: auto;
+  /* Subtle inner shadow at top/bottom of the scrollable area so
+   * the user can tell when there's more to scroll. */
+  mask-image: linear-gradient(to bottom, transparent, black 10px, black calc(100% - 10px), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black 10px, black calc(100% - 10px), transparent);
+  padding: 4px 2px;
+}
+.welcome-usage-workspace-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 38%, transparent);
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--text-primary) 10%, transparent), color-mix(in srgb, var(--accent) 5%, transparent)),
+    color-mix(in srgb, var(--panel-bg) 22%, transparent);
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.welcome-usage-workspace-card:hover {
+  border-color: color-mix(in srgb, var(--accent-color) 55%, transparent);
+}
+.welcome-usage-workspace-card-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+.welcome-usage-workspace-card-name {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.welcome-usage-workspace-card-totals {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.welcome-usage-workspace-card-tokens {
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-secondary) 92%, transparent);
+}
+.welcome-usage-workspace-card-cost {
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+.welcome-usage-workspace-card-track {
+  height: 4px;
+  background: color-mix(in srgb, var(--panel-border) 36%, transparent);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.welcome-usage-workspace-card-fill {
+  display: block;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--accent-color) 70%, transparent),
+    color-mix(in srgb, var(--accent-color) 95%, transparent)
+  );
+  border-radius: 3px;
+  transition: width 220ms ease;
+}
+
+/* 1.0.5-EW51 — Daily cost chart (30 bars). SVG-based so it can
+ * stretch fluidly with the dashboard width and the bars retain
+ * crisp edges at any zoom level. The header carries title +
+ * window total; axis row below shows the first/last day labels.
+ */
+.welcome-usage-cost-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--panel-border) 36%, transparent);
+  background: color-mix(in srgb, var(--panel-bg) 22%, transparent);
+}
+.welcome-usage-cost-chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.welcome-usage-cost-chart-title {
+  font-size: var(--font-size-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--text-secondary) 85%, transparent);
+}
+.welcome-usage-cost-chart-total {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.welcome-usage-cost-chart-svg {
+  width: 100%;
+  height: 96px;
+  display: block;
+}
+.welcome-usage-cost-chart-bar {
+  fill: color-mix(in srgb, var(--panel-border) 60%, transparent);
+  transition: fill 160ms ease;
+}
+.welcome-usage-cost-chart-bar.is-active {
+  fill: color-mix(in srgb, var(--accent-color) 80%, transparent);
+}
+.welcome-usage-cost-chart-bar:hover {
+  fill: color-mix(in srgb, var(--accent-color) 100%, transparent);
+}
+.welcome-usage-cost-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--font-size-xs);
+  color: color-mix(in srgb, var(--text-secondary) 75%, transparent);
+}
+.welcome-usage-cost-chart-empty {
+  padding: 24px;
+  text-align: center;
+}
+
 .welcome-usage-cell {
   aspect-ratio: 1;
   min-width: 0;
