@@ -545,10 +545,23 @@
  * `[data-appearance="native_glass"][data-reduce-transparency="false"]
  *  .app-transcript` rule in main.css has equal specificity
  * (both are class + attr selectors), and CSS resolves ties by
- * source order — main.css loads after theme.css. */
+ * source order — main.css loads after theme.css.
+ *
+ * 1.0.5-EW62 — Extended to `.app-settings-pane`. The Settings
+ * full-app takeover renders inside a SIBLING `.app-settings-pane`
+ * (not inside `.app-transcript`). It also consumes
+ * `--theme-gradient-transcript` as a `background-image` overlay
+ * (main.css:29664) — without these overrides, the dark chroma
+ * gradient on a light theme paints a dark-gray wash over the
+ * settings pane, killing legibility of every label and option.
+ * `background-image: none` removes the overlay; the explicit
+ * background-color locks the surface to the theme's true fill. */
 [data-theme="obsidian"][data-appearance] .app-transcript,
-[data-theme="obsidian"] .app-transcript {
-  background: #08070a !important;
+[data-theme="obsidian"] .app-transcript,
+[data-theme="obsidian"][data-appearance] .app-settings-pane,
+[data-theme="obsidian"] .app-settings-pane {
+  background-color: #08070a !important;
+  background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
@@ -754,10 +767,20 @@
 /* Force the transcript fully opaque on Alabaster regardless of
  * appearance mode — mirrors the obsidian transcript-opacity
  * rule. The reading surface stays a calm cream slab; the
- * sidebar is where the glass happens. */
+ * sidebar is where the glass happens.
+ *
+ * 1.0.5-EW62 — Also covers `.app-settings-pane` (mirror of the
+ * obsidian fix above). Without this, the dark slate chroma trio
+ * (slate/ink/pewter) paints `--theme-gradient-transcript` as a
+ * dark-gray wash over the cream settings pane, killing every
+ * label's legibility. `background-image: none` removes the
+ * overlay; the cream background-color locks the surface. */
 [data-theme="alabaster"][data-appearance] .app-transcript,
-[data-theme="alabaster"] .app-transcript {
-  background: #f4f3ef !important;
+[data-theme="alabaster"] .app-transcript,
+[data-theme="alabaster"][data-appearance] .app-settings-pane,
+[data-theme="alabaster"] .app-settings-pane {
+  background-color: #f4f3ef !important;
+  background-image: none !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
 }
