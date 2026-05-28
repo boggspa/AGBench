@@ -6260,6 +6260,26 @@ function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
   }
 }
 
+/**
+ * Grok's CLI reports no token counts, so a Grok run would otherwise record 0
+ * tokens and never surface in the token/cost dashboard (Providers tab, Model
+ * Comparisons). Estimate a PROJECTED usage (~4 chars/token) from the prompt +
+ * accumulated response so Grok appears alongside the other providers. This is
+ * an estimate for projection only — NOT real billing: Grok bills via the
+ * SuperGrok subscription credit pool (see the "Subscription credits" meter).
+ * Paired with the projected xAI rates in ProviderRateService it yields a
+ * projected cost. Emits snake_case keys the renderer's usage extractor reads.
+ */
+function estimateProjectedTokenUsage(
+  promptText: string | undefined,
+  responseText: string | undefined
+): { input_tokens: number; output_tokens: number; total_tokens: number } {
+  const estimate = (text: string | undefined): number => Math.max(0, Math.ceil((text || '').length / 4))
+  const input_tokens = estimate(promptText)
+  const output_tokens = estimate(responseText)
+  return { input_tokens, output_tokens, total_tokens: input_tokens + output_tokens }
+}
+
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   if (state.provider === 'grok') {
     handleGrokStreamEvent(state, event)
@@ -6550,6 +6570,11 @@ function runCliProviderProcess(
           state
         )
       }
+    }
+    // Grok reports no token usage; record a projected estimate so it appears in
+    // the dashboard (see estimateProjectedTokenUsage — projection, not billing).
+    if (provider === 'grok' && !state.tokenUsage) {
+      state.tokenUsage = estimateProjectedTokenUsage(payload.prompt, state.assistantText)
     }
     if (!state.completed) {
       sendAgentCompatLine(
