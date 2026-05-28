@@ -25471,13 +25471,29 @@ input:disabled, select:disabled, textarea:disabled {
  * Setting these as ambient vars on the style root means every
  * sibling row (above-bar, ensemble, queued, etc.) reads the
  * same values without duplicating the literals. Tweaking the
- * "feel" of the style is then a single-line edit. */
+ * "feel" of the style is then a single-line edit.
+ *
+ * 1.0.5-EW56 tuning notes:
+ *   - --obsidian-composer-fill: solid dark gray (#0e0e10) not
+ *     pure black. The boss-brief reads as "dark gray with the
+ *     rim doing the work"; #000 lost too much of the volume.
+ *     This is the same value used by the above-rows below so
+ *     the family looks uniform.
+ *   - --obsidian-composer-rim-width: 2px (was 1px implicit) so
+ *     the shimmer chase reads more prominently — the rim is
+ *     the whole identity, it can afford to be a hair thicker.
+ *   - --obsidian-composer-radius-rows: 6px for above-rows
+ *     (down from 14px) so the upper stack reads as crisper
+ *     "satellite cards" while the composer surface itself
+ *     keeps the soft 14px wrap. */
 [data-composer-style="obsidian"] {
-  --obsidian-composer-fill: #000;
-  --obsidian-composer-rim: rgba(255, 255, 255, 0.22);
-  --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.36);
-  --obsidian-composer-border: rgba(255, 255, 255, 0.08);
+  --obsidian-composer-fill: #0e0e10;
+  --obsidian-composer-rim: rgba(255, 255, 255, 0.28);
+  --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.42);
+  --obsidian-composer-border: rgba(255, 255, 255, 0.10);
   --obsidian-composer-radius: 14px;
+  --obsidian-composer-radius-rows: 6px;
+  --obsidian-composer-rim-width: 2px;
   /* Subtle white ambient glow — the surface looks lit. */
   --obsidian-composer-glow: 0 0 28px rgba(255, 255, 255, 0.05),
     0 0 64px rgba(255, 255, 255, 0.02);
@@ -25488,12 +25504,21 @@ input:disabled, select:disabled, textarea:disabled {
 
 [data-composer-style="obsidian"] .composer-surface {
   position: relative;
+  /* Solid dark gray. No top-edge tint gradient — that read as
+   * a horizon line and made the surface feel uneven. The chase
+   * pseudo-element provides the only directional highlight. */
   background: var(--obsidian-composer-fill);
+  /* Beat any inherited backdrop-filter / blur from
+   * appearance-mode rules; the composer must look fully opaque
+   * regardless of glass mode. */
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--obsidian-composer-border);
   border-radius: var(--obsidian-composer-radius);
   box-shadow:
-    /* The rim — pure white, fully opaque-ish, hairline. */
-    inset 0 1px 0 var(--obsidian-composer-rim),
+    /* The static rim — 2px now (was 1px). Reads prominently
+     * against the dark gray fill without dominating. */
+    inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim),
     /* Soft inner vignette at the bottom — lit-from-above cue. */
     inset 0 -14px 28px -16px rgba(0, 0, 0, 0.85),
     /* External shadow + ambient white glow. */
@@ -25508,12 +25533,12 @@ input:disabled, select:disabled, textarea:disabled {
    * because the user wants to feel the surface stay alive
    * while they type, not freeze to acknowledge them. */
   box-shadow:
-    inset 0 1px 0 var(--obsidian-composer-rim-strong),
+    inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim-strong),
     inset 0 -12px 24px -16px rgba(0, 0, 0, 0.7),
     0 10px 28px -10px rgba(0, 0, 0, 0.75),
     0 0 36px rgba(255, 255, 255, 0.07),
     0 0 80px rgba(255, 255, 255, 0.03);
-  border-color: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.18);
 }
 
 /* The chase: a conic-gradient that paints a bright white sweep
@@ -25532,19 +25557,24 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="obsidian"] .composer-surface::before {
   content: '';
   position: absolute;
-  inset: -1px;
-  border-radius: calc(var(--obsidian-composer-radius) + 1px);
-  padding: 1px;
+  /* Inset matches the chase ring thickness so the highlight
+   * sits flush with the parent border rather than fattening
+   * outside it. */
+  inset: calc(var(--obsidian-composer-rim-width) * -1);
+  border-radius: calc(var(--obsidian-composer-radius) + var(--obsidian-composer-rim-width));
+  padding: var(--obsidian-composer-rim-width);
   background: conic-gradient(
     from var(--obsidian-rim-angle),
     transparent 0deg,
     transparent 260deg,
-    rgba(255, 255, 255, 0.5) 310deg,
-    rgba(255, 255, 255, 0.9) 340deg,
-    rgba(255, 255, 255, 0.5) 360deg
+    rgba(255, 255, 255, 0.55) 310deg,
+    rgba(255, 255, 255, 0.95) 340deg,
+    rgba(255, 255, 255, 0.55) 360deg
   );
-  /* Mask-composite: keep only the 1px border strip — cut out
-   * the inner content area. Standard "1px gradient ring" trick. */
+  /* Mask-composite: keep only the rim strip — cut out the
+   * inner content area. Padding controls the thickness, now
+   * driven by --obsidian-composer-rim-width so the static rim
+   * and the chase track each other if either is retuned. */
   -webkit-mask:
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
@@ -25558,7 +25588,7 @@ input:disabled, select:disabled, textarea:disabled {
   /* z-index above the surface fill but below the textarea
    * content so the user's typed text isn't fogged. */
   z-index: 1;
-  opacity: 0.85;
+  opacity: 0.92;
 }
 
 /* The chase only animates when reduce-motion is off. Honour
@@ -25593,20 +25623,31 @@ input:disabled, select:disabled, textarea:disabled {
   color: rgba(255, 255, 255, 0.32);
 }
 
-/* Above-bar pills DON'T go transparent on Obsidian — they
- * pick up the SAME chrome as the composer surface. The brief
- * was explicit: detached above-rows should be black with white
- * rim highlights, matching corner radius. Each row reads as
- * its own panel cut from the same material. */
+/* Above-bar / detached rows. The brief: same fill + rim as the
+ * composer surface, but a smaller corner radius (6px vs 14px)
+ * so the upper stack reads as crisper "satellite cards" rather
+ * than a softer continuation of the composer body.
+ *
+ * Fully opaque — explicit `background: var(--obsidian-composer-fill)`
+ * with no alpha component and an explicit `backdrop-filter: none`
+ * to beat any inherited blur from appearance-mode rules. The
+ * warm dusk-halo from the Obsidian theme paints behind the
+ * sidebar; these rows must NOT let it leak through.
+ *
+ * Each row gets its own rim-chase pseudo-element so the
+ * shimmer travels every detached card, not just the composer.
+ * Same 12s duration so the four perimeters loop in lockstep. */
 [data-composer-style="obsidian"] .composer-above-bar,
 [data-composer-style="obsidian"] .ensemble-above-row,
 [data-composer-style="obsidian"] .queued-messages-above-row,
 [data-composer-style="obsidian"] .composer-create-pr-row {
   background: var(--obsidian-composer-fill);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border: 1px solid var(--obsidian-composer-border);
-  border-radius: var(--obsidian-composer-radius);
+  border-radius: var(--obsidian-composer-radius-rows);
   box-shadow:
-    inset 0 1px 0 var(--obsidian-composer-rim),
+    inset 0 var(--obsidian-composer-rim-width) 0 var(--obsidian-composer-rim),
     0 6px 18px -10px rgba(0, 0, 0, 0.6),
     /* Lighter glow on the satellite rows — the composer
      * surface is the focal point; the rows quietly echo it. */
@@ -25614,28 +25655,100 @@ input:disabled, select:disabled, textarea:disabled {
   position: relative;
 }
 
-/* Tighten the picker buttons inside the above-bar so they
- * sit cleanly on the black surface instead of trying to
- * paint their own backgrounds. */
+/* Matching rim chase on the above-rows. Same conic-gradient
+ * pattern, same 12s duration. The chase opacity is dialled a
+ * notch lower than the composer's (0.78 vs 0.92) so the
+ * composer stays the focal point and the satellite rows
+ * quietly shimmer in supporting harmony. */
+[data-composer-style="obsidian"] .composer-above-bar::before,
+[data-composer-style="obsidian"] .ensemble-above-row::before,
+[data-composer-style="obsidian"] .queued-messages-above-row::before,
+[data-composer-style="obsidian"] .composer-create-pr-row::before {
+  content: '';
+  position: absolute;
+  inset: calc(var(--obsidian-composer-rim-width) * -1);
+  border-radius: calc(var(--obsidian-composer-radius-rows) + var(--obsidian-composer-rim-width));
+  padding: var(--obsidian-composer-rim-width);
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(255, 255, 255, 0.5) 310deg,
+    rgba(255, 255, 255, 0.85) 340deg,
+    rgba(255, 255, 255, 0.5) 360deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--obsidian-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.78;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="obsidian"] .composer-above-bar::before,
+  [data-composer-style="obsidian"] .ensemble-above-row::before,
+  [data-composer-style="obsidian"] .queued-messages-above-row::before,
+  [data-composer-style="obsidian"] .composer-create-pr-row::before {
+    animation: none;
+  }
+}
+
+/* Satellite picker chrome — the boss-brief wants the Model /
+ * Reasoning / Approval / Turn-Continuous-Work Session controls
+ * to read as floating text, NOT pill chrome. The Obsidian
+ * composer carries the rim identity; the controls inside
+ * shouldn't compete with their own borders + fills.
+ *
+ * Strips:
+ *   - background (was a panel-bg tinted fill)
+ *   - border (was 1px panel-border)
+ *   - border-radius (was 999px pill)
+ *   - any box-shadow
+ *
+ * `!important` necessary because some of these classes set the
+ * properties at higher specificity (e.g. focus rings, light-
+ * theme overrides, per-shell tunings). The Obsidian style is
+ * intentionally the most restrained surface in the app, and
+ * the chrome flattening has to win cleanly. */
 [data-composer-style="obsidian"] .composer-picker-label,
 [data-composer-style="obsidian"] .composer-picker-command,
 [data-composer-style="obsidian"] .composer-image-picker-btn,
 [data-composer-style="obsidian"] .composer-control-button,
 [data-composer-style="obsidian"] .composer-schedule-label,
-[data-composer-style="obsidian"] .composer-runtime-profile {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+[data-composer-style="obsidian"] .composer-runtime-profile,
+[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"],
+[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
   padding: 4px 8px;
-  color: rgba(255, 255, 255, 0.78);
+  color: rgba(255, 255, 255, 0.74);
 }
 [data-composer-style="obsidian"] .composer-picker-label:hover,
 [data-composer-style="obsidian"] .composer-picker-command:hover:not(:disabled),
 [data-composer-style="obsidian"] .composer-image-picker-btn:hover:not(:disabled),
-[data-composer-style="obsidian"] .composer-control-button:hover:not(:disabled) {
-  color: #fff;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
+[data-composer-style="obsidian"] .composer-control-button:hover:not(:disabled),
+[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
+  color: #fff !important;
+  /* No background — the hover state is just a brighter text
+   * weight. Premium = restrained, even on interaction. */
+  background: transparent !important;
+}
+/* The active state in the ensemble-mode segmented control
+ * (Turn / Continuous / Work Session) needs SOME way to show
+ * which mode is selected. Use a 1px bottom underline rather
+ * than reintroducing a pill — keeps the satellite read. */
+[data-composer-style="obsidian"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
+  color: #fff !important;
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.4) !important;
 }
 
 /* Send button keeps its capsule but the accent edge picks up

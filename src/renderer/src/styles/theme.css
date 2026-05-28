@@ -514,9 +514,12 @@
  * box model (no extra border to fight with existing panel
  * border rules). Composes with whatever box-shadow each
  * element already has via comma-stacking. */
+/* 1.0.5-EW56 — Sidebar deliberately EXCLUDED from this rule.
+ * The two-tone-sidebar block above gives .app-sidebar its own
+ * light box-shadow (white inset left + dark inset right) so
+ * applying the dark-mode rim-shine here would fight it. */
 [data-theme="obsidian"] .panel,
 [data-theme="obsidian"] .panel-elevated,
-[data-theme="obsidian"] .sidebar,
 [data-theme="obsidian"] .composer-surface,
 [data-theme="obsidian"] .welcome-usage-dashboard,
 [data-theme="obsidian"] .welcome-usage-provider-card,
@@ -550,17 +553,73 @@
   -webkit-backdrop-filter: none !important;
 }
 
-/* And the inverse for the sidebar: ensure it stays glassy /
- * more transparent than the default-dark sidebar regardless
- * of appearance mode. Soft-glass already dials toward
- * translucency; we just nudge it further. */
+/* 1.0.5-EW56 — Bizarre two-tone sidebar. The Obsidian sidebar
+ * adopts LIGHT-THEME chrome (light translucent background,
+ * dark text + icons + borders) while the transcript stays
+ * the deep opaque slab from the rest of the theme. The result
+ * is a deliberately discordant two-zone read: dark reading
+ * surface on the right, almost-white glass panel on the left,
+ * separated by the right-edge rim of the sidebar.
+ *
+ * The brief literally said "do something really bizarre, and
+ * use the light mode sidebar (whilst maintaining non-light
+ * mode elements in transcript/main panel)" — this is the
+ * minimum-CSS implementation: override the sidebar-scoped
+ * variables only, leave the global theme vars alone.
+ *
+ * Sidebar text-related vars (text-primary, text-secondary,
+ * etc.) get scoped to the .app-sidebar element via cascade —
+ * setting them on the sidebar selector means every child
+ * inherits the light palette without leaking out of the
+ * sidebar boundary. Sidebar-bg goes very transparent (0.06)
+ * so the dusk halo behind it reads through aggressively. */
+[data-theme="obsidian"] .app-sidebar {
+  /* Sidebar-specific tokens — light palette. */
+  --sidebar-bg: rgba(238, 242, 247, 0.06);
+  --sidebar-bg-solid: #eef2f7;
+  --sidebar-text: rgba(18, 21, 27, 0.86);
+  --sidebar-text-secondary: rgba(18, 21, 27, 0.54);
+  --sidebar-border: rgba(18, 21, 27, 0.14);
+  /* Scoped overrides of the "global" text vars — every child
+   * of .app-sidebar that reads --text-primary / --text-
+   * secondary now gets the light values. The transcript and
+   * composer live outside this subtree so they're unaffected. */
+  --text-primary: rgba(18, 21, 27, 0.92);
+  --text-secondary: rgba(18, 21, 27, 0.62);
+  --text-tertiary: rgba(18, 21, 27, 0.45);
+  --text-muted: rgba(18, 21, 27, 0.32);
+  --panel-border: rgba(18, 21, 27, 0.10);
+  --panel-bg: rgba(255, 255, 255, 0.42);
+  --panel-elevated-bg: rgba(255, 255, 255, 0.58);
+  /* Drop the dark-mode rim-shine on the sidebar — it was a
+   * white-tint-on-dark cue that no longer reads when the
+   * surface itself is light. A subtle dark right-edge replaces
+   * it as the visual separator from the transcript. */
+  box-shadow:
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(18, 21, 27, 0.18);
+  border-right-color: rgba(18, 21, 27, 0.18);
+}
+
+/* Per-appearance-mode sidebar tunings. Glass modes get even
+ * more transparent so the warm dusk halo reads through the
+ * light sidebar strongly. */
 [data-theme="obsidian"][data-appearance="solid"] .app-sidebar {
-  background: rgba(20, 18, 24, 0.32);
+  background: rgba(238, 242, 247, 0.18);
 }
 [data-theme="obsidian"][data-appearance="soft_glass"] .app-sidebar {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
-    rgba(20, 18, 24, 0.14);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06)),
+    rgba(238, 242, 247, 0.04);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+[data-theme="obsidian"][data-appearance="native_glass"] .app-sidebar {
+  /* macOS vibrancy handles the blur — we just paint a hairline
+   * light wash so the system blur reads as light-tinted glass,
+   * not raw vibrancy. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.02));
 }
 
 [data-theme="rainbow"],
