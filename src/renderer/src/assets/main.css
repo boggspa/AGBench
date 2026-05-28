@@ -25427,57 +25427,157 @@ input:disabled, select:disabled, textarea:disabled {
 }
 
 /* ============================================================
- * 1.0.5-EW54 — "Rimshine" composer style.
+ * 1.0.5-EW55 — "Obsidian" composer style (renamed from EW54's
+ * `rimshine`; same brief vocabulary "charcoal rimshine premium",
+ * now sharing the family name with the Obsidian theme).
  *
- * Brief vocabulary: "charcoal rimshine premium". The look pairs
- * naturally with the `obsidian` theme but works on any dark
- * theme because the rim-shine variables fall back to neutral
- * white-tint values that read on any near-black fill.
+ *   - Pure black fill (#000). The boss-brief screenshots showed
+ *     a near-true-black with the rim doing all the talking;
+ *     EW54's warm charcoal was too soft for the read.
+ *   - Crisp 1px WHITE rim along every edge — the signature.
+ *     EW54 used a warm-tinted rim; this one is neutral white
+ *     so the contrast against pure black is maximal.
+ *   - Slow rim shimmer chase (12s loop). A bright spot travels
+ *     the perimeter via a conic-gradient + animated CSS
+ *     @property. Subtle — not a sweep banner, just a
+ *     lighthouse-slow rotation around the rim.
+ *   - Soft white outer glow — ambient halo so the surface
+ *     feels lit from within, not just from above.
+ *   - Soft inner vignette at the bottom — lit-from-above cue.
+ *   - All detached above-rows (Ensemble chip strip, Queued
+ *     Messages, Create-PR row, secondary workspace pill,
+ *     composer-above-bar) inherit the SAME chrome + corner
+ *     radius so the composer area reads as one black-rim
+ *     family rather than five disjoint surfaces.
  *
- *   - Deep charcoal fill (slightly darker than the default
- *     composer fill so the lit rim has something to contrast
- *     against).
- *   - Crisp 1px lit top-edge "rim" — `inset 0 1px 0 var(...)`.
- *     This is the signature beat. On obsidian the rim picks up
- *     the warm-leaning copper-white variable; on other dark
- *     themes it falls back to a neutral white tint.
- *   - Soft inner vignette at the bottom edge — sells the
- *     "lit from above" read.
- *   - Restraint everywhere else: no extra borders, no glassy
- *     gloss, no chrome around picker buttons. Premium = quiet.
- *   - Rounded corners that catch the highlight (the rim has
- *     to wrap nicely; sharp corners would chip the lit edge).
+ * The chase animation uses `@property --obsidian-rim-angle`
+ * for the conic-gradient angle. CSS @property requires
+ * Chromium 85+; Electron's bundled Chromium is well past that.
+ * Falls back gracefully (static rim, no chase) on older
+ * engines — the conic-gradient still renders with the initial
+ * angle, the rim just doesn't move.
  * ============================================================ */
-[data-composer-style="rimshine"] .composer-surface {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.012) 0%, transparent 30%),
-    color-mix(in srgb, var(--app-bg-elevated, #0e0c11) 88%, #000000);
-  border: 1px solid color-mix(in srgb, var(--composer-glass-border, rgba(255, 232, 214, 0.16)) 60%, transparent);
-  border-radius: 14px;
+
+/* @property registration for the chase animation. Must live at
+ * top-level (outside any selector). The syntax descriptor lets
+ * the engine interpolate the angle smoothly during animation. */
+@property --obsidian-rim-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* Shared chrome variables for the Obsidian composer family.
+ * Setting these as ambient vars on the style root means every
+ * sibling row (above-bar, ensemble, queued, etc.) reads the
+ * same values without duplicating the literals. Tweaking the
+ * "feel" of the style is then a single-line edit. */
+[data-composer-style="obsidian"] {
+  --obsidian-composer-fill: #000;
+  --obsidian-composer-rim: rgba(255, 255, 255, 0.22);
+  --obsidian-composer-rim-strong: rgba(255, 255, 255, 0.36);
+  --obsidian-composer-border: rgba(255, 255, 255, 0.08);
+  --obsidian-composer-radius: 14px;
+  /* Subtle white ambient glow — the surface looks lit. */
+  --obsidian-composer-glow: 0 0 28px rgba(255, 255, 255, 0.05),
+    0 0 64px rgba(255, 255, 255, 0.02);
+  /* Chase animation duration. Slow on purpose — the brief
+   * said "really slow". 12s = one full lap per "epic" beat. */
+  --obsidian-rim-chase-duration: 12s;
+}
+
+[data-composer-style="obsidian"] .composer-surface {
+  position: relative;
+  background: var(--obsidian-composer-fill);
+  border: 1px solid var(--obsidian-composer-border);
+  border-radius: var(--obsidian-composer-radius);
   box-shadow:
-    /* The rim — lit top edge, the brief's whole point. Uses the
-     * obsidian variable when active, falls back to a neutral
-     * white tint on every other dark theme so this style stays
-     * usable theme-agnostic. */
-    inset 0 1px 0 var(--obsidian-rim-shine, rgba(255, 250, 244, 0.14)),
+    /* The rim — pure white, fully opaque-ish, hairline. */
+    inset 0 1px 0 var(--obsidian-composer-rim),
     /* Soft inner vignette at the bottom — lit-from-above cue. */
-    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.55),
-    /* External shadow stays subtle; premium = quiet. */
-    0 8px 24px -12px rgba(0, 0, 0, 0.5);
+    inset 0 -14px 28px -16px rgba(0, 0, 0, 0.85),
+    /* External shadow + ambient white glow. */
+    0 8px 24px -12px rgba(0, 0, 0, 0.7),
+    var(--obsidian-composer-glow);
   transition: box-shadow 220ms ease, border-color 220ms ease;
 }
-[data-composer-style="rimshine"] .composer-surface:focus-within {
-  /* On focus the rim shine intensifies (lifts the highlight a
-   * touch) and the bottom vignette softens. Subtle — the
-   * highlight is the whole spirit of the brief, so we lean into
-   * it rather than adding a coloured border ring. */
+
+[data-composer-style="obsidian"] .composer-surface:focus-within {
+  /* On focus the rim intensifies + the glow lifts slightly.
+   * The chase keeps running — it doesn't pause on focus
+   * because the user wants to feel the surface stay alive
+   * while they type, not freeze to acknowledge them. */
   box-shadow:
-    inset 0 1px 0 var(--obsidian-rim-shine-strong, rgba(255, 250, 244, 0.24)),
-    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.4),
-    0 10px 28px -10px rgba(0, 0, 0, 0.6);
-  border-color: color-mix(in srgb, var(--composer-glass-border, rgba(255, 232, 214, 0.2)) 85%, transparent);
+    inset 0 1px 0 var(--obsidian-composer-rim-strong),
+    inset 0 -12px 24px -16px rgba(0, 0, 0, 0.7),
+    0 10px 28px -10px rgba(0, 0, 0, 0.75),
+    0 0 36px rgba(255, 255, 255, 0.07),
+    0 0 80px rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.16);
 }
-[data-composer-style="rimshine"] .composer-textarea {
+
+/* The chase: a conic-gradient that paints a bright white sweep
+ * over a single 90° arc of the perimeter, with the rest of the
+ * gradient transparent. Mask-composite cuts out the centre so
+ * only the 1px border ring shows. Animating
+ * --obsidian-rim-angle rotates the bright arc around the rim
+ * over the chase duration.
+ *
+ * Pointer-events: none — the chase pseudo-element must not
+ * eat clicks targeting the textarea / picker buttons.
+ *
+ * Padding: 1px controls the rim thickness. Inset: -1px aligns
+ * the pseudo-element flush with the parent border so the
+ * highlight sits on (not above) the existing crisp rim. */
+[data-composer-style="obsidian"] .composer-surface::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--obsidian-composer-radius) + 1px);
+  padding: 1px;
+  background: conic-gradient(
+    from var(--obsidian-rim-angle),
+    transparent 0deg,
+    transparent 260deg,
+    rgba(255, 255, 255, 0.5) 310deg,
+    rgba(255, 255, 255, 0.9) 340deg,
+    rgba(255, 255, 255, 0.5) 360deg
+  );
+  /* Mask-composite: keep only the 1px border strip — cut out
+   * the inner content area. Standard "1px gradient ring" trick. */
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: obsidian-rim-chase var(--obsidian-rim-chase-duration) linear infinite;
+  pointer-events: none;
+  /* z-index above the surface fill but below the textarea
+   * content so the user's typed text isn't fogged. */
+  z-index: 1;
+  opacity: 0.85;
+}
+
+/* The chase only animates when reduce-motion is off. Honour
+ * the user's accessibility preference; on reduce-motion, the
+ * rim stays static at angle 0 (still visible, just no
+ * rotation). */
+@media (prefers-reduced-motion: reduce) {
+  [data-composer-style="obsidian"] .composer-surface::before {
+    animation: none;
+  }
+}
+
+@keyframes obsidian-rim-chase {
+  to {
+    --obsidian-rim-angle: 360deg;
+  }
+}
+
+[data-composer-style="obsidian"] .composer-textarea {
   background: transparent;
   border: 0;
   color: var(--text-primary);
@@ -25486,51 +25586,70 @@ input:disabled, select:disabled, textarea:disabled {
   /* Slight downward nudge so the caret sits below the rim
    * highlight rather than chipping into it. */
   padding-top: 12px;
+  position: relative;
+  z-index: 2; /* above the chase pseudo-element */
 }
-[data-composer-style="rimshine"] .composer-textarea::placeholder {
-  color: color-mix(in srgb, var(--text-secondary) 55%, transparent);
+[data-composer-style="obsidian"] .composer-textarea::placeholder {
+  color: rgba(255, 255, 255, 0.32);
 }
-/* Above-bar pills go transparent + lose their borders so the
- * surface reads as a single uninterrupted lit-edged slab. The
- * primary action (send) keeps its identity though — premium
- * doesn't mean invisible, it means restrained. */
-[data-composer-style="rimshine"] .composer-above-bar {
-  background: transparent;
-  border: 0;
-  box-shadow: none;
+
+/* Above-bar pills DON'T go transparent on Obsidian — they
+ * pick up the SAME chrome as the composer surface. The brief
+ * was explicit: detached above-rows should be black with white
+ * rim highlights, matching corner radius. Each row reads as
+ * its own panel cut from the same material. */
+[data-composer-style="obsidian"] .composer-above-bar,
+[data-composer-style="obsidian"] .ensemble-above-row,
+[data-composer-style="obsidian"] .queued-messages-above-row,
+[data-composer-style="obsidian"] .composer-create-pr-row {
+  background: var(--obsidian-composer-fill);
+  border: 1px solid var(--obsidian-composer-border);
+  border-radius: var(--obsidian-composer-radius);
+  box-shadow:
+    inset 0 1px 0 var(--obsidian-composer-rim),
+    0 6px 18px -10px rgba(0, 0, 0, 0.6),
+    /* Lighter glow on the satellite rows — the composer
+     * surface is the focal point; the rows quietly echo it. */
+    0 0 18px rgba(255, 255, 255, 0.025);
+  position: relative;
 }
-[data-composer-style="rimshine"] .composer-picker-label,
-[data-composer-style="rimshine"] .composer-picker-command,
-[data-composer-style="rimshine"] .composer-image-picker-btn,
-[data-composer-style="rimshine"] .composer-control-button,
-[data-composer-style="rimshine"] .composer-schedule-label,
-[data-composer-style="rimshine"] .composer-runtime-profile {
+
+/* Tighten the picker buttons inside the above-bar so they
+ * sit cleanly on the black surface instead of trying to
+ * paint their own backgrounds. */
+[data-composer-style="obsidian"] .composer-picker-label,
+[data-composer-style="obsidian"] .composer-picker-command,
+[data-composer-style="obsidian"] .composer-image-picker-btn,
+[data-composer-style="obsidian"] .composer-control-button,
+[data-composer-style="obsidian"] .composer-schedule-label,
+[data-composer-style="obsidian"] .composer-runtime-profile {
   background: transparent;
   border: 0;
   box-shadow: none;
   padding: 4px 8px;
-  color: color-mix(in srgb, var(--text-primary) 72%, transparent);
+  color: rgba(255, 255, 255, 0.78);
 }
-[data-composer-style="rimshine"] .composer-picker-label:hover,
-[data-composer-style="rimshine"] .composer-picker-command:hover:not(:disabled),
-[data-composer-style="rimshine"] .composer-image-picker-btn:hover:not(:disabled),
-[data-composer-style="rimshine"] .composer-control-button:hover:not(:disabled) {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
+[data-composer-style="obsidian"] .composer-picker-label:hover,
+[data-composer-style="obsidian"] .composer-picker-command:hover:not(:disabled),
+[data-composer-style="obsidian"] .composer-image-picker-btn:hover:not(:disabled),
+[data-composer-style="obsidian"] .composer-control-button:hover:not(:disabled) {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.06);
   border-radius: 8px;
 }
-/* Send button keeps its capsule shape but the accent edge picks
- * up the same rim language — a soft inset highlight on top so
- * the button reads as cut from the same material as the
- * surface. */
-[data-composer-style="rimshine"] .composer-action-btn.run-btn,
-[data-composer-style="rimshine"] .composer-action-btn.stop-btn {
+
+/* Send button keeps its capsule but the accent edge picks up
+ * the same rim language — bright inset highlight on top so it
+ * reads cut from the same material as the surface. */
+[data-composer-style="obsidian"] .composer-action-btn.run-btn,
+[data-composer-style="obsidian"] .composer-action-btn.stop-btn {
   background: color-mix(in srgb, var(--accent) 90%, transparent);
   border: 0;
   border-radius: 999px;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    0 6px 18px color-mix(in srgb, var(--accent) 32%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.32),
+    0 6px 18px color-mix(in srgb, var(--accent) 32%, transparent),
+    0 0 16px rgba(255, 255, 255, 0.06);
 }
 
 /* ============================================================

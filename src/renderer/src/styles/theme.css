@@ -449,8 +449,22 @@
 [data-theme="obsidian"] {
   --app-bg: #08070a;
   --app-bg-elevated: #0e0c11;
-  --content-bg: rgba(12, 11, 16, 0.96);
-  --sidebar-bg: rgba(20, 18, 24, 0.55);
+  /* 1.0.5-EW55 — Transcript fully opaque on Obsidian. The
+   * brief: the *transcript* surface should be a solid black
+   * slab so reading is uninterrupted by background motion;
+   * the *sidebar* stays glassy / more transparent than other
+   * themes so it reads as a secondary plane. The 1.00 alpha
+   * (vs 0.96 elsewhere) is the difference — `--content-bg`
+   * is what `.app-transcript` consumes for its fill. The
+   * matching `data-appearance="native_glass"` override below
+   * ensures we beat the macOS-vibrancy default that
+   * otherwise dials this back to a translucent value. */
+  --content-bg: #08070a;
+  /* Sidebar — INVERSE move: more transparent than the other
+   * themes (default ~0.55 → 0.18) so the dusk halo behind it
+   * reads through, framing the opaque transcript on the right
+   * with a feathered glassy left edge. */
+  --sidebar-bg: rgba(20, 18, 24, 0.18);
   --panel-bg: rgba(22, 20, 26, 0.60);
   --panel-elevated-bg: rgba(34, 31, 38, 0.66);
   --composer-bg: rgba(22, 20, 26, 0.68);
@@ -513,6 +527,40 @@
   box-shadow:
     inset 0 1px 0 var(--obsidian-rim-shine),
     0 1px 0 rgba(0, 0, 0, 0.4);
+}
+
+/* 1.0.5-EW55 — Force the transcript fully opaque on Obsidian
+ * regardless of which appearance mode the user picked
+ * (solid / soft_glass / native_glass). The default
+ * `native_glass` rule in main.css dials `--content-bg` back to
+ * a translucent value to let macOS vibrancy show through; we
+ * override that here because the brief wants the transcript
+ * surface itself to read as a solid black slab — only the
+ * sidebar should be glassy on this theme.
+ *
+ * `!important` is unfortunate but necessary: the
+ * `[data-appearance="native_glass"][data-reduce-transparency="false"]
+ *  .app-transcript` rule in main.css has equal specificity
+ * (both are class + attr selectors), and CSS resolves ties by
+ * source order — main.css loads after theme.css. */
+[data-theme="obsidian"][data-appearance] .app-transcript,
+[data-theme="obsidian"] .app-transcript {
+  background: #08070a !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* And the inverse for the sidebar: ensure it stays glassy /
+ * more transparent than the default-dark sidebar regardless
+ * of appearance mode. Soft-glass already dials toward
+ * translucency; we just nudge it further. */
+[data-theme="obsidian"][data-appearance="solid"] .app-sidebar {
+  background: rgba(20, 18, 24, 0.32);
+}
+[data-theme="obsidian"][data-appearance="soft_glass"] .app-sidebar {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.01)),
+    rgba(20, 18, 24, 0.14);
 }
 
 [data-theme="rainbow"],

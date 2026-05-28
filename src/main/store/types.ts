@@ -93,16 +93,18 @@ export type ComposerStyle =
    * fills go invisible. Layout intact, chrome stripped. */
   | 'satellite'
   /**
-   * 1.0.5-EW54 — "Rimshine" composer style. Deep charcoal fill,
-   * crisp 1px lit top-edge border (the "rim shine") that evokes
-   * light catching the lip of brushed metal / polished glass, and
-   * a soft inner vignette at the bottom edge for the lit-from-
-   * above read. All other chrome is suppressed — restraint is the
-   * point. Pairs with the `obsidian` theme; works on any dark
-   * theme. The brief used the words "charcoal rimshine premium"
-   * verbatim; this style maps to that triplet.
+   * 1.0.5-EW55 — "Obsidian" composer style (renamed from EW54's
+   * `rimshine`). Pure black fill, crisp 1px white rim along the
+   * top edge, subtle white outer glow, slow rim-shimmer chase
+   * animation that travels the perimeter every ~12 seconds, and
+   * matching chrome on every detached above-row (Ensemble chip
+   * strip, queued-messages, Create-PR row, secondary workspace
+   * pill) so the composer reads as a single black-with-white-rim
+   * family. Pairs natively with the `obsidian` theme but works
+   * on any dark theme via fallback variables. The brief words
+   * "charcoal rimshine premium" map to this style.
    */
-  | 'rimshine'
+  | 'obsidian'
 export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'

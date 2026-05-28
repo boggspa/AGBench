@@ -423,18 +423,19 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     helper: 'All containers invisible — every element floats freely on the page.'
   },
   /*
-    1.0.5-EW54 — "Rimshine" composer style. Translation of a
-    design-brief phrase ("charcoal rimshine premium") into a
-    concrete shell: charcoal fill + crisp 1px lit top-edge rim +
-    soft inner vignette + suppressed chrome elsewhere. Pairs
-    naturally with the new Obsidian theme but works on any dark
-    theme via fallback variables.
+    1.0.5-EW55 — "Obsidian" composer style (renamed from EW54's
+    `rimshine`). Pure black fill + crisp 1px white rim + slow rim
+    chase animation + subtle white outer glow. Above-row siblings
+    (Ensemble chip strip, queued messages, Create-PR, secondary
+    workspace pill) inherit the same chrome + corner radius, so
+    the composer area reads as one black-with-white-rim family.
+    Pairs natively with the Obsidian theme.
   */
   {
-    value: 'rimshine',
-    label: 'Rimshine',
+    value: 'obsidian',
+    label: 'Obsidian',
     helper:
-      'Charcoal fill with a crisp 1px lit top-edge "rim shine" border. Premium dark composer; pairs with the Obsidian theme.'
+      'Pure black fill with a crisp white rim highlight, slow rim shimmer chase, and matching chrome on the detached rows above. Pairs with the Obsidian theme.'
   }
 ]
 
@@ -480,9 +481,11 @@ function getComposerPreviewMeta(style: ComposerStyle): {
         permissionLabel: 'Ask before tools',
         placeholder: 'run task --describe'
       }
-    case 'rimshine':
-      // 1.0.5-EW54 — Premium preview copy. The placeholder reads
-      // restrained on purpose; "Premium" labels the surface itself.
+    case 'obsidian':
+      // 1.0.5-EW55 — Obsidian composer preview copy. The
+      // placeholder reads restrained on purpose; "Premium" labels
+      // the surface itself, and the preview surface paints the
+      // white rim + chase from the live CSS.
       return {
         providerLabel: 'AGBench',
         modelLabel: 'Auto',
