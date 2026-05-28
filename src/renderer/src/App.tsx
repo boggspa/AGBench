@@ -4274,6 +4274,11 @@ const GEMINI_DEFAULT_MODELS = [
   { id: 'flash', label: 'Flash' },
   { id: 'flash-lite', label: 'Flash Lite' }
 ] satisfies CodexModelOption[]
+// 1.0.6-G3d — Grok (gated, read-only). A single CLI-default option for now;
+// real Grok model metadata is a later slice (G10).
+const GROK_DEFAULT_MODELS = [
+  { id: 'cli-default', label: 'CLI Default', isDefault: true }
+] satisfies CodexModelOption[]
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
   'default',
@@ -4303,6 +4308,7 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'codex') return 'Codex'
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
+  if (provider === 'grok') return 'Grok'
   return 'Gemini'
 }
 const formatAssistantMessageLabel = (
@@ -7301,6 +7307,11 @@ function App(): React.JSX.Element {
 
   // Model & Mode Selectors
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini')
+  // 1.0.6-G3d — Grok is gated. It appears in the composer provider picker ONLY
+  // when the main process registered its adapter (AGBENCH_EXPERIMENTAL_GROK on),
+  // which we learn from the get-provider-adapters descriptor list on init. With
+  // the gate off the adapter is absent → this stays false → grok never shows.
+  const [grokProviderAvailable, setGrokProviderAvailable] = useState(false)
   const [selectedModelType, setSelectedModelType] = useState<string>('flash-lite')
   const [lastNonCustomModelType, setLastNonCustomModelType] = useState<string>('flash-lite')
   const [customModel, setCustomModel] = useState('')
@@ -8602,6 +8613,7 @@ function App(): React.JSX.Element {
     if (provider === 'claude') return agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
     if (provider === 'kimi') return KIMI_DEFAULT_MODELS
     if (provider === 'gemini') return GEMINI_DEFAULT_MODELS
+    if (provider === 'grok') return GROK_DEFAULT_MODELS
     return []
   }
 
@@ -9051,6 +9063,19 @@ function App(): React.JSX.Element {
         : 'auto'
     )
     void refreshProviderMetadata(s.activeProvider || 'gemini')
+    // 1.0.6-G3d — derive Grok availability from the registered adapters (the
+    // registry includes 'grok' only when the experimental gate is on).
+    if (typeof window.api.getProviderAdapters === 'function') {
+      void window.api
+        .getProviderAdapters()
+        .then((adapters) => {
+          const ids = Array.isArray(adapters)
+            ? adapters.map((adapter) => (adapter as { provider?: string } | null)?.provider)
+            : []
+          setGrokProviderAvailable(ids.includes('grok'))
+        })
+        .catch(() => {})
+    }
     if (typeof window.api.getGeminiMcpBridgeStatus === 'function') {
       void window.api
         .getGeminiMcpBridgeStatus()
@@ -20165,6 +20190,7 @@ function App(): React.JSX.Element {
                         <option value="codex">Codex</option>
                         <option value="claude">Claude</option>
                         <option value="kimi">Kimi</option>
+                        {grokProviderAvailable ? <option value="grok">Grok</option> : null}
                       </select>
                     </label>
                       )
