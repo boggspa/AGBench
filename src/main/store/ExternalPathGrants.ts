@@ -43,10 +43,116 @@ export function coalesceExternalPathGrants(
     }
     const existing = byKey.get(key)
     if (!existing || (existing.access === 'read' && access === 'write')) {
+      // Preserve a previously-resolved order if the incoming
+      // duplicate lacks one — keeps explicit reorder sticky when
+      // a write grant upgrades an earlier read grant for the
+      // same provider:path.
+      if (normalized.order === undefined && existing?.order !== undefined) {
+        normalized.order = existing.order
+      }
       byKey.set(key, normalized)
     }
   }
-  return [...byKey.values()]
+  return assignExternalPathGrantOrder([...byKey.values()])
+}
+
+/**
+ * 1.0.6-EW66 — Assign a stable per-PATH display order to a
+ * (de-duped) grant list. Grants that share a `path` always get
+ * the same `order` (an ensemble chat stores one grant per
+ * enabled participant-provider). Existing explicit orders are
+ * preserved — the minimum order seen for a path wins, so a
+ * user's manual reorder is sticky. Paths that lack any order
+ * are appended after the highest existing order, sequenced by
+ * earliest `createdAt` (then `path` for determinism). The
+ * returned list is sorted by (order, path, provider).
+ *
+ * Idempotent: running it again over an already-ordered list is
+ * a no-op (every path already has an explicit order, nothing to
+ * append, sort is stable).
+ *
+ * `order` is intentionally OUTSIDE the HMAC signing payload
+ * (`externalGrantSigningPayload` in index.ts), so rewriting it
+ * here never invalidates a grant's signature.
+ */
+export function assignExternalPathGrantOrder(
+  grants: ExternalPathGrant[]
+): ExternalPathGrant[] {
+  if (grants.length === 0) return grants
+  // Resolve each path's order + earliest createdAt.
+  const pathInfo = new Map<string, { order?: number; createdAt: string }>()
+  for (const grant of grants) {
+    const grantOrder = typeof grant.order === 'number' ? grant.order : undefined
+    const createdAt = grant.createdAt || ''
+    const info = pathInfo.get(grant.path)
+    if (!info) {
+      pathInfo.set(grant.path, { order: grantOrder, createdAt })
+      continue
+    }
+    if (grantOrder !== undefined) {
+      info.order = info.order === undefined ? grantOrder : Math.min(info.order, grantOrder)
+    }
+    if (createdAt && (!info.createdAt || createdAt < info.createdAt)) {
+      info.createdAt = createdAt
+    }
+  }
+  // Highest explicit order across paths — new (unordered) paths
+  // append after it so existing slots are preserved.
+  let maxOrder = -1
+  for (const info of pathInfo.values()) {
+    if (info.order !== undefined && info.order > maxOrder) maxOrder = info.order
+  }
+  const unordered = [...pathInfo.entries()]
+    .filter(([, info]) => info.order === undefined)
+    .sort((a, b) => {
+      if (a[1].createdAt !== b[1].createdAt) {
+        return a[1].createdAt < b[1].createdAt ? -1 : 1
+      }
+      return a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0
+    })
+  let next = maxOrder + 1
+  for (const [path, info] of unordered) {
+    info.order = next++
+    pathInfo.set(path, info)
+  }
+  return grants
+    .map((grant) => ({ ...grant, order: pathInfo.get(grant.path)?.order ?? 0 }))
+    .sort((a, b) => {
+      const orderDelta = (a.order ?? 0) - (b.order ?? 0)
+      if (orderDelta !== 0) return orderDelta
+      if (a.path !== b.path) return a.path < b.path ? -1 : 1
+      return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0
+    })
+}
+
+/**
+ * 1.0.6-EW66 — Rewrite grant `order` so the additional-workspace
+ * list matches `orderedPaths` (the renderer hands back the new
+ * top-to-bottom path order after a drag). Every grant sharing a
+ * path receives that path's new index. Any grant whose path is
+ * absent from `orderedPaths` is appended (stably, by path) after
+ * the explicitly-ordered ones so nothing is dropped.
+ */
+export function reorderExternalPathGrantsByPath(
+  grants: ExternalPathGrant[],
+  orderedPaths: string[]
+): ExternalPathGrant[] {
+  const indexByPath = new Map<string, number>()
+  orderedPaths.forEach((path, idx) => {
+    if (!indexByPath.has(path)) indexByPath.set(path, idx)
+  })
+  const extraPaths = [...new Set(grants.map((grant) => grant.path))]
+    .filter((path) => !indexByPath.has(path))
+    .sort()
+  extraPaths.forEach((path, i) => indexByPath.set(path, orderedPaths.length + i))
+  return grants
+    .map((grant) => ({ ...grant, order: indexByPath.get(grant.path) ?? grant.order ?? 0 }))
+    .sort((a, b) => {
+      const orderDelta = (a.order ?? 0) - (b.order ?? 0)
+      if (orderDelta !== 0) return orderDelta
+      if (a.path !== b.path) return a.path < b.path ? -1 : 1
+      return a.provider < b.provider ? -1 : a.provider > b.provider ? 1 : 0
+    })
 }
 
 export function externalPathGrantMetadataLists(

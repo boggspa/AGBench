@@ -195,6 +195,18 @@ export interface ExternalPathGrant {
   issuedBy?: 'main'
   signature?: string
   createdAt: string
+  /**
+   * 1.0.6-EW66 — Display order for the additional-workspace list
+   * in the composer workspace manager. Order is per-PATH, not
+   * per-grant: an ensemble chat creates one grant per enabled
+   * participant-provider, and all grants sharing a `path` carry
+   * the same `order`. Optional + excluded from the HMAC signing
+   * payload (`externalGrantSigningPayload`), so it can be mutated
+   * renderer-side without invalidating the grant signature.
+   * Coalescing self-heals missing values from `createdAt` order
+   * on load — see `coalesceExternalPathGrants`.
+   */
+  order?: number
 }
 
 export interface AgenticServicesSettings {
