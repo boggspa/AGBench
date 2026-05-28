@@ -16344,6 +16344,37 @@ function App(): React.JSX.Element {
     }
     return result
   }, [currentChat, currentRun?.runId, externalPathGrants, externalPathRepoMetadata])
+  // 1.0.6-EW74 — robust per-PATH diff stats for the additional-workspace
+  // above-rows, computed the SAME way the primary row does:
+  // `getLiveToolFileDiffSummaries(messages, <workspacePath>)`. This is far
+  // more reliable than the first-file repoRoot bucketing above — it reuses
+  // the exact primitive that powers the primary's "N files changed +A −B"
+  // pill + the Task Complete card, just scoped to each WRITE workspace's
+  // path. Lets users track per-workspace changes across the whole session.
+  // Keyed by PATH (an ensemble stores one grant per provider per path).
+  const externalPathLiveDiffByPath = useMemo(() => {
+    const result: Record<string, { additions: number; deletions: number; filesChanged: number }> =
+      {}
+    if (!currentChat) return result
+    const messages = currentChat.messages || []
+    const seen = new Set<string>()
+    for (const grant of externalPathGrants) {
+      if (seen.has(grant.path)) continue
+      seen.add(grant.path)
+      const summaries = getLiveToolFileDiffSummaries(messages, grant.path).filter(
+        (entry) => !entry.isNoise
+      )
+      if (summaries.length === 0) continue
+      let additions = 0
+      let deletions = 0
+      for (const entry of summaries) {
+        if (typeof entry.additions === 'number') additions += entry.additions
+        if (typeof entry.deletions === 'number') deletions += entry.deletions
+      }
+      result[grant.path] = { additions, deletions, filesChanged: summaries.length }
+    }
+    return result
+  }, [currentChat, externalPathGrants])
   const currentProviderModelOptions = getProviderModelOptions(currentProvider)
   const selectedComposerModelType = isValidModelForProvider(currentProvider, selectedModelType)
     ? selectedModelType
@@ -18515,7 +18546,10 @@ function App(): React.JSX.Element {
                     key={grant.id}
                     grant={grant}
                     repoMetadata={externalPathRepoMetadata[grant.id] || null}
-                    diffStats={externalPathDiffStatsByGrant[grant.id]}
+                    diffStats={
+                      externalPathLiveDiffByPath[grant.path] ||
+                      externalPathDiffStatsByGrant[grant.id]
+                    }
                     onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
                     createPrState={getCreatePrState(grant.path)}
                     onCreatePr={(g) => handleCreateGithubPr(g.path)}
