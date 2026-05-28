@@ -1044,10 +1044,9 @@ export const buildWelcomeUsageDashboardData = (
           ? (providerCostAggregate[provider].tokens / totalProviderTokensForBreakdown) * 100
           : 0
     }))
-    // Gated providers (Grok) only surface a card once they have real activity,
-    // so the dashboard never shows an empty card for a provider the user
-    // otherwise can't see. The core four always render (even at zero).
-    .filter((entry) => entry.provider !== 'grok' || entry.tokens > 0 || entry.costUsd > 0)
+    // 1.0.6 — Grok is now a first-class provider, so all five render (even at
+    // zero), same as the core four. Grok's tokens/cost are PROJECTED from its
+    // run estimates (its CLI reports no usage); see estimateProjectedTokenUsage.
     .sort(
       (a, b) =>
         b.tokens - a.tokens ||
