@@ -76,44 +76,55 @@ export function RunCard({ run, fallbackProvider, onInspect }: RunCardProps): JSX
     if (onInspect && run.runId) onInspect(run.runId)
   }
 
+  /*
+    1.0.5-EW64 — Satellite redesign. The previous two-row card
+    (`.run-card-main` → `.run-card-title-row` + `.run-card-meta`)
+    became a single inline strip:
+
+      [Provider] [Status] [#run-id]  ·  [duration]  ·  [N files]  ·  [N approvals]                              [Inspect →]
+
+    `.run-card-main` / `.run-card-title-row` / `.run-card-meta`
+    wrappers all deleted. `.run-card-meta-inline` (new) groups
+    the dot-separated meta segments so they stay clustered
+    before the right-anchored Inspect button. All existing
+    behaviour preserved: status tone, transcript-resumed
+    warning, file + approval odometers, active polling,
+    Inspect handler — only the visual shape changed.
+  */
   return (
     <div className="run-card" data-provider={provider}>
-      <div className="run-card-main">
-        <div className="run-card-title-row">
-          <span className={`run-card-provider provider-${provider}`}>
-            {getProviderLabel(provider)}
-          </span>
-          <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
-          {run.ensembleSleepResumeWarning && (
-            // 1.0.5-N6 — Wakeup resumed from transcript context
-            // only (no native provider session id available). The
-            // tooltip carries the full explanation; the chip just
-            // flags that the agent's working memory is
-            // reconstructed.
-            <span
-              className="run-card-resume-warning"
-              title={run.ensembleSleepResumeWarning}
-            >
-              transcript-resumed
-            </span>
-          )}
-          <span className="run-card-id" title={run.runId}>
-            #{shortRunId(run.runId)}
-          </span>
-        </div>
-        <div className="run-card-meta">
-          <span>{duration}</span>
-          {fileCount !== null && (
-            <span className="run-card-meta-count">
-              <DigitOdometer value={fileCount} /> file{fileCount === 1 ? '' : 's'}
-            </span>
-          )}
+      <span className={`run-card-provider provider-${provider}`}>
+        {getProviderLabel(provider)}
+      </span>
+      <span className={`run-card-status tone-${status.tone}`}>{status.label}</span>
+      {run.ensembleSleepResumeWarning && (
+        // 1.0.5-N6 — Wakeup resumed from transcript context
+        // only (no native provider session id available). The
+        // tooltip carries the full explanation; the chip just
+        // flags that the agent's working memory is
+        // reconstructed.
+        <span
+          className="run-card-resume-warning"
+          title={run.ensembleSleepResumeWarning}
+        >
+          transcript-resumed
+        </span>
+      )}
+      <span className="run-card-id" title={run.runId}>
+        #{shortRunId(run.runId)}
+      </span>
+      <span className="run-card-meta-inline">
+        <span>{duration}</span>
+        {fileCount !== null && (
           <span className="run-card-meta-count">
-            <DigitOdometer value={aggregate.approvalCount} /> approval
-            {aggregate.approvalCount === 1 ? '' : 's'}
+            <DigitOdometer value={fileCount} /> file{fileCount === 1 ? '' : 's'}
           </span>
-        </div>
-      </div>
+        )}
+        <span className="run-card-meta-count">
+          <DigitOdometer value={aggregate.approvalCount} /> approval
+          {aggregate.approvalCount === 1 ? '' : 's'}
+        </span>
+      </span>
       <button type="button" className="run-card-inspect" onClick={inspect} title="Inspect run">
         <span>Inspect</span>
         <span aria-hidden>→</span>
