@@ -6250,20 +6250,17 @@ function useTranscriptVirtualization(params: {
   const bucketRef = useRef(0)
   const heightsRef = useRef<number[]>(EMPTY_TRANSCRIPT_HEIGHTS)
   const rowsRef = useRef<VirtualRow[]>(rows)
-  const anchorRef = useRef<{ rowId: string; offsetWithin: number } | null>(null)
+  // The row the viewport is anchored to + the total height ABOVE it as of
+  // the last layout pass. The pre-paint correction nudges scrollTop by the
+  // CHANGE in that height (relative, never absolute) so content above the
+  // viewport mounting/measuring keeps the visible rows fixed — composing
+  // with the user's scroll instead of fighting it.
+  const anchorRef = useRef<{ rowId: string; aboveHeight: number } | null>(null)
   const blockElsRef = useRef<Map<string, HTMLDivElement>>(new Map())
   const spacerBottomRef = useRef<HTMLDivElement>(null)
   const observerRef = useRef<ResizeObserver | null>(null)
   const measureRafRef = useRef<number | null>(null)
   const scrollRafRef = useRef<number | null>(null)
-  // Timestamp of the last user scroll + the measure-tick seen by the last
-  // layout pass. Together they gate the pre-paint anchor correction so it
-  // fires ONLY when a height change moved content above the viewport while
-  // the user is at rest — never on a scroll-driven render, where writing
-  // scrollTop would snap back to a one-frame-stale anchor and fight the
-  // user's active scroll (the cause of "scroll-up shows blank").
-  const lastScrollAtRef = useRef(0)
-  const prevMeasureTickRef = useRef(0)
 
   // Re-render signals. State (not refs) so a change forces a recompute;
   // the heavy work is gone (only the small window mounts) so a per-frame
@@ -6331,15 +6328,16 @@ function useTranscriptVirtualization(params: {
         scrollRafRef.current = null
         const el = scrollRef.current
         if (!el) return
-        lastScrollAtRef.current = performance.now()
         const bucketChanged = readMetricsInto(el)
-        // Capture the anchor from the CURRENT position in terms of the
-        // last-rendered heights, so a later measurement-driven re-render
-        // can keep this row visually fixed.
+        // Re-baseline the anchor at the new scroll position. Capturing the
+        // height-above HERE (not in the layout effect) is what makes the
+        // correction compose with scroll: a scroll-driven render then sees
+        // a zero delta, so it never fights the user; only a genuine height
+        // change above the anchor produces a non-zero nudge.
         const a = findScrollAnchor(scrollTopRef.current, heightsRef.current)
         const anchorRow = rowsRef.current[a.index]
         anchorRef.current = anchorRow
-          ? { rowId: anchorRow.id, offsetWithin: a.offsetWithin }
+          ? { rowId: anchorRow.id, aboveHeight: sumHeights(heightsRef.current, 0, a.index) }
           : null
         if (bucketChanged) bumpMeasure()
         bumpScroll()
@@ -6399,34 +6397,23 @@ function useTranscriptVirtualization(params: {
     const scroller = scrollRef.current
     if (!scroller) return
 
-    // The anchor correction must run ONLY when a measurement changed
-    // heights since the last layout pass AND the user is not mid-scroll.
-    // Running it on a scroll-driven render would write scrollTop back to
-    // a one-frame-stale anchor and fight the user's active scroll — the
-    // bug that left blank space above instead of loading older rows.
-    const measurementsChanged = prevMeasureTickRef.current !== measureTick
-    prevMeasureTickRef.current = measureTick
-    const recentlyScrolled = performance.now() - lastScrollAtRef.current < 160
-
-    // Phase 1 — keep the anchored row visually fixed across a height
-    // change above the viewport. Skipped while bottom-pinned (the App
-    // machinery owns scrollTop there) or while a scroll is in flight.
-    if (
-      measurementsChanged &&
-      !recentlyScrolled &&
-      !autoFollowRef?.current &&
-      anchorRef.current
-    ) {
-      const anchorId = anchorRef.current.rowId
-      const idx = rowsRef.current.findIndex((r) => r.id === anchorId)
+    // Phase 1 — keep the anchored row visually fixed when rows ABOVE it
+    // change height (estimate→measured, late-mount growth). RELATIVE
+    // (`scrollTop += delta`) so it composes with the user's scroll rather
+    // than fighting it: on a scroll-driven render the rAF just re-baselined
+    // the anchor, so delta is 0 and scrollTop is left alone; only a real
+    // height change above the anchor produces a non-zero nudge. Skipped
+    // while bottom-pinned (the App machinery owns scrollTop there).
+    if (!autoFollowRef?.current && anchorRef.current) {
+      const anchor = anchorRef.current
+      const idx = rowsRef.current.findIndex((r) => r.id === anchor.rowId)
       if (idx >= 0) {
-        const desired = Math.max(
-          0,
-          sumHeights(heightsRef.current, 0, idx) + anchorRef.current.offsetWithin
-        )
-        if (Math.abs(scroller.scrollTop - desired) > 0.5) {
-          scroller.scrollTop = desired
+        const aboveHeight = sumHeights(heightsRef.current, 0, idx)
+        const delta = aboveHeight - anchor.aboveHeight
+        if (Math.abs(delta) > 0.5) {
+          scroller.scrollTop = Math.max(0, scroller.scrollTop + delta)
         }
+        anchor.aboveHeight = aboveHeight
       }
     }
 
