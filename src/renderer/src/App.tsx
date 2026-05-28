@@ -2855,14 +2855,27 @@ function WelcomeUsageDashboard({
             aria-label="Provider cost breakdown"
           >
             {data.providerCostBreakdown.map((entry) => {
-              const share = Math.max(0, Math.min(100, entry.shareOfTotalCost))
+              /*
+                1.0.5-EW52 follow-up — Meter now reads share of
+                tokens rather than share of cost. Cost is often
+                0 for Gemini CLI runs (the provider doesn't
+                report explicitCostUsd), which made the
+                cost-based meter visually misleading for users
+                whose biggest token-consumer was Gemini. Token
+                totals are populated for every provider so the
+                meter consistently mirrors the provider-mix
+                balance ribbon above. The cost figure stays in
+                the right-hand readout + hover title — meter is
+                "share of usage", cost is "what it cost you".
+              */
+              const share = Math.max(0, Math.min(100, entry.shareOfTotalTokens))
               const fillWidth = `${Math.max(2, share)}%`
               return (
                 <div
                   key={entry.provider}
                   role="listitem"
                   className={`welcome-usage-provider-card provider-${entry.provider}`}
-                  title={`${entry.displayName} · ${formatCompactUsageNumber(entry.tokens)} tokens · ${formatCost(
+                  title={`${entry.displayName} · ${formatCompactUsageNumber(entry.tokens)} tokens (${share.toFixed(1)}%) · ${formatCost(
                     entry.costUsd,
                     resolvedCurrency,
                     undefined,
@@ -2897,7 +2910,7 @@ function WelcomeUsageDashboard({
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={share}
-                    aria-label={`${entry.displayName} accounts for ${share.toFixed(1)}% of post-reset cost`}
+                    aria-label={`${entry.displayName} accounts for ${share.toFixed(1)}% of post-reset tokens`}
                   >
                     <span
                       className={`welcome-usage-provider-card-fill provider-${entry.provider}`}

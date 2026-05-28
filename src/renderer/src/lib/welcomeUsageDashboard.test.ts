@@ -1119,6 +1119,7 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
       expect(entry.tokens).toBe(0)
       expect(entry.costUsd).toBe(0)
       expect(entry.shareOfTotalCost).toBe(0)
+      expect(entry.shareOfTotalTokens).toBe(0)
     }
   })
 
@@ -1159,33 +1160,72 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
     expect(gemini?.costUsd).toBe(0)
   })
 
-  it('sorts provider breakdown DESC by cost', () => {
+  it('sorts provider breakdown DESC by tokens (cost as tiebreaker)', () => {
+    // EW52 follow-up — Sort key flipped from cost-first to
+    // tokens-first to match the under-card meter, which now
+    // shows token share. Cost stays as the tiebreaker so two
+    // providers with identical token totals get a stable order.
     const records: UsageRecord[] = [
       baseRecord({
         id: 'r1',
         provider: 'gemini',
+        totalTokens: 92_000_000,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        explicitCostUsd: 0.05 as any
+        explicitCostUsd: 0 as any
       } as never),
       baseRecord({
         id: 'r2',
         provider: 'kimi',
+        totalTokens: 1_300_000,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         explicitCostUsd: 1.2 as any
       } as never),
       baseRecord({
         id: 'r3',
         provider: 'codex',
+        totalTokens: 6_700_000,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         explicitCostUsd: 0.4 as any
       } as never)
     ]
     const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
-    // Sorted DESC: kimi (1.2) > codex (0.4) > gemini (0.05) > claude (0).
-    expect(data.providerCostBreakdown[0].provider).toBe('kimi')
+    // Sorted DESC by tokens: gemini (92M) > codex (6.7M) > kimi (1.3M) > claude (0).
+    // Even though Kimi has the highest cost, Gemini's much larger
+    // token total puts it on top — this matches the visual meter.
+    expect(data.providerCostBreakdown[0].provider).toBe('gemini')
     expect(data.providerCostBreakdown[1].provider).toBe('codex')
-    expect(data.providerCostBreakdown[2].provider).toBe('gemini')
+    expect(data.providerCostBreakdown[2].provider).toBe('kimi')
     expect(data.providerCostBreakdown[3].provider).toBe('claude')
+  })
+
+  it('computes shareOfTotalTokens as a percentage of all-provider tokens (drives the under-card meter)', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'r1',
+        provider: 'gemini',
+        totalTokens: 90_000_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 0 as any
+      } as never),
+      baseRecord({
+        id: 'r2',
+        provider: 'codex',
+        totalTokens: 10_000_000,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        explicitCostUsd: 5 as any
+      } as never)
+    ]
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+    const gemini = data.providerCostBreakdown.find((p) => p.provider === 'gemini')
+    const codex = data.providerCostBreakdown.find((p) => p.provider === 'codex')
+    const claude = data.providerCostBreakdown.find((p) => p.provider === 'claude')
+    // Gemini has 0 cost but 90% of tokens — meter should reflect
+    // 90%, NOT the 0% it would show under share-of-cost.
+    expect(gemini?.shareOfTotalTokens).toBeCloseTo(90, 1)
+    expect(gemini?.shareOfTotalCost).toBe(0)
+    expect(codex?.shareOfTotalTokens).toBeCloseTo(10, 1)
+    // Zero-token providers stay at 0% share.
+    expect(claude?.shareOfTotalTokens).toBe(0)
   })
 
   it('computes shareOfTotalCost as a percentage of all-provider cost (or 0 when total is 0)', () => {

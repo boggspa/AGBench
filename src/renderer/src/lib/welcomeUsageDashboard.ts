@@ -72,6 +72,15 @@ export interface ProviderCostBreakdownEntry {
   costUsd: number
   /** Percentage of post-reset cost. 0–100. Zero when no cost. */
   shareOfTotalCost: number
+  /**
+   * 1.0.5-EW52 follow-up — Percentage of post-reset *tokens* across
+   * all four providers. 0–100. Drives the under-card meter on the
+   * Providers tab because token totals are populated for every
+   * provider (the cost field is often 0 for Gemini CLI runs, which
+   * made the cost-based meter visually misleading). Mirrors the
+   * provider-mix balance ribbon at the top of the dashboard.
+   */
+  shareOfTotalTokens: number
 }
 /**
  * Time-window discriminator for the welcome dashboard. `24h` was added in
@@ -1006,6 +1015,15 @@ export const buildWelcomeUsageDashboardData = (
     gemini: 'Gemini',
     kimi: 'Kimi'
   }
+  // 1.0.5-EW52 follow-up — Also compute total provider-tokens
+  // so each card's meter can render as share-of-tokens rather
+  // than share-of-cost. Gemini CLI runs frequently report 0
+  // cost, which made the cost-based meter visually misleading
+  // (e.g. 92M Gemini tokens but no fill). Tokens are populated
+  // for every provider so the meter is consistently informative.
+  const totalProviderTokensForBreakdown = (
+    Object.keys(providerCostAggregate) as ProviderId[]
+  ).reduce((sum, provider) => sum + providerCostAggregate[provider].tokens, 0)
   const providerCostBreakdown: ProviderCostBreakdownEntry[] = (
     Object.keys(providerCostAggregate) as ProviderId[]
   )
@@ -1017,12 +1035,16 @@ export const buildWelcomeUsageDashboardData = (
       shareOfTotalCost:
         totalProviderCost > 0
           ? (providerCostAggregate[provider].costUsd / totalProviderCost) * 100
+          : 0,
+      shareOfTotalTokens:
+        totalProviderTokensForBreakdown > 0
+          ? (providerCostAggregate[provider].tokens / totalProviderTokensForBreakdown) * 100
           : 0
     }))
     .sort(
       (a, b) =>
-        b.costUsd - a.costUsd ||
         b.tokens - a.tokens ||
+        b.costUsd - a.costUsd ||
         a.displayName.localeCompare(b.displayName)
     )
 
