@@ -30290,6 +30290,9 @@ input:disabled, select:disabled, textarea:disabled {
 .ensemble-above-chip.provider-grok[data-linked-session="true"]::after {
   background: var(--provider-grok-color, var(--accent));
 }
+.ensemble-above-chip.provider-cursor[data-linked-session="true"]::after {
+  background: var(--provider-cursor-color, var(--accent));
+}
 
 .ensemble-above-chip-body {
   display: inline-flex;
@@ -30514,6 +30517,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .ensemble-above-chip.provider-grok .ensemble-above-chip-role {
   color: var(--provider-grok-color);
+}
+.ensemble-above-chip.provider-cursor .ensemble-above-chip-role {
+  color: var(--provider-cursor-color);
 }
 
 /* Neutralise the per-provider chip-border overrides — the chip
