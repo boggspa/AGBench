@@ -163,7 +163,8 @@ import { ProviderPreflightService } from './ProviderPreflightService'
 import { buildProviderCapabilityContract } from './ProviderCapabilities'
 import { buildProviderAuthStatusV2 } from './ProviderAuthStatus'
 import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
-import { buildGrokCliArgs } from './grok/GrokCliArgs'
+import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
+import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
@@ -7347,6 +7348,31 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
       const proc = child as unknown as ReturnType<typeof spawn>
       runManager.attachProcess(route.appRunId!, proc)
       cliProviderProcesses.set('grok', proc)
+    },
+    // G5c-ACP — client-mediated tool approval. Grok asks before running a
+    // permission-requiring tool (shell/edit/…) via session/request_permission;
+    // route it through AGBench's approval ledger (the same card + policy +
+    // audit path Claude/Codex use). Read-only (plan / unset) never allows a
+    // tool. requestAgenticServiceApproval resolves the policy (auto-allow on a
+    // prior session/workspace grant, else prompt) and returns the boolean.
+    // The G5a transport seam turns 'deny' into a rejected outcome, so nothing
+    // runs without an explicit allow — no silent shell.
+    onPermissionRequest: async (request) => {
+      if (!grokWriteCapable(payload.approvalMode)) return 'deny'
+      const service = grokToolKindToService(request.toolKind)
+      const allowed = await requestAgenticServiceApproval(
+        event.sender,
+        'grok',
+        service,
+        payload.scope === 'global' ? undefined : payload.workspace,
+        {
+          method: `grok/${request.toolKind || 'tool'}`,
+          title: `Grok wants to run: ${request.toolName}`,
+          body: `Grok requested a "${request.toolName}" tool call (${service}). Approve to let it run, or deny to block it.`,
+          runId: route.appRunId
+        }
+      )
+      return allowed ? 'allow' : 'deny'
     },
     onEvent: (evt) => applyGrokRunEvent(state, evt),
     onClose: (code, turnComplete) => {
@@ -21174,7 +21200,7 @@ if (isGeminiMcpBridgeProcess) {
       }
       const isTempDir = probeCwd !== os.tmpdir()
       try {
-        return await probeGrokUsage({
+        const grokUsageSnapshot = await probeGrokUsage({
           spawnPty: (): GrokPtyLike => {
             const term = pty.spawn(binaryPath, ['--no-auto-update', '--no-alt-screen'], {
               name: 'xterm-256color',
@@ -21200,6 +21226,22 @@ if (isGeminiMcpBridgeProcess) {
             }
           }
         })
+        // Bridge for external readers (e.g. the "Limit Counter" macOS
+        // app, which is sandboxed and cannot spawn the grok CLI itself):
+        // persist the observed SuperGrok credit snapshot to a small JSON
+        // file in userData. Best-effort — never block or fail the probe.
+        if (grokUsageSnapshot.confidence === 'observed') {
+          try {
+            await fs.writeFile(
+              join(app.getPath('userData'), 'grok-usage-snapshot.json'),
+              JSON.stringify(grokUsageSnapshot, null, 2),
+              'utf8'
+            )
+          } catch {
+            // best-effort bridge write
+          }
+        }
+        return grokUsageSnapshot
       } finally {
         if (isTempDir) {
           await fs.rm(probeCwd, { recursive: true, force: true }).catch(() => {})

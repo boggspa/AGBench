@@ -7,6 +7,7 @@ import {
   parseAcpPermissionRequest,
   selectAcpPermissionOption,
   buildAcpPermissionResponse,
+  grokToolKindToService,
   type AcpPermissionOption
 } from './GrokAcpProtocol'
 
@@ -230,6 +231,22 @@ describe('G5 — session/request_permission (client-mediated approvals)', () => 
     expect(selectAcpPermissionOption([opts[1]], 'allow')).toBe('a2')
     // No matching option → null (the builder turns this into 'cancelled').
     expect(selectAcpPermissionOption([opts[2]], 'allow')).toBeNull()
+  })
+
+  it('maps ACP tool kinds to the right approval-ledger service (unknown → strictest)', () => {
+    expect(grokToolKindToService('execute')).toBe('shellCommands')
+    expect(grokToolKindToService('edit')).toBe('fileChanges')
+    expect(grokToolKindToService('write')).toBe('fileChanges')
+    expect(grokToolKindToService('delete')).toBe('fileChanges')
+    expect(grokToolKindToService('move')).toBe('fileChanges')
+    expect(grokToolKindToService('fetch')).toBe('mcpTools')
+    // Unknown / read-ish / empty → shellCommands (the strictest 'ask' bucket),
+    // never a free pass.
+    expect(grokToolKindToService('read')).toBe('shellCommands')
+    expect(grokToolKindToService('think')).toBe('shellCommands')
+    expect(grokToolKindToService('other')).toBe('shellCommands')
+    expect(grokToolKindToService('')).toBe('shellCommands')
+    expect(grokToolKindToService(undefined)).toBe('shellCommands')
   })
 
   it('builds a selected response for allow, cancelled for deny/cancel/no-match', () => {

@@ -13,6 +13,7 @@
 // terminal `stopReason`. session/new's result carries the resumable `sessionId`.
 
 import type { NormalizedGrokRunEvent } from './GrokStreamingJson'
+import type { AgenticServiceId } from '../store/types'
 
 export type { NormalizedGrokRunEvent }
 
@@ -187,6 +188,30 @@ export function parseAcpPermissionRequest(
     })
   }
   return { rpcId, sessionId, toolName, toolKind, options, rawToolCall: toolCall }
+}
+
+/**
+ * Map an ACP tool kind to the AGBench approval-ledger service category so a
+ * Grok tool request lands in the right policy bucket + card. Defaults to
+ * `shellCommands` (the strictest 'ask' bucket) for unknown/unrecognised kinds —
+ * an unfamiliar effect should get the most cautious gate, never a free pass.
+ * ACP tool kinds: read | edit | delete | move | search | execute | think |
+ * fetch | other.
+ */
+export function grokToolKindToService(toolKind: string | null | undefined): AgenticServiceId {
+  switch ((toolKind || '').toLowerCase()) {
+    case 'edit':
+    case 'write':
+    case 'create':
+    case 'delete':
+    case 'move':
+      return 'fileChanges'
+    case 'fetch':
+      return 'mcpTools'
+    case 'execute':
+    default:
+      return 'shellCommands'
+  }
 }
 
 export type AcpPermissionDecision = 'allow' | 'deny' | 'cancel'
