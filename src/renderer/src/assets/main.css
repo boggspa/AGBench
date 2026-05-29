@@ -5151,6 +5151,14 @@ button.sidebar-item {
 .workspace-name-glow.provider-kimi {
   --workspace-name-glow-color: var(--provider-kimi-color);
 }
+.workspace-name-glow.provider-grok {
+  /* Monochrome — tracks --text-primary so the glow is white on dark themes,
+     black on light (matches Grok's black/white identity per system contrast). */
+  --workspace-name-glow-color: var(--provider-grok-color);
+}
+.workspace-name-glow.provider-cursor {
+  --workspace-name-glow-color: var(--provider-cursor-color);
+}
 .workspace-name-glow.workspace-name-glow-ensemble {
   color: color-mix(in srgb, #ffffff 96%, var(--text-primary) 4%);
   text-shadow:
