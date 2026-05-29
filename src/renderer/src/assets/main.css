@@ -4627,45 +4627,48 @@ button.sidebar-item {
   bottom: auto;
 }
 
-/* 1.0.6-CRUX16 — short-viewport overlap guard for the welcome screen.
+/* 1.0.6-CRUX23 — welcome-screen overlap fix, breakpoint-free (supersedes the
+ * CRUX16 max-height breakpoint, which kicked in far too late: the dashboard +
+ * centred composer overlap starts well above any sane breakpoint, so flow was
+ * engaging long after the overlap had already begun).
  *
- * The welcome dashboard (`.welcome-usage-region`, pinned near the top) and the
- * greeting+composer block (`.welcome-mode .composer-area`, vertically centred)
- * are BOTH absolutely positioned inside `.app-transcript`. On a tall window
- * they clear each other, but on a short window the fixed-top dashboard collides
- * with the centred composer — it overlaps / clips the prompt (Chris's report).
- * There isn't room for a top dashboard AND a centred composer below ~900px, so
- * below the breakpoint we drop the absolute layout and FLOW both into a
- * scrollable column: dashboard → greeting → composer → starters, stacked, with
- * the area scrolling if it still overflows. The dashboard is kept, never
- * overlapping. Tall windows keep the centred layout unchanged. */
-@media (max-height: 900px) {
-  .app-transcript.welcome-mode {
-    overflow-y: auto;
-    justify-content: flex-start;
-  }
-  /* The messages scroller is empty on the welcome screen (the greeting lives
-   * in the composer-area); remove it from the flex column so the flowed
-   * dashboard + composer aren't pushed below the fold. */
-  .app-transcript.welcome-mode .transcript-scroll {
-    display: none;
-  }
-  .app-transcript.welcome-mode .welcome-usage-region {
-    position: relative;
-    top: auto;
-    width: 100%;
-    margin-top: var(--space-md);
-  }
-  .app-transcript.welcome-mode .composer-area {
-    position: relative;
-    top: auto;
-    bottom: auto;
-    transform: none;
-    width: 100%;
-    margin-top: var(--space-lg);
-    padding-bottom: var(--space-xl);
-    justify-content: flex-start;
-  }
+ * The welcome dashboard (`.welcome-usage-region`) and the greeting+composer
+ * block (`.welcome-mode .composer-area`) were BOTH absolutely positioned inside
+ * `.app-transcript` (dashboard pinned near the top, composer vertically centred)
+ * — they only clear each other on very tall windows. Drop the absolute layout
+ * entirely on the welcome screen and FLOW both into ONE scrollable column —
+ * dashboard → greeting → composer → starters — that `safe center`s: centred as
+ * a group when it fits (tall windows stay balanced) and start-aligned +
+ * scrollable when it doesn't (short windows never overlap, top stays reachable).
+ * No breakpoint, no overlap at any height. Applies to every shell's welcome
+ * screen (the overlap was shell-agnostic). */
+.app-transcript.welcome-mode {
+  overflow-y: auto;
+  justify-content: safe center;
+}
+/* The messages scroller is empty on the welcome screen (the greeting lives in
+ * the composer-area); remove it from the flex column so the flowed dashboard +
+ * composer aren't pushed below the fold. */
+.app-transcript.welcome-mode .transcript-scroll {
+  display: none;
+}
+.app-transcript.welcome-mode .welcome-usage-region {
+  position: relative;
+  top: auto;
+  width: 100%;
+  margin-top: var(--space-md);
+  flex: 0 0 auto;
+}
+.app-transcript.welcome-mode .composer-area {
+  position: relative;
+  top: auto;
+  bottom: auto;
+  transform: none;
+  width: 100%;
+  margin-top: var(--space-lg);
+  padding-bottom: var(--space-xl);
+  justify-content: flex-start;
+  flex: 0 0 auto;
 }
 
 .welcome-hero {
