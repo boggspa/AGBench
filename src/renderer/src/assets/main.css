@@ -2861,16 +2861,27 @@ button.sidebar-item {
  * to breathe away from the headline stat grid above. */
 .usage-heatmap--welcome {
   margin-top: 16px;
+  /* 1.0.6-CRUX35 — flex-fill the card's leftover height so the Statistics tab
+   * ALWAYS exactly fills the fixed-height dashboard. Replaces the old
+   * viewport-variable 22vh grid height, which made this tab ~708px on tall
+   * windows (taller than the 680px card → the composer jump CRUX33 fought). */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .usage-heatmap--welcome .usage-heatmap-grid {
-  /* Squarer cells when the container is wide — keep the 30-col layout
-   * but let the grid use up to ~200px of vertical space instead of the
-   * sidebar's compact ~110px. */
+  /* Keep the wide 30-col layout, but stretch to fill the flex-filled wrapper
+   * (with a floor so it never collapses) instead of a fixed/viewport height. */
   aspect-ratio: auto;
-  height: clamp(140px, 22vh, 220px);
+  height: auto;
+  min-height: 120px;
 }
 .usage-heatmap--welcome .usage-heatmap-grid-wrapper {
   margin-top: 4px;
+  /* Grow within the flex-filled heatmap; the single row fills the height so
+   * the labels + grid stretch to it (grid-auto-rows: 1fr squares the cells). */
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
 }
 
 /* Phase L6 slice 6 — glass chrome polish on the Model Usage Card.
@@ -5480,11 +5491,16 @@ button.sidebar-item {
    * each chip reads as a small square rather than a wide band. */
   max-width: min(720px, 88vw);
   margin: 0 auto;
-  /* 1.0.6-CRUX33 — fixed min-height so the auto-cycling tabs (Statistics /
-   * Model Comparisons / Workspaces / Providers) don't resize the card as they
-   * switch (~every 3 min), which made the composer below jump up/down. Sized
-   * to the tallest tab (Statistics + heatmap ≈ 655px at the 720px-capped
-   * width); shorter tabs pad to match. */
+  /* 1.0.6-CRUX33/CRUX35 — fixed-height flex column so all four auto-cycling
+   * tabs (Statistics / Model Comparisons / Workspaces / Providers) are the
+   * SAME height AND their content FILLS it — no resize jump as they switch
+   * (~every 3 min), and no "scrollview cuts off shy of the card" gaps. Sized
+   * to the tallest tab (Statistics). Its heatmap now flex-fills the leftover
+   * space (replacing a viewport-variable 22vh grid height that overflowed this
+   * card on tall windows), and every other tab's scroll list grows to fill —
+   * see the per-tab rules below. */
+  display: flex;
+  flex-direction: column;
   min-height: 680px;
   padding: 12px 14px 14px;
   border-radius: 12px;
@@ -5854,14 +5870,19 @@ button.sidebar-item {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  /* 1.0.6-CRUX35 — fill the fixed-height card: the list grows, the daily
+   * chart pins to the bottom. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .welcome-usage-workspaces-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  /* Cap visible height at ~6 cards then scroll — workspace count
-   * varies wildly per user, this keeps the chart visible below. */
-  max-height: 360px;
+  /* 1.0.6-CRUX35 — grow to fill the space above the chart (was a 360px cap);
+   * scrolls when the workspace list is long, keeping the chart pinned below. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   /* Subtle inner shadow at top/bottom of the scrollable area so
    * the user can tell when there's more to scroll. */
@@ -6006,12 +6027,21 @@ button.sidebar-item {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* 1.0.6-CRUX35 — fill the fixed-height card: the list grows, the 24h
+   * wall-time timecode pins to the bottom. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .welcome-usage-providers-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
   padding: 4px 2px;
+  /* 1.0.6-CRUX35 — grow to fill the space above the timecode; scrolls if the
+   * provider list ever exceeds the card. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .welcome-usage-provider-card {
   display: flex;
@@ -6337,11 +6367,14 @@ button.sidebar-item {
   gap: 10px;
   margin-top: 4px;
   min-width: 0;
-  /* Welcome L8 — cap the list height so a user with a long history
-   * doesn't push the dashboard down into the composer below. The
-   * cap is viewport-relative with a fallback px ceiling so it
-   * stays sensible on tall + short windows alike. */
-  max-height: clamp(220px, 36vh, 360px);
+  /* 1.0.6-CRUX35 — grow to fill the fixed-height card (was a 360px cap that
+   * cut the scroll area off ~300px shy of the card bottom). Scrolls when the
+   * model list is long; `safe center` vertically centres a short list so it
+   * reads as filled rather than hugging the top, while staying scroll-safe
+   * (no top-clip) when it overflows. */
+  flex: 1 1 auto;
+  min-height: 0;
+  justify-content: safe center;
   overflow-y: auto;
   /* Quiet scrollbar — matches the rest of the dashboard's lean look. */
   scrollbar-width: thin;
