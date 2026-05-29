@@ -57,6 +57,14 @@ export interface GrokAcpRunOptions {
    * server (a non-zero exit).
    */
   onClose?: (code: number | null, turnComplete: boolean) => void
+  /**
+   * G4d — opt-in raw JSON-RPC frame tap (both directions). Used by the gated
+   * AGBENCH_GROK_DEBUG capture so the live ACP wire shape can be confirmed from
+   * a single in-app run — in particular whether Grok actually emits `tool_call`
+   * session/updates and `session/request_permission` requests (the safety
+   * precondition for trusting write-over-ACP). Never affects behavior.
+   */
+  onRawFrame?: (direction: 'in' | 'out', message: unknown) => void
 }
 
 export interface GrokAcpRunHandle {
@@ -83,6 +91,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
   const writeRpc = (id: number | null, method: string, params: unknown): void => {
     const message =
       id == null ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id, method, params }
+    options.onRawFrame?.('out', message)
     try {
       child.stdin?.write(encodeAcpFrame(message))
     } catch {
@@ -92,6 +101,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
 
   // Write a raw JSON-RPC response object (already shaped {jsonrpc,id,result}).
   const writeResponse = (message: Record<string, unknown>): void => {
+    options.onRawFrame?.('out', message)
     try {
       child.stdin?.write(encodeAcpFrame(message))
     } catch {
@@ -142,6 +152,7 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
     const parsed = parseAcpStreamChunk(chunk.toString(), carry)
     carry = parsed.carry
     for (const message of parsed.messages) {
+      options.onRawFrame?.('in', message)
       // G5 — inbound agent→client request: answer tool-permission asks before
       // anything else (it's a request with an id + method, not a response).
       if (isAcpPermissionRequest(message)) {

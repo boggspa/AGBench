@@ -6356,6 +6356,33 @@ function maybeLogGrokRawEvent(event: unknown): void {
   }
 }
 
+// 1.0.6-G4d — opt-in raw ACP JSON-RPC frame capture (both directions). With
+// AGBENCH_GROK_DEBUG=1 each frame prints as `[grok-acp-raw] →/← {…}` in the dev
+// terminal (one-paste capture) so the live ACP wire shape can be confirmed —
+// crucially whether Grok emits `tool_call` session/updates AND
+// `session/request_permission` requests (the precondition for write-over-ACP).
+function maybeLogGrokRawAcp(direction: 'in' | 'out', message: unknown): void {
+  const flag = process.env.AGBENCH_GROK_DEBUG
+  if (flag !== '1' && flag !== 'true' && flag !== 'yes') return
+  let serialized = ''
+  try {
+    serialized = JSON.stringify(message)
+  } catch {
+    return
+  }
+  try {
+    process.stderr.write(`[grok-acp-raw] ${direction === 'out' ? '→' : '←'} ${serialized}\n`)
+  } catch {
+    /* ignore */
+  }
+  try {
+    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'agbench-grok-stream.jsonl')
+    fsSync.appendFileSync(grokDebugLogPath, `${serialized}\n`)
+  } catch {
+    /* diagnostics only */
+  }
+}
+
 function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
   maybeLogGrokRawEvent(event)
   for (const evt of grokEventToRunEvents({ json: event as Record<string, unknown> })) {
@@ -7475,6 +7502,7 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
       return allowed ? 'allow' : 'deny'
     },
     onEvent: (evt) => applyGrokRunEvent(state, evt),
+    onRawFrame: (direction, message) => maybeLogGrokRawAcp(direction, message),
     onClose: (code, turnComplete) => {
       if (!state.completed) {
         state.completed = true
