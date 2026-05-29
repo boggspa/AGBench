@@ -2429,9 +2429,10 @@ function WelcomeUsageDashboard({
     data.providerTokenTotals.gemini +
     data.providerTokenTotals.codex +
     data.providerTokenTotals.claude +
-    data.providerTokenTotals.kimi
+    data.providerTokenTotals.kimi +
+    data.providerTokenTotals.grok
   const providerRibbonSegments = (
-    ['gemini', 'codex', 'claude', 'kimi'] as Array<keyof typeof PROVIDER_PALETTE>
+    ['gemini', 'codex', 'claude', 'kimi', 'grok'] as Array<keyof typeof PROVIDER_PALETTE>
   ).map((provider) => ({
     provider,
     weight: data.providerTokenTotals[provider],

@@ -18364,6 +18364,20 @@ input:disabled, select:disabled, textarea:disabled {
   clip-path: inset(0 0 0 calc(var(--sidebar-width, 280px) + 12px));
   opacity: 0.16;
 }
+/* These FX layers actually mount INSIDE `.app-transcript` (App.tsx —
+ * LivingWorkspace / AgentAura / RunDataViz), which already begins to the
+ * right of the sidebar. The sidebar-width clip above then subtracts the
+ * sidebar a SECOND time, leaving a hard vertical seam where the clipped
+ * layer starts. Inside the transcript there's nothing to clip away
+ * (`.app-transcript` is overflow:hidden), so reset the clip there. The
+ * higher-specificity `.app-transcript` descendant keeps `opacity: 0.16`. */
+[data-appearance="native_glass"][data-reduce-transparency="false"] .app-transcript :is(
+  .agent-aura-layer,
+  .living-workspace-layer,
+  .run-data-viz-layer
+) {
+  clip-path: inset(0);
+}
 
 [data-appearance="native_glass"][data-reduce-transparency="false"] .living-workspace-layer.fx-intensity-epic,
 [data-appearance="native_glass"][data-reduce-transparency="false"] .living-workspace-layer.fx-intensity-cinematic {
@@ -31916,6 +31930,28 @@ input:disabled, select:disabled, textarea:disabled {
   background: transparent !important;
   border-color: transparent !important;
   box-shadow: none !important;
+}
+
+/* 1.0.6-CS3 follow-up — ALABASTER ONLY: white-on-white satellite row.
+ * The Gemini capsule rework moved the satellite controls (the bottom
+ * row + meta strip) OUT of the dark navy capsule onto the light cream
+ * Alabaster app background. The block far above paints ALL Gemini-
+ * composer text near-white with `!important` — correct inside the navy
+ * capsule and for Obsidian's dark app bg, but invisible on Alabaster's
+ * cream. So (a) re-darken the satellite containers + their contents to
+ * Alabaster's charcoal, then (b) re-lighten the three controls that are
+ * lifted INTO the navy capsule (the [+], the model pill, the send
+ * button) since those still sit on dark/blue, not the cream bg.
+ * Obsidian (dark app) is deliberately untouched. */
+[data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row),
+[data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row) * {
+  color: rgba(18, 21, 27, 0.82) !important;
+  -webkit-text-fill-color: rgba(18, 21, 27, 0.82) !important;
+}
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"], .composer-send-cluster),
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"], .composer-send-cluster) * {
+  color: rgba(246, 249, 255, 0.92) !important;
+  -webkit-text-fill-color: rgba(246, 249, 255, 0.92) !important;
 }
 
 :is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-area,
