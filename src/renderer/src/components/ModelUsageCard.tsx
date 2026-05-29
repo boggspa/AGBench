@@ -47,7 +47,11 @@ const PROVIDER_ORDER: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
 const SIDEBAR_USAGE_HEIGHT_STORAGE_KEY = 'guigemini-sidebar-model-usage-height'
 const SIDEBAR_USAGE_DEFAULT_HEIGHT = 520
 const SIDEBAR_USAGE_MIN_HEIGHT = 220
-const SIDEBAR_USAGE_MAX_HEIGHT = 1080
+// Six providers (gemini/codex/claude/kimi/cursor/grok) make the meter list
+// much taller, so the drag cap was raised 1080 → 1400 (the rendered height is
+// still bounded by `calc(100vh - 56px)` in ModelUsageCard.css so it can't
+// overflow the viewport / push the Activity heatmap fully off-screen).
+const SIDEBAR_USAGE_MAX_HEIGHT = 1400
 const SIDEBAR_USAGE_RESIZE_STEP = 24
 
 function clampSidebarUsageHeight(height: number, maxHeight = SIDEBAR_USAGE_MAX_HEIGHT): number {

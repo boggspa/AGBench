@@ -32,7 +32,7 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
   // the active theme where it can; this static hex is the dark-surface
   // case the heatmap always renders against).
   grok: '#E5E7EB',
-  cursor: '#CA8A04'
+  cursor: '#D2A60C'
 }
 
 export interface HeatmapCell {

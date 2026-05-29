@@ -5959,7 +5959,7 @@ button.sidebar-item {
   border-color: color-mix(in srgb, #e5e7eb 55%, transparent);
 }
 .welcome-usage-provider-card.provider-cursor:hover {
-  border-color: color-mix(in srgb, #d4a017 55%, transparent);
+  border-color: color-mix(in srgb, #e3b91e 55%, transparent);
 }
 .welcome-usage-provider-card-row {
   display: flex;
@@ -6009,8 +6009,8 @@ button.sidebar-item {
   box-shadow: 0 0 6px color-mix(in srgb, #e5e7eb 50%, transparent);
 }
 .welcome-usage-provider-card-dot.provider-cursor {
-  background: #d4a017;
-  box-shadow: 0 0 6px color-mix(in srgb, #d4a017 50%, transparent);
+  background: #e3b91e;
+  box-shadow: 0 0 6px color-mix(in srgb, #e3b91e 50%, transparent);
 }
 .welcome-usage-provider-card-totals {
   display: flex;
@@ -18639,7 +18639,11 @@ input:disabled, select:disabled, textarea:disabled {
  * the same 960px upper bound here, the cap is consistent regardless
  * of which rule wins. */
 .app-sidebar .model-usage-summary {
-  max-height: clamp(380px, 46vh, 960px);
+  /* CRUX11 — raised 960 → 1400 / 46vh → 72vh so the six-provider meter list
+   * (gemini/codex/claude/kimi/cursor/grok) can be dragged to full height
+   * instead of capping early and hiding the Activity heatmap below it. Stays
+   * in lockstep with SIDEBAR_USAGE_MAX_HEIGHT (ModelUsageCard.tsx). */
+  max-height: clamp(380px, 72vh, 1400px);
   min-height: min(360px, 42vh);
   overflow-y: auto;
 }
@@ -27800,6 +27804,46 @@ input:disabled, select:disabled, textarea:disabled {
     0 0 8px rgba(255, 232, 214, 0.30),
     0 0 18px rgba(216, 160, 122, 0.18),
     0 0 34px rgba(255, 170, 134, 0.10);
+}
+
+/* Provider-tinted welcome glow must survive the obsidian/alabaster
+ * welcome-hero overrides above — those re-fix colour + halo to a theme
+ * default built on var(--accent) (= the Gemini-blue accent), which
+ * clobbers the per-provider tint set by `.provider-<id>` (so Cursor/Grok
+ * showed the Gemini colour). Re-assert the provider tint for the SOLO
+ * glow only; the ensemble variant keeps its own multi-provider gradient.
+ * The extra `:not()` raises specificity above the override; falls back to
+ * var(--accent) when no provider class is present. */
+[data-theme="obsidian"]
+  .app-transcript
+  .welcome-hero
+  h1
+  strong.workspace-name-glow:not(.workspace-name-glow-ensemble) {
+  color: color-mix(
+    in srgb,
+    #fffaf4 78%,
+    var(--workspace-name-glow-color, var(--accent)) 22%
+  );
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--workspace-name-glow-color, var(--accent)) 45%, transparent),
+    0 0 18px color-mix(in srgb, var(--workspace-name-glow-color, var(--accent)) 26%, transparent),
+    0 0 34px color-mix(in srgb, var(--workspace-name-glow-color, var(--accent)) 12%, transparent);
+}
+
+[data-theme="alabaster"]
+  .app-transcript
+  .welcome-hero
+  h1
+  strong.workspace-name-glow:not(.workspace-name-glow-ensemble) {
+  color: color-mix(
+    in srgb,
+    var(--workspace-name-glow-color, var(--accent)) 76%,
+    #12151b 24%
+  );
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.82),
+    0 0 12px color-mix(in srgb, var(--workspace-name-glow-color, var(--accent)) 22%, transparent),
+    0 0 24px color-mix(in srgb, var(--workspace-name-glow-color, var(--accent)) 12%, transparent);
 }
 
 [data-theme="obsidian"] .app-transcript .welcome-hero p {

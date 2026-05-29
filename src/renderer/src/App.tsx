@@ -2417,7 +2417,7 @@ function WelcomeUsageDashboard({
     // surface, so the "white" end of black/white reads here.
     grok: '#e6e6e8',
     // Cursor (gated) — cyan identity, distinct from the five.
-    cursor: '#D4A017'
+    cursor: '#E3B91E'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
