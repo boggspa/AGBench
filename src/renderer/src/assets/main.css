@@ -33347,8 +33347,11 @@ input:disabled, select:disabled, textarea:disabled {
   background: transparent;
   border: 0;
   /* left gutter clears the [+]; right gutter clears [model][send] —
-   * sized like Gemini for the widest realistic model label. */
-  padding: 9px 224px 9px 46px;
+   * sized like Gemini for the widest realistic model label. The top/bottom
+   * padding is redistributed (13/5 rather than 9/9, same 18px total so the
+   * capsule height is unchanged) to drop the single-line text ~4px and align
+   * it with the lowered +/model/send. */
+  padding: 13px 224px 5px 46px;
   min-height: 32px;
   font-size: var(--font-size-md);
   color: var(--cursor-shell-fg);
@@ -33392,7 +33395,7 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="cursor"] [data-composer-control="model"] {
   position: absolute;
-  top: 13px;
+  top: 17px;
   right: 50px;
   max-width: 172px;
   margin: 0;
