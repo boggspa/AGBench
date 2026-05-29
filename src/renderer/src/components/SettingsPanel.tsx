@@ -65,6 +65,7 @@ import { ApprovalLedgerPanel } from './ApprovalLedgerPanel'
 import { PairingPage } from './PairingPage'
 import { UpdateStatusPane } from './UpdateStatusPane'
 import { ModelUsageCard } from './ModelUsageCard'
+import { GrokTelemetryCard } from './GrokTelemetryCard'
 import { ProviderLogoTile } from './ProviderLogoTile'
 import type { ModelUsageAggregate } from '../App'
 import { AGENTBENCH_MCP_TOOLS, type AGBenchMcpToolName } from '../../../main/AgentbenchMcpTools'
@@ -4375,7 +4376,7 @@ export function SettingsPanel({
                 </section>
               )}
 
-              {telemetryEntries.length > 0 && (
+              {(telemetryEntries.length > 0 || grokProviderAvailable) && (
                 <section
                   className="settings-provider-telemetry"
                   aria-label="Provider quota and balance telemetry"
@@ -4424,6 +4425,10 @@ export function SettingsPanel({
                         </article>
                       )
                     })}
+                    {/* Grok credits come from the PTY probe, not usageSummary,
+                     * so render a probe-driven card as a sibling of the
+                     * quota-window cards (CRUX15). */}
+                    {grokProviderAvailable && <GrokTelemetryCard />}
                   </div>
                 </section>
               )}

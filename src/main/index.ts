@@ -5735,6 +5735,13 @@ const CURSOR_USAGE_FRESH_TTL_MS = 2 * 60_000
 const CURSOR_USAGE_STALE_TTL_MS = 4 * 60 * 60_000
 let cursorUsageCache: { snapshot: CursorUsageSnapshot; fetchedAt: number } | null = null
 
+// 1.0.6-CRUX15 — cache the (expensive) SuperGrok PTY usage probe so the
+// sidebar GrokCreditsMeter and the Settings Provider-Telemetry card share a
+// single real probe instead of each spawning the TUI. Only `observed`
+// snapshots are cached; non-observed results fall through to a fresh probe.
+const GROK_USAGE_FRESH_TTL_MS = 2 * 60_000
+let grokUsageProbeCache: { snapshot: GrokUsageSnapshot; fetchedAt: number } | null = null
+
 /** Run a single-scalar read-only sqlite3 query; resolves trimmed value or null. */
 function runCursorSqliteScalar(dbPath: string, query: string): Promise<string | null> {
   return new Promise((resolve) => {
@@ -21640,6 +21647,15 @@ if (isGeminiMcpBridgeProcess) {
       if (!experimentalGrokProviderEnabled()) {
         return parseGrokUsage('', now())
       }
+      // Serve a fresh cached observed snapshot so a second consumer (the
+      // Settings Provider-Telemetry card alongside the sidebar meter) doesn't
+      // spawn a second TUI probe within the TTL.
+      if (
+        grokUsageProbeCache &&
+        Date.now() - grokUsageProbeCache.fetchedAt < GROK_USAGE_FRESH_TTL_MS
+      ) {
+        return grokUsageProbeCache.snapshot
+      }
       const resolved = await resolveCliProviderBinary('grok')
       const binaryPath = resolved.binaryPath
       if (!binaryPath) {
@@ -21685,6 +21701,7 @@ if (isGeminiMcpBridgeProcess) {
         // persist the observed SuperGrok credit snapshot to a small JSON
         // file in userData. Best-effort — never block or fail the probe.
         if (grokUsageSnapshot.confidence === 'observed') {
+          grokUsageProbeCache = { snapshot: grokUsageSnapshot, fetchedAt: Date.now() }
           try {
             await fs.writeFile(
               join(app.getPath('userData'), 'grok-usage-snapshot.json'),
