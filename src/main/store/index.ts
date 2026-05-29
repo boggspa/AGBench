@@ -92,7 +92,11 @@ const runEventsDir = path.join(userDataPath, 'run-events')
 const runArtifactsDir = path.join(userDataPath, 'run-artifacts')
 const runEventSequenceCache = new Map<string, number>()
 const runEventHashCache = new Map<string, string>()
-const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+// 1.0.6-CRUX27 — grok + cursor are first-class providers; seed their built-in
+// runtime profiles too (local + global per provider, see getDefaultRuntimeProfiles)
+// so their global chats have a usable runtime out of the box. Unconditional:
+// unused default profiles for a force-disabled provider are harmless data.
+const providerIds: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor']
 
 const defaultSettings: AppSettings = {
   activeProvider: 'gemini',

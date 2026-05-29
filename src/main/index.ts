@@ -2247,7 +2247,9 @@ async function maybeAutoResumeParentAgent(args: {
   // The RunManager indexes sessions by provider, so we sweep across
   // every provider's active sessions — a cross-provider auto-resume
   // would still be skipped if any provider has the parent live.
-  const providers: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  // 1.0.6-CRUX27 — sweep all available providers (incl. gated grok/cursor) so a
+  // grok/cursor-active parent also defers auto-resume, matching the core four.
+  const providers = availableProviderIds()
   const parentChatIsRunning = providers.some((p) =>
     runManager.getActiveByProvider(p).some((session) => session.appChatId === parent.appChatId)
   )
@@ -11566,7 +11568,7 @@ const providerAdapters = createProviderAdapterRegistry<
 ])
 
 async function readCliVersion(command: string): Promise<string> {
-  const provider = ['gemini', 'codex', 'claude', 'kimi'].includes(command)
+  const provider = availableProviderIds().includes(command as ProviderId)
     ? (command as ProviderId)
     : null
   const resolvedCommand = provider
