@@ -7232,11 +7232,16 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
     return
   }
   // buildGrokCliArgs forces the read-only shape: --permission-mode plan, denies
-  // Bash/Edit/Write, --disable-web-search, never --always-approve.
+  // Bash/Edit/Write, --disable-web-search, never --always-approve. G6 — pass the
+  // prior session id so follow-up turns resume the same Grok session instead of
+  // starting fresh (the id was captured from the previous turn's terminal event
+  // via updateCliProviderSession and round-tripped through the renderer).
   const args = buildGrokCliArgs({
     prompt: payload.prompt,
     workspace: payload.workspace!,
-    model: payload.model
+    model: payload.model,
+    reasoningEffort: payload.reasoningEffort,
+    providerSessionId: payload.providerSessionId
   })
   runCliProviderProcess(event, 'grok', resolved.binaryPath, args, payload, {
     fallback: false,

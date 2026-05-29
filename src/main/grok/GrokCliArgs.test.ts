@@ -95,4 +95,22 @@ describe('buildGrokCliArgs', () => {
     expect(buildGrokCliArgs({ ...base, reasoningEffort: 'off' })).not.toContain('--effort')
     expect(buildGrokCliArgs({ ...base, reasoningEffort: 'bogus' })).not.toContain('--effort')
   })
+
+  it('G6 — resumes a prior session via --resume only when an id is present', () => {
+    // Fresh chat (no id): no --resume → a new session is started.
+    expect(buildGrokCliArgs(base)).not.toContain('--resume')
+    expect(buildGrokCliArgs({ ...base, providerSessionId: null })).not.toContain('--resume')
+    expect(buildGrokCliArgs({ ...base, providerSessionId: '' })).not.toContain('--resume')
+    expect(buildGrokCliArgs({ ...base, providerSessionId: '   ' })).not.toContain('--resume')
+    // Follow-up turn: resume the captured session by id.
+    const args = buildGrokCliArgs({ ...base, providerSessionId: 'sess_abc123' })
+    expect(args[args.indexOf('--resume') + 1]).toBe('sess_abc123')
+  })
+
+  it('G6 — resume stays read-only (still plan mode, still denies writes)', () => {
+    const args = buildGrokCliArgs({ ...base, providerSessionId: 'sess_abc123' })
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+    expect(args).toContain('Bash(*)')
+    expect(args).not.toContain('--always-approve')
+  })
 })

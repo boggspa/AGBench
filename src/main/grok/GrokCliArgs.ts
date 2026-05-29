@@ -29,6 +29,17 @@ export interface BuildGrokCliArgsInput {
   workspace: string
   model?: string | null
   reasoningEffort?: string | null
+  /**
+   * G6 — resume a prior Grok session by id so a chat is a persistent
+   * conversation rather than a fresh turn each message. Grok's `-r/--resume
+   * [SESSION_ID]` mirrors Claude's `--resume` and is valid in print (`-p`)
+   * mode. The id is captured from the previous turn's terminal
+   * `{type:'end',sessionId}` event (GrokStreamingJson → updateCliProviderSession)
+   * and threaded back via the renderer's providerSessionId, exactly like
+   * Claude. Grok sessions are cwd-scoped, so the workspace must match across
+   * turns for the resume to attach.
+   */
+  providerSessionId?: string | null
 }
 
 export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
@@ -46,6 +57,14 @@ export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
   ]
   for (const rule of GROK_READ_ONLY_DENY_RULES) {
     args.push('--deny', rule)
+  }
+  // G6 — resume the prior session by id (persistent conversation). Only emit
+  // for a genuine non-empty id; a fresh chat (no id yet) starts a new session,
+  // whose id is captured from the terminal event for the next turn.
+  const resumeId =
+    typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
+  if (resumeId) {
+    args.push('--resume', resumeId)
   }
   // Only forward genuine Grok model ids (e.g. grok-code-fast-1). The composer's
   // CLI-default option — and any model id that leaked in from another provider's
