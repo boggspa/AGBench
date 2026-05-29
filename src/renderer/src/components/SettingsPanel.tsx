@@ -620,7 +620,16 @@ const FUN_FX_MODES: Array<{ value: AppSettings['funFxMode']; label: string; help
   { value: 'epic', label: 'Epic', helper: 'Adds additional ambient scene accents.' }
 ]
 
-const SETTINGS_PROVIDER_ORDER: ProviderId[] = ['codex', 'claude', 'gemini', 'kimi']
+// 1.0.6-CRUX41 — cursor + grok are first-class; surface them in the MCP tab's
+// connected-surfaces grid (and the refresh-all loop) alongside the core four.
+const SETTINGS_PROVIDER_ORDER: ProviderId[] = [
+  'codex',
+  'claude',
+  'gemini',
+  'kimi',
+  'cursor',
+  'grok'
+]
 
 const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
   codex: 'Codex',
@@ -1397,17 +1406,38 @@ export function SettingsPanel({
             message: geminiMcpBridgeStatus?.message || geminiMcpBridgeStatus?.error
           }
         : null
+    // 1.0.6-CRUX41 — Cursor's MCP surface is the AGBench web bridge (web_fetch +
+    // web_search), opt-in per workspace; it has no provider-reported MCP status,
+    // so describe it honestly instead of letting it read "not available yet".
+    const cursorWebBridge =
+      provider === 'cursor'
+        ? {
+            source: 'agbench web bridge',
+            serverName: 'agbench',
+            toolCount: 2,
+            message:
+              'AGBench web bridge — web_fetch + web_search for write-mode runs. Register it once in Cursor → Tools & MCPs → Add Custom MCP to enable.'
+          }
+        : null
     const mcp = contract?.mcp
     const available = Boolean(mcp?.available ?? status?.available ?? bridge?.available)
     const enabled = Boolean(mcp?.enabled ?? bridge?.enabled ?? available)
     const installed = Boolean(mcp?.installed ?? bridge?.installed ?? available)
     const state =
-      mcp?.state ?? (available ? 'available' : enabled || installed ? 'gated' : 'unavailable')
+      mcp?.state ??
+      (cursorWebBridge
+        ? 'gated'
+        : available
+          ? 'available'
+          : enabled || installed
+            ? 'gated'
+            : 'unavailable')
     const rawToolCount = countMcpStatusTools(status)
     const toolCount = Math.max(
       rawToolCount,
       Array.isArray(mcp?.tools) ? mcp.tools.length : 0,
-      provider === 'gemini' && available ? AGENTBENCH_MCP_TOOLS.length : 0
+      provider === 'gemini' && available ? AGENTBENCH_MCP_TOOLS.length : 0,
+      cursorWebBridge?.toolCount ?? 0
     )
     return {
       provider,
@@ -1418,13 +1448,18 @@ export function SettingsPanel({
       state,
       source:
         mcp?.source ||
+        cursorWebBridge?.source ||
         (provider === 'gemini' ? 'bridge' : provider === 'codex' ? 'provider' : 'agentbench'),
       serverName:
-        mcp?.serverName || bridge?.serverName || (available ? 'AGBench' : 'not connected'),
+        mcp?.serverName ||
+        bridge?.serverName ||
+        cursorWebBridge?.serverName ||
+        (available ? 'AGBench' : 'not connected'),
       toolCount,
       message:
         mcp?.message ||
         bridge?.message ||
+        cursorWebBridge?.message ||
         status?.message ||
         status?.error ||
         (available
