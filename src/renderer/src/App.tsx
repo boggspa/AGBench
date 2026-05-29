@@ -2198,16 +2198,13 @@ const buildWelcomeCopy = (context: WelcomeCopyContext): WelcomeCopy => {
         afterWorkspace: '.'
       }
     : {
+        // 1.0.6-CRUX25 — keep the greeting simple + universal:
+        // "New <Provider> thread for <Workspace>." The diff-count /
+        // failed-run clauses were noisy (e.g. "with 105 changed files
+        // ready"); that context still lives in the subheading below.
         beforeWorkspace: `New ${context.providerLabel} thread for `,
         workspaceName: context.workspaceName,
-        afterWorkspace:
-          context.lastRunStatus === 'failed'
-            ? ' after a failed run.'
-            : context.hasDiff
-              ? context.diffCount > 0
-                ? ` with ${pluralize(context.diffCount, 'changed file')} ready.`
-                : ' with current changes ready.'
-              : '.'
+        afterWorkspace: '.'
       }
 
   const subheading = context.isGlobalChat

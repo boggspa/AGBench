@@ -5489,8 +5489,6 @@ button.sidebar-item {
   font-family: var(--font-compact);
   pointer-events: auto;
   position: relative;
-  transform: scale(0.75);
-  transform-origin: top center;
   z-index: 3;
   overflow: hidden;
   isolation: isolate;
