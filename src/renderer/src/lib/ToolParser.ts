@@ -683,6 +683,18 @@ function parseChanges(value: unknown): ToolDiffSummary | undefined {
 export function parseUnifiedDiffSummary(diffText: string): ToolDiffSummary | undefined {
   if (!diffText.trim()) return undefined
 
+  // A real unified diff carries structural markers — a hunk header (`@@ -a,b +c,d @@`),
+  // a `diff --git` line, or a `+++`/`---` file-header pair. Without any of these, the
+  // text is just prose (a reasoning trace, an assistant message, a result blob) and
+  // counting lines that merely START with +/- would invent a bogus diff — e.g. a
+  // markdown bullet "- item" in a Grok/Kimi thinking trace surfaced as a phantom
+  // "+0 -1" on the Thinking card. Require structure before counting anything.
+  const hasDiffStructure =
+    /^@@ .*@@/m.test(diffText) ||
+    /^diff --git /m.test(diffText) ||
+    (/^\+\+\+ /m.test(diffText) && /^--- /m.test(diffText))
+  if (!hasDiffStructure) return undefined
+
   const files: ToolDiffFileSummary[] = []
   let current: ToolDiffFileSummary | null = null
 
@@ -743,6 +755,14 @@ export function deriveToolDiffSummary(
   parameters?: Record<string, unknown>,
   resultText?: string
 ): ToolDiffSummary | undefined {
+  // Reasoning / thinking pseudo-activities (`grok_thinking`, `kimi_thinking`, …) carry
+  // free-form prose as their "result", never a file edit. Never derive a diff for them
+  // — otherwise a markdown bullet in the reasoning trace is miscounted as a deletion.
+  const lowerTool = (toolName || '').toLowerCase()
+  if (lowerTool.endsWith('_thinking') || lowerTool === 'thinking') return undefined
+  if (typeof parameters?.kind === 'string' && parameters.kind.toLowerCase() === 'reasoning') {
+    return undefined
+  }
   const category = getToolCategory(toolName)
   const changesSummary = parseChanges(parameters?.changes)
   if (

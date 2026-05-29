@@ -441,6 +441,33 @@ describe('ToolParser', () => {
         deriveToolDiffSummary('run_shell_command', { command: 'sed -i s/a/b/g a.ts' })
       ).toBeUndefined()
     })
+
+    it('does NOT treat prose with leading +/- lines as a diff (no hunk structure)', () => {
+      // Free-form text — e.g. a reasoning trace or assistant message — frequently
+      // contains markdown bullets ("- item") or "+something". Without a real hunk
+      // header / diff --git / +++ --- pair it must NOT be counted as a diff.
+      expect(
+        parseUnifiedDiffSummary(
+          [
+            "Sure! Here's the plan:",
+            '- Minimal comment-only files (JokeComment*)',
+            '- A Metal shader one',
+            '+ extra idea'
+          ].join('\n')
+        )
+      ).toBeUndefined()
+    })
+
+    it('regression: a thinking trace with a "- bullet" never yields a phantom +0 -1', () => {
+      // The exact shape that produced the bogus "+0 -1" on the Grok Thinking card.
+      const thinking =
+        'The user wants test files.\n- Minimal comment-only files (JokeComment*)\nNow I will start.'
+      expect(deriveToolDiffSummary('grok_thinking', { kind: 'reasoning' }, thinking)).toBeUndefined()
+      // Even without the reasoning hint, a *_thinking pseudo-tool never diffs.
+      expect(deriveToolDiffSummary('kimi_thinking', {}, thinking)).toBeUndefined()
+      // And a non-thinking tool whose result is plain prose is also clean now.
+      expect(deriveToolDiffSummary('some_tool', {}, thinking)).toBeUndefined()
+    })
   })
 
   describe('unwrapMcpEnvelope', () => {
