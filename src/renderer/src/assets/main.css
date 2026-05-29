@@ -5058,6 +5058,29 @@ button.sidebar-item {
     0 0 36px rgba(70, 92, 24, 0.3);
 }
 
+/* Grok + Cursor were missing from this per-provider set, so the welcome
+ * workspace name inherited the base `.welcome-hero h1 strong` rule above —
+ * which hardcodes a Gemini-BLUE glow. That's why Grok/Cursor showed
+ * "Gemini colours" in the default dark theme. Mirror the codex/claude/kimi
+ * pattern with each provider's own glow (driven by the theme token, so
+ * Grok stays monochrome and Cursor stays mustard). Obsidian/alabaster keep
+ * their higher-specificity CRUX9 treatment. */
+.app-transcript.provider-grok .welcome-hero h1 strong {
+  color: rgba(248, 250, 253, 1);
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--provider-grok-color) 46%, transparent),
+    0 0 18px color-mix(in srgb, var(--provider-grok-color) 30%, transparent),
+    0 0 34px color-mix(in srgb, var(--provider-grok-color) 18%, transparent);
+}
+
+.app-transcript.provider-cursor .welcome-hero h1 strong {
+  color: rgba(252, 247, 233, 1);
+  text-shadow:
+    0 0 8px color-mix(in srgb, var(--provider-cursor-color) 56%, transparent),
+    0 0 18px color-mix(in srgb, var(--provider-cursor-color) 40%, transparent),
+    0 0 36px color-mix(in srgb, var(--provider-cursor-color) 24%, transparent);
+}
+
 .welcome-hero p {
   margin: 7px 0 0;
   color: color-mix(in srgb, var(--text-secondary) 72%, transparent);
@@ -13648,6 +13671,26 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.18),
     0 0 10px rgba(187, 207, 102, 0.14);
+}
+/* Grok + Cursor were missing here, so the transcript run header ("Cursor
+ * Done #…") fell back to the base .run-card-provider colour — making
+ * Cursor read identical to Grok. Drive each off its theme token (Grok
+ * monochrome, Cursor mustard). */
+.run-card-provider.provider-grok {
+  color: var(--provider-grok-color);
+  border-color: color-mix(in srgb, var(--provider-grok-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-grok-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-grok-color) 14%, transparent);
+}
+.run-card-provider.provider-cursor {
+  color: var(--provider-cursor-color);
+  border-color: color-mix(in srgb, var(--provider-cursor-color) 32%, transparent);
+  background: color-mix(in srgb, var(--provider-cursor-color) 12%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 0 10px color-mix(in srgb, var(--provider-cursor-color) 14%, transparent);
 }
 
 /* Status chip — same rim-shine pattern per tone. Each tone
@@ -25005,6 +25048,16 @@ input:disabled, select:disabled, textarea:disabled {
   box-shadow:
     inset 0 1px 0 rgba(0, 0, 0, 0.10),
     0 0 8px rgba(187, 207, 102, 0.18);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .run-card-provider.provider-grok {
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.10),
+    0 0 8px color-mix(in srgb, var(--provider-grok-color) 18%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .run-card-provider.provider-cursor {
+  box-shadow:
+    inset 0 1px 0 rgba(0, 0, 0, 0.10),
+    0 0 8px color-mix(in srgb, var(--provider-cursor-color) 18%, transparent);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]) .run-card-status {
   box-shadow:
