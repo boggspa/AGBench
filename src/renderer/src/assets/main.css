@@ -20287,6 +20287,13 @@ input:disabled, select:disabled, textarea:disabled {
   border: 1px solid color-mix(in srgb, #ffffff 8%, transparent);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
+[data-composer-style="kimi"] .composer-surface::before {
+  /* The base composer edge gradient (~main.css 6566) is blue and the
+   * provider-tinted variants only override it on a matching transcript. The
+   * Kimi shell wants a solid dark/gray surface, so suppress the leaked edge
+   * entirely (its above-bar::before is already hidden above). */
+  display: none;
+}
 [data-composer-style="kimi"] .composer-surface:focus-within {
   border-color: color-mix(in srgb, #a9bd55 50%, transparent);
   box-shadow:
