@@ -37,7 +37,10 @@ interface RemoteWorkspaceEntry {
   updatedAt: number
 }
 
-const PROVIDER_OPTIONS = ['gemini', 'codex', 'claude', 'kimi'] as const
+// 1.0.6-CRUX31 — grok + cursor are first-class; include them in the remote
+// bridge allowlist provider toggles too (the Remote/iOS scope was expanded
+// per Chris's call to lift the earlier "don't expand Remote/iOS" constraint).
+const PROVIDER_OPTIONS = ['gemini', 'codex', 'claude', 'kimi', 'grok', 'cursor'] as const
 const APPROVAL_MODE_OPTIONS = ['default', 'plan'] as const
 
 export function RemoteWorkspacesPanel(): ReactElement {
