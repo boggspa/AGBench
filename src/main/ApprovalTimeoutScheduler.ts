@@ -63,7 +63,9 @@ export const DEFAULT_APPROVAL_TIMEOUT_POLICY: ApprovalTimeoutPolicy = {
     kimi: 60_000,
     // Grok is read-only/plan-mode (G3) so approvals shouldn't fire, but the
     // Record<ProviderId> requires a value — mirror the Claude/Gemini window.
-    grok: 120_000
+    grok: 120_000,
+    // Cursor (gated, CR) — mirror the Claude/Gemini window.
+    cursor: 120_000
   },
   mainTimeoutMs: 60_000,
   perKindOverridesMs: {

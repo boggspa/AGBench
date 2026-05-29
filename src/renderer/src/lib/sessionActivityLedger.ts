@@ -13,7 +13,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   claude: 'Claude',
   gemini: 'Gemini',
   kimi: 'Kimi',
-  grok: 'Grok'
+  grok: 'Grok',
+  cursor: 'Cursor'
 }
 
 export function withSessionActivityLedger(

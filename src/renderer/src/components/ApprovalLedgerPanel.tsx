@@ -53,7 +53,8 @@ const PROVIDER_LABELS: Record<ProviderId, string> = {
   codex: 'Codex',
   claude: 'Claude',
   kimi: 'Kimi',
-  grok: 'Grok'
+  grok: 'Grok',
+  cursor: 'Cursor'
 }
 
 export interface ApprovalLedgerPanelProps {

@@ -4049,7 +4049,12 @@ function scheduleNextTaskTimer() {
 }
 
 function providerBinaryName(provider: ProviderId): string {
-  return provider === 'kimi' ? 'kimi' : provider === 'claude' ? 'claude' : provider
+  if (provider === 'kimi') return 'kimi'
+  if (provider === 'claude') return 'claude'
+  // Cursor's CLI binary is `cursor-agent` (installed to ~/.local/bin); the
+  // unconditional ~/.local/bin candidate below resolves it.
+  if (provider === 'cursor') return 'cursor-agent'
+  return provider
 }
 
 function expandHomePath(value?: string | null): string {

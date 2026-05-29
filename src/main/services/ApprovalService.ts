@@ -401,7 +401,10 @@ export class ApprovalService {
         kimi: userSettings.perProviderMs.kimi,
         // Grok is read-only (G3) with no user-tunable per-provider timeout
         // yet (G7); pin to the built-in default so the policy stays complete.
-        grok: 120_000
+        grok: 120_000,
+        // Cursor (gated, CR) — pin to the built-in default until a per-provider
+        // timeout setting exists.
+        cursor: 120_000
       },
       mainTimeoutMs: userSettings.mainAuthorityMs
     })

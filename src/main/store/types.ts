@@ -144,12 +144,12 @@ export type ComposerStyle =
    * Pairs natively with the `alabaster` theme.
    */
   | 'alabaster'
-// 'grok' is gated behind AGBENCH_EXPERIMENTAL_GROK (default off). It is a
-// real ProviderId at the type level (so adapters/records compile), but it is
-// deliberately kept OUT of every user-visible array + validation Set unless
-// the gate is on, so the gate-off state is structurally inert. NOTE: this is
-// distinct from the visual-only `'grok'` ComposerStyle above.
-export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok'
+// 'grok' is now first-class (gate lifted). 'cursor' (Composer 2.5) is gated
+// behind AGBENCH_EXPERIMENTAL_CURSOR (default OFF) — a real ProviderId at the
+// type level (so adapters/records compile), but kept OUT of every user-visible
+// array + validation Set unless the gate is on, so the gate-off state is
+// structurally inert (the same discipline Grok used at G2).
+export type ProviderId = 'gemini' | 'codex' | 'claude' | 'kimi' | 'grok' | 'cursor'
 export type ChatScope = 'workspace' | 'global'
 export type ChatKind = 'single' | 'ensemble'
 export type AgenticServiceId = 'shellCommands' | 'fileChanges' | 'mcpTools' | 'subThreadDelegation'

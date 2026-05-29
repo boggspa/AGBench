@@ -147,7 +147,7 @@ describe('ApprovalTimeoutScheduler', () => {
 
   it('per-kind override beats main-authority and provider default', () => {
     const policy: ApprovalTimeoutPolicy = {
-      defaultTimeoutsMs: { codex: 30_000, claude: 120_000, gemini: 120_000, kimi: 60_000, grok: 120_000 },
+      defaultTimeoutsMs: { codex: 30_000, claude: 120_000, gemini: 120_000, kimi: 60_000, grok: 120_000, cursor: 120_000 },
       mainTimeoutMs: 60_000,
       perKindOverridesMs: { 'hostCommand/rerun': 90_000 }
     }

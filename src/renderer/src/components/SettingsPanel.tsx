@@ -605,7 +605,8 @@ const SETTINGS_PROVIDER_LABELS: Record<ProviderId, string> = {
   claude: 'Claude',
   gemini: 'Gemini',
   kimi: 'Kimi',
-  grok: 'Grok'
+  grok: 'Grok',
+  cursor: 'Cursor'
 }
 
 type McpToolGroup =

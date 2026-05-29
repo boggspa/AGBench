@@ -27,7 +27,9 @@ const TRANSPORT_BY_PROVIDER: Record<ProviderId, ProviderAuthTransport> = {
   claude: 'sdk',
   kimi: 'cli',
   // Grok (gated, G3) runs via the local headless CLI stream.
-  grok: 'cli'
+  grok: 'cli',
+  // Cursor (gated, CR) runs via the cursor-agent headless stream-json CLI.
+  cursor: 'cli'
 }
 
 const APPROVAL_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
@@ -36,7 +38,10 @@ const APPROVAL_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   claude: false,
   kimi: true,
   // Read-only G3 has no approval flow yet (G5 will add write-capable runs).
-  grok: false
+  grok: false,
+  // CR4 ships read-only; CR6 flips this true when write mode routes through the
+  // approval ledger.
+  cursor: false
 }
 
 const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
@@ -45,7 +50,9 @@ const MCP_STATUS_SUPPORT_BY_PROVIDER: Record<ProviderId, boolean> = {
   claude: false,
   kimi: false,
   // No AGBench MCP for Grok until G5.
-  grok: false
+  grok: false,
+  // Cursor MCP is workspace-config-based (CR6), not a live status surface.
+  cursor: false
 }
 
 export function buildProviderAuthStatusV2(

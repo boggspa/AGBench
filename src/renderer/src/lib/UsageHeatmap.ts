@@ -31,7 +31,8 @@ export const HEATMAP_PROVIDER_COLOR_HEX: Record<ProviderId, string> = {
   // a near-white cell (mirrors --provider-grok-color, which adapts to
   // the active theme where it can; this static hex is the dark-surface
   // case the heatmap always renders against).
-  grok: '#E5E7EB'
+  grok: '#E5E7EB',
+  cursor: '#06B6D4'
 }
 
 export interface HeatmapCell {

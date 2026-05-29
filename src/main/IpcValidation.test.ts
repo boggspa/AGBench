@@ -104,6 +104,39 @@ describe('IpcValidation', () => {
     }
   })
 
+  it('rejects Cursor at the IPC trust boundary by default (gate off)', () => {
+    // CR2 — Cursor is gated OFF by default; the IPC boundary (gate #1) rejects
+    // it until AGBENCH_EXPERIMENTAL_CURSOR is set. This is the inert-gate
+    // guarantee: no Cursor run can dispatch with the flag unset.
+    const previous = process.env.AGBENCH_EXPERIMENTAL_CURSOR
+    delete process.env.AGBENCH_EXPERIMENTAL_CURSOR
+    try {
+      expect(() =>
+        validateIpcArgs('run-agent', [
+          { provider: 'cursor', workspace: '/tmp/workspace', prompt: 'hello' }
+        ])
+      ).toThrow(/known provider/)
+    } finally {
+      if (previous === undefined) delete process.env.AGBENCH_EXPERIMENTAL_CURSOR
+      else process.env.AGBENCH_EXPERIMENTAL_CURSOR = previous
+    }
+  })
+
+  it('accepts Cursor at the IPC trust boundary when AGBENCH_EXPERIMENTAL_CURSOR is set', () => {
+    const previous = process.env.AGBENCH_EXPERIMENTAL_CURSOR
+    process.env.AGBENCH_EXPERIMENTAL_CURSOR = '1'
+    try {
+      expect(() =>
+        validateIpcArgs('run-agent', [
+          { provider: 'cursor', workspace: '/tmp/workspace', prompt: 'hello' }
+        ])
+      ).not.toThrow()
+    } finally {
+      if (previous === undefined) delete process.env.AGBENCH_EXPERIMENTAL_CURSOR
+      else process.env.AGBENCH_EXPERIMENTAL_CURSOR = previous
+    }
+  })
+
   it('validates approval actions and external grant access', () => {
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'accept'])).not.toThrow()
     expect(() => validateIpcArgs('respond-agent-approval', ['approval-1', 'maybe'])).toThrow(

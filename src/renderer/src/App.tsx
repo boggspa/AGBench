@@ -2415,7 +2415,9 @@ function WelcomeUsageDashboard({
     kimi: '#bbcf66',
     // Grok — monochrome identity; the dashboard rails sit on a dark
     // surface, so the "white" end of black/white reads here.
-    grok: '#e6e6e8'
+    grok: '#e6e6e8',
+    // Cursor (gated) — cyan identity, distinct from the five.
+    cursor: '#56c8d8'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
@@ -7649,7 +7651,8 @@ function App(): React.JSX.Element {
     codex: [],
     claude: [],
     kimi: [],
-    grok: []
+    grok: [],
+    cursor: []
   })
   const usageSummarySignatureRef = useRef('')
   const usageRecordsSignatureRef = useRef('')

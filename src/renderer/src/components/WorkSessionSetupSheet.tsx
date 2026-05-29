@@ -242,7 +242,7 @@ export function WorkSessionSetupSheet({
       maxDurationMs,
       enableScoutPass,
       startedAt: new Date().toISOString(),
-      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0 },
+      roundsUsed: { codex: 0, claude: 0, gemini: 0, kimi: 0, grok: 0, cursor: 0 },
       totalRoundsUsed: 0
     }
     onConfirm({

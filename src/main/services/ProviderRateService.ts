@@ -141,6 +141,18 @@ export const BAKED_IN_RATES: Record<ProviderId, ProviderRateTable> = {
       }
     ]
   },
+  // Cursor / Composer 2.5 (gated, CR). AGBench drives Cursor through the
+  // cursor-agent CLI on the user's Cursor subscription (token-based, billed by
+  // Cursor), and the stream-json `result.usage` reports real tokens. Public
+  // per-token pricing for composer-2.5 isn't published as a clean rate, so we
+  // ship an EMPTY models list: usage tokens are still tracked, cost shows 0
+  // until a verified rate lands, and the empty list keeps Cursor OUT of the
+  // rate-prober fetch loop (skip-empty-models leak mitigation).
+  cursor: {
+    provider: 'cursor',
+    pricingUrl: '',
+    models: []
+  },
   codex: {
     provider: 'codex',
     pricingUrl: 'https://openai.com/api/pricing',

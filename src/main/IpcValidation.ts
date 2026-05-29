@@ -1,5 +1,6 @@
 import type { IpcMain } from 'electron'
 import { experimentalGrokProviderEnabled } from './grokGate'
+import { experimentalCursorProviderEnabled } from './cursorGate'
 
 type ArgSpec =
   | 'any'
@@ -298,7 +299,9 @@ function validateArg(channel: string, spec: ArgSpec, value: unknown, index: numb
   if (
     (spec === 'provider' || spec === 'optionalProvider') &&
     (typeof value !== 'string' ||
-      (!PROVIDERS.has(value) && !(value === 'grok' && experimentalGrokProviderEnabled())))
+      (!PROVIDERS.has(value) &&
+        !(value === 'grok' && experimentalGrokProviderEnabled()) &&
+        !(value === 'cursor' && experimentalCursorProviderEnabled())))
   )
     throw new Error(`${label} must be a known provider.`)
   if (spec === 'approvalAction' && (typeof value !== 'string' || !APPROVAL_ACTIONS.has(value)))

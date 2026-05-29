@@ -39,7 +39,9 @@ const PROVIDER_FALLBACK_WINDOW: Record<ProviderId, number> = {
   claude: 200_000,
   kimi: 256_000,
   // Grok (gated) — placeholder until G10 wires real model metadata.
-  grok: 256_000
+  grok: 256_000,
+  // Cursor (gated) — Composer 2.5 placeholder until real metadata.
+  cursor: 200_000
 }
 
 export function resolveContextWindow(
