@@ -1,13 +1,20 @@
-// Pure helpers for building the READ-ONLY Grok CLI argv. Kept free of
-// Electron / IPC / fs imports so it can be unit-tested directly. The flags
-// match `grok --help` on 0.2.3 (the CLI is closely modelled on Claude Code,
-// so `--deny` == Claude's `--disallowedTools`).
+// Pure helpers for building the Grok CLI argv. Kept free of Electron / IPC / fs
+// imports so it can be unit-tested directly. The flags match `grok --help` on
+// 0.2.8 (the CLI is closely modelled on Claude Code, so `--deny` ==
+// `--disallowedTools` and `--permission-mode acceptEdits` mirrors Claude's).
 //
-// Read-only by construction (G3): the builder ALWAYS forces
-// `--permission-mode plan` and denies the write/shell/edit tools, disables web
-// search, and NEVER emits `--always-approve` (or any acceptEdits / auto /
-// bypassPermissions mode). Write-capable Grok is a later, separately-gated
-// slice (G5).
+// PERMISSION POSTURE (keyed off the composer's approval mode, exactly like
+// Claude — see claudePermissionModeForApproval):
+//   - approvalMode === 'plan' (or unset) → READ-ONLY: `--permission-mode plan`
+//     + deny Bash/Edit/Write. Nothing is written.
+//   - any other approval mode → FILE-WRITE: `--permission-mode acceptEdits`
+//     so native Edit/Write are applied (then surfaced + gated by AGBench's
+//     diff / Create-PR review, the same workspace-authority model AGBench uses
+//     for Codex/Claude). Native **Bash stays denied** — AGBench can't mediate
+//     Grok's native shell without an MCP server, and Grok 0.2.8 has no per-run
+//     `--mcp-config` flag (G5c-ACP routes shell through AGBench's MCP + the
+//     approval ledger instead).
+// In NO mode is `--always-approve` ever emitted.
 
 const GROK_EFFORT_LEVELS = new Set(['low', 'medium', 'high', 'xhigh', 'max'])
 
@@ -23,6 +30,19 @@ export function normalizeGrokEffortFlag(value: string | null | undefined): strin
  * tool-name grammar, so these map to `--disallowedTools` semantics.
  */
 export const GROK_READ_ONLY_DENY_RULES = ['Bash(*)', 'Edit(*)', 'Write(*)'] as const
+
+/**
+ * Deny rules for FILE-WRITE mode: Edit/Write are allowed (diff-reviewed via
+ * AGBench), but native shell stays denied — AGBench can't mediate Grok's Bash
+ * without an MCP server, and 0.2.8 has no per-run `--mcp-config`. Shell
+ * mediation is the ACP path (G5c-ACP: AGBench MCP + approval ledger).
+ */
+export const GROK_WRITE_MODE_DENY_RULES = ['Bash(*)'] as const
+
+/** True when the approval mode permits writes (anything other than read-only plan). */
+export function grokWriteCapable(approvalMode: string | null | undefined): boolean {
+  return typeof approvalMode === 'string' && approvalMode.trim() !== '' && approvalMode !== 'plan'
+}
 
 export interface BuildGrokCliArgsInput {
   prompt: string
@@ -40,9 +60,16 @@ export interface BuildGrokCliArgsInput {
    * turns for the resume to attach.
    */
   providerSessionId?: string | null
+  /**
+   * G5c — the composer's approval mode. `'plan'`/unset = read-only;
+   * anything else = file-write (acceptEdits + Edit/Write allowed, Bash still
+   * denied). Mirrors Claude's claudePermissionModeForApproval.
+   */
+  approvalMode?: string | null
 }
 
 export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
+  const writeCapable = grokWriteCapable(input.approvalMode)
   const args: string[] = [
     '--no-auto-update',
     '-p',
@@ -52,10 +79,13 @@ export function buildGrokCliArgs(input: BuildGrokCliArgsInput): string[] {
     '--output-format',
     'streaming-json',
     '--permission-mode',
-    'plan',
+    // acceptEdits applies file edits without an interactive prompt (they're
+    // reviewed via AGBench's diff/Create-PR surface); plan writes nothing.
+    writeCapable ? 'acceptEdits' : 'plan',
     '--disable-web-search'
   ]
-  for (const rule of GROK_READ_ONLY_DENY_RULES) {
+  const denyRules = writeCapable ? GROK_WRITE_MODE_DENY_RULES : GROK_READ_ONLY_DENY_RULES
+  for (const rule of denyRules) {
     args.push('--deny', rule)
   }
   // G6 — resume the prior session by id (persistent conversation). Only emit

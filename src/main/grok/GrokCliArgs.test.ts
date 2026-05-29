@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { buildGrokCliArgs, normalizeGrokEffortFlag, GROK_READ_ONLY_DENY_RULES } from './GrokCliArgs'
+import {
+  buildGrokCliArgs,
+  normalizeGrokEffortFlag,
+  grokWriteCapable,
+  GROK_READ_ONLY_DENY_RULES,
+  GROK_WRITE_MODE_DENY_RULES
+} from './GrokCliArgs'
 
 describe('normalizeGrokEffortFlag', () => {
   it('returns null for nullish, empty, or off values', () => {
@@ -112,5 +118,63 @@ describe('buildGrokCliArgs', () => {
     expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
     expect(args).toContain('Bash(*)')
     expect(args).not.toContain('--always-approve')
+  })
+
+  it('G5c — read-only when approvalMode is plan / unset', () => {
+    for (const approvalMode of [undefined, null, '', '   ', 'plan']) {
+      const args = buildGrokCliArgs({ ...base, approvalMode })
+      expect(args[args.indexOf('--permission-mode') + 1]).toBe('plan')
+      // All three write/shell tools denied.
+      expect(args).toContain('Edit(*)')
+      expect(args).toContain('Write(*)')
+      expect(args).toContain('Bash(*)')
+    }
+  })
+
+  it('G5c — file-write mode (non-plan): acceptEdits, Edit/Write allowed, Bash still denied', () => {
+    const args = buildGrokCliArgs({ ...base, approvalMode: 'default' })
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
+    // Edit/Write are NO LONGER denied (they're applied + diff-reviewed).
+    expect(args).not.toContain('Edit(*)')
+    expect(args).not.toContain('Write(*)')
+    // Native shell stays denied — AGBench can't mediate Grok's Bash headless.
+    const denied = args
+      .map((value, index) => (value === '--deny' ? args[index + 1] : null))
+      .filter((value): value is string => value !== null)
+    expect(denied).toEqual([...GROK_WRITE_MODE_DENY_RULES])
+    expect(denied).toEqual(['Bash(*)'])
+  })
+
+  it('G5c — write mode NEVER emits --always-approve (no auto-approve escape hatch)', () => {
+    expect(buildGrokCliArgs({ ...base, approvalMode: 'default' })).not.toContain('--always-approve')
+    expect(buildGrokCliArgs({ ...base, approvalMode: 'acceptEdits' })).not.toContain(
+      '--always-approve'
+    )
+    expect(buildGrokCliArgs({ ...base, approvalMode: 'auto' })).not.toContain('--always-approve')
+  })
+
+  it('G5c — write mode composes with resume + model', () => {
+    const args = buildGrokCliArgs({
+      ...base,
+      approvalMode: 'default',
+      providerSessionId: 'sess_x',
+      model: 'grok-code-fast-1'
+    })
+    expect(args[args.indexOf('--permission-mode') + 1]).toBe('acceptEdits')
+    expect(args[args.indexOf('--resume') + 1]).toBe('sess_x')
+    expect(args[args.indexOf('--model') + 1]).toBe('grok-code-fast-1')
+  })
+})
+
+describe('grokWriteCapable', () => {
+  it('is false for read-only (plan / empty / nullish), true otherwise', () => {
+    expect(grokWriteCapable(undefined)).toBe(false)
+    expect(grokWriteCapable(null)).toBe(false)
+    expect(grokWriteCapable('')).toBe(false)
+    expect(grokWriteCapable('   ')).toBe(false)
+    expect(grokWriteCapable('plan')).toBe(false)
+    expect(grokWriteCapable('default')).toBe(true)
+    expect(grokWriteCapable('acceptEdits')).toBe(true)
+    expect(grokWriteCapable('auto')).toBe(true)
   })
 })

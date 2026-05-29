@@ -177,10 +177,13 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
     }
   }
   if (provider === 'grok') {
-    // Gated, read-only G3. Conservative capabilities: plan-mode only, no
-    // app-managed approvals, no MCP bridge, no session resume yet (those land
-    // in G5/G6). Without this branch grok would inherit the Claude default
-    // below, advertising providerManagedMcp/sessionResumption it does not have.
+    // First-class Grok. G6 landed persistent sessions (headless `--resume`);
+    // G5c landed file-write mode (`acceptEdits` + Edit/Write, diff/PR-reviewed —
+    // `approvalModes: ['plan','default']`). Still NO app-managed per-tool
+    // approval cards + no MCP bridge: native shell stays denied and shell
+    // mediation (the AGBench MCP + approval ledger) is the gated ACP path
+    // (G5c-ACP). Without this branch grok would inherit the Claude default
+    // below, advertising providerManagedMcp it does not have.
     return {
       provider,
       label: providerLabel(provider),
@@ -188,7 +191,7 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
       runChannel: 'run-agent',
       capabilitySource: 'provider',
       features: {
-        persistentSessions: false,
+        persistentSessions: true,
         appManagedApprovals: false,
         workspaceGrants: false,
         agentBenchMcpBridge: false,
@@ -197,12 +200,12 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         hostCommandFallback: false
       },
       capabilities: {
-        approvalModes: ['plan'],
+        approvalModes: ['plan', 'default'],
         reasoningEffort: true,
         speedTiers: [],
         imageAttachments: false,
         contextInjection: false,
-        sessionResumption: false,
+        sessionResumption: true,
         perThreadMcp: false
       }
     }
