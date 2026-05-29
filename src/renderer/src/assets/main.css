@@ -4644,7 +4644,11 @@ button.sidebar-item {
  * screen (the overlap was shell-agnostic). */
 .app-transcript.welcome-mode {
   overflow-y: auto;
-  justify-content: safe center;
+  /* 1.0.6-CRUX28 — top-anchor the welcome content with a fixed 120px clearance
+   * (was `safe center`). Content starts 120px from the top and scrolls if it
+   * overflows; the top stays reachable (flex-start never clips). */
+  justify-content: flex-start;
+  padding-top: 120px;
 }
 /* The messages scroller is empty on the welcome screen (the greeting lives in
  * the composer-area); remove it from the flex column so the flowed dashboard +
@@ -4656,7 +4660,8 @@ button.sidebar-item {
   position: relative;
   top: auto;
   width: 100%;
-  margin-top: var(--space-md);
+  /* No extra top margin — the container's 120px padding IS the clearance. */
+  margin-top: 0;
   flex: 0 0 auto;
 }
 .app-transcript.welcome-mode .composer-area {
