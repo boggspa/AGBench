@@ -20359,6 +20359,21 @@ input:disabled, select:disabled, textarea:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* 1.0.6-CRUX22 — single-line capsule height, declared on the surface
+   * (an ANCESTOR of the lifted controls so the var inherits down to
+   * them). Used by the bottom-align lift below to convert the original
+   * TOP offsets into capsule-bottom-tracking offsets via `anchor()`.
+   * This MUST equal the rendered single-line `.composer-textarea-wrap`
+   * height, so it's expressed as the SAME formula that drives it rather
+   * than a brittle pixel literal: the textarea's single-line border-box
+   * is `min-height: calc(1.55em + 22px) !important` (field-sizing:
+   * content) where `em` is the shell's textarea `font-size:
+   * var(--font-size-md)`, i.e. 1.55·--font-size-md + 22px; plus the
+   * capsule's own 3px×2 padding + 1px×2 border = +8px. So:
+   *   1.55·--font-size-md + 22 + 8 = 1.55·--font-size-md + 30px.
+   * Because it tracks --font-size-md, single-line stays exact even if
+   * the composer font scale changes. Cursor shares identical geometry. */
+  --composer-capsule-single-h: calc(1.55 * var(--font-size-md) + 30px);
 }
 [data-composer-style="gemini"] .composer-surface::before {
   content: none;
@@ -20378,6 +20393,12 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 26px;
   box-shadow: var(--gemini-capsule-shadow);
   transition: border-color 200ms ease, box-shadow 200ms ease;
+  /* 1.0.6-CRUX22 — name the capsule so the lifted +/model/send can
+   * anchor to ITS bottom edge (not the surface's). The capsule grows
+   * downward with multi-line text, so anchoring here makes the three
+   * controls ride the last line. No-op for other shells (nobody else
+   * references this anchor name). */
+  anchor-name: --composer-capsule;
 }
 [data-composer-style="gemini"] .composer-textarea-wrap:focus-within {
   border-color: var(--gemini-capsule-border-focus);
@@ -20430,23 +20451,36 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="gemini"] [data-composer-control="workspace"] { order: 4; }
 
 /* ---- LIFT: +/model/send onto the capsule's row ----
- * Anchored to `.composer-surface` (position:relative) and pinned to
- * the TOP — the capsule (`.composer-textarea-wrap`) is always the
- * first visible child (chips/top-toggles are hidden for Gemini), so
- * `top: 10px` lands them ~10px inside the pill regardless of what
- * renders below (satellite row / image strip / GEMINI.md panel /
- * meta strip) — immune to the bottom-anchor's height coupling. The
- * textarea's 46px / 184px gutters reserve the horizontal space. */
+ * Anchored to `.composer-surface` (position:relative) as the containing
+ * block, but positioned against the CAPSULE's bottom edge via CSS
+ * anchor positioning (`anchor-name: --composer-capsule` on the wrap).
+ *
+ * 1.0.6-CRUX22 — bottom-align on multi-line. The capsule grows DOWNWARD
+ * as the textarea wraps, so the three controls must ride its bottom (the
+ * last line) like the official Gemini/Cursor composers. Each `top` is:
+ *     anchor(--composer-capsule bottom)  → the capsule's live bottom,
+ *                                          measured from the surface top
+ *   − var(--composer-capsule-single-h)   → its single-line height
+ *   + <original TOP offset>              → the hand-tuned single-line
+ *                                          inset (12 / 13 / 12 below)
+ * When single-line, anchor(bottom) == the single-line height, so the
+ * first two terms cancel and `top` collapses to EXACTLY the original
+ * pixel offset — single-line is byte-identical to before. When the
+ * capsule grows by Δ, anchor(bottom) grows by Δ and each control drops
+ * by Δ, holding a constant gap above the (new) capsule bottom. The
+ * textarea's 46px / 224px gutters still reserve the horizontal space. */
 [data-composer-style="gemini"] [data-composer-control="attach"] {
   position: absolute;
-  top: 12px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 12px);
   left: 10px;
   margin: 0;
   z-index: 3;
 }
 [data-composer-style="gemini"] [data-composer-control="model"] {
   position: absolute;
-  top: 13px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 13px);
   right: 50px;
   max-width: 172px;
   margin: 0;
@@ -20456,7 +20490,8 @@ input:disabled, select:disabled, textarea:disabled {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  top: 12px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 12px);
   right: 12px;
   z-index: 3;
 }
@@ -33326,6 +33361,14 @@ input:disabled, select:disabled, textarea:disabled {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* 1.0.6-CRUX22 — single-line capsule height (see the matching Gemini
+   * note for the derivation). Cursor shares the capsule geometry
+   * (min-height 50, padding 3px 0, border 1px) and the same textarea
+   * `font-size: var(--font-size-md)` + `line-height: 1.55` + base
+   * `min-height: calc(1.55em + 22px) !important`, so its single-line
+   * height is the identical formula. Declared on the surface so it
+   * inherits down to the lifted controls for the lift below. */
+  --composer-capsule-single-h: calc(1.55 * var(--font-size-md) + 30px);
 }
 [data-composer-style="cursor"] .composer-surface::before {
   content: none !important;
@@ -33346,6 +33389,9 @@ input:disabled, select:disabled, textarea:disabled {
   border-radius: 26px;
   box-shadow: inset 0 1px 0 var(--cursor-shell-rim);
   transition: border-color 200ms ease, box-shadow 200ms ease;
+  /* 1.0.6-CRUX22 — anchor target for the lifted +/model/send so they
+   * ride the capsule's bottom edge on multi-line (see Gemini note). */
+  anchor-name: --composer-capsule;
 }
 [data-composer-style="cursor"] .composer-textarea-wrap:focus-within {
   border-color: var(--cursor-shell-rim-strong);
@@ -33393,18 +33439,25 @@ input:disabled, select:disabled, textarea:disabled {
 [data-composer-style="cursor"] [data-composer-control="workspace"] { order: 4; }
 
 /* ---- LIFT: +/model/send onto the capsule's row ----
- * Anchored to `.composer-surface` (position:relative), top-pinned into
- * the pill. The textarea's 48px / 224px gutters reserve the space. */
+ * Containing block is `.composer-surface` (position:relative); the
+ * controls position against the CAPSULE's bottom edge via anchor
+ * positioning so they bottom-align on multi-line. See the Gemini lift
+ * note for the `top: calc(anchor(bottom) - single-h + <offset>)` math —
+ * single-line collapses to the original 16/17/16 px insets exactly, and
+ * multi-line tracks the capsule bottom. The textarea's 46px / 224px
+ * gutters reserve the horizontal space. */
 [data-composer-style="cursor"] [data-composer-control="attach"] {
   position: absolute;
-  top: 16px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 16px);
   left: 10px;
   margin: 0;
   z-index: 3;
 }
 [data-composer-style="cursor"] [data-composer-control="model"] {
   position: absolute;
-  top: 17px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 17px);
   right: 50px;
   max-width: 172px;
   margin: 0;
@@ -33414,7 +33467,8 @@ input:disabled, select:disabled, textarea:disabled {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  top: 16px;
+  position-anchor: --composer-capsule;
+  top: calc(anchor(--composer-capsule bottom) - var(--composer-capsule-single-h) + 16px);
   right: 12px;
   z-index: 3;
 }
