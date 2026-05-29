@@ -20102,47 +20102,169 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 
-[data-composer-style="gemini"] .composer-surface {
-  border-radius: 28px;
-  padding: 14px 18px 8px;
-  background: color-mix(in srgb, #0e1218 94%, transparent);
-  border: 1px solid color-mix(in srgb, #5a8cff 18%, transparent);
-  box-shadow: 0 4px 28px rgba(0, 0, 0, 0.42);
+/* ============================================================
+ * 1.0.6-CS3 — GEMINI single-row CAPSULE rework.
+ *
+ * Reference (official Gemini composer): ONE rounded pill —
+ *     [ + ]   Ask Gemini …            [ model ]  [ send ]
+ * with permission / turn-mode / provider / workspace + the meta
+ * strip demoted to a transparent SATELLITE row below the capsule.
+ *
+ * THEME-CONSISTENCY (the headline fix — Gemini used to render
+ * wildly differently per theme): every theme family sets ONLY the
+ * `--gemini-capsule-*` palette tokens; all the structural rules are
+ * shared, so the capsule is identical in SHAPE across dark / light /
+ * alabaster / obsidian — only the palette differs.
+ *
+ * LAYOUT MECHANISM (CSS-only, no DOM change): the textarea and the
+ * buttons live in two stacked DOM containers (`.composer-textarea-wrap`
+ * above; the `.composer-inline-pickers` row below). To put +/model/send
+ * ON the textarea's visual row we LIFT them with `position: absolute`
+ * anchored to `.composer-surface` (`position: relative`) and top-pinned
+ * into the pill — same spirit as Obsidian's single send-button lift,
+ * extended here to three controls. The textarea reserves left/right
+ * gutters so its text never runs under them. The remaining controls
+ * flow normally as the transparent satellite row beneath.
+ * ============================================================ */
+
+/* ---- Capsule palette tokens (dark default; also covers obsidian +
+ * alabaster, whose Gemini chrome is intentionally dark navy). ---- */
+[data-composer-style="gemini"] {
+  --gemini-capsule-fill: linear-gradient(180deg, #141d30 0%, #0d1320 100%);
+  --gemini-capsule-border: color-mix(in srgb, #5a8cff 22%, transparent);
+  --gemini-capsule-border-focus: color-mix(in srgb, #5a8cff 58%, transparent);
+  --gemini-capsule-shadow: 0 6px 30px rgba(0, 0, 0, 0.42);
+  --gemini-capsule-shadow-focus:
+    0 6px 34px rgba(0, 0, 0, 0.46),
+    0 0 0 4px color-mix(in srgb, #5a8cff 12%, transparent);
 }
+
+/* Surface → invisible vertical shell. The capsule lives on the
+ * textarea-wrap; the satellite row + meta strip sit below it,
+ * transparent. `position: relative` + `overflow: visible` so the
+ * lifted +/model/send aren't clipped.
+ *
+ * `!important` on the fill/border/shadow is load-bearing: the
+ * `[data-appearance="native_glass"] :is(…, .composer-surface)` rule
+ * (line ~18337) paints a dark glass fill at (0,3,0), which beats this
+ * shell rule's (0,2,0) — without `!important` the surface re-appears
+ * as a sharp-cornered rectangle behind the capsule. Same approach the
+ * Modular/Satellite shells use to stay invisible under native glass. */
+[data-composer-style="gemini"] .composer-surface,
 [data-composer-style="gemini"] .composer-surface:focus-within {
-  border-color: color-mix(in srgb, #5a8cff 56%, transparent);
-  box-shadow:
-    0 4px 32px rgba(0, 0, 0, 0.46),
-    0 0 0 4px color-mix(in srgb, #5a8cff 10%, transparent);
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  padding: 0;
+  border-radius: 0;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+[data-composer-style="gemini"] .composer-surface::before {
+  content: none;
+}
+
+/* THE CAPSULE — the single rounded pill. Holds only the textarea;
+ * +/model/send are lifted into it (lift block below). */
+[data-composer-style="gemini"] .composer-textarea-wrap {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  min-height: 50px;
+  padding: 3px 0;
+  background: var(--gemini-capsule-fill);
+  border: 1px solid var(--gemini-capsule-border);
+  border-radius: 26px;
+  box-shadow: var(--gemini-capsule-shadow);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
+}
+[data-composer-style="gemini"] .composer-textarea-wrap:focus-within {
+  border-color: var(--gemini-capsule-border-focus);
+  box-shadow: var(--gemini-capsule-shadow-focus);
 }
 [data-composer-style="gemini"] .composer-textarea {
+  flex: 1;
   background: transparent;
   border: 0;
-  padding: 6px 6px 10px;
-  min-height: 48px;
+  /* left gutter clears the [+]; right gutter clears [model][send] —
+   * sized for the widest realistic model label (e.g. "Claude Opus
+   * 4.7 1M") so the right-anchored model pill never overlaps text. */
+  padding: 9px 224px 9px 46px;
+  min-height: 32px;
   font-size: var(--font-size-md);
 }
 [data-composer-style="gemini"] .composer-textarea::placeholder {
   color: color-mix(in srgb, #ffffff 38%, transparent);
 }
 
+/* SATELLITE row — the demoted controls (permission / turn-mode /
+ * provider / workspace) flow here, transparent, below the capsule.
+ * `.composer-control-footer` dissolves so `.composer-inline-pickers`
+ * becomes a direct column item of the surface (stable lift anchor). */
+[data-composer-style="gemini"] .composer-control-footer {
+  display: contents;
+}
 [data-composer-style="gemini"] .composer-inline-pickers {
   margin-top: 0;
+  padding: 0 6px;
+  overflow: visible;
 }
 [data-composer-style="gemini"] .composer-inline-pickers-left {
   display: flex;
   align-items: center;
   gap: 6px;
   flex: 1;
+  /* `overflow: visible` is load-bearing: the lifted [+] and [model]
+   * are abs-positioned children of this row and extend ABOVE it into
+   * the capsule. The base rule's `overflow-y: hidden` would clip them. */
+  overflow: visible;
 }
-[data-composer-style="gemini"] [data-composer-control="attach"] { order: 0; }
+/* Satellite ordering — the lifted +/model/send are removed from this
+ * flow, so only these four remain: permission · turn · provider · ws. */
 [data-composer-style="gemini"] [data-composer-control="permission"] { order: 1; }
 [data-composer-style="gemini"] [data-composer-control="ensemble-mode"] { order: 2; }
 [data-composer-style="gemini"] [data-composer-control="provider"] { order: 3; }
 /* 1.0.5-AR12 — Workspace pill matches Gemini's softened outline-chip
  * family (provider chip pattern at line 19060). */
 [data-composer-style="gemini"] [data-composer-control="workspace"] { order: 4; }
-[data-composer-style="gemini"] [data-composer-control="model"] { order: 5; margin-left: auto; }
+
+/* ---- LIFT: +/model/send onto the capsule's row ----
+ * Anchored to `.composer-surface` (position:relative) and pinned to
+ * the TOP — the capsule (`.composer-textarea-wrap`) is always the
+ * first visible child (chips/top-toggles are hidden for Gemini), so
+ * `top: 10px` lands them ~10px inside the pill regardless of what
+ * renders below (satellite row / image strip / GEMINI.md panel /
+ * meta strip) — immune to the bottom-anchor's height coupling. The
+ * textarea's 46px / 184px gutters reserve the horizontal space. */
+[data-composer-style="gemini"] [data-composer-control="attach"] {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="gemini"] [data-composer-control="model"] {
+  position: absolute;
+  top: 11px;
+  right: 50px;
+  max-width: 172px;
+  margin: 0;
+  z-index: 3;
+}
+[data-composer-style="gemini"] .composer-send-cluster {
+  display: inline-flex;
+  align-items: center;
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 3;
+}
 
 [data-composer-style="gemini"] [data-composer-control="workspace"] {
   min-height: 28px;
@@ -20190,8 +20312,12 @@ input:disabled, select:disabled, textarea:disabled {
   display: none;
 }
 
-/* Model picker — Gemini's signature blue tier pill */
+/* Model picker — Gemini's signature blue tier pill. (Lifted into the
+ * capsule's right edge by the CS3 lift block above; clamp + ellipsis
+ * so a long model label can never spill into the textarea gutter.) */
 [data-composer-style="gemini"] [data-composer-control="model"] {
+  display: inline-flex;
+  align-items: center;
   min-height: 28px;
   padding: 4px 12px;
   border-radius: 999px;
@@ -20200,6 +20326,20 @@ input:disabled, select:disabled, textarea:disabled {
   font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 500;
   border: 0;
+  overflow: hidden;
+}
+/* The trigger holds two inner spans (primary label + suffix), so
+ * `text-overflow` on the button itself can't reach them — ellipsize
+ * the primary span directly (safety net for very long model names;
+ * the 172px clamp + 224px textarea gutter already fit known ones). */
+[data-composer-style="gemini"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+[data-composer-style="gemini"] [data-composer-control="model"] .composer-combined-picker-trigger-suffix {
+  flex: 0 0 auto;
 }
 [data-composer-style="gemini"] [data-composer-control="model"]:hover {
   background: color-mix(in srgb, #5a8cff 28%, transparent);
@@ -24889,6 +25029,31 @@ input:disabled, select:disabled, textarea:disabled {
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="kimi"] .composer-surface {
   background: var(--unified-soft-surface-bg);
   border-color: var(--unified-soft-surface-border);
+}
+
+/* 1.0.6-CS3 — Gemini CAPSULE, light palette. The capsule pill lives on
+ * `.composer-textarea-wrap` (driven by `--gemini-capsule-*`), so the
+ * surface must stay transparent in light themes too — re-assert it here
+ * (later source order beats the two surface-painting rules above). The
+ * light tokens give a near-white pill with a faint blue rim, matching
+ * Gemini's light-mode composer. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] {
+  --gemini-capsule-fill: linear-gradient(180deg, #ffffff 0%, #eef3ff 100%);
+  --gemini-capsule-border: color-mix(in srgb, #5a8cff 30%, var(--surface-border));
+  --gemini-capsule-border-focus: color-mix(in srgb, #5a8cff 60%, transparent);
+  --gemini-capsule-shadow: 0 4px 18px rgba(20, 40, 90, 0.10);
+  --gemini-capsule-shadow-focus:
+    0 4px 22px rgba(20, 40, 90, 0.14),
+    0 0 0 4px color-mix(in srgb, #5a8cff 14%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-surface:focus-within {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="gemini"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #1d1d1f 42%, transparent);
 }
 
 /* Above-bar pills (External path / Tool grants / files-changed /
@@ -31739,6 +31904,18 @@ input:disabled, select:disabled, textarea:disabled {
   .composer-ensemble-mode-button.is-active {
   background: rgba(90, 140, 255, 0.24) !important;
   color: #ffffff !important;
+}
+
+/* 1.0.6-CS3 — Gemini CAPSULE in the alabaster/obsidian app themes. The
+ * capsule pill (`.composer-textarea-wrap`, dark navy via the default
+ * `--gemini-capsule-*` tokens) replaces the old surface rect, so the
+ * surface must go transparent here too — beat the `!important` navy
+ * fill that the rule above paints onto `.composer-surface`. */
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface,
+:is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="gemini"] .composer-surface:focus-within {
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
 }
 
 :is([data-theme="alabaster"], [data-theme="obsidian"])[data-composer-style="kimi"] .composer-area,
