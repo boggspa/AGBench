@@ -20479,23 +20479,30 @@ input:disabled, select:disabled, textarea:disabled {
   opacity: 0.78;
 }
 
-/* 1.0.6 — + button layout refinement. Was a bare transparent glyph;
- * the official Gemini/Cursor composers render it as a discernible
- * circular button. Give it a subtle persistent blue-tinted surface +
- * hairline border (centred in the 50px capsule at top:10px) so it
- * reads as a control, with a brighter hover. */
+/* 1.0.6-CRUX19 — Gemini + button: SATELLITE (no bubble) + 2x glyph, matching
+ * the official Gemini composer's large borderless "+". Reverts CRUX12's tinted
+ * circle: transparent fill, no border, colour-only hover (no fill/transform),
+ * and the SF-symbol glyph doubled 14px → 28px. The button is lifted/absolute
+ * (not inside the capsule), so the larger glyph isn't clipped, and the 46px
+ * textarea left gutter still clears it. */
 [data-composer-style="gemini"] .composer-image-picker-btn {
-  width: 30px;
-  height: 30px;
-  background: color-mix(in srgb, #5a8cff 10%, transparent);
-  border: 1px solid color-mix(in srgb, #5a8cff 20%, transparent);
-  color: color-mix(in srgb, #ffffff 72%, transparent);
+  width: 32px;
+  height: 32px;
+  background: transparent;
+  border: 0;
+  color: color-mix(in srgb, #ffffff 76%, transparent);
   border-radius: 999px;
 }
 [data-composer-style="gemini"] .composer-image-picker-btn:hover:not(:disabled) {
-  background: color-mix(in srgb, #5a8cff 20%, transparent);
-  border-color: color-mix(in srgb, #5a8cff 38%, transparent);
+  background: transparent;
+  border: 0;
   color: #ffffff;
+  transform: none;
+}
+[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon,
+[data-composer-style="gemini"] .composer-image-picker-btn .sf-symbol-icon svg {
+  width: 28px;
+  height: 28px;
 }
 
 /* Permission picker (Plan / Default approval) — plain text */
