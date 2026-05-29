@@ -137,6 +137,62 @@ describe('runGrokAcpTurn', () => {
     expect(child.killed).toBe(true)
   })
 
+  it('G5 — answers session/request_permission with DENY by default (never hangs/allows)', async () => {
+    const child = new FakeAcpChild()
+    const { events } = run(child)
+    child.emit({ jsonrpc: '2.0', id: 1, result: {} })
+    child.emit({ jsonrpc: '2.0', id: 2, result: { sessionId: 's-1' } })
+
+    child.emit({
+      jsonrpc: '2.0',
+      id: 42,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 's-1',
+        toolCall: { title: 'Write file', kind: 'edit' },
+        options: [
+          { optionId: 'a', name: 'Allow', kind: 'allow_once' },
+          { optionId: 'r', name: 'Reject', kind: 'reject_once' }
+        ]
+      }
+    })
+    await new Promise((r) => setTimeout(r, 0))
+
+    const response = child.sent().find((m) => m.id === 42 && 'result' in m)
+    // Default-deny → it SELECTS the reject option (a denial), never an allow.
+    expect(response).toMatchObject({ id: 42, result: { outcome: { outcome: 'selected', optionId: 'r' } } })
+    // The decline is surfaced in the transcript so the user knows a tool was asked for.
+    expect(events.some((e) => e.type === 'provider_warning' && /requested a tool/.test(e.text || ''))).toBe(true)
+  })
+
+  it('G5 — routes the permission request through an injected handler (allow path)', async () => {
+    const child = new FakeAcpChild()
+    const seen: string[] = []
+    run(child, {
+      onPermissionRequest: (req) => {
+        seen.push(req.toolName)
+        return 'allow'
+      }
+    })
+    child.emit({ jsonrpc: '2.0', id: 1, result: {} })
+    child.emit({ jsonrpc: '2.0', id: 2, result: { sessionId: 's-1' } })
+    child.emit({
+      jsonrpc: '2.0',
+      id: 99,
+      method: 'session/request_permission',
+      params: {
+        sessionId: 's-1',
+        toolCall: { title: 'Read file', kind: 'read' },
+        options: [{ optionId: 'a', name: 'Allow', kind: 'allow_once' }]
+      }
+    })
+    await new Promise((r) => setTimeout(r, 0))
+
+    expect(seen).toEqual(['Read file'])
+    const response = child.sent().find((m) => m.id === 99 && 'result' in m)
+    expect(response).toMatchObject({ id: 99, result: { outcome: { outcome: 'selected', optionId: 'a' } } })
+  })
+
   it('surfaces a spawn/process error as a provider_warning + closes', () => {
     const child = new FakeAcpChild()
     const { events, closes } = run(child)

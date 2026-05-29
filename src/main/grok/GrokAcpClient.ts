@@ -12,7 +12,12 @@ import {
   encodeAcpFrame,
   parseAcpStreamChunk,
   acpMessageToRunEvents,
-  type NormalizedGrokRunEvent
+  isAcpPermissionRequest,
+  parseAcpPermissionRequest,
+  buildAcpPermissionResponse,
+  type NormalizedGrokRunEvent,
+  type AcpPermissionRequest,
+  type AcpPermissionDecision
 } from './GrokAcpProtocol'
 
 /** Minimal child-process surface this client needs (subset of ChildProcess). */
@@ -34,6 +39,17 @@ export interface GrokAcpRunOptions {
   onEvent: (event: NormalizedGrokRunEvent) => void
   /** Called once with the spawned child (for the cancellation registry). */
   onProcess?: (child: AcpChildProcess) => void
+  /**
+   * G5 — client-mediated tool approval. When the agent sends
+   * `session/request_permission`, this resolves the decision that's written
+   * back. The default (when omitted) is DENY: the request is answered with a
+   * 'cancelled'/reject outcome so the agent never hangs and never gets a silent
+   * allow. runGrokAcpProvider supplies a real handler that routes the request
+   * to the AGBench approval ledger (G5c, the live-verified follow-up).
+   */
+  onPermissionRequest?: (
+    request: AcpPermissionRequest
+  ) => AcpPermissionDecision | Promise<AcpPermissionDecision>
   /**
    * Called once when the child exits. `turnComplete` is true when the prompt
    * reached its stopReason before exit — the caller uses it (not the exit code)
@@ -74,6 +90,47 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
     }
   }
 
+  // Write a raw JSON-RPC response object (already shaped {jsonrpc,id,result}).
+  const writeResponse = (message: Record<string, unknown>): void => {
+    try {
+      child.stdin?.write(encodeAcpFrame(message))
+    } catch {
+      // stdin may be gone if the child exited; ignored.
+    }
+  }
+
+  // G5 — answer an inbound session/request_permission. Resolves the decision
+  // (handler or default DENY), then writes the response. Default-deny means a
+  // missing handler / rejected promise can never silently allow a tool, and the
+  // agent never hangs waiting for a reply.
+  const answerPermissionRequest = (request: AcpPermissionRequest): void => {
+    const fallbackDeny = (): void =>
+      writeResponse(buildAcpPermissionResponse(request.rpcId, request.options, 'deny'))
+    let decision: AcpPermissionDecision | Promise<AcpPermissionDecision>
+    try {
+      decision = options.onPermissionRequest
+        ? options.onPermissionRequest(request)
+        : 'deny'
+    } catch {
+      fallbackDeny()
+      return
+    }
+    Promise.resolve(decision)
+      .then((resolved) =>
+        writeResponse(buildAcpPermissionResponse(request.rpcId, request.options, resolved))
+      )
+      .catch(fallbackDeny)
+    // Surface the request in the transcript only when no mediator is wired
+    // (so the user sees WHY a tool was declined). With a handler (G5c) the
+    // ledger card is the surface, so stay quiet here.
+    if (!options.onPermissionRequest) {
+      options.onEvent({
+        type: 'provider_warning',
+        text: `Grok requested a tool (${request.toolName}) — declined (AGBench tool mediation is gated until G5c).`
+      })
+    }
+  }
+
   // Step 1 — initialize handshake (read-only client capabilities).
   writeRpc(ACP_ID.initialize, 'initialize', {
     protocolVersion: 1,
@@ -85,6 +142,13 @@ export function runGrokAcpTurn(options: GrokAcpRunOptions): GrokAcpRunHandle {
     const parsed = parseAcpStreamChunk(chunk.toString(), carry)
     carry = parsed.carry
     for (const message of parsed.messages) {
+      // G5 — inbound agent→client request: answer tool-permission asks before
+      // anything else (it's a request with an id + method, not a response).
+      if (isAcpPermissionRequest(message)) {
+        const request = parseAcpPermissionRequest(message)
+        if (request) answerPermissionRequest(request)
+        continue
+      }
       // Lifecycle correlation by request id (single sequential flow).
       if (message.id === ACP_ID.initialize && message.result) {
         // Step 2 — create a session in the workspace; no MCP in read-only G4.

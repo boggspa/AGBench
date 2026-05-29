@@ -105,3 +105,126 @@ export function acpMessageToRunEvents(message: Record<string, unknown>): Normali
 
   return []
 }
+
+// ============================================================
+// G5 — session/request_permission (client-mediated tool approvals).
+//
+// ACP lets the agent ASK the client before running a tool:
+//   agent→client request:  {jsonrpc,id,method:'session/request_permission',
+//                            params:{sessionId,toolCall:{...},options:[{optionId,name,kind}]}}
+//   client→agent response: {jsonrpc,id,result:{outcome:{outcome:'selected',optionId}}}
+//                       or: {jsonrpc,id,result:{outcome:{outcome:'cancelled'}}}
+// This is the seam where AGBench OWNS every Grok side effect: the request is
+// surfaced as an approval card (the ledger), and the chosen option is sent back.
+// Pure + fixture-tested here; the transport wiring + ledger routing live in
+// GrokAcpClient / runGrokAcpProvider (gated behind grokAcpEnabled()).
+//
+// SAFETY: the response builder DEFAULTS TO CANCELLED. A missing/unknown option,
+// a deny decision, or a malformed request can never resolve to an allow — a
+// write is approved only when an explicit allow option is matched against an
+// explicit allow decision. There is no silent-allow path.
+// ============================================================
+
+export const ACP_PERMISSION_METHOD = 'session/request_permission'
+
+export interface AcpPermissionOption {
+  optionId: string
+  name: string
+  /** ACP option kind, e.g. allow_once | allow_always | reject_once | reject_always. */
+  kind: string
+}
+
+export interface AcpPermissionRequest {
+  /** JSON-RPC id to respond to (number or string per the spec). */
+  rpcId: number | string
+  sessionId: string
+  /** Best-effort human label for the requested tool (for the approval card). */
+  toolName: string
+  /** ACP tool kind (e.g. 'edit', 'execute', 'read') when present. */
+  toolKind: string
+  options: AcpPermissionOption[]
+  /** The raw toolCall object (audit / detail rendering). */
+  rawToolCall: Record<string, unknown> | null
+}
+
+/** True for an inbound agent→client `session/request_permission` request. */
+export function isAcpPermissionRequest(message: Record<string, unknown>): boolean {
+  return (
+    message.method === ACP_PERMISSION_METHOD &&
+    (typeof message.id === 'number' || typeof message.id === 'string')
+  )
+}
+
+/**
+ * Parse a `session/request_permission` request into a structured descriptor.
+ * Defensive: returns null unless it's genuinely that request with a usable id.
+ */
+export function parseAcpPermissionRequest(
+  message: Record<string, unknown>
+): AcpPermissionRequest | null {
+  if (!isAcpPermissionRequest(message)) return null
+  const rpcId = message.id as number | string
+  const params = asObject(message.params)
+  const sessionId =
+    params && typeof params.sessionId === 'string' ? params.sessionId : ''
+  const toolCall = asObject(params?.toolCall)
+  const toolName =
+    (toolCall && typeof toolCall.title === 'string' && toolCall.title) ||
+    (toolCall && typeof toolCall.kind === 'string' && toolCall.kind) ||
+    'tool'
+  const toolKind = toolCall && typeof toolCall.kind === 'string' ? toolCall.kind : ''
+  const rawOptions = Array.isArray(params?.options) ? (params!.options as unknown[]) : []
+  const options: AcpPermissionOption[] = []
+  for (const entry of rawOptions) {
+    const opt = asObject(entry)
+    if (!opt) continue
+    const optionId = typeof opt.optionId === 'string' ? opt.optionId : ''
+    if (!optionId) continue
+    options.push({
+      optionId,
+      name: typeof opt.name === 'string' ? opt.name : optionId,
+      kind: typeof opt.kind === 'string' ? opt.kind : ''
+    })
+  }
+  return { rpcId, sessionId, toolName, toolKind, options, rawToolCall: toolCall }
+}
+
+export type AcpPermissionDecision = 'allow' | 'deny' | 'cancel'
+
+/**
+ * Pick the optionId that matches a decision, by ACP option kind. 'allow' prefers
+ * a one-shot allow (allow_once) over a persistent one (allow_always); 'deny'
+ * prefers reject_once over reject_always. Returns null when no option matches —
+ * which the response builder turns into a 'cancelled' outcome (never an allow).
+ */
+export function selectAcpPermissionOption(
+  options: AcpPermissionOption[],
+  decision: AcpPermissionDecision
+): string | null {
+  if (decision === 'cancel') return null
+  const prefix = decision === 'allow' ? 'allow' : 'reject'
+  const oneShot = decision === 'allow' ? 'allow_once' : 'reject_once'
+  const exact = options.find((o) => o.kind === oneShot)
+  if (exact) return exact.optionId
+  const byPrefix = options.find((o) => o.kind.startsWith(prefix))
+  if (byPrefix) return byPrefix.optionId
+  return null
+}
+
+/**
+ * Build the JSON-RPC response for a permission request. Defaults to a
+ * 'cancelled' outcome whenever a 'selected' option can't be resolved — so a
+ * deny, a cancel, or any option-matching failure never approves a tool.
+ */
+export function buildAcpPermissionResponse(
+  rpcId: number | string,
+  options: AcpPermissionOption[],
+  decision: AcpPermissionDecision
+): Record<string, unknown> {
+  const optionId = selectAcpPermissionOption(options, decision)
+  const outcome =
+    decision !== 'cancel' && optionId
+      ? { outcome: 'selected', optionId }
+      : { outcome: 'cancelled' }
+  return { jsonrpc: '2.0', id: rpcId, result: { outcome } }
+}

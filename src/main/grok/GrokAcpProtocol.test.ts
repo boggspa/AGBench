@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest'
-import { encodeAcpFrame, parseAcpStreamChunk, acpMessageToRunEvents } from './GrokAcpProtocol'
+import {
+  encodeAcpFrame,
+  parseAcpStreamChunk,
+  acpMessageToRunEvents,
+  isAcpPermissionRequest,
+  parseAcpPermissionRequest,
+  selectAcpPermissionOption,
+  buildAcpPermissionResponse,
+  type AcpPermissionOption
+} from './GrokAcpProtocol'
 
 describe('encodeAcpFrame', () => {
   it('serializes a JSON-RPC request as one NDJSON line', () => {
@@ -153,5 +162,104 @@ describe('acpMessageToRunEvents', () => {
       .map((evt) => evt.text)
       .join('')
     expect(answer).toBe('Hi! How can I help?')
+  })
+})
+
+describe('G5 — session/request_permission (client-mediated approvals)', () => {
+  const permissionRequest = (id: number | string = 7) => ({
+    jsonrpc: '2.0',
+    id,
+    method: 'session/request_permission',
+    params: {
+      sessionId: 'sess_1',
+      toolCall: { toolCallId: 'tc_1', title: 'Write file src/x.ts', kind: 'edit' },
+      options: [
+        { optionId: 'opt_allow_once', name: 'Allow once', kind: 'allow_once' },
+        { optionId: 'opt_allow_always', name: 'Always allow', kind: 'allow_always' },
+        { optionId: 'opt_reject_once', name: 'Reject', kind: 'reject_once' }
+      ]
+    }
+  })
+
+  it('detects an inbound permission request (and nothing else)', () => {
+    expect(isAcpPermissionRequest(permissionRequest())).toBe(true)
+    // A streaming notification / response is not a permission request.
+    expect(isAcpPermissionRequest({ method: 'session/update', params: {} })).toBe(false)
+    expect(isAcpPermissionRequest({ id: 2, result: {} })).toBe(false)
+    // Must carry a usable JSON-RPC id to be answerable.
+    expect(isAcpPermissionRequest({ method: 'session/request_permission' })).toBe(false)
+  })
+
+  it('parses the request into a structured descriptor', () => {
+    const parsed = parseAcpPermissionRequest(permissionRequest('req-9'))
+    expect(parsed).toMatchObject({
+      rpcId: 'req-9',
+      sessionId: 'sess_1',
+      toolName: 'Write file src/x.ts',
+      toolKind: 'edit'
+    })
+    expect(parsed?.options.map((o) => o.kind)).toEqual([
+      'allow_once',
+      'allow_always',
+      'reject_once'
+    ])
+  })
+
+  it('returns null for non-permission messages + tolerates missing options', () => {
+    expect(parseAcpPermissionRequest({ method: 'session/update' })).toBeNull()
+    const noOptions = parseAcpPermissionRequest({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'session/request_permission',
+      params: { sessionId: 's' }
+    })
+    expect(noOptions?.options).toEqual([])
+    expect(noOptions?.toolName).toBe('tool')
+  })
+
+  it('selects allow_once for allow, reject_once for deny, null otherwise', () => {
+    const opts: AcpPermissionOption[] = [
+      { optionId: 'a1', name: 'Allow once', kind: 'allow_once' },
+      { optionId: 'a2', name: 'Always', kind: 'allow_always' },
+      { optionId: 'r1', name: 'Reject', kind: 'reject_once' }
+    ]
+    expect(selectAcpPermissionOption(opts, 'allow')).toBe('a1')
+    expect(selectAcpPermissionOption(opts, 'deny')).toBe('r1')
+    expect(selectAcpPermissionOption(opts, 'cancel')).toBeNull()
+    // Falls back to any allow* / reject* when the one-shot variant is absent.
+    expect(selectAcpPermissionOption([opts[1]], 'allow')).toBe('a2')
+    // No matching option → null (the builder turns this into 'cancelled').
+    expect(selectAcpPermissionOption([opts[2]], 'allow')).toBeNull()
+  })
+
+  it('builds a selected response for allow, cancelled for deny/cancel/no-match', () => {
+    const { options } = parseAcpPermissionRequest(permissionRequest(7))!
+    expect(buildAcpPermissionResponse(7, options, 'allow')).toEqual({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'selected', optionId: 'opt_allow_once' } }
+    })
+    // Deny SELECTS the reject option (that's how ACP signals a denial back to
+    // the agent) — distinct from cancel, which sends no decision.
+    expect(buildAcpPermissionResponse(7, options, 'deny')).toEqual({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'selected', optionId: 'opt_reject_once' } }
+    })
+    expect(buildAcpPermissionResponse(7, options, 'cancel')).toEqual({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'cancelled' } }
+    })
+    // SAFETY: an allow decision with NO allow option available can never
+    // resolve to a selected/allow — it cancels instead of silently approving.
+    const rejectOnly: AcpPermissionOption[] = [
+      { optionId: 'r1', name: 'Reject', kind: 'reject_once' }
+    ]
+    expect(buildAcpPermissionResponse(7, rejectOnly, 'allow')).toEqual({
+      jsonrpc: '2.0',
+      id: 7,
+      result: { outcome: { outcome: 'cancelled' } }
+    })
   })
 })
