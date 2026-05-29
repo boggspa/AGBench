@@ -166,10 +166,19 @@ import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
 import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
-import { experimentalCursorProviderEnabled, cursorDebugEnabled } from './cursorGate'
+import {
+  experimentalCursorProviderEnabled,
+  cursorDebugEnabled,
+  cursorWebBridgeEnabled
+} from './cursorGate'
 import { buildCursorCliArgs, cursorWriteCapable } from './cursor/CursorCliArgs'
 import { cursorEventToRunEvents, type NormalizedCursorRunEvent } from './cursor/CursorStreamJson'
 import { applyCursorWriteModeConfig } from './cursor/CursorWorkspaceConfig'
+import {
+  CURSOR_MCP_ALLOW_RULES,
+  CURSOR_WEB_FETCH_MCP_SERVER_SOURCE,
+  buildCursorMcpServerEntry
+} from './cursor/CursorMcpBridge'
 import {
   loadCursorUsageSnapshot,
   cursorStateDbCandidates,
@@ -7629,14 +7638,43 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
   })
 }
 
-// CR4 — Cursor (Composer 2.5) READ-ONLY runtime. Reuses the shared CLI streaming
-// machinery (runCliProviderProcess → handleCliProviderJsonEvent → the
-// state.provider==='cursor' branch → the fixture-tested CursorStreamJson mapper).
-// FORCED READ-ONLY: buildCursorCliArgs is always called with approvalMode 'plan'
-// (--mode plan = no edits, proven by the CR3 spike) until CR6 wires the
-// write-mode deny-list + approval-ledger path. So even though Cursor is
-// first-class + selectable, it cannot make an unmediated native write in the
-// interim. CursorCliArgs never emits bare -p / --force / --yolo.
+// 1.0.6-CRUX34 (OQ#2) — materialise the embedded AGBench web_fetch MCP server to
+// a stable userData path so a per-run workspace `.cursor/mcp.json` can point
+// cursor-agent at it. Written from CursorMcpBridge's source string (idempotent:
+// rewrite only if missing/changed) → no extraResources packaging step. Returns
+// '' on any fs error, which makes the caller skip the bridge (the run still
+// proceeds, just without web). Spawned via electron-as-node by the caller, so no
+// system `node` is required.
+function ensureCursorMcpServerScript(): string {
+  try {
+    const dir = join(app.getPath('userData'), 'cursor-mcp')
+    const file = join(dir, 'agbench-web-fetch-server.cjs')
+    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true })
+    let current: string | null = null
+    if (fsSync.existsSync(file)) {
+      try {
+        current = fsSync.readFileSync(file, 'utf8')
+      } catch {
+        current = null
+      }
+    }
+    if (current !== CURSOR_WEB_FETCH_MCP_SERVER_SOURCE) {
+      fsSync.writeFileSync(file, CURSOR_WEB_FETCH_MCP_SERVER_SOURCE)
+    }
+    return file
+  } catch {
+    return ''
+  }
+}
+
+// CR4/CR6 — Cursor (Composer 2.5) runtime over the shared CLI streaming machinery
+// (runCliProviderProcess → handleCliProviderJsonEvent → the state.provider==='cursor'
+// branch → the fixture-tested CursorStreamJson mapper). Read-only runs pass
+// `--mode plan` (no edits, proven by CR3); write-capable runs run in default mode
+// contained by a transient workspace-local `.cursor/cli.json` deny-list (CR6) and,
+// by default, get the OQ#2 web bridge (a per-run mcp.json + Mcp allow rule +
+// --approve-mcps). CursorCliArgs NEVER emits bare -p / --force / --yolo, and the
+// global ~/.cursor is never touched.
 async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
   const route = routeWithRunId('cursor', payload)
   if (!experimentalCursorProviderEnabled()) {
@@ -7673,16 +7711,42 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
   // without native-shell containment. Never mutates global ~/.cursor.
   const writeCapable = cursorWriteCapable(payload.approvalMode)
   let restoreCursorConfig: (() => void) | undefined
+  let webBridgeActive = false
   if (writeCapable && payload.workspace) {
     try {
       const cursorDir = join(payload.workspace, '.cursor')
+      // OQ#2 — opt-in web bridge for write-capable (default-mode) runs: a per-run
+      // mcp.json registers the embedded web_fetch MCP server (spawned via
+      // electron-as-node → no system `node` dependency) and an Mcp allow rule is
+      // merged into the SAME cli.json write as the shell deny. Plan mode rejects
+      // MCP tools, so read-only runs never reach here. Gated OFF by default
+      // (cursorWebBridgeEnabled / AGBENCH_CURSOR_WEB=1): the spike proved it works
+      // but headless --approve-mcps auto-approval is unreliable and the reliable
+      // path mutates global ~/.cursor — see the gate docstring. If the gate is off
+      // or the server can't be materialised, the bridge is omitted (write mode
+      // still runs with the deny-list, just no web).
+      const serverScript = cursorWebBridgeEnabled() ? ensureCursorMcpServerScript() : ''
+      const bridge = serverScript
+        ? {
+            mcpConfigPath: join(cursorDir, 'mcp.json'),
+            serverEntry: buildCursorMcpServerEntry({
+              command: process.execPath,
+              args: [serverScript],
+              env: { ELECTRON_RUN_AS_NODE: '1' }
+            }),
+            allowRules: CURSOR_MCP_ALLOW_RULES
+          }
+        : undefined
       restoreCursorConfig = applyCursorWriteModeConfig(
         fsSync,
         join(cursorDir, 'cli.json'),
-        cursorDir
+        cursorDir,
+        bridge
       )
+      webBridgeActive = Boolean(bridge)
     } catch {
       restoreCursorConfig = undefined
+      webBridgeActive = false
     }
   }
   const args = buildCursorCliArgs({
@@ -7692,7 +7756,9 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     providerSessionId: payload.providerSessionId,
     // Honor the chat's approval mode only when the containment config is in
     // place; otherwise force read-only.
-    approvalMode: restoreCursorConfig ? payload.approvalMode : 'plan'
+    approvalMode: restoreCursorConfig ? payload.approvalMode : 'plan',
+    // --approve-mcps only when the bridge's mcp.json + allow rule were written.
+    webBridgeActive
   })
   runCliProviderProcess(event, 'cursor', resolved.binaryPath, args, payload, {
     fallback: false,

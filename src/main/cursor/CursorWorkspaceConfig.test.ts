@@ -5,6 +5,7 @@ import {
   mergeCursorDenyRules,
   type CursorConfigFs
 } from './CursorWorkspaceConfig'
+import { buildCursorMcpServerEntry, CURSOR_MCP_ALLOW_RULES } from './CursorMcpBridge'
 
 describe('mergeCursorDenyRules', () => {
   it('produces a deny-shell config from nothing', () => {
@@ -91,5 +92,63 @@ describe('applyCursorWriteModeConfig', () => {
 
   it('exposes the canonical write-mode deny rule', () => {
     expect(CURSOR_WRITE_MODE_DENY_RULES).toEqual(['Shell(**)'])
+  })
+})
+
+describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
+  const CONFIG = '/ws/.cursor/cli.json'
+  const MCP = '/ws/.cursor/mcp.json'
+  const DIR = '/ws/.cursor'
+  const bridge = () => ({
+    mcpConfigPath: MCP,
+    serverEntry: buildCursorMcpServerEntry({
+      command: '/x/electron',
+      args: ['/tmp/agbench-mcp-server.cjs'],
+      env: { ELECTRON_RUN_AS_NODE: '1' }
+    }),
+    allowRules: CURSOR_MCP_ALLOW_RULES
+  })
+
+  it('writes cli.json (deny + MCP allow) AND mcp.json; restore removes both + the dir', () => {
+    const { fs, files, dirs } = makeFakeFs()
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR, bridge())
+
+    const cli = JSON.parse(files.get(CONFIG)!)
+    expect(cli.permissions.deny).toContain('Shell(**)')
+    expect(cli.permissions.allow).toContain('Mcp(agbench:*)')
+
+    const mcp = JSON.parse(files.get(MCP)!)
+    expect(mcp.mcpServers.agbench.command).toBe('/x/electron')
+    expect(mcp.mcpServers.agbench.args).toEqual(['/tmp/agbench-mcp-server.cjs'])
+    expect(mcp.mcpServers.agbench.env).toEqual({ ELECTRON_RUN_AS_NODE: '1' })
+
+    restore()
+    expect(files.has(CONFIG)).toBe(false)
+    expect(files.has(MCP)).toBe(false)
+    expect(dirs.has(DIR)).toBe(false)
+  })
+
+  it('preserves + restores pre-existing cli.json and mcp.json bytes (and the dir)', () => {
+    const cliBytes = '{\n  "permissions": { "allow": [], "deny": ["Write(.env)"] }\n}\n'
+    const mcpBytes = '{\n  "mcpServers": { "other": { "command": "x", "args": [] } }\n}\n'
+    const { fs, files, dirs } = makeFakeFs({ [CONFIG]: cliBytes, [MCP]: mcpBytes, [DIR]: '' })
+    fs.mkdirSync(DIR, { recursive: true })
+
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR, bridge())
+
+    const cli = JSON.parse(files.get(CONFIG)!)
+    expect(cli.permissions.deny).toEqual(['Write(.env)', 'Shell(**)'])
+    expect(cli.permissions.allow).toEqual(['Mcp(agbench:*)'])
+
+    const mcp = JSON.parse(files.get(MCP)!)
+    // Other registered servers survive; agbench is added.
+    expect(mcp.mcpServers.other).toEqual({ command: 'x', args: [] })
+    expect(mcp.mcpServers.agbench.command).toBe('/x/electron')
+
+    restore()
+    expect(files.get(CONFIG)).toBe(cliBytes)
+    expect(files.get(MCP)).toBe(mcpBytes)
+    // We didn't create the dir, so restore leaves it.
+    expect(dirs.has(DIR)).toBe(true)
   })
 })

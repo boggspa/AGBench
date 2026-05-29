@@ -61,4 +61,29 @@ describe('buildCursorCliArgs', () => {
     expect(buildCursorCliArgs({ ...base, providerSessionId: 'chat_123' }).join(' ')).toContain('--resume chat_123')
     expect(buildCursorCliArgs({ ...base, providerSessionId: '   ' })).not.toContain('--resume')
   })
+
+  it('adds --approve-mcps only for write-capable runs with the web bridge active', () => {
+    // Write-capable + bridge → flag present.
+    expect(
+      buildCursorCliArgs({ ...base, approvalMode: 'acceptEdits', webBridgeActive: true })
+    ).toContain('--approve-mcps')
+    // Write-capable but bridge NOT active (e.g. config write failed) → no flag.
+    expect(
+      buildCursorCliArgs({ ...base, approvalMode: 'acceptEdits', webBridgeActive: false })
+    ).not.toContain('--approve-mcps')
+    // Plan mode never executes MCP tools → never flag it, even if asked.
+    expect(
+      buildCursorCliArgs({ ...base, approvalMode: 'plan', webBridgeActive: true })
+    ).not.toContain('--approve-mcps')
+    // Default (no webBridgeActive) → no flag.
+    expect(buildCursorCliArgs({ ...base, approvalMode: 'acceptEdits' })).not.toContain(
+      '--approve-mcps'
+    )
+  })
+
+  it('still never passes --force / --yolo with the web bridge active', () => {
+    const args = buildCursorCliArgs({ ...base, approvalMode: 'default', webBridgeActive: true })
+    expect(args).not.toContain('--force')
+    expect(args).not.toContain('--yolo')
+  })
 })

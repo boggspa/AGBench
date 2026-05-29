@@ -14,6 +14,15 @@
 // exact original bytes on completion. A crash that skips restore leaves only an
 // extra Shell(**) deny (conservative, never destructive). The caller falls back
 // to read-only (`--mode plan`) if this config can't be applied.
+//
+// 1.0.6-CRUX34 (OQ#2): write mode optionally ALSO sets up the web bridge — a
+// per-run `.cursor/mcp.json` registering the AGBench `web_fetch` MCP server plus
+// an `allow: ["Mcp(agbench:*)"]` rule merged into the SAME cli.json write (one
+// write, one restore for both files). Default mode is the only mode where Cursor
+// executes MCP tools (plan mode rejects them), and AGBench write mode == default
+// cursor mode, so the bridge rides exactly the write-mode trigger.
+
+import { mergeCursorAllowRules, mergeCursorMcpConfig } from './CursorMcpBridge'
 
 export interface CursorCliConfig {
   permissions: { allow: string[]; deny: string[] }
@@ -63,57 +72,105 @@ export interface CursorConfigFs {
 }
 
 /**
- * Apply the write-mode deny-list to `configPath` (inside `dirPath` = workspace
- * `.cursor/`). Returns an idempotent `restore()` to call when the run ends:
- * rewrites the original bytes if a config existed, else removes the file (and
- * the `.cursor` dir if we created it). Never throws on restore (best-effort).
+ * Optional web-bridge setup applied alongside the write-mode deny-list (OQ#2).
+ * When present, `applyCursorWriteModeConfig` also writes `mcpConfigPath` (the
+ * workspace `.cursor/mcp.json`) registering `serverEntry`, and merges `allowRules`
+ * into the same cli.json write so the bridge's tools are pre-approved.
  */
-export function applyCursorWriteModeConfig(
-  fs: CursorConfigFs,
-  configPath: string,
-  dirPath: string
-): () => void {
-  const fileExisted = fs.existsSync(configPath)
+export interface CursorMcpBridgeOptions {
+  /** Absolute path to the workspace `.cursor/mcp.json`. */
+  mcpConfigPath: string
+  /** The `mcpServers` entry (from `buildCursorMcpServerEntry`). */
+  serverEntry: Record<string, unknown>
+  /** Allow rules to add to cli.json (normally `CURSOR_MCP_ALLOW_RULES`). */
+  allowRules: readonly string[]
+}
+
+interface CapturedFile {
+  existed: boolean
+  original: string | null
+  parsed: unknown
+}
+
+/** Snapshot a JSON config file's prior bytes + parsed value for later restore. */
+function captureFile(fs: CursorConfigFs, path: string): CapturedFile {
+  const existed = fs.existsSync(path)
   let original: string | null = null
-  if (fileExisted) {
+  if (existed) {
     try {
-      original = fs.readFileSync(configPath, 'utf8')
+      original = fs.readFileSync(path, 'utf8')
     } catch {
       original = null
     }
   }
-  const dirExisted = fs.existsSync(dirPath)
-  let existing: unknown = null
+  let parsed: unknown = null
   if (original) {
     try {
-      existing = JSON.parse(original)
+      parsed = JSON.parse(original)
     } catch {
-      existing = null
+      parsed = null
     }
   }
-  const merged = mergeCursorDenyRules(existing, CURSOR_WRITE_MODE_DENY_RULES)
+  return { existed, original, parsed }
+}
+
+/** Restore a captured file: rewrite original bytes if it existed, else remove. */
+function restoreFile(fs: CursorConfigFs, path: string, cap: CapturedFile): void {
+  try {
+    if (cap.existed && cap.original != null) {
+      fs.writeFileSync(path, cap.original)
+    } else {
+      fs.rmSync(path, { force: true })
+    }
+  } catch {
+    // Best-effort restore; never throws.
+  }
+}
+
+/**
+ * Apply the write-mode deny-list to `configPath` (inside `dirPath` = workspace
+ * `.cursor/`), optionally also setting up the web bridge (`bridge`). Returns an
+ * idempotent `restore()` to call when the run ends: rewrites the original bytes
+ * of each touched file if it existed, else removes it (and the `.cursor` dir if
+ * we created it). Never throws on restore (best-effort).
+ */
+export function applyCursorWriteModeConfig(
+  fs: CursorConfigFs,
+  configPath: string,
+  dirPath: string,
+  bridge?: CursorMcpBridgeOptions
+): () => void {
+  const dirExisted = fs.existsSync(dirPath)
+
+  // cli.json: deny the native shell (write containment) + optionally allow the
+  // bridge's MCP tools — merged into a single write so there's one file state.
+  const cli = captureFile(fs, configPath)
+  let cliMerged = mergeCursorDenyRules(cli.parsed, CURSOR_WRITE_MODE_DENY_RULES)
+  if (bridge) cliMerged = mergeCursorAllowRules(cliMerged, bridge.allowRules)
+
+  // mcp.json: register the AGBench server (only when the bridge is active).
+  const mcp = bridge ? captureFile(fs, bridge.mcpConfigPath) : null
+  const mcpMerged = bridge ? mergeCursorMcpConfig(mcp?.parsed ?? null, bridge.serverEntry) : null
+
   if (!dirExisted) fs.mkdirSync(dirPath, { recursive: true })
-  fs.writeFileSync(configPath, `${JSON.stringify(merged, null, 2)}\n`)
+  fs.writeFileSync(configPath, `${JSON.stringify(cliMerged, null, 2)}\n`)
+  if (bridge && mcpMerged) {
+    fs.writeFileSync(bridge.mcpConfigPath, `${JSON.stringify(mcpMerged, null, 2)}\n`)
+  }
 
   let restored = false
   return () => {
     if (restored) return
     restored = true
-    try {
-      if (fileExisted && original != null) {
-        fs.writeFileSync(configPath, original)
-      } else {
-        fs.rmSync(configPath, { force: true })
-        if (!dirExisted) {
-          try {
-            fs.rmSync(dirPath, { force: true, recursive: true })
-          } catch {
-            // .cursor may hold other files; leave it.
-          }
-        }
+    restoreFile(fs, configPath, cli)
+    if (bridge && mcp) restoreFile(fs, bridge.mcpConfigPath, mcp)
+    // Remove the `.cursor` dir only if WE created it (it's ours to clean).
+    if (!dirExisted) {
+      try {
+        fs.rmSync(dirPath, { force: true, recursive: true })
+      } catch {
+        // Best-effort; never throws.
       }
-    } catch {
-      // Best-effort restore; never throws.
     }
   }
 }

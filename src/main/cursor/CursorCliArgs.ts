@@ -29,6 +29,16 @@ export interface BuildCursorCliArgsInput {
   providerSessionId?: string | null
   /** Composer approval mode: 'plan'/unset = read-only; else write-capable. */
   approvalMode?: string | null
+  /**
+   * OQ#2 — true when the AGBench web bridge is active for this run (a per-run
+   * `.cursor/mcp.json` registering the `agbench` MCP server was written, with an
+   * `allow: ["Mcp(agbench:*)"]` rule). Adds `--approve-mcps` so the bridge's
+   * tools don't block on the interactive MCP-approval prompt. Only ever set for
+   * write-capable runs (default mode); plan mode executes no MCP tools.
+   * `--approve-mcps` auto-approves MCP servers ONLY — never shell/write — so it
+   * stays within the never-`--force`/`--yolo` rule.
+   */
+  webBridgeActive?: boolean
 }
 
 /** True only for the canonical Composer 2.5 ids (composer-2.5 / -fast). Any
@@ -56,6 +66,12 @@ export function buildCursorCliArgs(input: BuildCursorCliArgsInput): string[] {
   // NEVER `--force` / `--yolo`.
   if (!writeCapable) {
     args.push('--mode', 'plan')
+  }
+  // OQ#2 web bridge: pre-approve the AGBench MCP server's tools (write mode
+  // only — guarded by the caller, which sets this only when it wrote the
+  // mcp.json + allow rule). Auto-approves MCP servers ONLY, not shell/write.
+  if (writeCapable && input.webBridgeActive) {
+    args.push('--approve-mcps')
   }
   const resumeId =
     typeof input.providerSessionId === 'string' ? input.providerSessionId.trim() : ''
