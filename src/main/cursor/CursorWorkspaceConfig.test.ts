@@ -1,0 +1,95 @@
+import { describe, it, expect } from 'vitest'
+import {
+  applyCursorWriteModeConfig,
+  CURSOR_WRITE_MODE_DENY_RULES,
+  mergeCursorDenyRules,
+  type CursorConfigFs
+} from './CursorWorkspaceConfig'
+
+describe('mergeCursorDenyRules', () => {
+  it('produces a deny-shell config from nothing', () => {
+    expect(mergeCursorDenyRules(null, ['Shell(**)'])).toEqual({
+      permissions: { allow: [], deny: ['Shell(**)'] }
+    })
+  })
+  it('merges into an existing config, preserving allow + deduping deny + unknown keys', () => {
+    const existing = {
+      version: 1,
+      permissions: { allow: ['Read(**)'], deny: ['Write(.env*)'] }
+    }
+    expect(mergeCursorDenyRules(existing, ['Shell(**)'])).toEqual({
+      version: 1,
+      permissions: { allow: ['Read(**)'], deny: ['Write(.env*)', 'Shell(**)'] }
+    })
+  })
+  it('does not duplicate an already-present deny rule', () => {
+    const existing = { permissions: { allow: [], deny: ['Shell(**)'] } }
+    expect(mergeCursorDenyRules(existing, ['Shell(**)']).permissions.deny).toEqual(['Shell(**)'])
+  })
+})
+
+// In-memory fake fs implementing the injected surface.
+function makeFakeFs(initial: Record<string, string> = {}) {
+  const files = new Map<string, string>(Object.entries(initial))
+  const dirs = new Set<string>()
+  const fs: CursorConfigFs = {
+    existsSync: (p) => files.has(p) || dirs.has(p),
+    readFileSync: (p) => {
+      const v = files.get(p)
+      if (v == null) throw new Error('ENOENT')
+      return v
+    },
+    writeFileSync: (p, data) => {
+      files.set(p, data)
+    },
+    mkdirSync: (p) => {
+      dirs.add(p)
+    },
+    rmSync: (p) => {
+      files.delete(p)
+      dirs.delete(p)
+    }
+  }
+  return { fs, files, dirs }
+}
+
+describe('applyCursorWriteModeConfig', () => {
+  const CONFIG = '/ws/.cursor/cli.json'
+  const DIR = '/ws/.cursor'
+
+  it('writes a deny-shell config when none exists, and restore removes it', () => {
+    const { fs, files, dirs } = makeFakeFs()
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR)
+    expect(dirs.has(DIR)).toBe(true)
+    const written = JSON.parse(files.get(CONFIG)!)
+    expect(written.permissions.deny).toContain('Shell(**)')
+    restore()
+    expect(files.has(CONFIG)).toBe(false)
+    expect(dirs.has(DIR)).toBe(false)
+  })
+
+  it('merges + restores the exact original bytes when a config already exists', () => {
+    const originalBytes = '{\n  "permissions": { "allow": ["Read(**)"], "deny": [] }\n}\n'
+    const { fs, files } = makeFakeFs({ [CONFIG]: originalBytes, [DIR]: '' })
+    // Pre-create the dir so existsSync(DIR) is true.
+    fs.mkdirSync(DIR, { recursive: true })
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR)
+    const merged = JSON.parse(files.get(CONFIG)!)
+    expect(merged.permissions.deny).toContain('Shell(**)')
+    expect(merged.permissions.allow).toEqual(['Read(**)'])
+    restore()
+    expect(files.get(CONFIG)).toBe(originalBytes)
+  })
+
+  it('restore is idempotent', () => {
+    const { fs, files } = makeFakeFs()
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR)
+    restore()
+    restore()
+    expect(files.has(CONFIG)).toBe(false)
+  })
+
+  it('exposes the canonical write-mode deny rule', () => {
+    expect(CURSOR_WRITE_MODE_DENY_RULES).toEqual(['Shell(**)'])
+  })
+})

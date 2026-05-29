@@ -167,8 +167,9 @@ import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
 import { experimentalCursorProviderEnabled, cursorDebugEnabled } from './cursorGate'
-import { buildCursorCliArgs } from './cursor/CursorCliArgs'
+import { buildCursorCliArgs, cursorWriteCapable } from './cursor/CursorCliArgs'
 import { cursorEventToRunEvents, type NormalizedCursorRunEvent } from './cursor/CursorStreamJson'
+import { applyCursorWriteModeConfig } from './cursor/CursorWorkspaceConfig'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
   probeGrokUsage,
@@ -7535,14 +7536,35 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
     sendAgentCompatExit(event.sender, 'cursor', 1, route)
     return
   }
+  // CR6 — AGBench-owned write mode. Cursor has no `--deny` argv flag, so a
+  // write-capable run writes a transient workspace-local `.cursor/cli.json`
+  // denying native shell (`Shell(**)`); file edits stay allowed and are surfaced
+  // through AGBench's run-diff / Review-changes authority surface (Grok-parity).
+  // The config is restored on completion. If it can't be written (no workspace,
+  // fs error), we FALL BACK to read-only (`--mode plan`) — write mode never runs
+  // without native-shell containment. Never mutates global ~/.cursor.
+  const writeCapable = cursorWriteCapable(payload.approvalMode)
+  let restoreCursorConfig: (() => void) | undefined
+  if (writeCapable && payload.workspace) {
+    try {
+      const cursorDir = join(payload.workspace, '.cursor')
+      restoreCursorConfig = applyCursorWriteModeConfig(
+        fsSync,
+        join(cursorDir, 'cli.json'),
+        cursorDir
+      )
+    } catch {
+      restoreCursorConfig = undefined
+    }
+  }
   const args = buildCursorCliArgs({
     prompt: payload.prompt,
     workspace: payload.workspace!,
     model: payload.model,
     providerSessionId: payload.providerSessionId,
-    // CR4: forced read-only (--mode plan). CR6 will pass payload.approvalMode +
-    // write the workspace-local deny-list to enable AGBench-owned write mode.
-    approvalMode: 'plan'
+    // Honor the chat's approval mode only when the containment config is in
+    // place; otherwise force read-only.
+    approvalMode: restoreCursorConfig ? payload.approvalMode : 'plan'
   })
   runCliProviderProcess(event, 'cursor', resolved.binaryPath, args, payload, {
     fallback: false,
@@ -7550,7 +7572,9 @@ async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: Ag
       AGENTBENCH_PARENT_PROVIDER: 'cursor',
       AGENTBENCH_RUN_ID: route.appRunId || '',
       AGENTBENCH_CHAT_ID: route.appChatId || ''
-    }
+    },
+    // Restore (or remove) the workspace .cursor/cli.json after the run.
+    onComplete: () => restoreCursorConfig?.()
   })
 }
 

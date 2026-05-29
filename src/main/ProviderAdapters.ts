@@ -212,11 +212,12 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
     }
   }
   if (provider === 'cursor') {
-    // CR4 — first-class Cursor (Composer 2.5), READ-ONLY until CR6. Transport is
-    // the cursor-agent headless stream-json CLI; sessions resume via --resume
-    // (CR5). approvalModes ['plan'] only for now — CR6 adds 'default' (write)
-    // once the workspace deny-list + approval-ledger path lands. No MCP bridge /
-    // app-managed per-tool approval cards yet: native side effects are contained
+    // First-class Cursor (Composer 2.5). Transport is the cursor-agent headless
+    // stream-json CLI; sessions resume via --resume. CR6 landed write mode
+    // (`approvalModes: ['plan','default']`): 'plan' = read-only (--mode plan),
+    // 'default' = file-write contained by a workspace-local deny-list (native
+    // shell denied; edits diff/PR-reviewed — Grok-parity). NO app-managed
+    // per-tool approval cards + no MCP bridge: native side effects are contained
     // by --mode plan / the deny-list, not per-tool cards. Without this branch
     // cursor would inherit the Claude default below, advertising capabilities it
     // does not have.
@@ -236,7 +237,7 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
         hostCommandFallback: false
       },
       capabilities: {
-        approvalModes: ['plan'],
+        approvalModes: ['plan', 'default'],
         reasoningEffort: false,
         speedTiers: [],
         imageAttachments: false,
