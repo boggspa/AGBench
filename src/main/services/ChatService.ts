@@ -1,6 +1,7 @@
 import type { AgentRunRoute } from '../index'
 import type { ChatRecord, ProviderId, RunEventInput, WorkspaceRecord } from '../store/types'
 import { experimentalGrokProviderEnabled } from '../grokGate'
+import { experimentalCursorProviderEnabled } from '../cursorGate'
 
 const PROVIDER_IDS = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
 
@@ -147,6 +148,9 @@ function assertProviderId(value: unknown): ProviderId {
   // 1.0.6-G3c — grok is accepted only when the experimental gate is on.
   if (value === 'grok' && experimentalGrokProviderEnabled()) {
     return 'grok'
+  }
+  if (value === 'cursor' && experimentalCursorProviderEnabled()) {
+    return 'cursor'
   }
   throw new Error('Provider is invalid.')
 }

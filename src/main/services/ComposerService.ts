@@ -1,6 +1,7 @@
 import type { AgentRunPayload } from '../index'
 import { composeRunPrompt, type ComposeRunPromptResult } from '../PromptComposition'
 import { experimentalGrokProviderEnabled } from '../grokGate'
+import { experimentalCursorProviderEnabled } from '../cursorGate'
 import {
   coalesceExternalPathGrants,
   stripExternalPathGrantOrder
@@ -231,6 +232,9 @@ function assertProviderId(value: unknown): ProviderId {
   if (value === 'grok' && experimentalGrokProviderEnabled()) {
     return 'grok'
   }
+  if (value === 'cursor' && experimentalCursorProviderEnabled()) {
+    return 'cursor'
+  }
   throw new Error('Provider is invalid.')
 }
 
@@ -416,6 +420,7 @@ function getProviderLabel(provider: ProviderId): string {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   return 'Gemini'
 }
 
@@ -423,6 +428,7 @@ function getDefaultModelForProvider(provider: ProviderId): string {
   if (provider === 'codex') return 'gpt-5.5'
   if (provider === 'claude') return 'default'
   if (provider === 'kimi') return 'kimi-k2.6'
+  if (provider === 'cursor') return 'composer-2.5-fast'
   return 'flash-lite'
 }
 

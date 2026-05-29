@@ -7332,6 +7332,7 @@ function App(): React.JSX.Element {
   // this resolves true unless Grok is force-disabled (AGBENCH_DISABLE_GROK=1),
   // in which case the adapter is absent → this stays false → grok never shows.
   const [grokProviderAvailable, setGrokProviderAvailable] = useState(false)
+  const [cursorProviderAvailable, setCursorProviderAvailable] = useState(false)
   const [selectedModelType, setSelectedModelType] = useState<string>('flash-lite')
   const [lastNonCustomModelType, setLastNonCustomModelType] = useState<string>('flash-lite')
   const [customModel, setCustomModel] = useState('')
@@ -9099,6 +9100,7 @@ function App(): React.JSX.Element {
             ? adapters.map((adapter) => (adapter as { provider?: string } | null)?.provider)
             : []
           setGrokProviderAvailable(ids.includes('grok'))
+          setCursorProviderAvailable(ids.includes('cursor'))
         })
         .catch(() => {})
     }
@@ -20217,6 +20219,9 @@ function App(): React.JSX.Element {
                         <option value="claude">Claude</option>
                         <option value="kimi">Kimi</option>
                         {grokProviderAvailable ? <option value="grok">Grok</option> : null}
+                        {cursorProviderAvailable ? (
+                          <option value="cursor">Cursor</option>
+                        ) : null}
                       </select>
                     </label>
                       )

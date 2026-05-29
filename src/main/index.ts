@@ -166,6 +166,9 @@ import { experimentalGrokProviderEnabled, grokAcpEnabled } from './grokGate'
 import { buildGrokCliArgs, grokWriteCapable } from './grok/GrokCliArgs'
 import { grokToolKindToService } from './grok/GrokAcpProtocol'
 import { grokEventToRunEvents, type NormalizedGrokRunEvent } from './grok/GrokStreamingJson'
+import { experimentalCursorProviderEnabled, cursorDebugEnabled } from './cursorGate'
+import { buildCursorCliArgs } from './cursor/CursorCliArgs'
+import { cursorEventToRunEvents, type NormalizedCursorRunEvent } from './cursor/CursorStreamJson'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
   probeGrokUsage,
@@ -1160,6 +1163,12 @@ function assertProviderId(value: unknown): ProviderId {
   // 1.0.6-G3c — grok is accepted only when the experimental gate is on.
   if (value === 'grok' && experimentalGrokProviderEnabled()) {
     return 'grok'
+  }
+  // CR — cursor is first-class (gate default-on) but kept out of the frozen
+  // PROVIDER_IDS baseline so the status/broadcast iteration arrays stay 5-wide;
+  // admitted here per-call (gate #2).
+  if (value === 'cursor' && experimentalCursorProviderEnabled()) {
+    return 'cursor'
   }
   throw new Error('Provider is invalid.')
 }
@@ -4411,7 +4420,7 @@ async function getAgentStatusSnapshotDirect(provider: ProviderId): Promise<any> 
       error: accountStatus?.error
     }
   }
-  if (provider === 'claude' || provider === 'kimi' || provider === 'grok') {
+  if (provider === 'claude' || provider === 'kimi' || provider === 'grok' || provider === 'cursor') {
     // Grok (gated, G3) is a local CLI provider — route to the generic CLI
     // status (binary/version probe) instead of falling through to the
     // hardcoded gemini snapshot below, which would mislabel it as Gemini.
@@ -6404,6 +6413,102 @@ function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
   emitCliProviderToolEvent(state, event)
 }
 
+// CR4 — Cursor (Composer 2.5) read-only runtime stream handling. Mirrors the
+// Grok path: the pure, fixture-tested CursorStreamJson mapper turns cursor-agent
+// stream-json into normalized run events, and applyCursorRunEvent emits the
+// provider-agnostic compat lines (content / thinking / tool_use / tool_result)
+// the renderer already understands. Cursor reports REAL token usage in its
+// terminal result, so (unlike Grok) no projection is needed.
+let cursorFallbackToolSeq = 0
+function applyCursorRunEvent(state: CliProviderStreamState, evt: NormalizedCursorRunEvent) {
+  if (evt.sessionId) updateCliProviderSession(state, evt.sessionId)
+  if (evt.type === 'content' && evt.text) {
+    state.assistantText = `${state.assistantText || ''}${evt.text}`
+    sendAgentCompatLine(
+      state.sender,
+      'cursor',
+      { type: 'content', text: evt.text, provider: 'cursor' },
+      state
+    )
+  } else if (evt.type === 'thinking' && evt.text) {
+    emitCliProviderThinkingEvent(state, evt.text)
+  } else if (evt.type === 'tool_use') {
+    sendAgentCompatLine(
+      state.sender,
+      'cursor',
+      {
+        type: 'tool_use',
+        tool_id: evt.toolId || `cursor-tool-${++cursorFallbackToolSeq}`,
+        tool_name: evt.toolName || 'tool',
+        // Canonical kind (read|edit|execute|search|…) drives the category icon
+        // (AD3) even though the Cursor tool name is a machine name.
+        tool_kind: evt.toolKind,
+        parameters: evt.toolInput || {},
+        provider: 'cursor'
+      },
+      state
+    )
+  } else if (evt.type === 'tool_result') {
+    sendAgentCompatLine(
+      state.sender,
+      'cursor',
+      {
+        type: 'tool_result',
+        tool_id: evt.toolId || `cursor-tool-${cursorFallbackToolSeq || ++cursorFallbackToolSeq}`,
+        status: evt.toolStatus || 'success',
+        output: evt.toolOutput || '',
+        provider: 'cursor'
+      },
+      state
+    )
+  } else if (evt.type === 'result') {
+    // Real usage from the terminal result event — record it so the run surfaces
+    // in the token dashboard. Cost stays 0 until a verified composer-2.5 rate
+    // lands (BAKED_IN_RATES ships an empty models list for now).
+    if (evt.usage) {
+      const input = evt.usage.inputTokens || 0
+      const output = evt.usage.outputTokens || 0
+      state.tokenUsage = {
+        input_tokens: input,
+        output_tokens: output,
+        total_tokens: input + output,
+        total_cost_usd: 0
+      }
+    }
+  } else if (evt.type === 'provider_warning' && evt.text) {
+    sendAgentCompatError(state.sender, 'cursor', evt.text, state)
+  }
+}
+
+// CR — opt-in raw stream capture (AGBENCH_CURSOR_DEBUG); mirrors the Grok tap.
+let cursorDebugLogPath: string | null = null
+function maybeLogCursorRawEvent(event: unknown): void {
+  if (!cursorDebugEnabled()) return
+  let serialized = ''
+  try {
+    serialized = JSON.stringify(event)
+  } catch {
+    return
+  }
+  process.stderr.write(`[cursor-raw] ${serialized}\n`)
+  try {
+    if (!cursorDebugLogPath) cursorDebugLogPath = join(os.tmpdir(), 'agbench-cursor-stream.jsonl')
+    fsSync.appendFileSync(cursorDebugLogPath, `${serialized}\n`)
+  } catch {
+    // Best-effort; never throws.
+  }
+}
+
+function handleCursorStreamEvent(state: CliProviderStreamState, event: unknown) {
+  maybeLogCursorRawEvent(event)
+  for (const evt of cursorEventToRunEvents({ json: event as Record<string, unknown> })) {
+    applyCursorRunEvent(state, evt)
+  }
+  // Belt-and-suspenders: also run the shared multi-shape tool recognizer for any
+  // nested / bridge tool shapes (disjoint from the flattened events above).
+  emitCliProviderToolEvent(state, event)
+}
+
 /**
  * Grok's CLI reports no token counts, so a Grok run would otherwise record 0
  * tokens and never surface in the token/cost dashboard (Providers tab, Model
@@ -6438,6 +6543,10 @@ function estimateProjectedTokenUsage(
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   if (state.provider === 'grok') {
     handleGrokStreamEvent(state, event)
+    return
+  }
+  if (state.provider === 'cursor') {
+    handleCursorStreamEvent(state, event)
     return
   }
   const sessionId = extractProviderSessionId(event)
@@ -7385,6 +7494,60 @@ async function runGrokProvider(event: Electron.IpcMainInvokeEvent, payload: Agen
     fallback: false,
     extraEnv: {
       AGENTBENCH_PARENT_PROVIDER: 'grok',
+      AGENTBENCH_RUN_ID: route.appRunId || '',
+      AGENTBENCH_CHAT_ID: route.appChatId || ''
+    }
+  })
+}
+
+// CR4 — Cursor (Composer 2.5) READ-ONLY runtime. Reuses the shared CLI streaming
+// machinery (runCliProviderProcess → handleCliProviderJsonEvent → the
+// state.provider==='cursor' branch → the fixture-tested CursorStreamJson mapper).
+// FORCED READ-ONLY: buildCursorCliArgs is always called with approvalMode 'plan'
+// (--mode plan = no edits, proven by the CR3 spike) until CR6 wires the
+// write-mode deny-list + approval-ledger path. So even though Cursor is
+// first-class + selectable, it cannot make an unmediated native write in the
+// interim. CursorCliArgs never emits bare -p / --force / --yolo.
+async function runCursorProvider(event: Electron.IpcMainInvokeEvent, payload: AgentRunPayload) {
+  const route = routeWithRunId('cursor', payload)
+  if (!experimentalCursorProviderEnabled()) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(event.sender, 'cursor', 'Cursor provider is not enabled.', route)
+    sendAgentCompatExit(event.sender, 'cursor', 1, route)
+    return
+  }
+  const resolved = await resolveCliProviderBinary('cursor', payload.runtimeProfile)
+  if (!resolved.binaryPath) {
+    runManager.finish(route.appRunId, 'failed')
+    sendAgentCompatError(
+      event.sender,
+      'cursor',
+      resolved.error ||
+        'Cursor CLI (cursor-agent) is not configured. Install it and run `cursor-agent login`.',
+      route
+    )
+    sendAgentCompatLine(
+      event.sender,
+      'cursor',
+      { type: 'result', status: 'failed', stats: {}, provider: 'cursor', setupRequired: true },
+      route
+    )
+    sendAgentCompatExit(event.sender, 'cursor', 1, route)
+    return
+  }
+  const args = buildCursorCliArgs({
+    prompt: payload.prompt,
+    workspace: payload.workspace!,
+    model: payload.model,
+    providerSessionId: payload.providerSessionId,
+    // CR4: forced read-only (--mode plan). CR6 will pass payload.approvalMode +
+    // write the workspace-local deny-list to enable AGBench-owned write mode.
+    approvalMode: 'plan'
+  })
+  runCliProviderProcess(event, 'cursor', resolved.binaryPath, args, payload, {
+    fallback: false,
+    extraEnv: {
+      AGENTBENCH_PARENT_PROVIDER: 'cursor',
       AGENTBENCH_RUN_ID: route.appRunId || '',
       AGENTBENCH_CHAT_ID: route.appChatId || ''
     }
@@ -10512,7 +10675,7 @@ async function cancelProviderRun(
     return false
   }
 
-  if (provider === 'claude' || provider === 'kimi' || provider === 'grok') {
+  if (provider === 'claude' || provider === 'kimi' || provider === 'grok' || provider === 'cursor') {
     const child = cliProviderProcesses.get(provider)
     if (child) {
       child.kill()
@@ -11177,6 +11340,28 @@ const grokAdapters: ProviderAdapter<AgentRunPayload, Electron.IpcMainInvokeEvent
       ]
     : []
 
+// CR4 — conditional Cursor adapter (dispatch gate #3). First-class by default
+// (experimentalCursorProviderEnabled), removed only under the kill-switch.
+// runCursorProvider runs read-only until CR6.
+const cursorAdapters: ProviderAdapter<AgentRunPayload, Electron.IpcMainInvokeEvent>[] =
+  experimentalCursorProviderEnabled()
+    ? [
+        {
+          ...defaultProviderDescriptor('cursor'),
+          run: ({ event, payload }) => runCursorProvider(event, payload),
+          cancel: (runId) => cancelProviderRun('cursor', runId),
+          getStatus: () => getAgentStatusSnapshotDirect('cursor'),
+          getMcpStatus: () => getAgentMcpStatusSnapshotDirect('cursor'),
+          getCapabilityContract: (request = {}) =>
+            getProviderCapabilityContractDirect(
+              'cursor',
+              request.workspacePath,
+              request.approvalMode
+            )
+        }
+      ]
+    : []
+
 const providerAdapters = createProviderAdapterRegistry<
   AgentRunPayload,
   Electron.IpcMainInvokeEvent
@@ -11217,7 +11402,8 @@ const providerAdapters = createProviderAdapterRegistry<
     getCapabilityContract: (request = {}) =>
       getProviderCapabilityContractDirect('kimi', request.workspacePath, request.approvalMode)
   },
-  ...grokAdapters
+  ...grokAdapters,
+  ...cursorAdapters
 ])
 
 async function readCliVersion(command: string): Promise<string> {

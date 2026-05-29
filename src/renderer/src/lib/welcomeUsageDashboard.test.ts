@@ -1110,11 +1110,11 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
   const HOUR = 60 * 60 * 1000
   const DAY = 24 * HOUR
 
-  it('always emits 5 canonical providers in cost breakdown, even with no records', () => {
+  it('always emits 6 canonical providers in cost breakdown, even with no records', () => {
     const data = buildWelcomeUsageDashboardData([], [], '30d', NOW)
-    expect(data.providerCostBreakdown).toHaveLength(5)
+    expect(data.providerCostBreakdown).toHaveLength(6)
     const providers = data.providerCostBreakdown.map((entry) => entry.provider).sort()
-    expect(providers).toEqual(['claude', 'codex', 'gemini', 'grok', 'kimi'])
+    expect(providers).toEqual(['claude', 'codex', 'cursor', 'gemini', 'grok', 'kimi'])
     // Zero-token / zero-cost providers still appear with the canonical
     // display name and 0 share so the card list is a stable roster.
     for (const entry of data.providerCostBreakdown) {

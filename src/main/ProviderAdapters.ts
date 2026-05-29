@@ -91,6 +91,7 @@ export function providerLabel(provider: ProviderId): string {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   return 'Gemini'
 }
 
@@ -202,6 +203,41 @@ export function defaultProviderDescriptor(provider: ProviderId): ProviderAdapter
       capabilities: {
         approvalModes: ['plan', 'default'],
         reasoningEffort: true,
+        speedTiers: [],
+        imageAttachments: false,
+        contextInjection: false,
+        sessionResumption: true,
+        perThreadMcp: false
+      }
+    }
+  }
+  if (provider === 'cursor') {
+    // CR4 — first-class Cursor (Composer 2.5), READ-ONLY until CR6. Transport is
+    // the cursor-agent headless stream-json CLI; sessions resume via --resume
+    // (CR5). approvalModes ['plan'] only for now — CR6 adds 'default' (write)
+    // once the workspace deny-list + approval-ledger path lands. No MCP bridge /
+    // app-managed per-tool approval cards yet: native side effects are contained
+    // by --mode plan / the deny-list, not per-tool cards. Without this branch
+    // cursor would inherit the Claude default below, advertising capabilities it
+    // does not have.
+    return {
+      provider,
+      label: providerLabel(provider),
+      transport: 'cursor-cli',
+      runChannel: 'run-agent',
+      capabilitySource: 'provider',
+      features: {
+        persistentSessions: true,
+        appManagedApprovals: false,
+        workspaceGrants: false,
+        agentBenchMcpBridge: false,
+        providerManagedMcp: false,
+        nativeThreadTools: false,
+        hostCommandFallback: false
+      },
+      capabilities: {
+        approvalModes: ['plan'],
+        reasoningEffort: false,
         speedTiers: [],
         imageAttachments: false,
         contextInjection: false,

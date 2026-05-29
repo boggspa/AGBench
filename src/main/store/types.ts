@@ -991,6 +991,7 @@ export type ProviderAdapterTransport =
   | 'claude-sdk-or-cli'
   | 'kimi-wire-or-cli'
   | 'grok-cli'
+  | 'cursor-cli'
 
 export type ProviderAdapterRunChannel = 'run-agent'
 
