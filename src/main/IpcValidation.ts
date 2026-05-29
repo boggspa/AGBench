@@ -218,6 +218,7 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'capture-snapshot': ['workspacePath'],
   'compute-run-diff': ['runId', 'any', 'any', 'optionalObject'],
   'check-trust': ['workspacePath'],
+  'trust-workspace': ['workspacePath'],
   'shell:open-link': ['nonEmptyString'],
   'start-pty': ['workspacePath', 'optionalString'],
   'stop-pty': ['optionalString'],
