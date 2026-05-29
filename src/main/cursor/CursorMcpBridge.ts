@@ -42,7 +42,7 @@ const readline = require('readline')
 function send(m) { try { process.stdout.write(JSON.stringify(m) + '\\n') } catch (e) {} }
 const WEB_FETCH_TOOL = {
   name: 'web_fetch',
-  description: 'Fetch the text contents of an absolute http(s) URL for web research. Returns the HTTP status and the (truncated) response body. Read-only network access — cannot write files or run shell.',
+  description: 'Fetch the live text contents of an absolute http(s) URL. Use this whenever you need to read a web page or pull current online information and you already have a URL — it is the working way to access the web here. Returns the HTTP status + (truncated) body. Read-only network; cannot write files or run shell.',
   inputSchema: {
     type: 'object',
     properties: { url: { type: 'string', description: 'The absolute http(s) URL to fetch.' } },
@@ -68,6 +68,43 @@ async function doFetch(url) {
     clearTimeout(timer)
   }
 }
+const WEB_SEARCH_TOOL = {
+  name: 'web_search',
+  description: 'Search the web for a query and return the top result titles + URLs. Use this whenever you need to find current online information and do NOT already have a URL (then web_fetch a result for the details). It is the working way to search the web here. Read-only network; cannot write files or run shell.',
+  inputSchema: {
+    type: 'object',
+    properties: { query: { type: 'string', description: 'The search query.' } },
+    required: ['query']
+  }
+}
+async function doSearch(query) {
+  if (typeof query !== 'string' || !query.trim()) throw new Error('query must be a non-empty string')
+  const controller = new AbortController()
+  const timer = setTimeout(function () { controller.abort() }, 20000)
+  try {
+    const res = await fetch('https://html.duckduckgo.com/html/?q=' + encodeURIComponent(query), {
+      signal: controller.signal,
+      headers: { 'user-agent': 'AGBench-Cursor-web_search/1.0' }
+    })
+    const html = await res.text()
+    const results = []
+    const re = /<a\\b[^>]*class="result__a"[^>]*href="([^"]+)"[^>]*>([\\s\\S]*?)<\\/a>/g
+    let m
+    while ((m = re.exec(html)) !== null && results.length < 8) {
+      let href = m[1]
+      const uddg = href.match(/[?&]uddg=([^&]+)/)
+      if (uddg) { try { href = decodeURIComponent(uddg[1]) } catch (e) {} }
+      const title = m[2].replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim()
+      if (title && href) results.push('- ' + title + '\\n  ' + href)
+    }
+    if (results.length === 0) {
+      return 'No results parsed for "' + query + '" (search returned HTTP ' + res.status + ').'
+    }
+    return 'Top web results for "' + query + '":\\n\\n' + results.join('\\n')
+  } finally {
+    clearTimeout(timer)
+  }
+}
 readline.createInterface({ input: process.stdin }).on('line', async function (line) {
   line = (line || '').trim()
   if (!line) return
@@ -85,7 +122,7 @@ readline.createInterface({ input: process.stdin }).on('line', async function (li
   } else if (method === 'notifications/initialized') {
     // notification, no response
   } else if (method === 'tools/list') {
-    send({ jsonrpc: '2.0', id: id, result: { tools: [WEB_FETCH_TOOL] } })
+    send({ jsonrpc: '2.0', id: id, result: { tools: [WEB_FETCH_TOOL, WEB_SEARCH_TOOL] } })
   } else if (method === 'tools/call') {
     const name = params.name
     const args = params.arguments || {}
@@ -95,6 +132,13 @@ readline.createInterface({ input: process.stdin }).on('line', async function (li
         send({ jsonrpc: '2.0', id: id, result: { content: [{ type: 'text', text: text }] } })
       } catch (e) {
         send({ jsonrpc: '2.0', id: id, result: { content: [{ type: 'text', text: 'web_fetch error: ' + String((e && e.message) || e) }], isError: true } })
+      }
+    } else if (name === 'web_search') {
+      try {
+        const text = await doSearch(args.query)
+        send({ jsonrpc: '2.0', id: id, result: { content: [{ type: 'text', text: text }] } })
+      } catch (e) {
+        send({ jsonrpc: '2.0', id: id, result: { content: [{ type: 'text', text: 'web_search error: ' + String((e && e.message) || e) }], isError: true } })
       }
     } else {
       send({ jsonrpc: '2.0', id: id, error: { code: -32601, message: 'Unknown tool: ' + name } })

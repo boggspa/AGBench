@@ -110,8 +110,9 @@ describe('mergeCursorAllowRules', () => {
 })
 
 describe('CURSOR_WEB_FETCH_MCP_SERVER_SOURCE', () => {
-  it('declares the web_fetch tool and runs in strict mode', () => {
+  it('declares the web_fetch + web_search tools and runs in strict mode', () => {
     expect(CURSOR_WEB_FETCH_MCP_SERVER_SOURCE).toContain("name: 'web_fetch'")
+    expect(CURSOR_WEB_FETCH_MCP_SERVER_SOURCE).toContain("name: 'web_search'")
     expect(CURSOR_WEB_FETCH_MCP_SERVER_SOURCE).toContain("'use strict'")
     // The embed must NOT contain a live template literal (would break escaping).
     expect(CURSOR_WEB_FETCH_MCP_SERVER_SOURCE).not.toContain('${')

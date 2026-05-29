@@ -144,6 +144,7 @@ export function cursorToolKind(base: string): string | undefined {
     case 'search':
     case 'codebasesearch':
     case 'semanticsearch':
+    case 'web_search':
       return 'search'
     case 'edit':
     case 'write':
@@ -170,6 +171,7 @@ export function cursorToolKind(base: string): string | undefined {
     case 'updatetodo':
       return 'think'
     case 'webfetch':
+    case 'web_fetch':
     case 'fetch':
     case 'web':
       return 'fetch'
@@ -252,7 +254,19 @@ function extractToolCall(toolCall: unknown):
   const key = Object.keys(tc)[0]
   if (!key) return undefined
   const inner = asRecord(tc[key])
-  const base = key.replace(/ToolCall$/i, '')
+  let base = key.replace(/ToolCall$/i, '')
+  // CRUX40 — MCP tools surface as `mcpToolCall` with the REAL tool under
+  // `toolName` (e.g. "web_fetch") + a `providerIdentifier` (e.g. "agbench"). Use
+  // the nested tool name so the card reads "Fetched a web page" / "Searched web
+  // for …" (via ToolDisplayNames) instead of the generic "Used mcp". Falls back
+  // to `name` (provider-prefixed) then the literal `mcp` base.
+  if (base.toLowerCase() === 'mcp') {
+    const nested =
+      (typeof inner?.toolName === 'string' && inner.toolName) ||
+      (typeof inner?.name === 'string' && inner.name) ||
+      ''
+    if (nested) base = nested
+  }
   return { base, args: asRecord(inner?.args), result: inner?.result }
 }
 

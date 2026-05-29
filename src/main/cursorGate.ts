@@ -39,8 +39,10 @@ export function cursorDebugEnabled(): boolean {
 }
 
 /**
- * OQ#2 — opt-in toggle for the Cursor web bridge (CRUX39 "B", the proven reliable
- * path). DEFAULT OFF; set AGBENCH_CURSOR_WEB=1 to enable.
+ * OQ#2 — toggle for the Cursor web bridge (CRUX39 "B", the proven reliable path).
+ * DEFAULT ON (opt-out via AGBENCH_CURSOR_WEB=0). It's inert anyway unless the
+ * user's global agbench server is registered, so that registration is the real
+ * opt-in; the env var is just an explicit kill-switch.
  *
  * Background: the spike PROVED Cursor can route web research through an AGBench
  * `web_fetch` MCP server in headless default/write mode (plan mode rejects all
@@ -59,6 +61,9 @@ export function cursorDebugEnabled(): boolean {
  * write). See the OQ#2 verdict in the Cursor blueprint.
  */
 export function cursorWebBridgeEnabled(): boolean {
+  // DEFAULT ON (opt-out): inert anyway unless the user's global agbench server is
+  // registered, so the registration is the real opt-in. AGBENCH_CURSOR_WEB=0
+  // (or false/no) is an explicit kill-switch.
   const v = process.env.AGBENCH_CURSOR_WEB
-  return v === '1' || v === 'true' || v === 'yes'
+  return v !== '0' && v !== 'false' && v !== 'no'
 }

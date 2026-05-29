@@ -80,6 +80,41 @@ describe('CursorStreamJson', () => {
       ])
     })
 
+    it('maps an MCP tool_call to its nested tool name + kind (not the generic "mcp")', () => {
+      // CRUX40 real shape: { mcpToolCall: { toolName:'web_fetch',
+      // providerIdentifier:'agbench', name:'agbench-web_fetch', args:{…} } }. The
+      // card must read the nested toolName so it renders "Fetched a web page"
+      // (web_fetch → fetch) / "Searched web for …" (web_search → search), not "mcp".
+      const fetched = cursorEventToRunEvents(
+        ev({
+          type: 'tool_call',
+          subtype: 'started',
+          call_id: 'tool_a',
+          tool_call: {
+            mcpToolCall: {
+              providerIdentifier: 'agbench',
+              toolName: 'web_fetch',
+              name: 'agbench-web_fetch',
+              args: { url: 'https://example.com' }
+            }
+          }
+        })
+      )
+      expect(fetched[0].toolName).toBe('web_fetch')
+      expect(fetched[0].toolKind).toBe('fetch')
+
+      const searched = cursorEventToRunEvents(
+        ev({
+          type: 'tool_call',
+          subtype: 'started',
+          call_id: 'tool_b',
+          tool_call: { mcpToolCall: { toolName: 'web_search', args: { query: 'weather' } } }
+        })
+      )
+      expect(searched[0].toolName).toBe('web_search')
+      expect(searched[0].toolKind).toBe('search')
+    })
+
     it('exposes editToolCall streamContent as `content` for the inline diff', () => {
       // Real 2026.05.28 shape (captured): the edit tool streams the new file
       // content under `streamContent` + the target under `path`, with NO
