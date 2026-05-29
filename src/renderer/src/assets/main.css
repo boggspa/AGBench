@@ -3598,6 +3598,9 @@ button.sidebar-item {
 .message-meta.provider-kimi {
   color: var(--provider-kimi-color) !important;
 }
+.message-meta.provider-cursor {
+  color: var(--provider-cursor-color) !important;
+}
 
 .message-bubble {
   padding: var(--space-md) var(--space-lg);

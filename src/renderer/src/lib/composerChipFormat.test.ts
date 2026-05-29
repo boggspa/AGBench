@@ -36,11 +36,24 @@ describe('shortModelName', () => {
     expect(shortModelName('codex', 'Custom Model X', 'custom-model-x')).toBe('Custom Model X')
   })
 
-  it('renders the cli-default sentinel as "CLI Default" across all providers', () => {
+  it('renders Cursor Composer model ids as human labels', () => {
+    expect(shortModelName('cursor', '', 'composer-2.5-fast')).toBe('Composer 2.5 Fast')
+    expect(shortModelName('cursor', '', 'composer-2.5')).toBe('Composer 2.5')
+  })
+
+  it('renders the Grok CLI model as Grok Build 0.1', () => {
+    expect(shortModelName('grok', '', 'grok-build')).toBe('Grok Build 0.1')
+  })
+
+  it("resolves the cli-default sentinel to each provider's real default", () => {
+    // Kimi + Grok dispatch with the bare sentinel → show their actual default.
+    expect(shortModelName('kimi', '', 'cli-default')).toBe('K2.6')
+    expect(shortModelName('grok', '', 'cli-default')).toBe('Grok Build 0.1')
+    // Providers that resolve a concrete id before dispatch keep the neutral label.
     expect(shortModelName('codex', '', 'cli-default')).toBe('CLI Default')
     expect(shortModelName('claude', '', 'cli-default')).toBe('CLI Default')
-    expect(shortModelName('kimi', '', 'cli-default')).toBe('CLI Default')
     expect(shortModelName('gemini', '', 'cli-default')).toBe('CLI Default')
+    expect(shortModelName('cursor', '', 'cli-default')).toBe('CLI Default')
   })
 })
 

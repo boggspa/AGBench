@@ -35,6 +35,8 @@ export interface ComposerChipContext {
  * Claude (`claude-opus-4-7-thinking`)      → `Opus 4.7`
  * Kimi (`kimi-k2.6`, `kimi-k2.6-thinking`) → `K2.6`
  * Gemini (`gemini-2.5-pro`)                → `2.5 Pro`
+ * Cursor (`composer-2.5-fast`)             → `Composer 2.5 Fast`
+ * Grok (`grok-build`)                      → `Grok Build 0.1`
  *
  * Falls back to the full label when no provider-specific pattern matches.
  */
@@ -48,9 +50,19 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
   // branch the per-message badge displayed the raw token literally —
   // e.g. "Codex / Brodex · cli-default" — which read as a model name
   // and made users wonder whether their picker change actually took.
-  // The picker's own label for this id is `'CLI Default'`
-  // (App.tsx:3540), so mirror that here for visual consistency.
-  if (id === 'cli-default') return 'CLI Default'
+  // The picker's own label for this id is `'CLI Default'` (App.tsx:3540).
+  //
+  // 1.0.6-CRUX37 — resolve the sentinel to each provider's actual CLI default
+  // model so the badge reads the real model name. Kimi and Grok dispatch with
+  // bare `cli-default` (they expose a single CLI model, so the picker rarely
+  // changes it); their defaults are K2.6 and Grok Build 0.1. Codex / Claude /
+  // Gemini / Cursor resolve a concrete id before dispatch, so they seldom reach
+  // here — keep the neutral 'CLI Default' for them.
+  if (id === 'cli-default') {
+    if (provider === 'kimi') return 'K2.6'
+    if (provider === 'grok') return 'Grok Build 0.1'
+    return 'CLI Default'
+  }
 
   if (provider === 'codex') {
     // gpt-5.5 → 5.5; gpt-5.4-mini → 5.4-Mini; gpt-5.3-codex-spark → 5.3-Codex-Spark
@@ -94,6 +106,17 @@ export function shortModelName(provider: ProviderId, modelLabel: string, modelId
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ')
     }
+  }
+
+  if (provider === 'cursor') {
+    // composer-2.5-fast (Cursor's default = Fast mode) / composer-2.5 → human label.
+    if (id === 'composer-2.5-fast') return 'Composer 2.5 Fast'
+    if (id === 'composer-2.5') return 'Composer 2.5'
+  }
+
+  if (provider === 'grok') {
+    // grok-build is the only model the subscription CLI exposes (= Grok Build 0.1).
+    if (id === 'grok-build') return 'Grok Build 0.1'
   }
 
   return label
