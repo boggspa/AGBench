@@ -216,6 +216,14 @@ describe('RunQueueService', () => {
     expect(repository.saveRunQueueJob).not.toHaveBeenCalled()
   })
 
+  it('admits cursor as a provider (gate on by default) so queued/scheduled runs work', () => {
+    const { deps } = makeDeps()
+    const service = new RunQueueService(deps)
+    // Cursor passes provider validation (it may still fail later validation for
+    // other missing fields, but never with the provider error). Mirrors grok.
+    expect(() => service.requestJob({ provider: 'cursor' })).not.toThrow('Provider is invalid.')
+  })
+
   it('preserves external grant validation failures', () => {
     const { deps, repository } = makeDeps({
       normalizeExternalPathGrants: vi.fn(() => [])

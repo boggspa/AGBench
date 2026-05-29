@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto'
+import { experimentalCursorProviderEnabled } from '../cursorGate'
 import { experimentalGrokProviderEnabled } from '../grokGate'
 import type { RunQueueJobInput } from '../RunQueue'
 import type { RunSession } from '../RunManager'
@@ -235,6 +236,12 @@ function assertProviderId(value: unknown): ProviderId {
   // into, even though the run itself completes.
   if (value === 'grok' && experimentalGrokProviderEnabled()) {
     return 'grok'
+  }
+  // 1.0.6-CRUX20 — same gated admission for Cursor (was missing, so Cursor
+  // queued / scheduled runs threw "Provider is invalid" and never rendered a
+  // placeholder). Mirrors the grok arm above.
+  if (value === 'cursor' && experimentalCursorProviderEnabled()) {
+    return 'cursor'
   }
   throw new Error('Provider is invalid.')
 }
