@@ -33385,7 +33385,7 @@ input:disabled, select:disabled, textarea:disabled {
  * the pill. The textarea's 48px / 224px gutters reserve the space. */
 [data-composer-style="cursor"] [data-composer-control="attach"] {
   position: absolute;
-  top: 12px;
+  top: 16px;
   left: 10px;
   margin: 0;
   z-index: 3;
@@ -33402,7 +33402,7 @@ input:disabled, select:disabled, textarea:disabled {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  top: 12px;
+  top: 16px;
   right: 12px;
   z-index: 3;
 }
