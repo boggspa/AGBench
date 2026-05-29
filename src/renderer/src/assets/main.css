@@ -18601,6 +18601,20 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.46);
 }
+/* 1.0.6-CS2 — Codex shell, DARK themes only: drop the purple rim outline on the
+ * composer surface + the detached above rows. "Dark" = the inverse of the codex
+ * shell's own light set (light / mist / sage), mirroring its existing
+ * light-scoped overrides. `transparent` keeps the 1px box (no reflow); the
+ * drop-shadow stays since it isn't an outline. Higher specificity than the base
+ * codex rules above, so it wins without `!important`. */
+:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
+  .composer-surface,
+:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
+  .composer-surface:focus-within,
+:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
+  .composer-above-bar {
+  border-color: transparent;
+}
 [data-composer-style="codex"] .composer-textarea {
   padding: 6px 6px 12px;
   min-height: 58px;
