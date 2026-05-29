@@ -18,10 +18,16 @@ export interface GrokStreamLine {
 }
 
 export interface NormalizedGrokRunEvent {
-  type: 'init' | 'content' | 'thinking' | 'result' | 'provider_warning'
+  type: 'init' | 'content' | 'thinking' | 'result' | 'provider_warning' | 'tool_use' | 'tool_result'
   text?: string
   sessionId?: string
   status?: string
+  /** Tool-call fields (G5d) — populated only for 'tool_use' / 'tool_result'. */
+  toolId?: string
+  toolName?: string
+  toolInput?: Record<string, unknown>
+  toolStatus?: 'success' | 'error'
+  toolOutput?: string
   raw?: unknown
 }
 
@@ -55,11 +61,47 @@ export function parseGrokStreamChunk(
   return { lines, carry: nextCarry }
 }
 
+/** First non-empty string among the candidates (defensive field lookup). */
+function firstString(...vals: unknown[]): string {
+  for (const v of vals) if (typeof v === 'string' && v) return v
+  return ''
+}
+
+/** A plain object, or undefined for anything else (arrays/scalars/null). */
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+}
+
+/** Coerce a tool-result payload to display text (stringify structured output). */
+function coerceToolOutput(...vals: unknown[]): string {
+  for (const v of vals) {
+    if (typeof v === 'string' && v) return v
+    if (v && typeof v === 'object') {
+      try {
+        return JSON.stringify(v)
+      } catch {
+        /* fall through */
+      }
+    }
+  }
+  return ''
+}
+
 /**
  * Map a single parsed NDJSON line to zero or more normalized run events. Never
- * throws; unknown event types are ignored (e.g. future tool events — read-only
- * G3 has no tools). Grok's shape: `{type, data}` for thought/text, and a
- * terminal `{type:'end', stopReason, sessionId}`.
+ * throws; genuinely-unknown event types are ignored. Grok's shape: `{type,
+ * data}` for thought/text, a terminal `{type:'end', stopReason, sessionId}`,
+ * and (G5d) best-effort tool-call events.
+ *
+ * G5d NOTE: Grok's headless tool-event wire shape is still undocumented — the
+ * tool_use / tool_result cases below read the *most likely* flattened field
+ * names (Grok is Claude-Code-modelled). Set AGBENCH_GROK_DEBUG=1 to capture the
+ * real shape from a live run; if it differs, extend the field lookups here (the
+ * single place that owns Grok's wire shape). Claude-style *nested* tool events
+ * (`message.content[].tool_use`) are handled separately by the shared
+ * `emitCliProviderToolEvent` sink, so both shapes are covered.
  */
 export function grokEventToRunEvents(line: GrokStreamLine): NormalizedGrokRunEvent[] {
   if (line.nonJson != null) {
@@ -94,6 +136,48 @@ export function grokEventToRunEvents(line: GrokStreamLine): NormalizedGrokRunEve
           raw: obj
         }
       ]
+    case 'tool_use':
+    case 'tool_call':
+    case 'tool_invocation': {
+      // A tool the agent is invoking (Write/Edit/etc). Best-effort field lookup.
+      const toolName = firstString(obj.name, obj.tool_name, obj.toolName, obj.tool) || 'tool'
+      const toolId = firstString(obj.id, obj.tool_id, obj.toolId, obj.tool_call_id, obj.toolCallId)
+      const toolInput =
+        asRecord(obj.input) ||
+        asRecord(obj.arguments) ||
+        asRecord(obj.args) ||
+        asRecord(obj.parameters) ||
+        asRecord(obj.params) ||
+        {}
+      return [{ type: 'tool_use', toolId: toolId || undefined, toolName, toolInput, raw: obj }]
+    }
+    case 'tool_result':
+    case 'tool_response':
+    case 'tool_output': {
+      const toolId = firstString(
+        obj.tool_use_id,
+        obj.tool_call_id,
+        obj.toolCallId,
+        obj.id,
+        obj.tool_id,
+        obj.toolId
+      )
+      const isError =
+        obj.is_error === true ||
+        obj.isError === true ||
+        obj.status === 'error' ||
+        obj.error != null
+      const toolOutput = coerceToolOutput(obj.output, obj.content, obj.result, obj.data, obj.message)
+      return [
+        {
+          type: 'tool_result',
+          toolId: toolId || undefined,
+          toolStatus: isError ? 'error' : 'success',
+          toolOutput,
+          raw: obj
+        }
+      ]
+    }
     default:
       return []
   }

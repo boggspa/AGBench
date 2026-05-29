@@ -6266,6 +6266,9 @@ function emitCliProviderThinkingEvent(state: CliProviderStreamState, text: strin
 // Shared by the headless (G3) and ACP (G4) paths. The `result` event is
 // intentionally NOT emitted here — each path synthesizes the canonical result
 // + exit on process close.
+// Fallback tool-id counter for Grok tool events that arrive without an id —
+// keeps each tool card distinct (so two id-less calls don't merge into one).
+let grokFallbackToolSeq = 0
 function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRunEvent) {
   if (evt.sessionId) updateCliProviderSession(state, evt.sessionId)
   if (evt.type === 'content' && evt.text) {
@@ -6278,15 +6281,66 @@ function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRun
     )
   } else if (evt.type === 'thinking' && evt.text) {
     emitCliProviderThinkingEvent(state, evt.text)
+  } else if (evt.type === 'tool_use') {
+    // Render Grok's tool invocation as an activity card (same shape the other
+    // CLI providers emit, so the renderer is provider-agnostic).
+    sendAgentCompatLine(
+      state.sender,
+      'grok',
+      {
+        type: 'tool_use',
+        tool_id: evt.toolId || `grok-tool-${++grokFallbackToolSeq}`,
+        tool_name: evt.toolName || 'tool',
+        parameters: evt.toolInput || {},
+        provider: 'grok'
+      },
+      state
+    )
+  } else if (evt.type === 'tool_result') {
+    sendAgentCompatLine(
+      state.sender,
+      'grok',
+      {
+        type: 'tool_result',
+        tool_id: evt.toolId || `grok-tool-${grokFallbackToolSeq || ++grokFallbackToolSeq}`,
+        status: evt.toolStatus || 'success',
+        output: evt.toolOutput || '',
+        provider: 'grok'
+      },
+      state
+    )
   } else if (evt.type === 'provider_warning' && evt.text) {
     sendAgentCompatError(state.sender, 'grok', evt.text, state)
   }
 }
 
+// 1.0.6-G5d — Opt-in raw-stream capture. Grok's headless tool-event wire shape
+// is still undocumented; set AGBENCH_GROK_DEBUG=1 to append every parsed Grok
+// streaming-json object to <tmpdir>/agbench-grok-stream.jsonl so the real shape
+// can be captured from a live in-app run. Off by default; never throws.
+let grokDebugLogPath: string | null = null
+function maybeLogGrokRawEvent(event: unknown): void {
+  const flag = process.env.AGBENCH_GROK_DEBUG
+  if (flag !== '1' && flag !== 'true' && flag !== 'yes') return
+  try {
+    if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'agbench-grok-stream.jsonl')
+    fsSync.appendFileSync(grokDebugLogPath, `${JSON.stringify(event)}\n`)
+  } catch {
+    // Diagnostics only — never disrupt the run.
+  }
+}
+
 function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
+  maybeLogGrokRawEvent(event)
   for (const evt of grokEventToRunEvents({ json: event as Record<string, unknown> })) {
     applyGrokRunEvent(state, evt)
   }
+  // Belt-and-suspenders: also run the shared multi-shape tool recognizer, which
+  // handles Claude-style *nested* tool events (message.content[].tool_use) and
+  // the bridge ToolCall/ToolResult envelopes. Disjoint from the flattened
+  // top-level tool_use/tool_result handled by grokEventToRunEvents above, so no
+  // double-emit; a no-op when nothing matches.
+  emitCliProviderToolEvent(state, event)
 }
 
 /**

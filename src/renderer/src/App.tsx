@@ -7324,10 +7324,11 @@ function App(): React.JSX.Element {
 
   // Model & Mode Selectors
   const [activeProvider, setActiveProvider] = useState<ProviderId>('gemini')
-  // 1.0.6-G3d — Grok is gated. It appears in the composer provider picker ONLY
-  // when the main process registered its adapter (AGBENCH_EXPERIMENTAL_GROK on),
-  // which we learn from the get-provider-adapters descriptor list on init. With
-  // the gate off the adapter is absent → this stays false → grok never shows.
+  // 1.0.6 — Grok is now first-class (the experimental gate was lifted in GLIFT).
+  // We still learn its availability from the get-provider-adapters descriptor
+  // list on init: the main process registers the Grok adapter by default, so
+  // this resolves true unless Grok is force-disabled (AGBENCH_DISABLE_GROK=1),
+  // in which case the adapter is absent → this stays false → grok never shows.
   const [grokProviderAvailable, setGrokProviderAvailable] = useState(false)
   const [selectedModelType, setSelectedModelType] = useState<string>('flash-lite')
   const [lastNonCustomModelType, setLastNonCustomModelType] = useState<string>('flash-lite')

@@ -111,9 +111,63 @@ describe('grokEventToRunEvents', () => {
     ])
   })
 
-  it('ignores unknown event types and empty tokens', () => {
-    expect(grokEventToRunEvents(json({ type: 'tool_use', foo: 1 }))).toEqual([])
+  it('ignores genuinely-unknown event types and empty tokens', () => {
+    expect(grokEventToRunEvents(json({ type: 'mystery_event', foo: 1 }))).toEqual([])
     expect(grokEventToRunEvents(json({ type: 'text' }))).toEqual([])
     expect(grokEventToRunEvents({})).toEqual([])
+  })
+})
+
+describe('grokEventToRunEvents — tool events (G5d, best-effort shape)', () => {
+  const json = (obj: Record<string, unknown>): GrokStreamLine => ({ json: obj })
+
+  it('maps a flattened tool_use to a tool_use run event', () => {
+    expect(
+      grokEventToRunEvents(json({ type: 'tool_use', id: 't1', name: 'Write', input: { path: 'a.ts' } }))
+    ).toEqual([
+      {
+        type: 'tool_use',
+        toolId: 't1',
+        toolName: 'Write',
+        toolInput: { path: 'a.ts' },
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('accepts the tool_call alias + an arguments field + a generic name fallback', () => {
+    expect(grokEventToRunEvents(json({ type: 'tool_call', arguments: { cmd: 'ls' } }))).toEqual([
+      {
+        type: 'tool_use',
+        toolId: undefined,
+        toolName: 'tool',
+        toolInput: { cmd: 'ls' },
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('maps a successful tool_result carrying the originating tool id', () => {
+    expect(
+      grokEventToRunEvents(json({ type: 'tool_result', tool_use_id: 't1', output: 'ok' }))
+    ).toEqual([
+      { type: 'tool_result', toolId: 't1', toolStatus: 'success', toolOutput: 'ok', raw: expect.anything() }
+    ])
+  })
+
+  it('flags an errored tool_result and stringifies structured output', () => {
+    expect(
+      grokEventToRunEvents(
+        json({ type: 'tool_result', tool_call_id: 't2', is_error: true, content: { msg: 'boom' } })
+      )
+    ).toEqual([
+      {
+        type: 'tool_result',
+        toolId: 't2',
+        toolStatus: 'error',
+        toolOutput: '{"msg":"boom"}',
+        raw: expect.anything()
+      }
+    ])
   })
 })
