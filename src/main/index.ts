@@ -1181,6 +1181,20 @@ function assertProviderId(value: unknown): ProviderId {
   throw new Error('Provider is invalid.')
 }
 
+/**
+ * 1.0.6-CRUX26 — provider ids currently available in this process: the frozen
+ * core four plus grok/cursor when their gates are on. Use for model-facing MCP
+ * enums and "all providers" sweeps so gated providers are advertised/iterated
+ * when present. Env gates are stable per-process, so calling this at
+ * schema-build time captures the right set.
+ */
+function availableProviderIds(): ProviderId[] {
+  const ids: ProviderId[] = ['gemini', 'codex', 'claude', 'kimi']
+  if (experimentalGrokProviderEnabled()) ids.push('grok')
+  if (experimentalCursorProviderEnabled()) ids.push('cursor')
+  return ids
+}
+
 function requireNonEmptyString(value: unknown, label: string): string {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`${label} is required.`)
@@ -15350,7 +15364,7 @@ async function summarizeProviderAuthStatusForMcp(provider: ProviderId) {
 }
 
 async function executeProviderAuthStatus(args: Record<string, any>) {
-  const providers = args.provider ? [assertProviderId(args.provider)] : Array.from(PROVIDER_IDS)
+  const providers = args.provider ? [assertProviderId(args.provider)] : availableProviderIds()
   const entries: Record<string, any> = {}
   for (const provider of providers) {
     entries[provider] = await summarizeProviderAuthStatusForMcp(provider)
@@ -15372,7 +15386,7 @@ async function executeProviderAuthStatus(args: Record<string, any>) {
  * "no signal" rather than "headroom available".
  */
 function executeProviderUsageStatus(args: Record<string, any>) {
-  const providers = args.provider ? [assertProviderId(args.provider)] : Array.from(PROVIDER_IDS)
+  const providers = args.provider ? [assertProviderId(args.provider)] : availableProviderIds()
   const entries: Record<string, ProviderUsageSummary> = {}
   for (const provider of providers) {
     const cached = AppStore.getProviderUsageSnapshot(
@@ -17329,7 +17343,7 @@ function mcpToolDefinitions() {
         properties: {
           provider: {
             type: 'string',
-            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            enum: availableProviderIds(),
             description:
               'Optional provider override. Defaults to the calling agent\'s provider.'
           },
@@ -17402,7 +17416,7 @@ function mcpToolDefinitions() {
       },
       inputSchema: {
         type: 'object',
-        properties: { provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] } }
+        properties: { provider: { type: 'string', enum: availableProviderIds() } }
       }
     },
     {
@@ -17427,7 +17441,7 @@ function mcpToolDefinitions() {
         properties: {
           provider: {
             type: 'string',
-            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            enum: availableProviderIds(),
             description:
               'Optional provider to filter to. Omit to return all four providers.'
           }
@@ -17467,7 +17481,7 @@ function mcpToolDefinitions() {
         properties: {
           runId: { type: 'string' },
           chatId: { type: 'string' },
-          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          provider: { type: 'string', enum: availableProviderIds() },
           includeArtifacts: { type: 'boolean' },
           limit: { type: 'number' }
         }
@@ -17859,7 +17873,7 @@ function mcpToolDefinitions() {
         properties: {
           summary: { type: 'string' },
           finalPrompt: { type: 'string' },
-          recommendedProvider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          recommendedProvider: { type: 'string', enum: availableProviderIds() },
           selectedFiles: { type: 'array', items: { type: 'string' } }
         }
       }
@@ -17891,7 +17905,7 @@ function mcpToolDefinitions() {
       inputSchema: {
         type: 'object',
         properties: {
-          provider: { type: 'string', enum: ['gemini', 'codex', 'claude', 'kimi'] },
+          provider: { type: 'string', enum: availableProviderIds() },
           role: { type: 'string' },
           instructions: { type: 'string' }
         },
@@ -18066,7 +18080,7 @@ function mcpToolDefinitions() {
         properties: {
           provider: {
             type: 'string',
-            enum: ['gemini', 'codex', 'claude', 'kimi'],
+            enum: availableProviderIds(),
             description: 'Which AGBench provider should run the sub-thread.'
           },
           prompt: {
@@ -20080,7 +20094,10 @@ if (isGeminiMcpBridgeProcess) {
       validateChatWorkspaceIdentity,
       canLeaseJob: (job) => {
         if (!job.chatId) return true
-        return !Array.from(PROVIDER_IDS).some((provider) =>
+        // 1.0.6-CRUX26 — sweep all AVAILABLE providers (incl. gated grok/cursor)
+        // so a grok/cursor session already active on this chat blocks a
+        // concurrent lease, matching the core four.
+        return !availableProviderIds().some((provider) =>
           runManager
             .getActiveByProvider(provider)
             .some((session) => session.appChatId === job.chatId)
