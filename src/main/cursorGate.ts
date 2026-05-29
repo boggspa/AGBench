@@ -39,22 +39,24 @@ export function cursorDebugEnabled(): boolean {
 }
 
 /**
- * OQ#2 — opt-in toggle for the Cursor web bridge: a per-run, workspace-local
- * `.cursor/mcp.json` registering the AGBench `web_fetch` MCP server (run via
- * electron-as-node) + an `Mcp(agbench:*)` allow rule + `--approve-mcps`, all
- * applied alongside the write-mode deny-list and restored after the run.
+ * OQ#2 — opt-in toggle for the Cursor web bridge (CRUX39 "B", the proven reliable
+ * path). DEFAULT OFF; set AGBENCH_CURSOR_WEB=1 to enable.
  *
- * DEFAULT OFF (set AGBENCH_CURSOR_WEB=1 to enable). The live spike PROVED Cursor
- * CAN route web research through this bridge in headless default/write mode (and
- * that plan mode rejects all tools, so it's write-mode only). BUT headless
- * auto-approval via `--approve-mcps` proved UNRELIABLE under load: tool calls are
- * frequently rejected with `User rejected MCP: …, isReadonly:false`, unaffected
- * by an MCP `readOnlyHint` annotation or a fresh server name. The reliable path,
- * `cursor-agent mcp enable <id>`, mutates global `~/.cursor` — a hard boundary we
- * never cross. So the bridge is opt-in/best-effort: when Cursor's auto-approval
- * cooperates it works end-to-end; when it doesn't, the agent degrades gracefully
- * (no edits/shell — those stay deny-listed; it just can't fetch that turn). See
- * the OQ#2 verdict in the Cursor blueprint.
+ * Background: the spike PROVED Cursor can route web research through an AGBench
+ * `web_fetch` MCP server in headless default/write mode (plan mode rejects all
+ * tools, so it's write-mode only). BUT MCP approval is PER WORKSPACE and headless
+ * `--approve-mcps` proved persistently unreliable (`User rejected MCP: …,
+ * isReadonly:false`). The reliable recipe (proven 4/4) is: the user registers our
+ * read-only server ONCE in global `~/.cursor/mcp.json` (Tools & MCPs → Add Custom
+ * MCP), then each workspace is approved via `cursor-agent mcp enable agbench`.
+ *
+ * When enabled AND that global server is registered, AGBench (per Chris's "B"
+ * call) auto-approves the run's workspace itself (`mcp enable agbench`, idempotent
+ * + cached) and adds the `Mcp(agbench:*)` allow rule to the run's `.cursor/cli.json`
+ * — NO per-run mcp.json, NO `--approve-mcps`. That `mcp enable` is the ONLY write
+ * AGBench makes under `~/.cursor`, and only ever approves our own server. If the
+ * global server isn't registered the bridge stays inactive (no web, no ~/.cursor
+ * write). See the OQ#2 verdict in the Cursor blueprint.
  */
 export function cursorWebBridgeEnabled(): boolean {
   const v = process.env.AGBENCH_CURSOR_WEB

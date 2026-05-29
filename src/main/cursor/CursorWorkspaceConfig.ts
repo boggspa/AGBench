@@ -73,17 +73,19 @@ export interface CursorConfigFs {
 
 /**
  * Optional web-bridge setup applied alongside the write-mode deny-list (OQ#2).
- * When present, `applyCursorWriteModeConfig` also writes `mcpConfigPath` (the
- * workspace `.cursor/mcp.json`) registering `serverEntry`, and merges `allowRules`
- * into the same cli.json write so the bridge's tools are pre-approved.
+ * `allowRules` are always merged into the cli.json write. `mcpConfigPath` +
+ * `serverEntry` are OPTIONAL: supply both to also register a per-run workspace
+ * `.cursor/mcp.json` (the original approach); OMIT both for CRUX39 "B" mode,
+ * which relies on a user-approved GLOBAL `~/.cursor/mcp.json` server and so needs
+ * only the cli.json allow rule (no per-run registration).
  */
 export interface CursorMcpBridgeOptions {
-  /** Absolute path to the workspace `.cursor/mcp.json`. */
-  mcpConfigPath: string
-  /** The `mcpServers` entry (from `buildCursorMcpServerEntry`). */
-  serverEntry: Record<string, unknown>
   /** Allow rules to add to cli.json (normally `CURSOR_MCP_ALLOW_RULES`). */
   allowRules: readonly string[]
+  /** Absolute path to the workspace `.cursor/mcp.json` (omit in "B" mode). */
+  mcpConfigPath?: string
+  /** The `mcpServers` entry (from `buildCursorMcpServerEntry`; omit in "B" mode). */
+  serverEntry?: Record<string, unknown>
 }
 
 interface CapturedFile {
@@ -148,14 +150,20 @@ export function applyCursorWriteModeConfig(
   let cliMerged = mergeCursorDenyRules(cli.parsed, CURSOR_WRITE_MODE_DENY_RULES)
   if (bridge) cliMerged = mergeCursorAllowRules(cliMerged, bridge.allowRules)
 
-  // mcp.json: register the AGBench server (only when the bridge is active).
-  const mcp = bridge ? captureFile(fs, bridge.mcpConfigPath) : null
-  const mcpMerged = bridge ? mergeCursorMcpConfig(mcp?.parsed ?? null, bridge.serverEntry) : null
+  // mcp.json: register the AGBench server — only when the bridge supplies BOTH a
+  // path and an entry. "B" mode omits them (it relies on the user's approved
+  // global server), so only the cli.json allow rule above is written.
+  const mcpConfigPath = bridge?.mcpConfigPath
+  const serverEntry = bridge?.serverEntry
+  const writeMcp = Boolean(mcpConfigPath && serverEntry)
+  const mcp = writeMcp && mcpConfigPath ? captureFile(fs, mcpConfigPath) : null
+  const mcpMerged =
+    writeMcp && serverEntry ? mergeCursorMcpConfig(mcp?.parsed ?? null, serverEntry) : null
 
   if (!dirExisted) fs.mkdirSync(dirPath, { recursive: true })
   fs.writeFileSync(configPath, `${JSON.stringify(cliMerged, null, 2)}\n`)
-  if (bridge && mcpMerged) {
-    fs.writeFileSync(bridge.mcpConfigPath, `${JSON.stringify(mcpMerged, null, 2)}\n`)
+  if (mcpConfigPath && mcpMerged) {
+    fs.writeFileSync(mcpConfigPath, `${JSON.stringify(mcpMerged, null, 2)}\n`)
   }
 
   let restored = false
@@ -163,7 +171,7 @@ export function applyCursorWriteModeConfig(
     if (restored) return
     restored = true
     restoreFile(fs, configPath, cli)
-    if (bridge && mcp) restoreFile(fs, bridge.mcpConfigPath, mcp)
+    if (mcpConfigPath && mcp) restoreFile(fs, mcpConfigPath, mcp)
     // Remove the `.cursor` dir only if WE created it (it's ours to clean).
     if (!dirExisted) {
       try {

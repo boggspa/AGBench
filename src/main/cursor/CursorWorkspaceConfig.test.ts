@@ -151,4 +151,21 @@ describe('applyCursorWriteModeConfig with the web bridge (OQ#2)', () => {
     // We didn't create the dir, so restore leaves it.
     expect(dirs.has(DIR)).toBe(true)
   })
+
+  it('"B" mode (allowRules only) writes cli.json allow + deny but NO mcp.json', () => {
+    const { fs, files } = makeFakeFs()
+    // No mcpConfigPath / serverEntry — relies on the user's global server.
+    const restore = applyCursorWriteModeConfig(fs, CONFIG, DIR, {
+      allowRules: CURSOR_MCP_ALLOW_RULES
+    })
+
+    const cli = JSON.parse(files.get(CONFIG)!)
+    expect(cli.permissions.deny).toContain('Shell(**)')
+    expect(cli.permissions.allow).toContain('Mcp(agbench:*)')
+    // The per-run workspace mcp.json must NOT be written in B mode.
+    expect(files.has(MCP)).toBe(false)
+
+    restore()
+    expect(files.has(CONFIG)).toBe(false)
+  })
 })
