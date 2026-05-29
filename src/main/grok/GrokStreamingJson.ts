@@ -9,6 +9,18 @@
 //   {"type":"end","stopReason":"EndTurn","sessionId":"...","requestId":"..."}
 // All Grok-specific shape knowledge lives in `grokEventToRunEvents` (the single
 // function to adjust if a future CLI version changes the wire shape).
+//
+// G5d/G5e CAPTURE (grok 0.2.8, AGBENCH_GROK_DEBUG live runs): the headless
+// streaming-json stream carries ONLY `thought` / `text` / `end`. Grok's actual
+// tool calls — read/list_dir/grep, the denied `find`, and file writes — run
+// INVISIBLY: not a single tool event reaches stdout. So inline tool-call
+// activity cards are impossible on the headless transport (the run-diff "File
+// changes" card is the only side-effect surface); rendering Grok tool calls
+// requires the ACP transport (`grok agent stdio`, which emits structured
+// `session/update` tool_call notifications). The best-effort tool_use/tool_call
+// cases below are kept for ACP / a future CLI that flattens tool events inline.
+// `end.stopReason` can be 'Cancelled' — Grok self-cancels a turn mid-reasoning,
+// exiting 0; the runtime maps that to an honest result status (see G5e).
 
 export interface GrokStreamLine {
   /** Parsed JSON object for a well-formed NDJSON line. */

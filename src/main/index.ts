@@ -1945,6 +1945,13 @@ interface CliProviderStreamState {
   appRunId?: string
   appChatId?: string
   tokenUsage?: any
+  /**
+   * 1.0.6-G5e — Grok's terminal stopReason when it is NOT a normal end (e.g.
+   * 'Cancelled', 'MaxTokens'). Grok exits 0 even when it self-cancels a turn
+   * mid-reasoning before answering/writing, so we remember the real reason here
+   * to report an honest result status instead of a misleading 'success'.
+   */
+  grokStopReason?: string
 }
 
 const runManager = new RunManager<any>()
@@ -6309,6 +6316,12 @@ function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRun
       },
       state
     )
+  } else if (evt.type === 'result') {
+    // Grok's terminal `end` event. We don't emit the canonical result here (the
+    // process-close handler synthesizes it), but we DO remember an abnormal
+    // stopReason so close-out can report it honestly — Grok exits 0 even when it
+    // self-cancels mid-turn before answering/writing.
+    if (evt.status && evt.status !== 'success') state.grokStopReason = evt.status
   } else if (evt.type === 'provider_warning' && evt.text) {
     sendAgentCompatError(state.sender, 'grok', evt.text, state)
   }
@@ -6683,13 +6696,33 @@ function runCliProviderProcess(
     if (provider === 'grok' && !state.tokenUsage) {
       state.tokenUsage = estimateProjectedTokenUsage(payload.prompt, state.assistantText)
     }
+    // 1.0.6-G5e — Honor Grok's terminal stopReason. Grok exits 0 even when it
+    // self-cancels a turn mid-reasoning (stopReason 'Cancelled') before producing
+    // an answer or writing files, which otherwise renders as a misleading
+    // "Task complete / success". Surface the real reason + a short note instead.
+    const grokStopped =
+      provider === 'grok' && !!state.grokStopReason && state.grokStopReason !== 'success'
+    if (grokStopped && !state.completed) {
+      sendAgentCompatLine(
+        event.sender,
+        'grok',
+        {
+          type: 'provider_warning',
+          provider: 'grok',
+          severity: 'warning',
+          title: `Grok ended this turn early (${state.grokStopReason})`,
+          message: `Grok stopped before finishing this turn (stopReason: ${state.grokStopReason}). It may not have produced an answer or written files — any reasoning above is partial. This is Grok's own turn outcome, not an AGBench error.`
+        },
+        state
+      )
+    }
     if (!state.completed) {
       sendAgentCompatLine(
         event.sender,
         provider,
         {
           type: 'result',
-          status: code === 0 ? 'success' : 'failed',
+          status: grokStopped ? state.grokStopReason! : code === 0 ? 'success' : 'failed',
           stats: {
             ...(state.tokenUsage || {}),
             duration_ms: Date.now() - state.startedAt
