@@ -10082,15 +10082,17 @@ function App(): React.JSX.Element {
     const now = Date.now()
     const effectiveCodexStatus = codexStatusHint ?? codexStatus
 
-    const [geminiSnap, codexSnap, claudeSnap, kimiSnap, allUsageRecords] = await Promise.all([
-      window.api.getAgentRateLimits('gemini').catch(() => null),
-      typeof window.api.getCodexUsageSnapshot === 'function'
-        ? window.api.getCodexUsageSnapshot().catch(() => null)
-        : Promise.resolve(null),
-      window.api.getAgentRateLimits('claude').catch(() => null),
-      window.api.getAgentRateLimits('kimi').catch(() => null),
-      window.api.getUsage().catch(() => [])
-    ])
+    const [geminiSnap, codexSnap, claudeSnap, kimiSnap, cursorSnap, allUsageRecords] =
+      await Promise.all([
+        window.api.getAgentRateLimits('gemini').catch(() => null),
+        typeof window.api.getCodexUsageSnapshot === 'function'
+          ? window.api.getCodexUsageSnapshot().catch(() => null)
+          : Promise.resolve(null),
+        window.api.getAgentRateLimits('claude').catch(() => null),
+        window.api.getAgentRateLimits('kimi').catch(() => null),
+        window.api.getAgentRateLimits('cursor').catch(() => null),
+        window.api.getUsage().catch(() => [])
+      ])
 
     const normalizedUsageRecords = Array.isArray(allUsageRecords) ? allUsageRecords : []
     const nextUsageRecordsSignature = JSON.stringify(
@@ -10284,6 +10286,16 @@ function App(): React.JSX.Element {
       ordered.push(buildQuotaAggregate('kimi', kimiWindows, kimiSnap))
     }
 
+    // Cursor — Included in Pro / Auto + Composer / API monthly windows +
+    // an On-Demand Spend balance (from the Cursor dashboard RPC).
+    const cursorFresh = (Array.isArray(cursorSnap?.windows) ? cursorSnap.windows : [])
+      .map((w: any, i: number) => normalizeQuotaWindow('cursor', w, `cursor-quota-${i}`))
+      .filter((w): w is UsageWindowAggregate => Boolean(w))
+    const cursorWindows = resolveWithCache('cursor', cursorFresh)
+    if (cursorWindows.length > 0 || hasUsageBalances(cursorSnap?.balances)) {
+      ordered.push(buildQuotaAggregate('cursor', cursorWindows, cursorSnap))
+    }
+
     const inferUsageProvider = (model: string): ProviderId => {
       const normalized = model.toLowerCase()
       if (
@@ -10295,6 +10307,8 @@ function App(): React.JSX.Element {
         return 'claude'
       if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2'))
         return 'kimi'
+      if (normalized.includes('composer') || normalized.includes('cursor')) return 'cursor'
+      if (normalized.includes('grok')) return 'grok'
       if (
         normalized.includes('codex') ||
         normalized.includes('gpt') ||
@@ -10307,7 +10321,12 @@ function App(): React.JSX.Element {
     }
 
     const isKnownProvider = (provider: unknown): provider is ProviderId =>
-      provider === 'gemini' || provider === 'codex' || provider === 'claude' || provider === 'kimi'
+      provider === 'gemini' ||
+      provider === 'codex' ||
+      provider === 'claude' ||
+      provider === 'kimi' ||
+      provider === 'grok' ||
+      provider === 'cursor'
 
     const runAggregateMap = new Map<string, ModelUsageAggregate>()
     const modelComparisonCutoff = now - 30 * 24 * 60 * 60 * 1000

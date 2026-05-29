@@ -17,7 +17,7 @@ import type {
 import { detectExternalPath } from './services/ExternalPathDetector'
 import { delimiter, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { spawn, ChildProcess } from 'child_process'
+import { spawn, ChildProcess, execFile } from 'child_process'
 import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
 import { promises as fs } from 'fs'
 import * as fsSync from 'fs'
@@ -170,6 +170,13 @@ import { experimentalCursorProviderEnabled, cursorDebugEnabled } from './cursorG
 import { buildCursorCliArgs, cursorWriteCapable } from './cursor/CursorCliArgs'
 import { cursorEventToRunEvents, type NormalizedCursorRunEvent } from './cursor/CursorStreamJson'
 import { applyCursorWriteModeConfig } from './cursor/CursorWorkspaceConfig'
+import {
+  loadCursorUsageSnapshot,
+  cursorStateDbCandidates,
+  CURSOR_ACCESS_TOKEN_KEY,
+  CURSOR_USAGE_ENDPOINT,
+  type CursorUsageSnapshot
+} from './cursor/CursorUsage'
 import { runGrokAcpTurn, type AcpChildProcess } from './grok/GrokAcpClient'
 import {
   probeGrokUsage,
@@ -5717,6 +5724,104 @@ async function fetchKimiUsageSnapshot(): Promise<NormalizedProviderUsageSnapshot
       error: error instanceof Error ? error.message : 'Kimi usage fetch failed.'
     })
   }
+}
+
+// --- Cursor (Composer 2.5) subscription usage -----------------------------
+// cursor-agent has no usage command, so mirror the Limit Counter approach:
+// read the Cursor *editor's* access token from its local SQLite state DB and
+// POST Cursor's dashboard RPC. See src/main/cursor/CursorUsage.ts for the
+// pure parser; this section supplies the real (read-only) token read + fetch.
+const CURSOR_USAGE_FRESH_TTL_MS = 2 * 60_000
+const CURSOR_USAGE_STALE_TTL_MS = 4 * 60 * 60_000
+let cursorUsageCache: { snapshot: CursorUsageSnapshot; fetchedAt: number } | null = null
+
+/** Run a single-scalar read-only sqlite3 query; resolves trimmed value or null. */
+function runCursorSqliteScalar(dbPath: string, query: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    const opts = { timeout: 8_000, maxBuffer: 1024 * 1024 }
+    execFile('/usr/bin/sqlite3', ['-readonly', dbPath, query], opts, (err, stdout) => {
+      if (!err) {
+        const value = String(stdout || '').trim()
+        resolve(value || null)
+        return
+      }
+      // The live DB may be locked while Cursor runs — read a temp copy.
+      void (async () => {
+        let tmpDir: string | null = null
+        try {
+          tmpDir = await fs.mkdtemp(join(os.tmpdir(), 'cursor-usage-'))
+          const tmpDb = join(tmpDir, 'state.vscdb')
+          await fs.copyFile(dbPath, tmpDb)
+          execFile('/usr/bin/sqlite3', ['-readonly', tmpDb, query], opts, (err2, stdout2) => {
+            const dir = tmpDir
+            if (dir) void fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+            if (err2) {
+              resolve(null)
+              return
+            }
+            resolve(String(stdout2 || '').trim() || null)
+          })
+        } catch {
+          if (tmpDir) void fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {})
+          resolve(null)
+        }
+      })()
+    })
+  })
+}
+
+/** Read the Cursor editor bearer token from its state DB (read-only). */
+async function readCursorEditorAccessToken(): Promise<string | null> {
+  const query = `SELECT value FROM ItemTable WHERE key='${CURSOR_ACCESS_TOKEN_KEY}' LIMIT 1;`
+  for (const dbPath of cursorStateDbCandidates(os.homedir())) {
+    try {
+      await fs.access(dbPath)
+    } catch {
+      continue
+    }
+    const token = await runCursorSqliteScalar(dbPath, query)
+    if (token) return token
+  }
+  return null
+}
+
+async function fetchCursorUsageRpc(token: string): Promise<unknown> {
+  const response = await fetch(CURSOR_USAGE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      'Connect-Protocol-Version': '1'
+    },
+    body: '{}'
+  })
+  if (!response.ok) {
+    throw new Error(`Cursor usage endpoint returned HTTP ${response.status}.`)
+  }
+  return response.json()
+}
+
+async function fetchCursorUsageSnapshot(): Promise<CursorUsageSnapshot | null> {
+  // Cursor is default-on; only the kill-switch suppresses it.
+  if (!experimentalCursorProviderEnabled()) return null
+  const now = Date.now()
+  if (cursorUsageCache && now - cursorUsageCache.fetchedAt < CURSOR_USAGE_FRESH_TTL_MS) {
+    return cursorUsageCache.snapshot
+  }
+  const snapshot = await loadCursorUsageSnapshot({
+    readAccessToken: readCursorEditorAccessToken,
+    fetchUsageRpc: fetchCursorUsageRpc,
+    now: () => Date.now()
+  })
+  if (snapshot.configured && !snapshot.error) {
+    cursorUsageCache = { snapshot, fetchedAt: Date.now() }
+    return snapshot
+  }
+  // Transient failure: serve the last good snapshot if still fresh-ish.
+  if (cursorUsageCache && now - cursorUsageCache.fetchedAt < CURSOR_USAGE_STALE_TTL_MS) {
+    return { ...cursorUsageCache.snapshot, stale: true, error: snapshot.error }
+  }
+  return snapshot
 }
 
 const CLAUDE_USAGE_FRESH_TTL_MS = 2 * 60_000
@@ -21498,6 +21603,9 @@ if (isGeminiMcpBridgeProcess) {
       }
       if (provider === 'claude') {
         return fetchClaudeUsageSnapshot()
+      }
+      if (provider === 'cursor') {
+        return fetchCursorUsageSnapshot()
       }
       if (provider !== 'codex') {
         return null
