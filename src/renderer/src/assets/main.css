@@ -524,6 +524,8 @@ body {
 .sidebar-active-run-provider.provider-codex { color: #aaa0ff; }
 .sidebar-active-run-provider.provider-claude { color: #ffad64; }
 .sidebar-active-run-provider.provider-kimi { color: #bbcf66; }
+.sidebar-active-run-provider.provider-grok { color: var(--provider-grok-color); }
+.sidebar-active-run-provider.provider-cursor { color: var(--provider-cursor-color); }
 
 .sidebar-active-run-copy {
   flex: 1;
@@ -3000,6 +3002,16 @@ button.sidebar-item {
   text-shadow: 0 0 10px rgba(135, 166, 52, 0.3);
 }
 
+.sidebar-provider-label.provider-grok {
+  color: var(--provider-grok-color);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--provider-grok-color) 28%, transparent);
+}
+
+.sidebar-provider-label.provider-cursor {
+  color: var(--provider-cursor-color);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--provider-cursor-color) 32%, transparent);
+}
+
 .sidebar-provider-separator {
   color: var(--text-tertiary);
 }
@@ -4007,6 +4019,12 @@ button.sidebar-item {
 }
 .participant-health-chip.provider-kimi {
   color: var(--provider-kimi-color, var(--text-primary));
+}
+.participant-health-chip.provider-grok {
+  color: var(--provider-grok-color, var(--text-primary));
+}
+.participant-health-chip.provider-cursor {
+  color: var(--provider-cursor-color, var(--text-primary));
 }
 
 .subthread-return-card {
@@ -6038,6 +6056,12 @@ button.sidebar-item {
 .welcome-usage-provider-card-fill.provider-kimi {
   background: linear-gradient(90deg, color-mix(in srgb, #bbcf66 70%, transparent), #bbcf66);
 }
+.welcome-usage-provider-card-fill.provider-grok {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--provider-grok-color) 70%, transparent), var(--provider-grok-color));
+}
+.welcome-usage-provider-card-fill.provider-cursor {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--provider-cursor-color) 70%, transparent), var(--provider-cursor-color));
+}
 
 /* Giant 24H wall-time timecode. The single dominant glyph of
  * the Providers tab — monospace tabular-nums so the digits
@@ -6397,6 +6421,10 @@ button.sidebar-item {
 .welcome-usage-bar-segment.provider-claude { color: #ff9b54; }
 .welcome-usage-model-dot.provider-kimi,
 .welcome-usage-bar-segment.provider-kimi { color: #a7c84b; }
+.welcome-usage-model-dot.provider-grok,
+.welcome-usage-bar-segment.provider-grok { color: var(--provider-grok-color); }
+.welcome-usage-model-dot.provider-cursor,
+.welcome-usage-bar-segment.provider-cursor { color: var(--provider-cursor-color); }
 
 [data-reduce-transparency="true"] .welcome-usage-dashboard {
   background: color-mix(in srgb, var(--panel-bg-solid) 86%, var(--accent) 6%);
@@ -11151,6 +11179,18 @@ button.diff-file-row {
   color: #a7c84b;
 }
 
+.settings-model-comparison-dot.provider-grok,
+.settings-model-comparison-fill.provider-grok,
+.settings-provider-telemetry-card.provider-grok {
+  color: var(--provider-grok-color);
+}
+
+.settings-model-comparison-dot.provider-cursor,
+.settings-model-comparison-fill.provider-cursor,
+.settings-provider-telemetry-card.provider-cursor {
+  color: var(--provider-cursor-color);
+}
+
 .settings-model-comparison-name {
   min-width: 0;
   overflow: hidden;
@@ -13449,6 +13489,14 @@ input:disabled, select:disabled, textarea:disabled {
   background: linear-gradient(90deg, rgba(128, 160, 48, 0.95), rgba(184, 205, 84, 0.9));
 }
 
+.model-usage-item.provider-grok .model-usage-meter-fill {
+  background: linear-gradient(90deg, var(--provider-grok-color), color-mix(in srgb, var(--provider-grok-color) 74%, transparent));
+}
+
+.model-usage-item.provider-cursor .model-usage-meter-fill {
+  background: linear-gradient(90deg, var(--provider-cursor-color), color-mix(in srgb, var(--provider-cursor-color) 72%, transparent));
+}
+
 .model-usage-meta {
   display: flex;
   justify-content: space-between;
@@ -14737,6 +14785,14 @@ input:disabled, select:disabled, textarea:disabled {
 
 .app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-kimi {
   --chat-provider-accent: #a9bd55;
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-grok {
+  --chat-provider-accent: var(--provider-grok-color);
+}
+
+.app-sidebar .sidebar-workspace-group .sidebar-chat-item.provider-cursor {
+  --chat-provider-accent: var(--provider-cursor-color);
 }
 
 .app-sidebar .sidebar-workspace-group .sidebar-chat-item::before {
@@ -16469,6 +16525,16 @@ input:disabled, select:disabled, textarea:disabled {
 .app-sidebar .sidebar-chat-item.provider-kimi,
 .app-sidebar .sidebar-global-chat-item.provider-kimi {
   --chat-provider-accent: #a9bd55;
+}
+
+.app-sidebar .sidebar-chat-item.provider-grok,
+.app-sidebar .sidebar-global-chat-item.provider-grok {
+  --chat-provider-accent: var(--provider-grok-color);
+}
+
+.app-sidebar .sidebar-chat-item.provider-cursor,
+.app-sidebar .sidebar-global-chat-item.provider-cursor {
+  --chat-provider-accent: var(--provider-cursor-color);
 }
 
 .sidebar-chat-title-line,
