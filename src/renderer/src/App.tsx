@@ -2417,7 +2417,7 @@ function WelcomeUsageDashboard({
     // surface, so the "white" end of black/white reads here.
     grok: '#e6e6e8',
     // Cursor (gated) — cyan identity, distinct from the five.
-    cursor: '#56c8d8'
+    cursor: '#D4A017'
   } as const
   const chipRailColor =
     mixProviderColors(data.providerTokenTotals, PROVIDER_PALETTE) ||
@@ -4328,6 +4328,7 @@ const getProviderLabel = (provider: ProviderId): string => {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   return 'Gemini'
 }
 const formatAssistantMessageLabel = (

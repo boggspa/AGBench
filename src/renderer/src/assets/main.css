@@ -2726,6 +2726,7 @@ button.sidebar-item {
 .model-usage-item.provider-claude .model-usage-tier-badge { color: var(--provider-claude-color); }
 .model-usage-item.provider-kimi   .model-usage-tier-badge { color: var(--provider-kimi-color); }
 .model-usage-item.provider-grok   .model-usage-tier-badge { color: var(--provider-grok-color); }
+.model-usage-item.provider-cursor   .model-usage-tier-badge { color: var(--provider-cursor-color); }
 
 .model-usage-provider-name {
   color: var(--text-primary);
@@ -2749,6 +2750,7 @@ button.sidebar-item {
 .provider-logo-tile.provider-claude { background: color-mix(in srgb, var(--provider-claude-color) 14%, transparent); }
 .provider-logo-tile.provider-kimi   { background: color-mix(in srgb, var(--provider-kimi-color) 14%, transparent); }
 .provider-logo-tile.provider-grok   { background: color-mix(in srgb, var(--provider-grok-color) 14%, transparent); }
+.provider-logo-tile.provider-cursor   { background: color-mix(in srgb, var(--provider-cursor-color) 14%, transparent); }
 
 .provider-logo-tile-image {
   width: 80%;
@@ -2766,6 +2768,7 @@ button.sidebar-item {
 }
 .provider-logo-tile.provider-kimi .sidebar-provider-icon { color: var(--provider-kimi-color); }
 .provider-logo-tile.provider-grok .sidebar-provider-icon { color: var(--provider-grok-color); }
+.provider-logo-tile.provider-cursor .sidebar-provider-icon { color: var(--provider-cursor-color); }
 
 /* Phase L6 slice 5 — Activity heatmap. 30×12 grid of small rounded
  * squares; each cell coloured by the dominant provider in that

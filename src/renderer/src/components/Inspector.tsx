@@ -71,6 +71,7 @@ function providerLabel(provider: ProviderId): string {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   return 'Gemini'
 }
 

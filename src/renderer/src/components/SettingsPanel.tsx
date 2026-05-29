@@ -4155,6 +4155,7 @@ export function SettingsPanel({
             if (provider === 'claude') return 'Claude'
             if (provider === 'kimi') return 'Kimi'
             if (provider === 'grok') return 'Grok'
+            if (provider === 'cursor') return 'Cursor'
             return 'Gemini'
           }
           // Rough cost estimate gated on whether the per-row stats

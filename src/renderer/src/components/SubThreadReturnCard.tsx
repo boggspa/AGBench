@@ -13,6 +13,7 @@ function providerLabel(provider?: ProviderId | string): string {
   if (provider === 'claude') return 'Claude'
   if (provider === 'kimi') return 'Kimi'
   if (provider === 'grok') return 'Grok'
+  if (provider === 'cursor') return 'Cursor'
   if (provider === 'gemini') return 'Gemini'
   return 'Sub-thread'
 }
