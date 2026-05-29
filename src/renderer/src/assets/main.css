@@ -31939,17 +31939,19 @@ input:disabled, select:disabled, textarea:disabled {
  * composer text near-white with `!important` — correct inside the navy
  * capsule and for Obsidian's dark app bg, but invisible on Alabaster's
  * cream. So (a) re-darken the satellite containers + their contents to
- * Alabaster's charcoal, then (b) re-lighten the three controls that are
- * lifted INTO the navy capsule (the [+], the model pill, the send
- * button) since those still sit on dark/blue, not the cream bg.
+ * Alabaster's charcoal, then (b) re-lighten the [+] and model pill,
+ * which are lifted INTO the navy capsule (they sit on dark navy, not the
+ * cream bg). The send button is deliberately NOT re-lit: it's a white
+ * circle with a dark arrow, so (a)'s charcoal arrow reads fine on it —
+ * forcing it light would make the arrow invisible on white.
  * Obsidian (dark app) is deliberately untouched. */
 [data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row),
 [data-theme="alabaster"][data-composer-style="gemini"] :is(.composer-inline-pickers, .composer-telemetry-row) * {
   color: rgba(18, 21, 27, 0.82) !important;
   -webkit-text-fill-color: rgba(18, 21, 27, 0.82) !important;
 }
-[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"], .composer-send-cluster),
-[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"], .composer-send-cluster) * {
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"]),
+[data-theme="alabaster"][data-composer-style="gemini"] :is([data-composer-control="attach"], [data-composer-control="model"]) * {
   color: rgba(246, 249, 255, 0.92) !important;
   -webkit-text-fill-color: rgba(246, 249, 255, 0.92) !important;
 }
