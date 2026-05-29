@@ -155,6 +155,7 @@ const ONBOARDING_COMPOSER_OPTIONS: Array<{ value: ComposerStyle; label: string }
   { value: 'default', label: 'AGBench native' },
   { value: 'codex', label: 'Codex shell' },
   { value: 'claude', label: 'Claude shell' },
+  { value: 'cursor', label: 'Cursor shell' },
   { value: 'grok', label: 'Grok shell' },
   { value: 'gemini', label: 'Gemini shell' },
   { value: 'kimi', label: 'Kimi shell' },
@@ -205,6 +206,18 @@ function getOnboardingComposerPreview(style: ComposerStyle): {
         modelLabel: 'Opus 4.7',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
+      }
+    case 'cursor':
+      // Preview-only. Cursor here is the VISUAL shell, not the
+      // ProviderId 'cursor' — keep `provider: 'gemini'` (its layout
+      // heritage) for the preview's provider class; the flat-gray
+      // Cursor CSS strips all chroma anyway.
+      return {
+        provider: 'gemini',
+        providerLabel: 'Cursor',
+        modelLabel: 'Composer 2.5',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Enter prompt for Cursor…'
       }
     case 'grok':
       // Preview-only. Grok is a visual shell, not a provider — keep

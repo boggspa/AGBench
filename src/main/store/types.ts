@@ -102,6 +102,11 @@ export type ComposerStyle =
   | 'default'
   | 'codex'
   | 'claude'
+  /** Cursor: VISUAL-ONLY shell. Copies the Gemini composer layout but
+   * strips all chroma + glass — flat neutral GRAY, theme-immune.
+   * NOT the ProviderId 'cursor' (the runtime); a chat's shell is
+   * independent of its provider, exactly like 'grok' below. */
+  | 'cursor'
   /** Grok: visual-only shell. Copies the Gemini composer layout but
    * strips all chroma + glass — strictly monochrome black/white,
    * theme-immune. NOT a provider/runtime. */

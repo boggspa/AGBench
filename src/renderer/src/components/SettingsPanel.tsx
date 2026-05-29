@@ -405,6 +405,12 @@ const COMPOSER_STYLE_OPTIONS: Array<{ value: ComposerStyle; label: string; helpe
     helper: 'Claude-like sidebar, transcript, status bar, and composer hierarchy.'
   },
   {
+    value: 'cursor',
+    label: 'Cursor shell',
+    helper:
+      'Flat neutral-gray Gemini-style pill composer — no glass or gradient effects, theme-immune.'
+  },
+  {
     value: 'grok',
     label: 'Grok shell',
     helper:
@@ -490,6 +496,15 @@ function getComposerPreviewMeta(style: ComposerStyle): {
         modelLabel: 'Opus 4.7',
         permissionLabel: 'Plan / Read-only',
         placeholder: 'Describe a task or ask a question'
+      }
+    case 'cursor':
+      // Preview-only. Cursor here is the VISUAL shell, not the provider —
+      // the flat-gray CSS strips all chroma regardless of provider.
+      return {
+        providerLabel: 'Cursor',
+        modelLabel: 'Composer 2.5',
+        permissionLabel: 'Default Approval',
+        placeholder: 'Enter prompt for Cursor…'
       }
     case 'grok':
       return {
