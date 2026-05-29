@@ -8983,7 +8983,16 @@ function normalizeExternalPathGrants(grants?: ExternalPathGrant[]): ExternalPath
   // `isMainIssuedExternalPathGrant` still guards integrity; the
   // provider field is part of the signed payload so a grant for one
   // provider cannot be smuggled in as another.
-  const allowedProviders = new Set<ProviderId>(['gemini', 'codex', 'claude', 'kimi'])
+  // 1.0.6-CRUX21 — include grok + cursor (first-class providers) so their
+  // signed grants normalize through rather than being dropped here.
+  const allowedProviders = new Set<ProviderId>([
+    'gemini',
+    'codex',
+    'claude',
+    'kimi',
+    'grok',
+    'cursor'
+  ])
   for (const grant of grants) {
     if (!grant || typeof grant.path !== 'string') continue
     if (!allowedProviders.has(grant.provider)) continue

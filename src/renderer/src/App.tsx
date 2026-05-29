@@ -3186,7 +3186,16 @@ const normalizeExternalPathGrants = (value: unknown): ExternalPathGrant[] => {
   // Gemini, Claude, and Kimi all consume the same grant list via
   // `--add-dir <path>`. Loosen the filter so runtime-issued grants
   // for any provider can persist into chat metadata.
-  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set(['codex', 'claude', 'gemini', 'kimi'])
+  // 1.0.6-CRUX21 — grok + cursor are first-class; their signed grants must
+  // persist into chat metadata too (integrity still guarded by issuedBy/sig).
+  const VALID_PROVIDERS: ReadonlySet<ProviderId> = new Set([
+    'codex',
+    'claude',
+    'gemini',
+    'kimi',
+    'grok',
+    'cursor'
+  ])
   for (const item of value) {
     if (!item || typeof item !== 'object') continue
     const grant = item as Partial<ExternalPathGrant>
