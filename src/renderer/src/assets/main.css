@@ -23139,6 +23139,28 @@ input:disabled, select:disabled, textarea:disabled {
   object-fit: contain;
   border-radius: 5px;
 }
+/* Monogram fallback for providers without a logo PNG (Cursor / Grok,
+ * 1.0.6). Accent-tinted tile + uppercase initial, sized like the <img>
+ * logo above so the header row stays aligned. Auto-retired once a real
+ * logo is added to PROVIDER_LOGOS. */
+.first-launch-sheet-provider-card-logo-monogram {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--monogram-accent, var(--text-secondary));
+  background: color-mix(in srgb, var(--monogram-accent, var(--text-secondary)) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--monogram-accent, var(--text-secondary)) 34%, transparent);
+}
+.first-launch-sheet-provider-card-logo-monogram.provider-cursor {
+  --monogram-accent: var(--provider-cursor-color);
+}
+.first-launch-sheet-provider-card-logo-monogram.provider-grok {
+  --monogram-accent: var(--provider-grok-color);
+}
 
 /* Per-provider colour tinting. Cards pick up the canonical
  * provider colour tokens (defined in theme.css) for the
@@ -23177,6 +23199,22 @@ input:disabled, select:disabled, textarea:disabled {
 .first-launch-sheet-provider-card[data-provider="kimi"]
   .first-launch-sheet-provider-card-label {
   color: color-mix(in srgb, var(--provider-kimi-color) 78%, var(--text-primary));
+}
+.first-launch-sheet-provider-card[data-provider="cursor"] {
+  border-color: color-mix(in srgb, var(--provider-cursor-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-cursor-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="cursor"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-cursor-color) 78%, var(--text-primary));
+}
+.first-launch-sheet-provider-card[data-provider="grok"] {
+  border-color: color-mix(in srgb, var(--provider-grok-color) 38%, var(--surface-border));
+  background: color-mix(in srgb, var(--provider-grok-color) 6%, transparent);
+}
+.first-launch-sheet-provider-card[data-provider="grok"]
+  .first-launch-sheet-provider-card-label {
+  color: color-mix(in srgb, var(--provider-grok-color) 78%, var(--text-primary));
 }
 .first-launch-sheet-provider-card-optional-badge {
   font-size: 0.7em;

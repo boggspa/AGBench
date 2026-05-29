@@ -139,6 +139,33 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Turn / Continuous in the composer')
   })
 
+  it('renders Cursor + Grok cards with monogram fallback (no logo PNG)', () => {
+    const html = renderToStaticMarkup(
+      <FirstLaunchSheet
+        open={true}
+        onDismiss={() => {}}
+        onOpenSettings={() => {}}
+        codexStatus={null}
+        claudeAuthStatus={null}
+        kimiAuthStatus={null}
+        geminiAuthStatus={null}
+        cursorProviderAvailable={true}
+        grokProviderAvailable={false}
+      />
+    )
+    // Both CLI-login providers get cards.
+    expect(html).toContain('data-provider="cursor"')
+    expect(html).toContain('data-provider="grok"')
+    // No PNG logo → accent monogram tile rendered instead of an <img>.
+    expect(html).toMatch(
+      /first-launch-sheet-provider-card-logo-monogram provider-cursor/
+    )
+    expect(html).toMatch(/first-launch-sheet-provider-card-logo-monogram provider-grok/)
+    // Enabled Cursor → "Available" sign-in state; disabled Grok → "disabled".
+    expect(html).toContain('Available · CLI sign-in')
+    expect(html).toContain('Grok disabled')
+  })
+
   it('Kimi card carries the de-emphasised + optional classes for muted styling', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
@@ -169,10 +196,11 @@ describe('FirstLaunchSheet', () => {
         geminiAuthStatus={null}
       />
     )
-    // Two cards should be optional (Gemini + Kimi). Count "Optional" badges.
+    // Four cards are optional (Gemini, Kimi, Cursor, Grok — the latter two
+    // are CLI-login providers added in 1.0.6). Count "Optional" badges.
     const badges = html.match(/first-launch-sheet-provider-card-optional-badge/g)
     expect(badges).toBeTruthy()
-    expect(badges!.length).toBe(2)
+    expect(badges!.length).toBe(4)
   })
 
   it('Codex card surfaces "signed in" when codexStatus.codexUsage.planType is present', () => {

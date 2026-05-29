@@ -8,6 +8,7 @@ import type {
   UserBubbleColor
 } from '../../../main/store/types'
 import {
+  summariseCliProviderEnabled,
   summariseCodexStatus,
   summariseGeminiStatus,
   summariseProviderApiKeyStatus,
@@ -19,7 +20,12 @@ import claudeLogo from '../assets/provider-logos/claude.png'
 import geminiLogo from '../assets/provider-logos/gemini.png'
 import kimiLogo from '../assets/provider-logos/kimi.png'
 
-const PROVIDER_LOGOS: Record<'codex' | 'claude' | 'gemini' | 'kimi', string> = {
+/** Onboarding provider-card ids. Cursor + Grok are CLI-login providers
+ *  added in 1.0.6; they have no logo PNG yet, so the card falls back to an
+ *  accent-coloured monogram tile (auto-upgrades if a logo is dropped in). */
+type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 'grok'
+
+const PROVIDER_LOGOS: Partial<Record<OnboardingProviderId, string>> = {
   codex: codexLogo,
   claude: claudeLogo,
   gemini: geminiLogo,
@@ -88,6 +94,12 @@ export interface FirstLaunchSheetProps {
   /** Gemini auth status. Carries profile info; we only need the
    * top-level "is there an active profile" check. */
   geminiAuthStatus: GeminiAuthStatus | null
+  /** Cursor / Grok are CLI-login providers (1.0.6). AGBench only knows
+   * whether each adapter is registered (enabled) — auth lives in their own
+   * CLI — so the cards surface availability + deep-link to Settings.
+   * Optional so older hosts / static tests can omit them. */
+  cursorProviderAvailable?: boolean
+  grokProviderAvailable?: boolean
   /** Appearance controls are optional so static tests and older hosts
    * can render the sheet without wiring the preference preview. */
   themeAppearance?: ThemeAppearance
@@ -103,7 +115,7 @@ export interface FirstLaunchSheetProps {
 type ProviderRowVariant = ProviderAuthVariant
 
 interface ProviderRowSpec {
-  id: 'codex' | 'claude' | 'gemini' | 'kimi'
+  id: OnboardingProviderId
   label: string
   description: string
   variant: ProviderRowVariant
@@ -287,6 +299,8 @@ export function FirstLaunchSheet({
   claudeAuthStatus,
   kimiAuthStatus,
   geminiAuthStatus,
+  cursorProviderAvailable = false,
+  grokProviderAvailable = false,
   themeAppearance = 'system',
   composerStyle = 'default',
   userBubbleColor = 'system',
@@ -318,6 +332,16 @@ export function FirstLaunchSheet({
   const claudeSummary = summariseProviderApiKeyStatus(claudeAuthStatus, 'Claude')
   const geminiSummary = summariseGeminiStatus(geminiAuthStatus)
   const kimiSummary = summariseProviderApiKeyStatus(kimiAuthStatus, 'Kimi')
+  const cursorSummary = summariseCliProviderEnabled(
+    cursorProviderAvailable,
+    'Cursor',
+    'Sign in once with `cursor-agent login` in your shell, then launch Cursor runs.'
+  )
+  const grokSummary = summariseCliProviderEnabled(
+    grokProviderAvailable,
+    'Grok',
+    'Authenticate the Grok CLI (in `~/.grok/bin`) in your shell, then launch Grok runs.'
+  )
   const composerPreview = getOnboardingComposerPreview(composerStyle)
 
   const providerRows: ProviderRowSpec[] = [
@@ -349,6 +373,23 @@ export function FirstLaunchSheet({
       description:
         'Moonshot Kimi. Wire-protocol-driven runs and structured tool calls. Skip unless you have a Moonshot API key.',
       ...kimiSummary,
+      deemphasised: true,
+      optional: true
+    },
+    {
+      id: 'cursor',
+      label: 'Cursor',
+      description:
+        'Cursor Composer 2.5. Write-capable agentic runs via the Cursor CLI. Sign-in is at the OS level — run `cursor-agent login` in your terminal once.',
+      ...cursorSummary,
+      optional: true
+    },
+    {
+      id: 'grok',
+      label: 'Grok',
+      description:
+        'xAI Grok over its agent CLI. Sign in through the Grok CLI; skip unless you have an xAI/Grok account.',
+      ...grokSummary,
       deemphasised: true,
       optional: true
     }
@@ -826,12 +867,24 @@ function ProviderCard({ row, onOpenSettings }: ProviderCardProps): React.JSX.Ele
   return (
     <div className={classes} data-provider={row.id}>
       <div className="first-launch-sheet-provider-card-header">
-        <img
-          src={PROVIDER_LOGOS[row.id]}
-          alt=""
-          aria-hidden
-          className="first-launch-sheet-provider-card-logo"
-        />
+        {PROVIDER_LOGOS[row.id] ? (
+          <img
+            src={PROVIDER_LOGOS[row.id]}
+            alt=""
+            aria-hidden
+            className="first-launch-sheet-provider-card-logo"
+          />
+        ) : (
+          // Cursor / Grok have no logo PNG yet — accent-coloured monogram
+          // tile (provider-${id} carries the accent token). Auto-upgrades
+          // to the <img> above the moment a logo is added to PROVIDER_LOGOS.
+          <span
+            className={`first-launch-sheet-provider-card-logo first-launch-sheet-provider-card-logo-monogram provider-${row.id}`}
+            aria-hidden
+          >
+            {row.label.charAt(0)}
+          </span>
+        )}
         <span className="first-launch-sheet-provider-card-label">{row.label}</span>
         {row.optional && (
           <span className="first-launch-sheet-provider-card-optional-badge">Optional</span>

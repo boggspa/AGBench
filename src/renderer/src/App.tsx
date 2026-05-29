@@ -21339,6 +21339,8 @@ function App(): React.JSX.Element {
         claudeAuthStatus={claudeAuthStatus}
         kimiAuthStatus={kimiAuthStatus}
         geminiAuthStatus={geminiAuthStatus}
+        cursorProviderAvailable={cursorProviderAvailable}
+        grokProviderAvailable={grokProviderAvailable}
         themeAppearance={appearance.themeAppearance || 'system'}
         composerStyle={appearance.composerStyle || 'default'}
         userBubbleColor={appearance.userBubbleColor || 'system'}
