@@ -992,6 +992,12 @@ const CLAUDE_THINKING_EFFORTS = [
   { reasoningEffort: 'high' }
 ]
 const CLAUDE_THINKING_BUDGET: Record<string, number> = { low: 2048, medium: 8000, high: 16000 }
+// NOTE: keep in sync with the renderer's CLAUDE_DEFAULT_MODELS (App.tsx).
+// This list is served to the renderer via `getAgentModels('claude')` and
+// becomes `agentModelsByProvider.claude`, which OVERRIDES the renderer's own
+// fallback list — so a stale entry here is what the composer/welcome picker
+// actually shows. `additionalSpeedTiers` must be carried through so the
+// renderer knows which models offer the paid Fast tier.
 const CLAUDE_STATIC_MODELS = [
   {
     id: 'default',
@@ -1001,15 +1007,15 @@ const CLAUDE_STATIC_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   {
-    id: 'claude-opus-4-7',
-    label: 'Claude Opus 4.7',
+    id: 'claude-opus-4-8',
+    label: 'Claude Opus 4.8',
     description: 'Most capable — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
     additionalSpeedTiers: ['fast']
   },
   {
-    id: 'claude-opus-4-7-1m',
-    label: 'Claude Opus 4.7 1M',
+    id: 'claude-opus-4-8-1m',
+    label: 'Claude Opus 4.8 1M',
     description: '1M context window — extended thinking',
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
@@ -1020,6 +1026,19 @@ const CLAUDE_STATIC_MODELS = [
     supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
   },
   { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5', description: 'Fast & efficient' },
+  {
+    id: 'claude-opus-4-7',
+    label: 'Claude Opus 4.7 Legacy',
+    description: 'Previous Opus — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS,
+    additionalSpeedTiers: ['fast']
+  },
+  {
+    id: 'claude-opus-4-7-1m',
+    label: 'Claude Opus 4.7 1M Legacy',
+    description: '1M context window — extended thinking',
+    supportedReasoningEfforts: CLAUDE_THINKING_EFFORTS
+  },
   {
     id: 'claude-opus-4-6',
     label: 'Claude Opus 4.6 Legacy',
@@ -5893,7 +5912,16 @@ function normalizeCliProviderModel(provider: ProviderId, model?: string | null):
     return 'default'
   if (provider === 'claude') {
     if (['default', 'sonnet', 'opus', 'haiku'].includes(trimmed)) return trimmed
-    if (trimmed.startsWith('claude-')) return trimmed // pass full model IDs (e.g. claude-opus-4-7)
+    if (trimmed.startsWith('claude-')) {
+      // The `-1m` suffix is an AGBench-internal marker for the 1M-context
+      // variant — it drives the context-window meter (contextWindows.ts) and
+      // the rate table, but it is NOT a real Claude CLI/SDK model name. The
+      // CLI only accepts the base id (e.g. `claude-opus-4-8`), so `--model
+      // claude-opus-4-8-1m` fails with "model not found". Strip it here so the
+      // base model is dispatched (the 1M window is entitlement-based on the
+      // base model, not a distinct model id).
+      return trimmed.endsWith('-1m') ? trimmed.slice(0, -'-1m'.length) : trimmed
+    }
   }
   return trimmed || 'default'
 }
@@ -6270,14 +6298,25 @@ function handleGrokStreamEvent(state: CliProviderStreamState, event: unknown) {
  * Paired with the projected xAI rates in ProviderRateService it yields a
  * projected cost. Emits snake_case keys the renderer's usage extractor reads.
  */
+// Grok reports no token usage and no cost. We project both so Grok appears in
+// the composer tally + dashboard like the other providers. Tokens are a rough
+// ~4-chars/token estimate; cost mirrors ProviderRateService's PROJECTED
+// grok-build rates ($1/M input, $2/M output) — an xAI API-equivalent
+// projection, NOT a SuperGrok subscription bill. `total_cost_usd` is the field
+// the renderer's extractUsageCostUsd reads, so the `· $x` cost surfaces too.
+const GROK_PROJECTED_INPUT_USD_PER_MILLION = 1.0
+const GROK_PROJECTED_OUTPUT_USD_PER_MILLION = 2.0
 function estimateProjectedTokenUsage(
   promptText: string | undefined,
   responseText: string | undefined
-): { input_tokens: number; output_tokens: number; total_tokens: number } {
+): { input_tokens: number; output_tokens: number; total_tokens: number; total_cost_usd: number } {
   const estimate = (text: string | undefined): number => Math.max(0, Math.ceil((text || '').length / 4))
   const input_tokens = estimate(promptText)
   const output_tokens = estimate(responseText)
-  return { input_tokens, output_tokens, total_tokens: input_tokens + output_tokens }
+  const total_cost_usd =
+    (input_tokens / 1_000_000) * GROK_PROJECTED_INPUT_USD_PER_MILLION +
+    (output_tokens / 1_000_000) * GROK_PROJECTED_OUTPUT_USD_PER_MILLION
+  return { input_tokens, output_tokens, total_tokens: input_tokens + output_tokens, total_cost_usd }
 }
 
 function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
@@ -7306,6 +7345,12 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
     onClose: (code, turnComplete) => {
       if (!state.completed) {
         state.completed = true
+        // Grok (ACP path too) reports no usage — project tokens + cost so it
+        // appears in the composer tally / dashboard, mirroring the headless
+        // path's close handler.
+        if (!state.tokenUsage) {
+          state.tokenUsage = estimateProjectedTokenUsage(payload.prompt, state.assistantText)
+        }
         sendAgentCompatLine(
           event.sender,
           'grok',
