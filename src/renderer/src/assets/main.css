@@ -5480,6 +5480,12 @@ button.sidebar-item {
    * each chip reads as a small square rather than a wide band. */
   max-width: min(720px, 88vw);
   margin: 0 auto;
+  /* 1.0.6-CRUX33 — fixed min-height so the auto-cycling tabs (Statistics /
+   * Model Comparisons / Workspaces / Providers) don't resize the card as they
+   * switch (~every 3 min), which made the composer below jump up/down. Sized
+   * to the tallest tab (Statistics + heatmap ≈ 655px at the 720px-capped
+   * width); shorter tabs pad to match. */
+  min-height: 680px;
   padding: 12px 14px 14px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 54%, var(--text-primary) 16%);
