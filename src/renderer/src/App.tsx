@@ -20520,6 +20520,13 @@ function App(): React.JSX.Element {
                               .map((model) => model.id)
                           )
                         }
+                        if (effectiveProvider === 'cursor') {
+                          // Cursor's "fast" is a distinct model id
+                          // (composer-2.5-fast) rather than a tier flag, so the
+                          // toggle swaps between the two Composer 2.5 ids. Both
+                          // are "capable" so the bolt is always live for Cursor.
+                          return new Set(['composer-2.5', 'composer-2.5-fast'])
+                        }
                         // Gemini + Kimi: no Fast tier — hide the toggle
                         // by passing an empty set (CombinedModelPicker
                         // skips rendering the row in that case).
@@ -20530,7 +20537,9 @@ function App(): React.JSX.Element {
                           ? effectiveCodexServiceTier === 'fast'
                           : effectiveProvider === 'claude'
                             ? effectiveClaudeFastMode
-                            : false
+                            : effectiveProvider === 'cursor'
+                              ? effectiveSelectedModel === 'composer-2.5-fast'
+                              : false
                       const handleToggleFastMode =
                         effectiveProvider === 'codex'
                           ? () => {
@@ -20560,7 +20569,19 @@ function App(): React.JSX.Element {
                                   claudeFastMode: nextFast
                                 })
                               }
-                            : undefined
+                            : effectiveProvider === 'cursor'
+                              ? () => {
+                                  // Cursor fast = the composer-2.5-fast model id;
+                                  // swap the selected model (handleCombinedModelChange
+                                  // handles both chat-level + ensemble-participant
+                                  // persistence). No separate fast flag needed.
+                                  const nextModel =
+                                    effectiveSelectedModel === 'composer-2.5-fast'
+                                      ? 'composer-2.5'
+                                      : 'composer-2.5-fast'
+                                  handleCombinedModelChange(nextModel)
+                                }
+                              : undefined
 
                       const handleCombinedReasoningChange = (value: string) => {
                         if (ensembleBinding) {
