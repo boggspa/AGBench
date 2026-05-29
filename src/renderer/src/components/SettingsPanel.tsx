@@ -34,6 +34,7 @@ import {
   isDashboardStatVisible
 } from '../lib/dashboardStatRegistry'
 import {
+  summariseCliProviderEnabled,
   summariseCodexStatus,
   summariseGeminiStatus,
   summariseProviderApiKeyStatus,
@@ -152,6 +153,11 @@ interface SettingsPanelProps {
   codexStatus?: any
   claudeAuthStatus?: ProviderApiKeyStatus | null
   kimiAuthStatus?: ProviderApiKeyStatus | null
+  /** Cursor / Grok adapter availability (enabled, not force-disabled). Both
+   * are CLI-login providers — auth lives in their own CLI — so the cards
+   * surface availability + a terminal-login instruction, no API-key field. */
+  cursorProviderAvailable?: boolean
+  grokProviderAvailable?: boolean
   claudeLoginState?: 'idle' | 'loading' | 'success' | 'error'
   onImportCodexUsageCredential?: () => void
   onClearCodexUsageCredential?: () => void
@@ -1272,6 +1278,8 @@ export function SettingsPanel({
   codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
+  cursorProviderAvailable = false,
+  grokProviderAvailable = false,
   claudeLoginState = 'idle',
   onImportCodexUsageCredential,
   onClearCodexUsageCredential,
@@ -1363,6 +1371,16 @@ export function SettingsPanel({
   const claudeAuthSummary = summariseProviderApiKeyStatus(claudeAuthStatus ?? null, 'Claude')
   const geminiSetupSummary = summariseGeminiStatus(geminiAuthStatus ?? null)
   const kimiSetupSummary = summariseProviderApiKeyStatus(kimiAuthStatus ?? null, 'Kimi')
+  const cursorAuthSummary = summariseCliProviderEnabled(
+    cursorProviderAvailable,
+    'Cursor',
+    'Sign in once with `cursor-agent login` in your shell; runs are diff-reviewed in write mode.'
+  )
+  const grokAuthSummary = summariseCliProviderEnabled(
+    grokProviderAvailable,
+    'Grok',
+    'Authenticate the Grok CLI (in `~/.grok/bin`) in your shell, then launch Grok runs.'
+  )
   const providerMcpSummaries = SETTINGS_PROVIDER_ORDER.map((provider) => {
     const contract =
       providerCapabilitiesByProvider?.[provider] ??
@@ -2858,6 +2876,38 @@ export function SettingsPanel({
                   >
                     <p className="settings-provider-auth-footnote">
                       Paste a Moonshot API key in the Kimi section below.
+                    </p>
+                  </SettingsProviderAuthCard>
+                  <SettingsProviderAuthCard
+                    provider="cursor"
+                    label="Cursor"
+                    summary={cursorAuthSummary}
+                    description="Cursor Composer 2.5 for write-capable agentic runs via the Cursor CLI."
+                    optional
+                  >
+                    <div className="settings-provider-auth-command">
+                      <code>cursor-agent login</code>
+                      <span>Run once in Terminal for official Cursor CLI runtime auth.</span>
+                    </div>
+                    <p className="settings-provider-auth-footnote">
+                      Write-mode runs are contained by a workspace-local deny-list and surfaced
+                      through Review changes. Enabled by default; set
+                      <code> AGBENCH_DISABLE_CURSOR=1</code> to hide.
+                    </p>
+                  </SettingsProviderAuthCard>
+                  <SettingsProviderAuthCard
+                    provider="grok"
+                    label="Grok"
+                    summary={grokAuthSummary}
+                    description="xAI Grok via its agent CLI (bidirectional ACP runs)."
+                    optional
+                  >
+                    <div className="settings-provider-auth-command">
+                      <code>grok</code>
+                      <span>Run the Grok CLI in Terminal and sign in (installs under ~/.grok/bin).</span>
+                    </div>
+                    <p className="settings-provider-auth-footnote">
+                      Enabled by default; set <code>AGBENCH_DISABLE_GROK=1</code> to hide.
                     </p>
                   </SettingsProviderAuthCard>
                 </div>

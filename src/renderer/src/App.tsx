@@ -18179,6 +18179,8 @@ function App(): React.JSX.Element {
               codexStatus={codexStatus}
               claudeAuthStatus={claudeAuthStatus}
               kimiAuthStatus={kimiAuthStatus}
+              cursorProviderAvailable={cursorProviderAvailable}
+              grokProviderAvailable={grokProviderAvailable}
               claudeLoginState={claudeLoginState}
               onImportCodexUsageCredential={() => void handleImportCodexUsageCredential()}
               onClearCodexUsageCredential={() => void handleClearCodexUsageCredential()}
