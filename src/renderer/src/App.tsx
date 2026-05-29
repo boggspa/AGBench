@@ -2726,7 +2726,10 @@ function WelcomeUsageDashboard({
                 aria-label="Workspace cost breakdown"
               >
                 {data.workspaceCostBreakdown.slice(0, resolvedWorkspacesShown).map((ws) => {
-                  const share = Math.max(0, Math.min(100, ws.shareOfTotalCost))
+                  // 1.0.6-CRUX43 — meter = share of total TOKENS (not cost), so a
+                  // workspace's bar reflects its real prominence (the token label
+                  // beside it stays unchanged).
+                  const share = Math.max(0, Math.min(100, ws.shareOfTotalTokens))
                   const fillWidth = `${Math.max(2, share)}%`
                   return (
                     <div
@@ -2764,7 +2767,7 @@ function WelcomeUsageDashboard({
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-valuenow={share}
-                        aria-label={`${ws.displayName} accounts for ${share.toFixed(1)}% of post-reset cost`}
+                        aria-label={`${ws.displayName} accounts for ${share.toFixed(1)}% of total tokens`}
                       >
                         <span
                           className="welcome-usage-workspace-card-fill"

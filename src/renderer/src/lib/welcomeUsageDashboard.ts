@@ -37,6 +37,8 @@ export interface WorkspaceCostBreakdownEntry {
   costUsd: number
   /** Percentage of the total post-reset cost. 0–100. */
   shareOfTotalCost: number
+  /** Percentage of total post-reset tokens (drives the meter). 0–100. */
+  shareOfTotalTokens: number
 }
 
 /**
@@ -953,6 +955,10 @@ export const buildWelcomeUsageDashboardData = (
     (sum, bucket) => sum + (bucket.costUsd || 0),
     0
   )
+  const totalAllWorkspaceTokens = Array.from(workspaceAggregate.values()).reduce(
+    (sum, bucket) => sum + (bucket.tokens || 0),
+    0
+  )
   const workspaceCostBreakdown: WorkspaceCostBreakdownEntry[] = Array.from(
     workspaceAggregate.entries()
   )
@@ -980,7 +986,12 @@ export const buildWelcomeUsageDashboardData = (
         tokens: bucket.tokens,
         costUsd: bucket.costUsd,
         shareOfTotalCost:
-          totalAllWorkspaceCost > 0 ? (bucket.costUsd / totalAllWorkspaceCost) * 100 : 0
+          totalAllWorkspaceCost > 0 ? (bucket.costUsd / totalAllWorkspaceCost) * 100 : 0,
+        // 1.0.6-CRUX43 — token share drives the dashboard workspace meters. Cost
+        // is 0 for most Gemini-heavy workspaces, so the cost meter read near-empty
+        // for everything; token share reflects each workspace's real prominence.
+        shareOfTotalTokens:
+          totalAllWorkspaceTokens > 0 ? (bucket.tokens / totalAllWorkspaceTokens) * 100 : 0
       }
     })
     .sort(

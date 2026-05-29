@@ -6536,17 +6536,26 @@ button.sidebar-item {
   color: color-mix(in srgb, var(--accent) 80%, var(--text-primary) 20%);
 }
 
+/* 1.0.6-CRUX43 — the model-meter FILL also reads its provider brand colour via
+ * `currentColor` (see .welcome-usage-model-meter-fill), so it's added to each
+ * rule below; without it the meters fell back to the default (near-white). */
 .welcome-usage-model-dot.provider-gemini,
+.welcome-usage-model-meter-fill.provider-gemini,
 .welcome-usage-bar-segment.provider-gemini { color: #5a8cff; }
 .welcome-usage-model-dot.provider-codex,
+.welcome-usage-model-meter-fill.provider-codex,
 .welcome-usage-bar-segment.provider-codex { color: #8b7cff; }
 .welcome-usage-model-dot.provider-claude,
+.welcome-usage-model-meter-fill.provider-claude,
 .welcome-usage-bar-segment.provider-claude { color: #ff9b54; }
 .welcome-usage-model-dot.provider-kimi,
+.welcome-usage-model-meter-fill.provider-kimi,
 .welcome-usage-bar-segment.provider-kimi { color: #a7c84b; }
 .welcome-usage-model-dot.provider-grok,
+.welcome-usage-model-meter-fill.provider-grok,
 .welcome-usage-bar-segment.provider-grok { color: var(--provider-grok-color); }
 .welcome-usage-model-dot.provider-cursor,
+.welcome-usage-model-meter-fill.provider-cursor,
 .welcome-usage-bar-segment.provider-cursor { color: var(--provider-cursor-color); }
 
 [data-reduce-transparency="true"] .welcome-usage-dashboard {

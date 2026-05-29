@@ -142,12 +142,15 @@ export function buildHeatmapGrid(records: UsageRecord[], now: Date = new Date())
     if (weight > maxLogWeight) maxLogWeight = weight
   }
 
-  // Phase 3: emit cells for every (column, row) in the grid so the
-  // renderer can map straight to a fixed 30×12 layout without
-  // checking sparse-map lookups.
+  // Phase 3: emit cells for every (column, row) in the grid. 1.0.6-CRUX43 —
+  // ROW-MAJOR order (hour-bucket OUTER, day INNER) is load-bearing: the grid
+  // renders `grid-template-columns: repeat(HEATMAP_COLUMNS, 1fr)` + auto-flow
+  // row, so each grid ROW must be one hour-bucket spanning all days. That puts
+  // Days on the X axis and Hours on the Y axis — matching the hour labels on the
+  // left rail. (Previously column-major, which scrambled the axes vs the labels.)
   const cells: HeatmapCell[] = []
-  for (let column = 0; column < HEATMAP_COLUMNS; column += 1) {
-    for (let row = 0; row < HEATMAP_ROWS; row += 1) {
+  for (let row = 0; row < HEATMAP_ROWS; row += 1) {
+    for (let column = 0; column < HEATMAP_COLUMNS; column += 1) {
       const key = `${column}-${row}`
       const bucket = cellMap.get(key)
       if (!bucket) {
