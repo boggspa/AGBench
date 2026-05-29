@@ -67,6 +67,13 @@ describe('getDefaultEnsembleParticipantConfig', () => {
       reasoningEffort: 'medium'
     })
   })
+
+  it('returns cursor defaults: cli-default model, read_only, no reasoning axis', () => {
+    expect(getDefaultEnsembleParticipantConfig('cursor')).toEqual({
+      model: 'cli-default',
+      permissionPresetId: 'read_only'
+    })
+  })
 })
 
 describe('resolveEnsembleParticipantSettings', () => {
@@ -187,5 +194,12 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
       'xhigh',
       'max'
     ])
+  })
+
+  it('exposes cursor models (composer-2.5 + fast) with no reasoning axis', () => {
+    const cursor = getEnsembleModelDefaults('cursor')
+    expect(cursor.defaultModelId).toBe('composer-2.5')
+    expect(cursor.modelOptions.map((o) => o.id)).toEqual(['composer-2.5', 'composer-2.5-fast'])
+    expect(cursor.reasoningOptions).toEqual([])
   })
 })

@@ -1798,8 +1798,14 @@ export class EnsembleOrchestrator {
       // matches the participant's provider so adapters don't see
       // cross-provider noise. Falls back silently when a participant
       // pre-dates the setup-sheet picker rework.
-      const codexReasoning =
-        participant.provider === 'codex' ? participant.reasoningEffort : undefined
+      // 1.0.6-CRUX30 — codex AND grok both dispatch reasoning via the shared
+      // `reasoningEffort` payload field (each adapter normalizes it — Codex
+      // effort vs Grok's normalizeGrokEffortFlag). Thread both so a grok
+      // ensemble participant's reasoning isn't silently dropped.
+      const codexOrGrokReasoning =
+        participant.provider === 'codex' || participant.provider === 'grok'
+          ? participant.reasoningEffort
+          : undefined
       const codexServiceTier =
         participant.provider === 'codex'
           ? participant.serviceTier ?? (participant.fastModeEnabled ? 'fast' : '')
@@ -1829,7 +1835,7 @@ export class EnsembleOrchestrator {
         externalPathGrants: permissions.externalPathGrants,
         effectivePermissions: permissions,
         ensembleRun: ensembleRunIdentity(runtime.roundId, participant),
-        ...(codexReasoning !== undefined ? { reasoningEffort: codexReasoning } : {}),
+        ...(codexOrGrokReasoning !== undefined ? { reasoningEffort: codexOrGrokReasoning } : {}),
         ...(codexServiceTier !== undefined ? { serviceTier: codexServiceTier } : {}),
         ...(claudeReasoning !== undefined ? { claudeReasoningEffort: claudeReasoning } : {}),
         ...(claudeFastMode !== undefined ? { claudeFastMode } : {}),

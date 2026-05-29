@@ -112,6 +112,14 @@ const GROK_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'grok-build', label: 'Grok Build 0.1' }
 ]
 
+// Cursor — the only ids AGBench exposes (mirrors CursorCliProbe). "Fast" is a
+// distinct model id (composer-2.5-fast), not a service tier, so both are listed
+// as model options rather than a fast-tier toggle (no reasoning axis).
+const CURSOR_MODELS: CombinedModelPickerModelOption[] = [
+  { id: 'composer-2.5', label: 'Composer 2.5' },
+  { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast' }
+]
+
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])
 const CLAUDE_FAST_CAPABLE = new Set<string>(['claude-opus-4-7', 'claude-opus-4-6'])
 
@@ -188,6 +196,15 @@ export function getDefaultEnsembleParticipantConfig(
         model: 'cli-default',
         permissionPresetId: 'read_only',
         reasoningEffort: 'medium'
+      }
+    case 'cursor':
+      // Cursor (Composer 2.5) has no reasoning axis; default to read-only in
+      // ensembles like most members (codex is the lone writer). The user can
+      // grant write per-participant — cursor's write mode is deny-list
+      // contained + diff-reviewed. MUST mirror EnsembleDefaults.ts.
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only'
       }
     default:
       return {
@@ -296,6 +313,14 @@ export function getEnsembleModelDefaults(provider: ProviderId): EnsembleModelDef
         defaultReasoning: 'medium',
         fastModeCapableModelIds: new Set<string>(),
         defaultModelId: 'grok-build'
+      }
+    case 'cursor':
+      return {
+        modelOptions: CURSOR_MODELS,
+        reasoningOptions: [],
+        defaultReasoning: '',
+        fastModeCapableModelIds: new Set<string>(),
+        defaultModelId: 'composer-2.5'
       }
     default:
       return {

@@ -53,6 +53,17 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     instructions:
       'Stress-test the proposed approach: surface risky assumptions, failure modes, and simpler alternatives.',
     permissionPresetId: 'read_only'
+  },
+  {
+    // Cursor (Composer 2.5) is first-class, so it seeds into the default panel
+    // too. Read-only by default like the others (codex is the lone writer); the
+    // user can grant write per-participant. `getDefaultEnsembleParticipantConfig`
+    // in ensembleProviderDefaults.ts mirrors this preset.
+    provider: 'cursor',
+    role: 'Builder',
+    instructions:
+      'Draft the concrete implementation: propose specific edits, file touches, and integration steps.',
+    permissionPresetId: 'read_only'
   }
 ]
 
