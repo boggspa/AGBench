@@ -56,6 +56,95 @@ function asObject(value: unknown): Record<string, unknown> | null {
     : null
 }
 
+/** First non-empty string among the candidates (defensive field lookup). */
+function firstStr(...vals: unknown[]): string {
+  for (const v of vals) if (typeof v === 'string' && v) return v
+  return ''
+}
+
+function safeStringify(value: unknown): string {
+  if (value == null) return ''
+  if (typeof value === 'string') return value
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Best-effort flatten of an ACP tool-call `content` payload to display text.
+ * ACP content is a `ContentBlock[]`; the common shapes are a text block
+ * (`{type:'content', content:{type:'text', text}}` or `{text}`) and a diff
+ * block (`{type:'diff', path, ...}`). Defensive — the exact live shape is
+ * confirmed via AGBENCH_GROK_DEBUG and the lookups extended if needed.
+ */
+function acpToolContentToText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) {
+    const obj = asObject(value)
+    if (obj && typeof obj.text === 'string') return obj.text
+    return ''
+  }
+  const parts: string[] = []
+  for (const entry of value) {
+    const block = asObject(entry)
+    if (!block) continue
+    const inner = asObject(block.content)
+    if (inner && typeof inner.text === 'string') {
+      parts.push(inner.text)
+      continue
+    }
+    if (typeof block.text === 'string') {
+      parts.push(block.text)
+      continue
+    }
+    if (block.type === 'diff') {
+      const path = typeof block.path === 'string' ? block.path : ''
+      parts.push(path ? `(diff ${path})` : '(diff)')
+    }
+  }
+  return parts.join('')
+}
+
+/**
+ * Map an ACP `session/update` tool event (`tool_call` / `tool_call_update`) to
+ * normalized run events. A `tool_call` opens the activity card (`tool_use`); a
+ * terminal status (completed/failed) closes it (`tool_result`). Stateless: a
+ * `tool_call` that arrives already-terminal emits both. This is what gives the
+ * ACP transport real inline tool-call cards (the headless transport emits no
+ * tool events at all — see GrokStreamingJson header).
+ */
+function acpToolUpdateToRunEvents(
+  update: Record<string, unknown>,
+  sub: string,
+  raw: Record<string, unknown>
+): NormalizedGrokRunEvent[] {
+  const toolId = firstStr(update.toolCallId, update.toolCallID, update.id)
+  const status = firstStr(update.status).toLowerCase()
+  const terminal = status === 'completed' || status === 'failed'
+  const events: NormalizedGrokRunEvent[] = []
+  if (sub === 'tool_call') {
+    events.push({
+      type: 'tool_use',
+      toolId: toolId || undefined,
+      toolName: firstStr(update.title, update.kind) || 'tool',
+      toolInput: asObject(update.rawInput) || asObject(update.input) || {},
+      raw
+    })
+  }
+  if (terminal) {
+    events.push({
+      type: 'tool_result',
+      toolId: toolId || undefined,
+      toolStatus: status === 'failed' ? 'error' : 'success',
+      toolOutput: acpToolContentToText(update.content) || safeStringify(update.rawOutput),
+      raw
+    })
+  }
+  return events
+}
+
 /**
  * Map one parsed ACP message to zero or more normalized run events. Never
  * throws; unrecognized messages (model/command updates, summaries) yield [].
@@ -71,6 +160,9 @@ export function acpMessageToRunEvents(message: Record<string, unknown>): Normali
     const text = content && typeof content.text === 'string' ? content.text : ''
     if (sub === 'agent_message_chunk' && text) return [{ type: 'content', text, raw: message }]
     if (sub === 'agent_thought_chunk' && text) return [{ type: 'thinking', text, raw: message }]
+    if ((sub === 'tool_call' || sub === 'tool_call_update') && update) {
+      return acpToolUpdateToRunEvents(update, sub, message)
+    }
     return []
   }
 

@@ -166,6 +166,97 @@ describe('acpMessageToRunEvents', () => {
   })
 })
 
+describe('G4c — ACP tool_call / tool_call_update → tool-card run events', () => {
+  const toolUpdate = (update: Record<string, unknown>) => ({
+    jsonrpc: '2.0',
+    method: 'session/update',
+    params: { sessionId: 's1', update }
+  })
+
+  it('maps a pending tool_call to a tool_use activity (card opens)', () => {
+    expect(
+      acpMessageToRunEvents(
+        toolUpdate({
+          sessionUpdate: 'tool_call',
+          toolCallId: 'call_1',
+          title: 'Write file x.swift',
+          kind: 'edit',
+          status: 'pending',
+          rawInput: { path: 'x.swift' }
+        })
+      )
+    ).toEqual([
+      {
+        type: 'tool_use',
+        toolId: 'call_1',
+        toolName: 'Write file x.swift',
+        toolInput: { path: 'x.swift' },
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('maps a tool_call that arrives already-completed to use + result', () => {
+    const events = acpMessageToRunEvents(
+      toolUpdate({
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call_2',
+        kind: 'read',
+        status: 'completed',
+        content: [{ type: 'content', content: { type: 'text', text: 'file body' } }]
+      })
+    )
+    expect(events).toEqual([
+      { type: 'tool_use', toolId: 'call_2', toolName: 'read', toolInput: {}, raw: expect.anything() },
+      {
+        type: 'tool_result',
+        toolId: 'call_2',
+        toolStatus: 'success',
+        toolOutput: 'file body',
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('maps a completed tool_call_update to a tool_result (card closes)', () => {
+    expect(
+      acpMessageToRunEvents(
+        toolUpdate({
+          sessionUpdate: 'tool_call_update',
+          toolCallId: 'call_1',
+          status: 'completed',
+          content: [{ type: 'content', content: { type: 'text', text: 'ok' } }]
+        })
+      )
+    ).toEqual([
+      {
+        type: 'tool_result',
+        toolId: 'call_1',
+        toolStatus: 'success',
+        toolOutput: 'ok',
+        raw: expect.anything()
+      }
+    ])
+  })
+
+  it('flags a failed tool_call_update as an errored result', () => {
+    const events = acpMessageToRunEvents(
+      toolUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'call_3', status: 'failed' })
+    )
+    expect(events).toEqual([
+      { type: 'tool_result', toolId: 'call_3', toolStatus: 'error', toolOutput: '', raw: expect.anything() }
+    ])
+  })
+
+  it('emits nothing for a non-terminal tool_call_update (in_progress)', () => {
+    expect(
+      acpMessageToRunEvents(
+        toolUpdate({ sessionUpdate: 'tool_call_update', toolCallId: 'call_1', status: 'in_progress' })
+      )
+    ).toEqual([])
+  })
+})
+
 describe('G5 — session/request_permission (client-mediated approvals)', () => {
   const permissionRequest = (id: number | string = 7) => ({
     jsonrpc: '2.0',
