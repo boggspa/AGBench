@@ -18601,19 +18601,28 @@ input:disabled, select:disabled, textarea:disabled {
   border-color: color-mix(in srgb, #9a8fff 26%, #ffffff 12%);
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.46);
 }
-/* 1.0.6-CS2 — Codex shell, DARK themes only: drop the purple rim outline on the
- * composer surface + the detached above rows. "Dark" = the inverse of the codex
- * shell's own light set (light / mist / sage), mirroring its existing
- * light-scoped overrides. `transparent` keeps the 1px box (no reflow); the
- * drop-shadow stays since it isn't an outline. Higher specificity than the base
- * codex rules above, so it wins without `!important`. */
-:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
-  .composer-surface,
-:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
-  .composer-surface:focus-within,
-:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))[data-composer-style="codex"]
-  .composer-above-bar {
-  border-color: transparent;
+/* 1.0.6-CS2 — Codex shell/interface, DARK themes only: remove the rim outline
+ * on the composer surface + the detached above rows / ensemble stack. "Dark" =
+ * the inverse of the codex light set (light/mist/sage), matching the codex
+ * light-scoped flatten elsewhere. The visible rim is a 1px border; the
+ * load-bearing one is set on `[data-interface-style="codex"] .composer-surface`
+ * with `!important` (~20920), and the ensemble upper area is a
+ * `.composer-above-bar-stack:has(.ensemble-above-row)` wrapper the light theme
+ * already flattens but dark didn't. `!important` + higher specificity (0,4,0)
+ * beats those; `transparent` keeps the 1px box (no reflow) and leaves the soft
+ * drop-shadow intact (it's a shadow, not an outline). */
+:not(:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"]))
+  :is([data-composer-style="codex"], [data-interface-style="codex"])
+  :is(
+    .composer-surface,
+    .composer-surface:focus-within,
+    .composer-above-bar,
+    .ensemble-above-row,
+    .composer-create-pr-row,
+    .queued-messages-above-row,
+    .composer-above-bar-stack:has(.ensemble-above-row)
+  ) {
+  border-color: transparent !important;
 }
 [data-composer-style="codex"] .composer-textarea {
   padding: 6px 6px 12px;
