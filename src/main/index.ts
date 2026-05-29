@@ -6322,9 +6322,22 @@ let grokDebugLogPath: string | null = null
 function maybeLogGrokRawEvent(event: unknown): void {
   const flag = process.env.AGBENCH_GROK_DEBUG
   if (flag !== '1' && flag !== 'true' && flag !== 'yes') return
+  let serialized = ''
+  try {
+    serialized = JSON.stringify(event)
+  } catch {
+    return
+  }
+  // Tagged stderr line so the RAW Grok wire shape shows up in the same dev
+  // terminal the user already watches (one-paste capture, no temp-file fishing).
+  try {
+    process.stderr.write(`[grok-raw] ${serialized}\n`)
+  } catch {
+    /* ignore */
+  }
   try {
     if (!grokDebugLogPath) grokDebugLogPath = join(os.tmpdir(), 'agbench-grok-stream.jsonl')
-    fsSync.appendFileSync(grokDebugLogPath, `${JSON.stringify(event)}\n`)
+    fsSync.appendFileSync(grokDebugLogPath, `${serialized}\n`)
   } catch {
     // Diagnostics only — never disrupt the run.
   }
