@@ -430,6 +430,9 @@ declare global {
         reason?: string
       }) => Promise<{ ok: boolean; error?: string }>
       openExternalOrPath: (href: string) => Promise<{ ok: boolean; error?: string }>
+      openProviderLoginTerminal: (
+        provider: ProviderId
+      ) => Promise<{ ok: boolean; error?: string }>
       startPty: (workspacePath: string, sessionId?: string) => Promise<void>
       stopPty: (sessionId?: string) => Promise<void>
       ptyWrite: (data: string, sessionId?: string) => Promise<void>

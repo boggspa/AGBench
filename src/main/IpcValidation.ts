@@ -100,6 +100,8 @@ export const IPC_ARGUMENT_SCHEMAS: Record<string, ArgSpec[]> = {
   'fx-rates:refresh': ['optionalBoolean'],
   'providerRates:get': [],
   'providerRates:probe': [],
+  // 1.0.6-CRUX42 — open a Terminal running a provider's interactive CLI login.
+  'provider:open-login-terminal': ['provider'],
   // Auto-update service (no-arg snapshot/control channels).
   'update-snapshot': [],
   'check-for-updates': [],

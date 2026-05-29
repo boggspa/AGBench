@@ -279,6 +279,13 @@ const api = {
   // (filesystem paths); unknown / unsafe schemes are no-ops.
   openExternalOrPath: (href: string) =>
     ipcRenderer.invoke('shell:open-link', href) as Promise<{ ok: boolean; error?: string }>,
+  // 1.0.6-CRUX42 — open a Terminal already running the provider's interactive CLI
+  // sign-in (Cursor / Grok). Main writes + opens a one-shot .command.
+  openProviderLoginTerminal: (provider: ProviderId) =>
+    ipcRenderer.invoke('provider:open-login-terminal', provider) as Promise<{
+      ok: boolean
+      error?: string
+    }>,
   startPty: (workspacePath: string, sessionId: string = 'default') =>
     ipcRenderer.invoke('start-pty', workspacePath, sessionId),
   stopPty: (sessionId: string = 'default') => ipcRenderer.invoke('stop-pty', sessionId),

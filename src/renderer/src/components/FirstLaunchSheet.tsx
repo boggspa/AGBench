@@ -83,6 +83,8 @@ export interface FirstLaunchSheetProps {
   /** Deep-link callback. Closes the sheet and opens the Settings
    * panel — the user finishes provider sign-in there. */
   onOpenSettings: () => void
+  /** 1.0.6-CRUX42 — open a Terminal running the Cursor/Grok CLI login. */
+  onProviderLogin?: (provider: OnboardingProviderId) => void
   /** Codex CLI status. Pulled from `agentStatusByProvider.codex` or
    * the top-level `codexStatus` in App.tsx. Used to decide whether
    * to show "signed in" / "binary not found" / "not authenticated".
@@ -295,6 +297,7 @@ export function FirstLaunchSheet({
   open,
   onDismiss,
   onOpenSettings,
+  onProviderLogin,
   codexStatus,
   claudeAuthStatus,
   kimiAuthStatus,
@@ -465,7 +468,12 @@ export function FirstLaunchSheet({
           </p>
           <div className="first-launch-sheet-provider-grid">
             {providerRows.map((row) => (
-              <ProviderCard key={row.id} row={row} onOpenSettings={onOpenSettings} />
+              <ProviderCard
+                key={row.id}
+                row={row}
+                onOpenSettings={onOpenSettings}
+                onProviderLogin={onProviderLogin}
+              />
             ))}
           </div>
         </section>
@@ -853,9 +861,16 @@ export function FirstLaunchSheet({
 interface ProviderCardProps {
   row: ProviderRowSpec
   onOpenSettings: () => void
+  // 1.0.6-CRUX42 — Cursor / Grok sign in via an interactive CLI login; the host
+  // opens a Terminal running it. Only those two cards surface this button.
+  onProviderLogin?: (provider: OnboardingProviderId) => void
 }
 
-function ProviderCard({ row, onOpenSettings }: ProviderCardProps): React.JSX.Element {
+function ProviderCard({
+  row,
+  onOpenSettings,
+  onProviderLogin
+}: ProviderCardProps): React.JSX.Element {
   const classes = [
     'first-launch-sheet-provider-card',
     `first-launch-sheet-provider-card-${row.variant}`,
@@ -900,6 +915,16 @@ function ProviderCard({ row, onOpenSettings }: ProviderCardProps): React.JSX.Ele
       <p className="first-launch-sheet-provider-card-description">{row.description}</p>
       <p className="first-launch-sheet-provider-card-hint">{row.hint}</p>
       <div className="first-launch-sheet-provider-card-actions">
+        {(row.id === 'cursor' || row.id === 'grok') && onProviderLogin && (
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => onProviderLogin(row.id)}
+            aria-label={`Sign in to ${row.label}`}
+          >
+            Sign in
+          </button>
+        )}
         <button
           type="button"
           className="btn btn-sm"

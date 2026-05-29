@@ -182,6 +182,9 @@ interface SettingsPanelProps {
     makeDefault?: boolean
   }) => void
   onCancelGeminiOAuthLogin?: (profileId?: string | null) => void
+  // 1.0.6-CRUX42 — open a Terminal running the provider's interactive CLI login
+  // (Cursor / Grok). The host wires this to window.api.openProviderLoginTerminal.
+  onProviderLogin?: (provider: ProviderId) => void
   onSetDefaultGeminiAuthProfile?: (profileId: string | null) => void
   onDeleteGeminiAuthProfile?: (profileId: string) => void
   onRemoveAgenticWorkspaceGrant?: (
@@ -1301,6 +1304,7 @@ export function SettingsPanel({
   onSaveGeminiAuthProfile,
   onStartGeminiOAuthLogin,
   onCancelGeminiOAuthLogin,
+  onProviderLogin,
   onSetDefaultGeminiAuthProfile,
   onDeleteGeminiAuthProfile,
   onRemoveAgenticWorkspaceGrant,
@@ -2925,6 +2929,14 @@ export function SettingsPanel({
                       <code>cursor-agent login</code>
                       <span>Run once in Terminal for official Cursor CLI runtime auth.</span>
                     </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      onClick={() => onProviderLogin?.('cursor')}
+                      disabled={!onProviderLogin}
+                    >
+                      Open Terminal to sign in
+                    </button>
                     <p className="settings-provider-auth-footnote">
                       Write-mode runs are contained by a workspace-local deny-list and surfaced
                       through Review changes. Enabled by default; set
@@ -2942,6 +2954,14 @@ export function SettingsPanel({
                       <code>grok</code>
                       <span>Run the Grok CLI in Terminal and sign in (installs under ~/.grok/bin).</span>
                     </div>
+                    <button
+                      type="button"
+                      className="btn btn-sm btn-primary"
+                      onClick={() => onProviderLogin?.('grok')}
+                      disabled={!onProviderLogin}
+                    >
+                      Open Terminal to sign in
+                    </button>
                     <p className="settings-provider-auth-footnote">
                       Enabled by default; set <code>AGBENCH_DISABLE_GROK=1</code> to hide.
                     </p>

@@ -18199,6 +18199,11 @@ function App(): React.JSX.Element {
               onSaveGeminiAuthProfile={(profile) => void handleSaveGeminiAuthProfile(profile)}
               onStartGeminiOAuthLogin={(input) => void handleStartGeminiOAuthLogin(input)}
               onCancelGeminiOAuthLogin={(profileId) => void handleCancelGeminiOAuthLogin(profileId)}
+              onProviderLogin={(provider) => {
+                void window.api.openProviderLoginTerminal(provider).then((r) => {
+                  if (!r?.ok) console.warn('[provider sign-in] could not open Terminal:', r?.error)
+                })
+              }}
               onSetDefaultGeminiAuthProfile={(profileId) =>
                 void handleSetDefaultGeminiAuthProfile(profileId)
               }
@@ -21346,6 +21351,11 @@ function App(): React.JSX.Element {
           // corner control to verify the status pill flipped green.
           setShowFirstLaunchSheet(false)
           setShowSettings(true)
+        }}
+        onProviderLogin={(provider) => {
+          void window.api.openProviderLoginTerminal(provider).then((r) => {
+            if (!r?.ok) console.warn('[provider sign-in] could not open Terminal:', r?.error)
+          })
         }}
         codexStatus={codexStatus}
         claudeAuthStatus={claudeAuthStatus}
