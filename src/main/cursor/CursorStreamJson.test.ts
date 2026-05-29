@@ -80,6 +80,32 @@ describe('CursorStreamJson', () => {
       ])
     })
 
+    it('exposes editToolCall streamContent as `content` for the inline diff', () => {
+      // Real 2026.05.28 shape (captured): the edit tool streams the new file
+      // content under `streamContent` + the target under `path`, with NO
+      // old_string/new_string. The renderer derives a diff from `content`, so
+      // the parser must surface streamContent there.
+      const out = cursorEventToRunEvents(
+        ev({
+          type: 'tool_call',
+          subtype: 'started',
+          call_id: 'edit_1',
+          tool_call: {
+            editToolCall: { args: { path: '/tmp/note.txt', streamContent: 'line one.\n' } }
+          }
+        })
+      )
+      expect(out).toHaveLength(1)
+      expect(out[0].type).toBe('tool_use')
+      expect(out[0].toolKind).toBe('edit')
+      // path preserved + streamContent mirrored to `content` (original kept too).
+      expect(out[0].toolInput).toEqual({
+        path: '/tmp/note.txt',
+        streamContent: 'line one.\n',
+        content: 'line one.\n'
+      })
+    })
+
     it('maps a successful tool_call completed to a success tool_result', () => {
       const out = cursorEventToRunEvents(
         ev({

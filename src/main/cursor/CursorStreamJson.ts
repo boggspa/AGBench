@@ -217,6 +217,32 @@ function cursorToolName(base: string): string {
   return map[base.toLowerCase()] || base || 'tool'
 }
 
+/**
+ * Normalize a Cursor tool-call args object into the field names the renderer's
+ * diff machinery understands.
+ *
+ * Cursor's edit/write tool (`editToolCall`) streams the NEW file content under
+ * `streamContent` and the target under `path`, and sends NO `old_string` /
+ * `new_string` (confirmed against the real 2026.05.28 agent — it's a
+ * content-replacement edit, not a string-replace patch). The renderer's
+ * `deriveToolDiffSummary` / `estimateLineChanges` (ToolParser.ts) only derive a
+ * diff from `old_string`+`new_string` or `content`, so without this mapping a
+ * Cursor edit renders a bare tool card with no inline diff. Exposing
+ * `streamContent` as `content` lights up the content-based path (additions =
+ * the streamed lines); `path` is already read by `getPathFromRecord`. Since
+ * Cursor omits the prior text, the preview is additions-only (no deletions) —
+ * the honest representation of what the stream actually carries.
+ */
+export function normalizeCursorToolArgs(
+  args: Record<string, unknown> | undefined
+): Record<string, unknown> {
+  const input: Record<string, unknown> = { ...(args || {}) }
+  if (typeof input.streamContent === 'string' && typeof input.content !== 'string') {
+    input.content = input.streamContent
+  }
+  return input
+}
+
 /** Pull the single `<name>ToolCall` entry out of a `tool_call` object. */
 function extractToolCall(toolCall: unknown):
   | { base: string; args?: Record<string, unknown>; result?: unknown }
@@ -326,7 +352,7 @@ export function cursorEventToRunEvents(line: CursorStreamLine): NormalizedCursor
           toolId,
           toolName: cursorToolName(tc.base),
           toolKind: cursorToolKind(tc.base),
-          toolInput: tc.args || {},
+          toolInput: normalizeCursorToolArgs(tc.args),
           raw: obj
         }
       ]
