@@ -22849,6 +22849,16 @@ if (isGeminiMcpBridgeProcess) {
       workspaceService.checkTrust(workspacePath)
     )
 
+    // One-click persistent workspace trust (#272): write the folder into
+    // ~/.gemini/trustedFolders.json directly so the Gemini CLI picks it up
+    // on its next run. Replaces the broken interactive `/permissions trust`
+    // → "Trust this workspace" terminal flow (the Trust Assistant PTY exits
+    // 0 without persisting). Static call mirrors check-trust's eventual
+    // TrustStatusService delegation.
+    ipcMain.handle('trust-workspace', (_, workspacePath: string) =>
+      TrustStatusService.trustWorkspace(workspacePath)
+    )
+
     // Phase J3: session-scoped YOLO mode. Frontend toggles + queries.
     // Renderer state is broadcast via `agentic-yolo-state` whenever the
     // flag flips so the indicator badge updates across windows.

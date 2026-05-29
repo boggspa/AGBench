@@ -203,6 +203,8 @@ const api = {
 
   // Trust and PTY
   checkTrust: (workspacePath: string) => ipcRenderer.invoke('check-trust', workspacePath),
+  // One-click persistent workspace trust — writes ~/.gemini/trustedFolders.json (#272).
+  trustWorkspace: (workspacePath: string) => ipcRenderer.invoke('trust-workspace', workspacePath),
 
   // Phase J3: session-scoped YOLO mode (auto-allow every approval).
   // Never persisted — every process start defaults to disabled.

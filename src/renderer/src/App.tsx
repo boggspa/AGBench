@@ -7407,6 +7407,11 @@ function App(): React.JSX.Element {
   // Trust & Session
   const [trustResult, setTrustResult] = useState<any>(null)
   const [sessionTrust, setSessionTrust] = useState(false)
+  // #272: inline feedback for the one-click persistent-trust button.
+  // null = no message; set to a human string on write failure, cleared
+  // on success (the trust state flip is the success signal).
+  const [geminiTrustWriteError, setGeminiTrustWriteError] = useState<string | null>(null)
+  const [geminiTrustWriteBusy, setGeminiTrustWriteBusy] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
   const [isPersistentSessionEnabled, setIsPersistentSessionEnabled] = useState(false)
   const [persistentSessionStatus, setPersistentSessionStatus] =
@@ -17556,6 +17561,49 @@ function App(): React.JSX.Element {
     </span>
   ) : null
 
+  // #272: one-click persistent workspace trust for Gemini. Writes the
+  // folder into ~/.gemini/trustedFolders.json directly (main-process
+  // TrustStatusService.trustWorkspace) so the CLI treats it as trusted on
+  // its next run — replacing the broken interactive `/permissions trust`
+  // "Trust Assistant" terminal flow that exits 0 without persisting.
+  // Gated behind a confirmation dialog because trusting a folder lets
+  // Gemini act on its files without re-prompting.
+  const handleTrustWorkspaceClick = async () => {
+    const ws = currentWorkspace
+    if (!ws?.path || typeof window.api.trustWorkspace !== 'function') return
+    const confirmed = window.confirm(
+      `Trust this workspace for Gemini?\n\n${ws.path}\n\n` +
+        'This writes the folder into ~/.gemini/trustedFolders.json so the Gemini CLI ' +
+        'treats it as a trusted project. Gemini will then run its tools (read / edit / ' +
+        'shell, per your permission mode) against files here without prompting to trust ' +
+        'the folder first. Only trust folders whose contents you recognise.'
+    )
+    if (!confirmed) return
+    setGeminiTrustWriteBusy(true)
+    setGeminiTrustWriteError(null)
+    try {
+      const result = await window.api.trustWorkspace(ws.path)
+      if (result?.ok) {
+        const refreshed = await window.api.checkTrust(ws.path)
+        setTrustResult(refreshed)
+        setGeminiTrustWriteError(null)
+        // The trust file is read by the CLI at process start, so an
+        // already-running persistent session needs a restart to pick it up.
+        markPersistentSessionRestartNeeded(
+          'Gemini workspace trust was granted. Restart the persistent session to apply it.'
+        )
+      } else {
+        setGeminiTrustWriteError(result?.reason || 'Could not write the trust file.')
+      }
+    } catch (err) {
+      setGeminiTrustWriteError(
+        err instanceof Error ? err.message : 'Could not write the trust file.'
+      )
+    } finally {
+      setGeminiTrustWriteBusy(false)
+    }
+  }
+
   const handleRollbackCodexThread = async (threadId: string) => {
     if (!threadId || typeof window.api.rollbackAgentThread !== 'function') return
     const confirmed = window.confirm(
@@ -20900,9 +20948,45 @@ function App(): React.JSX.Element {
                 {currentProvider === 'gemini' && !geminiWorkspaceTrustReady && (
                   <div
                     className="composer-inline-warning"
-                    style={{ fontSize: 'var(--font-size-xs)', color: 'var(--warning)' }}
+                    style={{
+                      fontSize: 'var(--font-size-xs)',
+                      color: 'var(--warning)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      flexWrap: 'wrap'
+                    }}
                   >
-                    Workspace trust is not established. Enable session trust or use Trust Assistant.
+                    <span>
+                      Workspace trust is not established.
+                      {geminiTrustWriteError ? ` ${geminiTrustWriteError}` : ''}
+                    </span>
+                    {currentWorkspace?.path && typeof window.api.trustWorkspace === 'function' && (
+                      <button
+                        type="button"
+                        onClick={() => void handleTrustWorkspaceClick()}
+                        disabled={geminiTrustWriteBusy || isCurrentComposerLocked}
+                        title={`Trust ${currentWorkspace.path} for Gemini — writes ~/.gemini/trustedFolders.json`}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '3px 9px',
+                          fontSize: 'var(--font-size-xs)',
+                          fontWeight: 600,
+                          color: 'var(--text-primary)',
+                          background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--warning) 45%, transparent)',
+                          borderRadius: '6px',
+                          cursor: geminiTrustWriteBusy ? 'default' : 'pointer',
+                          opacity: geminiTrustWriteBusy ? 0.7 : 1
+                        }}
+                      >
+                        <TrustSymbolIcon />
+                        {geminiTrustWriteBusy ? 'Trusting…' : 'Trust this folder'}
+                      </button>
+                    )}
+                    <span style={{ opacity: 0.75 }}>or enable session trust above.</span>
                   </div>
                 )}
               </div>

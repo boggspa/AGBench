@@ -4,6 +4,7 @@ import {
   ChatRecord,
   UsageRecord,
   TrustStatusResult,
+  TrustWriteResult,
   WorkspaceFileEntry,
   WorkspaceFileReadResult,
   GeminiSessionListResult,
@@ -397,6 +398,8 @@ declare global {
       ) => Promise<boolean>
 
       checkTrust: (workspacePath: string) => Promise<TrustStatusResult>
+
+      trustWorkspace: (workspacePath: string) => Promise<TrustWriteResult>
 
       agenticYoloGet: () => Promise<{ enabled: boolean; enabledAt: string | null }>
       agenticYoloSet: (enabled: boolean) => Promise<{ enabled: boolean; enabledAt: string | null }>

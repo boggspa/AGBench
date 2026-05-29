@@ -2464,6 +2464,21 @@ export interface TrustStatusResult {
   isSessionOnly?: boolean
 }
 
+/**
+ * Result of a persistent workspace-trust WRITE (the one-click
+ * "Trust this folder" button that writes ~/.gemini/trustedFolders.json
+ * directly, replacing the broken interactive `/permissions trust`
+ * terminal flow). `status` is the resulting trust state ('trusted' on
+ * success); `path` is the canonical realpath that was keyed into the
+ * trust file.
+ */
+export interface TrustWriteResult {
+  ok: boolean
+  status: TrustStatus
+  path?: string
+  reason?: string
+}
+
 export interface GeminiSessionSummary {
   id: string
   title?: string

@@ -1,7 +1,7 @@
 import { homedir } from 'os'
-import { join } from 'path'
-import { readFileSync, realpathSync } from 'fs'
-import { TrustStatusResult } from './store/types'
+import { join, dirname } from 'path'
+import { readFileSync, realpathSync, writeFileSync, mkdirSync } from 'fs'
+import { TrustStatusResult, TrustWriteResult } from './store/types'
 
 export class TrustStatusService {
   private static getTrustedFoldersPath(): string {
@@ -80,6 +80,85 @@ export class TrustStatusService {
         : { status: 'trusted' }
     }
     return null
+  }
+
+  /**
+   * Persistently trust a workspace by writing it into Gemini's
+   * `~/.gemini/trustedFolders.json` as `{ "<realpath>": "TRUST_FOLDER" }`.
+   *
+   * This is the one-click replacement for the broken interactive
+   * `/permissions trust` → "Trust this workspace" terminal flow (the
+   * Trust Assistant PTY exits 0 without persisting). The file format is
+   * the canonical Gemini map shape, so the CLI picks it up on its next
+   * run with no further action.
+   *
+   * Casing-duplicate fix: Gemini (and earlier AGBench session-trust
+   * paths) could leave mixed-case duplicate keys for the same folder.
+   * We rebuild the file as a map keyed by the normalized (realpath,
+   * lower-cased on darwin) path so casing variants collapse into one
+   * canonical entry; every existing trust/untrust status is preserved,
+   * and only the target folder is (re)set to TRUST_FOLDER.
+   *
+   * Never reads or mutates any credential/token file — only the plain
+   * JSON trust map. Creates `~/.gemini` if it does not exist yet.
+   */
+  public static trustWorkspace(workspacePath: string): TrustWriteResult {
+    try {
+      if (!workspacePath || typeof workspacePath !== 'string') {
+        return { ok: false, status: 'unknown', reason: 'No workspace path provided' }
+      }
+
+      const trustFilePath = this.getTrustedFoldersPath()
+      const targetPath = this.safeRealpath(workspacePath)
+      const targetKey = this.normalizePathForComparison(targetPath)
+      if (!targetKey) {
+        return { ok: false, status: 'unknown', reason: 'Could not resolve workspace path' }
+      }
+
+      // Read existing entries, tolerant of every known schema (map,
+      // array, {trustedFolders|folders:[]}) and of a missing/corrupt
+      // file (→ start fresh from a clean map).
+      let existingEntries: Array<{ path: string; status: string }> = []
+      try {
+        const content = readFileSync(trustFilePath, 'utf8')
+        const parsed = JSON.parse(content)
+        const normalized = this.normalizeTrustedFolders(parsed)
+        if (normalized) existingEntries = normalized
+      } catch {
+        existingEntries = []
+      }
+
+      // Collapse casing-variant duplicates: key the map by the
+      // normalized path, store the canonical realpath as the written
+      // key. Later entries win (matches Gemini's last-key-wins read).
+      const byKey = new Map<string, { path: string; status: string }>()
+      for (const entry of existingEntries) {
+        const resolved = this.safeRealpath(entry.path)
+        const key = this.normalizePathForComparison(resolved)
+        if (!key) continue
+        byKey.set(key, { path: resolved, status: String(entry.status) })
+      }
+
+      // Force the target folder to TRUST_FOLDER (canonical realpath key).
+      byKey.set(targetKey, { path: targetPath, status: 'TRUST_FOLDER' })
+
+      // Serialize back to the canonical Gemini map shape.
+      const out: Record<string, string> = {}
+      for (const { path, status } of byKey.values()) {
+        out[path] = status
+      }
+
+      mkdirSync(dirname(trustFilePath), { recursive: true })
+      writeFileSync(trustFilePath, JSON.stringify(out, null, 2) + '\n', 'utf8')
+
+      return { ok: true, status: 'trusted', path: targetPath }
+    } catch (error: any) {
+      return {
+        ok: false,
+        status: 'unknown',
+        reason: `Failed to write trust file: ${error?.message || String(error)}`
+      }
+    }
   }
 
   public static checkTrust(workspacePath: string): TrustStatusResult {
