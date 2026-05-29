@@ -4627,6 +4627,47 @@ button.sidebar-item {
   bottom: auto;
 }
 
+/* 1.0.6-CRUX16 — short-viewport overlap guard for the welcome screen.
+ *
+ * The welcome dashboard (`.welcome-usage-region`, pinned near the top) and the
+ * greeting+composer block (`.welcome-mode .composer-area`, vertically centred)
+ * are BOTH absolutely positioned inside `.app-transcript`. On a tall window
+ * they clear each other, but on a short window the fixed-top dashboard collides
+ * with the centred composer — it overlaps / clips the prompt (Chris's report).
+ * There isn't room for a top dashboard AND a centred composer below ~900px, so
+ * below the breakpoint we drop the absolute layout and FLOW both into a
+ * scrollable column: dashboard → greeting → composer → starters, stacked, with
+ * the area scrolling if it still overflows. The dashboard is kept, never
+ * overlapping. Tall windows keep the centred layout unchanged. */
+@media (max-height: 900px) {
+  .app-transcript.welcome-mode {
+    overflow-y: auto;
+    justify-content: flex-start;
+  }
+  /* The messages scroller is empty on the welcome screen (the greeting lives
+   * in the composer-area); remove it from the flex column so the flowed
+   * dashboard + composer aren't pushed below the fold. */
+  .app-transcript.welcome-mode .transcript-scroll {
+    display: none;
+  }
+  .app-transcript.welcome-mode .welcome-usage-region {
+    position: relative;
+    top: auto;
+    width: 100%;
+    margin-top: var(--space-md);
+  }
+  .app-transcript.welcome-mode .composer-area {
+    position: relative;
+    top: auto;
+    bottom: auto;
+    transform: none;
+    width: 100%;
+    margin-top: var(--space-lg);
+    padding-bottom: var(--space-xl);
+    justify-content: flex-start;
+  }
+}
+
 .welcome-hero {
   width: 100%;
   max-width: min(100%, var(--composer-content-max-width));
@@ -20396,14 +20437,14 @@ input:disabled, select:disabled, textarea:disabled {
  * textarea's 46px / 184px gutters reserve the horizontal space. */
 [data-composer-style="gemini"] [data-composer-control="attach"] {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 10px;
   margin: 0;
   z-index: 3;
 }
 [data-composer-style="gemini"] [data-composer-control="model"] {
   position: absolute;
-  top: 11px;
+  top: 13px;
   right: 50px;
   max-width: 172px;
   margin: 0;
@@ -20413,7 +20454,7 @@ input:disabled, select:disabled, textarea:disabled {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  top: 10px;
+  top: 12px;
   right: 12px;
   z-index: 3;
 }
@@ -33344,14 +33385,14 @@ input:disabled, select:disabled, textarea:disabled {
  * the pill. The textarea's 48px / 224px gutters reserve the space. */
 [data-composer-style="cursor"] [data-composer-control="attach"] {
   position: absolute;
-  top: 10px;
+  top: 12px;
   left: 10px;
   margin: 0;
   z-index: 3;
 }
 [data-composer-style="cursor"] [data-composer-control="model"] {
   position: absolute;
-  top: 11px;
+  top: 13px;
   right: 50px;
   max-width: 172px;
   margin: 0;
@@ -33361,7 +33402,7 @@ input:disabled, select:disabled, textarea:disabled {
   display: inline-flex;
   align-items: center;
   position: absolute;
-  top: 10px;
+  top: 12px;
   right: 12px;
   z-index: 3;
 }
@@ -33422,18 +33463,23 @@ input:disabled, select:disabled, textarea:disabled {
 
 /* Model picker — gray tier pill (lifted into the capsule's right edge;
  * clamp + ellipsis so a long label never spills into the gutter). */
+/* Model / Reasoning — INLINE (no container pill), with a CSS-drawn chevron,
+ * matching the official Cursor composer: bare model label + ⌄ riding the
+ * capsule's right edge (satellite), not a filled pill. Hover = transient
+ * highlight only. */
 [data-composer-style="cursor"] [data-composer-control="model"] {
   display: inline-flex;
   align-items: center;
+  gap: 5px;
   min-height: 28px;
-  padding: 4px 12px;
-  border-radius: 999px;
-  background: var(--cursor-shell-fill);
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: transparent;
   color: var(--cursor-shell-fg);
   font-size: calc(var(--font-size-xs) + 1px);
   font-weight: 500;
-  border: 1px solid var(--cursor-shell-border);
-  overflow: hidden;
+  border: 0;
+  overflow: visible;
 }
 [data-composer-style="cursor"] [data-composer-control="model"] .composer-combined-picker-trigger-primary {
   overflow: hidden;
@@ -33450,6 +33496,20 @@ input:disabled, select:disabled, textarea:disabled {
 }
 [data-composer-style="cursor"] [data-composer-control="model"] svg {
   display: none;
+}
+/* Dropdown chevron — drawn with borders (no extra DOM), neutral gray; sits
+ * just past the model/reasoning label like the reference. */
+[data-composer-style="cursor"] [data-composer-control="model"]::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-right: 1.5px solid var(--cursor-shell-muted);
+  border-bottom: 1.5px solid var(--cursor-shell-muted);
+  transform: translateY(-2px) rotate(45deg);
+}
+[data-composer-style="cursor"] [data-composer-control="model"]:hover::after {
+  border-color: var(--cursor-shell-fg);
 }
 
 /* Provider picker — gray outline pill. */
