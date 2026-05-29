@@ -42,6 +42,8 @@ public enum ProviderPalette {
         case codex
         case claude
         case kimi
+        case grok
+        case cursor
 
         /// Capitalized display label used in chips, badges, and a11y
         /// strings. Mirrors the Mac sidebar's `ActiveRunsSection`
@@ -52,6 +54,8 @@ public enum ProviderPalette {
             case .codex: return "Codex"
             case .claude: return "Claude"
             case .kimi: return "Kimi"
+            case .grok: return "Grok"
+            case .cursor: return "Cursor"
             }
         }
 
@@ -78,6 +82,8 @@ public enum ProviderPalette {
             case .codex:  return ProviderPaletteRGB.codex
             case .claude: return ProviderPaletteRGB.claude
             case .kimi:   return ProviderPaletteRGB.kimi
+            case .grok:   return ProviderPaletteRGB.grok
+            case .cursor: return ProviderPaletteRGB.cursor
             }
         }()
         return AdaptiveProviderColor.color(light: .from(pair.light), dark: .from(pair.dark))

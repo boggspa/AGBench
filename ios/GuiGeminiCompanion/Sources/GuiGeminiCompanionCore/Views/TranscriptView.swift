@@ -375,6 +375,8 @@ public struct TranscriptBubbleRow: View {
         case "gemini": return "diamond.fill"
         case "codex": return "chevron.left.forwardslash.chevron.right"
         case "kimi": return "moon.stars.fill"
+        case "grok": return "x.circle.fill"
+        case "cursor": return "cursorarrow.rays"
         default: return "cpu"
         }
     }

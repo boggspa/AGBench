@@ -58,8 +58,15 @@ public struct ComposerView: View {
                                 Text("Codex").tag("codex")
                                 Text("Claude").tag("claude")
                                 Text("Kimi").tag("kimi")
+                                Text("Grok").tag("grok")
+                                Text("Cursor").tag("cursor")
                             }
-                            .pickerStyle(.segmented)
+                            // Six providers overflow a segmented control, so
+                            // this picker uses `.menu` (matching
+                            // SubThreadCreatorView's provider picker). The
+                            // Approval-mode picker below keeps `.segmented`
+                            // since it still only has two options.
+                            .pickerStyle(.menu)
                         }
                         pickerBlock(title: "Approval mode") {
                             Picker("Approval mode", selection: $viewModel.approvalMode) {

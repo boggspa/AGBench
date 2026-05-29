@@ -141,6 +141,8 @@ public struct SubThreadCreatorView: View {
                 Text("Codex").tag("codex")
                 Text("Claude").tag("claude")
                 Text("Kimi").tag("kimi")
+                Text("Grok").tag("grok")
+                Text("Cursor").tag("cursor")
             }
             .pickerStyle(.menu)
             .tint(Theme.accent)

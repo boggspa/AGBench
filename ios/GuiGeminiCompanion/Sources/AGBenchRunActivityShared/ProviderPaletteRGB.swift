@@ -73,6 +73,28 @@ public enum ProviderPaletteRGB: Sendable {
         light: (0.518, 0.639, 0.231, 1.0),
         dark:  (0.733, 0.812, 0.400, 1.0)
     )
+    /// Grok — desktop `--provider-grok-color` aliases the primary text
+    /// colour, i.e. an adaptive monochrome (near-black on light, near-white
+    /// on dark). Light `#1A1A1A`, dark `#F5F5F5`. Unlike the hue-bearing
+    /// providers above (which brighten the *same* hue for dark mode), grok
+    /// inverts across the light/dark boundary so the neutral chip stays
+    /// legible on both `#ffffff` and the near-black `--app-bg` (#141414).
+    public static let grok = Pair(
+        lightHex: "#1A1A1A",
+        darkHex: "#F5F5F5",
+        light: (0.102, 0.102, 0.102, 1.0),
+        dark:  (0.961, 0.961, 0.961, 1.0)
+    )
+    /// Cursor — desktop `--provider-cursor-color` `#E3B91E` (mustard, rgb
+    /// 227,185,30). Light keeps the desktop hex; dark brightens to `#F0CB4E`
+    /// so the mustard reads on the near-black `--app-bg` the way the other
+    /// providers' dark variants do.
+    public static let cursor = Pair(
+        lightHex: "#E3B91E",
+        darkHex: "#F0CB4E",
+        light: (0.890, 0.725, 0.118, 1.0),
+        dark:  (0.941, 0.796, 0.306, 1.0)
+    )
 
     /// Lookup by lowercased provider name as it appears on the wire
     /// (`BridgeRunEvent.provider`, `AGBenchRunActivityAttributes.provider`).
@@ -84,6 +106,8 @@ public enum ProviderPaletteRGB: Sendable {
         case "codex": return codex
         case "claude": return claude
         case "kimi": return kimi
+        case "grok": return grok
+        case "cursor": return cursor
         default: return nil
         }
     }

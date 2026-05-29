@@ -178,6 +178,8 @@ private func providerLabel(_ provider: String) -> String {
     case "codex": return "Codex"
     case "claude": return "Claude"
     case "kimi": return "Kimi"
+    case "grok": return "Grok"
+    case "cursor": return "Cursor"
     default:
         return provider.isEmpty ? "AGBench" : provider.capitalized
     }

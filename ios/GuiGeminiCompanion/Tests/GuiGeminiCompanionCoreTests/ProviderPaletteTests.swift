@@ -16,12 +16,12 @@ final class ProviderPaletteTests: XCTestCase {
 
     func testProviderPaletteReturnsDistinctColorsForEachProvider() {
         // Resolve each provider's color in dark mode (where the chips
-        // mostly render) and assert the four colors are all different.
+        // mostly render) and assert the colors are all different.
         // Two colors are "different" if any sRGB channel disagrees by
         // more than a perceptual epsilon (0.01 — well within JND).
         let providers = ProviderPalette.Provider.allCases
         let components = providers.map { resolveDarkComponents(ProviderPalette.color(for: $0)) }
-        XCTAssertEqual(components.count, 4, "Expected exactly 4 known providers")
+        XCTAssertEqual(components.count, 6, "Expected exactly 6 known providers")
 
         for i in 0..<components.count {
             for j in (i + 1)..<components.count {
@@ -57,6 +57,8 @@ final class ProviderPaletteTests: XCTestCase {
         XCTAssertEqual(ProviderPalette.provider(named: "CLAUDE"), .claude)
         XCTAssertEqual(ProviderPalette.provider(named: "codex"), .codex)
         XCTAssertEqual(ProviderPalette.provider(named: "kimi"), .kimi)
+        XCTAssertEqual(ProviderPalette.provider(named: "Grok"), .grok)
+        XCTAssertEqual(ProviderPalette.provider(named: "CURSOR"), .cursor)
         XCTAssertNil(ProviderPalette.provider(named: "anthropic"))
         XCTAssertNil(ProviderPalette.provider(named: ""))
         XCTAssertNil(ProviderPalette.provider(named: nil))
@@ -71,8 +73,8 @@ final class ProviderPaletteTests: XCTestCase {
 
     // MARK: - Shared RGB table is the single source
 
-    func testProviderPaletteRGBExposesAllFourProviders() {
-        // Defensive: if someone adds a fifth provider to the enum but
+    func testProviderPaletteRGBExposesAllKnownProviders() {
+        // Defensive: if someone adds another provider to the enum but
         // forgets the matching `ProviderPaletteRGB.pair(for:)` arm, this
         // test (and any future Live Activity render that depends on the
         // shared module) will start returning `nil` for that provider.
@@ -97,6 +99,10 @@ final class ProviderPaletteTests: XCTestCase {
         XCTAssertEqual(ProviderPaletteRGB.claude.darkHex, "#FFAD64")
         XCTAssertEqual(ProviderPaletteRGB.kimi.lightHex, "#84A33B")
         XCTAssertEqual(ProviderPaletteRGB.kimi.darkHex, "#BBCF66")
+        XCTAssertEqual(ProviderPaletteRGB.grok.lightHex, "#1A1A1A")
+        XCTAssertEqual(ProviderPaletteRGB.grok.darkHex, "#F5F5F5")
+        XCTAssertEqual(ProviderPaletteRGB.cursor.lightHex, "#E3B91E")
+        XCTAssertEqual(ProviderPaletteRGB.cursor.darkHex, "#F0CB4E")
     }
 
     func testProviderPaletteRGBComponentsMatchHexes() {
