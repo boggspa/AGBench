@@ -29891,6 +29891,9 @@ input:disabled, select:disabled, textarea:disabled {
 .ensemble-above-chip.provider-kimi[data-linked-session="true"]::after {
   background: var(--provider-kimi-color, var(--accent));
 }
+.ensemble-above-chip.provider-grok[data-linked-session="true"]::after {
+  background: var(--provider-grok-color, var(--accent));
+}
 
 .ensemble-above-chip-body {
   display: inline-flex;
@@ -30112,6 +30115,9 @@ input:disabled, select:disabled, textarea:disabled {
 }
 .ensemble-above-chip.provider-kimi .ensemble-above-chip-role {
   color: var(--provider-kimi-color);
+}
+.ensemble-above-chip.provider-grok .ensemble-above-chip-role {
+  color: var(--provider-grok-color);
 }
 
 /* Neutralise the per-provider chip-border overrides — the chip

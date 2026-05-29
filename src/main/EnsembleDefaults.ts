@@ -42,6 +42,17 @@ const DEFAULT_ENSEMBLE_ROLES: Array<{
     role: 'Reviewer',
     instructions: 'Review prior responses for gaps, edge cases, and test coverage.',
     permissionPresetId: 'read_only'
+  },
+  {
+    // Grok is now a first-class provider, so it seeds into the default panel
+    // like the others. Read-only until G5 (tool mediation via AGBench MCP +
+    // approval ledger) lands write-capable runs; `getDefaultEnsembleParticipantConfig`
+    // in ensembleProviderDefaults.ts mirrors this preset.
+    provider: 'grok',
+    role: 'Challenger',
+    instructions:
+      'Stress-test the proposed approach: surface risky assumptions, failure modes, and simpler alternatives.',
+    permissionPresetId: 'read_only'
   }
 ]
 

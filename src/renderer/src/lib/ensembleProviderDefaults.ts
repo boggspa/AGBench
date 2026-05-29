@@ -66,6 +66,16 @@ const KIMI_REASONING: CombinedModelPickerReasoningOption[] = [
   { value: 'off', label: 'Thinking off' }
 ]
 
+// Grok mirrors Claude Code's effort grammar (low|medium|high|xhigh|max);
+// GrokCliArgs.normalizeGrokEffortFlag is the dispatch-side guard.
+const GROK_REASONING: CombinedModelPickerReasoningOption[] = [
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra High' },
+  { value: 'max', label: 'Max' }
+]
+
 const CODEX_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'gpt-5.5', label: 'GPT-5.5' },
   { id: 'gpt-5.4', label: 'GPT-5.4' },
@@ -94,6 +104,12 @@ const GEMINI_MODELS: CombinedModelPickerModelOption[] = [
 
 const KIMI_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'kimi-k2.6', label: 'Kimi K2.6' }
+]
+
+// Grok — mirrors App.tsx GROK_DEFAULT_MODELS. `grok-build` is the real CLI id;
+// "Grok 4.3" is its marketing label. Fuller model metadata is a later slice.
+const GROK_MODELS: CombinedModelPickerModelOption[] = [
+  { id: 'grok-build', label: 'Grok 4.3' }
 ]
 
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])
@@ -162,6 +178,16 @@ export function getDefaultEnsembleParticipantConfig(
         model: 'cli-default',
         permissionPresetId: 'read_only',
         thinkingEnabled: false
+      }
+    case 'grok':
+      // Grok stays read-only as an ensemble member until G5 (tool mediation
+      // via AGBench MCP + approval ledger) lands write-capable runs. 'cli-default'
+      // resolves to grok-build at dispatch (buildGrokCliArgs only forwards a
+      // genuine grok* id, so cli-default → Grok's own default).
+      return {
+        model: 'cli-default',
+        permissionPresetId: 'read_only',
+        reasoningEffort: 'medium'
       }
     default:
       return {
@@ -262,6 +288,14 @@ export function getEnsembleModelDefaults(provider: ProviderId): EnsembleModelDef
         defaultReasoning: 'off',
         fastModeCapableModelIds: new Set<string>(),
         defaultModelId: 'kimi-k2.6'
+      }
+    case 'grok':
+      return {
+        modelOptions: GROK_MODELS,
+        reasoningOptions: GROK_REASONING,
+        defaultReasoning: 'medium',
+        fastModeCapableModelIds: new Set<string>(),
+        defaultModelId: 'grok-build'
       }
     default:
       return {

@@ -59,6 +59,14 @@ describe('getDefaultEnsembleParticipantConfig', () => {
       thinkingEnabled: false
     })
   })
+
+  it('returns grok defaults: cli-default model, read_only (until G5), medium reasoning', () => {
+    expect(getDefaultEnsembleParticipantConfig('grok')).toEqual({
+      model: 'cli-default',
+      permissionPresetId: 'read_only',
+      reasoningEffort: 'medium'
+    })
+  })
 })
 
 describe('resolveEnsembleParticipantSettings', () => {
@@ -166,5 +174,18 @@ describe('getEnsembleModelDefaults (existing helper)', () => {
 
   it('exposes kimi preferred model id as kimi-k2.6', () => {
     expect(getEnsembleModelDefaults('kimi').defaultModelId).toBe('kimi-k2.6')
+  })
+
+  it('exposes grok preferred model id as grok-build with the effort reasoning axis', () => {
+    const grok = getEnsembleModelDefaults('grok')
+    expect(grok.defaultModelId).toBe('grok-build')
+    expect(grok.defaultReasoning).toBe('medium')
+    expect(grok.reasoningOptions.map((o) => o.value)).toEqual([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max'
+    ])
   })
 })
