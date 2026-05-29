@@ -5929,6 +5929,12 @@ button.sidebar-item {
 .welcome-usage-provider-card.provider-kimi:hover {
   border-color: color-mix(in srgb, #bbcf66 55%, transparent);
 }
+.welcome-usage-provider-card.provider-grok:hover {
+  border-color: color-mix(in srgb, #e5e7eb 55%, transparent);
+}
+.welcome-usage-provider-card.provider-cursor:hover {
+  border-color: color-mix(in srgb, #d4a017 55%, transparent);
+}
 .welcome-usage-provider-card-row {
   display: flex;
   align-items: center;
@@ -5971,6 +5977,14 @@ button.sidebar-item {
 .welcome-usage-provider-card-dot.provider-kimi {
   background: #bbcf66;
   box-shadow: 0 0 6px color-mix(in srgb, #bbcf66 50%, transparent);
+}
+.welcome-usage-provider-card-dot.provider-grok {
+  background: #e5e7eb;
+  box-shadow: 0 0 6px color-mix(in srgb, #e5e7eb 50%, transparent);
+}
+.welcome-usage-provider-card-dot.provider-cursor {
+  background: #d4a017;
+  box-shadow: 0 0 6px color-mix(in srgb, #d4a017 50%, transparent);
 }
 .welcome-usage-provider-card-totals {
   display: flex;

@@ -430,6 +430,8 @@ const inferProviderFromModelName = (model: string): ProviderId => {
     normalized.includes('o5')
   )
     return 'codex'
+  if (normalized.includes('grok')) return 'grok'
+  if (normalized.includes('composer') || normalized.includes('cursor')) return 'cursor'
   return 'gemini'
 }
 
