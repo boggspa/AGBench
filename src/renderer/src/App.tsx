@@ -162,6 +162,7 @@ import {
   type PermissionOption
 } from './components/CombinedPermissionsPicker'
 import { ComposerPlusPicker, type ComposerPlusPickerSection } from './components/ComposerPlusPicker'
+import { ComposerProviderPicker } from './components/ComposerProviderPicker'
 import { WORKSPACE_POLICY_SERVICES } from './lib/workspacePolicyServices'
 import { applyStateAction, usePerChatState } from './hooks/usePerChatState'
 import { DEFAULT_CONTEXT_TURNS, clampContextTurns } from '../../main/PromptComposition'
@@ -20287,36 +20288,39 @@ function App(): React.JSX.Element {
                         }
                         void handleProviderChange(provider)
                       }
+                      // Rich popover provider picker (1.0.6-CRUX24).
+                      // Replaces the old native <select> with the same
+                      // body-portaled `composer-combined-picker-popover`
+                      // pattern the model / permission / "+" pickers use.
+                      // All prior behaviour is preserved verbatim:
+                      //   - `pickerProvider` (chat-level OR the bound
+                      //     ensemble participant's provider) drives the
+                      //     trigger + the active checkmark,
+                      //   - `handleComposerProviderChange` is the same
+                      //     handler the <select>'s onChange called, so
+                      //     the ensemble retarget vs solo provider-switch
+                      //     side effects are unchanged,
+                      //   - the disabled expression + the gated grok /
+                      //     cursor visibility + the title text are passed
+                      //     through identically,
+                      //   - `shell-${composerStyle}` (inside the
+                      //     component) makes the popover theme per shell
+                      //     with no per-shell branches here.
                       return (
-                    <label
-                      className="composer-picker-label"
-                      title={ensembleBinding ? 'Selected participant provider' : 'Provider'}
-                      data-composer-control="provider"
-                    >
-                      <LinkCircleSymbolIcon />
-                      <select
-                        className="composer-inline-picker"
-                        aria-label={ensembleBinding ? 'Selected participant provider' : 'Provider'}
-                        value={pickerProvider}
-                        onChange={(event) =>
-                          handleComposerProviderChange(event.target.value as ProviderId)
-                        }
-                        disabled={
-                          isCurrentComposerLocked ||
-                          (!ensembleBinding && isCurrentChatProviderLocked) ||
-                          Boolean(ensembleBinding && isCurrentEnsembleRoundRunning)
-                        }
-                      >
-                        <option value="gemini">Gemini</option>
-                        <option value="codex">Codex</option>
-                        <option value="claude">Claude</option>
-                        <option value="kimi">Kimi</option>
-                        {grokProviderAvailable ? <option value="grok">Grok</option> : null}
-                        {cursorProviderAvailable ? (
-                          <option value="cursor">Cursor</option>
-                        ) : null}
-                      </select>
-                    </label>
+                        <ComposerProviderPicker
+                          provider={pickerProvider}
+                          composerStyle={appearance.composerStyle}
+                          grokAvailable={grokProviderAvailable}
+                          cursorAvailable={cursorProviderAvailable}
+                          onSelect={handleComposerProviderChange}
+                          disabled={
+                            isCurrentComposerLocked ||
+                            (!ensembleBinding && isCurrentChatProviderLocked) ||
+                            Boolean(ensembleBinding && isCurrentEnsembleRoundRunning)
+                          }
+                          triggerIcon={<LinkCircleSymbolIcon />}
+                          title={ensembleBinding ? 'Selected participant provider' : 'Provider'}
+                        />
                       )
                     })()}
                     {/* 1.0.5-AR12c — Workspace switcher previously

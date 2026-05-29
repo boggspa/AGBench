@@ -8439,6 +8439,36 @@ button.sidebar-item {
   max-width: 130px;
 }
 
+/* 1.0.6-CRUX24 — Provider switch button (data-composer-control="provider").
+ *
+ * Base chrome inherits from `.composer-picker-label` (already applied
+ * to the element, same as the workspace switch button); this is just
+ * the button-reset so the <button> trigger reads identically to the
+ * old <label> + <select> it replaces. The per-shell provider chrome
+ * (codex naked text-token + chevron, gemini / kimi / grok / cursor
+ * pills, etc.) already targets `[data-composer-control="provider"]`
+ * and so applies here unchanged — deliberately NO per-shell rules in
+ * this slice. */
+.composer-provider-button {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.composer-provider-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.composer-provider-button-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 130px;
+}
+
 .composer-actions {
   display: flex;
   justify-content: space-between;
