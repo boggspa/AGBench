@@ -4299,6 +4299,13 @@ const GEMINI_DEFAULT_MODELS = [
 const GROK_DEFAULT_MODELS = [
   { id: 'grok-build', label: 'Grok Build 0.1', isDefault: true }
 ] satisfies CodexModelOption[]
+// Cursor (Composer 2.5). Two selectable variants = the model + its Fast mode
+// (the Fast toggle modelled as a second model id, like Cursor's own picker).
+// composer-2.5-fast is Cursor's default; composer-2.5 is the slower/normal tier.
+const CURSOR_DEFAULT_MODELS = [
+  { id: 'composer-2.5-fast', label: 'Composer 2.5 Fast', isDefault: true },
+  { id: 'composer-2.5', label: 'Composer 2.5' }
+] satisfies CodexModelOption[]
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
   'default',
@@ -8640,6 +8647,7 @@ function App(): React.JSX.Element {
     if (provider === 'kimi') return KIMI_DEFAULT_MODELS
     if (provider === 'gemini') return GEMINI_DEFAULT_MODELS
     if (provider === 'grok') return GROK_DEFAULT_MODELS
+    if (provider === 'cursor') return CURSOR_DEFAULT_MODELS
     return []
   }
 
@@ -8648,6 +8656,7 @@ function App(): React.JSX.Element {
     if (provider === 'claude') return 'default'
     if (provider === 'kimi') return KIMI_DEFAULT_MODEL
     if (provider === 'grok') return 'grok-build'
+    if (provider === 'cursor') return 'composer-2.5-fast'
     return 'flash-lite'
   }
 
@@ -8664,6 +8673,7 @@ function App(): React.JSX.Element {
     // model carried over from another provider. A legacy 'cli-default' coerces
     // to the default (grok-build) so the picker shows "Grok Build 0.1", not blank.
     if (provider === 'grok') return modelId.startsWith('grok')
+    if (provider === 'cursor') return modelId.startsWith('composer-')
     return isGeminiModelId(modelId)
   }
 
