@@ -3,9 +3,11 @@ import {
   extractToolName,
   extractToolId,
   extractParameters,
+  extractToolKind,
   extractResultOutput,
   extractStatus,
   getToolCategory,
+  mapToolKindToCategory,
   getToolDisplayName,
   isWriteLikeToolName,
   estimateLineChanges,
@@ -190,6 +192,59 @@ describe('ToolParser', () => {
       expect(getToolCategory('ask_user_question')).toBe('task')
       expect(getToolCategory('askuserquestion')).toBe('task')
     })
+    // Cursor / Grok-ACP machine tool names that previously fell through to the
+    // generic dot when they reached name-based resolution.
+    it('maps run_terminal_command + variants to shell', () => {
+      expect(getToolCategory('run_terminal_command')).toBe('shell')
+      expect(getToolCategory('runterminalcommand')).toBe('shell')
+      expect(getToolCategory('terminal')).toBe('shell')
+    })
+    it('maps search_replace to write', () => {
+      expect(getToolCategory('search_replace')).toBe('write')
+      expect(getToolCategory('searchreplace')).toBe('write')
+    })
+    it('maps todo_write + update_todo_list variants to task', () => {
+      expect(getToolCategory('todo_write')).toBe('task')
+      expect(getToolCategory('todowrite')).toBe('task')
+      expect(getToolCategory('update_todo_list')).toBe('task')
+    })
+  })
+
+  describe('mapToolKindToCategory', () => {
+    it('maps canonical ACP kinds onto activity categories', () => {
+      expect(mapToolKindToCategory('read')).toBe('read')
+      expect(mapToolKindToCategory('edit')).toBe('write')
+      expect(mapToolKindToCategory('delete')).toBe('write')
+      expect(mapToolKindToCategory('move')).toBe('write')
+      expect(mapToolKindToCategory('search')).toBe('search')
+      expect(mapToolKindToCategory('fetch')).toBe('search')
+      expect(mapToolKindToCategory('execute')).toBe('shell')
+      expect(mapToolKindToCategory('think')).toBe('task')
+    })
+    it('is case- and whitespace-insensitive', () => {
+      expect(mapToolKindToCategory('  Edit ')).toBe('write')
+      expect(mapToolKindToCategory('EXECUTE')).toBe('shell')
+    })
+    it('returns undefined for other / unknown / empty so name-based wins', () => {
+      expect(mapToolKindToCategory('other')).toBeUndefined()
+      expect(mapToolKindToCategory('magic')).toBeUndefined()
+      expect(mapToolKindToCategory('')).toBeUndefined()
+      expect(mapToolKindToCategory(null)).toBeUndefined()
+      expect(mapToolKindToCategory(undefined)).toBeUndefined()
+    })
+  })
+
+  describe('extractToolKind', () => {
+    it('reads tool_kind / toolKind / kind, lowercased + trimmed', () => {
+      expect(extractToolKind({ tool_kind: 'Edit' })).toBe('edit')
+      expect(extractToolKind({ toolKind: ' EXECUTE ' })).toBe('execute')
+      expect(extractToolKind({ kind: 'read' })).toBe('read')
+    })
+    it('returns empty string when absent or non-string', () => {
+      expect(extractToolKind({})).toBe('')
+      expect(extractToolKind({ kind: 42 })).toBe('')
+      expect(extractToolKind(null)).toBe('')
+    })
   })
 
   describe('isWriteLikeToolName', () => {
@@ -350,6 +405,39 @@ describe('ToolParser', () => {
       expect(activity.parameters).toEqual({ file_path: 'README.md' })
       expect(activity.filePath).toBe('README.md')
       expect(activity.rawUseEvent).toBeDefined()
+    })
+    // The Grok ACP transport labels tool calls with a freeform human title
+    // (toolName) plus a canonical `tool_kind`. The kind must drive the category
+    // icon so an "edit" call gets the write icon instead of the generic dot.
+    it('prefers a canonical tool_kind over a non-resolvable title for the category', () => {
+      const activity = createToolActivity({
+        type: 'tool_use',
+        tool_name: 'Write `package.json`',
+        tool_kind: 'edit',
+        tool_id: 'call-1',
+        parameters: { path: 'package.json' }
+      })
+      expect(activity.category).toBe('write')
+      // Human title is preserved as the label (not forced to a generic name).
+      expect(activity.toolName).toBe('Write `package.json`')
+    })
+    it('maps ACP execute kind to the shell category', () => {
+      const activity = createToolActivity({
+        type: 'tool_use',
+        tool_name: 'Run terminal command',
+        tool_kind: 'execute',
+        tool_id: 'call-2'
+      })
+      expect(activity.category).toBe('shell')
+    })
+    it('falls back to name-based category when tool_kind is other/absent', () => {
+      expect(
+        createToolActivity({ type: 'tool_use', tool_name: 'read_file', tool_kind: 'other' })
+          .category
+      ).toBe('read')
+      expect(
+        createToolActivity({ type: 'tool_use', tool_name: 'run_shell_command' }).category
+      ).toBe('shell')
     })
   })
 

@@ -129,6 +129,9 @@ function acpToolUpdateToRunEvents(
       type: 'tool_use',
       toolId: toolId || undefined,
       toolName: firstStr(update.title, update.kind) || 'tool',
+      // Canonical ACP kind drives the renderer's category icon — the human
+      // `title` (the label) is rarely a recognised tool name on its own.
+      toolKind: firstStr(update.kind) || undefined,
       toolInput: asObject(update.rawInput) || asObject(update.input) || {},
       raw
     })

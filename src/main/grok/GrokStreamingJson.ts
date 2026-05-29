@@ -40,6 +40,14 @@ export interface NormalizedGrokRunEvent {
   toolInput?: Record<string, unknown>
   toolStatus?: 'success' | 'error'
   toolOutput?: string
+  /**
+   * Canonical ACP tool kind (read | edit | delete | move | search | execute |
+   * think | fetch | other) when the transport supplies one. Threaded to the
+   * renderer so the activity card resolves the right category icon even when
+   * the human `title` (used as toolName/label) isn't a recognised tool name —
+   * e.g. ACP titles like "Write `package.json`" or "Run terminal command".
+   */
+  toolKind?: string
   raw?: unknown
 }
 

@@ -66,6 +66,21 @@ export function extractParameters(event: any): Record<string, unknown> {
 }
 
 /**
+ * Canonical ACP-style tool *kind* (read | edit | delete | move | search |
+ * execute | think | fetch | other), when a transport supplies one. Grok's ACP
+ * transport sends a structured `kind` alongside a freeform human `title`; the
+ * title is the card label, but the kind is the reliable category signal — so we
+ * thread it through (`tool_kind` on the compat payload) and prefer it for the
+ * category icon. Returns '' when no kind is present (the name-based resolver
+ * then decides).
+ */
+export function extractToolKind(event: any): string {
+  if (!event || typeof event !== 'object') return ''
+  const raw = event.tool_kind || event.toolKind || event.kind
+  return typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+}
+
+/**
  * MCP tool results come back wrapped in the standard
  * `{ content: [{ type: 'text', text: string }, ...] }` envelope.
  * The agent itself unwraps this before reasoning — but the AGBench
@@ -311,7 +326,10 @@ const WRITE_LIKE_TOOL_NAMES = new Set([
   'str_replace',
   'strreplace',
   'str_replace_editor',
-  'strreplaceeditor'
+  'strreplaceeditor',
+  // Cursor / Grok-ACP edit tool surface.
+  'search_replace',
+  'searchreplace'
 ])
 
 export function isWriteLikeToolName(toolName: string): boolean {
@@ -372,7 +390,12 @@ const TASK_LIKE_TOOL_NAMES = new Set([
   'exitplan_mode',
   'exit_planmode',
   'ask_user_question',
-  'askuserquestion'
+  'askuserquestion',
+  // Cursor / Grok-ACP plan-tracking tool surface.
+  'todo_write',
+  'todowrite',
+  'update_todo_list',
+  'updatetodolist'
 ])
 
 const SEARCH_LIKE_TOOL_NAMES = new Set([
@@ -400,10 +423,45 @@ export function getToolCategory(toolName: string): ToolCategory {
     unqualifiedName === 'run_shell_command' ||
     unqualifiedName === 'runshellcommand' ||
     unqualifiedName === 'shell' ||
-    unqualifiedName === 'bash'
+    unqualifiedName === 'bash' ||
+    // Cursor / Grok-ACP terminal tool surface.
+    unqualifiedName === 'run_terminal_command' ||
+    unqualifiedName === 'runterminalcommand' ||
+    unqualifiedName === 'terminal'
   )
     return 'shell'
   return 'unknown'
+}
+
+/**
+ * Map a canonical ACP-style tool *kind* to an AGBench activity category, so the
+ * card gets the right icon even when the human tool label isn't a recognised
+ * tool name. Returns `undefined` for absent / 'other' / unrecognised kinds so
+ * the caller falls back to name-based resolution (`getToolCategory`).
+ *
+ * ACP kinds: read | edit | delete | move | search | execute | think | fetch |
+ * other. We only have icons for read/write/search/shell/task, so several kinds
+ * collapse onto the nearest category (delete/move → write, fetch → search,
+ * think → task).
+ */
+export function mapToolKindToCategory(kind: string | null | undefined): ToolCategory | undefined {
+  switch ((kind || '').trim().toLowerCase()) {
+    case 'read':
+      return 'read'
+    case 'edit':
+    case 'delete':
+    case 'move':
+      return 'write'
+    case 'search':
+    case 'fetch':
+      return 'search'
+    case 'execute':
+      return 'shell'
+    case 'think':
+      return 'task'
+    default:
+      return undefined
+  }
 }
 
 function stripToolNamespace(toolName: string): string {
@@ -823,7 +881,11 @@ export function deriveToolDiffSummary(
 export function createToolActivity(toolUseEvent: any): ToolActivity {
   const toolName = extractToolName(toolUseEvent)
   const parameters = extractParameters(toolUseEvent)
-  const category = getToolCategory(toolName)
+  // Prefer a transport-supplied canonical kind (e.g. Grok ACP `tool_kind`) for
+  // the category icon — the human tool label is often a freeform title ("Write
+  // `package.json`") that name-based resolution can't categorise. Fall back to
+  // name-based resolution when no usable kind is present.
+  const category = mapToolKindToCategory(extractToolKind(toolUseEvent)) ?? getToolCategory(toolName)
   const displayName = getToolDisplayName(toolName, parameters)
   const filePath = (parameters.file_path as string) || (parameters.path as string) || undefined
   const parentToolCallId = extractParentToolCallId(toolUseEvent)

@@ -190,6 +190,7 @@ describe('G4c — ACP tool_call / tool_call_update → tool-card run events', ()
         type: 'tool_use',
         toolId: 'call_1',
         toolName: 'Write file x.swift',
+        toolKind: 'edit',
         toolInput: { path: 'x.swift' },
         raw: expect.anything()
       }
@@ -207,7 +208,14 @@ describe('G4c — ACP tool_call / tool_call_update → tool-card run events', ()
       })
     )
     expect(events).toEqual([
-      { type: 'tool_use', toolId: 'call_2', toolName: 'read', toolInput: {}, raw: expect.anything() },
+      {
+        type: 'tool_use',
+        toolId: 'call_2',
+        toolName: 'read',
+        toolKind: 'read',
+        toolInput: {},
+        raw: expect.anything()
+      },
       {
         type: 'tool_result',
         toolId: 'call_2',

@@ -6298,6 +6298,9 @@ function applyGrokRunEvent(state: CliProviderStreamState, evt: NormalizedGrokRun
         type: 'tool_use',
         tool_id: evt.toolId || `grok-tool-${++grokFallbackToolSeq}`,
         tool_name: evt.toolName || 'tool',
+        // Canonical ACP kind (read|edit|execute|search|…); lets the renderer
+        // resolve the category icon when tool_name is a freeform ACP title.
+        tool_kind: evt.toolKind,
         parameters: evt.toolInput || {},
         provider: 'grok'
       },
