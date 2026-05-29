@@ -106,10 +106,10 @@ const KIMI_MODELS: CombinedModelPickerModelOption[] = [
   { id: 'kimi-k2.6', label: 'Kimi K2.6' }
 ]
 
-// Grok — mirrors App.tsx GROK_DEFAULT_MODELS. `grok-build` is the real CLI id;
-// "Grok 4.3" is its marketing label. Fuller model metadata is a later slice.
+// Grok — mirrors App.tsx GROK_DEFAULT_MODELS. `grok-build` is the real CLI id =
+// Grok Build 0.1 (NOT "Grok 4.3", which the subscription CLI doesn't expose).
 const GROK_MODELS: CombinedModelPickerModelOption[] = [
-  { id: 'grok-build', label: 'Grok 4.3' }
+  { id: 'grok-build', label: 'Grok Build 0.1' }
 ]
 
 const CODEX_FAST_CAPABLE = new Set<string>(['gpt-5.5', 'gpt-5.4'])

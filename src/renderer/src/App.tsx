@@ -4290,11 +4290,14 @@ const GEMINI_DEFAULT_MODELS = [
   { id: 'flash', label: 'Flash' },
   { id: 'flash-lite', label: 'Flash Lite' }
 ] satisfies CodexModelOption[]
-// 1.0.6-G3d/G3g — Grok (gated, read-only). `grok-build` is the real CLI model
-// id (`grok models` → default), shown as its marketing name "Grok 4.3". Fuller
-// model metadata is a later slice (G10).
+// Grok — `grok-build` is the real CLI model id (`grok models` → default). It is
+// Grok Build 0.1 (xAI's agentic-coding model: 256K ctx, $1/$2 per 1M) — NOT
+// "Grok 4.3", a separate xAI API model the subscription Grok Build CLI doesn't
+// expose. (The TUI `/model` confirms "Grok Build (current)".) grok-4.3 /
+// grok-code-fast can be added here if/when `grok -m` exposes them under the
+// cached SuperGrok auth.
 const GROK_DEFAULT_MODELS = [
-  { id: 'grok-build', label: 'Grok 4.3', isDefault: true }
+  { id: 'grok-build', label: 'Grok Build 0.1', isDefault: true }
 ] satisfies CodexModelOption[]
 const GEMINI_MODEL_IDS = new Set(['cli-default', 'auto', 'pro', 'flash', 'flash-lite', 'custom'])
 const CLAUDE_MODEL_IDS = new Set([
@@ -8659,7 +8662,7 @@ function App(): React.JSX.Element {
     if (provider === 'kimi') return isKimiModelId(modelId)
     // Grok (gated, read-only): only a genuine grok* model id is valid — never a
     // model carried over from another provider. A legacy 'cli-default' coerces
-    // to the default (grok-build) so the picker shows "Grok 4.3", not blank.
+    // to the default (grok-build) so the picker shows "Grok Build 0.1", not blank.
     if (provider === 'grok') return modelId.startsWith('grok')
     return isGeminiModelId(modelId)
   }
