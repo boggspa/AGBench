@@ -5494,17 +5494,18 @@ button.sidebar-item {
    * each chip reads as a small square rather than a wide band. */
   max-width: min(720px, 88vw);
   margin: 0 auto;
-  /* 1.0.6-CRUX33/CRUX35 — fixed-height flex column so all four auto-cycling
-   * tabs (Statistics / Model Comparisons / Workspaces / Providers) are the
-   * SAME height AND their content FILLS it — no resize jump as they switch
-   * (~every 3 min), and no "scrollview cuts off shy of the card" gaps. Sized
-   * to the tallest tab (Statistics). Its heatmap now flex-fills the leftover
-   * space (replacing a viewport-variable 22vh grid height that overflowed this
-   * card on tall windows), and every other tab's scroll list grows to fill —
-   * see the per-tab rules below. */
+  /* 1.0.6-CRUX33/CRUX35/CRUX38 — HARD fixed-height flex column so all four
+   * auto-cycling tabs (Statistics / Model Comparisons / Workspaces / Providers)
+   * are the SAME height AND their content FILLS it — no resize jump as they
+   * switch (~every 3 min). Sized to the tallest tab (Statistics), whose heatmap
+   * flex-fills the leftover space. CRUX38: this is a hard `height` (not
+   * min-height) so a long list — e.g. Model Comparisons with many models —
+   * CAPS at the card height and SCROLLS inside its own area, instead of growing
+   * the card past the other tabs. Every per-tab scroll list has
+   * `overflow-y: auto` + `min-height: 0` so the excess scrolls within 680. */
   display: flex;
   flex-direction: column;
-  min-height: 680px;
+  height: 680px;
   padding: 12px 14px 14px;
   border-radius: 12px;
   border: 1px solid color-mix(in srgb, var(--panel-border) 54%, var(--text-primary) 16%);
@@ -6205,7 +6206,11 @@ button.sidebar-item {
   display: inline-flex;
   align-items: baseline;
   gap: 6px;
-  font-family: var(--font-mono);
+  /* 1.0.6-CRUX38 — SF Pro clock face (was monospace). --font-sans is the app's
+   * SF Pro stack ("SF Pro", "SF Pro Display", -apple-system, …) — license-clean
+   * (the macOS system font, already used app-wide). tabular-nums + the per-
+   * segment min-width below keep the ticking digits from shifting width. */
+  font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   font-size: clamp(48px, 9vw, 96px);
