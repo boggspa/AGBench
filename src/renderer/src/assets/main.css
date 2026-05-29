@@ -4670,7 +4670,11 @@ button.sidebar-item {
   bottom: auto;
   transform: none;
   width: 100%;
-  margin-top: var(--space-lg);
+  /* 1.0.6-CRUX29 — scaleable spacer between the dashboard and the
+   * greeting/composer: a viewport-relative gap that breathes on tall windows
+   * and stays compact (down to --space-lg) on short ones, so it never forces
+   * scroll. Not flex-grow — that would un-anchor the top-pinned content. */
+  margin-top: clamp(var(--space-lg), 6vh, 120px);
   padding-bottom: var(--space-xl);
   justify-content: flex-start;
   flex: 0 0 auto;
