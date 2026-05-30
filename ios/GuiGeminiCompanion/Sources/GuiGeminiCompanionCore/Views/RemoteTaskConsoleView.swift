@@ -3,6 +3,7 @@ import SwiftUI
 @available(iOS 17.0, macOS 14.0, *)
 public struct RemoteTaskConsoleView: View {
     @Bindable public var viewModel: RemoteTaskConsoleViewModel
+    @Environment(\.companionThemePalette) private var palette
 
     public init(viewModel: RemoteTaskConsoleViewModel) {
         self.viewModel = viewModel
@@ -10,7 +11,7 @@ public struct RemoteTaskConsoleView: View {
 
     public var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            palette.background.ignoresSafeArea()
             if let detail = viewModel.selectedTaskDetail {
                 detailScreen(detail)
             } else {
@@ -30,19 +31,19 @@ public struct RemoteTaskConsoleView: View {
                     title: "Needs Attention",
                     systemImage: "exclamationmark.bubble.fill",
                     tasks: buckets.needsAttention,
-                    tint: Theme.warning
+                    tint: palette.warning
                 )
                 bucketSection(
                     title: "Active",
                     systemImage: "dot.radiowaves.left.and.right",
                     tasks: buckets.active,
-                    tint: Theme.accent
+                    tint: palette.accent
                 )
                 bucketSection(
                     title: "Recent",
                     systemImage: "clock.arrow.circlepath",
                     tasks: buckets.recent,
-                    tint: Theme.secondaryAccent
+                    tint: palette.secondaryAccent
                 )
                 if buckets.needsAttention.isEmpty, buckets.active.isEmpty, buckets.recent.isEmpty {
                     emptyState
@@ -68,19 +69,14 @@ public struct RemoteTaskConsoleView: View {
             if count > 0 {
                 Text("\(count)")
                     .font(Theme.Typography.caption)
-                    .foregroundStyle(Theme.warning)
+                    .foregroundStyle(palette.warning)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Theme.warning.opacity(0.14), in: Capsule())
+                    .background(palette.warning.opacity(0.14), in: Capsule())
             }
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     private func bucketSection(
@@ -115,11 +111,7 @@ public struct RemoteTaskConsoleView: View {
             }
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     private func taskCard(_ task: RemoteTaskCard) -> some View {
@@ -169,17 +161,17 @@ public struct RemoteTaskConsoleView: View {
                 let questions = viewModel.store.pendingQuestionCount(for: task.id)
                 if approvals > 0 || questions > 0 || task.capabilities.cancel || task.capabilities.startTurn {
                     HStack(spacing: 6) {
-                        if approvals > 0 { countChip("\(approvals) approval", color: Theme.warning) }
-                        if questions > 0 { countChip("\(questions) question", color: Theme.secondaryAccent) }
-                        if task.capabilities.cancel { countChip("cancel", color: Theme.destructive) }
-                        if task.capabilities.startTurn { countChip("prompt", color: Theme.accent) }
+                        if approvals > 0 { countChip("\(approvals) approval", color: palette.warning) }
+                        if questions > 0 { countChip("\(questions) question", color: palette.secondaryAccent) }
+                        if task.capabilities.cancel { countChip("cancel", color: palette.destructive) }
+                        if task.capabilities.startTurn { countChip("prompt", color: palette.accent) }
                     }
                     .lineLimit(1)
                 }
             }
             .padding(Theme.Spacing.control)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            .companionInputBackground(cornerRadius: Theme.Radius.control)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(task.displayTitle)
@@ -198,7 +190,7 @@ public struct RemoteTaskConsoleView: View {
         VStack(spacing: Theme.Spacing.control) {
             Image(systemName: "rectangle.stack.badge.person.crop")
                 .font(Theme.Typography.iconHero)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(palette.accent)
             Text("No remote tasks yet")
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Text.primary)
@@ -262,11 +254,7 @@ public struct RemoteTaskConsoleView: View {
             Spacer()
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     private func transcriptPreview(_ detail: RemoteTaskDetail) -> some View {
@@ -321,7 +309,7 @@ public struct RemoteTaskConsoleView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(Theme.Spacing.tight)
-                    .background(Theme.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+                    .background(palette.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
                 }
             }
             .modifier(DetailCardModifier())
@@ -354,10 +342,10 @@ public struct RemoteTaskConsoleView: View {
                     .font(Theme.Typography.sectionTitle)
                     .foregroundStyle(Theme.Text.primary)
                 HStack(spacing: Theme.Spacing.tight) {
-                    countChip("\(diff.filesChanged) files", color: Theme.accent)
-                    countChip("+\(diff.additions)", color: Theme.success)
-                    countChip("-\(diff.deletions)", color: Theme.destructive)
-                    if diff.truncated { countChip("clamped", color: Theme.warning) }
+                    countChip("\(diff.filesChanged) files", color: palette.accent)
+                    countChip("+\(diff.additions)", color: palette.success)
+                    countChip("-\(diff.deletions)", color: palette.destructive)
+                    if diff.truncated { countChip("clamped", color: palette.warning) }
                 }
                 ForEach(diff.files.prefix(6)) { file in
                     Text(file.path)
@@ -386,7 +374,7 @@ public struct RemoteTaskConsoleView: View {
                 ForEach(ensemble.participants.prefix(6)) { participant in
                     HStack {
                         Circle()
-                            .fill(participant.isActive ? Theme.success : Theme.Text.tertiary)
+                            .fill(participant.isActive ? palette.success : Theme.Text.tertiary)
                             .frame(width: 8, height: 8)
                         Text(participant.role ?? participant.provider ?? participant.id)
                             .font(Theme.Typography.caption)
@@ -442,7 +430,7 @@ public struct RemoteTaskConsoleView: View {
                         .textFieldStyle(.plain)
                         .font(Theme.Typography.callout)
                         .padding(Theme.Spacing.control)
-                        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                        .companionInputBackground(cornerRadius: Theme.Radius.control)
                     Button {
                         Task { await viewModel.answer(question, answer: viewModel.questionAnswerDraft) }
                     } label: {
@@ -472,7 +460,7 @@ public struct RemoteTaskConsoleView: View {
                         .textFieldStyle(.plain)
                         .font(Theme.Typography.callout)
                         .padding(Theme.Spacing.control)
-                        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                        .companionInputBackground(cornerRadius: Theme.Radius.control)
                     Button {
                         Task { await viewModel.sendPrompt(detail.task, text: viewModel.promptDraft) }
                     } label: {
@@ -524,22 +512,22 @@ public struct RemoteTaskConsoleView: View {
 
     private func tint(for status: RemoteTaskStatus) -> Color {
         switch status {
-        case .awaitingApproval, .waiting: return Theme.warning
-        case .running, .queued: return Theme.accent
-        case .completed: return Theme.success
-        case .failed, .cancelled: return Theme.destructive
-        case .sleeping: return Theme.secondaryAccent
+        case .awaitingApproval, .waiting: return palette.warning
+        case .running, .queued: return palette.accent
+        case .completed: return palette.success
+        case .failed, .cancelled: return palette.destructive
+        case .sleeping: return palette.secondaryAccent
         case .idle, .unknown: return Theme.Text.secondary
         }
     }
 
     private func tint(for kind: RemoteThreadRowKind) -> Color {
         switch kind {
-        case .user: return Theme.accent
-        case .assistant: return Theme.success
-        case .tool: return Theme.secondaryAccent
-        case .attention: return Theme.warning
-        case .error: return Theme.destructive
+        case .user: return palette.accent
+        case .assistant: return palette.success
+        case .tool: return palette.secondaryAccent
+        case .attention: return palette.warning
+        case .error: return palette.destructive
         case .runBoundary, .system, .summary, .unknown: return Theme.Text.secondary
         }
     }
@@ -547,23 +535,25 @@ public struct RemoteTaskConsoleView: View {
     private func actionStateTint(_ state: RemoteTaskActionState?) -> Color {
         guard let state else { return Theme.Text.secondary }
         switch state {
-        case .acknowledged: return Theme.success
-        case .failed, .stale: return Theme.destructive
-        case .sending: return Theme.accent
+        case .acknowledged: return palette.success
+        case .failed, .stale: return palette.destructive
+        case .sending: return palette.accent
         }
     }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
 private struct DetailCardModifier: ViewModifier {
+    @Environment(\.companionThemePalette) private var palette
+
     func body(content: Content) -> some View {
         content
             .padding(Theme.Spacing.section)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+            .background(palette.cardFill, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                    .stroke(Theme.border, lineWidth: 1)
+                    .stroke(palette.cardStroke, lineWidth: 1)
             )
     }
 }

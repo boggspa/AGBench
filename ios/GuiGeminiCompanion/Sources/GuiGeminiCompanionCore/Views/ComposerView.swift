@@ -23,6 +23,7 @@ public struct ComposerView: View {
     @Bindable private var sidebarStoreOrEmpty: iPadSidebarStore
     private let hasSidebarStore: Bool
     @FocusState private var promptFocused: Bool
+    @Environment(\.companionThemePalette) private var palette
 
     /// Local overrides letting the user "type id manually" even when the
     /// sidebar lists would normally drive a Menu picker. Resets when the
@@ -41,7 +42,7 @@ public struct ComposerView: View {
 
     public var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            palette.background.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                     if isEmptyDraft {
@@ -79,7 +80,7 @@ public struct ComposerView: View {
                         Stepper("Context turns: \(viewModel.contextTurns)", value: $viewModel.contextTurns, in: 0...20)
                             .font(Theme.Typography.callout)
                             .padding(Theme.Spacing.control)
-                            .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+                            .companionInputBackground(cornerRadius: Theme.Radius.control)
                     }
                     composerSection(title: "Prompt", systemImage: "text.cursor") {
                         promptEditor
@@ -108,9 +109,9 @@ public struct ComposerView: View {
         HStack(alignment: .top, spacing: Theme.Spacing.control) {
             Image(systemName: "sparkles.rectangle.stack")
                 .font(Theme.Typography.iconMedium)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(palette.accent)
                 .frame(width: 58, height: 58)
-                .background(Theme.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
+                .background(palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: Theme.Radius.card, style: .continuous))
             VStack(alignment: .leading, spacing: 6) {
                 Text("Ready for a new turn")
                     .font(Theme.Typography.headline)
@@ -122,12 +123,7 @@ public struct ComposerView: View {
             }
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     @ViewBuilder
@@ -143,12 +139,7 @@ public struct ComposerView: View {
             content()
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     @ViewBuilder
@@ -162,11 +153,7 @@ public struct ComposerView: View {
                 .textFieldStyle(.plain)
                 .modifier(NoAutocapModifier())
                 .padding(Theme.Spacing.control)
-                .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                        .stroke(Theme.border, lineWidth: 1)
-                )
+                .companionInputBackground(cornerRadius: Theme.Radius.control)
         }
     }
 
@@ -244,7 +231,7 @@ public struct ComposerView: View {
                     } label: {
                         Label("Use workspace list", systemImage: "list.bullet.rectangle")
                             .font(Theme.Typography.smallCaption)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(palette.accent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -301,7 +288,7 @@ public struct ComposerView: View {
                     } label: {
                         Label("Use thread list", systemImage: "list.bullet.rectangle")
                             .font(Theme.Typography.smallCaption)
-                            .foregroundStyle(Theme.accent)
+                            .foregroundStyle(palette.accent)
                     }
                     .buttonStyle(.plain)
                 }
@@ -339,7 +326,7 @@ public struct ComposerView: View {
     ) -> some View {
         HStack(spacing: Theme.Spacing.tight) {
             Image(systemName: systemImage)
-                .foregroundStyle(Theme.accent)
+                .foregroundStyle(palette.accent)
             Text(title.isEmpty ? placeholder : title)
                 .foregroundStyle(title.isEmpty ? Theme.Text.tertiary : Theme.Text.primary)
                 .lineLimit(1)
@@ -352,11 +339,7 @@ public struct ComposerView: View {
         .font(Theme.Typography.body)
         .padding(Theme.Spacing.control)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
+        .companionInputBackground(cornerRadius: Theme.Radius.control)
     }
 
     @ViewBuilder
@@ -391,7 +374,7 @@ public struct ComposerView: View {
                 .font(Theme.Typography.caption)
                 .foregroundStyle(Theme.Text.secondary)
             content()
-                .tint(Theme.accent)
+                .tint(palette.accent)
         }
     }
 
@@ -413,13 +396,13 @@ public struct ComposerView: View {
                     .allowsHitTesting(false)
             }
         }
-        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .background(palette.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
-                .stroke(promptFocused ? Theme.accent : Theme.border, lineWidth: promptFocused ? 2 : 1)
+                .stroke(promptFocused ? palette.accent : palette.cardStroke, lineWidth: promptFocused ? 2 : 1)
         )
         .shadow(
-            color: promptFocused ? Theme.accent.opacity(0.18) : .clear,
+            color: promptFocused ? palette.accent.opacity(0.18) : .clear,
             radius: promptFocused ? Theme.Shadow.softRadius : 0,
             y: promptFocused ? Theme.Shadow.softY : 0
         )
@@ -445,12 +428,7 @@ public struct ComposerView: View {
             statusBanner
         }
         .padding(Theme.Spacing.section)
-        .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
-                .stroke(Theme.border, lineWidth: 1)
-        )
-        .shadow(color: Theme.softShadowColor, radius: Theme.Shadow.softRadius, y: Theme.Shadow.softY)
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
     }
 
     @ViewBuilder
@@ -459,15 +437,15 @@ public struct ComposerView: View {
         case .idle:
             EmptyView()
         case .preparing:
-            StatusMessage(icon: "clock", message: "Preparing request", color: Theme.accent)
+            StatusMessage(icon: "clock", message: "Preparing request", color: palette.accent)
         case .sending:
-            StatusMessage(icon: "paperplane", message: "Sending prompt", color: Theme.accent)
+            StatusMessage(icon: "paperplane", message: "Sending prompt", color: palette.accent)
         case .sent(let message):
-            StatusMessage(icon: "checkmark.circle.fill", message: message, color: Theme.success)
+            StatusMessage(icon: "checkmark.circle.fill", message: message, color: palette.success)
         case .sendFailed(let message):
-            StatusMessage(icon: "exclamationmark.triangle.fill", message: message, color: Theme.destructive)
+            StatusMessage(icon: "exclamationmark.triangle.fill", message: message, color: palette.destructive)
         case .prepareDenied(let reason):
-            StatusMessage(icon: "hand.raised.fill", message: reason, color: Theme.warning)
+            StatusMessage(icon: "hand.raised.fill", message: reason, color: palette.warning)
         }
     }
 }

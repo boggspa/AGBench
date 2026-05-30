@@ -21,6 +21,7 @@ public struct iPadSidebar: View {
 
     @State private var query: String = ""
     @FocusState private var searchFocused: Bool
+    @Environment(\.companionThemePalette) private var palette
 
     public init(
         store: iPadSidebarStore,
@@ -67,7 +68,7 @@ public struct iPadSidebar: View {
 
     public var body: some View {
         ZStack {
-            Theme.sidebarBase.ignoresSafeArea()
+            palette.sidebarBase.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                     header
@@ -192,9 +193,9 @@ public struct iPadSidebar: View {
             HStack(spacing: Theme.Spacing.tight) {
                 Image(systemName: "ipad.landscape")
                     .font(Theme.Typography.sectionTitle)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(palette.accent)
                     .frame(width: 32, height: 32)
-                    .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
+                    .background(palette.accentSoft, in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
                 VStack(alignment: .leading, spacing: 2) {
                     Text("AGBench")
                         .font(Theme.Typography.headline)

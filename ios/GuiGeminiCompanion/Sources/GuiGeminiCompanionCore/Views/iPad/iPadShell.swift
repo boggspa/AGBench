@@ -199,6 +199,7 @@ public struct iPadShell: View {
     @State private var selectionState: iPadSelectionState
     @State private var sidebarStore: iPadSidebarStore
     @State private var remoteTaskIngestedEventCount = 0
+    @Environment(\.companionThemePalette) private var palette
 
     public init(
         pairingViewModel: PairingViewModel? = nil,
@@ -269,7 +270,7 @@ public struct iPadShell: View {
             .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
         }
         .navigationSplitViewStyle(.balanced)
-        .tint(Theme.accent)
+        .tint(palette.accent)
         .onAppear {
             synchronizeSidebarStore()
             synchronizeRemoteTaskStore()
@@ -348,6 +349,7 @@ private struct iPadInspectorHost: View {
     public let approvalViewModel: ApprovalViewModel?
     public let remoteTaskStore: RemoteTaskStore?
     public let ensembleControlActions: iPadEnsembleControlActions
+    @Environment(\.companionThemePalette) private var palette
 
     private var selectedThreadID: String? {
         if case .thread(let id) = selection {
@@ -369,7 +371,7 @@ private struct iPadInspectorHost: View {
 
     public var body: some View {
         ZStack {
-            Theme.windowBase.ignoresSafeArea()
+            palette.windowBase.ignoresSafeArea()
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                     inspectorHeader

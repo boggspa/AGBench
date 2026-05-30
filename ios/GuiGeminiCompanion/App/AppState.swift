@@ -70,6 +70,8 @@ final class AppState {
     /// the task console can select the matching detail.
     private(set) var pendingNotificationRoute: RemoteNotificationRoute?
     private(set) var lastNotificationRoute: RemoteNotificationRoute?
+    private(set) var shellAppearance: RemoteShellAppearance?
+    private(set) var companionThemePalette: CompanionThemePalette = .fallback
 
     /// True once `connect(with:)` has completed and the client + view
     /// models are ready. The RootView switches to TabView when this is true.
@@ -118,6 +120,7 @@ final class AppState {
                 transcript.ingest(event)
                 self.composerViewModel?.observeRunEvent(event)
                 self.remoteTaskConsoleViewModel?.ingest(event)
+                self.applyShellAppearanceProjection(event)
                 self.applyPendingNotificationRouteIfPossible()
 
                 if let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) {
@@ -179,6 +182,8 @@ final class AppState {
         composerViewModel = nil
         remoteTaskConsoleViewModel = nil
         pushRegistrar = nil
+        shellAppearance = nil
+        companionThemePalette = .fallback
         pairingViewModel = PairingViewModel(
             controllerDisplayName: friendlyDeviceName(),
             pairStorage: pairStorage
@@ -356,6 +361,14 @@ final class AppState {
             return match.id
         }
         return nil
+    }
+
+    private func applyShellAppearanceProjection(_ event: BridgeRunEvent) {
+        guard let envelope = try? RemoteProjectionEnvelope.decode(event: event),
+              case .shellAppearance(let appearance) = envelope.payload
+        else { return }
+        shellAppearance = appearance
+        companionThemePalette = CompanionThemePalette(appearance: appearance)
     }
 }
 

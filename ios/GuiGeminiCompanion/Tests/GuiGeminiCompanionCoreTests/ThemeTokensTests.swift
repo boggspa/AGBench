@@ -118,7 +118,54 @@ final class ThemeTokensTests: XCTestCase {
         XCTAssertEqual(Theme.Radius.panel, 22)
     }
 
+    func testCompanionThemePaletteUsesRemoteShellAppearanceTokens() {
+        let palette = CompanionThemePalette(appearance: RemoteShellAppearance(
+            generatedAt: nil,
+            appearanceMode: "native_glass",
+            visualEffectStyle: "liquid_glass",
+            themeAppearance: "obsidian",
+            themeCornerStyle: "hard",
+            themeAccentStyle: "purple",
+            promptSurfaceStyle: "liquid_glass",
+            composerStyle: "claude",
+            reduceTransparency: true,
+            reduceMotion: false,
+            compactDensity: true,
+            preferredColorScheme: .dark,
+            colors: remoteShellAppearanceColorsForThemeTest()
+        ))
+
+        XCTAssertEqual(palette.preferredColorScheme, .dark)
+        XCTAssertEqual(palette.composerStyle, "claude")
+        XCTAssertTrue(palette.reduceTransparency)
+        assertCloseToHex(resolveDarkComponents(palette.accent), hex: "#bf7cff", epsilon: 0.012)
+        assertCloseToHex(resolveDarkComponents(palette.composerSurface), hex: "#071024", epsilon: 0.02)
+    }
+
     // MARK: - Helpers
+
+    private func remoteShellAppearanceColorsForThemeTest() -> RemoteShellAppearanceColors {
+        RemoteShellAppearanceColors(
+            windowBase: RemoteShellAdaptiveColor(light: "#f4f6f8", dark: "#141414"),
+            sidebarBase: RemoteShellAdaptiveColor(light: "#c2c2c2", dark: "#1e1e22"),
+            cardFill: RemoteShellAdaptiveColor(light: "#f6f9fbae", dark: "#1c1c20d1"),
+            cardStroke: RemoteShellAdaptiveColor(light: "#0000001a", dark: "#ffffff1a"),
+            elevatedCardFill: RemoteShellAdaptiveColor(light: "#fbfdffc7", dark: "#26262ce0"),
+            inputSurface: RemoteShellAdaptiveColor(light: "#00000012", dark: "#ffffff12"),
+            composerSurface: RemoteShellAdaptiveColor(light: "#ffffffc7", dark: "#071024eb"),
+            composerBorder: RemoteShellAdaptiveColor(light: "#0000001f", dark: "#7c9eff38"),
+            primaryText: RemoteShellAdaptiveColor(light: "#000000e0", dark: "#ffffffeb"),
+            secondaryText: RemoteShellAdaptiveColor(light: "#0000009e", dark: "#ffffff8c"),
+            tertiaryText: RemoteShellAdaptiveColor(light: "#00000070", dark: "#ffffff59"),
+            separator: RemoteShellAdaptiveColor(light: "#00000017", dark: "#ffffff0f"),
+            accent: "#bf7cff",
+            accentSoft: RemoteShellAdaptiveColor(light: "#bf7cff24", dark: "#bf7cff2e"),
+            secondaryAccent: RemoteShellAdaptiveColor(light: "#00739e", dark: "#6bc4db"),
+            success: "#4cc38a",
+            warning: "#f5a623",
+            destructive: "#e54d4d"
+        )
+    }
 
     private struct ResolvedComponents: Equatable, CustomStringConvertible {
         let red: CGFloat

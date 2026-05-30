@@ -25,6 +25,7 @@ public struct iPadDetailHost: View {
     /// tapped. The shell wires this into the sidebar selection state so
     /// the user lands directly on the chosen thread.
     public let onSelectThread: (String) -> Void
+    @Environment(\.companionThemePalette) private var palette
 
     public init(
         selection: iPadSidebarSelection?,
@@ -58,7 +59,7 @@ public struct iPadDetailHost: View {
 
     public var body: some View {
         ZStack {
-            Theme.windowBase.ignoresSafeArea()
+            palette.windowBase.ignoresSafeArea()
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

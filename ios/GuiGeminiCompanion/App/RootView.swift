@@ -10,6 +10,7 @@ struct RootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
+        let palette = appState.companionThemePalette
         Group {
             if appState.isPaired {
                 pairedContent
@@ -30,8 +31,10 @@ struct RootView: View {
                 ))
             }
         }
-        .tint(Theme.accent)
-        .background(Theme.background.ignoresSafeArea())
+        .environment(\.companionThemePalette, palette)
+        .tint(palette.accent)
+        .background(palette.background.ignoresSafeArea())
+        .preferredColorScheme(palette.preferredColorScheme)
         .animation(Theme.Motion.handoff, value: appState.isPaired)
         .onChange(of: appState.pairingViewModel.confirmedPair?.pairID.rawValue) { _, _ in
             if let pair = appState.pairingViewModel.confirmedPair {
@@ -100,6 +103,7 @@ private extension iPadShell {
 /// SplitView; for iPhone-minimal a TabBar suits the form factor.
 struct MainTabs: View {
     @Bindable var appState: AppState
+    @Environment(\.companionThemePalette) private var palette
 
     var body: some View {
         TabView {
@@ -195,7 +199,7 @@ struct MainTabs: View {
             }
             .tabItem { Label("Settings", systemImage: "gearshape") }
         }
-        .tint(Theme.accent)
+        .tint(palette.accent)
         .toolbarBackground(Theme.chromeBlur, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
     }
@@ -205,14 +209,15 @@ private struct ConnectionEmptyState: View {
     let icon: String
     let title: String
     let message: String
+    @Environment(\.companionThemePalette) private var palette
 
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            palette.background.ignoresSafeArea()
             VStack(spacing: Theme.Spacing.control) {
                 Image(systemName: icon)
                     .font(Theme.Typography.iconLarge)
-                    .foregroundStyle(Theme.accent)
+                    .foregroundStyle(palette.accent)
                     .frame(width: 72, height: 72)
                     .background(Theme.cardBlur, in: Circle())
                     .overlay(Circle().stroke(Theme.strongBorder, lineWidth: 1))
