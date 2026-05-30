@@ -5014,6 +5014,17 @@ const getDiffWorkspacePath = (
 
 const createAppRunId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2)}`
 
+// Collision-proof chat-message id. `Date.now().toString()` collides when two
+// messages are minted in the same millisecond (e.g. a streamed assistant
+// bubble and its tool row, or back-to-back error/system messages). Duplicate
+// ids break the React list key `message-block-${msg.id}` (reconciliation
+// glitches / visual duplication) and the `chat-updated` dedup-by-id merge
+// (which can append a duplicate assistant bubble). The monotonic counter
+// guarantees uniqueness within a session; the Date.now() prefix keeps ids
+// roughly time-ordered and unique across reloads.
+let messageIdCounter = 0
+const createMessageId = (): string => `m${Date.now()}-${(messageIdCounter += 1)}`
+
 const isTerminalRunQueueStatus = (status?: RunQueueJobStatus): boolean =>
   status === 'completed' || status === 'failed' || status === 'cancelled'
 
@@ -12045,7 +12056,7 @@ function App(): React.JSX.Element {
           const msgs = [
             ...source.messages,
             {
-              id: Date.now().toString(),
+              id: createMessageId(),
               role: 'system',
               content: `Run auto-stopped due to repeated Gemini model capacity exhaustion (${context.errorCount} retries). Try Flash or Flash Lite for this request.`,
               timestamp: new Date().toISOString()
@@ -12291,7 +12302,7 @@ function App(): React.JSX.Element {
           const msgs = [
             ...updated.messages,
             {
-              id: Date.now().toString(),
+              id: createMessageId(),
               role: 'system',
               content: 'Task ended before completing. Check Raw Events for details.',
               timestamp: completedAt
@@ -13209,7 +13220,7 @@ function App(): React.JSX.Element {
         messages: [
           ...source.messages,
           {
-            id: `queued-${queuedRequest.appRunId || Date.now()}`,
+            id: `queued-${queuedRequest.appRunId || createMessageId()}`,
             role: 'system',
             content: promptPreview
               ? `Queued (#${queuePosition}): ${promptOneLiner}\n— Will dispatch when this chat's current ${getProviderLabel(targetProvider)} turn finishes.`
@@ -13395,7 +13406,7 @@ function App(): React.JSX.Element {
           messages: [
             ...source.messages,
             {
-              id: Date.now().toString(),
+              id: createMessageId(),
               role: 'error',
               content: message,
               timestamp: new Date().toISOString()
@@ -13452,7 +13463,7 @@ function App(): React.JSX.Element {
           }))
           .filter((attachment) => Boolean(attachment.path))
         const userMessage: ChatMessage = {
-          id: Date.now().toString(),
+          id: createMessageId(),
           role: 'user',
           content: displayFinalPrompt,
           timestamp: runStartedAt,
@@ -13804,7 +13815,7 @@ function App(): React.JSX.Element {
               updated.messages = [
                 ...updated.messages,
                 {
-                  id: Date.now().toString(),
+                  id: createMessageId(),
                   role: 'assistant',
                   content: event.content,
                   timestamp: new Date().toISOString(),
@@ -13817,7 +13828,7 @@ function App(): React.JSX.Element {
             const isPlanMode = updated.runs?.[updated.runs.length - 1]?.approvalMode === 'plan'
             const parsedChoice = parsePlanModeChoice(event.content)
             const last = updated.messages[updated.messages.length - 1]
-            const assistantMessageId = last && last.role === 'assistant' ? last.id : `${Date.now()}`
+            const assistantMessageId = last && last.role === 'assistant' ? last.id : createMessageId()
 
             if (last && last.role === 'assistant') {
               updated.messages = [
@@ -13989,7 +14000,7 @@ function App(): React.JSX.Element {
               updated.messages = [
                 ...updated.messages,
                 {
-                  id: Date.now().toString(),
+                  id: createMessageId(),
                   role: 'tool',
                   content: '',
                   timestamp: new Date().toISOString(),
@@ -14066,7 +14077,7 @@ function App(): React.JSX.Element {
             updated.messages = [
               ...updated.messages,
               {
-                id: Date.now().toString(),
+                id: createMessageId(),
                 role: 'error',
                 content: event.message,
                 timestamp: new Date().toISOString()
@@ -14137,7 +14148,7 @@ function App(): React.JSX.Element {
           messages: [
             ...source.messages,
             {
-              id: Date.now().toString(),
+              id: createMessageId(),
               role: 'error',
               content: message,
               timestamp: new Date().toISOString()
@@ -14167,7 +14178,7 @@ function App(): React.JSX.Element {
           messages: [
             ...source.messages,
             {
-              id: Date.now().toString(),
+              id: createMessageId(),
               role: 'error',
               content: message,
               timestamp: new Date().toISOString()
@@ -14473,7 +14484,7 @@ function App(): React.JSX.Element {
           messages: [
             ...source.messages,
             {
-              id: `steered-${request.appRunId || Date.now()}`,
+              id: `steered-${request.appRunId || createMessageId()}`,
               role: 'system',
               content: previewOneLiner
                 ? `↳ Steered: interrupted to run a new prompt — ${previewOneLiner}`
@@ -14973,9 +14984,9 @@ function App(): React.JSX.Element {
         ...prev,
         messages: [
           ...prev.messages,
-          { id: `${Date.now()}-bridge-user`, role: 'user', content: commandText, timestamp },
+          { id: `${createMessageId()}-bridge-user`, role: 'user', content: commandText, timestamp },
           {
-            id: `${Date.now()}-bridge-system`,
+            id: `${createMessageId()}-bridge-system`,
             role: 'system',
             content: `Command bridge queued because persistent Gemini session is ${reason}.`,
             timestamp: new Date().toISOString()
@@ -15469,7 +15480,7 @@ function App(): React.JSX.Element {
     setCurrentChat((prev) => {
       if (!prev) return prev
       const nextMessage: ChatMessage = {
-        id: Date.now().toString(),
+        id: createMessageId(),
         role: 'user',
         content: option,
         timestamp: new Date().toISOString()
