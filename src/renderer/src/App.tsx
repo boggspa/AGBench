@@ -1928,9 +1928,7 @@ const formatRunTimecodeDuration = (durationMs: number): string => {
   const hours = Math.floor((totalSeconds % 86400) / 3600)
   const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
-  return [days, hours, minutes, seconds]
-    .map((part) => part.toString().padStart(2, '0'))
-    .join(':')
+  return [days, hours, minutes, seconds].map((part) => part.toString().padStart(2, '0')).join(':')
 }
 
 function ComposerRunTimecode({
@@ -1943,13 +1941,13 @@ function ComposerRunTimecode({
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    if (!running) {
-      setNow(Date.now())
-      return
-    }
-    setNow(Date.now())
+    const frame = window.requestAnimationFrame(() => setNow(Date.now()))
+    if (!running) return () => window.cancelAnimationFrame(frame)
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearInterval(timer)
+    }
   }, [running, startedAt])
 
   const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
@@ -2001,13 +1999,13 @@ function ComposerCumulativeTimecode({
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    if (!running) {
-      setNow(Date.now())
-      return
-    }
-    setNow(Date.now())
+    const frame = window.requestAnimationFrame(() => setNow(Date.now()))
+    if (!running) return () => window.cancelAnimationFrame(frame)
     const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearInterval(timer)
+    }
   }, [running, startedAt])
 
   const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN
@@ -2341,15 +2339,9 @@ function WelcomeUsageDashboard({
   autoCycleSeconds?: number
 }) {
   const resolvedCurrency: DisplayCurrency = displayCurrency || 'USD'
-  const resolvedOverestimate = Math.max(
-    0,
-    Math.min(25, Number(overestimatePercent ?? 0) || 0)
-  )
+  const resolvedOverestimate = Math.max(0, Math.min(25, Number(overestimatePercent ?? 0) || 0))
   const resolvedWorkspacesEnabled = workspacesTabEnabled !== false
-  const resolvedWorkspacesShown = Math.max(
-    4,
-    Math.min(20, Number(workspacesShown ?? 8) || 8)
-  )
+  const resolvedWorkspacesShown = Math.max(4, Math.min(20, Number(workspacesShown ?? 8) || 8))
   const resolvedProvidersEnabled = providersTabEnabled !== false
   // Auto-cycle: 0/undefined = disabled, else clamp 30–3600.
   const resolvedAutoCycleSeconds = (() => {
@@ -2731,9 +2723,7 @@ function WelcomeUsageDashboard({
                       )}`}
                     >
                       <div className="welcome-usage-workspace-card-row">
-                        <span className="welcome-usage-workspace-card-name">
-                          {ws.displayName}
-                        </span>
+                        <span className="welcome-usage-workspace-card-name">{ws.displayName}</span>
                         <span className="welcome-usage-workspace-card-totals">
                           <span className="welcome-usage-workspace-card-tokens">
                             {formatCompactUsageNumber(ws.tokens)} tokens
@@ -4352,14 +4342,16 @@ const formatAssistantMessageLabel = (
     // shows the model in solo chats — no need to duplicate it here.
     return { label: fallbackLabel, provider: fallbackProvider, modelBadge: null }
   }
-  const role = typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
+  const role =
+    typeof message.metadata?.ensembleRole === 'string' ? message.metadata.ensembleRole : ''
   // Ensemble preview: surface the participant's short model name as a
   // dim badge appended to "Provider / Role". Prep work for 1.0.4 where
   // two Claudes or two Codexes will share a provider — the model is
   // the only thing that visually distinguishes them in the transcript.
   // Falls back to no badge when the participant doesn't carry a model
   // (legacy ensemble chats from before this metadata existed).
-  const ensembleModel = typeof message.metadata?.ensembleModel === 'string' ? message.metadata.ensembleModel : ''
+  const ensembleModel =
+    typeof message.metadata?.ensembleModel === 'string' ? message.metadata.ensembleModel : ''
   const ensembleReasoningEffort =
     typeof message.metadata?.ensembleReasoningEffort === 'string'
       ? message.metadata.ensembleReasoningEffort
@@ -4872,30 +4864,29 @@ const buildCodexUsageWindows = (
       return []
     }
     return dedupeCodexQuotaWindows(
-      authoritativeWindows
-        .map((windowEntry: any, index: number) => {
-          const label = codexQuotaDisplayLabel(String(windowEntry.label || 'Codex quota'))
-          const remainingPercent = Math.max(
-            0,
-            Math.min(
-              100,
-              Number(windowEntry.remainingPercent ?? 100 - Number(windowEntry.usedPercent || 0))
-            )
+      authoritativeWindows.map((windowEntry: any, index: number) => {
+        const label = codexQuotaDisplayLabel(String(windowEntry.label || 'Codex quota'))
+        const remainingPercent = Math.max(
+          0,
+          Math.min(
+            100,
+            Number(windowEntry.remainingPercent ?? 100 - Number(windowEntry.usedPercent || 0))
           )
-          const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
-          return {
-            id: `codex-account-${windowEntry.id || index}`,
-            label,
-            runs: 0,
-            totalTokens: 0,
-            limitLabel: windowEntry.limitLabel || `${Math.round(remainingPercent)}% remaining`,
-            resetAt: windowEntry.resetAt,
-            trackingOnly: false,
-            // Honest names: usedPercent = USED, remainingPercent = REMAINING.
-            usedPercent,
-            remainingPercent
-          }
-        })
+        )
+        const usedPercent = Math.max(0, Math.min(100, 100 - remainingPercent))
+        return {
+          id: `codex-account-${windowEntry.id || index}`,
+          label,
+          runs: 0,
+          totalTokens: 0,
+          limitLabel: windowEntry.limitLabel || `${Math.round(remainingPercent)}% remaining`,
+          resetAt: windowEntry.resetAt,
+          trackingOnly: false,
+          // Honest names: usedPercent = USED, remainingPercent = REMAINING.
+          usedPercent,
+          remainingPercent
+        }
+      })
     ).sort((a, b) => {
       return codexQuotaDisplayOrder(a.label) - codexQuotaDisplayOrder(b.label)
     })
@@ -5315,9 +5306,7 @@ function WelcomeWorkspacePicker({
   // document.body fully escapes the welcome's stacking context;
   // we just need to compute fixed-position coordinates from the
   // trigger's bounding rect on open + window resize.
-  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
-    null
-  )
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(null)
 
   // Close on outside click + Escape, so the popover behaves like every
   // other dropdown in the app (slash menu, mention picker, etc.).
@@ -5350,8 +5339,8 @@ function WelcomeWorkspacePicker({
   // edges so it stays on-screen on narrow windows.
   useLayoutEffect(() => {
     if (!popoverOpen) {
-      setPopoverPosition(null)
-      return
+      const frame = window.requestAnimationFrame(() => setPopoverPosition(null))
+      return () => window.cancelAnimationFrame(frame)
     }
     const computePosition = (): void => {
       const trigger = triggerRef.current
@@ -5445,9 +5434,7 @@ function WelcomeWorkspacePicker({
           >
             {overflow.length > 0 && (
               <div className="welcome-workspace-popover-section">
-                <div className="welcome-workspace-popover-header">
-                  More workspaces
-                </div>
+                <div className="welcome-workspace-popover-header">More workspaces</div>
                 {overflow.map((ws) => (
                   <button
                     key={ws.id}
@@ -5461,9 +5448,7 @@ function WelcomeWorkspacePicker({
                       {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
                     </span>
                     {ws.path && (
-                      <span className="welcome-workspace-popover-row-path">
-                        {ws.path}
-                      </span>
+                      <span className="welcome-workspace-popover-row-path">{ws.path}</span>
                     )}
                   </button>
                 ))}
@@ -5479,9 +5464,7 @@ function WelcomeWorkspacePicker({
                 <span className="welcome-workspace-popover-row-glyph" aria-hidden>
                   +
                 </span>
-                <span className="welcome-workspace-popover-row-name">
-                  Add new workspace…
-                </span>
+                <span className="welcome-workspace-popover-row-name">Add new workspace…</span>
               </button>
               <button
                 type="button"
@@ -5622,9 +5605,7 @@ function ComposerWorkspaceSwitcher({
   const [popoverOpen, setPopoverOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const popoverRef = useRef<HTMLDivElement | null>(null)
-  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(
-    null
-  )
+  const [popoverPosition, setPopoverPosition] = useState<{ left: number; top: number } | null>(null)
   // 1.0.6-EW66 — READ/WRITE choice for the "Add a workspace" action.
   const [addAccess, setAddAccess] = useState<ExternalPathGrant['access']>('read')
   // 1.0.6-EW66 — pointer-drag reorder state for the additional-
@@ -5664,8 +5645,8 @@ function ComposerWorkspaceSwitcher({
   // narrow windows.
   useLayoutEffect(() => {
     if (!popoverOpen) {
-      setPopoverPosition(null)
-      return
+      const frame = window.requestAnimationFrame(() => setPopoverPosition(null))
+      return () => window.cancelAnimationFrame(frame)
     }
     const computePosition = (): void => {
       const trigger = triggerRef.current
@@ -5683,8 +5664,7 @@ function ComposerWorkspaceSwitcher({
       // of the viewport — flip if there's no room below. 360px is
       // the popover's max-height estimate; leave a 6px gap.
       const POPOVER_MAX_HEIGHT = 360
-      const wouldOverflowBottom =
-        rect.bottom + 6 + POPOVER_MAX_HEIGHT > window.innerHeight - margin
+      const wouldOverflowBottom = rect.bottom + 6 + POPOVER_MAX_HEIGHT > window.innerHeight - margin
       const top = wouldOverflowBottom
         ? Math.max(margin, rect.top - 6 - POPOVER_MAX_HEIGHT)
         : rect.bottom + 6
@@ -5772,58 +5752,59 @@ function ComposerWorkspaceSwitcher({
     onReorderWorkspaces(next)
   }
 
-  const handleRowPointerDown = (sourcePath: string) => (event: React.PointerEvent): void => {
-    if (event.button !== 0 || !onReorderWorkspaces) return
-    const target = event.target as HTMLElement
-    // Don't start a drag from the remove button.
-    if (target.closest('.composer-workspace-row-remove')) return
-    const startX = event.clientX
-    const startY = event.clientY
-    let dragged = false
-    let lastHover: string | null = null
-    const findPathUnderPointer = (x: number, y: number): string | null => {
-      const el = document.elementFromPoint(x, y) as HTMLElement | null
-      const row = el?.closest('.composer-workspace-row[data-workspace-path]') as HTMLElement | null
-      return row?.getAttribute('data-workspace-path') || null
-    }
-    const handleMove = (moveEvent: PointerEvent): void => {
-      const dx = Math.abs(moveEvent.clientX - startX)
-      const dy = Math.abs(moveEvent.clientY - startY)
-      if (!dragged && (dx > 6 || dy > 6)) {
-        dragged = true
-        setDragPath(sourcePath)
+  const handleRowPointerDown =
+    (sourcePath: string) =>
+    (event: React.PointerEvent): void => {
+      if (event.button !== 0 || !onReorderWorkspaces) return
+      const target = event.target as HTMLElement
+      // Don't start a drag from the remove button.
+      if (target.closest('.composer-workspace-row-remove')) return
+      const startX = event.clientX
+      const startY = event.clientY
+      let dragged = false
+      let lastHover: string | null = null
+      const findPathUnderPointer = (x: number, y: number): string | null => {
+        const el = document.elementFromPoint(x, y) as HTMLElement | null
+        const row = el?.closest(
+          '.composer-workspace-row[data-workspace-path]'
+        ) as HTMLElement | null
+        return row?.getAttribute('data-workspace-path') || null
       }
-      if (dragged) {
-        const overPath = findPathUnderPointer(moveEvent.clientX, moveEvent.clientY)
-        if (overPath !== lastHover) {
-          lastHover = overPath
-          setDragOverPath(overPath)
+      const handleMove = (moveEvent: PointerEvent): void => {
+        const dx = Math.abs(moveEvent.clientX - startX)
+        const dy = Math.abs(moveEvent.clientY - startY)
+        if (!dragged && (dx > 6 || dy > 6)) {
+          dragged = true
+          setDragPath(sourcePath)
+        }
+        if (dragged) {
+          const overPath = findPathUnderPointer(moveEvent.clientX, moveEvent.clientY)
+          if (overPath !== lastHover) {
+            lastHover = overPath
+            setDragOverPath(overPath)
+          }
         }
       }
-    }
-    const handleUp = (upEvent: PointerEvent): void => {
-      document.removeEventListener('pointermove', handleMove)
-      document.removeEventListener('pointerup', handleUp)
-      document.removeEventListener('pointercancel', handleUp)
-      if (dragged) {
-        const dropPath = findPathUnderPointer(upEvent.clientX, upEvent.clientY)
-        commitReorder(sourcePath, dropPath && dropPath !== sourcePath ? dropPath : null)
+      const handleUp = (upEvent: PointerEvent): void => {
+        document.removeEventListener('pointermove', handleMove)
+        document.removeEventListener('pointerup', handleUp)
+        document.removeEventListener('pointercancel', handleUp)
+        if (dragged) {
+          const dropPath = findPathUnderPointer(upEvent.clientX, upEvent.clientY)
+          commitReorder(sourcePath, dropPath && dropPath !== sourcePath ? dropPath : null)
+        }
       }
+      document.addEventListener('pointermove', handleMove)
+      document.addEventListener('pointerup', handleUp)
+      document.addEventListener('pointercancel', handleUp)
     }
-    document.addEventListener('pointermove', handleMove)
-    document.addEventListener('pointerup', handleUp)
-    document.addEventListener('pointercancel', handleUp)
-  }
 
   const primaryLabel = currentWorkspace
-    ? currentWorkspace.displayName ||
-      currentWorkspace.path.split('/').pop() ||
-      'Workspace'
+    ? currentWorkspace.displayName || currentWorkspace.path.split('/').pop() || 'Workspace'
     : 'Pick workspace'
 
   const additionalCount = additionalEntries.length
-  const triggerLabel =
-    additionalCount > 0 ? `${primaryLabel} +${additionalCount}` : primaryLabel
+  const triggerLabel = additionalCount > 0 ? `${primaryLabel} +${additionalCount}` : primaryLabel
 
   const titleText = currentWorkspace
     ? `Workspaces · ${currentWorkspace.displayName || currentWorkspace.path}${
@@ -6070,9 +6051,7 @@ function ComposerWorkspaceSwitcher({
                   <span className="welcome-workspace-popover-row-name">
                     {ws.displayName || ws.path.split('/').pop() || 'Workspace'}
                   </span>
-                  {ws.path && (
-                    <span className="welcome-workspace-popover-row-path">{ws.path}</span>
-                  )}
+                  {ws.path && <span className="welcome-workspace-popover-row-path">{ws.path}</span>}
                 </button>
               ))}
               <button
@@ -6126,12 +6105,8 @@ function AgentQuestionCard({
 
   return (
     <div className={`plan-choice-card agent-question-card${providerClass}`}>
-      <div className="plan-choice-question agent-question-card-question">
-        {state.question}
-      </div>
-      {state.context && (
-        <div className="agent-question-card-context">{state.context}</div>
-      )}
+      <div className="plan-choice-question agent-question-card-question">{state.question}</div>
+      {state.context && <div className="agent-question-card-context">{state.context}</div>}
       {hasOptions && !showFreeText && (
         <div className="plan-choice-actions">
           {state.options!.map((option) => (
@@ -6260,6 +6235,7 @@ const EMPTY_ACTIVITY_EXPANSION: Set<string> = new Set()
  * independent of the ancestor `scrollTop`, per `TranscriptScroll.ts`), so
  * the historical observer-feedback loop cannot return.
  */
+/* eslint-disable react-hooks/refs -- Virtualisation intentionally keeps scroll/measurement state in refs for synchronous window selection. */
 function useTranscriptVirtualization(params: {
   enabled: boolean
   rows: VirtualRow[]
@@ -6319,9 +6295,7 @@ function useTranscriptVirtualization(params: {
     if (!enabled) return EMPTY_TRANSCRIPT_HEIGHTS
     const m = measurementsRef.current
     const bucket = bucketRef.current
-    return rows.map((row) =>
-      getRowHeight(row, m, bucket, expandedRowIds?.has(row.id) ?? false)
-    )
+    return rows.map((row) => getRowHeight(row, m, bucket, expandedRowIds?.has(row.id) ?? false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, rows, measureTick, expandedRowIds])
   heightsRef.current = heights
@@ -6440,7 +6414,8 @@ function useTranscriptVirtualization(params: {
   useEffect(() => {
     if (!enabled) return
     measurementsRef.current.clear()
-    bumpMeasure()
+    const frame = window.requestAnimationFrame(() => bumpMeasure())
+    return () => window.cancelAnimationFrame(frame)
   }, [enabled, compactDensity, bumpMeasure])
 
   // Pre-paint: anchor correction (Phase 1) + slot measurement (Phase 2).
@@ -6461,8 +6436,7 @@ function useTranscriptVirtualization(params: {
     // flag — so it runs whenever the user has actually scrolled up
     // (independent of the flag's state) and is skipped at the bottom,
     // where the App machinery owns scrollTop.
-    const distanceFromBottom =
-      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
+    const distanceFromBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight
     const atBottom = distanceFromBottom <= 8
     if (!atBottom && anchorRef.current) {
       const anchor = anchorRef.current
@@ -6491,8 +6465,7 @@ function useTranscriptVirtualization(params: {
       if (!el || !el.isConnected) continue
       const nextEl =
         i + 1 < mountedRows.length ? blockElsRef.current.get(mountedRows[i + 1].id) : spacerBottom
-      const slot =
-        nextEl && nextEl.isConnected ? nextEl.offsetTop - el.offsetTop : el.offsetHeight
+      const slot = nextEl && nextEl.isConnected ? nextEl.offsetTop - el.offsetTop : el.offsetHeight
       if (!(slot > 0)) continue
       const key = measurementKey(
         row.id,
@@ -6519,6 +6492,7 @@ function useTranscriptVirtualization(params: {
 
   return { window: virtualWindow, blockRef, spacerBottomRef }
 }
+/* eslint-enable react-hooks/refs */
 
 export const TranscriptPanel = memo(
   function TranscriptPanel({
@@ -6571,8 +6545,7 @@ export const TranscriptPanel = memo(
       if (!pendingQueuedAppRunIds || pendingQueuedAppRunIds.size === 0) return source
       return source.filter((msg) => {
         if (msg.metadata?.kind !== 'queuedRunRequest') return true
-        const appRunId =
-          typeof msg.metadata?.appRunId === 'string' ? msg.metadata.appRunId : null
+        const appRunId = typeof msg.metadata?.appRunId === 'string' ? msg.metadata.appRunId : null
         if (!appRunId) return true
         return !pendingQueuedAppRunIds.has(appRunId)
       })
@@ -6584,17 +6557,10 @@ export const TranscriptPanel = memo(
       // last speaker's), round-envelope duration, and summed tokens.
       // Solo chats: the original single-run summary.
       if (currentChat?.chatKind === 'ensemble' && currentChat.ensemble?.activeRound) {
-        return buildEnsembleRoundSummaryRows(
-          currentChat,
-          runCompleteNotice?.exitCode !== 0
-        )
+        return buildEnsembleRoundSummaryRows(currentChat, runCompleteNotice?.exitCode !== 0)
       }
       return buildRunCompleteSummaryRows(currentRun)
-    }, [
-      currentChat,
-      currentRun,
-      runCompleteNotice?.exitCode
-    ])
+    }, [currentChat, currentRun, runCompleteNotice?.exitCode])
     const runBoundaryByMessageId = useMemo(() => {
       const runs = currentChat?.runs || []
       const runById = new Map<string, ChatRun>()
@@ -6639,9 +6605,9 @@ export const TranscriptPanel = memo(
     // ids. Held here (not inside ActivityStack) so a tool row scrolled
     // out of the virtualised window and back keeps whatever the user had
     // expanded — same survival pattern as `expandedUserMessages`.
-    const [activityExpansionByRow, setActivityExpansionByRow] = useState<
-      Map<string, Set<string>>
-    >(new Map())
+    const [activityExpansionByRow, setActivityExpansionByRow] = useState<Map<string, Set<string>>>(
+      new Map()
+    )
     const setActivityExpansionForRow = useCallback((rowId: string, next: Set<string>) => {
       setActivityExpansionByRow((prev) => {
         const map = new Map(prev)
@@ -6756,10 +6722,10 @@ export const TranscriptPanel = memo(
                     runId={msg.runId || boundaryRun?.runId}
                     chat={currentChat || undefined}
                     compactDensity={compactDensity}
-                    expandedActivityIds={activityExpansionByRow.get(msg.id) ?? EMPTY_ACTIVITY_EXPANSION}
-                    onExpandedActivityIdsChange={(next) =>
-                      setActivityExpansionForRow(msg.id, next)
+                    expandedActivityIds={
+                      activityExpansionByRow.get(msg.id) ?? EMPTY_ACTIVITY_EXPANSION
                     }
+                    onExpandedActivityIdsChange={(next) => setActivityExpansionForRow(msg.id, next)}
                   />
                 ) : msg.metadata?.kind === 'ensembleParticipantHealth' ? (
                   /*
@@ -6807,9 +6773,7 @@ export const TranscriptPanel = memo(
                           currentProvider
                         )
                         return (
-                          <div
-                            className={`message-meta${provider ? ` provider-${provider}` : ''}`}
-                          >
+                          <div className={`message-meta${provider ? ` provider-${provider}` : ''}`}>
                             <span className="message-meta-label">{label}</span>
                             {modelBadge && (
                               <span
@@ -6835,9 +6799,7 @@ export const TranscriptPanel = memo(
                       const statusMeta =
                         msg.metadata?.kind === 'ensembleParticipantStatus'
                           ? {
-                              provider: msg.metadata?.ensembleProvider as
-                                | ProviderId
-                                | undefined,
+                              provider: msg.metadata?.ensembleProvider as ProviderId | undefined,
                               role:
                                 typeof msg.metadata?.ensembleRole === 'string'
                                   ? msg.metadata.ensembleRole
@@ -6971,9 +6933,7 @@ export const TranscriptPanel = memo(
                         onAnswer={(answer, isCustom) =>
                           onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
                         }
-                        onDismiss={() =>
-                          onAgentQuestionDismiss(pendingAgentQuestion.questionId)
-                        }
+                        onDismiss={() => onAgentQuestionDismiss(pendingAgentQuestion.questionId)}
                       />
                     )}
                   </div>
@@ -7015,18 +6975,14 @@ export const TranscriptPanel = memo(
                   onAnswer={(answer, isCustom) =>
                     onAgentQuestionSubmit(pendingAgentQuestion.questionId, answer, isCustom)
                   }
-                  onDismiss={() =>
-                    onAgentQuestionDismiss(pendingAgentQuestion.questionId)
-                  }
+                  onDismiss={() => onAgentQuestionDismiss(pendingAgentQuestion.questionId)}
                 />
               </div>
             )}
           {isThinking && (
             <div key="thinking-indicator" className="message-group">
               <div
-                className={`message-meta${
-                  thinkingProvider ? ` provider-${thinkingProvider}` : ''
-                }`}
+                className={`message-meta${thinkingProvider ? ` provider-${thinkingProvider}` : ''}`}
               >
                 <span className="message-meta-label">
                   {thinkingProviderLabel || currentProviderLabel}
@@ -7976,9 +7932,9 @@ function App(): React.JSX.Element {
   // (`-@`) → workspace files + external grants. Tracked alongside
   // the anchor so the pick handler knows how many characters to
   // strip (1 for `@`, 2 for `-@`).
-  const [mentionTriggerKind, setMentionTriggerKind] = useState<
-    'mention' | 'file-mention'
-  >('mention')
+  const [mentionTriggerKind, setMentionTriggerKind] = useState<'mention' | 'file-mention'>(
+    'mention'
+  )
   const mentionTriggerLengthRef = useRef<number>(1)
   // Slash-command picker state. Same shape as the mention menu — visibility
   // flag, current filter substring (what comes after the leading `/`), and
@@ -8154,12 +8110,18 @@ function App(): React.JSX.Element {
   let currentProviderRuntimeProfiles = runtimeProfiles.filter(
     (profile) => profile.provider === currentProvider
   )
-  const setChatPromptDraft = (chatId: string | null | undefined, value: string) => {
-    setComposerDraftForChat(chatId, value)
-  }
-  const setPrompt = (value: string) => {
-    setChatPromptDraft(currentChatIdRef.current || currentComposerChatId, value)
-  }
+  const setChatPromptDraft = useCallback(
+    (chatId: string | null | undefined, value: string) => {
+      setComposerDraftForChat(chatId, value)
+    },
+    [setComposerDraftForChat]
+  )
+  const setPrompt = useCallback(
+    (value: string) => {
+      setChatPromptDraft(currentChatIdRef.current || currentComposerChatId, value)
+    },
+    [currentComposerChatId, setChatPromptDraft]
+  )
   // 1.0.4-AQ3 — restore the composer textarea's caret position
   // after each `prompt` change. React's controlled-input caret
   // preservation glitches when the textarea's className flips
@@ -8194,7 +8156,7 @@ function App(): React.JSX.Element {
       // at the moment of restore. The user re-typed; they can
       // retry. Better than a thrown error breaking the round.
     }
-  }, [prompt, composerCaretRestoreEpochRef.current])
+  }, [prompt])
   const getCurrentComposerStateChatId = (): string | null =>
     currentChatIdRef.current || currentComposerChatId
   const setImageAttachments = (
@@ -8611,39 +8573,42 @@ function App(): React.JSX.Element {
     return null
   }
 
-  const updateChatById = (
-    chatId: string | null | undefined,
-    updater: (chat: ChatRecord) => ChatRecord
-  ): ChatRecord | null => {
-    if (!chatId) return null
-    const base =
-      chatByIdRef.current.get(chatId) ||
-      (activeRunChatSnapshotRef.current?.appChatId === chatId
-        ? activeRunChatSnapshotRef.current
-        : null)
-    if (!base) return null
+  const updateChatById = useCallback(
+    (
+      chatId: string | null | undefined,
+      updater: (chat: ChatRecord) => ChatRecord
+    ): ChatRecord | null => {
+      if (!chatId) return null
+      const base =
+        chatByIdRef.current.get(chatId) ||
+        (activeRunChatSnapshotRef.current?.appChatId === chatId
+          ? activeRunChatSnapshotRef.current
+          : null)
+      if (!base) return null
 
-    const updated = updater(base)
-    chatByIdRef.current.set(chatId, updated)
-    if (activeRunChatIdRef.current === chatId) {
-      activeRunChatSnapshotRef.current = updated
-    }
-    setChats((prev) => {
-      const index = prev.findIndex((chat) => chat.appChatId === chatId)
-      if (index < 0) return [updated, ...prev]
-      return prev.map((chat) => (chat.appChatId === chatId ? updated : chat))
-    })
-    setCurrentChat((prev) => (prev?.appChatId === chatId ? updated : prev))
-    const existingTimer = saveChatTimersRef.current.get(chatId)
-    if (existingTimer) clearTimeout(existingTimer)
-    const timer = setTimeout(() => {
-      saveChatTimersRef.current.delete(chatId)
-      const latest = chatByIdRef.current.get(chatId) || updated
-      window.api.saveChat(latest).catch(() => {})
-    }, 200)
-    saveChatTimersRef.current.set(chatId, timer)
-    return updated
-  }
+      const updated = updater(base)
+      chatByIdRef.current.set(chatId, updated)
+      if (activeRunChatIdRef.current === chatId) {
+        activeRunChatSnapshotRef.current = updated
+      }
+      setChats((prev) => {
+        const index = prev.findIndex((chat) => chat.appChatId === chatId)
+        if (index < 0) return [updated, ...prev]
+        return prev.map((chat) => (chat.appChatId === chatId ? updated : chat))
+      })
+      setCurrentChat((prev) => (prev?.appChatId === chatId ? updated : prev))
+      const existingTimer = saveChatTimersRef.current.get(chatId)
+      if (existingTimer) clearTimeout(existingTimer)
+      const timer = setTimeout(() => {
+        saveChatTimersRef.current.delete(chatId)
+        const latest = chatByIdRef.current.get(chatId) || updated
+        window.api.saveChat(latest).catch(() => {})
+      }, 200)
+      saveChatTimersRef.current.set(chatId, timer)
+      return updated
+    },
+    []
+  )
 
   const getProviderModelOptions = (provider: ProviderId): CodexModelOption[] => {
     if (provider === 'codex') return codexModels
@@ -9462,16 +9427,8 @@ function App(): React.JSX.Element {
     // chat-level currentProvider when not specified (the solo path).
     const targetProvider = providerOverride ?? currentProvider
     const nextSettings = enabled
-      ? await window.api.upsertAgenticWorkspaceGrant(
-          targetProvider,
-          currentWorkspace.path,
-          service
-        )
-      : await window.api.removeAgenticWorkspaceGrant(
-          targetProvider,
-          currentWorkspace.path,
-          service
-        )
+      ? await window.api.upsertAgenticWorkspaceGrant(targetProvider, currentWorkspace.path, service)
+      : await window.api.removeAgenticWorkspaceGrant(targetProvider, currentWorkspace.path, service)
     applyAgenticWorkspaceGrantSettings(nextSettings)
   }
 
@@ -9744,11 +9701,7 @@ function App(): React.JSX.Element {
     // because it's the picker's fallback for the next render
     // when no participant is selected — but the source of truth
     // for Ensemble dispatch is now correctly the participant.
-    if (
-      isCurrentEnsembleChat &&
-      selectedParticipant &&
-      currentChat?.ensemble
-    ) {
+    if (isCurrentEnsembleChat && selectedParticipant && currentChat?.ensemble) {
       updateSelectedParticipant({ runtimeProfileId })
       // Skip the chat-level write for ensembles so we don't
       // poison the chat-level provider/runtime metadata with
@@ -9862,9 +9815,7 @@ function App(): React.JSX.Element {
       // alone so multi-participant ensembles keep independent
       // provider sessions per participant.
       const patchedParticipants = (currentChat.ensemble.participants || []).map((p) =>
-        p.id === routing.participantId
-          ? { ...p, linkedProviderSessionId: threadId }
-          : p
+        p.id === routing.participantId ? { ...p, linkedProviderSessionId: threadId } : p
       )
       updatedChat = {
         ...currentChat,
@@ -9887,9 +9838,7 @@ function App(): React.JSX.Element {
     )
     await window.api.saveChat(updatedChat)
     const linkScope =
-      routing.target === 'participant'
-        ? ` to participant ${routing.participantId}`
-        : ''
+      routing.target === 'participant' ? ` to participant ${routing.participantId}` : ''
     setRawLogs((prev) => [
       ...prev,
       { type: 'info', content: `Linked Codex thread${linkScope}: ${threadId}` }
@@ -9957,8 +9906,7 @@ function App(): React.JSX.Element {
         updateChatById(chatWithLedger.appChatId, () => chatWithLedger)
         await refreshUsageSummary(ws.id, provider)
         setDiff(
-          provider === 'gemini' &&
-            isGeminiWorktreeDiffUnavailable(resolveGeminiWorktreeConfig(ws))
+          provider === 'gemini' && isGeminiWorktreeDiffUnavailable(resolveGeminiWorktreeConfig(ws))
             ? createWorktreeDiffUnavailable()
             : null
         )
@@ -9973,9 +9921,7 @@ function App(): React.JSX.Element {
         if (provider === 'codex' && typeof window.api.listAgentThreads === 'function') {
           window.api
             .listAgentThreads('codex', { cwd: ws.path })
-            .then((response) =>
-              setCodexThreads(Array.isArray(response?.data) ? response.data : [])
-            )
+            .then((response) => setCodexThreads(Array.isArray(response?.data) ? response.data : []))
             .catch(() => setCodexThreads([]))
         }
         const tr = await window.api.checkTrust(ws.path)
@@ -10051,9 +9997,7 @@ function App(): React.JSX.Element {
       await handleSelectExistingWorkspace(ws)
       return
     }
-    const chatWithLedger = currentChat
-      ? withSessionActivityLedger(currentChat, rebound)
-      : rebound
+    const chatWithLedger = currentChat ? withSessionActivityLedger(currentChat, rebound) : rebound
 
     setCurrentWorkspace(ws)
     currentWorkspaceIdRef.current = ws.id
@@ -10183,7 +10127,8 @@ function App(): React.JSX.Element {
         .filter((balance): balance is UsageBalanceAggregate => Boolean(balance))
     }
     const hasUsageBalances = (balances: unknown): boolean =>
-      Array.isArray(balances) && balances.some((balance: any) => {
+      Array.isArray(balances) &&
+      balances.some((balance: any) => {
         const label = String(balance?.label || '').trim()
         const amount = Number(balance?.amount)
         return Boolean(label) && Number.isFinite(amount)
@@ -10303,7 +10248,11 @@ function App(): React.JSX.Element {
         normalized.includes('haiku')
       )
         return 'claude'
-      if (normalized.includes('kimi') || normalized.includes('moonshot') || normalized.includes('k2'))
+      if (
+        normalized.includes('kimi') ||
+        normalized.includes('moonshot') ||
+        normalized.includes('k2')
+      )
         return 'kimi'
       if (normalized.includes('composer') || normalized.includes('cursor')) return 'cursor'
       if (normalized.includes('grok')) return 'grok'
@@ -11499,8 +11448,7 @@ function App(): React.JSX.Element {
     // messages on a thread the user never scrolled away from.
     const currentChatIdForCount = currentChat?.appChatId ?? null
     const currentMessageCount = currentChat?.messages?.length ?? 0
-    const sameChatAsBaseline =
-      previousMessagesCountRef.current.chatId === currentChatIdForCount
+    const sameChatAsBaseline = previousMessagesCountRef.current.chatId === currentChatIdForCount
     const deltaSinceLastPass = sameChatAsBaseline
       ? currentMessageCount - previousMessagesCountRef.current.count
       : 0
@@ -11592,7 +11540,7 @@ function App(): React.JSX.Element {
         repinRafIdRef.current = null
       }
     }
-  }, [currentChat?.messages, runCompleteNotice, showFallbackUX])
+  }, [currentChat?.appChatId, currentChat?.messages, runCompleteNotice, showFallbackUX])
 
   useEffect(() => {
     // When the active chat changes, snap to the bottom and re-arm auto-follow
@@ -11619,6 +11567,8 @@ function App(): React.JSX.Element {
       scroller.scrollTop = scroller.scrollHeight
     })
     return () => cancelAnimationFrame(rafId)
+    // Chat-switch only: message growth is handled by the message layout effect above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentChat?.appChatId])
   // ---------------------------------------------------------------------
 
@@ -12737,9 +12687,7 @@ function App(): React.JSX.Element {
            */
           const orphanedAgentQuestionMarkers = liveChat.messages.filter(
             (m) =>
-              m.role === 'system' &&
-              m.metadata?.kind === 'agentQuestion' &&
-              !incomingIds.has(m.id)
+              m.role === 'system' && m.metadata?.kind === 'agentQuestion' && !incomingIds.has(m.id)
           )
           const orphans = [...orphanedLiveAssistants, ...orphanedAgentQuestionMarkers]
           if (
@@ -12749,10 +12697,7 @@ function App(): React.JSX.Element {
           ) {
             merged = {
               ...chat,
-              messages:
-                orphans.length > 0
-                  ? [...mergedMessages, ...orphans]
-                  : mergedMessages
+              messages: orphans.length > 0 ? [...mergedMessages, ...orphans] : mergedMessages
             }
           }
         }
@@ -12868,6 +12813,7 @@ function App(): React.JSX.Element {
       agentQuestionUnsubscribe?.()
       agentQuestionCancelUnsubscribe?.()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- app-wide IPC subscriptions register once; mutable handlers route through refs.
   }, [])
 
   const currentGeminiWorktree =
@@ -13337,7 +13283,9 @@ function App(): React.JSX.Element {
       const runProvider = request.provider || currentProvider
       if (runChat.chatKind === 'ensemble') {
         const mode =
-          runChat.ensemble?.activeRound?.status === 'running' ? ('queue' as const) : ('normal' as const)
+          runChat.ensemble?.activeRound?.status === 'running'
+            ? ('queue' as const)
+            : ('normal' as const)
         await window.api.runEnsembleRound({
           chatId: runChat.appChatId,
           prompt: request.prompt,
@@ -14327,9 +14275,7 @@ function App(): React.JSX.Element {
     dmTargetParticipantId?: string
   ) => {
     const baseRequest = buildRunRequest(overrideModel, existingPrompt)
-    const request = dmTargetParticipantId
-      ? { ...baseRequest, dmTargetParticipantId }
-      : baseRequest
+    const request = dmTargetParticipantId ? { ...baseRequest, dmTargetParticipantId } : baseRequest
     if (!request.prompt.trim()) {
       return
     }
@@ -15230,9 +15176,7 @@ function App(): React.JSX.Element {
     // effective provider is also passed to `refreshProviderMetadata`
     // so the right-tab data reflects the targeted participant.
     const slashTargetProvider: ProviderId =
-      isCurrentEnsembleChat && selectedParticipant
-        ? selectedParticipant.provider
-        : currentProvider
+      isCurrentEnsembleChat && selectedParticipant ? selectedParticipant.provider : currentProvider
     // Composer-unification (Phase J1): renderer-side action items
     // dispatch to local handlers instead of running through the
     // provider command bridge. These are the Gemini quick-toggle
@@ -15368,7 +15312,7 @@ function App(): React.JSX.Element {
         case 'prompt-template':
           // Insert the template at the slash position; caller can keep
           // typing to fill in template-specific arguments.
-          // eslint-disable-next-line no-case-declarations
+
           {
             const anchor = slashAnchorIndexRef.current ?? 0
             const tokenLength = 1 + slashQuery.length
@@ -15387,7 +15331,6 @@ function App(): React.JSX.Element {
           }
           return
         case 'insert':
-          // eslint-disable-next-line no-case-declarations
           {
             const anchor = slashAnchorIndexRef.current ?? 0
             const tokenLength = 1 + slashQuery.length
@@ -15550,9 +15493,7 @@ function App(): React.JSX.Element {
       const trimmed = answer.trim()
       if (!trimmed) return
       const targetChatId = currentChat?.appChatId
-      const pending = targetChatId
-        ? pendingAgentQuestionByChatId[targetChatId] || null
-        : null
+      const pending = targetChatId ? pendingAgentQuestionByChatId[targetChatId] || null : null
       if (pending && targetChatId) {
         updateChatById(targetChatId, (prev) => {
           const replyMsg: ChatMessage = {
@@ -16259,8 +16200,8 @@ function App(): React.JSX.Element {
   )
   const isCurrentChatRunning = Boolean(
     currentChat?.appChatId &&
-      (runningChatIds.has(currentChat.appChatId) ||
-        currentChat.ensemble?.activeRound?.status === 'running')
+    (runningChatIds.has(currentChat.appChatId) ||
+      currentChat.ensemble?.activeRound?.status === 'running')
   )
   const isCurrentEnsembleChat = currentChat?.chatKind === 'ensemble'
   const isEnsembleModeEnabled = settings?.ensembleModeEnabled !== false
@@ -16278,8 +16219,7 @@ function App(): React.JSX.Element {
   // settings live.
   const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null)
   const ensembleParticipantsForCurrent = useMemo(
-    () =>
-      [...(currentChat?.ensemble?.participants || [])].sort((a, b) => a.order - b.order),
+    () => [...(currentChat?.ensemble?.participants || [])].sort((a, b) => a.order - b.order),
     [currentChat?.ensemble?.participants]
   )
   const ensembleEnabledParticipantsForCurrent = useMemo(
@@ -16342,9 +16282,7 @@ function App(): React.JSX.Element {
       : currentEnsembleOrchestrationMode
   const currentEnsembleContinuationHops = currentEnsembleRound?.continuationHops || 0
   const currentEnsembleMaxContinuationHops =
-    currentEnsembleRound?.maxContinuationHops ||
-    currentChat?.ensemble?.maxContinuationHops ||
-    6
+    currentEnsembleRound?.maxContinuationHops || currentChat?.ensemble?.maxContinuationHops || 6
   const isCurrentEnsembleRoundRunning = currentEnsembleRound?.status === 'running'
   // Slice F v2 (1.0.3) — write-through helper used by the composer
   // pickers when an ensemble chip is selected. Patches the targeted
@@ -16367,12 +16305,8 @@ function App(): React.JSX.Element {
       }
       const nextChat = withSessionActivityLedger(currentChat, patchedChat)
       chatByIdRef.current.set(nextChat.appChatId, nextChat)
-      setCurrentChat((prev) =>
-        prev?.appChatId === nextChat.appChatId ? nextChat : prev
-      )
-      setChats((prev) =>
-        prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
-      )
+      setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+      setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
       void window.api.saveChat(nextChat)
     },
     [isCurrentEnsembleChat, selectedParticipant, currentChat]
@@ -16403,7 +16337,7 @@ function App(): React.JSX.Element {
         return withSessionActivityLedger(source, patched)
       })
     },
-    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble]
+    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
   )
 
   // 1.0.4-AK2 — Work Session lifecycle callbacks wired to the setup
@@ -16442,7 +16376,13 @@ function App(): React.JSX.Element {
       // mention overlay updates etc.).
       setPrompt(initialPrompt)
     },
-    [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble, updateChatById]
+    [
+      isCurrentEnsembleChat,
+      currentChat?.appChatId,
+      currentChat?.ensemble,
+      setPrompt,
+      updateChatById
+    ]
   )
   const handleStopWorkSession = useCallback(async () => {
     if (!isCurrentEnsembleChat || !currentChat?.ensemble?.workSession) return
@@ -16472,7 +16412,12 @@ function App(): React.JSX.Element {
       }
       return withSessionActivityLedger(source, patched)
     })
-  }, [isCurrentEnsembleChat, currentChat?.appChatId, currentChat?.ensemble?.workSession, updateChatById])
+  }, [
+    isCurrentEnsembleChat,
+    currentChat?.appChatId,
+    currentChat?.ensemble?.workSession,
+    updateChatById
+  ])
   // Ensemble round-complete notice — fires once when the round
   // transitions to `completed` (or `cancelled`). Solo chats use the
   // per-run-exit notice path; for ensemble we suppress that and
@@ -16515,6 +16460,7 @@ function App(): React.JSX.Element {
   }, [
     isCurrentEnsembleChat,
     currentChat?.ensemble?.activeRound?.roundId,
+    currentChat?.ensemble?.activeRound,
     currentChat?.ensemble?.activeRound?.status,
     currentChat?.ensemble?.activeRound?.startedAt,
     currentChat?.ensemble?.activeRound?.endedAt
@@ -16547,6 +16493,7 @@ function App(): React.JSX.Element {
     setSelectedParticipantId(activeId)
   }, [
     isCurrentEnsembleChat,
+    currentChat?.ensemble?.activeRound,
     currentChat?.ensemble?.activeRound?.activeParticipantId,
     currentChat?.ensemble?.activeRound?.status,
     selectedParticipantId
@@ -16568,8 +16515,7 @@ function App(): React.JSX.Element {
   // busy predicate already used by every queue-decision site.
   const isCurrentChatBusyForSteer = Boolean(
     currentChat?.appChatId &&
-      (isChatBusy(currentChat.appChatId) ||
-        currentChat.ensemble?.activeRound?.status === 'running')
+    (isChatBusy(currentChat.appChatId) || currentChat.ensemble?.activeRound?.status === 'running')
   )
   const steerIndicatorMessage = currentChat?.appChatId
     ? getSteerIndicatorMessage({
@@ -16829,13 +16775,7 @@ function App(): React.JSX.Element {
       deletions,
       filesChanged: files.length
     }
-  }, [
-    currentChat,
-    currentRun?.runId,
-    runDiff,
-    isCurrentEnsembleChat,
-    currentWorkspace?.path
-  ])
+  }, [currentChat, currentRun?.runId, runDiff, isCurrentEnsembleChat, currentWorkspace?.path])
   // Slice 6 of the external-path-redesign arc: partition diff stats
   // by which grant's repoRoot each tool activity's file path falls
   // under. Secondary above-rows read their entry to display per-repo
@@ -17063,12 +17003,8 @@ function App(): React.JSX.Element {
           }
         }
         chatByIdRef.current.set(nextChat.appChatId, nextChat)
-        setCurrentChat((prev) =>
-          prev?.appChatId === nextChat.appChatId ? nextChat : prev
-        )
-        setChats((prev) =>
-          prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
-        )
+        setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+        setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
         void window.api.saveChat(nextChat)
         return
       }
@@ -17095,7 +17031,7 @@ function App(): React.JSX.Element {
           .catch(() => {})
       }
     },
-    [currentChat]
+    [currentChat, setChatPromptDraft]
   )
   // Delete: drop from local queue + transition the persistent job
   // to 'cancelled' so the store-backed listing doesn't resurrect it
@@ -17132,12 +17068,8 @@ function App(): React.JSX.Element {
           }
         }
         chatByIdRef.current.set(nextChat.appChatId, nextChat)
-        setCurrentChat((prev) =>
-          prev?.appChatId === nextChat.appChatId ? nextChat : prev
-        )
-        setChats((prev) =>
-          prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c))
-        )
+        setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
+        setChats((prev) => prev.map((c) => (c.appChatId === nextChat.appChatId ? nextChat : c)))
         void window.api.saveChat(nextChat)
         return
       }
@@ -17206,9 +17138,7 @@ function App(): React.JSX.Element {
             }
           }
         }
-        setCurrentChat((prev) =>
-          prev?.appChatId === nextChat.appChatId ? nextChat : prev
-        )
+        setCurrentChat((prev) => (prev?.appChatId === nextChat.appChatId ? nextChat : prev))
         void window.api.runEnsembleRound({
           chatId: chat.appChatId,
           prompt,
@@ -17248,6 +17178,9 @@ function App(): React.JSX.Element {
         dispatchSteered()
       }
     },
+    // `handleCancel` intentionally remains live from the current render; queued steering only
+    // needs this callback to refresh when the target chat changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentChat]
   )
   // Local reorder — updates `queuedRuns` array order so the schedule
@@ -18567,46 +18500,46 @@ function App(): React.JSX.Element {
                 the composer above-row stack, alongside the chip
                 flyout that replaced the EnsembleSetupSheet modal.
               */}
-            <TranscriptPanel
-              key={currentChat?.appChatId || 'no-chat'}
-              scrollRef={transcriptScrollRef}
-              contentRef={transcriptContentRef}
-              endRef={logsEndRef}
-              messages={transcriptMessages}
-              isWelcomeChat={isWelcomeChat}
-              isThinking={effectiveIsThinking}
-              showFallbackUX={showFallbackUX}
-              pendingPlanChoice={pendingPlanChoice}
-              pendingAgentQuestion={pendingAgentQuestion}
-              onAgentQuestionSubmit={handleAgentQuestionSubmit}
-              onAgentQuestionDismiss={handleAgentQuestionDismiss}
-              runCompleteNotice={runCompleteNotice}
-              runCompleteDurationText={runCompleteDurationText}
-              currentChat={currentChat}
-              currentRun={currentRun}
-              currentWorkspacePath={currentWorkspace?.path}
-              currentProviderLabel={currentProviderLabel}
-              currentProvider={currentProvider}
-              thinkingProviderLabel={thinkingProviderLabel}
-              thinkingProvider={thinkingProvider}
-              thinkingModelBadge={thinkingModelBadge}
-              displayFileChangeSummaries={displayFileChangeSummaries}
-              fileChangeSummaryText={fileChangeSummaryText}
-              fileChangeShouldShowStats={fileChangeShouldShowStats}
-              fileChangeDisplayAdds={fileChangeDisplayAdds}
-              fileChangeDisplayDels={fileChangeDisplayDels}
-              chats={chats}
-              runningChatIds={runningChatIdsArray}
-              onPlanChoiceSubmit={handlePlanChoiceSubmit}
-              onRunFallback={handleRunFallback}
-              onOpenSubThread={handleOpenCockpitThread}
-              onInspectRun={(runId) => setInspectingRunId(runId)}
-              compactDensity={appearance.compactDensity}
-              pendingQueuedAppRunIds={pendingQueuedAppRunIds}
-              onCopyMessage={handleCopyMessage}
-              onDeleteMessage={handleDeleteMessage}
-              autoFollowRef={autoFollowRef}
-            />
+              <TranscriptPanel
+                key={currentChat?.appChatId || 'no-chat'}
+                scrollRef={transcriptScrollRef}
+                contentRef={transcriptContentRef}
+                endRef={logsEndRef}
+                messages={transcriptMessages}
+                isWelcomeChat={isWelcomeChat}
+                isThinking={effectiveIsThinking}
+                showFallbackUX={showFallbackUX}
+                pendingPlanChoice={pendingPlanChoice}
+                pendingAgentQuestion={pendingAgentQuestion}
+                onAgentQuestionSubmit={handleAgentQuestionSubmit}
+                onAgentQuestionDismiss={handleAgentQuestionDismiss}
+                runCompleteNotice={runCompleteNotice}
+                runCompleteDurationText={runCompleteDurationText}
+                currentChat={currentChat}
+                currentRun={currentRun}
+                currentWorkspacePath={currentWorkspace?.path}
+                currentProviderLabel={currentProviderLabel}
+                currentProvider={currentProvider}
+                thinkingProviderLabel={thinkingProviderLabel}
+                thinkingProvider={thinkingProvider}
+                thinkingModelBadge={thinkingModelBadge}
+                displayFileChangeSummaries={displayFileChangeSummaries}
+                fileChangeSummaryText={fileChangeSummaryText}
+                fileChangeShouldShowStats={fileChangeShouldShowStats}
+                fileChangeDisplayAdds={fileChangeDisplayAdds}
+                fileChangeDisplayDels={fileChangeDisplayDels}
+                chats={chats}
+                runningChatIds={runningChatIdsArray}
+                onPlanChoiceSubmit={handlePlanChoiceSubmit}
+                onRunFallback={handleRunFallback}
+                onOpenSubThread={handleOpenCockpitThread}
+                onInspectRun={(runId) => setInspectingRunId(runId)}
+                compactDensity={appearance.compactDensity}
+                pendingQueuedAppRunIds={pendingQueuedAppRunIds}
+                onCopyMessage={handleCopyMessage}
+                onDeleteMessage={handleDeleteMessage}
+                autoFollowRef={autoFollowRef}
+              />
             </>
           )}
 
@@ -18764,8 +18697,10 @@ function App(): React.JSX.Element {
                 worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
               />
             )}
-            {isWelcomeChat && isCurrentEnsembleChat && (() => {
-              /*
+            {isWelcomeChat &&
+              isCurrentEnsembleChat &&
+              (() => {
+                /*
                 Ensemble welcome hero (1.0.3 Slice F follow-up). Replaces
                 the solo-provider "New Codex thread for ..." copy with
                 an ensemble-aware heading + a chevron-arrow chain
@@ -18785,113 +18720,109 @@ function App(): React.JSX.Element {
                 too; ensemble chats should not inherit a single provider's
                 theme from the chat-level fallback provider.
               */
-              const orderedEnabled = ensembleEnabledParticipantsForCurrent
-              const ensembleIsContinuous =
-                currentChat?.ensemble?.orchestrationMode === 'continuous'
-              const ensembleContinuationLimit =
-                currentChat?.ensemble?.maxContinuationHops || 6
-              const shellClassName = [
-                'welcome-hero',
-                'welcome-hero-ensemble',
-                `welcome-ensemble-shell`,
-                `welcome-ensemble-shell-count-${Math.min(orderedEnabled.length, 4)}`
-              ]
-                .filter(Boolean)
-                .join(' ')
-              const workspaceNameClass = 'workspace-name-glow workspace-name-glow-ensemble'
-              return (
-                <div className={shellClassName} style={ensembleBlendStyle}>
-                  <h1>
-                    {isCurrentGlobalChat ? (
-                      <>
-                        <span>New Ensemble chat in </span>
-                        <strong className={workspaceNameClass}>Global Chat</strong>
-                        <span>.</span>
-                      </>
+                const orderedEnabled = ensembleEnabledParticipantsForCurrent
+                const ensembleIsContinuous =
+                  currentChat?.ensemble?.orchestrationMode === 'continuous'
+                const ensembleContinuationLimit = currentChat?.ensemble?.maxContinuationHops || 6
+                const shellClassName = [
+                  'welcome-hero',
+                  'welcome-hero-ensemble',
+                  `welcome-ensemble-shell`,
+                  `welcome-ensemble-shell-count-${Math.min(orderedEnabled.length, 4)}`
+                ]
+                  .filter(Boolean)
+                  .join(' ')
+                const workspaceNameClass = 'workspace-name-glow workspace-name-glow-ensemble'
+                return (
+                  <div className={shellClassName} style={ensembleBlendStyle}>
+                    <h1>
+                      {isCurrentGlobalChat ? (
+                        <>
+                          <span>New Ensemble chat in </span>
+                          <strong className={workspaceNameClass}>Global Chat</strong>
+                          <span>.</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>New Ensemble chat in </span>
+                          <strong className={workspaceNameClass}>
+                            {currentWorkspace?.displayName || 'GUIGemini'}
+                          </strong>
+                          <span> Workspace.</span>
+                        </>
+                      )}
+                    </h1>
+                    {orderedEnabled.length === 0 ? (
+                      <p className="welcome-hero-ensemble-empty">
+                        No providers enabled yet. Open any chip below to turn one back on, then
+                        describe the task.
+                      </p>
                     ) : (
                       <>
-                        <span>New Ensemble chat in </span>
-                        <strong className={workspaceNameClass}>
-                          {currentWorkspace?.displayName || 'GUIGemini'}
-                        </strong>
-                        <span> Workspace.</span>
+                        <p>
+                          {orderedEnabled.length}{' '}
+                          {orderedEnabled.length === 1 ? 'provider' : 'providers'} will work through
+                          this in order.{' '}
+                          {ensembleIsContinuous ? (
+                            <>
+                              Continuous mode lets them hand work back and forth with{' '}
+                              <code>@mentions</code> or <code>ensemble_yield(target:&nbsp;…)</code>,
+                              capped at {ensembleContinuationLimit} extra handoffs.
+                            </>
+                          ) : (
+                            <>
+                              Each speaks once unless you switch the chip strip to Continuous mode.
+                            </>
+                          )}
+                        </p>
+                        <div
+                          className="ensemble-hierarchy-chain"
+                          role="list"
+                          aria-label="Ensemble orchestration order"
+                        >
+                          {orderedEnabled.map((participant, idx) => (
+                            <div key={participant.id} className="ensemble-hierarchy-chain-step">
+                              <div
+                                className={`ensemble-hierarchy-tile provider-${participant.provider}`}
+                                role="listitem"
+                                title={`${participant.role || participant.provider} — speaks at position ${idx + 1}`}
+                              >
+                                <ProviderBadgeIcon provider={participant.provider} />
+                                <div className="ensemble-hierarchy-tile-text">
+                                  <span className="ensemble-hierarchy-tile-role">
+                                    {participant.role || participant.provider}
+                                  </span>
+                                  <span className="ensemble-hierarchy-tile-provider">
+                                    {participant.provider}
+                                  </span>
+                                </div>
+                              </div>
+                              {idx < orderedEnabled.length - 1 && (
+                                <span className="ensemble-hierarchy-arrow" aria-hidden>
+                                  →
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </>
                     )}
-                  </h1>
-                  {orderedEnabled.length === 0 ? (
-                    <p className="welcome-hero-ensemble-empty">
-                      No providers enabled yet. Open any chip below to turn one back on, then
-                      describe the task.
-                    </p>
-                  ) : (
-                    <>
-                      <p>
-                        {orderedEnabled.length}{' '}
-                        {orderedEnabled.length === 1 ? 'provider' : 'providers'} will work through
-                        this in order.{' '}
-                        {ensembleIsContinuous ? (
-                          <>
-                            Continuous mode lets them hand work back and forth with{' '}
-                            <code>@mentions</code> or <code>ensemble_yield(target:&nbsp;…)</code>,
-                            capped at {ensembleContinuationLimit} extra handoffs.
-                          </>
-                        ) : (
-                          <>
-                            Each speaks once unless you switch the chip strip to Continuous mode.
-                          </>
-                        )}
-                      </p>
-                      <div
-                        className="ensemble-hierarchy-chain"
-                        role="list"
-                        aria-label="Ensemble orchestration order"
-                      >
-                        {orderedEnabled.map((participant, idx) => (
-                          <div key={participant.id} className="ensemble-hierarchy-chain-step">
-                            <div
-                              className={`ensemble-hierarchy-tile provider-${participant.provider}`}
-                              role="listitem"
-                              title={`${participant.role || participant.provider} — speaks at position ${idx + 1}`}
-                            >
-                              <ProviderBadgeIcon provider={participant.provider} />
-                              <div className="ensemble-hierarchy-tile-text">
-                                <span className="ensemble-hierarchy-tile-role">
-                                  {participant.role || participant.provider}
-                                </span>
-                                <span className="ensemble-hierarchy-tile-provider">
-                                  {participant.provider}
-                                </span>
-                              </div>
-                            </div>
-                            {idx < orderedEnabled.length - 1 && (
-                              <span
-                                className="ensemble-hierarchy-arrow"
-                                aria-hidden
-                              >
-                                →
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {/* Workspace picker on the ensemble welcome too —
+                    {/* Workspace picker on the ensemble welcome too —
                       same affordance as the solo welcome surface above,
                       because the ensemble path lands here just as
                       often after a "New Chat" click and needs the
                       same one-click workspace swap. */}
-                  <WelcomeWorkspacePicker
-                    workspaces={workspaces}
-                    currentWorkspace={currentWorkspace}
-                    isGlobalChat={isCurrentGlobalChat}
-                    onPickExisting={handleSelectWelcomeWorkspace}
-                    onAddNewWorkspace={handleSelectWelcomeWorkspaceDialog}
-                    onSelectNoWorkspace={handleNewGlobalChat}
-                  />
-                </div>
-              )
-            })()}
+                    <WelcomeWorkspacePicker
+                      workspaces={workspaces}
+                      currentWorkspace={currentWorkspace}
+                      isGlobalChat={isCurrentGlobalChat}
+                      onPickExisting={handleSelectWelcomeWorkspace}
+                      onAddNewWorkspace={handleSelectWelcomeWorkspaceDialog}
+                      onSelectNoWorkspace={handleNewGlobalChat}
+                    />
+                  </div>
+                )
+              })()}
             {isWelcomeChat && !isCurrentEnsembleChat && (
               <div className="welcome-hero">
                 <h1>
@@ -18967,26 +18898,26 @@ function App(): React.JSX.Element {
                   branch above doesn't drag them into render with
                   null workspace data. */}
                 {!isWelcomeChat && currentWorkspace && (
-                <>
-                <div className="composer-above-bar style-unified">
-                  <span className="composer-above-bar-branch">
-                    <svg
-                      width="13"
-                      height="13"
-                      viewBox="0 0 16 16"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
-                    >
-                      <circle cx="4" cy="3.5" r="1.6" />
-                      <circle cx="4" cy="12.5" r="1.6" />
-                      <circle cx="12" cy="7" r="1.6" />
-                      <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
-                    </svg>
-                    {/*
+                  <>
+                    <div className="composer-above-bar style-unified">
+                      <span className="composer-above-bar-branch">
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 16 16"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.4"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <circle cx="4" cy="3.5" r="1.6" />
+                          <circle cx="4" cy="12.5" r="1.6" />
+                          <circle cx="12" cy="7" r="1.6" />
+                          <path d="M4 5.1v5.8M5.6 7c2 0 4.8 0 4.8-1.5" />
+                        </svg>
+                        {/*
                     `displayName · branch` mirrors the secondary rows
                     (`basename · branch` in ExternalPathAboveRow) so
                     the stack reads as one consistent label family
@@ -18997,15 +18928,15 @@ function App(): React.JSX.Element {
                     it reads as metadata). The "·" lives outside both
                     spans so it copy-pastes cleanly.
                   */}
-                    <span>
-                      {currentWorkspace.displayName}
-                      {' · '}
-                      <em className="composer-above-bar-secondary-branch">
-                        {currentWorkspace?.branch || 'detached'}
-                      </em>
-                    </span>
-                  </span>
-                  {/*
+                        <span>
+                          {currentWorkspace.displayName}
+                          {' · '}
+                          <em className="composer-above-bar-secondary-branch">
+                            {currentWorkspace?.branch || 'detached'}
+                          </em>
+                        </span>
+                      </span>
+                      {/*
                   Phase K-followup — files-changed pill is now
                   always rendered (with "0 files changed" when no
                   diff yet). Fills the real-estate freed by removing
@@ -19022,8 +18953,8 @@ function App(): React.JSX.Element {
                   layout regression in the AGBench / Claude /
                   Gemini / Kimi shells.
                 */}
-                  <span className="composer-above-bar-files-cluster">
-                    {/*
+                      <span className="composer-above-bar-files-cluster">
+                        {/*
                     Order: files-changed pill FIRST, then the diff
                     stats (`+N -M`). Matches the user's stated
                     preference ("X files changed | +diff"). The
@@ -19031,130 +18962,134 @@ function App(): React.JSX.Element {
                     inherit this order too since the children
                     participate directly in the parent flex.
                   */}
-                    <span
-                      className="composer-above-bar-files"
-                      title={
-                        latestRunDiffStats.filesChanged > 0
-                          ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
-                          : 'No file changes from the most recent run'
-                      }
-                    >
-                      <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
-                      {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
-                    </span>
-                    {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
-                      <span className="composer-above-bar-stats">
-                        <span className="composer-diff-add">+{latestRunDiffStats.additions}</span>
-                        <span className="composer-diff-del">-{latestRunDiffStats.deletions}</span>
+                        <span
+                          className="composer-above-bar-files"
+                          title={
+                            latestRunDiffStats.filesChanged > 0
+                              ? `Latest run touched ${latestRunDiffStats.filesChanged} ${latestRunDiffStats.filesChanged === 1 ? 'file' : 'files'}`
+                              : 'No file changes from the most recent run'
+                          }
+                        >
+                          <strong>{latestRunDiffStats.filesChanged}</strong>{' '}
+                          {latestRunDiffStats.filesChanged === 1 ? 'file changed' : 'files changed'}
+                        </span>
+                        {(latestRunDiffStats.additions > 0 || latestRunDiffStats.deletions > 0) && (
+                          <span className="composer-above-bar-stats">
+                            <span className="composer-diff-add">
+                              +{latestRunDiffStats.additions}
+                            </span>
+                            <span className="composer-diff-del">
+                              -{latestRunDiffStats.deletions}
+                            </span>
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  {/*
+                      {/*
                     Composer-unification (Phase J1): once the chat has
                     activity, External Path + Worktree migrate from the
                     welcome-state satellite slot into the above-bar so
                     they sit alongside the workspace summary band the
                     user is already looking at.
                   */}
-                  <WorkspaceAccessControls
-                    variant="inline"
-                    provider={currentProvider}
-                    currentWorkspace={currentWorkspace}
-                    isCurrentGlobalChat={isCurrentGlobalChat}
-                    isCurrentComposerLocked={isCurrentComposerLocked}
-                    hasWorkspaceContext={hasWorkspaceContext}
-                    currentGeminiWorktree={currentGeminiWorktree}
-                    onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
-                    worktreeToggleLabel={worktreeToggleLabel}
-                    worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
-                  />
-                  {(() => {
-                    const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
-                    // 1.0.6-EW66-1d — primary workspace's PR state is now
-                    // read from the per-path map keyed by its own path.
-                    const primaryPrState = getCreatePrState(currentWorkspace?.path)
-                    const createPrLabel =
-                      primaryPrState.status === 'pending'
-                        ? 'Creating…'
-                        : primaryPrState.status === 'success'
-                          ? 'PR opened'
-                          : primaryPrState.status === 'error'
-                            ? 'Retry PR'
-                            : 'Create PR'
-                    const primaryLabel = hasReviewableDiff ? 'Review changes' : createPrLabel
-                    const actionClassName = `composer-above-bar-action ${primaryPrState.status === 'pending' ? 'is-pending' : ''} ${primaryPrState.status === 'error' ? 'is-error' : ''} ${primaryPrState.status === 'success' ? 'is-success' : ''}`
-                    return (
-                      <span className="composer-diff-action-menu-wrap">
-                        <button
-                          type="button"
-                          className={actionClassName}
-                          onClick={() => setDiffActionMenuOpen((open) => !open)}
-                          disabled={primaryPrState.status === 'pending'}
-                          aria-haspopup="menu"
-                          aria-expanded={diffActionMenuOpen}
-                          title={
-                            primaryPrState.message ||
-                            'Choose what to do with the current workspace changes'
-                          }
-                        >
-                          {primaryLabel}
-                        </button>
-                        {diffActionMenuOpen && (
-                          <div className="composer-diff-action-menu" role="menu">
+                      <WorkspaceAccessControls
+                        variant="inline"
+                        provider={currentProvider}
+                        currentWorkspace={currentWorkspace}
+                        isCurrentGlobalChat={isCurrentGlobalChat}
+                        isCurrentComposerLocked={isCurrentComposerLocked}
+                        hasWorkspaceContext={hasWorkspaceContext}
+                        currentGeminiWorktree={currentGeminiWorktree}
+                        onGeminiWorktreeToggle={onGeminiWorktreeToggleProp}
+                        worktreeToggleLabel={worktreeToggleLabel}
+                        worktreeDiffUnavailable={currentWorktreeDiffUnavailable}
+                      />
+                      {(() => {
+                        const hasReviewableDiff = latestRunDiffStats.filesChanged > 0
+                        // 1.0.6-EW66-1d — primary workspace's PR state is now
+                        // read from the per-path map keyed by its own path.
+                        const primaryPrState = getCreatePrState(currentWorkspace?.path)
+                        const createPrLabel =
+                          primaryPrState.status === 'pending'
+                            ? 'Creating…'
+                            : primaryPrState.status === 'success'
+                              ? 'PR opened'
+                              : primaryPrState.status === 'error'
+                                ? 'Retry PR'
+                                : 'Create PR'
+                        const primaryLabel = hasReviewableDiff ? 'Review changes' : createPrLabel
+                        const actionClassName = `composer-above-bar-action ${primaryPrState.status === 'pending' ? 'is-pending' : ''} ${primaryPrState.status === 'error' ? 'is-error' : ''} ${primaryPrState.status === 'success' ? 'is-success' : ''}`
+                        return (
+                          <span className="composer-diff-action-menu-wrap">
                             <button
                               type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setDiffActionMenuOpen(false)
-                                setRightTab('diff')
-                              }}
-                              disabled={!hasReviewableDiff}
-                              title={
-                                hasReviewableDiff
-                                  ? 'Open Diff Studio to review the latest run changes'
-                                  : 'No latest run diff is available yet'
-                              }
-                            >
-                              Review changes
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setDiffActionMenuOpen(false)
-                                handlePrimeCommitChangesPrompt()
-                              }}
-                              disabled={!hasReviewableDiff}
-                              title={
-                                hasReviewableDiff
-                                  ? 'Ask the current agent to review and commit these changes'
-                                  : 'No latest run diff is available to commit yet'
-                              }
-                            >
-                              Commit Changes
-                            </button>
-                            <button
-                              type="button"
-                              role="menuitem"
-                              onClick={() => {
-                                setDiffActionMenuOpen(false)
-                                void handleCreateGithubPr(currentWorkspace?.path)
-                              }}
+                              className={actionClassName}
+                              onClick={() => setDiffActionMenuOpen((open) => !open)}
                               disabled={primaryPrState.status === 'pending'}
+                              aria-haspopup="menu"
+                              aria-expanded={diffActionMenuOpen}
                               title={
                                 primaryPrState.message ||
-                                'Run `gh pr create --fill` against the current branch'
+                                'Choose what to do with the current workspace changes'
                               }
                             >
-                              {createPrLabel}
+                              {primaryLabel}
                             </button>
-                          </div>
-                        )}
-                      </span>
-                    )
-                  })()}
-                </div>
-                {/* Slice 3 of the external-path-redesign arc. One stacked
+                            {diffActionMenuOpen && (
+                              <div className="composer-diff-action-menu" role="menu">
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setDiffActionMenuOpen(false)
+                                    setRightTab('diff')
+                                  }}
+                                  disabled={!hasReviewableDiff}
+                                  title={
+                                    hasReviewableDiff
+                                      ? 'Open Diff Studio to review the latest run changes'
+                                      : 'No latest run diff is available yet'
+                                  }
+                                >
+                                  Review changes
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setDiffActionMenuOpen(false)
+                                    handlePrimeCommitChangesPrompt()
+                                  }}
+                                  disabled={!hasReviewableDiff}
+                                  title={
+                                    hasReviewableDiff
+                                      ? 'Ask the current agent to review and commit these changes'
+                                      : 'No latest run diff is available to commit yet'
+                                  }
+                                >
+                                  Commit Changes
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  onClick={() => {
+                                    setDiffActionMenuOpen(false)
+                                    void handleCreateGithubPr(currentWorkspace?.path)
+                                  }}
+                                  disabled={primaryPrState.status === 'pending'}
+                                  title={
+                                    primaryPrState.message ||
+                                    'Run `gh pr create --fill` against the current branch'
+                                  }
+                                >
+                                  {createPrLabel}
+                                </button>
+                              </div>
+                            )}
+                          </span>
+                        )
+                      })()}
+                    </div>
+                    {/* Slice 3 of the external-path-redesign arc. One stacked
                   row per external-path grant. Per-grant repo metadata
                   decides whether the row shows branch+repo-name or a
                   bare basename.
@@ -19164,21 +19099,21 @@ function App(): React.JSX.Element {
                   PR state is keyed by `grant.path`, so an ensemble's
                   several same-path write grants share one repo's PR
                   progress. READ grants keep the reference-only banner. */}
-                {externalPathGrants.map((grant) => (
-                  <ExternalPathAboveRow
-                    key={grant.id}
-                    grant={grant}
-                    repoMetadata={externalPathRepoMetadata[grant.id] || null}
-                    diffStats={
-                      externalPathLiveDiffByPath[grant.path] ||
-                      externalPathDiffStatsByGrant[grant.id]
-                    }
-                    onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
-                    createPrState={getCreatePrState(grant.path)}
-                    onCreatePr={(g) => handleCreateGithubPr(g.path)}
-                  />
-                ))}
-                </>
+                    {externalPathGrants.map((grant) => (
+                      <ExternalPathAboveRow
+                        key={grant.id}
+                        grant={grant}
+                        repoMetadata={externalPathRepoMetadata[grant.id] || null}
+                        diffStats={
+                          externalPathLiveDiffByPath[grant.path] ||
+                          externalPathDiffStatsByGrant[grant.id]
+                        }
+                        onRevoke={(g) => handleRemoveExternalPathGrant(g.id)}
+                        createPrState={getCreatePrState(grant.path)}
+                        onCreatePr={(g) => handleCreateGithubPr(g.path)}
+                      />
+                    ))}
+                  </>
                 )}
                 {/*
                   Slice F (1.0.3) — ensemble participants live in the
@@ -19205,9 +19140,7 @@ function App(): React.JSX.Element {
                         prev?.appChatId === updatedChat.appChatId ? updatedChat : prev
                       )
                       setChats((prev) =>
-                        prev.map((c) =>
-                          c.appChatId === updatedChat.appChatId ? updatedChat : c
-                        )
+                        prev.map((c) => (c.appChatId === updatedChat.appChatId ? updatedChat : c))
                       )
                       void window.api.saveChat(updatedChat)
                     }}
@@ -19240,8 +19173,7 @@ function App(): React.JSX.Element {
                           ...prev,
                           {
                             type: 'info',
-                            content:
-                              'Retry: no prior user prompt on this chat to re-dispatch with.'
+                            content: 'Retry: no prior user prompt on this chat to re-dispatch with.'
                           }
                         ])
                         return
@@ -19404,101 +19336,101 @@ function App(): React.JSX.Element {
                       className={`composer-textarea${composerHasMention ? ' has-mention-overlay' : ''}`}
                       ref={composerTextareaRef}
                       value={prompt}
-                onChange={(e) => {
-                  const nextValue = e.target.value
-                  // 1.0.4-AQ3 — snapshot the caret position from
-                  // the change event BEFORE React reconciles. The
-                  // restoration layout effect below reads this ref
-                  // and re-applies the caret after the className
-                  // flip + overlay mount that can land mid-keystroke
-                  // when an `@token` resolves.
-                  composerSelectionRef.current = {
-                    start: e.target.selectionStart ?? nextValue.length,
-                    end: e.target.selectionEnd ?? nextValue.length
-                  }
-                  composerCaretRestoreEpochRef.current += 1
-                  setPrompt(nextValue)
-                  // Composer popover coordinator: scan the text before the
-                  // caret for a leading `/<query>` token (start-of-line or
-                  // after whitespace), then for an `@<query>` mention token.
-                  // Whichever matches wins; the other is force-closed. Only
-                  // one popover open at a time.
-                  const caret = e.target.selectionStart ?? nextValue.length
-                  const before = nextValue.slice(0, caret)
-                  const slashMatch = before.match(/(?:^|\s)\/([\w-]*)$/)
-                  const mentionTrigger = !slashMatch
-                    ? parseComposerMentionTrigger(nextValue, caret)
-                    : null
-                  if (slashMatch) {
-                    // The `/` itself sits at `caret - slashQueryLen - 1`.
-                    const queryLen = slashMatch[1].length
-                    slashAnchorIndexRef.current = caret - queryLen - 1
-                    setSlashQuery(slashMatch[1] || '')
-                    setSlashMenuOpen(true)
-                    if (mentionMenuOpen) {
-                      setMentionMenuOpen(false)
-                      setMentionQuery('')
-                      mentionAnchorIndexRef.current = null
-                    }
-                  } else if (mentionTrigger) {
-                    mentionAnchorIndexRef.current = mentionTrigger.anchorIndex
-                    mentionTriggerLengthRef.current = mentionTrigger.triggerLength
-                    setMentionTriggerKind(mentionTrigger.kind)
-                    setMentionQuery(mentionTrigger.query)
-                    setMentionMenuOpen(true)
-                    if (slashMenuOpen) {
-                      setSlashMenuOpen(false)
-                      setSlashQuery('')
-                      slashAnchorIndexRef.current = null
-                    }
-                  } else {
-                    if (mentionMenuOpen) {
-                      setMentionMenuOpen(false)
-                      setMentionQuery('')
-                      mentionAnchorIndexRef.current = null
-                    }
-                    if (slashMenuOpen) {
-                      setSlashMenuOpen(false)
-                      setSlashQuery('')
-                      slashAnchorIndexRef.current = null
-                    }
-                  }
-                }}
-                placeholder={composerPlaceholder}
-                aria-label={composerAriaLabel}
-                rows={1}
-                disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                    e.preventDefault()
-                    triggerSendConfirmation()
-                    // DM target resolution order (first match wins):
-                    //   1. An explicit `@participant` mention in the
-                    //      prompt body (`ensemble-dm://` markdown link
-                    //      inserted by the mention picker).
-                    //   2. Legacy Cmd/Ctrl+Enter on a selected chip
-                    //      (A2 from 1.0.3 — kept so muscle memory
-                    //      still works).
-                    // Plain Enter with no mention + no modifier
-                    // dispatches the full round.
-                    const dmFromMention = isCurrentEnsembleChat
-                      ? extractFirstEnsembleDmTarget(
-                          prompt,
-                          currentChat?.ensemble?.participants
-                        )
-                      : null
-                    const dmTarget =
-                      dmFromMention ||
-                      (isCurrentEnsembleChat &&
-                      effectiveSelectedParticipantId &&
-                      (e.metaKey || e.ctrlKey)
-                        ? effectiveSelectedParticipantId
-                        : undefined)
-                    handleRun(undefined, undefined, dmTarget || undefined)
-                  }
-                }}
-              />
-              </div>
+                      onChange={(e) => {
+                        const nextValue = e.target.value
+                        // 1.0.4-AQ3 — snapshot the caret position from
+                        // the change event BEFORE React reconciles. The
+                        // restoration layout effect below reads this ref
+                        // and re-applies the caret after the className
+                        // flip + overlay mount that can land mid-keystroke
+                        // when an `@token` resolves.
+                        composerSelectionRef.current = {
+                          start: e.target.selectionStart ?? nextValue.length,
+                          end: e.target.selectionEnd ?? nextValue.length
+                        }
+                        composerCaretRestoreEpochRef.current += 1
+                        setPrompt(nextValue)
+                        // Composer popover coordinator: scan the text before the
+                        // caret for a leading `/<query>` token (start-of-line or
+                        // after whitespace), then for an `@<query>` mention token.
+                        // Whichever matches wins; the other is force-closed. Only
+                        // one popover open at a time.
+                        const caret = e.target.selectionStart ?? nextValue.length
+                        const before = nextValue.slice(0, caret)
+                        const slashMatch = before.match(/(?:^|\s)\/([\w-]*)$/)
+                        const mentionTrigger = !slashMatch
+                          ? parseComposerMentionTrigger(nextValue, caret)
+                          : null
+                        if (slashMatch) {
+                          // The `/` itself sits at `caret - slashQueryLen - 1`.
+                          const queryLen = slashMatch[1].length
+                          slashAnchorIndexRef.current = caret - queryLen - 1
+                          setSlashQuery(slashMatch[1] || '')
+                          setSlashMenuOpen(true)
+                          if (mentionMenuOpen) {
+                            setMentionMenuOpen(false)
+                            setMentionQuery('')
+                            mentionAnchorIndexRef.current = null
+                          }
+                        } else if (mentionTrigger) {
+                          mentionAnchorIndexRef.current = mentionTrigger.anchorIndex
+                          mentionTriggerLengthRef.current = mentionTrigger.triggerLength
+                          setMentionTriggerKind(mentionTrigger.kind)
+                          setMentionQuery(mentionTrigger.query)
+                          setMentionMenuOpen(true)
+                          if (slashMenuOpen) {
+                            setSlashMenuOpen(false)
+                            setSlashQuery('')
+                            slashAnchorIndexRef.current = null
+                          }
+                        } else {
+                          if (mentionMenuOpen) {
+                            setMentionMenuOpen(false)
+                            setMentionQuery('')
+                            mentionAnchorIndexRef.current = null
+                          }
+                          if (slashMenuOpen) {
+                            setSlashMenuOpen(false)
+                            setSlashQuery('')
+                            slashAnchorIndexRef.current = null
+                          }
+                        }
+                      }}
+                      placeholder={composerPlaceholder}
+                      aria-label={composerAriaLabel}
+                      rows={1}
+                      disabled={!currentChat || (!isCurrentGlobalChat && !currentWorkspace)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                          e.preventDefault()
+                          triggerSendConfirmation()
+                          // DM target resolution order (first match wins):
+                          //   1. An explicit `@participant` mention in the
+                          //      prompt body (`ensemble-dm://` markdown link
+                          //      inserted by the mention picker).
+                          //   2. Legacy Cmd/Ctrl+Enter on a selected chip
+                          //      (A2 from 1.0.3 — kept so muscle memory
+                          //      still works).
+                          // Plain Enter with no mention + no modifier
+                          // dispatches the full round.
+                          const dmFromMention = isCurrentEnsembleChat
+                            ? extractFirstEnsembleDmTarget(
+                                prompt,
+                                currentChat?.ensemble?.participants
+                              )
+                            : null
+                          const dmTarget =
+                            dmFromMention ||
+                            (isCurrentEnsembleChat &&
+                            effectiveSelectedParticipantId &&
+                            (e.metaKey || e.ctrlKey)
+                              ? effectiveSelectedParticipantId
+                              : undefined)
+                          handleRun(undefined, undefined, dmTarget || undefined)
+                        }
+                      }}
+                    />
+                  </div>
                 )
               })()}
               <ComposerSlashMenu
@@ -19535,9 +19467,7 @@ function App(): React.JSX.Element {
                 query={mentionQuery}
                 triggerKind={mentionTriggerKind}
                 ensembleParticipants={
-                  isCurrentEnsembleChat
-                    ? currentChat?.ensemble?.participants
-                    : undefined
+                  isCurrentEnsembleChat ? currentChat?.ensemble?.participants : undefined
                 }
                 onDismiss={() => {
                   setMentionMenuOpen(false)
@@ -19604,741 +19534,755 @@ function App(): React.JSX.Element {
                 exactly as before.
               */}
               <div className="composer-bottom-controls">
-              <div className="composer-control-footer">
-                {imageAttachments.length > 0 && (
-                  <div className="composer-image-strip">
-                    {imageAttachments.map((image) => (
-                      <div key={image.id} className="composer-image-item">
-                        {isImageAttachmentPath(image.path) ? (
-                          <img
-                            src={getImagePreviewSrc(image.path)}
-                            alt={image.name}
-                            className="composer-image-thumb"
-                          />
-                        ) : (
-                          <span className="composer-attachment-icon" title={image.name}>
-                            <FileTypeIcon
-                              path={image.path}
-                              size={14}
-                              className="composer-attachment-icon-inner"
-                              workspacePath={currentWorkspace?.path}
+                <div className="composer-control-footer">
+                  {imageAttachments.length > 0 && (
+                    <div className="composer-image-strip">
+                      {imageAttachments.map((image) => (
+                        <div key={image.id} className="composer-image-item">
+                          {isImageAttachmentPath(image.path) ? (
+                            <img
+                              src={getImagePreviewSrc(image.path)}
+                              alt={image.name}
+                              className="composer-image-thumb"
                             />
-                          </span>
-                        )}
-                        <span className="composer-image-name" title={image.path}>
-                          {image.name}
-                        </span>
-                        <button
-                          className="composer-image-remove"
-                          type="button"
-                          onClick={() => handleRemoveImageAttachment(image.id)}
-                          disabled={isCurrentComposerLocked}
-                          title="Remove attachment"
-                        >
-                          <XSymbolIcon />
-                        </button>
-                      </div>
-                    ))}
-                    <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
-                  </div>
-                )}
-                {currentProvider === 'codex' &&
-                  !isCurrentGlobalChat &&
-                  externalPathGrants.length > 0 && (
-                    <div className="composer-image-strip composer-external-grant-strip">
-                      {externalPathGrants.map((grant) => (
-                        <div
-                          key={grant.id}
-                          className={`composer-image-item external-grant access-${grant.access}`}
-                        >
-                          <PermissionSymbolIcon />
-                          <span className="composer-image-name" title={grant.path}>
-                            {grant.access === 'write' ? 'Edit' : 'Read'} {grant.kind}: {grant.path}
+                          ) : (
+                            <span className="composer-attachment-icon" title={image.name}>
+                              <FileTypeIcon
+                                path={image.path}
+                                size={14}
+                                className="composer-attachment-icon-inner"
+                                workspacePath={currentWorkspace?.path}
+                              />
+                            </span>
+                          )}
+                          <span className="composer-image-name" title={image.path}>
+                            {image.name}
                           </span>
                           <button
                             className="composer-image-remove"
                             type="button"
-                            onClick={() => handleRemoveExternalPathGrant(grant.id)}
+                            onClick={() => handleRemoveImageAttachment(image.id)}
                             disabled={isCurrentComposerLocked}
-                            title="Revoke external path grant"
+                            title="Remove attachment"
                           >
                             <XSymbolIcon />
                           </button>
                         </div>
                       ))}
+                      <span className="composer-image-count">{`${imageAttachments.length}/${MAX_IMAGE_ATTACHMENTS}`}</span>
                     </div>
                   )}
-                {permissionRequestPaths.length > 0 && (
-                  <div className="composer-permission-card">
-                    <div className="composer-permission-title">
-                      <span>{permissionRequestTitle}</span>
-                      {permissionRequestSource && (
-                        <span className="composer-permission-source">
-                          {permissionRequestSource}
-                        </span>
-                      )}
-                    </div>
-                    {permissionRequestMessage && (
-                      <div className="composer-permission-message">{permissionRequestMessage}</div>
-                    )}
-                    <div className="composer-permission-paths">
-                      {permissionRequestPaths.map((path) => (
-                        <span key={path} className="composer-permission-path">
-                          {path}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="composer-permission-actions">
-                      <button className="btn btn-sm" type="button" onClick={handlePermissionRetry}>
-                        Add paths and rerun
-                      </button>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        type="button"
-                        onClick={clearImagePermissions}
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {/* Phase J3: session-scoped YOLO indicator. Visible when the
-                    user has clicked "Trust this session" — every subsequent
-                    approval auto-allows. Includes a one-click disable.
-                    Slice A: dismissible via the inline ✕ button; the
-                    collapsed state is represented by `.composer-yolo-chip`
-                    in the action row below. */}
-                {sessionYoloMode.enabled && !yoloBannerDismissed && (
-                  <div
-                    className="composer-permission-card provider-yolo"
-                    style={{
-                      background: 'rgba(244, 162, 97, 0.12)',
-                      borderColor: 'rgba(244, 162, 97, 0.5)'
-                    }}
-                  >
-                    <div className="composer-permission-title">
-                      <span>Trust mode active — every approval auto-allowed</span>
-                      <span className="composer-permission-source">YOLO</span>
-                    </div>
-                    <div className="composer-permission-message">
-                      Approval modals will be skipped for the rest of this app session. Global Deny
-                      policies still apply. Restart the app to revert, or disable here.
-                    </div>
-                    <div className="composer-permission-actions">
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        type="button"
-                        onClick={async () => {
-                          try {
-                            await window.api.agenticYoloSet(false)
-                          } catch (error) {
-                            console.error('Failed to disable YOLO session mode', error)
-                          }
-                        }}
-                      >
-                        Disable trust mode
-                      </button>
-                      <button
-                        className="btn btn-sm btn-ghost composer-yolo-banner-dismiss"
-                        type="button"
-                        onClick={() => setYoloBannerDismissed(true)}
-                        title="Hide this banner (trust mode stays on)"
-                        aria-label="Dismiss trust mode banner"
-                      >
-                        ✕ Dismiss
-                      </button>
-                    </div>
-                  </div>
-                )}
-                {pendingAgentApproval && (
-                  <div
-                    className={`composer-permission-card provider-${pendingAgentApproval.provider}`}
-                  >
-                    <div className="composer-permission-title">
-                      <span>{pendingAgentApproval.title}</span>
-                      <span className="composer-permission-source">
-                        {getProviderLabel(pendingAgentApproval.provider)}
-                        {/* 1.0.4-AK4 — surface the queue depth so the
-                            user knows other approvals are waiting on
-                            this same chat. Common case (single
-                            approval at a time) shows nothing extra. */}
-                        {(() => {
-                          const queue =
-                            currentComposerChatId
-                              ? pendingApprovalQueueByChatId[currentComposerChatId] || []
-                              : []
-                          if (queue.length === 0) return null
-                          return (
-                            <span
-                              className="composer-permission-queue-badge"
-                              title={`${queue.length} more approval${
-                                queue.length === 1 ? '' : 's'
-                              } queued behind this one — they appear in order as you respond.`}
-                            >
-                              +{queue.length} more
+                  {currentProvider === 'codex' &&
+                    !isCurrentGlobalChat &&
+                    externalPathGrants.length > 0 && (
+                      <div className="composer-image-strip composer-external-grant-strip">
+                        {externalPathGrants.map((grant) => (
+                          <div
+                            key={grant.id}
+                            className={`composer-image-item external-grant access-${grant.access}`}
+                          >
+                            <PermissionSymbolIcon />
+                            <span className="composer-image-name" title={grant.path}>
+                              {grant.access === 'write' ? 'Edit' : 'Read'} {grant.kind}:{' '}
+                              {grant.path}
                             </span>
-                          )
-                        })()}
-                      </span>
-                    </div>
-                    {pendingAgentApproval.body && (
-                      <div className="composer-permission-message">{pendingAgentApproval.body}</div>
-                    )}
-                    {/* Slice 4 of the external-path-redesign arc.
-                        When the runtime detector emits an external-path
-                        approval, it stashes the detected path under
-                        `preview.externalPathDetection`. Render it
-                        prominently so the user knows WHICH path they're
-                        granting before clicking the action button. */}
-                    {pendingAgentApproval.preview?.externalPathDetection?.path && (
-                      <div className="composer-permission-external-path">
-                        <span className="composer-permission-external-path-label">Path</span>
-                        <code className="composer-permission-external-path-value">
-                          {pendingAgentApproval.preview.externalPathDetection.path}
-                        </code>
+                            <button
+                              className="composer-image-remove"
+                              type="button"
+                              onClick={() => handleRemoveExternalPathGrant(grant.id)}
+                              disabled={isCurrentComposerLocked}
+                              title="Revoke external path grant"
+                            >
+                              <XSymbolIcon />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
-                    {renderAgentApprovalPreview(pendingAgentApproval.preview)}
-                    <div className="composer-permission-actions">
-                      {(pendingAgentApproval.actions || ['accept']).includes('accept') && (
-                        <button
-                          className="btn btn-sm"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(pendingAgentApproval.id, 'accept')
-                          }
-                        >
-                          {pendingAgentApproval.method === 'hostCommand/rerun'
-                            ? 'Rerun outside sandbox'
-                            : 'Allow once'}
-                        </button>
-                      )}
-                      {(pendingAgentApproval.actions || []).includes('acceptForWorkspace') && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'acceptForWorkspace'
-                            )
-                          }
-                        >
-                          Allow in workspace
-                        </button>
-                      )}
-                      {(pendingAgentApproval.actions || ['acceptForSession']).includes(
-                        'acceptForSession'
-                      ) && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'acceptForSession'
-                            )
-                          }
-                        >
-                          Allow for session
-                        </button>
-                      )}
-                      {/* Phase J3: "Trust this run" — accept the current modal AND enable
-                          session-wide YOLO so every subsequent approval auto-allows for
-                          the rest of the process lifetime. Never persisted to disk.
-                          Global `deny` policies still win. */}
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        type="button"
-                        title="Auto-allow every approval prompt for the rest of this session. Restart the app to revert. Doesn't override globally-denied services."
-                        onClick={async () => {
-                          try {
-                            await window.api.agenticYoloSet(true)
-                          } catch (error) {
-                            console.error('Failed to enable YOLO session mode', error)
-                          }
-                          await handleAgentApprovalAction(
-                            pendingAgentApproval.id,
-                            'acceptForSession'
-                          )
-                        }}
-                      >
-                        Trust this session
-                      </button>
-                      {(pendingAgentApproval.actions || ['decline']).includes('decline') && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(pendingAgentApproval.id, 'decline')
-                          }
-                        >
-                          Deny
-                        </button>
-                      )}
-                      {(pendingAgentApproval.actions || ['cancel']).includes('cancel') && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(pendingAgentApproval.id, 'cancel')
-                          }
-                        >
-                          Cancel run
-                        </button>
-                      )}
-                      {/* Slice 4 external-path actions — only render when
-                          the runtime detector emitted the new action
-                          triplet. The generic accept/decline buttons
-                          above won't match those approvals' action list,
-                          so only these three appear for external-path
-                          prompts. */}
-                      {(pendingAgentApproval.actions || []).includes('grantExternalPathRead') && (
-                        <button
-                          className="btn btn-sm btn-primary"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'grantExternalPathRead'
-                            )
-                          }
-                        >
-                          Grant read access
-                        </button>
-                      )}
-                      {(pendingAgentApproval.actions || []).includes('grantExternalPathEdit') && (
-                        <button
-                          className="btn btn-sm"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'grantExternalPathEdit'
-                            )
-                          }
-                        >
-                          Grant edit access
-                        </button>
-                      )}
-                      {(pendingAgentApproval.actions || []).includes('declineExternalPath') && (
-                        <button
-                          className="btn btn-sm btn-ghost"
-                          type="button"
-                          onClick={() =>
-                            void handleAgentApprovalAction(
-                              pendingAgentApproval.id,
-                              'declineExternalPath'
-                            )
-                          }
-                        >
-                          Deny once
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {isCommandPaletteOpen && (
-                  <div className="composer-discovery-card command-palette-card">
-                    <div className="composer-discovery-header">
-                      <div>
-                        <strong>
-                          {currentProvider === 'gemini'
-                            ? 'Slash command palette'
-                            : `${currentProviderLabel} command palette`}
-                        </strong>
-                        <span>
-                          {currentProvider === 'gemini'
-                            ? commandDiscoveryStatus
-                            : `App-native ${currentProviderLabel} commands and provider controls.`}
-                        </span>
-                      </div>
-                      <div className="composer-discovery-actions">
-                        {currentProvider === 'gemini' ? (
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            type="button"
-                            onClick={() => void refreshCommandDiscovery()}
-                            disabled={!currentWorkspace}
-                          >
-                            Refresh
-                          </button>
-                        ) : currentProvider === 'codex' ? (
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            type="button"
-                            onClick={() => void refreshCodexThreads()}
-                            disabled={!currentWorkspace}
-                          >
-                            Refresh threads
-                          </button>
-                        ) : (
-                          <button
-                            className="btn btn-sm btn-ghost"
-                            type="button"
-                            onClick={() => void refreshProviderMetadata(currentProvider)}
-                            disabled={!currentWorkspace}
-                          >
-                            Refresh status
-                          </button>
+                  {permissionRequestPaths.length > 0 && (
+                    <div className="composer-permission-card">
+                      <div className="composer-permission-title">
+                        <span>{permissionRequestTitle}</span>
+                        {permissionRequestSource && (
+                          <span className="composer-permission-source">
+                            {permissionRequestSource}
+                          </span>
                         )}
+                      </div>
+                      {permissionRequestMessage && (
+                        <div className="composer-permission-message">
+                          {permissionRequestMessage}
+                        </div>
+                      )}
+                      <div className="composer-permission-paths">
+                        {permissionRequestPaths.map((path) => (
+                          <span key={path} className="composer-permission-path">
+                            {path}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="composer-permission-actions">
+                        <button
+                          className="btn btn-sm"
+                          type="button"
+                          onClick={handlePermissionRetry}
+                        >
+                          Add paths and rerun
+                        </button>
                         <button
                           className="btn btn-sm btn-ghost"
                           type="button"
-                          onClick={() => {
-                            setIsCommandPaletteOpen(false)
-                            setCommandPaletteQuery('')
-                          }}
+                          onClick={clearImagePermissions}
                         >
                           Dismiss
                         </button>
                       </div>
                     </div>
-                    <input
-                      className="command-palette-search"
-                      type="search"
-                      aria-label={`Filter ${currentProviderLabel} commands`}
-                      value={commandPaletteQuery}
-                      onChange={(event) => setCommandPaletteQuery(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape') {
-                          setIsCommandPaletteOpen(false)
-                          setCommandPaletteQuery('')
-                        }
+                  )}
+                  {/* Phase J3: session-scoped YOLO indicator. Visible when the
+                    user has clicked "Trust this session" — every subsequent
+                    approval auto-allows. Includes a one-click disable.
+                    Slice A: dismissible via the inline ✕ button; the
+                    collapsed state is represented by `.composer-yolo-chip`
+                    in the action row below. */}
+                  {sessionYoloMode.enabled && !yoloBannerDismissed && (
+                    <div
+                      className="composer-permission-card provider-yolo"
+                      style={{
+                        background: 'rgba(244, 162, 97, 0.12)',
+                        borderColor: 'rgba(244, 162, 97, 0.5)'
                       }}
-                      placeholder={
-                        currentProvider === 'gemini'
-                          ? 'Filter commands, memory, hooks...'
-                          : `Filter ${currentProviderLabel} commands...`
-                      }
-                      autoFocus
-                    />
-                    <div className="command-palette-list">
-                      {commandPaletteGroups.map((group) => {
-                        const groupItems = visibleCommandPaletteItems.filter(
-                          (item) => item.group === group
-                        )
-                        if (groupItems.length === 0) return null
-                        return (
-                          <div key={group} className="command-palette-group">
-                            <div className="command-palette-group-title">{group}</div>
-                            {groupItems.map((item) => (
-                              <button
-                                key={item.id}
-                                className="command-palette-item"
-                                type="button"
-                                onClick={() => handlePaletteCommand(item)}
-                                disabled={!currentWorkspace || !currentChat}
-                                title={
-                                  currentProvider === 'gemini'
-                                    ? `Send ${item.command} to Gemini CLI`
-                                    : `Run ${item.command}`
-                                }
-                              >
-                                <span className="command-palette-command">{item.command}</span>
-                                <span className="command-palette-copy">
-                                  <strong>{item.label}</strong>
-                                  <span>{item.description}</span>
-                                  {item.sourcePath && <small>{item.sourcePath}</small>}
-                                </span>
-                              </button>
-                            ))}
-                          </div>
-                        )
-                      })}
-                      {visibleCommandPaletteItems.length === 0 && (
-                        <div className="command-palette-empty">No commands match this filter.</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {currentProvider === 'gemini' && isMemoryInspectorOpen && (
-                  <div className="composer-discovery-card memory-inspector-card">
-                    <div className="composer-discovery-header">
-                      <div>
-                        <strong>GEMINI.md memory</strong>
-                        <span>{geminiMemoryStatus}</span>
+                    >
+                      <div className="composer-permission-title">
+                        <span>Trust mode active — every approval auto-allowed</span>
+                        <span className="composer-permission-source">YOLO</span>
                       </div>
-                      <button
-                        className="btn btn-sm btn-ghost"
-                        type="button"
-                        onClick={() => void refreshGeminiMemory()}
-                        disabled={!currentWorkspace}
-                      >
-                        Refresh
-                      </button>
-                    </div>
-                    <div className="memory-inspector-actions">
-                      {COMMAND_PALETTE_CORE.filter((item) => item.group === 'Memory').map(
-                        (item) => (
-                          <button
-                            key={item.id}
-                            className="composer-picker-command"
-                            type="button"
-                            onClick={() => void handleBridgeCommand(item.command)}
-                            disabled={!currentWorkspace || !currentChat}
-                          >
-                            <span className="composer-picker-command-slash">{item.command}</span>
-                          </button>
-                        )
-                      )}
-                    </div>
-                    <div className="memory-file-list">
-                      {geminiMemoryFiles.map((file) => (
-                        <details key={file.id} className="memory-file-card">
-                          <summary>
-                            <span className={`memory-file-scope scope-${file.scope}`}>
-                              {file.scope}
-                            </span>
-                            <span className="memory-file-path">{file.displayPath}</span>
-                            {file.sizeBytes !== undefined && (
-                              <span className="memory-file-size">{file.sizeBytes} bytes</span>
-                            )}
-                          </summary>
-                          <pre
-                            className={`memory-file-content ${file.error ? 'memory-file-error' : ''}`}
-                          >
-                            {getMemoryPreviewText(file)}
-                          </pre>
-                        </details>
-                      ))}
-                      {geminiMemoryFiles.length === 0 && (
-                        <div className="memory-file-empty">No GEMINI.md files discovered yet.</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                <div className="composer-inline-pickers">
-                  <div className="composer-inline-pickers-left">
-                    {(() => {
-                      const workspaceActionDisabled = !currentWorkspace || !currentChat
-                      const plusSections: ComposerPlusPickerSection[] = [
-                        {
-                          id: 'add',
-                          title: 'Add',
-                          items: [
-                            {
-                              id: 'attachment',
-                              label: 'Attachment',
-                              description: 'Add files or images',
-                              icon: <PlusSymbolIcon />,
-                              disabled: isCurrentComposerLocked,
-                              onSelect: handlePickImages
-                            },
-                            {
-                              id: 'attached-window',
-                              label: attachedWindow ? 'Detach app' : 'Attach app',
-                              description: attachedWindow
-                                ? attachedWindow.streaming
-                                  ? 'Stop live capture and detach'
-                                  : 'Detach the picked window'
-                                : 'Pick a running app window',
-                              icon: <CommandSymbolIcon />,
-                              disabled:
-                                isCurrentComposerLocked || (!attachedWindow && isAttachingWindow),
-                              onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
+                      <div className="composer-permission-message">
+                        Approval modals will be skipped for the rest of this app session. Global
+                        Deny policies still apply. Restart the app to revert, or disable here.
+                      </div>
+                      <div className="composer-permission-actions">
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await window.api.agenticYoloSet(false)
+                            } catch (error) {
+                              console.error('Failed to disable YOLO session mode', error)
                             }
-                          ]
-                        },
-                        {
-                          id: 'workspace',
-                          title: 'Workspace',
-                          items: isCurrentGlobalChat
-                            ? []
-                            : [
-                                {
-                                  id: 'safety',
-                                  label: 'Status',
-                                  description: `${currentProviderLabel} safety and setup`,
-                                  icon: <TrustSymbolIcon />,
-                                  disabled: workspaceActionDisabled,
-                                  onSelect: () => setRightTab('safety')
-                                },
-                                {
-                                  id: 'diff',
-                                  label: 'Diff Studio',
-                                  description: `${currentProviderLabel} workspace changes`,
-                                  icon: <FileMenuSelectionIcon />,
-                                  disabled: workspaceActionDisabled,
-                                  onSelect: () => setRightTab('diff')
-                                },
-                                {
-                                  id: 'capabilities',
-                                  label: 'Models',
-                                  description: `${currentProviderLabel} capability state`,
-                                  icon: <ModelSymbolIcon />,
-                                  disabled: workspaceActionDisabled,
-                                  onSelect: () => setRightTab('capabilities')
-                                }
-                              ]
-                        },
-                        {
-                          id: 'commands',
-                          title: 'Commands',
-                          items: isCurrentGlobalChat
-                            ? []
-                            : [
-                                {
-                                  id: 'palette',
-                                  label:
-                                    currentProvider === 'gemini'
-                                      ? 'Slash commands'
-                                      : 'Command palette',
-                                  description:
-                                    currentProvider === 'gemini'
-                                      ? 'Gemini slash command palette'
-                                      : `${currentProviderLabel} command palette`,
-                                  icon: <CommandSymbolIcon />,
-                                  active: isCommandPaletteOpen,
-                                  disabled: workspaceActionDisabled,
-                                  onSelect: () => setIsCommandPaletteOpen((current) => !current)
-                                },
-                                {
-                                  id: 'review',
-                                  label: isPreparingDiffReview ? 'Preparing review' : 'Review diff',
-                                  description: 'Read-only plan-mode review',
-                                  icon: <ReviewSymbolIcon />,
-                                  disabled: workspaceActionDisabled || isPreparingDiffReview,
-                                  onSelect: () => void handleReviewCurrentDiff()
-                                }
-                              ]
+                          }}
+                        >
+                          Disable trust mode
+                        </button>
+                        <button
+                          className="btn btn-sm btn-ghost composer-yolo-banner-dismiss"
+                          type="button"
+                          onClick={() => setYoloBannerDismissed(true)}
+                          title="Hide this banner (trust mode stays on)"
+                          aria-label="Dismiss trust mode banner"
+                        >
+                          ✕ Dismiss
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {pendingAgentApproval && (
+                    <div
+                      className={`composer-permission-card provider-${pendingAgentApproval.provider}`}
+                    >
+                      <div className="composer-permission-title">
+                        <span>{pendingAgentApproval.title}</span>
+                        <span className="composer-permission-source">
+                          {getProviderLabel(pendingAgentApproval.provider)}
+                          {/* 1.0.4-AK4 — surface the queue depth so the
+                            user knows other approvals are waiting on
+                            this same chat. Common case (single
+                            approval at a time) shows nothing extra. */}
+                          {(() => {
+                            const queue = currentComposerChatId
+                              ? pendingApprovalQueueByChatId[currentComposerChatId] || []
+                              : []
+                            if (queue.length === 0) return null
+                            return (
+                              <span
+                                className="composer-permission-queue-badge"
+                                title={`${queue.length} more approval${
+                                  queue.length === 1 ? '' : 's'
+                                } queued behind this one — they appear in order as you respond.`}
+                              >
+                                +{queue.length} more
+                              </span>
+                            )
+                          })()}
+                        </span>
+                      </div>
+                      {pendingAgentApproval.body && (
+                        <div className="composer-permission-message">
+                          {pendingAgentApproval.body}
+                        </div>
+                      )}
+                      {/* Slice 4 of the external-path-redesign arc.
+                        When the runtime detector emits an external-path
+                        approval, it stashes the detected path under
+                        `preview.externalPathDetection`. Render it
+                        prominently so the user knows WHICH path they're
+                        granting before clicking the action button. */}
+                      {pendingAgentApproval.preview?.externalPathDetection?.path && (
+                        <div className="composer-permission-external-path">
+                          <span className="composer-permission-external-path-label">Path</span>
+                          <code className="composer-permission-external-path-value">
+                            {pendingAgentApproval.preview.externalPathDetection.path}
+                          </code>
+                        </div>
+                      )}
+                      {renderAgentApprovalPreview(pendingAgentApproval.preview)}
+                      <div className="composer-permission-actions">
+                        {(pendingAgentApproval.actions || ['accept']).includes('accept') && (
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(pendingAgentApproval.id, 'accept')
+                            }
+                          >
+                            {pendingAgentApproval.method === 'hostCommand/rerun'
+                              ? 'Rerun outside sandbox'
+                              : 'Allow once'}
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || []).includes('acceptForWorkspace') && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'acceptForWorkspace'
+                              )
+                            }
+                          >
+                            Allow in workspace
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || ['acceptForSession']).includes(
+                          'acceptForSession'
+                        ) && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'acceptForSession'
+                              )
+                            }
+                          >
+                            Allow for session
+                          </button>
+                        )}
+                        {/* Phase J3: "Trust this run" — accept the current modal AND enable
+                          session-wide YOLO so every subsequent approval auto-allows for
+                          the rest of the process lifetime. Never persisted to disk.
+                          Global `deny` policies still win. */}
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          type="button"
+                          title="Auto-allow every approval prompt for the rest of this session. Restart the app to revert. Doesn't override globally-denied services."
+                          onClick={async () => {
+                            try {
+                              await window.api.agenticYoloSet(true)
+                            } catch (error) {
+                              console.error('Failed to enable YOLO session mode', error)
+                            }
+                            await handleAgentApprovalAction(
+                              pendingAgentApproval.id,
+                              'acceptForSession'
+                            )
+                          }}
+                        >
+                          Trust this session
+                        </button>
+                        {(pendingAgentApproval.actions || ['decline']).includes('decline') && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(pendingAgentApproval.id, 'decline')
+                            }
+                          >
+                            Deny
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || ['cancel']).includes('cancel') && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(pendingAgentApproval.id, 'cancel')
+                            }
+                          >
+                            Cancel run
+                          </button>
+                        )}
+                        {/* Slice 4 external-path actions — only render when
+                          the runtime detector emitted the new action
+                          triplet. The generic accept/decline buttons
+                          above won't match those approvals' action list,
+                          so only these three appear for external-path
+                          prompts. */}
+                        {(pendingAgentApproval.actions || []).includes('grantExternalPathRead') && (
+                          <button
+                            className="btn btn-sm btn-primary"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'grantExternalPathRead'
+                              )
+                            }
+                          >
+                            Grant read access
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || []).includes('grantExternalPathEdit') && (
+                          <button
+                            className="btn btn-sm"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'grantExternalPathEdit'
+                              )
+                            }
+                          >
+                            Grant edit access
+                          </button>
+                        )}
+                        {(pendingAgentApproval.actions || []).includes('declineExternalPath') && (
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() =>
+                              void handleAgentApprovalAction(
+                                pendingAgentApproval.id,
+                                'declineExternalPath'
+                              )
+                            }
+                          >
+                            Deny once
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {isCommandPaletteOpen && (
+                    <div className="composer-discovery-card command-palette-card">
+                      <div className="composer-discovery-header">
+                        <div>
+                          <strong>
+                            {currentProvider === 'gemini'
+                              ? 'Slash command palette'
+                              : `${currentProviderLabel} command palette`}
+                          </strong>
+                          <span>
+                            {currentProvider === 'gemini'
+                              ? commandDiscoveryStatus
+                              : `App-native ${currentProviderLabel} commands and provider controls.`}
+                          </span>
+                        </div>
+                        <div className="composer-discovery-actions">
+                          {currentProvider === 'gemini' ? (
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              type="button"
+                              onClick={() => void refreshCommandDiscovery()}
+                              disabled={!currentWorkspace}
+                            >
+                              Refresh
+                            </button>
+                          ) : currentProvider === 'codex' ? (
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              type="button"
+                              onClick={() => void refreshCodexThreads()}
+                              disabled={!currentWorkspace}
+                            >
+                              Refresh threads
+                            </button>
+                          ) : (
+                            <button
+                              className="btn btn-sm btn-ghost"
+                              type="button"
+                              onClick={() => void refreshProviderMetadata(currentProvider)}
+                              disabled={!currentWorkspace}
+                            >
+                              Refresh status
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-sm btn-ghost"
+                            type="button"
+                            onClick={() => {
+                              setIsCommandPaletteOpen(false)
+                              setCommandPaletteQuery('')
+                            }}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                      <input
+                        className="command-palette-search"
+                        type="search"
+                        aria-label={`Filter ${currentProviderLabel} commands`}
+                        value={commandPaletteQuery}
+                        onChange={(event) => setCommandPaletteQuery(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Escape') {
+                            setIsCommandPaletteOpen(false)
+                            setCommandPaletteQuery('')
+                          }
+                        }}
+                        placeholder={
+                          currentProvider === 'gemini'
+                            ? 'Filter commands, memory, hooks...'
+                            : `Filter ${currentProviderLabel} commands...`
                         }
-                      ]
-                      return (
-                        <ComposerPlusPicker
-                          provider={currentProvider}
-                          composerStyle={appearance.composerStyle}
-                          sections={plusSections}
-                          disabled={isCurrentComposerLocked}
-                          triggerIcon={<PlusSymbolIcon />}
-                        />
-                      )
-                    })()}
-                    {/* 1.0.4-AS3 — the old name-pill (Application × ) is gone;
+                        autoFocus
+                      />
+                      <div className="command-palette-list">
+                        {commandPaletteGroups.map((group) => {
+                          const groupItems = visibleCommandPaletteItems.filter(
+                            (item) => item.group === group
+                          )
+                          if (groupItems.length === 0) return null
+                          return (
+                            <div key={group} className="command-palette-group">
+                              <div className="command-palette-group-title">{group}</div>
+                              {groupItems.map((item) => (
+                                <button
+                                  key={item.id}
+                                  className="command-palette-item"
+                                  type="button"
+                                  onClick={() => handlePaletteCommand(item)}
+                                  disabled={!currentWorkspace || !currentChat}
+                                  title={
+                                    currentProvider === 'gemini'
+                                      ? `Send ${item.command} to Gemini CLI`
+                                      : `Run ${item.command}`
+                                  }
+                                >
+                                  <span className="command-palette-command">{item.command}</span>
+                                  <span className="command-palette-copy">
+                                    <strong>{item.label}</strong>
+                                    <span>{item.description}</span>
+                                    {item.sourcePath && <small>{item.sourcePath}</small>}
+                                  </span>
+                                </button>
+                              ))}
+                            </div>
+                          )
+                        })}
+                        {visibleCommandPaletteItems.length === 0 && (
+                          <div className="command-palette-empty">
+                            No commands match this filter.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  {currentProvider === 'gemini' && isMemoryInspectorOpen && (
+                    <div className="composer-discovery-card memory-inspector-card">
+                      <div className="composer-discovery-header">
+                        <div>
+                          <strong>GEMINI.md memory</strong>
+                          <span>{geminiMemoryStatus}</span>
+                        </div>
+                        <button
+                          className="btn btn-sm btn-ghost"
+                          type="button"
+                          onClick={() => void refreshGeminiMemory()}
+                          disabled={!currentWorkspace}
+                        >
+                          Refresh
+                        </button>
+                      </div>
+                      <div className="memory-inspector-actions">
+                        {COMMAND_PALETTE_CORE.filter((item) => item.group === 'Memory').map(
+                          (item) => (
+                            <button
+                              key={item.id}
+                              className="composer-picker-command"
+                              type="button"
+                              onClick={() => void handleBridgeCommand(item.command)}
+                              disabled={!currentWorkspace || !currentChat}
+                            >
+                              <span className="composer-picker-command-slash">{item.command}</span>
+                            </button>
+                          )
+                        )}
+                      </div>
+                      <div className="memory-file-list">
+                        {geminiMemoryFiles.map((file) => (
+                          <details key={file.id} className="memory-file-card">
+                            <summary>
+                              <span className={`memory-file-scope scope-${file.scope}`}>
+                                {file.scope}
+                              </span>
+                              <span className="memory-file-path">{file.displayPath}</span>
+                              {file.sizeBytes !== undefined && (
+                                <span className="memory-file-size">{file.sizeBytes} bytes</span>
+                              )}
+                            </summary>
+                            <pre
+                              className={`memory-file-content ${file.error ? 'memory-file-error' : ''}`}
+                            >
+                              {getMemoryPreviewText(file)}
+                            </pre>
+                          </details>
+                        ))}
+                        {geminiMemoryFiles.length === 0 && (
+                          <div className="memory-file-empty">
+                            No GEMINI.md files discovered yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="composer-inline-pickers">
+                    <div className="composer-inline-pickers-left">
+                      {(() => {
+                        const workspaceActionDisabled = !currentWorkspace || !currentChat
+                        const plusSections: ComposerPlusPickerSection[] = [
+                          {
+                            id: 'add',
+                            title: 'Add',
+                            items: [
+                              {
+                                id: 'attachment',
+                                label: 'Attachment',
+                                description: 'Add files or images',
+                                icon: <PlusSymbolIcon />,
+                                disabled: isCurrentComposerLocked,
+                                onSelect: handlePickImages
+                              },
+                              {
+                                id: 'attached-window',
+                                label: attachedWindow ? 'Detach app' : 'Attach app',
+                                description: attachedWindow
+                                  ? attachedWindow.streaming
+                                    ? 'Stop live capture and detach'
+                                    : 'Detach the picked window'
+                                  : 'Pick a running app window',
+                                icon: <CommandSymbolIcon />,
+                                disabled:
+                                  isCurrentComposerLocked || (!attachedWindow && isAttachingWindow),
+                                onSelect: attachedWindow ? handleDetachWindow : handleAttachWindow
+                              }
+                            ]
+                          },
+                          {
+                            id: 'workspace',
+                            title: 'Workspace',
+                            items: isCurrentGlobalChat
+                              ? []
+                              : [
+                                  {
+                                    id: 'safety',
+                                    label: 'Status',
+                                    description: `${currentProviderLabel} safety and setup`,
+                                    icon: <TrustSymbolIcon />,
+                                    disabled: workspaceActionDisabled,
+                                    onSelect: () => setRightTab('safety')
+                                  },
+                                  {
+                                    id: 'diff',
+                                    label: 'Diff Studio',
+                                    description: `${currentProviderLabel} workspace changes`,
+                                    icon: <FileMenuSelectionIcon />,
+                                    disabled: workspaceActionDisabled,
+                                    onSelect: () => setRightTab('diff')
+                                  },
+                                  {
+                                    id: 'capabilities',
+                                    label: 'Models',
+                                    description: `${currentProviderLabel} capability state`,
+                                    icon: <ModelSymbolIcon />,
+                                    disabled: workspaceActionDisabled,
+                                    onSelect: () => setRightTab('capabilities')
+                                  }
+                                ]
+                          },
+                          {
+                            id: 'commands',
+                            title: 'Commands',
+                            items: isCurrentGlobalChat
+                              ? []
+                              : [
+                                  {
+                                    id: 'palette',
+                                    label:
+                                      currentProvider === 'gemini'
+                                        ? 'Slash commands'
+                                        : 'Command palette',
+                                    description:
+                                      currentProvider === 'gemini'
+                                        ? 'Gemini slash command palette'
+                                        : `${currentProviderLabel} command palette`,
+                                    icon: <CommandSymbolIcon />,
+                                    active: isCommandPaletteOpen,
+                                    disabled: workspaceActionDisabled,
+                                    onSelect: () => setIsCommandPaletteOpen((current) => !current)
+                                  },
+                                  {
+                                    id: 'review',
+                                    label: isPreparingDiffReview
+                                      ? 'Preparing review'
+                                      : 'Review diff',
+                                    description: 'Read-only plan-mode review',
+                                    icon: <ReviewSymbolIcon />,
+                                    disabled: workspaceActionDisabled || isPreparingDiffReview,
+                                    onSelect: () => void handleReviewCurrentDiff()
+                                  }
+                                ]
+                          }
+                        ]
+                        return (
+                          <ComposerPlusPicker
+                            provider={currentProvider}
+                            composerStyle={appearance.composerStyle}
+                            sections={plusSections}
+                            disabled={isCurrentComposerLocked}
+                            triggerIcon={<PlusSymbolIcon />}
+                          />
+                        )
+                      })()}
+                      {/* 1.0.4-AS3 — the old name-pill (Application × ) is gone;
                       the attached-window affordance now lives in the
                       composer telemetry row as a Screen Watch icon
                       button (see further down). Removing it from this
                       action-row position avoids visually competing with
                       the model picker / send button. */}
-                    {isCurrentEnsembleChat && currentChat?.ensemble && (
-                      <span
-                        className="composer-ensemble-mode"
-                        role="group"
-                        aria-label="Ensemble orchestration mode"
-                        title={
-                          isCurrentEnsembleRoundRunning
-                            ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
-                            : 'Choose whether agents speak once per round or can hand work back and forth.'
-                        }
-                        data-composer-control="ensemble-mode"
-                      >
-                        <button
-                          type="button"
-                          className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
-                          onClick={() => updateCurrentEnsembleOrchestrationMode('turn_bound')}
+                      {isCurrentEnsembleChat && currentChat?.ensemble && (
+                        <span
+                          className="composer-ensemble-mode"
+                          role="group"
+                          aria-label="Ensemble orchestration mode"
+                          title={
+                            isCurrentEnsembleRoundRunning
+                              ? `Current round: ${activeEnsembleOrchestrationMode === 'continuous' ? 'Continuous' : 'Turn-bound'}`
+                              : 'Choose whether agents speak once per round or can hand work back and forth.'
+                          }
+                          data-composer-control="ensemble-mode"
                         >
-                          Turn
-                        </button>
-                        <button
-                          type="button"
-                          className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'continuous' ? 'is-active' : ''}`}
-                          onClick={() => updateCurrentEnsembleOrchestrationMode('continuous')}
-                        >
-                          Continuous
-                        </button>
-                        {/* 1.0.4-AK2 — Work Session entry point. Sits
+                          <button
+                            type="button"
+                            className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'turn_bound' ? 'is-active' : ''}`}
+                            onClick={() => updateCurrentEnsembleOrchestrationMode('turn_bound')}
+                          >
+                            Turn
+                          </button>
+                          <button
+                            type="button"
+                            className={`composer-ensemble-mode-button ${currentEnsembleOrchestrationMode === 'continuous' ? 'is-active' : ''}`}
+                            onClick={() => updateCurrentEnsembleOrchestrationMode('continuous')}
+                          >
+                            Continuous
+                          </button>
+                          {/* 1.0.4-AK2 — Work Session entry point. Sits
                             alongside Turn/Continuous since Work Session
                             is a third orchestration mode (it composes
                             ON TOP of either turn-bound or continuous
                             rounds, but the user picks it via the same
                             mode group for discoverability). */}
-                        <button
-                          type="button"
-                          className={`composer-ensemble-mode-button work-session-mode-button ${
-                            currentChat?.ensemble?.workSession?.status === 'active' ||
-                            currentChat?.ensemble?.workSession?.status === 'paused'
-                              ? 'is-active'
-                              : ''
-                          }`}
-                          onClick={() => setShowWorkSessionSheet(true)}
-                          title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
-                        >
-                          Work Session
-                        </button>
-                        {activeEnsembleOrchestrationMode === 'continuous' && (
-                          <span
-                            className="composer-ensemble-hop-meter"
-                            title="Extra handoff turns used by this continuous round."
+                          <button
+                            type="button"
+                            className={`composer-ensemble-mode-button work-session-mode-button ${
+                              currentChat?.ensemble?.workSession?.status === 'active' ||
+                              currentChat?.ensemble?.workSession?.status === 'paused'
+                                ? 'is-active'
+                                : ''
+                            }`}
+                            onClick={() => setShowWorkSessionSheet(true)}
+                            title="Open a Work Session — supervised multi-round autonomy with an objective + acceptance criteria + budget."
                           >
-                            {currentEnsembleContinuationHops}/{currentEnsembleMaxContinuationHops}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                    {/* Provider picker. In solo chats this remains the
+                            Work Session
+                          </button>
+                          {activeEnsembleOrchestrationMode === 'continuous' && (
+                            <span
+                              className="composer-ensemble-hop-meter"
+                              title="Extra handoff turns used by this continuous round."
+                            >
+                              {currentEnsembleContinuationHops}/{currentEnsembleMaxContinuationHops}
+                            </span>
+                          )}
+                        </span>
+                      )}
+                      {/* Provider picker. In solo chats this remains the
                         chat-level provider switch. In Ensemble chats it
                         retargets to the selected participant so users can
                         build same-provider panels without leaving the
                         composer. */}
-                    {(() => {
-                      const ensembleBinding =
-                        isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
-                      const pickerProvider = ensembleBinding?.provider ?? currentProvider
-                      const handleComposerProviderChange = (provider: ProviderId): void => {
-                        if (ensembleBinding) {
-                          const defaults = getDefaultEnsembleParticipantConfig(provider)
-                          updateSelectedParticipant({
-                            provider,
-                            model: defaults.model,
-                            runtimeProfileId: undefined,
-                            geminiAuthProfileId: provider === 'gemini' ? null : undefined,
-                            permissionPresetId: defaults.permissionPresetId,
-                            reasoningEffort: defaults.reasoningEffort,
-                            fastModeEnabled: defaults.fastModeEnabled,
-                            thinkingEnabled: defaults.thinkingEnabled,
-                            serviceTier: defaults.serviceTier,
-                            linkedProviderSessionId: null
-                          })
-                          return
-                        }
-                        void handleProviderChange(provider)
-                      }
-                      // Rich popover provider picker (1.0.6-CRUX24).
-                      // Replaces the old native <select> with the same
-                      // body-portaled `composer-combined-picker-popover`
-                      // pattern the model / permission / "+" pickers use.
-                      // All prior behaviour is preserved verbatim:
-                      //   - `pickerProvider` (chat-level OR the bound
-                      //     ensemble participant's provider) drives the
-                      //     trigger + the active checkmark,
-                      //   - `handleComposerProviderChange` is the same
-                      //     handler the <select>'s onChange called, so
-                      //     the ensemble retarget vs solo provider-switch
-                      //     side effects are unchanged,
-                      //   - the disabled expression + the gated grok /
-                      //     cursor visibility + the title text are passed
-                      //     through identically,
-                      //   - `shell-${composerStyle}` (inside the
-                      //     component) makes the popover theme per shell
-                      //     with no per-shell branches here.
-                      return (
-                        <ComposerProviderPicker
-                          provider={pickerProvider}
-                          composerStyle={appearance.composerStyle}
-                          grokAvailable={grokProviderAvailable}
-                          cursorAvailable={cursorProviderAvailable}
-                          onSelect={handleComposerProviderChange}
-                          disabled={
-                            isCurrentComposerLocked ||
-                            (!ensembleBinding && isCurrentChatProviderLocked) ||
-                            Boolean(ensembleBinding && isCurrentEnsembleRoundRunning)
+                      {(() => {
+                        const ensembleBinding =
+                          isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                        const pickerProvider = ensembleBinding?.provider ?? currentProvider
+                        const handleComposerProviderChange = (provider: ProviderId): void => {
+                          if (ensembleBinding) {
+                            const defaults = getDefaultEnsembleParticipantConfig(provider)
+                            updateSelectedParticipant({
+                              provider,
+                              model: defaults.model,
+                              runtimeProfileId: undefined,
+                              geminiAuthProfileId: provider === 'gemini' ? null : undefined,
+                              permissionPresetId: defaults.permissionPresetId,
+                              reasoningEffort: defaults.reasoningEffort,
+                              fastModeEnabled: defaults.fastModeEnabled,
+                              thinkingEnabled: defaults.thinkingEnabled,
+                              serviceTier: defaults.serviceTier,
+                              linkedProviderSessionId: null
+                            })
+                            return
                           }
-                          triggerIcon={<LinkCircleSymbolIcon />}
-                          title={ensembleBinding ? 'Selected participant provider' : 'Provider'}
-                        />
-                      )
-                    })()}
-                    {/* 1.0.5-AR12c — Workspace switcher previously
+                          void handleProviderChange(provider)
+                        }
+                        // Rich popover provider picker (1.0.6-CRUX24).
+                        // Replaces the old native <select> with the same
+                        // body-portaled `composer-combined-picker-popover`
+                        // pattern the model / permission / "+" pickers use.
+                        // All prior behaviour is preserved verbatim:
+                        //   - `pickerProvider` (chat-level OR the bound
+                        //     ensemble participant's provider) drives the
+                        //     trigger + the active checkmark,
+                        //   - `handleComposerProviderChange` is the same
+                        //     handler the <select>'s onChange called, so
+                        //     the ensemble retarget vs solo provider-switch
+                        //     side effects are unchanged,
+                        //   - the disabled expression + the gated grok /
+                        //     cursor visibility + the title text are passed
+                        //     through identically,
+                        //   - `shell-${composerStyle}` (inside the
+                        //     component) makes the popover theme per shell
+                        //     with no per-shell branches here.
+                        return (
+                          <ComposerProviderPicker
+                            provider={pickerProvider}
+                            composerStyle={appearance.composerStyle}
+                            grokAvailable={grokProviderAvailable}
+                            cursorAvailable={cursorProviderAvailable}
+                            onSelect={handleComposerProviderChange}
+                            disabled={
+                              isCurrentComposerLocked ||
+                              (!ensembleBinding && isCurrentChatProviderLocked) ||
+                              Boolean(ensembleBinding && isCurrentEnsembleRoundRunning)
+                            }
+                            triggerIcon={<LinkCircleSymbolIcon />}
+                            title={ensembleBinding ? 'Selected participant provider' : 'Provider'}
+                          />
+                        )
+                      })()}
+                      {/* 1.0.5-AR12c — Workspace switcher previously
                        lived here in the top inline-pickers row but
                        crowded the approval / provider / model
                        controls on dense windows. Moved to the
@@ -20351,362 +20295,364 @@ function App(): React.JSX.Element {
                        the new placement; the underlying
                        `ComposerWorkspaceSwitcher` component is
                        unchanged. */}
-                    {(() => {
-                      // CombinedModelPicker — replaces the per-provider
-                      // native <select> chain that used to live here
-                      // (Model + Codex reasoning + Codex speed + Kimi
-                      // thinking + Claude reasoning) with one chip + a
-                      // two-column popover (Model | Reasoning).
-                      //
-                      // Slice F v2 (1.0.3) — when this is an ensemble
-                      // chat AND a participant chip is selected in the
-                      // strip above the composer, this picker rebinds
-                      // to that participant: it reads the participant's
-                      // model / reasoning / fast-mode and writes via
-                      // updateSelectedParticipant() instead of the
-                      // chat-level rememberCurrentChatComposerSelection.
-                      // `effective*` values below resolve to either the
-                      // chat-level hooks (solo chat) or the participant
-                      // (ensemble + selected chip).
-                      const ensembleBinding =
-                        isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
-                      // Resolve the participant's effective settings via the
-                      // centralized helper so the per-provider fallbacks
-                      // (`'medium'` reasoning, fast-mode→serviceTier inference,
-                      // thinking off, etc.) live in one module. See
-                      // `src/renderer/src/lib/ensembleProviderDefaults.ts`.
-                      const ensembleResolved = ensembleBinding
-                        ? resolveEnsembleParticipantSettings(ensembleBinding)
-                        : null
-                      const effectiveProvider: ProviderId =
-                        ensembleBinding?.provider ?? currentProvider
-                      const effectiveModelOptionsRaw = ensembleBinding
-                        ? getProviderModelOptions(ensembleBinding.provider)
-                        : currentProviderModelOptions
-                      const effectiveSelectedModel = ensembleResolved
-                        ? ensembleResolved.model
-                        : selectedComposerModelType
-                      const effectiveCodexReasoning =
-                        ensembleResolved?.provider === 'codex'
-                          ? ensembleResolved.reasoningEffort
-                          : codexReasoningEffort
-                      const effectiveClaudeReasoning =
-                        ensembleResolved?.provider === 'claude'
-                          ? ensembleResolved.reasoningEffort
-                          : claudeReasoningEffort
-                      const effectiveKimiThinking =
-                        ensembleResolved?.provider === 'kimi'
-                          ? ensembleResolved.thinkingEnabled
-                          : kimiThinkingEnabled
-                      const effectiveCodexServiceTier =
-                        ensembleResolved?.provider === 'codex'
-                          ? ensembleResolved.serviceTier
-                          : codexServiceTier
-                      const effectiveClaudeFastMode =
-                        ensembleResolved?.provider === 'claude'
-                          ? ensembleResolved.fastModeEnabled
-                          : claudeFastMode
+                      {(() => {
+                        // CombinedModelPicker — replaces the per-provider
+                        // native <select> chain that used to live here
+                        // (Model + Codex reasoning + Codex speed + Kimi
+                        // thinking + Claude reasoning) with one chip + a
+                        // two-column popover (Model | Reasoning).
+                        //
+                        // Slice F v2 (1.0.3) — when this is an ensemble
+                        // chat AND a participant chip is selected in the
+                        // strip above the composer, this picker rebinds
+                        // to that participant: it reads the participant's
+                        // model / reasoning / fast-mode and writes via
+                        // updateSelectedParticipant() instead of the
+                        // chat-level rememberCurrentChatComposerSelection.
+                        // `effective*` values below resolve to either the
+                        // chat-level hooks (solo chat) or the participant
+                        // (ensemble + selected chip).
+                        const ensembleBinding =
+                          isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                        // Resolve the participant's effective settings via the
+                        // centralized helper so the per-provider fallbacks
+                        // (`'medium'` reasoning, fast-mode→serviceTier inference,
+                        // thinking off, etc.) live in one module. See
+                        // `src/renderer/src/lib/ensembleProviderDefaults.ts`.
+                        const ensembleResolved = ensembleBinding
+                          ? resolveEnsembleParticipantSettings(ensembleBinding)
+                          : null
+                        const effectiveProvider: ProviderId =
+                          ensembleBinding?.provider ?? currentProvider
+                        const effectiveModelOptionsRaw = ensembleBinding
+                          ? getProviderModelOptions(ensembleBinding.provider)
+                          : currentProviderModelOptions
+                        const effectiveSelectedModel = ensembleResolved
+                          ? ensembleResolved.model
+                          : selectedComposerModelType
+                        const effectiveCodexReasoning =
+                          ensembleResolved?.provider === 'codex'
+                            ? ensembleResolved.reasoningEffort
+                            : codexReasoningEffort
+                        const effectiveClaudeReasoning =
+                          ensembleResolved?.provider === 'claude'
+                            ? ensembleResolved.reasoningEffort
+                            : claudeReasoningEffort
+                        const effectiveKimiThinking =
+                          ensembleResolved?.provider === 'kimi'
+                            ? ensembleResolved.thinkingEnabled
+                            : kimiThinkingEnabled
+                        const effectiveCodexServiceTier =
+                          ensembleResolved?.provider === 'codex'
+                            ? ensembleResolved.serviceTier
+                            : codexServiceTier
+                        const effectiveClaudeFastMode =
+                          ensembleResolved?.provider === 'claude'
+                            ? ensembleResolved.fastModeEnabled
+                            : claudeFastMode
 
-                      const combinedModelOptions: CombinedModelPickerModelOption[] = [
-                        ...effectiveModelOptionsRaw.map((model) => ({
-                          id: model.id,
-                          label: model.label || model.id
-                        })),
-                        ...(effectiveProvider !== 'kimi'
-                          ? [{ id: 'custom', label: 'Custom…' }]
-                          : [])
-                      ]
+                        const combinedModelOptions: CombinedModelPickerModelOption[] = [
+                          ...effectiveModelOptionsRaw.map((model) => ({
+                            id: model.id,
+                            label: model.label || model.id
+                          })),
+                          ...(effectiveProvider !== 'kimi'
+                            ? [{ id: 'custom', label: 'Custom…' }]
+                            : [])
+                        ]
 
-                      let combinedReasoningOptions: CombinedModelPickerReasoningOption[] = []
-                      let combinedSelectedReasoning = ''
-                      if (effectiveProvider === 'codex') {
-                        // For ensemble binding we use a stable default
-                        // reasoning list (medium/high/xhigh) because the
-                        // participant doesn't carry per-model reasoning
-                        // sets the way `codexReasoningOptions` does for
-                        // the chat-level state.
-                        const sourceOptions = ensembleBinding
-                          ? [
-                              { reasoningEffort: 'medium' },
-                              { reasoningEffort: 'high' },
-                              { reasoningEffort: 'xhigh' }
-                            ]
-                          : codexReasoningOptions
-                        combinedReasoningOptions = sourceOptions.map((option) => ({
-                          value: option.reasoningEffort,
-                          label:
-                            option.reasoningEffort === 'xhigh'
-                              ? 'Extra High'
-                              : option.reasoningEffort.charAt(0).toUpperCase() +
-                                option.reasoningEffort.slice(1)
-                        }))
-                        combinedSelectedReasoning = effectiveCodexReasoning
-                      } else if (effectiveProvider === 'claude') {
-                        const sourceOptions = ensembleBinding
-                          ? CLAUDE_THINKING_EFFORTS
-                          : claudeReasoningOptions
-                        combinedReasoningOptions = sourceOptions.map((option) => ({
-                          value: option.reasoningEffort,
-                          label:
-                            option.reasoningEffort === 'off'
-                              ? 'Thinking off'
-                              : option.reasoningEffort === 'high'
-                                ? 'Max'
+                        let combinedReasoningOptions: CombinedModelPickerReasoningOption[] = []
+                        let combinedSelectedReasoning = ''
+                        if (effectiveProvider === 'codex') {
+                          // For ensemble binding we use a stable default
+                          // reasoning list (medium/high/xhigh) because the
+                          // participant doesn't carry per-model reasoning
+                          // sets the way `codexReasoningOptions` does for
+                          // the chat-level state.
+                          const sourceOptions = ensembleBinding
+                            ? [
+                                { reasoningEffort: 'medium' },
+                                { reasoningEffort: 'high' },
+                                { reasoningEffort: 'xhigh' }
+                              ]
+                            : codexReasoningOptions
+                          combinedReasoningOptions = sourceOptions.map((option) => ({
+                            value: option.reasoningEffort,
+                            label:
+                              option.reasoningEffort === 'xhigh'
+                                ? 'Extra High'
                                 : option.reasoningEffort.charAt(0).toUpperCase() +
                                   option.reasoningEffort.slice(1)
-                        }))
-                        combinedSelectedReasoning = effectiveClaudeReasoning
-                      } else if (effectiveProvider === 'kimi') {
-                        combinedReasoningOptions = [
-                          { value: 'on', label: 'Thinking on' },
-                          { value: 'off', label: 'Thinking off' }
-                        ]
-                        combinedSelectedReasoning = effectiveKimiThinking ? 'on' : 'off'
-                      }
+                          }))
+                          combinedSelectedReasoning = effectiveCodexReasoning
+                        } else if (effectiveProvider === 'claude') {
+                          const sourceOptions = ensembleBinding
+                            ? CLAUDE_THINKING_EFFORTS
+                            : claudeReasoningOptions
+                          combinedReasoningOptions = sourceOptions.map((option) => ({
+                            value: option.reasoningEffort,
+                            label:
+                              option.reasoningEffort === 'off'
+                                ? 'Thinking off'
+                                : option.reasoningEffort === 'high'
+                                  ? 'Max'
+                                  : option.reasoningEffort.charAt(0).toUpperCase() +
+                                    option.reasoningEffort.slice(1)
+                          }))
+                          combinedSelectedReasoning = effectiveClaudeReasoning
+                        } else if (effectiveProvider === 'kimi') {
+                          combinedReasoningOptions = [
+                            { value: 'on', label: 'Thinking on' },
+                            { value: 'off', label: 'Thinking off' }
+                          ]
+                          combinedSelectedReasoning = effectiveKimiThinking ? 'on' : 'off'
+                        }
 
-                      const handleCombinedModelChange = (nextModel: string) => {
-                        if (ensembleBinding) {
-                          const patch: Partial<EnsembleParticipant> = { model: nextModel }
-                          // Drop fast-mode if the new model can't support
-                          // it, mirroring the chat-level handler below.
-                          if (effectiveProvider === 'codex') {
-                            const modelOption = codexModels.find((m) => m.id === nextModel)
+                        const handleCombinedModelChange = (nextModel: string) => {
+                          if (ensembleBinding) {
+                            const patch: Partial<EnsembleParticipant> = { model: nextModel }
+                            // Drop fast-mode if the new model can't support
+                            // it, mirroring the chat-level handler below.
+                            if (effectiveProvider === 'codex') {
+                              const modelOption = codexModels.find((m) => m.id === nextModel)
+                              if (modelOption?.defaultReasoningEffort) {
+                                patch.reasoningEffort = modelOption.defaultReasoningEffort
+                              }
+                              if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
+                                patch.fastModeEnabled = false
+                                patch.serviceTier = ''
+                              }
+                            }
+                            if (effectiveProvider === 'claude') {
+                              const claudeModelOption = (
+                                agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
+                              ).find((m) => m.id === nextModel)
+                              if (!claudeModelOption?.additionalSpeedTiers?.includes('fast')) {
+                                patch.fastModeEnabled = false
+                              }
+                            }
+                            updateSelectedParticipant(patch)
+                            return
+                          }
+                          if (nextModel !== 'custom') {
+                            setLastNonCustomModelType(nextModel)
+                          }
+                          setSelectedModelType(nextModel)
+                          const metadataPatch: Record<string, unknown> = {
+                            selectedModelType: nextModel
+                          }
+                          if (currentProvider === 'codex') {
+                            const modelOption = codexModels.find((model) => model.id === nextModel)
                             if (modelOption?.defaultReasoningEffort) {
-                              patch.reasoningEffort = modelOption.defaultReasoningEffort
+                              setCodexReasoningEffort(modelOption.defaultReasoningEffort)
+                              metadataPatch.codexReasoningEffort =
+                                modelOption.defaultReasoningEffort
                             }
                             if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
-                              patch.fastModeEnabled = false
-                              patch.serviceTier = ''
+                              setCodexServiceTier('')
+                              metadataPatch.codexServiceTier = ''
                             }
                           }
-                          if (effectiveProvider === 'claude') {
+                          if (currentProvider === 'claude') {
+                            // Symmetric to Codex above: clear Fast when
+                            // switching to a non-capable Claude model so
+                            // the persisted flag doesn't outlive its
+                            // applicability.
                             const claudeModelOption = (
                               agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
-                            ).find((m) => m.id === nextModel)
+                            ).find((model) => model.id === nextModel)
                             if (!claudeModelOption?.additionalSpeedTiers?.includes('fast')) {
-                              patch.fastModeEnabled = false
+                              setClaudeFastMode(false)
+                              metadataPatch.claudeFastMode = false
                             }
                           }
-                          updateSelectedParticipant(patch)
-                          return
-                        }
-                        if (nextModel !== 'custom') {
-                          setLastNonCustomModelType(nextModel)
-                        }
-                        setSelectedModelType(nextModel)
-                        const metadataPatch: Record<string, unknown> = {
-                          selectedModelType: nextModel
-                        }
-                        if (currentProvider === 'codex') {
-                          const modelOption = codexModels.find((model) => model.id === nextModel)
-                          if (modelOption?.defaultReasoningEffort) {
-                            setCodexReasoningEffort(modelOption.defaultReasoningEffort)
-                            metadataPatch.codexReasoningEffort = modelOption.defaultReasoningEffort
+                          if (currentProvider === 'gemini') {
+                            syncPersistentModelSelection(nextModel)
                           }
-                          if (!modelOption?.additionalSpeedTiers?.includes('fast')) {
-                            setCodexServiceTier('')
-                            metadataPatch.codexServiceTier = ''
-                          }
+                          rememberCurrentChatComposerSelection(metadataPatch)
                         }
-                        if (currentProvider === 'claude') {
-                          // Symmetric to Codex above: clear Fast when
-                          // switching to a non-capable Claude model so
-                          // the persisted flag doesn't outlive its
-                          // applicability.
-                          const claudeModelOption = (
-                            agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS
-                          ).find((model) => model.id === nextModel)
-                          if (!claudeModelOption?.additionalSpeedTiers?.includes('fast')) {
-                            setClaudeFastMode(false)
-                            metadataPatch.claudeFastMode = false
-                          }
-                        }
-                        if (currentProvider === 'gemini') {
-                          syncPersistentModelSelection(nextModel)
-                        }
-                        rememberCurrentChatComposerSelection(metadataPatch)
-                      }
 
-                      /*
-                       * Fast Mode toggle inside the picker. Replaces
-                       * the standalone Codex-only speed `<select>`
-                       * that previously sat next to the chip — same
-                       * underlying state, just surfaced inside the
-                       * Model+Reasoning popover so the user finds it
-                       * where they're already adjusting reasoning.
-                       */
-                      const fastModeCapableModelIds = (() => {
-                        if (effectiveProvider === 'codex') {
-                          return new Set(
-                            codexModels
-                              .filter((model) => model.additionalSpeedTiers?.includes('fast'))
-                              .map((model) => model.id)
-                          )
-                        }
-                        if (effectiveProvider === 'claude') {
-                          return new Set(
-                            (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
-                              .filter((model) => model.additionalSpeedTiers?.includes('fast'))
-                              .map((model) => model.id)
-                          )
-                        }
-                        if (effectiveProvider === 'cursor') {
-                          // Cursor's "fast" is a distinct model id
-                          // (composer-2.5-fast) rather than a tier flag, so the
-                          // toggle swaps between the two Composer 2.5 ids. Both
-                          // are "capable" so the bolt is always live for Cursor.
-                          return new Set(['composer-2.5', 'composer-2.5-fast'])
-                        }
-                        // Gemini + Kimi: no Fast tier — hide the toggle
-                        // by passing an empty set (CombinedModelPicker
-                        // skips rendering the row in that case).
-                        return new Set<string>()
-                      })()
-                      const fastModeEnabledForProvider =
-                        effectiveProvider === 'codex'
-                          ? effectiveCodexServiceTier === 'fast'
-                          : effectiveProvider === 'claude'
-                            ? effectiveClaudeFastMode
-                            : effectiveProvider === 'cursor'
-                              ? effectiveSelectedModel === 'composer-2.5-fast'
-                              : false
-                      const handleToggleFastMode =
-                        effectiveProvider === 'codex'
-                          ? () => {
-                              const nextTier =
-                                effectiveCodexServiceTier === 'fast' ? '' : 'fast'
-                              if (ensembleBinding) {
-                                updateSelectedParticipant({
-                                  serviceTier: nextTier,
-                                  fastModeEnabled: nextTier === 'fast'
-                                })
-                                return
-                              }
-                              setCodexServiceTier(nextTier)
-                              rememberCurrentChatComposerSelection({
-                                codexServiceTier: nextTier
-                              })
-                            }
-                          : effectiveProvider === 'claude'
+                        /*
+                         * Fast Mode toggle inside the picker. Replaces
+                         * the standalone Codex-only speed `<select>`
+                         * that previously sat next to the chip — same
+                         * underlying state, just surfaced inside the
+                         * Model+Reasoning popover so the user finds it
+                         * where they're already adjusting reasoning.
+                         */
+                        const fastModeCapableModelIds = (() => {
+                          if (effectiveProvider === 'codex') {
+                            return new Set(
+                              codexModels
+                                .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+                                .map((model) => model.id)
+                            )
+                          }
+                          if (effectiveProvider === 'claude') {
+                            return new Set(
+                              (agentModelsByProvider.claude || CLAUDE_DEFAULT_MODELS)
+                                .filter((model) => model.additionalSpeedTiers?.includes('fast'))
+                                .map((model) => model.id)
+                            )
+                          }
+                          if (effectiveProvider === 'cursor') {
+                            // Cursor's "fast" is a distinct model id
+                            // (composer-2.5-fast) rather than a tier flag, so the
+                            // toggle swaps between the two Composer 2.5 ids. Both
+                            // are "capable" so the bolt is always live for Cursor.
+                            return new Set(['composer-2.5', 'composer-2.5-fast'])
+                          }
+                          // Gemini + Kimi: no Fast tier — hide the toggle
+                          // by passing an empty set (CombinedModelPicker
+                          // skips rendering the row in that case).
+                          return new Set<string>()
+                        })()
+                        const fastModeEnabledForProvider =
+                          effectiveProvider === 'codex'
+                            ? effectiveCodexServiceTier === 'fast'
+                            : effectiveProvider === 'claude'
+                              ? effectiveClaudeFastMode
+                              : effectiveProvider === 'cursor'
+                                ? effectiveSelectedModel === 'composer-2.5-fast'
+                                : false
+                        const handleToggleFastMode =
+                          effectiveProvider === 'codex'
                             ? () => {
-                                const nextFast = !effectiveClaudeFastMode
+                                const nextTier = effectiveCodexServiceTier === 'fast' ? '' : 'fast'
                                 if (ensembleBinding) {
-                                  updateSelectedParticipant({ fastModeEnabled: nextFast })
+                                  updateSelectedParticipant({
+                                    serviceTier: nextTier,
+                                    fastModeEnabled: nextTier === 'fast'
+                                  })
                                   return
                                 }
-                                setClaudeFastMode(nextFast)
+                                setCodexServiceTier(nextTier)
                                 rememberCurrentChatComposerSelection({
-                                  claudeFastMode: nextFast
+                                  codexServiceTier: nextTier
                                 })
                               }
-                            : effectiveProvider === 'cursor'
+                            : effectiveProvider === 'claude'
                               ? () => {
-                                  // Cursor fast = the composer-2.5-fast model id;
-                                  // swap the selected model (handleCombinedModelChange
-                                  // handles both chat-level + ensemble-participant
-                                  // persistence). No separate fast flag needed.
-                                  const nextModel =
-                                    effectiveSelectedModel === 'composer-2.5-fast'
-                                      ? 'composer-2.5'
-                                      : 'composer-2.5-fast'
-                                  handleCombinedModelChange(nextModel)
+                                  const nextFast = !effectiveClaudeFastMode
+                                  if (ensembleBinding) {
+                                    updateSelectedParticipant({ fastModeEnabled: nextFast })
+                                    return
+                                  }
+                                  setClaudeFastMode(nextFast)
+                                  rememberCurrentChatComposerSelection({
+                                    claudeFastMode: nextFast
+                                  })
                                 }
-                              : undefined
+                              : effectiveProvider === 'cursor'
+                                ? () => {
+                                    // Cursor fast = the composer-2.5-fast model id;
+                                    // swap the selected model (handleCombinedModelChange
+                                    // handles both chat-level + ensemble-participant
+                                    // persistence). No separate fast flag needed.
+                                    const nextModel =
+                                      effectiveSelectedModel === 'composer-2.5-fast'
+                                        ? 'composer-2.5'
+                                        : 'composer-2.5-fast'
+                                    handleCombinedModelChange(nextModel)
+                                  }
+                                : undefined
 
-                      const handleCombinedReasoningChange = (value: string) => {
-                        if (ensembleBinding) {
-                          if (ensembleBinding.provider === 'kimi') {
-                            updateSelectedParticipant({ thinkingEnabled: value !== 'off' })
-                          } else {
-                            updateSelectedParticipant({ reasoningEffort: value })
+                        const handleCombinedReasoningChange = (value: string) => {
+                          if (ensembleBinding) {
+                            if (ensembleBinding.provider === 'kimi') {
+                              updateSelectedParticipant({ thinkingEnabled: value !== 'off' })
+                            } else {
+                              updateSelectedParticipant({ reasoningEffort: value })
+                            }
+                            return
                           }
-                          return
+                          if (currentProvider === 'codex') {
+                            setCodexReasoningEffort(value)
+                            rememberCurrentChatComposerSelection({
+                              codexReasoningEffort: value
+                            })
+                          } else if (currentProvider === 'claude') {
+                            setClaudeReasoningEffort(value)
+                            rememberCurrentChatComposerSelection({
+                              claudeReasoningEffort: value
+                            })
+                          } else if (currentProvider === 'kimi') {
+                            const enabled = value !== 'off'
+                            setKimiThinkingEnabled(enabled)
+                            rememberCurrentChatComposerSelection({
+                              kimiThinkingEnabled: enabled
+                            })
+                          }
                         }
-                        if (currentProvider === 'codex') {
-                          setCodexReasoningEffort(value)
-                          rememberCurrentChatComposerSelection({
-                            codexReasoningEffort: value
-                          })
-                        } else if (currentProvider === 'claude') {
-                          setClaudeReasoningEffort(value)
-                          rememberCurrentChatComposerSelection({
-                            claudeReasoningEffort: value
-                          })
-                        } else if (currentProvider === 'kimi') {
-                          const enabled = value !== 'off'
-                          setKimiThinkingEnabled(enabled)
-                          rememberCurrentChatComposerSelection({
-                            kimiThinkingEnabled: enabled
-                          })
-                        }
-                      }
 
-                      return (
-                        <>
-                          <CombinedModelPicker
-                            provider={effectiveProvider}
-                            composerStyle={appearance.composerStyle}
-                            modelOptions={combinedModelOptions}
-                            selectedModelId={effectiveSelectedModel}
-                            onSelectModel={handleCombinedModelChange}
-                            reasoningOptions={combinedReasoningOptions}
-                            selectedReasoning={combinedSelectedReasoning}
-                            onSelectReasoning={handleCombinedReasoningChange}
-                            codexReasoningEffort={effectiveCodexReasoning}
-                            claudeReasoningEffort={effectiveClaudeReasoning}
-                            kimiThinkingEnabled={effectiveKimiThinking}
-                            fastModeCapableModelIds={fastModeCapableModelIds}
-                            fastModeEnabled={fastModeEnabledForProvider}
-                            onToggleFastMode={handleToggleFastMode}
-                            disabled={isCurrentComposerLocked}
-                          />
-                          {!ensembleBinding && selectedModelType === 'custom' && currentProvider !== 'kimi' && (
-                            <span className="composer-inline-custom-model">
-                              <input
-                                className="composer-inline-input"
-                                type="text"
-                                value={customModel}
-                                onChange={(e) => {
-                                  setCustomModel(e.target.value)
-                                  rememberCurrentChatComposerSelection({
-                                    customModel: e.target.value
-                                  })
-                                  if (currentProvider === 'gemini') {
-                                    markPersistentSessionRestartNeeded(
-                                      'Gemini custom model changed. Restart the persistent session to apply the new model.'
-                                    )
-                                  }
-                                }}
-                                placeholder="Model ID"
-                                disabled={isCurrentComposerLocked}
-                              />
-                              <button
-                                className="composer-inline-clear"
-                                type="button"
-                                onClick={() => {
-                                  setCustomModel('')
-                                  setSelectedModelType(lastNonCustomModelType)
-                                  rememberCurrentChatComposerSelection({
-                                    customModel: '',
-                                    selectedModelType: lastNonCustomModelType
-                                  })
-                                  if (currentProvider === 'gemini') {
-                                    syncPersistentModelSelection(lastNonCustomModelType)
-                                  }
-                                }}
-                                disabled={isCurrentComposerLocked}
-                                title="Cancel custom model"
-                                aria-label="Cancel custom model"
-                              >
-                                <XSymbolIcon />
-                              </button>
-                            </span>
-                          )}
-                        </>
-                      )
-                    })()}
+                        return (
+                          <>
+                            <CombinedModelPicker
+                              provider={effectiveProvider}
+                              composerStyle={appearance.composerStyle}
+                              modelOptions={combinedModelOptions}
+                              selectedModelId={effectiveSelectedModel}
+                              onSelectModel={handleCombinedModelChange}
+                              reasoningOptions={combinedReasoningOptions}
+                              selectedReasoning={combinedSelectedReasoning}
+                              onSelectReasoning={handleCombinedReasoningChange}
+                              codexReasoningEffort={effectiveCodexReasoning}
+                              claudeReasoningEffort={effectiveClaudeReasoning}
+                              kimiThinkingEnabled={effectiveKimiThinking}
+                              fastModeCapableModelIds={fastModeCapableModelIds}
+                              fastModeEnabled={fastModeEnabledForProvider}
+                              onToggleFastMode={handleToggleFastMode}
+                              disabled={isCurrentComposerLocked}
+                            />
+                            {!ensembleBinding &&
+                              selectedModelType === 'custom' &&
+                              currentProvider !== 'kimi' && (
+                                <span className="composer-inline-custom-model">
+                                  <input
+                                    className="composer-inline-input"
+                                    type="text"
+                                    value={customModel}
+                                    onChange={(e) => {
+                                      setCustomModel(e.target.value)
+                                      rememberCurrentChatComposerSelection({
+                                        customModel: e.target.value
+                                      })
+                                      if (currentProvider === 'gemini') {
+                                        markPersistentSessionRestartNeeded(
+                                          'Gemini custom model changed. Restart the persistent session to apply the new model.'
+                                        )
+                                      }
+                                    }}
+                                    placeholder="Model ID"
+                                    disabled={isCurrentComposerLocked}
+                                  />
+                                  <button
+                                    className="composer-inline-clear"
+                                    type="button"
+                                    onClick={() => {
+                                      setCustomModel('')
+                                      setSelectedModelType(lastNonCustomModelType)
+                                      rememberCurrentChatComposerSelection({
+                                        customModel: '',
+                                        selectedModelType: lastNonCustomModelType
+                                      })
+                                      if (currentProvider === 'gemini') {
+                                        syncPersistentModelSelection(lastNonCustomModelType)
+                                      }
+                                    }}
+                                    disabled={isCurrentComposerLocked}
+                                    title="Cancel custom model"
+                                    aria-label="Cancel custom model"
+                                  >
+                                    <XSymbolIcon />
+                                  </button>
+                                </span>
+                              )}
+                          </>
+                        )
+                      })()}
 
-                    {/*
+                      {/*
                       Codex speed-tier `<select>` removed — Fast mode
                       now lives inside CombinedModelPicker as a toggle
                       beneath the Reasoning column, gated by each
@@ -20716,183 +20662,187 @@ function App(): React.JSX.Element {
                       reasoning effort.
                     */}
 
-                    {(() => {
-                      // CombinedPermissionsPicker — replaces the
-                      // native <select> permission picker AND
-                      // absorbs the old "Tool Grants" pill from the
-                      // above-bar. Single chip, two-column popover
-                      // (Permissions | Tool Grants).
-                      //
-                      // Slice F v2 (1.0.3) — when ensemble + a
-                      // participant chip is selected, the picker
-                      // reads/writes the participant's
-                      // `permissionPresetId` instead of the chat's
-                      // `approvalMode`. The user-facing 3-mode UI
-                      // stays the same (Plan / Default / Full
-                      // Workspace Access) but we translate
-                      // bidirectionally to the preset vocabulary
-                      // (`read_only` / `default` / `workspace_write`).
-                      // Slice A3 — in Ensemble Mode, Tool Grants are
-                      // participant-scoped overrides. Solo chats keep
-                      // using provider+workspace grants.
-                      const ensembleBinding =
-                        isCurrentEnsembleChat && selectedParticipant
-                          ? selectedParticipant
-                          : null
-                      const effectiveProvider: ProviderId =
-                        ensembleBinding?.provider ?? currentProvider
-                      const presetToMode = (
-                        preset: string | undefined
-                      ): string => {
-                        if (preset === 'read_only') return 'plan'
-                        if (preset === 'workspace_write') return 'auto_edit'
-                        if (preset === 'full_access') return 'auto_edit'
-                        return 'default'
-                      }
-                      const modeToPreset = (mode: string): PermissionPresetId => {
-                        if (mode === 'plan') return 'read_only'
-                        if (mode === 'auto_edit') return 'workspace_write'
-                        return 'default'
-                      }
-                      const effectiveSelectedPermission = ensembleBinding
-                        ? presetToMode(ensembleBinding.permissionPresetId)
-                        : approvalMode
-                      const permissionPickerOptions: PermissionOption[] = [
-                        { value: 'plan', label: 'Plan / Read-only' },
-                        { value: 'default', label: 'Default Approval' },
-                        { value: 'auto_edit', label: 'Full Workspace Access' }
-                      ]
-                      const normalizedWorkspacePath = (currentWorkspace?.path || '').replace(
-                        /\/+$/,
-                        ''
-                      )
-                      const enabledGrantIds = ensembleBinding
-                        ? getParticipantToolGrantIds(ensembleBinding)
-                        : new Set(
-                            agenticWorkspaceGrants
-                              .filter((grant) => {
-                                if (
-                                  !grant ||
-                                  grant.provider !== effectiveProvider ||
-                                  !grant.workspacePath
-                                )
-                                  return false
-                                return (
-                                  grant.workspacePath.replace(/\/+$/, '') === normalizedWorkspacePath
-                                )
+                      {(() => {
+                        // CombinedPermissionsPicker — replaces the
+                        // native <select> permission picker AND
+                        // absorbs the old "Tool Grants" pill from the
+                        // above-bar. Single chip, two-column popover
+                        // (Permissions | Tool Grants).
+                        //
+                        // Slice F v2 (1.0.3) — when ensemble + a
+                        // participant chip is selected, the picker
+                        // reads/writes the participant's
+                        // `permissionPresetId` instead of the chat's
+                        // `approvalMode`. The user-facing 3-mode UI
+                        // stays the same (Plan / Default / Full
+                        // Workspace Access) but we translate
+                        // bidirectionally to the preset vocabulary
+                        // (`read_only` / `default` / `workspace_write`).
+                        // Slice A3 — in Ensemble Mode, Tool Grants are
+                        // participant-scoped overrides. Solo chats keep
+                        // using provider+workspace grants.
+                        const ensembleBinding =
+                          isCurrentEnsembleChat && selectedParticipant ? selectedParticipant : null
+                        const effectiveProvider: ProviderId =
+                          ensembleBinding?.provider ?? currentProvider
+                        const presetToMode = (preset: string | undefined): string => {
+                          if (preset === 'read_only') return 'plan'
+                          if (preset === 'workspace_write') return 'auto_edit'
+                          if (preset === 'full_access') return 'auto_edit'
+                          return 'default'
+                        }
+                        const modeToPreset = (mode: string): PermissionPresetId => {
+                          if (mode === 'plan') return 'read_only'
+                          if (mode === 'auto_edit') return 'workspace_write'
+                          return 'default'
+                        }
+                        const effectiveSelectedPermission = ensembleBinding
+                          ? presetToMode(ensembleBinding.permissionPresetId)
+                          : approvalMode
+                        const permissionPickerOptions: PermissionOption[] = [
+                          { value: 'plan', label: 'Plan / Read-only' },
+                          { value: 'default', label: 'Default Approval' },
+                          { value: 'auto_edit', label: 'Full Workspace Access' }
+                        ]
+                        const normalizedWorkspacePath = (currentWorkspace?.path || '').replace(
+                          /\/+$/,
+                          ''
+                        )
+                        const enabledGrantIds = ensembleBinding
+                          ? getParticipantToolGrantIds(ensembleBinding)
+                          : new Set(
+                              agenticWorkspaceGrants
+                                .filter((grant) => {
+                                  if (
+                                    !grant ||
+                                    grant.provider !== effectiveProvider ||
+                                    !grant.workspacePath
+                                  )
+                                    return false
+                                  return (
+                                    grant.workspacePath.replace(/\/+$/, '') ===
+                                    normalizedWorkspacePath
+                                  )
+                                })
+                                .map((grant) => grant.service)
+                            )
+                        // Hide the Tool-Grants column when there's no
+                        // workspace path to scope grants to (global
+                        // chats or pre-workspace state).
+                        const grantServicesForPicker =
+                          currentWorkspace && !isCurrentGlobalChat ? WORKSPACE_POLICY_SERVICES : []
+                        return (
+                          <CombinedPermissionsPicker
+                            provider={effectiveProvider}
+                            composerStyle={appearance.composerStyle}
+                            permissionOptions={permissionPickerOptions}
+                            selectedPermission={effectiveSelectedPermission}
+                            onSelectPermission={(nextApprovalMode) => {
+                              if (ensembleBinding) {
+                                updateSelectedParticipant({
+                                  permissionPresetId: modeToPreset(nextApprovalMode)
+                                })
+                                return
+                              }
+                              setApprovalMode(nextApprovalMode)
+                              rememberCurrentChatComposerSelection({
+                                approvalMode: nextApprovalMode
                               })
-                              .map((grant) => grant.service)
-                          )
-                      // Hide the Tool-Grants column when there's no
-                      // workspace path to scope grants to (global
-                      // chats or pre-workspace state).
-                      const grantServicesForPicker =
-                        currentWorkspace && !isCurrentGlobalChat ? WORKSPACE_POLICY_SERVICES : []
-                      return (
-                        <CombinedPermissionsPicker
-                          provider={effectiveProvider}
-                          composerStyle={appearance.composerStyle}
-                          permissionOptions={permissionPickerOptions}
-                          selectedPermission={effectiveSelectedPermission}
-                          onSelectPermission={(nextApprovalMode) => {
-                            if (ensembleBinding) {
-                              updateSelectedParticipant({
-                                permissionPresetId: modeToPreset(nextApprovalMode)
-                              })
-                              return
-                            }
-                            setApprovalMode(nextApprovalMode)
-                            rememberCurrentChatComposerSelection({
-                              approvalMode: nextApprovalMode
-                            })
-                            if (currentProvider === 'gemini' && nextApprovalMode !== approvalMode) {
-                              markPersistentSessionRestartNeeded(
-                                'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
+                              if (
+                                currentProvider === 'gemini' &&
+                                nextApprovalMode !== approvalMode
+                              ) {
+                                markPersistentSessionRestartNeeded(
+                                  'Gemini approval mode changed. Restart the persistent session to apply the correct tool permissions.'
+                                )
+                              }
+                            }}
+                            grantServices={grantServicesForPicker}
+                            enabledGrantIds={enabledGrantIds}
+                            agenticServices={agenticServices}
+                            onToggleGrant={(service, enabled) => {
+                              if (ensembleBinding) {
+                                updateSelectedParticipant(
+                                  buildParticipantToolGrantPatch(ensembleBinding, service, enabled)
+                                )
+                                return
+                              }
+                              void handleSetAgenticWorkspaceGrant(
+                                service,
+                                enabled,
+                                effectiveProvider
                               )
+                            }}
+                            grantScopeLabel={ensembleBinding ? 'participant' : 'workspace'}
+                            disabled={
+                              isCurrentComposerLocked ||
+                              (effectiveProvider === 'gemini' && !geminiWorkspaceTrustReady)
                             }
-                          }}
-                          grantServices={grantServicesForPicker}
-                          enabledGrantIds={enabledGrantIds}
-                          agenticServices={agenticServices}
-                          onToggleGrant={(service, enabled) => {
-                            if (ensembleBinding) {
-                              updateSelectedParticipant(
-                                buildParticipantToolGrantPatch(ensembleBinding, service, enabled)
-                              )
-                              return
-                            }
-                            void handleSetAgenticWorkspaceGrant(service, enabled, effectiveProvider)
-                          }}
-                          grantScopeLabel={ensembleBinding ? 'participant' : 'workspace'}
-                          disabled={
-                            isCurrentComposerLocked ||
-                            (effectiveProvider === 'gemini' && !geminiWorkspaceTrustReady)
-                          }
-                        />
-                      )
-                    })()}
+                          />
+                        )
+                      })()}
 
-                    {/* Slice A: collapsed-state chip for the dismissed
+                      {/* Slice A: collapsed-state chip for the dismissed
                         YOLO banner. Sits adjacent to the permissions
                         picker because YOLO is conceptually a permission
                         override. Clicking re-summons the full banner. */}
-                    {sessionYoloMode.enabled && yoloBannerDismissed && (
-                      <button
-                        type="button"
-                        className="composer-yolo-chip"
-                        onClick={() => setYoloBannerDismissed(false)}
-                        title="Trust mode is active — every approval auto-allowed. Click to show details."
-                        aria-label="Trust mode active — show details"
-                      >
-                        <span className="composer-yolo-chip-icon" aria-hidden>
-                          ⚠
-                        </span>
-                        <span className="composer-yolo-chip-label">YOLO</span>
-                      </button>
-                    )}
-
-                    {currentProvider === 'gemini' && !isCurrentGlobalChat && (
-                      <label className="composer-picker-label" title="Workspace trust">
-                        <TrustSymbolIcon />
-                        <select
-                          className="composer-inline-picker"
-                          aria-label="Workspace trust"
-                          value={trustSelectValue}
-                          onChange={(e) => {
-                            const nextValue = e.target.value
-                            if (
-                              nextValue === 'trusted' &&
-                              !sessionTrust &&
-                              trustResult?.status !== 'trusted' &&
-                              trustResult?.status !== 'inherited'
-                            ) {
-                              setSessionTrust(true)
-                              void handleBridgeCommand('/permissions trust')
-                            } else if (nextValue === 'untrusted') {
-                              setSessionTrust(false)
-                              markPersistentSessionRestartNeeded(
-                                'Gemini workspace trust changed. Restart the persistent session to apply the trust setting.'
-                              )
-                            }
-                          }}
-                          disabled={isCurrentComposerLocked}
-                          title="Workspace trust"
+                      {sessionYoloMode.enabled && yoloBannerDismissed && (
+                        <button
+                          type="button"
+                          className="composer-yolo-chip"
+                          onClick={() => setYoloBannerDismissed(false)}
+                          title="Trust mode is active — every approval auto-allowed. Click to show details."
+                          aria-label="Trust mode active — show details"
                         >
-                          <option value="trusted">Trusted</option>
-                          <option value="untrusted">Untrusted</option>
-                        </select>
-                      </label>
-                    )}
-                  </div>
-                  <div className="composer-inline-actions">
-                    <ContextWheel percent={contextUsedPercent} label={contextLabel} />
-                    {steerIndicatorMessage && (
-                      <span className="composer-steer-indicator" role="status" aria-live="polite">
-                        <span className="composer-steer-indicator-dot" aria-hidden />
-                        <span>{steerIndicatorMessage}</span>
-                      </span>
-                    )}
-                    {/*
+                          <span className="composer-yolo-chip-icon" aria-hidden>
+                            ⚠
+                          </span>
+                          <span className="composer-yolo-chip-label">YOLO</span>
+                        </button>
+                      )}
+
+                      {currentProvider === 'gemini' && !isCurrentGlobalChat && (
+                        <label className="composer-picker-label" title="Workspace trust">
+                          <TrustSymbolIcon />
+                          <select
+                            className="composer-inline-picker"
+                            aria-label="Workspace trust"
+                            value={trustSelectValue}
+                            onChange={(e) => {
+                              const nextValue = e.target.value
+                              if (
+                                nextValue === 'trusted' &&
+                                !sessionTrust &&
+                                trustResult?.status !== 'trusted' &&
+                                trustResult?.status !== 'inherited'
+                              ) {
+                                setSessionTrust(true)
+                                void handleBridgeCommand('/permissions trust')
+                              } else if (nextValue === 'untrusted') {
+                                setSessionTrust(false)
+                                markPersistentSessionRestartNeeded(
+                                  'Gemini workspace trust changed. Restart the persistent session to apply the trust setting.'
+                                )
+                              }
+                            }}
+                            disabled={isCurrentComposerLocked}
+                            title="Workspace trust"
+                          >
+                            <option value="trusted">Trusted</option>
+                            <option value="untrusted">Untrusted</option>
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                    <div className="composer-inline-actions">
+                      <ContextWheel percent={contextUsedPercent} label={contextLabel} />
+                      {steerIndicatorMessage && (
+                        <span className="composer-steer-indicator" role="status" aria-live="polite">
+                          <span className="composer-steer-indicator-dot" aria-hidden />
+                          <span>{steerIndicatorMessage}</span>
+                        </span>
+                      )}
+                      {/*
                       1.0.6-EW70 — the run/queue/steer/stop buttons are
                       wrapped in `.composer-send-cluster` (display:contents
                       by default, so the nine other shells are unchanged).
@@ -20900,181 +20850,183 @@ function App(): React.JSX.Element {
                       textarea rect's bottom-right corner; the ContextWheel
                       ("context") stays here at the right of the control row.
                     */}
-                    <span className="composer-send-cluster">
-                    {isCurrentChatRunning ? (
-                      <>
-                        <button
-                          className={`composer-action-btn run-btn queue ${isSendConfirming ? 'send-confirming' : ''}`}
-                          onClick={() => {
-                            triggerSendConfirmation()
-                            handleRun()
-                          }}
-                          disabled={
-                            !currentChat ||
-                            (!isCurrentGlobalChat && !currentWorkspace) ||
-                            !prompt.trim() ||
-                            (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) ||
-                            isSteerBusyForCurrentChat
-                          }
-                          title="Queue next run"
-                          aria-label="Queue next run"
-                          type="button"
-                        >
-                          <QueueSymbolIcon />
-                        </button>
-                        {/* Phase J3 (steer): sit Steer between Queue and Stop
-                         *   - Queue waits passively for the chat's run to finish.
-                         *   - Steer interrupts and dispatches immediately.
-                         *   - Stop only interrupts (no follow-up dispatch).
-                         * Only render when THIS chat is busy (per-chat busy
-                         * predicate), so multi-chat parallel runs don't get a
-                         * misleading Steer button in idle chats. */}
-                        {isCurrentChatBusyForSteer && (
+                      <span className="composer-send-cluster">
+                        {isCurrentChatRunning ? (
+                          <>
+                            <button
+                              className={`composer-action-btn run-btn queue ${isSendConfirming ? 'send-confirming' : ''}`}
+                              onClick={() => {
+                                triggerSendConfirmation()
+                                handleRun()
+                              }}
+                              disabled={
+                                !currentChat ||
+                                (!isCurrentGlobalChat && !currentWorkspace) ||
+                                !prompt.trim() ||
+                                (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) ||
+                                isSteerBusyForCurrentChat
+                              }
+                              title="Queue next run"
+                              aria-label="Queue next run"
+                              type="button"
+                            >
+                              <QueueSymbolIcon />
+                            </button>
+                            {/* Phase J3 (steer): sit Steer between Queue and Stop
+                             *   - Queue waits passively for the chat's run to finish.
+                             *   - Steer interrupts and dispatches immediately.
+                             *   - Stop only interrupts (no follow-up dispatch).
+                             * Only render when THIS chat is busy (per-chat busy
+                             * predicate), so multi-chat parallel runs don't get a
+                             * misleading Steer button in idle chats. */}
+                            {isCurrentChatBusyForSteer && (
+                              <button
+                                className={`composer-action-btn steer-btn ${isSteerBusyForCurrentChat ? 'is-busy' : ''}`}
+                                onClick={() => void handleSteer()}
+                                disabled={
+                                  !currentChat ||
+                                  (!isCurrentGlobalChat && !currentWorkspace) ||
+                                  !prompt.trim() ||
+                                  (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) ||
+                                  isSteerBusyForCurrentChat
+                                }
+                                title="Interrupt the active turn and dispatch this prompt immediately."
+                                aria-label="Steer: interrupt and dispatch this prompt"
+                                type="button"
+                              >
+                                <SteerSymbolIcon />
+                              </button>
+                            )}
+                            {isCurrentChatRunning && (
+                              <button
+                                className="composer-action-btn stop-btn"
+                                onClick={handleCancel}
+                                title="Stop run"
+                                aria-label="Stop run"
+                                type="button"
+                                disabled={isSteerBusyForCurrentChat}
+                              >
+                                <StopSymbolIcon />
+                              </button>
+                            )}
+                          </>
+                        ) : (
                           <button
-                            className={`composer-action-btn steer-btn ${isSteerBusyForCurrentChat ? 'is-busy' : ''}`}
-                            onClick={() => void handleSteer()}
+                            className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
+                            onClick={(event) => {
+                              triggerSendConfirmation()
+                              // DM target resolution (same precedence as
+                              // the Enter handler above): explicit
+                              // `@participant` mention wins; falls back
+                              // to legacy Cmd/Ctrl-click on a selected
+                              // chip; plain click = full round.
+                              const dmFromMention = isCurrentEnsembleChat
+                                ? extractFirstEnsembleDmTarget(
+                                    prompt,
+                                    currentChat?.ensemble?.participants
+                                  )
+                                : null
+                              const dmTarget =
+                                dmFromMention ||
+                                (isCurrentEnsembleChat &&
+                                effectiveSelectedParticipantId &&
+                                (event.metaKey || event.ctrlKey)
+                                  ? effectiveSelectedParticipantId
+                                  : undefined)
+                              handleRun(undefined, undefined, dmTarget || undefined)
+                            }}
                             disabled={
                               !currentChat ||
                               (!isCurrentGlobalChat && !currentWorkspace) ||
                               !prompt.trim() ||
-                              (currentProvider === 'gemini' && !geminiWorkspaceTrustReady) ||
-                              isSteerBusyForCurrentChat
+                              (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
                             }
-                            title="Interrupt the active turn and dispatch this prompt immediately."
-                            aria-label="Steer: interrupt and dispatch this prompt"
+                            title={
+                              isCurrentEnsembleChat && effectiveSelectedParticipantId
+                                ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
+                                : 'Run'
+                            }
+                            aria-label="Run prompt"
+                            aria-keyshortcuts="Meta+Enter Control+Enter"
                             type="button"
                           >
-                            <SteerSymbolIcon />
+                            {appearance.composerStyle === 'claude' ? (
+                              <ClaudeReturnSymbolIcon />
+                            ) : appearance.composerStyle === 'codex' ||
+                              appearance.composerStyle === 'gemini' ||
+                              appearance.composerStyle === 'cursor' ||
+                              appearance.composerStyle === 'grok' ||
+                              appearance.composerStyle === 'kimi' ? (
+                              <ArrowUpSendIcon />
+                            ) : (
+                              <RunSymbolIcon />
+                            )}
                           </button>
                         )}
-                        {isCurrentChatRunning && (
+                      </span>
+                    </div>
+                  </div>
+                  {currentProvider === 'gemini' && !geminiWorkspaceTrustReady && (
+                    <div
+                      className="composer-inline-warning"
+                      style={{
+                        fontSize: 'var(--font-size-xs)',
+                        color: 'var(--warning)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                        flexWrap: 'wrap'
+                      }}
+                    >
+                      <span>
+                        Workspace trust is not established.
+                        {geminiTrustWriteError ? ` ${geminiTrustWriteError}` : ''}
+                      </span>
+                      {currentWorkspace?.path &&
+                        typeof window.api.trustWorkspace === 'function' && (
                           <button
-                            className="composer-action-btn stop-btn"
-                            onClick={handleCancel}
-                            title="Stop run"
-                            aria-label="Stop run"
                             type="button"
-                            disabled={isSteerBusyForCurrentChat}
+                            onClick={() => void handleTrustWorkspaceClick()}
+                            disabled={geminiTrustWriteBusy || isCurrentComposerLocked}
+                            title={`Trust ${currentWorkspace.path} for Gemini — writes ~/.gemini/trustedFolders.json`}
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              padding: '3px 9px',
+                              fontSize: 'var(--font-size-xs)',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
+                              border:
+                                '1px solid color-mix(in srgb, var(--warning) 45%, transparent)',
+                              borderRadius: '6px',
+                              cursor: geminiTrustWriteBusy ? 'default' : 'pointer',
+                              opacity: geminiTrustWriteBusy ? 0.7 : 1
+                            }}
                           >
-                            <StopSymbolIcon />
+                            <TrustSymbolIcon />
+                            {geminiTrustWriteBusy ? 'Trusting…' : 'Trust this folder'}
                           </button>
                         )}
-                      </>
-                    ) : (
-                      <button
-                        className={`composer-action-btn run-btn ${isSendConfirming ? 'send-confirming' : ''}`}
-                        onClick={(event) => {
-                          triggerSendConfirmation()
-                          // DM target resolution (same precedence as
-                          // the Enter handler above): explicit
-                          // `@participant` mention wins; falls back
-                          // to legacy Cmd/Ctrl-click on a selected
-                          // chip; plain click = full round.
-                          const dmFromMention = isCurrentEnsembleChat
-                            ? extractFirstEnsembleDmTarget(
-                                prompt,
-                                currentChat?.ensemble?.participants
-                              )
-                            : null
-                          const dmTarget =
-                            dmFromMention ||
-                            (isCurrentEnsembleChat &&
-                            effectiveSelectedParticipantId &&
-                            (event.metaKey || event.ctrlKey)
-                              ? effectiveSelectedParticipantId
-                              : undefined)
-                          handleRun(undefined, undefined, dmTarget || undefined)
-                        }}
-                        disabled={
-                          !currentChat ||
-                          (!isCurrentGlobalChat && !currentWorkspace) ||
-                          !prompt.trim() ||
-                          (currentProvider === 'gemini' && !geminiWorkspaceTrustReady)
-                        }
-                        title={
-                          isCurrentEnsembleChat && effectiveSelectedParticipantId
-                            ? 'Run full ensemble round  ·  ⌘ click = DM the selected chip'
-                            : 'Run'
-                        }
-                        aria-label="Run prompt"
-                        aria-keyshortcuts="Meta+Enter Control+Enter"
-                        type="button"
-                      >
-                        {appearance.composerStyle === 'claude' ? (
-                          <ClaudeReturnSymbolIcon />
-                        ) : appearance.composerStyle === 'codex' ||
-                          appearance.composerStyle === 'gemini' ||
-                          appearance.composerStyle === 'cursor' ||
-                          appearance.composerStyle === 'grok' ||
-                          appearance.composerStyle === 'kimi' ? (
-                          <ArrowUpSendIcon />
-                        ) : (
-                          <RunSymbolIcon />
-                        )}
-                      </button>
-                    )}
-                    </span>
-                  </div>
+                      <span style={{ opacity: 0.75 }}>or enable session trust above.</span>
+                    </div>
+                  )}
                 </div>
-                {currentProvider === 'gemini' && !geminiWorkspaceTrustReady && (
-                  <div
-                    className="composer-inline-warning"
-                    style={{
-                      fontSize: 'var(--font-size-xs)',
-                      color: 'var(--warning)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      flexWrap: 'wrap'
-                    }}
-                  >
-                    <span>
-                      Workspace trust is not established.
-                      {geminiTrustWriteError ? ` ${geminiTrustWriteError}` : ''}
-                    </span>
-                    {currentWorkspace?.path && typeof window.api.trustWorkspace === 'function' && (
-                      <button
-                        type="button"
-                        onClick={() => void handleTrustWorkspaceClick()}
-                        disabled={geminiTrustWriteBusy || isCurrentComposerLocked}
-                        title={`Trust ${currentWorkspace.path} for Gemini — writes ~/.gemini/trustedFolders.json`}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '5px',
-                          padding: '3px 9px',
-                          fontSize: 'var(--font-size-xs)',
-                          fontWeight: 600,
-                          color: 'var(--text-primary)',
-                          background: 'color-mix(in srgb, var(--warning) 18%, transparent)',
-                          border: '1px solid color-mix(in srgb, var(--warning) 45%, transparent)',
-                          borderRadius: '6px',
-                          cursor: geminiTrustWriteBusy ? 'default' : 'pointer',
-                          opacity: geminiTrustWriteBusy ? 0.7 : 1
-                        }}
-                      >
-                        <TrustSymbolIcon />
-                        {geminiTrustWriteBusy ? 'Trusting…' : 'Trust this folder'}
-                      </button>
-                    )}
-                    <span style={{ opacity: 0.75 }}>or enable session trust above.</span>
-                  </div>
-                )}
-              </div>
-              <div
-                className="composer-telemetry-row"
-                data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
-              >
-                <ComposerRunTimecode
-                  running={isCurrentChatRunning}
-                  startedAt={composerRunTimecodeStartedAt}
-                />
-                <ComposerCumulativeTimecode
-                  running={isCurrentChatRunning}
-                  startedAt={composerRunTimecodeStartedAt}
-                  cumulativeBaseMs={cumulativeRunBaseMs}
-                />
-                {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
+                <div
+                  className="composer-telemetry-row"
+                  data-has-token-tally={threadTokenTallyLabel ? 'true' : 'false'}
+                >
+                  <ComposerRunTimecode
+                    running={isCurrentChatRunning}
+                    startedAt={composerRunTimecodeStartedAt}
+                  />
+                  <ComposerCumulativeTimecode
+                    running={isCurrentChatRunning}
+                    startedAt={composerRunTimecodeStartedAt}
+                    cumulativeBaseMs={cumulativeRunBaseMs}
+                  />
+                  {/* 1.0.4-AS3 — Screen Watch (Appwatch/Appshots) button.
                   Pre-AS3 the attached-window UX was an inline pill in the
                   action row that took ~120px and showed the app name +
                   title + close glyph. Chris asked for a single themed
@@ -21084,33 +21036,33 @@ function App(): React.JSX.Element {
                   surfaces the attached app name; a small pulse dot
                   signals an active SCStream (kept the at-a-glance
                   "live capture" cue from the old pill). */}
-                <button
-                  type="button"
-                  className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}`}
-                  onClick={() => {
-                    if (attachedWindow) void handleDetachWindow()
-                    else void handleAttachWindow()
-                  }}
-                  title={
-                    attachedWindow
-                      ? attachedWindow.streaming
-                        ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
-                        : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
-                      : 'Screen Watch — click to pick a window for the AI to see'
-                  }
-                  aria-label={
-                    attachedWindow
-                      ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
-                      : 'Open Screen Watch picker'
-                  }
-                  data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
-                >
-                  <ScreenWatchSymbolIcon />
-                  {attachedWindow?.streaming && (
-                    <span className="composer-screen-watch-button-dot" aria-hidden="true" />
-                  )}
-                </button>
-                {/* 1.0.5-AR12c — Workspace switcher in its new home.
+                  <button
+                    type="button"
+                    className={`composer-screen-watch-button${attachedWindow ? ' is-attached' : ''}${attachedWindow?.streaming ? ' is-streaming' : ''}`}
+                    onClick={() => {
+                      if (attachedWindow) void handleDetachWindow()
+                      else void handleAttachWindow()
+                    }}
+                    title={
+                      attachedWindow
+                        ? attachedWindow.streaming
+                          ? `Watching ${attachedWindow.windowMeta.applicationName || 'window'} · live capture · click to detach`
+                          : `Watching ${attachedWindow.windowMeta.applicationName || 'window'}${attachedWindow.windowMeta.title ? ` — ${attachedWindow.windowMeta.title}` : ''} · click to detach`
+                        : 'Screen Watch — click to pick a window for the AI to see'
+                    }
+                    aria-label={
+                      attachedWindow
+                        ? `Detach ${attachedWindow.windowMeta.applicationName || 'window'}`
+                        : 'Open Screen Watch picker'
+                    }
+                    data-streaming={attachedWindow?.streaming ? 'true' : 'false'}
+                  >
+                    <ScreenWatchSymbolIcon />
+                    {attachedWindow?.streaming && (
+                      <span className="composer-screen-watch-button-dot" aria-hidden="true" />
+                    )}
+                  </button>
+                  {/* 1.0.5-AR12c — Workspace switcher in its new home.
                    Sits between the timecodes / Screen Watch cluster
                    on the left and the token tally on the right. The
                    `composer-workspace-button` class gets a
@@ -21118,14 +21070,14 @@ function App(): React.JSX.Element {
                    auto`) so the two auto-margins (this + the tally)
                    split the free space. Hidden in global chats —
                    same gating as the previous top-row mount. */}
-                {!isCurrentGlobalChat && (
-                  <ComposerWorkspaceSwitcher
-                    workspaces={workspaces}
-                    currentWorkspace={currentWorkspace}
-                    onPickExisting={handleSelectExistingWorkspace}
-                    onAddNewWorkspace={handleSelectWorkspace}
-                    onSelectNoWorkspace={handleNewGlobalChat}
-                    /*
+                  {!isCurrentGlobalChat && (
+                    <ComposerWorkspaceSwitcher
+                      workspaces={workspaces}
+                      currentWorkspace={currentWorkspace}
+                      onPickExisting={handleSelectExistingWorkspace}
+                      onAddNewWorkspace={handleSelectWorkspace}
+                      onSelectNoWorkspace={handleNewGlobalChat}
+                      /*
                       1.0.6-EW66 — multi-workspace manager. The
                       additional-workspace grants + their repo
                       metadata drive the "Current workspaces" list;
@@ -21134,28 +21086,28 @@ function App(): React.JSX.Element {
                       grants to (welcome-state chats get the picker
                       without those affordances).
                     */
-                    additionalGrants={externalPathGrants}
-                    repoMetadata={externalPathRepoMetadata}
-                    composerStyle={appearance.composerStyle}
-                    onReorderWorkspaces={
-                      currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
-                    }
-                    onRemoveWorkspacePath={
-                      currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
-                    }
-                    onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
-                    onAddKnownWorkspace={
-                      currentChat?.appChatId ? handleAddKnownWorkspaceAsSecondary : undefined
-                    }
-                  />
-                )}
-                {threadTokenTallyLabel && (
-                  <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
-                    {threadTokenTallyLabel}
-                  </span>
-                )}
-              </div>
-              {/* 1.0.6-EW68 — close .composer-bottom-controls */}
+                      additionalGrants={externalPathGrants}
+                      repoMetadata={externalPathRepoMetadata}
+                      composerStyle={appearance.composerStyle}
+                      onReorderWorkspaces={
+                        currentChat?.appChatId ? handleReorderExternalPathGrants : undefined
+                      }
+                      onRemoveWorkspacePath={
+                        currentChat?.appChatId ? handleRemoveExternalPathGrantsByPath : undefined
+                      }
+                      onAddFolder={currentChat?.appChatId ? handleAddWorkspaceFolder : undefined}
+                      onAddKnownWorkspace={
+                        currentChat?.appChatId ? handleAddKnownWorkspaceAsSecondary : undefined
+                      }
+                    />
+                  )}
+                  {threadTokenTallyLabel && (
+                    <span className="composer-thread-token-tally" title={threadTokenTallyTooltip}>
+                      {threadTokenTallyLabel}
+                    </span>
+                  )}
+                </div>
+                {/* 1.0.6-EW68 — close .composer-bottom-controls */}
               </div>
               {/*
                 Composer-unification (Phase J1): removed the codex-style
