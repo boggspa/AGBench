@@ -47,6 +47,7 @@ public actor PairingChannelClient: PairingChannelTransport {
         case sendFailed(String)
         case receiveFailed(String)
         case malformedReply(String)
+        case rejected(String)
         case alreadyInProgress
         case notConnected
         case timedOut
@@ -59,6 +60,7 @@ public actor PairingChannelClient: PairingChannelTransport {
             case .sendFailed(let s): return "Send failed: \(s)"
             case .receiveFailed(let s): return "Receive failed: \(s)"
             case .malformedReply(let s): return "Malformed reply: \(s)"
+            case .rejected(let s): return "Pairing rejected: \(s)"
             case .alreadyInProgress: return "Pairing already in progress"
             case .notConnected: return "Not connected — call attemptPairing first"
             case .timedOut: return "Pairing timed out"
@@ -161,10 +163,17 @@ public actor PairingChannelClient: PairingChannelTransport {
             await tearDown()
             throw error
         }
-        guard
-            let object = try? JSONSerialization.jsonObject(with: replyBytes) as? [String: Any],
-            let code = object["macConfirmationCode"] as? String,
-            let sessionID = object["sessionID"] as? String
+        guard let object = try? JSONSerialization.jsonObject(with: replyBytes) as? [String: Any] else {
+            await tearDown()
+            throw PairingChannelError.malformedReply("Reply was not a JSON object")
+        }
+        if let accepted = object["accepted"] as? Bool, accepted == false {
+            let message = (object["message"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            await tearDown()
+            throw PairingChannelError.rejected(message?.isEmpty == false ? message! : "The Mac rejected this pairing request")
+        }
+        guard let code = object["macConfirmationCode"] as? String,
+              let sessionID = object["sessionID"] as? String
         else {
             await tearDown()
             throw PairingChannelError.malformedReply("Reply did not include macConfirmationCode + sessionID")

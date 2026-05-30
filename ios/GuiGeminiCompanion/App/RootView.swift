@@ -18,6 +18,9 @@ struct RootView: View {
                         insertion: .move(edge: .trailing).combined(with: .opacity),
                         removal: .scale(scale: 0.98).combined(with: .opacity)
                     ))
+            } else if appState.savedPairRestoreState.isConnecting {
+                ConnectingToMacView()
+                    .transition(.opacity)
             } else {
                 NavigationStack {
                     PairingView(viewModel: appState.pairingViewModel)
@@ -36,6 +39,9 @@ struct RootView: View {
         .background(palette.background.ignoresSafeArea())
         .preferredColorScheme(palette.preferredColorScheme)
         .animation(Theme.Motion.handoff, value: appState.isPaired)
+        .task {
+            await appState.restoreSavedPairIfNeeded()
+        }
         .onChange(of: appState.pairingViewModel.confirmedPair?.pairID.rawValue) { _, _ in
             if let pair = appState.pairingViewModel.confirmedPair {
                 Task { await appState.connect(with: pair) }
@@ -48,7 +54,7 @@ struct RootView: View {
         if horizontalSizeClass == .regular {
             iPadShell(appState: appState)
         } else {
-            MainTabs(appState: appState)
+            iPhoneTaskShell(appState: appState)
         }
     }
 }
@@ -98,110 +104,189 @@ private extension iPadShell {
     }
 }
 
-/// Three-tab main interface: Transcript / Approvals / Compose.
-/// The iPad-full variant (Phase D2) would replace this with a
-/// SplitView; for iPhone-minimal a TabBar suits the form factor.
-struct MainTabs: View {
-    @Bindable var appState: AppState
+private struct ConnectingToMacView: View {
     @Environment(\.companionThemePalette) private var palette
 
     var body: some View {
-        TabView {
-            NavigationStack {
-                if let viewModel = appState.remoteTaskConsoleViewModel {
-                    RemoteTaskConsoleView(viewModel: viewModel)
-                        .navigationTitle("Tasks")
-                } else {
-                    ConnectionEmptyState(
-                        icon: "rectangle.stack.badge.person.crop",
-                        title: "Task console warming up",
-                        message: "Remote task cards, approvals, questions, and diffs will appear here when the bridge starts streaming."
-                    )
-                    .navigationTitle("Tasks")
-                }
+        ZStack {
+            palette.background.ignoresSafeArea()
+            VStack(spacing: Theme.Spacing.control) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(palette.accent)
+                Text("Connecting to Mac")
+                    .font(Theme.Typography.headline)
+                    .foregroundStyle(Theme.Text.primary)
+                Text("Restoring the saved pairing and refreshing remote task state.")
+                    .font(Theme.Typography.callout)
+                    .foregroundStyle(Theme.Text.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .tabItem { Label("Tasks", systemImage: "rectangle.stack.badge.person.crop") }
+            .padding(Theme.Spacing.screen)
+            .frame(maxWidth: 340)
+        }
+    }
+}
 
-            NavigationStack {
-                if let viewModel = appState.transcriptViewModel {
-                    TranscriptView(
-                        viewModel: viewModel,
-                        cancelRunBinding: appState.composerViewModel.map { composer in
-                            TranscriptView.CancelRunBinding(
-                                canCancel: composer.canCancelRun,
-                                cancel: { await composer.cancelCurrentRun() }
-                            )
-                        }
-                    )
-                        .navigationTitle("Transcript")
-                } else {
-                    ConnectionEmptyState(
-                        icon: "text.bubble",
-                        title: "Transcript warming up",
-                        message: "Live run events from your paired Mac will appear here as soon as the bridge starts streaming."
-                    )
-                    .navigationTitle("Transcript")
-                }
-            }
-            .tabItem { Label("Transcript", systemImage: "text.bubble") }
+private enum iPhoneTaskRoute: Hashable {
+    case transcript
+    case approvals
+    case compose
+    case settings
+}
 
-            NavigationStack {
-                if let viewModel = appState.approvalViewModel {
-                    ApprovalCardsView(viewModel: viewModel)
-                        .navigationTitle("Approvals")
-                } else {
-                    ConnectionEmptyState(
-                        icon: "checkmark.shield",
-                        title: "Approval desk opening",
-                        message: "Tool requests that need your decision will stack here once the desktop session is ready."
-                    )
-                    .navigationTitle("Approvals")
-                }
-            }
-            .tabItem { Label("Approvals", systemImage: "checkmark.shield") }
+/// iPhone task-first interface. The task console owns the first screen;
+/// transcript, approvals, composer, and settings remain one tap away as
+/// secondary routes instead of competing for primary tab-bar space.
+struct iPhoneTaskShell: View {
+    @Bindable var appState: AppState
+    @Environment(\.companionThemePalette) private var palette
+    @State private var path: [iPhoneTaskRoute] = []
 
-            NavigationStack {
-                if let viewModel = appState.composerViewModel {
-                    ComposerView(viewModel: viewModel, sidebarStore: appState.sidebarStore)
-                        .navigationTitle("Compose")
-                        .toolbar {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button("Disconnect") {
-                                    Task { await appState.disconnect() }
-                                }
-                            }
-                        }
-                } else {
-                    ConnectionEmptyState(
-                        icon: "square.and.pencil",
-                        title: "Composer getting ready",
-                        message: "When the bridge finishes connecting, you can start a new turn from this screen."
-                    )
-                    .navigationTitle("Compose")
-                }
-            }
-            .tabItem { Label("Compose", systemImage: "square.and.pencil") }
-
-            NavigationStack {
-                iPhoneSettingsView(
-                    pairingViewModel: appState.pairingViewModel,
-                    transcriptViewModel: appState.transcriptViewModel,
-                    pushStatusMessage: appState.lastPushMessage,
-                    yoloModeEnabled: appState.yoloModeEnabled,
-                    onSetYoloMode: { enabled in
-                        Task { await appState.setYoloMode(enabled: enabled) }
-                    },
-                    onUnpair: {
-                        Task { await appState.unpair() }
+    var body: some View {
+        NavigationStack(path: $path) {
+            taskRoot
+                .navigationTitle("Tasks")
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        connectionLabel
                     }
-                )
-                .navigationTitle("Settings")
-            }
-            .tabItem { Label("Settings", systemImage: "gearshape") }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                Task { await appState.refreshRemoteState() }
+                            } label: {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                            Divider()
+                            Button { path.append(.transcript) } label: {
+                                Label("Transcript", systemImage: "text.bubble")
+                            }
+                            Button { path.append(.approvals) } label: {
+                                Label("Approvals", systemImage: "checkmark.shield")
+                            }
+                            Button { path.append(.compose) } label: {
+                                Label("Compose", systemImage: "square.and.pencil")
+                            }
+                            Button { path.append(.settings) } label: {
+                                Label("Settings", systemImage: "gearshape")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .accessibilityLabel("Remote console menu")
+                    }
+                }
+                .navigationDestination(for: iPhoneTaskRoute.self) { route in
+                    routeView(route)
+                }
         }
         .tint(palette.accent)
-        .toolbarBackground(Theme.chromeBlur, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(Theme.chromeBlur, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    @ViewBuilder
+    private var taskRoot: some View {
+        if let viewModel = appState.remoteTaskConsoleViewModel {
+            RemoteTaskConsoleView(
+                viewModel: viewModel,
+                statusMessage: rootStatusMessage,
+                onRefresh: {
+                    Task { await appState.refreshRemoteState() }
+                }
+            )
+        } else {
+            ConnectionEmptyState(
+                icon: "rectangle.stack.badge.person.crop",
+                title: "Task console warming up",
+                message: "Remote task cards, approvals, questions, and diffs will appear here when the bridge starts streaming."
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func routeView(_ route: iPhoneTaskRoute) -> some View {
+        switch route {
+        case .transcript:
+            if let viewModel = appState.transcriptViewModel {
+                TranscriptView(
+                    viewModel: viewModel,
+                    cancelRunBinding: appState.composerViewModel.map { composer in
+                        TranscriptView.CancelRunBinding(
+                            canCancel: composer.canCancelRun,
+                            cancel: { await composer.cancelCurrentRun() }
+                        )
+                    }
+                )
+                .navigationTitle("Transcript")
+            } else {
+                ConnectionEmptyState(
+                    icon: "text.bubble",
+                    title: "Transcript warming up",
+                    message: "Live run events from your paired Mac will appear here as soon as the bridge starts streaming."
+                )
+                .navigationTitle("Transcript")
+            }
+        case .approvals:
+            if let viewModel = appState.approvalViewModel {
+                ApprovalCardsView(viewModel: viewModel)
+                    .navigationTitle("Approvals")
+            } else {
+                ConnectionEmptyState(
+                    icon: "checkmark.shield",
+                    title: "Approval desk opening",
+                    message: "Tool requests that need your decision will stack here once the desktop session is ready."
+                )
+                .navigationTitle("Approvals")
+            }
+        case .compose:
+            if let viewModel = appState.composerViewModel {
+                ComposerView(viewModel: viewModel, sidebarStore: appState.sidebarStore)
+                    .navigationTitle("Compose")
+            } else {
+                ConnectionEmptyState(
+                    icon: "square.and.pencil",
+                    title: "Composer getting ready",
+                    message: "When the bridge finishes connecting, you can start a new turn from this screen."
+                )
+                .navigationTitle("Compose")
+            }
+        case .settings:
+            iPhoneSettingsView(
+                pairingViewModel: appState.pairingViewModel,
+                transcriptViewModel: appState.transcriptViewModel,
+                pushStatusMessage: appState.lastPushMessage,
+                yoloModeEnabled: appState.yoloModeEnabled,
+                onSetYoloMode: { enabled in
+                    Task { await appState.setYoloMode(enabled: enabled) }
+                },
+                onUnpair: {
+                    Task { await appState.unpair() }
+                }
+            )
+            .navigationTitle("Settings")
+        }
+    }
+
+    private var connectionLabel: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(appState.bridgeClient == nil ? palette.warning : palette.success)
+                .frame(width: 7, height: 7)
+            Text(appState.bridgeClient == nil ? "connecting" : "paired")
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.Text.secondary)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(appState.bridgeClient == nil ? "Bridge connecting" : "Bridge paired")
+    }
+
+    private var rootStatusMessage: String? {
+        if appState.pendingNotificationRoute != nil {
+            return "Refreshing task state from push"
+        }
+        return appState.lastPushMessage
     }
 }
 

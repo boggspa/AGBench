@@ -104,12 +104,14 @@ public struct iPadThreadSummary: Identifiable, Hashable, Sendable {
 public enum iPadSidebarSelection: Hashable, Sendable {
     case workspace(String)
     case thread(String)
+    case task(String)
     case settings
 
     public var id: String {
         switch self {
         case .workspace(let id): return "workspace:\(id)"
         case .thread(let id): return "thread:\(id)"
+        case .task(let id): return "task:\(id)"
         case .settings: return "settings"
         }
     }
@@ -167,12 +169,23 @@ public final class iPadSelectionState {
         return nil
     }
 
+    public var selectedTaskID: String? {
+        if case .task(let id) = selection {
+            return id
+        }
+        return nil
+    }
+
     public func selectWorkspace(_ id: String) {
         selection = .workspace(id)
     }
 
     public func selectThread(_ id: String) {
         selection = .thread(id)
+    }
+
+    public func selectTask(_ id: String) {
+        selection = .task(id)
     }
 
     public func selectSettings() {
@@ -240,7 +253,8 @@ public struct iPadShell: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             iPadSidebar(
                 store: sidebarStore,
-                selectionState: selectionState
+                selectionState: selectionState,
+                remoteTaskStore: remoteTaskStore
             )
             .navigationSplitViewColumnWidth(min: 280, ideal: 320, max: 380)
         } content: {
@@ -316,12 +330,18 @@ public struct iPadShell: View {
                 selectionState.selection = nil
             case .workspace(let id) where sidebarStore.workspace(id: id) == nil:
                 selectionState.selection = nil
+            case .task(let id) where remoteTaskStore?.tasksById[id] == nil:
+                selectionState.selection = nil
             default:
                 break
             }
         }
         if selectionState.selection == nil {
-            if let activeThread = sidebarStore.threads.first(where: \.isActive) ?? sidebarStore.threads.first {
+            if let attentionTask = remoteTaskStore?.buckets.needsAttention.first {
+                selectionState.selectTask(attentionTask.id)
+            } else if let activeTask = remoteTaskStore?.buckets.active.first {
+                selectionState.selectTask(activeTask.id)
+            } else if let activeThread = sidebarStore.threads.first(where: \.isActive) ?? sidebarStore.threads.first {
                 selectionState.selectThread(activeThread.id)
             } else if let activeWorkspace = sidebarStore.workspaces.first(where: \.isActive) ?? sidebarStore.workspaces.first {
                 selectionState.selectWorkspace(activeWorkspace.id)
@@ -355,11 +375,17 @@ private struct iPadInspectorHost: View {
         if case .thread(let id) = selection {
             return id
         }
+        if case .task(let id) = selection {
+            return remoteTaskStore?.tasksById[id]?.threadId
+        }
         return nil
     }
 
     private var selectedTaskDetail: RemoteTaskDetail? {
-        remoteTaskStore?.detail(threadID: selectedThreadID)
+        if case .task(let id) = selection {
+            return remoteTaskStore?.detail(for: id)
+        }
+        return remoteTaskStore?.detail(threadID: selectedThreadID)
     }
 
     private var latestDiffEvent: BridgeRunEvent? {

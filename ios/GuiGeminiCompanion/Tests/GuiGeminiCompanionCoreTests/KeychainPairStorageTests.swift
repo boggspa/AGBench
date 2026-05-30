@@ -116,6 +116,30 @@ final class KeychainPairStorageTests: XCTestCase {
         XCTAssertEqual(ids, ["a", "b", "c"])
     }
 
+    func testLoadMostRecentPairReturnsNewestCreatedAt() async throws {
+        let storage = makeStorage()
+        let older = KeychainPairStorage.PairRecord(
+            pairID: PairID("older"),
+            controllerDeviceID: DeviceID("iphone-1"),
+            macDeviceID: DeviceID("mac-old"),
+            createdAt: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        let newer = KeychainPairStorage.PairRecord(
+            pairID: PairID("newer"),
+            controllerDeviceID: DeviceID("iphone-1"),
+            macDeviceID: DeviceID("mac-new"),
+            createdAt: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        try await storage.savePair(older, derivedKeys: sampleDerivedKeys())
+        try await storage.savePair(newer, derivedKeys: sampleDerivedKeys())
+
+        let loaded = try await storage.loadMostRecentPair()
+
+        XCTAssertEqual(loaded?.record.pairID.rawValue, "newer")
+        XCTAssertEqual(loaded?.record.macDeviceID.rawValue, "mac-new")
+        XCTAssertNotNil(loaded?.derivedKeys)
+    }
+
     func testDeletePairRemovesEntryAndUpdatesIndex() async throws {
         let storage = makeStorage()
         try await storage.savePair(sampleRecord(pairID: "a"), derivedKeys: sampleDerivedKeys())

@@ -1,6 +1,11 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
-/// PairingView — the iPhone-minimal pairing screen.
+/// PairingView — the device-neutral pairing screen.
 ///
 /// iOS flow:
 ///   - Camera preview reads the QR shown on the Mac.
@@ -22,6 +27,8 @@ public struct PairingView: View {
     @State private var permissionDenied: Bool = false
     @State private var scannerError: String?
     @State private var wantsCameraScanner: Bool = false
+    @State private var diagnosticsCopied: Bool = false
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     public init(viewModel: PairingViewModel) {
         self.viewModel = viewModel
@@ -51,6 +58,9 @@ public struct PairingView: View {
             }
             .scrollIndicators(.hidden)
         }
+        .onChange(of: viewModel.state) { _, _ in
+            diagnosticsCopied = false
+        }
     }
 
     @ViewBuilder
@@ -68,7 +78,7 @@ public struct PairingView: View {
             Text("Pair with Mac")
                 .font(Theme.Typography.appTitle)
                 .foregroundStyle(Theme.Text.primary)
-            Text("Connect this iPhone to the desktop bridge by scanning the QR code shown on your Mac.")
+            Text("Connect this iPhone or iPad to the desktop bridge with the QR code or manual setup payload shown on your Mac.")
                 .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Text.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -82,6 +92,7 @@ public struct PairingView: View {
         #else
         macPasteScreen
         #endif
+        failureMessage
         if case .scanning = viewModel.state {
             ProgressView()
                 .tint(Theme.accent)
@@ -108,7 +119,22 @@ public struct PairingView: View {
         } else if wantsCameraScanner {
             cameraScannerSurface
         } else {
-            cameraPermissionCTA
+            iosPairingOptions
+        }
+    }
+
+    @ViewBuilder
+    private var iosPairingOptions: some View {
+        if horizontalSizeClass == .regular {
+            VStack(spacing: Theme.Spacing.section) {
+                macPasteScreen
+                cameraPermissionCTA
+            }
+        } else {
+            VStack(spacing: Theme.Spacing.section) {
+                cameraPermissionCTA
+                macPasteScreen
+            }
         }
     }
 
@@ -127,7 +153,7 @@ public struct PairingView: View {
             Text("Scan the pairing QR")
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Text.primary)
-            Text("The next screen will ask for camera access so AGBench can read the QR code on your Mac.")
+            Text("Camera scanning is optional. If this device cannot scan reliably, paste the setup payload below instead.")
                 .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Text.secondary)
                 .multilineTextAlignment(.center)
@@ -142,10 +168,9 @@ public struct PairingView: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
-            Button("Paste JSON instead") { showPasteFallback = true }
+            Button("Focus manual setup") { showPasteFallback = true }
                 .font(Theme.Typography.caption)
                 .buttonStyle(.bordered)
-            failureMessage
         }
         .padding(Theme.Spacing.section)
         .frame(maxWidth: .infinity)
@@ -212,12 +237,12 @@ public struct PairingView: View {
                 .font(Theme.Typography.headline)
                 .foregroundStyle(Theme.Text.primary)
                 .multilineTextAlignment(.center)
-            Text("Open Settings -> AGBench -> Camera, or paste the QR's JSON instead.")
+            Text("Open Settings -> AGBench -> Camera, or use manual setup. Manual setup does not require a working camera.")
                 .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Text.secondary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Paste JSON instead") { showPasteFallback = true }
+            Button("Use manual setup") { showPasteFallback = true }
                 .font(Theme.Typography.sectionTitle)
                 .buttonStyle(.borderedProminent)
         }
@@ -235,10 +260,10 @@ public struct PairingView: View {
     @ViewBuilder
     private var macPasteScreen: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.control) {
-            Label("Paste QR JSON", systemImage: "doc.on.clipboard")
+            Label("Manual setup payload", systemImage: "doc.on.clipboard")
                 .font(Theme.Typography.sectionTitle)
                 .foregroundStyle(Theme.Text.primary)
-            Text("Paste the QR's JSON payload below.")
+            Text("Paste the setup payload copied from the Mac pairing screen. This is separate from the 6-digit verification code.")
                 .font(Theme.Typography.callout)
                 .foregroundStyle(Theme.Text.secondary)
             TextEditor(text: $pastedJSON)
@@ -257,12 +282,11 @@ public struct PairingView: View {
                 }
                 viewModel.scan(bootstrapJSON: bytes)
             } label: {
-                Label("Scan", systemImage: "qrcode.viewfinder")
+                Label("Start pairing", systemImage: "arrow.right.circle.fill")
                     .font(Theme.Typography.sectionTitle)
             }
             .buttonStyle(.borderedProminent)
             .disabled(pastedJSON.isEmpty)
-            failureMessage
         }
         .padding(Theme.Spacing.section)
         .background(Theme.cardBlur, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
@@ -395,10 +419,30 @@ public struct PairingView: View {
     private var failureMessage: some View {
         if case .failed(let message) = viewModel.state {
             InlineMessage(icon: "exclamationmark.triangle.fill", message: message, color: Theme.destructive)
-            Button("Try again", action: viewModel.reset)
-                .font(Theme.Typography.caption)
-                .buttonStyle(.bordered)
+            HStack(spacing: Theme.Spacing.tight) {
+                Button("Try again", action: viewModel.reset)
+                    .font(Theme.Typography.caption)
+                    .buttonStyle(.bordered)
+                if viewModel.lastDiagnostics != nil {
+                    Button(diagnosticsCopied ? "Diagnostics copied" : "Copy diagnostics") {
+                        copyDiagnostics()
+                    }
+                    .font(Theme.Typography.caption)
+                    .buttonStyle(.bordered)
+                }
+            }
         }
+    }
+
+    private func copyDiagnostics() {
+        guard let diagnostics = viewModel.lastDiagnostics else { return }
+        #if os(iOS)
+        UIPasteboard.general.string = diagnostics
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(diagnostics, forType: .string)
+        #endif
+        diagnosticsCopied = true
     }
 }
 

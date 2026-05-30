@@ -70,6 +70,8 @@ public struct iPadDetailHost: View {
         switch selection {
         case .thread(let threadID):
             threadPane(threadID: threadID)
+        case .task(let taskID):
+            taskPane(taskID: taskID)
         case .workspace(let workspaceID):
             workspacePane(workspaceID: workspaceID)
         case .settings:
@@ -88,6 +90,31 @@ public struct iPadDetailHost: View {
             taskDetail: remoteTaskStore?.detail(threadID: threadID),
             mocked: mocked
         )
+    }
+
+    @ViewBuilder
+    private func taskPane(taskID: String) -> some View {
+        if let detail = remoteTaskStore?.detail(for: taskID) {
+            iPadThreadPane(
+                threadID: detail.task.threadId,
+                thread: store.thread(id: detail.task.threadId) ?? iPadThreadSummary(
+                    id: detail.task.threadId,
+                    workspaceID: detail.task.workspaceId,
+                    title: detail.task.displayTitle,
+                    subtitle: detail.task.status.rawValue,
+                    provider: detail.task.provider,
+                    runID: detail.task.runId,
+                    lastActivityAt: detail.task.updatedAt,
+                    isActive: detail.task.status.isActive
+                ),
+                events: transcriptViewModel?.events ?? [],
+                composerViewModel: composerViewModel,
+                taskDetail: detail,
+                mocked: mocked
+            )
+        } else {
+            iPadEmptyPane()
+        }
     }
 
     private func workspacePane(workspaceID: String) -> some View {

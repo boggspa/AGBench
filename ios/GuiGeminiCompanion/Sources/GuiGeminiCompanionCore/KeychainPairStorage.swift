@@ -195,6 +195,17 @@ public actor KeychainPairStorage {
         return records
     }
 
+    public func loadMostRecentPair() async throws -> (record: PairRecord, derivedKeys: PairingDerivedKeys)? {
+        let records = try await loadAllPairs()
+            .sorted { lhs, rhs in lhs.createdAt > rhs.createdAt }
+        for record in records {
+            if let loaded = try await loadPair(pairID: record.pairID) {
+                return loaded
+            }
+        }
+        return nil
+    }
+
     public func deletePair(pairID: PairID) async throws {
         try await secretStore.delete(account: Self.pairEntryAccount(for: pairID))
         try await removeFromIndex(pairID: pairID)

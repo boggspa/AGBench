@@ -3,10 +3,18 @@ import SwiftUI
 @available(iOS 17.0, macOS 14.0, *)
 public struct RemoteTaskConsoleView: View {
     @Bindable public var viewModel: RemoteTaskConsoleViewModel
+    public let statusMessage: String?
+    public let onRefresh: (() -> Void)?
     @Environment(\.companionThemePalette) private var palette
 
-    public init(viewModel: RemoteTaskConsoleViewModel) {
+    public init(
+        viewModel: RemoteTaskConsoleViewModel,
+        statusMessage: String? = nil,
+        onRefresh: (() -> Void)? = nil
+    ) {
         self.viewModel = viewModel
+        self.statusMessage = statusMessage
+        self.onRefresh = onRefresh
     }
 
     public var body: some View {
@@ -26,6 +34,9 @@ public struct RemoteTaskConsoleView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                 header
+                if let statusMessage = normalizedStatusMessage {
+                    statusBanner(statusMessage, color: palette.accent)
+                }
                 let buckets = viewModel.buckets
                 if hasTasks(buckets) {
                     focusStrip(buckets)
@@ -72,6 +83,13 @@ public struct RemoteTaskConsoleView: View {
                     .foregroundStyle(Theme.Text.secondary)
             }
             Spacer()
+            if let onRefresh {
+                Button(action: onRefresh) {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Refresh remote task state")
+            }
             let count = viewModel.buckets.needsAttention.count
             if count > 0 {
                 Text("\(count)")
@@ -101,6 +119,11 @@ public struct RemoteTaskConsoleView: View {
             return "\(buckets.active.count) active remote runs"
         }
         return "Remote state from your paired Mac"
+    }
+
+    private var normalizedStatusMessage: String? {
+        let trimmed = statusMessage?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
     }
 
     private func focusStrip(_ buckets: RemoteTaskBuckets) -> some View {

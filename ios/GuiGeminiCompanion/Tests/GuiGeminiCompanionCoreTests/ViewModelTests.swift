@@ -237,6 +237,7 @@ final class PairingViewModelTests: XCTestCase {
         vm.scan(bootstrapJSON: makeBootstrapJSON(expiresIn: -10))
         if case .failed(let message) = vm.state {
             XCTAssertTrue(message.contains("expired"), "unexpected message: \(message)")
+            XCTAssertTrue(vm.lastDiagnostics?.contains("payloadBytes") == true)
         } else {
             XCTFail("expected .failed, got \(vm.state)")
         }
@@ -249,6 +250,7 @@ final class PairingViewModelTests: XCTestCase {
             XCTFail("expected .failed, got \(vm.state)")
             return
         }
+        XCTAssertTrue(vm.lastDiagnostics?.contains("AGBench iOS pairing diagnostics") == true)
     }
 
     func testConfirmAfterDesktopVerificationProducesPair() async {
@@ -365,6 +367,7 @@ final class PairingViewModelTests: XCTestCase {
             return
         }
         XCTAssertTrue(message.contains("different pairing code"))
+        XCTAssertTrue(vm.lastDiagnostics?.contains("bonjourServiceName: _test._tcp") == true)
         let decisions = await transport.finalDecisionSnapshot()
         XCTAssertEqual(decisions.last?.accepted, false)
     }

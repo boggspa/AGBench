@@ -67,12 +67,13 @@ final class PairingChannelClientTests: XCTestCase {
         sessionID: String = "session-1",
         responseHolder: TestStateHolder<Data> = TestStateHolder(),
         decisionHolder: TestStateHolder<Data> = TestStateHolder(),
+        firstReplyData: Data? = nil,
         desktopFinalDecision: PairingChannelClient.DesktopFinalDecision? = nil
     ) throws -> NWEndpoint.Port {
         let parameters = NWParameters.tcp
         parameters.acceptLocalOnly = true
         let listener = try NWListener(using: parameters)
-        listener.newConnectionHandler = { [responseHolder, decisionHolder, desktopFinalDecision] connection in
+        listener.newConnectionHandler = { [responseHolder, decisionHolder, firstReplyData, desktopFinalDecision] connection in
             connection.start(queue: .global())
             connection.receive(minimumIncompleteLength: 4, maximumLength: 4) { lengthBytes, _, _, _ in
                 guard let lengthBytes else { return }
@@ -80,10 +81,10 @@ final class PairingChannelClientTests: XCTestCase {
                 connection.receive(minimumIncompleteLength: Int(length), maximumLength: Int(length)) { payload, _, _, _ in
                     guard let payload else { return }
                     responseHolder.set(payload)
-                    let reply = try! JSONSerialization.data(withJSONObject: [
+                    let reply = firstReplyData ?? (try! JSONSerialization.data(withJSONObject: [
                         "macConfirmationCode": macConfirmationCode,
                         "sessionID": sessionID
-                    ], options: [.sortedKeys])
+                    ], options: [.sortedKeys]))
                     var replyLength = UInt32(reply.count).bigEndian
                     var frame = Data(bytes: &replyLength, count: 4)
                     frame.append(reply)
@@ -152,6 +153,31 @@ final class PairingChannelClientTests: XCTestCase {
         XCTAssertNotNil(responseHolder.value)
         let decoded = try? JSONSerialization.jsonObject(with: responseHolder.value!) as? [String: Any]
         XCTAssertEqual(decoded?["pairingSessionID"] as? String, "session-1")
+    }
+
+    func testEarlyDesktopRejectionIsNotReportedAsMalformedReply() async throws {
+        let rejection = try JSONSerialization.data(withJSONObject: [
+            "accepted": false,
+            "message": "Unknown pairing session: expired-session"
+        ], options: [.sortedKeys])
+        let port = try startListener(firstReplyData: rejection)
+        let client = PairingChannelClient(configuration: PairingChannelClient.Configuration(
+            bonjourServiceName: "_unused._tcp",
+            directEndpoint: .hostPort(host: "localhost", port: port),
+            connectionTimeout: 3,
+            receiveTimeout: 3
+        ))
+
+        do {
+            _ = try await client.attemptPairing(response: sampleResponse())
+            XCTFail("expected rejection")
+        } catch let error as PairingChannelClient.PairingChannelError {
+            guard case .rejected(let message) = error else {
+                XCTFail("expected .rejected, got \(error)")
+                return
+            }
+            XCTAssertTrue(message.contains("Unknown pairing session"))
+        }
     }
 
     func testFinalDecisionFrameIsSent() async throws {

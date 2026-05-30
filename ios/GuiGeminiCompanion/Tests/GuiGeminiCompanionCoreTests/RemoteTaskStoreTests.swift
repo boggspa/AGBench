@@ -168,4 +168,44 @@ final class RemoteTaskStoreTests: XCTestCase {
         XCTAssertEqual(kind, .cancelRun)
         XCTAssertEqual(targetId, "run-1")
     }
+
+    func testStickyActionFeedbackStoresAcknowledgedFailedAndStaleStates() {
+        let store = RemoteTaskStore(actionStaleAfter: 10)
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        store.apply(RemoteProjectionEnvelope(
+            kind: .task,
+            taskId: "task-1",
+            publishedAt: now,
+            payload: .task(RemoteTaskCard(
+                id: "task-1",
+                threadId: "chat-1",
+                status: .running,
+                updatedAt: now
+            ))
+        ))
+
+        store.markActionAcknowledged(taskId: "task-1", kind: .prompt, targetId: "chat-1", message: "queued", now: now)
+        guard case .acknowledged(let ackKind, let ackTarget, let ackMessage, _) = store.detail(for: "task-1")?.actionState else {
+            return XCTFail("expected acknowledged state")
+        }
+        XCTAssertEqual(ackKind, .prompt)
+        XCTAssertEqual(ackTarget, "chat-1")
+        XCTAssertEqual(ackMessage, "queued")
+
+        store.markActionFailed(taskId: "task-1", kind: .cancelRun, targetId: "run-1", message: "denied", now: now)
+        guard case .failed(let failedKind, let failedTarget, let failedMessage, _) = store.detail(for: "task-1")?.actionState else {
+            return XCTFail("expected failed state")
+        }
+        XCTAssertEqual(failedKind, .cancelRun)
+        XCTAssertEqual(failedTarget, "run-1")
+        XCTAssertEqual(failedMessage, "denied")
+
+        store.markActionStale(taskId: "task-1", kind: .approve, targetId: "approval-1", message: "expired", now: now)
+        guard case .stale(let staleKind, let staleTarget, let staleMessage, _) = store.detail(for: "task-1")?.actionState else {
+            return XCTFail("expected stale state")
+        }
+        XCTAssertEqual(staleKind, .approve)
+        XCTAssertEqual(staleTarget, "approval-1")
+        XCTAssertEqual(staleMessage, "expired")
+    }
 }

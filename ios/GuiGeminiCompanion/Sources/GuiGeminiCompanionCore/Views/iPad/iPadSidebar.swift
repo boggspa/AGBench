@@ -12,6 +12,7 @@ import SwiftUI
 public struct iPadSidebar: View {
     @Bindable public var store: iPadSidebarStore
     @Bindable public var selectionState: iPadSelectionState
+    public let remoteTaskStore: RemoteTaskStore?
 
     /// MOCK: when non-empty, sub-views render this in place of the
     /// store's contents. Gated `#if DEBUG` at the `mocked(...)` initializer
@@ -20,16 +21,19 @@ public struct iPadSidebar: View {
     private let mockedThreads: [iPadThreadSummary]
 
     @State private var query: String = ""
+    @AppStorage("ipad.sidebar.tasks.expanded") private var tasksExpanded: Bool = true
     @FocusState private var searchFocused: Bool
     @Environment(\.companionThemePalette) private var palette
 
     public init(
         store: iPadSidebarStore,
-        selectionState: iPadSelectionState
+        selectionState: iPadSelectionState,
+        remoteTaskStore: RemoteTaskStore? = nil
     ) {
         self.init(
             store: store,
             selectionState: selectionState,
+            remoteTaskStore: remoteTaskStore,
             mockedWorkspaces: [],
             mockedThreads: []
         )
@@ -38,11 +42,13 @@ public struct iPadSidebar: View {
     private init(
         store: iPadSidebarStore,
         selectionState: iPadSelectionState,
+        remoteTaskStore: RemoteTaskStore?,
         mockedWorkspaces: [iPadWorkspaceSummary],
         mockedThreads: [iPadThreadSummary]
     ) {
         self.store = store
         self.selectionState = selectionState
+        self.remoteTaskStore = remoteTaskStore
         self.mockedWorkspaces = mockedWorkspaces
         self.mockedThreads = mockedThreads
     }
@@ -60,6 +66,7 @@ public struct iPadSidebar: View {
         iPadSidebar(
             store: store,
             selectionState: selectionState,
+            remoteTaskStore: nil,
             mockedWorkspaces: workspaces,
             mockedThreads: threads
         )
@@ -77,6 +84,7 @@ public struct iPadSidebar: View {
                         resultCount: query.isEmpty ? nil : totalResultCount,
                         isFocused: $searchFocused
                     )
+                    taskCockpitSection
                     activeRunsSection
                     pinnedSection
                     recentsSection
@@ -186,6 +194,111 @@ public struct iPadSidebar: View {
     }
 
     // MARK: - Sections
+
+    @ViewBuilder
+    private var taskCockpitSection: some View {
+        if let remoteTaskStore {
+            let buckets = remoteTaskStore.buckets
+            let total = buckets.needsAttention.count + buckets.active.count + buckets.recent.count
+            if total > 0 {
+                VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+                    Button {
+                        withAnimation(Theme.Motion.quick) {
+                            tasksExpanded.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tasksExpanded ? "chevron.down" : "chevron.right")
+                                .font(Theme.Typography.smallCaption)
+                            Text("Tasks".uppercased())
+                                .font(Theme.Typography.smallCaption)
+                            Spacer(minLength: Theme.Spacing.tight)
+                            Text("\(total)")
+                                .font(Theme.Typography.smallCaption)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Theme.inputSurface, in: Capsule(style: .continuous))
+                        }
+                        .foregroundStyle(Theme.tertiaryText)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tasksExpanded ? "Collapse tasks" : "Expand tasks")
+                    if tasksExpanded {
+                        taskBucket(title: "Needs Attention", tasks: buckets.needsAttention, tint: palette.warning)
+                        taskBucket(title: "Active", tasks: buckets.active, tint: palette.accent)
+                        taskBucket(title: "Recent", tasks: buckets.recent.prefix(5).map { $0 }, tint: palette.secondaryAccent)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func taskBucket(title: String, tasks: [RemoteTaskCard], tint: Color) -> some View {
+        if !tasks.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(tint)
+                        .frame(width: 7, height: 7)
+                    Text(title)
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.secondaryText)
+                    Spacer(minLength: Theme.Spacing.tight)
+                    Text("\(tasks.count)")
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.tertiaryText)
+                }
+                ForEach(tasks) { task in
+                    taskRow(task, tint: tint)
+                }
+            }
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func taskRow(_ task: RemoteTaskCard, tint: Color) -> some View {
+        let isSelected = selectionState.selection == .task(task.id)
+        return HoverableSidebarRow { isHovered in
+            Button {
+                withAnimation(Theme.Motion.quick) {
+                    selectionState.selectTask(task.id)
+                }
+            } label: {
+                HStack(alignment: .top, spacing: Theme.Spacing.control) {
+                    Image(systemName: taskIcon(for: task.status))
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(tint)
+                        .frame(width: 26, height: 26)
+                        .background(tint.opacity(0.14), in: Circle())
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(task.displayTitle)
+                            .font(Theme.Typography.sectionTitle)
+                            .foregroundStyle(isSelected ? Theme.primaryText : Theme.secondaryText)
+                            .lineLimit(1)
+                        Text(taskSubtitle(task))
+                            .font(Theme.Typography.caption)
+                            .foregroundStyle(Theme.tertiaryText)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    Spacer(minLength: Theme.Spacing.tight)
+                    if task.pendingApprovalCount > 0 || task.pendingQuestionCount > 0 {
+                        Text("\(task.pendingApprovalCount + task.pendingQuestionCount)")
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(palette.warning)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(palette.warning.opacity(0.14), in: Capsule(style: .continuous))
+                    }
+                }
+                .rowChrome(isSelected: isSelected, isHovered: isHovered)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Task, \(task.displayTitle)")
+            .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        }
+    }
 
     @ViewBuilder
     private var header: some View {
@@ -471,6 +584,39 @@ public struct iPadSidebar: View {
                 .stroke(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
         }
         .accessibilityElement(children: .combine)
+    }
+
+    private func taskSubtitle(_ task: RemoteTaskCard) -> String {
+        var parts: [String] = []
+        if let provider = task.provider, !provider.isEmpty {
+            parts.append(SidebarActiveRunsSection.providerLabel(for: provider))
+        }
+        parts.append(task.status.rawValue)
+        if let workspace = task.workspaceDisplayName ?? task.workspaceId, !workspace.isEmpty {
+            parts.append(workspace)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private func taskIcon(for status: RemoteTaskStatus) -> String {
+        switch status {
+        case .awaitingApproval:
+            return "pause.circle.fill"
+        case .waiting:
+            return "questionmark.circle.fill"
+        case .running, .queued:
+            return "play.circle.fill"
+        case .completed:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .cancelled:
+            return "stop.circle.fill"
+        case .sleeping:
+            return "moon.zzz.fill"
+        case .idle, .unknown:
+            return "circle"
+        }
     }
 
     private func sectionLabel(_ title: String, trailingCount: Int?) -> some View {

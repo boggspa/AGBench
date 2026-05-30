@@ -36,6 +36,10 @@ public final class PairingViewModel {
     /// The pair credentials produced after a successful confirm. nil
     /// until `confirm()` runs.
     public private(set) var confirmedPair: GuiGeminiBridgeClient.Pair?
+    /// Sanitized support text for the last pairing failure. It avoids
+    /// key material and payload contents, but includes enough route/session
+    /// context to diagnose QR expiry, Bonjour mismatch, or daemon replies.
+    public private(set) var lastDiagnostics: String?
 
     /// Identity signing key the iOS app persists across launches. The
     /// scaffolding generates an ephemeral one per session — Keychain
@@ -50,6 +54,7 @@ public final class PairingViewModel {
     private var stagedFlow: PairingFlow.Started?
     private var stagedResponse: PairingResponsePayload?
     private var stagedDerivedKeys: PairingDerivedKeys?
+    private var stagedDiagnostics: PairingDiagnostics?
     private var pairingTransport: (any PairingChannelTransport)?
     private var pairingTask: Task<Void, Never>?
 
@@ -75,8 +80,10 @@ public final class PairingViewModel {
     public func scan(bootstrapJSON: Data) {
         cancelActiveTransport(message: "Pairing restarted")
         state = .scanning
+        lastDiagnostics = nil
         do {
             let started = try PairingFlow.scan(bootstrapJSON: bootstrapJSON)
+            let diagnostics = PairingDiagnostics(started: started, payloadByteCount: bootstrapJSON.count)
             let result = try started.buildResponse(
                 controllerDeviceID: controllerDeviceID,
                 controllerDisplayName: controllerDisplayName,
@@ -85,6 +92,7 @@ public final class PairingViewModel {
             self.stagedFlow = started
             self.stagedResponse = result.response
             self.stagedDerivedKeys = result.derivedKeys
+            self.stagedDiagnostics = diagnostics
             self.state = .awaitingDesktopVerification(
                 confirmationCode: result.confirmationCode,
                 controllerDisplayName: controllerDisplayName
@@ -102,7 +110,10 @@ public final class PairingViewModel {
                 )
             }
         } catch {
-            self.state = .failed(message: describe(error: error))
+            let message = describe(error: error)
+            self.lastDiagnostics = PairingDiagnostics(payloadByteCount: bootstrapJSON.count)
+                .render(error: message)
+            self.state = .failed(message: message)
         }
     }
 
@@ -199,6 +210,7 @@ public final class PairingViewModel {
         stagedFlow = nil
         stagedResponse = nil
         stagedDerivedKeys = nil
+        stagedDiagnostics = nil
     }
 
     /// Reset back to idle without confirming. Used after `.failed`.
@@ -250,6 +262,8 @@ public final class PairingViewModel {
     }
 
     private func failPairing(_ message: String) {
+        lastDiagnostics = (stagedDiagnostics ?? PairingDiagnostics(payloadByteCount: nil))
+            .render(error: message)
         clearStaged()
         pairingTransport = nil
         pairingTask = nil
@@ -284,5 +298,56 @@ public final class PairingViewModel {
             return channelError.description
         }
         return error.localizedDescription
+    }
+}
+
+private struct PairingDiagnostics: Sendable {
+    let sessionID: String?
+    let serviceName: String?
+    let tailscaleEndpointHint: String?
+    let expiresAt: Date?
+    let macDeviceID: String?
+    let payloadByteCount: Int?
+
+    init(started: PairingFlow.Started, payloadByteCount: Int) {
+        self.sessionID = started.bootstrap.pairingSessionID
+        self.serviceName = started.bootstrap.bonjourServiceName
+        self.tailscaleEndpointHint = started.bootstrap.tailscaleEndpointHint
+        self.expiresAt = started.bootstrap.expiresAt
+        self.macDeviceID = started.bootstrap.macDeviceID.rawValue
+        self.payloadByteCount = payloadByteCount
+    }
+
+    init(payloadByteCount: Int?) {
+        self.sessionID = nil
+        self.serviceName = nil
+        self.tailscaleEndpointHint = nil
+        self.expiresAt = nil
+        self.macDeviceID = nil
+        self.payloadByteCount = payloadByteCount
+    }
+
+    func render(error: String) -> String {
+        var lines = [
+            "AGBench iOS pairing diagnostics",
+            "error: \(sanitize(error))"
+        ]
+        if let sessionID { lines.append("sessionID: \(sessionID)") }
+        if let macDeviceID { lines.append("macDeviceID: \(macDeviceID)") }
+        if let serviceName { lines.append("bonjourServiceName: \(serviceName)") }
+        if let tailscaleEndpointHint { lines.append("tailscaleEndpointHint: \(tailscaleEndpointHint)") }
+        if let expiresAt {
+            let state = expiresAt < Date() ? "expired" : "valid"
+            lines.append("expiresAt: \(expiresAt.ISO8601Format()) (\(state))")
+        }
+        if let payloadByteCount { lines.append("payloadBytes: \(payloadByteCount)") }
+        return lines.joined(separator: "\n")
+    }
+
+    private func sanitize(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

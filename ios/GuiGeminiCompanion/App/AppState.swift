@@ -2,6 +2,9 @@ import Foundation
 import Observation
 import os.log
 import GuiGeminiCompanionCore
+#if os(iOS)
+import UIKit
+#endif
 
 enum RemoteNotificationResumeTrigger: String, Sendable {
     case background
@@ -14,6 +17,23 @@ enum RemoteNotificationResumeResult: Sendable, Equatable {
     case noPair
     case snapshotRequested
     case snapshotUnavailable
+}
+
+enum SavedPairRestoreState: Sendable, Equatable {
+    case pending
+    case restoring
+    case unavailable
+    case restored
+    case failed(String)
+
+    var isConnecting: Bool {
+        switch self {
+        case .pending, .restoring:
+            return true
+        case .unavailable, .restored, .failed:
+            return false
+        }
+    }
 }
 
 /// AppState — top-level observable state owning the bridge client (once
@@ -72,6 +92,7 @@ final class AppState {
     private(set) var lastNotificationRoute: RemoteNotificationRoute?
     private(set) var shellAppearance: RemoteShellAppearance?
     private(set) var companionThemePalette: CompanionThemePalette = .fallback
+    private(set) var savedPairRestoreState: SavedPairRestoreState = .pending
 
     /// True once `connect(with:)` has completed and the client + view
     /// models are ready. The RootView switches to TabView when this is true.
@@ -87,8 +108,27 @@ final class AppState {
         )
     }
 
+    func restoreSavedPairIfNeeded() async {
+        guard bridgeClient == nil else {
+            savedPairRestoreState = .restored
+            return
+        }
+        guard savedPairRestoreState == .pending else { return }
+        savedPairRestoreState = .restoring
+        guard let pair = await loadMostRecentPair() else {
+            if case .failed = savedPairRestoreState {
+                return
+            }
+            savedPairRestoreState = .unavailable
+            return
+        }
+        await connect(with: pair)
+        savedPairRestoreState = bridgeClient == nil ? .unavailable : .restored
+    }
+
     func connect(with pair: GuiGeminiBridgeClient.Pair) async {
         logIOSBridgeApp("connect requested pairID=\(pair.pairID.rawValue) macDeviceID=\(pair.macDeviceID.rawValue)")
+        savedPairRestoreState = .restoring
         let client = GuiGeminiBridgeClient(pair: pair)
         self.bridgeClient = client
         let transcript = TranscriptViewModel(
@@ -152,6 +192,7 @@ final class AppState {
         }
         await client.start()
         logIOSBridgeApp("client.start returned pairID=\(pair.pairID.rawValue)")
+        savedPairRestoreState = .restored
         // If an APNs token already arrived before pairing (typical:
         // AppDelegate registers eagerly), drain it now.
         if let pending = pendingDeviceToken {
@@ -166,6 +207,7 @@ final class AppState {
             logIOSBridgeApp("unpair storage cleanup failed: \(error.localizedDescription)")
         }
         await disconnect()
+        savedPairRestoreState = .unavailable
     }
 
     func disconnect() async {
@@ -188,6 +230,17 @@ final class AppState {
             controllerDisplayName: friendlyDeviceName(),
             pairStorage: pairStorage
         )
+    }
+
+    @discardableResult
+    func refreshRemoteState() async -> Bool {
+        guard let client = bridgeClient else {
+            lastPushMessage = "Bridge is not connected"
+            return false
+        }
+        let requested = await client.requestProjectionSnapshot(route: lastNotificationRoute)
+        lastPushMessage = requested ? "Refreshing task state" : "Refresh is waiting for bridge connection"
+        return requested
     }
 
     /// Toggle the session-scope YOLO flag and notify the desktop. The
@@ -298,30 +351,27 @@ final class AppState {
             await client.start()
             return client
         }
-        guard let pair = await loadMostRecentPairForRemoteResume() else {
+        guard let pair = await loadMostRecentPair() else {
             return nil
         }
         await connect(with: pair)
         return bridgeClient
     }
 
-    private func loadMostRecentPairForRemoteResume() async -> GuiGeminiBridgeClient.Pair? {
+    private func loadMostRecentPair() async -> GuiGeminiBridgeClient.Pair? {
         do {
-            let records = try await pairStorage.loadAllPairs()
-                .sorted { lhs, rhs in lhs.createdAt > rhs.createdAt }
-            for record in records {
-                guard let loaded = try await pairStorage.loadPair(pairID: record.pairID) else { continue }
-                return GuiGeminiBridgeClient.Pair(
-                    pairID: loaded.record.pairID,
-                    controllerDeviceID: loaded.record.controllerDeviceID,
-                    macDeviceID: loaded.record.macDeviceID,
-                    derivedKeys: loaded.derivedKeys,
-                    macDisplayName: loaded.record.macDisplayName,
-                    tailscaleEndpointHint: loaded.record.tailscaleEndpointHint
-                )
-            }
+            guard let loaded = try await pairStorage.loadMostRecentPair() else { return nil }
+            return GuiGeminiBridgeClient.Pair(
+                pairID: loaded.record.pairID,
+                controllerDeviceID: loaded.record.controllerDeviceID,
+                macDeviceID: loaded.record.macDeviceID,
+                derivedKeys: loaded.derivedKeys,
+                macDisplayName: loaded.record.macDisplayName,
+                tailscaleEndpointHint: loaded.record.tailscaleEndpointHint
+            )
         } catch {
             logIOSBridgeApp("remote notification pair restore failed: \(error.localizedDescription)")
+            savedPairRestoreState = .failed(error.localizedDescription)
             lastPushMessage = "Push resume failed: \(error.localizedDescription)"
         }
         return nil
@@ -374,7 +424,14 @@ final class AppState {
 
 private func friendlyDeviceName() -> String {
     #if os(iOS)
-    return "iPhone"
+    switch UIDevice.current.userInterfaceIdiom {
+    case .pad:
+        return "iPad"
+    case .phone:
+        return "iPhone"
+    default:
+        return "iOS Device"
+    }
     #else
     return "Companion"
     #endif

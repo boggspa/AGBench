@@ -149,8 +149,8 @@ export function PairingPage(): JSX.Element {
         <div className="pairing-page__header-titles">
           <h2 className="pairing-page__title">Pair with iPhone / iPad</h2>
           <p className="pairing-page__subtitle">
-            Open the AGBench app on your iOS device and scan this QR. The next screen will ask you
-            to verify a 6-digit code.
+            Open AGBench on iPhone or iPad, then scan the QR or copy the manual setup payload. The
+            6-digit code appears after the device sends its response.
           </p>
         </div>
       </header>
@@ -201,14 +201,14 @@ export function PairingPage(): JSX.Element {
               />
             )}
             <div className="pairing-page__hint">
-              Point the iOS camera here. <strong>Click the QR to maximise</strong> if the camera
-              can&apos;t read it at this size. Pair expires in a few minutes — tap Refresh if
-              scanning fails.
+              Camera pairing is optional. <strong>Click the QR to maximise</strong> for easier
+              scanning, or use Manual setup when an iPad camera cannot read the screen. Pairing
+              expires in a few minutes.
             </div>
           </div>
 
           <div className="pairing-page__fallback-pane">
-            <div className="pairing-page__fallback-label">Or paste JSON into iOS</div>
+            <div className="pairing-page__fallback-label">Manual setup payload</div>
             <textarea
               className="pairing-page__json"
               readOnly
@@ -223,10 +223,11 @@ export function PairingPage(): JSX.Element {
                 onClick={() => void onCopyJson()}
                 disabled={!bootstrap}
               >
-                {copied ? 'Copied' : 'Copy JSON'}
+                {copied ? 'Copied' : 'Copy setup payload'}
               </button>
               <div className="pairing-page__hint pairing-page__hint--inline">
-                iOS app → &quot;Paste JSON instead&quot; if the camera path doesn&apos;t work.
+                Paste this into the iOS Manual setup field. Do not paste the 6-digit verification
+                code here.
               </div>
             </div>
           </div>
@@ -235,8 +236,8 @@ export function PairingPage(): JSX.Element {
 
       <footer className="pairing-page__footer pairing-page__footer">
         <span className="pairing-page__footer-hint">
-          After the iOS device confirms, you&apos;ll see a 6-digit verification code overlay — make
-          sure it matches before tapping confirm on iOS.
+          After the device sends its response, verify the 6-digit code on both screens before
+          confirming. Refresh the payload if pairing expires.
         </span>
       </footer>
 

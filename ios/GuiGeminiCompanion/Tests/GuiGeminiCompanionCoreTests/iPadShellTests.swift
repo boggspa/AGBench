@@ -79,6 +79,16 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual(selection.selectedThreadID, "thread-1")
     }
 
+    func testSelectionStateSupportsTaskRoute() {
+        let selection = iPadSelectionState()
+
+        selection.selectTask("task-1")
+
+        XCTAssertEqual(selection.selection, .task("task-1"))
+        XCTAssertEqual(selection.selectedTaskID, "task-1")
+        XCTAssertEqual(selection.selection?.id, "task:task-1")
+    }
+
     func testRemoteComposerTargetResolvesSelectedThreadContext() {
         let thread = iPadThreadSummary(
             id: "thread-1",
@@ -349,6 +359,64 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual(detail?.ensemble?.capabilities.queueLimit, 2)
         XCTAssertTrue(detail?.ensemble?.capabilities.cancelRound ?? false)
         XCTAssertEqual([Any](arrayLiteral: shell).count, 1)
+    }
+
+    func testIPadTaskSelectionDrivesShellDetailAndInspectorInputs() throws {
+        let store = RemoteTaskStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        store.apply(RemoteProjectionEnvelope(
+            kind: .task,
+            taskId: "task-1",
+            publishedAt: now,
+            payload: .task(RemoteTaskCard(
+                id: "task-1",
+                workspaceId: "workspace-1",
+                workspaceDisplayName: "GUIGemini",
+                threadId: "thread-1",
+                threadTitle: "Task-first iPad",
+                runId: "run-1",
+                provider: "codex",
+                status: .awaitingApproval,
+                updatedAt: now,
+                capabilities: RemoteTaskCapabilities(approve: true, startTurn: true)
+            ))
+        ))
+        store.apply(RemoteProjectionEnvelope(
+            kind: .approval,
+            taskId: "task-1",
+            publishedAt: now,
+            payload: .approval(MobileApprovalCard(
+                id: "approval-1",
+                taskId: "task-1",
+                workspaceId: "workspace-1",
+                threadId: "thread-1",
+                runId: "run-1",
+                provider: "codex",
+                title: "Run smoke",
+                expiresAt: now.addingTimeInterval(300)
+            ))
+        ))
+        let selection = iPadSelectionState(initialSelection: .task("task-1"))
+        let sidebarStore = iPadSidebarStore(
+            workspaces: [iPadWorkspaceSummary(id: "workspace-1", displayName: "GUIGemini")],
+            threads: [iPadThreadSummary(id: "thread-1", workspaceID: "workspace-1", title: "Task-first iPad")]
+        )
+
+        let sidebar = iPadSidebar(store: sidebarStore, selectionState: selection, remoteTaskStore: store)
+        let detail = iPadDetailHost(
+            selection: selection.selection,
+            store: sidebarStore,
+            remoteTaskStore: store
+        )
+        let shell = iPadShell(
+            remoteTaskStore: store,
+            selectionState: selection,
+            sidebarStore: sidebarStore
+        )
+
+        XCTAssertEqual(store.buckets.needsAttention.map(\.id), ["task-1"])
+        XCTAssertEqual(store.detail(for: "task-1")?.approvals.first?.id, "approval-1")
+        XCTAssertEqual([Any](arrayLiteral: sidebar, detail, shell).count, 3)
     }
 
     func testEnsembleControlActionsCanBeInvokedFromShellHandlers() async throws {
