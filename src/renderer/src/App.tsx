@@ -813,19 +813,70 @@ function SkyWeatherVisual({ weather }: { weather: HostWeatherVisualState | null 
 }
 
 function GhostCompanion() {
+  // 1.0.6 — render the REAL brand mascot (design-assets/ghost/ghost-guy-mark.svg)
+  // inline so the shape is pixel-identical to the design and can't drift like the
+  // old hand-coded pixel spans did (rotated diamond "face" facets + scattered
+  // cheeks that were never in the mark). Inlining (vs an <img>) is what keeps him
+  // ALIVE: the eye <g>s carry the `ghost-eye` class so the existing `ghostBlink`
+  // squash animates them, while `.ghost-avatar` keeps the float/gesture. viewBox is
+  // cropped to the mark's content bounds so he fills the avatar box.
   return (
     <div className="ghost-companion" aria-hidden>
       <div className="ghost-avatar">
         <div className="ghost-shadow" />
-        <div className="ghost-body">
-          <span className="ghost-eye ghost-eye-left" />
-          <span className="ghost-eye ghost-eye-right" />
-          <span className="ghost-face ghost-face-left" />
-          <span className="ghost-face ghost-face-right" />
-          <span className="ghost-pixel ghost-pixel-left" />
-          <span className="ghost-pixel ghost-pixel-mid" />
-          <span className="ghost-pixel ghost-pixel-right" />
-        </div>
+        <svg className="ghost-svg" viewBox="34 26 68 80" xmlns="http://www.w3.org/2000/svg" aria-hidden>
+          <defs>
+            <linearGradient
+              id="ghostCompanionFill"
+              x1="38"
+              y1="30"
+              x2="98"
+              y2="96"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0" stopColor="#ffffff" stopOpacity="0.98" />
+              <stop offset="0.34" stopColor="#f2fbff" stopOpacity="0.94" />
+              <stop offset="0.63" stopColor="#d8f0ff" stopOpacity="0.86" />
+              <stop offset="1" stopColor="#9fc6de" stopOpacity="0.76" />
+            </linearGradient>
+            <linearGradient
+              id="ghostCompanionRim"
+              x1="32"
+              y1="24"
+              x2="104"
+              y2="102"
+              gradientUnits="userSpaceOnUse"
+            >
+              <stop offset="0" stopColor="#25324b" stopOpacity="0.92" />
+              <stop offset="0.62" stopColor="#121b2e" stopOpacity="0.8" />
+              <stop offset="1" stopColor="#07101f" stopOpacity="0.72" />
+            </linearGradient>
+          </defs>
+          <g shapeRendering="crispEdges">
+            <polygon
+              fill="url(#ghostCompanionFill)"
+              stroke="url(#ghostCompanionRim)"
+              strokeWidth="7"
+              strokeLinejoin="miter"
+              points="56 30 80 30 92 36 98 48 98 84 92 84 86 90 80 84 74 96 68 84 56 96 50 84 38 84 38 48 44 36"
+            />
+            <polygon fill="#ffffff" opacity="0.34" points="46 34 64 37 56 52 48 47" />
+            <polygon fill="#40689d" opacity="0.18" points="78 44 94 49 90 72 78 64" />
+            <g className="ghost-eye ghost-eye-left">
+              <rect x="51" y="54" width="10" height="12" fill="#111827" />
+              <rect x="54" y="51" width="3" height="3" fill="#ffffff" opacity="0.24" />
+              <rect x="51" y="66" width="10" height="4" fill="#111827" opacity="0.2" />
+            </g>
+            <g className="ghost-eye ghost-eye-right">
+              <rect x="75" y="54" width="10" height="12" fill="#111827" />
+              <rect x="78" y="51" width="3" height="3" fill="#ffffff" opacity="0.24" />
+              <rect x="75" y="66" width="10" height="4" fill="#111827" opacity="0.2" />
+            </g>
+            <rect x="44" y="92" width="12" height="12" fill="#f7fcff" />
+            <rect x="62" y="92" width="12" height="12" fill="#e6f6ff" />
+            <rect x="80" y="92" width="12" height="12" fill="#c8e4f5" />
+          </g>
+        </svg>
       </div>
     </div>
   )

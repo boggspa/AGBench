@@ -2172,6 +2172,25 @@ button.sidebar-item {
   animation: ghostShadowPulse 5.2s ease-in-out infinite;
 }
 
+/* 1.0.6 — inline brand-mascot ghost (replaces the hand-coded pixel spans). The
+ * SVG fills the avatar box; its content viewBox is pre-cropped to the mark. */
+.ghost-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+/* Blink: squash each eye group around ITS OWN centre (transform-box: fill-box),
+ * reusing the existing ghostBlink keyframe. Scoped under .ghost-svg so it beats
+ * the legacy span-based `.ghost-eye` rules (now dead) and controls the SVG <g>. */
+.ghost-svg .ghost-eye {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ghostBlink 7.8s steps(1, end) infinite;
+}
+
 @keyframes skyGlowDrift {
   0% {
     transform: translate3d(-18px, -4px, 0) scale(1);
@@ -2348,6 +2367,12 @@ button.sidebar-item {
 
 [data-reduce-motion="true"] .ghost-avatar {
   opacity: 0.48;
+}
+
+/* Honour reduce-motion for the inline-SVG eyes too (higher specificity than the
+ * .ghost-svg .ghost-eye blink rule, so it wins regardless of source order). */
+[data-reduce-motion="true"] .ghost-svg .ghost-eye {
+  animation: none;
 }
 
 .ghost-avatar {
