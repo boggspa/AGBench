@@ -2,6 +2,7 @@ import { memo, useState, useEffect, useLayoutEffect, useMemo, useRef, useCallbac
 import type { CSSProperties, ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { GeminiStreamAdapter, NormalizedEvent } from './lib/GeminiAdapter'
+import { resolveAssistantDeltaMerge } from './lib/assistantDeltaMerge'
 import { resolveSessionLinkRouting } from './lib/participantSessionLink'
 import { resolveRuntimePickerScope } from './lib/participantRuntimeProfile'
 import {
@@ -13815,32 +13816,54 @@ function App(): React.JSX.Element {
             const incomingItemIdStr =
               typeof incomingItemId === 'string' && incomingItemId ? incomingItemId : undefined
             if (last && last.role === 'assistant') {
-              const lastItemId =
-                typeof last.metadata?.codexItemId === 'string'
-                  ? last.metadata.codexItemId
-                  : undefined
-              const itemTransition =
-                incomingItemIdStr !== undefined &&
-                lastItemId !== undefined &&
-                incomingItemIdStr !== lastItemId &&
-                last.content.length > 0
-              const separator = itemTransition ? '\n\n---\n\n' : ''
-              const nextMetadata = incomingItemIdStr
-                ? { ...(last.metadata ?? {}), codexItemId: incomingItemIdStr }
-                : last.metadata
-              // Replace the assistant message in-place at its actual
-              // index (may not be `length - 1` when tool messages are
-              // interleaved). Tool messages between this assistant and
-              // the array end stay in place.
-              updated.messages = [
-                ...updated.messages.slice(0, lastAssistantIdx),
-                {
-                  ...last,
-                  content: last.content + separator + event.content,
-                  metadata: nextMetadata
-                },
-                ...updated.messages.slice(lastAssistantIdx + 1)
-              ]
+              // 1.0.6 dup-fix — idempotent merge. Claude (a cumulative
+              // `assistant` envelope that diverged from the streamed
+              // deltas, tagged `cumulative` by main) and Cursor (each
+              // `assistant` frame is a full cumulative snapshot) can
+              // deliver the WHOLE turn as one content event. A blind
+              // append would then double/triple the bubble, so decide
+              // append vs replace vs skip. Genuine increments — and new
+              // Codex items — still take the append branch below unchanged.
+              const merge = resolveAssistantDeltaMerge(last.content, event.content, {
+                cumulative: event.cumulative === true
+              })
+              if (merge.action === 'skip') {
+                // Stale/duplicate re-statement we already render in full —
+                // leave the bubble untouched.
+              } else if (merge.action === 'replace') {
+                updated.messages = [
+                  ...updated.messages.slice(0, lastAssistantIdx),
+                  { ...last, content: merge.content },
+                  ...updated.messages.slice(lastAssistantIdx + 1)
+                ]
+              } else {
+                const lastItemId =
+                  typeof last.metadata?.codexItemId === 'string'
+                    ? last.metadata.codexItemId
+                    : undefined
+                const itemTransition =
+                  incomingItemIdStr !== undefined &&
+                  lastItemId !== undefined &&
+                  incomingItemIdStr !== lastItemId &&
+                  last.content.length > 0
+                const separator = itemTransition ? '\n\n---\n\n' : ''
+                const nextMetadata = incomingItemIdStr
+                  ? { ...(last.metadata ?? {}), codexItemId: incomingItemIdStr }
+                  : last.metadata
+                // Replace the assistant message in-place at its actual
+                // index (may not be `length - 1` when tool messages are
+                // interleaved). Tool messages between this assistant and
+                // the array end stay in place.
+                updated.messages = [
+                  ...updated.messages.slice(0, lastAssistantIdx),
+                  {
+                    ...last,
+                    content: last.content + separator + event.content,
+                    metadata: nextMetadata
+                  },
+                  ...updated.messages.slice(lastAssistantIdx + 1)
+                ]
+              }
             } else {
               const metadata = incomingItemIdStr ? { codexItemId: incomingItemIdStr } : undefined
               updated.messages = [

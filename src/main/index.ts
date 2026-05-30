@@ -6699,6 +6699,7 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
   const text = extractProviderText(event)
   if (text) {
     let delta = text
+    let cumulative = false
     // Dedup: when Claude (without partial messages) or Kimi emits a
     // cumulative envelope that re-states the whole assistant text,
     // slice off the prefix we already streamed and emit only the
@@ -6714,9 +6715,30 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
     // guard below drops it — no double-emission.
     if (state.assistantText && text.startsWith(state.assistantText)) {
       delta = text.slice(state.assistantText.length)
+    } else if (state.assistantText) {
+      // 1.0.6 dup-fix — the slice MISSED but we already streamed text
+      // this turn. If this event is the cumulative envelope shape
+      // (`assistant` / `message` — a full re-statement of the whole turn,
+      // per extractProviderText) it DIVERGED from the streamed deltas
+      // (whitespace / block-boundary / thinking interleave), so the slice
+      // above couldn't trim it. Forwarding it as a plain delta would make
+      // the renderer APPEND the entire turn again, doubling the bubble.
+      // Instead emit the authoritative full text tagged `cumulative` so
+      // the renderer REPLACES rather than appends. A true incremental
+      // chunk is a `stream_event` / `content_block_delta`, never an
+      // envelope shape, so it still falls through below as a normal delta.
+      const eventTypeStr = String(event?.type || '')
+      if (eventTypeStr === 'assistant' || eventTypeStr === 'message') {
+        cumulative = true
+        delta = text
+      }
     }
     if (delta) {
-      state.assistantText += delta
+      if (cumulative) {
+        state.assistantText = text
+      } else {
+        state.assistantText += delta
+      }
       sendAgentCompatLine(
         state.sender,
         state.provider,
@@ -6725,7 +6747,8 @@ function handleCliProviderJsonEvent(state: CliProviderStreamState, event: any) {
           text: delta,
           provider: state.provider,
           providerThreadId: state.providerSessionId || undefined,
-          fallback: state.fallback
+          fallback: state.fallback,
+          ...(cumulative ? { cumulative: true } : {})
         },
         state
       )

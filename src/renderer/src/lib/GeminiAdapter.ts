@@ -12,7 +12,7 @@ export type NormalizedEvent =
   // re: multi-bubble per turn), but propagating the id here is a pure data
   // plumbing change so when we want to wire item-scoped append, the
   // metadata is already present at the adapter boundary.
-  | { type: 'assistant_message_delta'; content: string; itemId?: string }
+  | { type: 'assistant_message_delta'; content: string; itemId?: string; cumulative?: boolean }
   | { type: 'assistant_message_complete'; content: string; itemId?: string }
   | {
       type: 'tool_event'
@@ -104,7 +104,11 @@ export class GeminiStreamAdapter {
         this.onEvent({
           type: 'assistant_message_delta',
           content: text,
-          ...(itemId ? { itemId } : {})
+          ...(itemId ? { itemId } : {}),
+          // 1.0.6 dup-fix — main tags a cumulative full-turn re-statement
+          // (Claude's divergent envelope) so the renderer REPLACES the
+          // bubble instead of appending and doubling it.
+          ...(parsed.cumulative === true ? { cumulative: true } : {})
         })
         break
       }
