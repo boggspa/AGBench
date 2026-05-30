@@ -3035,7 +3035,13 @@ button.sidebar-item {
 
 .transcript-inner {
   width: 100%;
-  max-width: none;
+  /* 1.0.6-CRUX44 — cap the transcript + run-summary to the SAME fixed width as
+   * the composer (--composer-content-max-width, 980px) and centre it, so resizing
+   * the window grows the side gutters instead of widening the chat column. The
+   * composer is already centred at this width, so the two line up at the same
+   * column edges. (Was max-width:none → the transcript stretched full-width.) */
+  max-width: min(100%, var(--composer-content-max-width));
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-lg);
@@ -26111,44 +26117,76 @@ input:disabled, select:disabled, textarea:disabled {
   color: #ccffe4;
 }
 
+/* 1.0.6-CRUX44 — the terminal shell is a TERMINAL: keep its dark dark-mode look
+ * in light mode too. The earlier lighter #0d1b14 surface dropped contrast for the
+ * light-green textarea + above-bar text (the reported light-mode issue); match
+ * the base dark-mode surface so light mode reads exactly like dark mode. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-surface {
-  background: #0d1b14;
-  border-color: color-mix(in srgb, #00ff88 28%, transparent);
+  background: color-mix(in srgb, #0a0e0a 92%, #00ff88 8%);
+  border-color: color-mix(in srgb, #00ff88 24%, transparent);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar {
-  background: color-mix(in srgb, #0d1b14 88%, transparent);
+  background: color-mix(in srgb, #0a0e0a 78%, transparent);
 }
 
+/* 1.0.6 — THE light-mode terminal bug: the above-row text/chips sit on the dark
+ * terminal above-bar, but generic `[data-theme="light"] .composer-above-bar-*`
+ * rules (no shell selector) force them to dark slate rgba(45,55,72) — dark-on-dark,
+ * unreadable. These terminal-scoped rules are (0,3,0) vs the generic (0,2,0), so
+ * they win and restore the light-green palette: the branch / file stats / actions
+ * now read in light mode exactly like dark mode. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-files,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-files .composer-above-bar-stat-clickable,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-secondary-branch {
+  color: color-mix(in srgb, #ccffe4 72%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-files strong {
+  color: #ccffe4;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-action {
+  color: color-mix(in srgb, #ccffe4 80%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-action:hover:not(:disabled) {
+  color: #ccffe4;
+}
+
+/* 1.0.6 — THE other light-mode terminal bug: this toggle was a WHITE pill
+ * (rgba(255,255,255,0.72)) with dark-green text — a glaring light patch on the
+ * dark terminal shell. The terminal stays dark in light mode, so the toggle must
+ * too: match the dark-mode look (transparent + terminal-green), exactly like the
+ * base [data-composer-style="terminal"] rules. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] {
-  border-color: rgba(0, 96, 58, 0.24);
-  background: rgba(255, 255, 255, 0.72);
-  color: rgba(13, 70, 46, 0.82);
+  border-color: color-mix(in srgb, #00ff88 14%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button {
-  color: rgba(13, 70, 46, 0.72);
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button:hover {
-  background: rgba(0, 128, 82, 0.09);
-  color: rgba(4, 53, 34, 0.94);
+  background: color-mix(in srgb, #00ff88 6%, transparent);
+  color: #ccffe4;
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] [data-composer-control="ensemble-mode"] .composer-ensemble-mode-button.is-active {
-  background: rgba(0, 128, 82, 0.16);
-  color: rgba(4, 53, 34, 0.98);
+  background: color-mix(in srgb, #00ff88 22%, transparent);
+  color: #ccffe4;
 }
 
+/* 1.0.6-CRUX44 — these sit on the (now dark) terminal surface, so the earlier
+ * dark-green light-mode text was unreadable. Light terminal-green, like dark mode. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-run-timecode {
-  color: rgba(13, 70, 46, 0.68);
+  color: color-mix(in srgb, #ccffe4 56%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-telemetry-row {
-  color: rgba(13, 70, 46, 0.72);
+  color: color-mix(in srgb, #ccffe4 60%, transparent);
 }
 
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-run-timecode[data-running="true"] {
-  color: rgba(0, 104, 62, 0.96);
+  color: color-mix(in srgb, #00ff88 82%, #ffffff);
 }
 
 /*
