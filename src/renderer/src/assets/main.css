@@ -19591,6 +19591,24 @@ input:disabled, select:disabled, textarea:disabled {
   transform: translateY(-9px) scale(1.06) !important;
 }
 
+/* 1.0.6 — Claude send/stop/steer focus ring sync. The global focus-visible
+ * outline (main.css:~142) is `outline`, which always hugs the button BORDER-BOX
+ * and ignores child transforms — but the Claude glyph is floated translateY(-9px)
+ * up (EW31b above), so the square blue ring read as vertically out of sync with
+ * the glyph. `outline` can't be offset vertically, so for the Claude shell only
+ * we replace it with a box-shadow ring shifted up by the SAME amount the glyph is
+ * nudged, tracking it. `--claude-send-glyph-nudge` keeps the ring offset and the
+ * glyph nudge in lock-step (tunable in one place). Scoped to the Claude shell —
+ * the -9px nudge is Claude-only, so no other shell's focus ring changes. */
+[data-composer-style="claude"] .composer-action-btn {
+  --claude-send-glyph-nudge: 9px;
+}
+[data-composer-style="claude"] .composer-action-btn:focus-visible {
+  outline: none;
+  border-radius: 8px;
+  box-shadow: 0 calc(-1 * var(--claude-send-glyph-nudge)) 0 2px var(--focus-ring);
+}
+
 [data-composer-style="claude"] .composer-action-btn.run-btn:not(:disabled) {
   background: transparent;
   border: 0;
