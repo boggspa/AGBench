@@ -856,7 +856,7 @@ function GhostCompanion() {
             <polygon
               fill="url(#ghostCompanionFill)"
               stroke="url(#ghostCompanionRim)"
-              strokeWidth="7"
+              strokeWidth="5"
               strokeLinejoin="miter"
               points="56 30 80 30 92 36 98 48 98 84 92 84 86 90 80 84 74 96 68 84 56 96 50 84 38 84 38 48 44 36"
             />
