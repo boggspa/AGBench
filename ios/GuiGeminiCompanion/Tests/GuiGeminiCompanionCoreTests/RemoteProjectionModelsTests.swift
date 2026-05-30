@@ -164,4 +164,58 @@ final class RemoteProjectionModelsTests: XCTestCase {
         XCTAssertEqual(ensembleProjection.participants.first?.id, "planner")
         XCTAssertTrue(ensembleProjection.capabilities.steer)
     }
+
+    func testDecodesShellAppearanceProjection() throws {
+        let decoded = try XCTUnwrap(RemoteProjectionEnvelope.decode(event: event([
+            "kind": "shellAppearance",
+            "generatedAt": "2026-05-30T12:00:00Z",
+            "payload": [
+                "schemaVersion": 1,
+                "generatedAt": "2026-05-30T12:00:00Z",
+                "appearanceMode": "native_glass",
+                "visualEffectStyle": "liquid_glass",
+                "themeAppearance": "obsidian",
+                "themeCornerStyle": "hard",
+                "themeAccentStyle": "purple",
+                "promptSurfaceStyle": "liquid_glass",
+                "composerStyle": "claude",
+                "reduceTransparency": true,
+                "reduceMotion": false,
+                "compactDensity": true,
+                "preferredColorScheme": "dark",
+                "colors": [
+                    "windowBase": ["light": "#f4f6f8", "dark": "#141414"],
+                    "sidebarBase": ["light": "#c2c2c2", "dark": "#1e1e22"],
+                    "cardFill": ["light": "#f6f9fbae", "dark": "#1c1c20d1"],
+                    "cardStroke": ["light": "#0000001a", "dark": "#ffffff1a"],
+                    "elevatedCardFill": ["light": "#fbfdffc7", "dark": "#26262ce0"],
+                    "inputSurface": ["light": "#00000012", "dark": "#ffffff12"],
+                    "composerSurface": ["light": "#ffffffc7", "dark": "#071024eb"],
+                    "composerBorder": ["light": "#0000001f", "dark": "#7c9eff38"],
+                    "primaryText": ["light": "#000000e0", "dark": "#ffffffeb"],
+                    "secondaryText": ["light": "#0000009e", "dark": "#ffffff8c"],
+                    "tertiaryText": ["light": "#00000070", "dark": "#ffffff59"],
+                    "separator": ["light": "#00000017", "dark": "#ffffff0f"],
+                    "accent": "#bf7cff",
+                    "accentSoft": ["light": "#bf7cff24", "dark": "#bf7cff2e"],
+                    "secondaryAccent": ["light": "#00739e", "dark": "#6bc4db"],
+                    "success": "#4cc38a",
+                    "warning": "#f5a623",
+                    "destructive": "#e54d4d"
+                ]
+            ]
+        ])))
+
+        guard case .shellAppearance(let appearance) = decoded.payload else {
+            XCTFail("expected shell appearance")
+            return
+        }
+        XCTAssertEqual(decoded.kind, .shellAppearance)
+        XCTAssertEqual(appearance.themeAppearance, "obsidian")
+        XCTAssertEqual(appearance.themeAccentStyle, "purple")
+        XCTAssertEqual(appearance.composerStyle, "claude")
+        XCTAssertEqual(appearance.preferredColorScheme, .dark)
+        XCTAssertEqual(appearance.colors.accent, "#bf7cff")
+        XCTAssertEqual(appearance.colors.composerSurface.dark, "#071024eb")
+    }
 }

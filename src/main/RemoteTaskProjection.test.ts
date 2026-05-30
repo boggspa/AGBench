@@ -4,6 +4,7 @@ import {
   buildMobileDiffSummary,
   buildMobileQuestionCard,
   buildRemoteProjectionEnvelope,
+  buildRemoteShellAppearance,
   buildRemoteTaskCard,
   buildRemoteTaskFeedSnapshot
 } from './RemoteTaskProjection'
@@ -82,6 +83,45 @@ describe('RemoteTaskProjection', () => {
       threadId: 'chat-1',
       runId: 'run-1',
       payload
+    })
+  })
+
+  it('projects privacy-safe shell appearance settings and semantic colors', () => {
+    const appearance = buildRemoteShellAppearance(
+      {
+        appearanceMode: 'native_glass',
+        visualEffectStyle: 'liquid_glass',
+        themeAppearance: 'obsidian',
+        themeCornerStyle: 'hard',
+        themeAccentStyle: 'purple',
+        promptSurfaceStyle: 'liquid_glass',
+        composerStyle: 'claude',
+        reduceTransparency: true,
+        reduceMotion: true,
+        compactDensity: true
+      },
+      { generatedAt: ISO }
+    )
+
+    expect(appearance).toMatchObject({
+      schemaVersion: 1,
+      generatedAt: ISO,
+      appearanceMode: 'native_glass',
+      visualEffectStyle: 'liquid_glass',
+      themeAppearance: 'obsidian',
+      themeCornerStyle: 'hard',
+      themeAccentStyle: 'purple',
+      promptSurfaceStyle: 'liquid_glass',
+      composerStyle: 'claude',
+      reduceTransparency: true,
+      reduceMotion: true,
+      compactDensity: true,
+      preferredColorScheme: 'dark',
+      colors: {
+        accent: '#bf7cff',
+        windowBase: { light: '#f4f6f8', dark: '#141414' },
+        composerSurface: { light: '#ffffffc7', dark: '#071024eb' }
+      }
     })
   })
 

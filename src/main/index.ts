@@ -34,6 +34,7 @@ import {
   buildMobileQuestionCard,
   buildRemoteEnsembleState,
   buildRemoteProjectionEnvelope,
+  buildRemoteShellAppearance,
   buildRemoteTaskCard,
   type RemoteTaskCard,
   type RemoteTaskCapabilities,
@@ -20426,6 +20427,14 @@ if (isGeminiMcpBridgeProcess) {
         approvalCounts.set(approval.threadId, (approvalCounts.get(approval.threadId) ?? 0) + 1)
       }
       const envelopes: RemoteProjectionEnvelope[] = []
+      envelopes.push(
+        buildRemoteProjectionEnvelope({
+          kind: 'shellAppearance',
+          payload: buildRemoteShellAppearance(AppStore.getSettings(), { generatedAt }),
+          generatedAt,
+          envelopeId: 'remote-shell-appearance:global'
+        })
+      )
       const sortedChats = [...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
       for (const chat of sortedChats) {
         const capabilities = remoteTaskCapabilitiesForWorkspace(chat.workspaceId)

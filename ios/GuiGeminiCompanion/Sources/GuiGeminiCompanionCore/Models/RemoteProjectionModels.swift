@@ -14,6 +14,7 @@ public enum RemoteProjectionKind: String, Codable, Sendable, Equatable {
     case thread
     case diff
     case ensemble
+    case shellAppearance
 
     public init?(wireValue: String?) {
         guard let wireValue else { return nil }
@@ -36,6 +37,8 @@ public enum RemoteProjectionKind: String, Codable, Sendable, Equatable {
             self = .diff
         case "ensemble", "ensemblestate", "remoteensembleprojection":
             self = .ensemble
+        case "shellappearance", "remoteshellappearance", "appearance":
+            self = .shellAppearance
         default:
             return nil
         }
@@ -50,6 +53,7 @@ public struct RemoteProjectionEnvelope: Sendable, Equatable {
         case thread(RemoteThreadSnapshot)
         case diff(MobileDiffSummary)
         case ensemble(RemoteEnsembleProjection)
+        case shellAppearance(RemoteShellAppearance)
     }
 
     public let schemaVersion: Int
@@ -168,6 +172,9 @@ public struct RemoteProjectionEnvelope: Sendable, Equatable {
                 workspaceId = workspaceId ?? ensemble.workspaceId
                 threadId = threadId ?? ensemble.threadId
                 runId = runId ?? ensemble.runId
+            case .shellAppearance:
+                let appearance = try jsonDecoder.decode(RemoteShellAppearance.self, from: payloadData)
+                payload = .shellAppearance(appearance)
             }
         } catch {
             throw RemoteProjectionDecodeError.payloadDecodeFailed(error.localizedDescription)
@@ -208,6 +215,7 @@ public struct RemoteProjectionEnvelope: Sendable, Equatable {
         if object["rows"] != nil && object["totalRows"] != nil { return .thread }
         if object["filesChanged"] != nil || object["files"] != nil || object["hunks"] != nil { return .diff }
         if object["participants"] != nil || object["roundStatus"] != nil || object["activeParticipantId"] != nil { return .ensemble }
+        if object["appearanceMode"] != nil || object["composerStyle"] != nil || object["themeAppearance"] != nil { return .shellAppearance }
         if object["taskId"] != nil || object["pendingApprovalCount"] != nil || object["lastMessage"] != nil { return .task }
         return nil
     }
@@ -227,6 +235,8 @@ public struct RemoteProjectionEnvelope: Sendable, Equatable {
             return object["diff"] ?? object["summary"] ?? object
         case .ensemble:
             return object["ensemble"] ?? object["state"] ?? object
+        case .shellAppearance:
+            return object["shellAppearance"] ?? object["appearance"] ?? object
         }
     }
 
@@ -295,6 +305,132 @@ public struct RemoteTaskCapabilities: Codable, Sendable, Equatable {
         cancelWakeup = container.decodeBool(keys: ["cancelWakeup", "canCancelWakeup"]) ?? false
         queuePrompt = container.decodeBool(keys: ["queuePrompt", "canQueuePrompt"]) ?? startTurn
         queueLimit = container.decodeInt(keys: ["queueLimit", "maxQueueDepth", "maxQueuedPrompts"])
+    }
+}
+
+public enum RemoteShellColorScheme: String, Codable, Sendable, Equatable {
+    case system
+    case light
+    case dark
+}
+
+public struct RemoteShellAdaptiveColor: Codable, Sendable, Equatable {
+    public let light: String
+    public let dark: String
+
+    public init(light: String, dark: String) {
+        self.light = light
+        self.dark = dark
+    }
+}
+
+public struct RemoteShellAppearanceColors: Codable, Sendable, Equatable {
+    public let windowBase: RemoteShellAdaptiveColor
+    public let sidebarBase: RemoteShellAdaptiveColor
+    public let cardFill: RemoteShellAdaptiveColor
+    public let cardStroke: RemoteShellAdaptiveColor
+    public let elevatedCardFill: RemoteShellAdaptiveColor
+    public let inputSurface: RemoteShellAdaptiveColor
+    public let composerSurface: RemoteShellAdaptiveColor
+    public let composerBorder: RemoteShellAdaptiveColor
+    public let primaryText: RemoteShellAdaptiveColor
+    public let secondaryText: RemoteShellAdaptiveColor
+    public let tertiaryText: RemoteShellAdaptiveColor
+    public let separator: RemoteShellAdaptiveColor
+    public let accent: String
+    public let accentSoft: RemoteShellAdaptiveColor
+    public let secondaryAccent: RemoteShellAdaptiveColor
+    public let success: String
+    public let warning: String
+    public let destructive: String
+
+    public init(
+        windowBase: RemoteShellAdaptiveColor,
+        sidebarBase: RemoteShellAdaptiveColor,
+        cardFill: RemoteShellAdaptiveColor,
+        cardStroke: RemoteShellAdaptiveColor,
+        elevatedCardFill: RemoteShellAdaptiveColor,
+        inputSurface: RemoteShellAdaptiveColor,
+        composerSurface: RemoteShellAdaptiveColor,
+        composerBorder: RemoteShellAdaptiveColor,
+        primaryText: RemoteShellAdaptiveColor,
+        secondaryText: RemoteShellAdaptiveColor,
+        tertiaryText: RemoteShellAdaptiveColor,
+        separator: RemoteShellAdaptiveColor,
+        accent: String,
+        accentSoft: RemoteShellAdaptiveColor,
+        secondaryAccent: RemoteShellAdaptiveColor,
+        success: String,
+        warning: String,
+        destructive: String
+    ) {
+        self.windowBase = windowBase
+        self.sidebarBase = sidebarBase
+        self.cardFill = cardFill
+        self.cardStroke = cardStroke
+        self.elevatedCardFill = elevatedCardFill
+        self.inputSurface = inputSurface
+        self.composerSurface = composerSurface
+        self.composerBorder = composerBorder
+        self.primaryText = primaryText
+        self.secondaryText = secondaryText
+        self.tertiaryText = tertiaryText
+        self.separator = separator
+        self.accent = accent
+        self.accentSoft = accentSoft
+        self.secondaryAccent = secondaryAccent
+        self.success = success
+        self.warning = warning
+        self.destructive = destructive
+    }
+}
+
+public struct RemoteShellAppearance: Codable, Sendable, Equatable {
+    public let schemaVersion: Int
+    public let generatedAt: Date?
+    public let appearanceMode: String
+    public let visualEffectStyle: String
+    public let themeAppearance: String
+    public let themeCornerStyle: String
+    public let themeAccentStyle: String
+    public let promptSurfaceStyle: String
+    public let composerStyle: String
+    public let reduceTransparency: Bool
+    public let reduceMotion: Bool
+    public let compactDensity: Bool
+    public let preferredColorScheme: RemoteShellColorScheme
+    public let colors: RemoteShellAppearanceColors
+
+    public init(
+        schemaVersion: Int = 1,
+        generatedAt: Date? = nil,
+        appearanceMode: String,
+        visualEffectStyle: String,
+        themeAppearance: String,
+        themeCornerStyle: String,
+        themeAccentStyle: String,
+        promptSurfaceStyle: String,
+        composerStyle: String,
+        reduceTransparency: Bool,
+        reduceMotion: Bool,
+        compactDensity: Bool,
+        preferredColorScheme: RemoteShellColorScheme,
+        colors: RemoteShellAppearanceColors
+    ) {
+        self.schemaVersion = schemaVersion
+        self.generatedAt = generatedAt
+        self.appearanceMode = appearanceMode
+        self.visualEffectStyle = visualEffectStyle
+        self.themeAppearance = themeAppearance
+        self.themeCornerStyle = themeCornerStyle
+        self.themeAccentStyle = themeAccentStyle
+        self.promptSurfaceStyle = promptSurfaceStyle
+        self.composerStyle = composerStyle
+        self.reduceTransparency = reduceTransparency
+        self.reduceMotion = reduceMotion
+        self.compactDensity = compactDensity
+        self.preferredColorScheme = preferredColorScheme
+        self.colors = colors
     }
 }
 

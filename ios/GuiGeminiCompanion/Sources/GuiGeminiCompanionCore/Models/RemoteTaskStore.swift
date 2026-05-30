@@ -205,6 +205,8 @@ public final class RemoteTaskStore {
                 updatedAt: envelope.publishedAt ?? ensemble.updatedAt ?? Date(),
                 capabilities: ensemble.capabilities
             )
+        case .shellAppearance:
+            break
         }
         refreshStaleActionStates(now: envelope.publishedAt ?? Date())
     }

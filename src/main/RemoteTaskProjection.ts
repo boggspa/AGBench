@@ -1,11 +1,19 @@
 import type {
+  AppSettings,
+  AppearanceMode,
   ChatRecord,
   ChatRun,
+  ComposerStyle,
   DiffFileSummary,
   EnsembleConfig,
   EnsembleRoundParticipantState,
+  PromptSurfaceStyle,
   ProviderId,
-  RunDiffResult
+  RunDiffResult,
+  ThemeAccentStyle,
+  ThemeAppearance,
+  ThemeCornerStyle,
+  VisualEffectStyle
 } from './store/types'
 
 export type RemoteProjectionKind =
@@ -16,6 +24,7 @@ export type RemoteProjectionKind =
   | 'threadSnapshot'
   | 'diffSummary'
   | 'ensembleState'
+  | 'shellAppearance'
 
 export type RemoteTaskStatus =
   | 'idle'
@@ -208,6 +217,51 @@ export interface RemoteEnsembleState {
   workSessionStatus?: string
 }
 
+export type RemoteShellColorScheme = 'system' | 'light' | 'dark'
+
+export interface RemoteShellAdaptiveColor {
+  light: string
+  dark: string
+}
+
+export interface RemoteShellAppearanceColors {
+  windowBase: RemoteShellAdaptiveColor
+  sidebarBase: RemoteShellAdaptiveColor
+  cardFill: RemoteShellAdaptiveColor
+  cardStroke: RemoteShellAdaptiveColor
+  elevatedCardFill: RemoteShellAdaptiveColor
+  inputSurface: RemoteShellAdaptiveColor
+  composerSurface: RemoteShellAdaptiveColor
+  composerBorder: RemoteShellAdaptiveColor
+  primaryText: RemoteShellAdaptiveColor
+  secondaryText: RemoteShellAdaptiveColor
+  tertiaryText: RemoteShellAdaptiveColor
+  separator: RemoteShellAdaptiveColor
+  accent: string
+  accentSoft: RemoteShellAdaptiveColor
+  secondaryAccent: RemoteShellAdaptiveColor
+  success: string
+  warning: string
+  destructive: string
+}
+
+export interface RemoteShellAppearance {
+  schemaVersion: 1
+  generatedAt: string
+  appearanceMode: AppearanceMode
+  visualEffectStyle: VisualEffectStyle
+  themeAppearance: ThemeAppearance
+  themeCornerStyle: ThemeCornerStyle
+  themeAccentStyle: ThemeAccentStyle
+  promptSurfaceStyle: PromptSurfaceStyle
+  composerStyle: ComposerStyle
+  reduceTransparency: boolean
+  reduceMotion: boolean
+  compactDensity: boolean
+  preferredColorScheme: RemoteShellColorScheme
+  colors: RemoteShellAppearanceColors
+}
+
 export interface BuildRemoteProjectionEnvelopeInput<TPayload> {
   kind: RemoteProjectionKind
   payload: TPayload
@@ -234,6 +288,26 @@ export interface BuildRemoteTaskFeedSnapshotInput {
   generatedAt?: string
   maxTasks?: number
   previewMaxChars?: number
+}
+
+export type BuildRemoteShellAppearanceSettings = Partial<
+  Pick<
+    AppSettings,
+    | 'appearanceMode'
+    | 'visualEffectStyle'
+    | 'themeAppearance'
+    | 'themeCornerStyle'
+    | 'themeAccentStyle'
+    | 'promptSurfaceStyle'
+    | 'composerStyle'
+    | 'reduceTransparency'
+    | 'reduceMotion'
+    | 'compactDensity'
+  >
+>
+
+export interface BuildRemoteShellAppearanceOptions {
+  generatedAt?: string
 }
 
 export interface BuildMobileApprovalCardInput {
@@ -268,6 +342,74 @@ export interface BuildMobileQuestionCardInput {
 
 const DEFAULT_PREVIEW_MAX = 240
 const DEFAULT_MAX_TASKS = 100
+const DEFAULT_REMOTE_SHELL_COLORS: RemoteShellAppearanceColors = {
+  windowBase: { light: '#f4f6f8', dark: '#141414' },
+  sidebarBase: { light: '#c2c2c2', dark: '#1e1e22' },
+  cardFill: { light: '#f6f9fbae', dark: '#1c1c20d1' },
+  cardStroke: { light: '#0000001a', dark: '#ffffff1a' },
+  elevatedCardFill: { light: '#fbfdffc7', dark: '#26262ce0' },
+  inputSurface: { light: '#00000012', dark: '#ffffff12' },
+  composerSurface: { light: '#ffffffc7', dark: '#071024eb' },
+  composerBorder: { light: '#0000001f', dark: '#7c9eff38' },
+  primaryText: { light: '#000000e0', dark: '#ffffffeb' },
+  secondaryText: { light: '#0000009e', dark: '#ffffff8c' },
+  tertiaryText: { light: '#00000070', dark: '#ffffff59' },
+  separator: { light: '#00000017', dark: '#ffffff0f' },
+  accent: '#5a8cff',
+  accentSoft: { light: '#5a8cff24', dark: '#5a8cff2e' },
+  secondaryAccent: { light: '#00739e', dark: '#6bc4db' },
+  success: '#4cc38a',
+  warning: '#f5a623',
+  destructive: '#e54d4d'
+}
+
+const THEME_ACCENTS: Partial<Record<ThemeAppearance | ThemeAccentStyle, string>> = {
+  blue: '#5a8cff',
+  purple: '#bf7cff',
+  pink: '#ff5fa2',
+  red: '#e65b62',
+  orange: '#ff9b54',
+  yellow: '#f2c94c',
+  green: '#4cc38a',
+  graphite: '#9da6b8',
+  rainbow: '#ff5fa2',
+  nebula: '#bf7cff',
+  citrus: '#f2c94c',
+  twilight: '#5a8cff',
+  ocean: '#41c7e5',
+  sunset: '#ff9b54',
+  forest: '#4cc38a',
+  cyber: '#62d8ff',
+  candy: '#ff5fa2',
+  mist: '#5a8cff',
+  sage: '#84a33b',
+  obsidian: '#c8c0d2',
+  alabaster: '#5a6172',
+  midnight: '#5a8cff'
+}
+
+const LIGHT_THEMES = new Set<ThemeAppearance>(['light', 'mist', 'sage', 'alabaster'])
+const DARK_THEMES = new Set<ThemeAppearance>([
+  'dark',
+  'midnight',
+  'rainbow',
+  'twilight',
+  'cyber',
+  'obsidian'
+])
+
+const DEFAULT_REMOTE_SHELL_SETTINGS: Required<BuildRemoteShellAppearanceSettings> = {
+  appearanceMode: 'soft_glass',
+  visualEffectStyle: 'auto',
+  themeAppearance: 'system',
+  themeCornerStyle: 'rounded',
+  themeAccentStyle: 'system',
+  promptSurfaceStyle: 'liquid_glass',
+  composerStyle: 'default',
+  reduceTransparency: false,
+  reduceMotion: false,
+  compactDensity: false
+}
 
 export function buildRemoteProjectionEnvelope<TPayload>(
   input: BuildRemoteProjectionEnvelopeInput<TPayload>
@@ -294,6 +436,48 @@ export function buildRemoteProjectionEnvelope<TPayload>(
   if (input.threadId) envelope.threadId = input.threadId
   if (input.runId) envelope.runId = input.runId
   return envelope
+}
+
+export function buildRemoteShellAppearance(
+  settings: BuildRemoteShellAppearanceSettings = {},
+  options: BuildRemoteShellAppearanceOptions = {}
+): RemoteShellAppearance {
+  const resolved = { ...DEFAULT_REMOTE_SHELL_SETTINGS, ...settings }
+  const accent =
+    resolved.themeAccentStyle === 'system'
+      ? THEME_ACCENTS[resolved.themeAppearance] || DEFAULT_REMOTE_SHELL_COLORS.accent
+      : THEME_ACCENTS[resolved.themeAccentStyle] || DEFAULT_REMOTE_SHELL_COLORS.accent
+
+  return {
+    schemaVersion: 1,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    appearanceMode: resolved.appearanceMode,
+    visualEffectStyle: resolved.visualEffectStyle,
+    themeAppearance: resolved.themeAppearance,
+    themeCornerStyle: resolved.themeCornerStyle,
+    themeAccentStyle: resolved.themeAccentStyle,
+    promptSurfaceStyle: resolved.promptSurfaceStyle,
+    composerStyle: resolved.composerStyle,
+    reduceTransparency: resolved.reduceTransparency,
+    reduceMotion: resolved.reduceMotion,
+    compactDensity: resolved.compactDensity,
+    preferredColorScheme: preferredColorSchemeForRemoteShell(resolved.themeAppearance),
+    colors: {
+      ...DEFAULT_REMOTE_SHELL_COLORS,
+      accent,
+      accentSoft: {
+        light: `${accent}24`,
+        dark: `${accent}2e`
+      }
+    }
+  }
+}
+
+function preferredColorSchemeForRemoteShell(theme: ThemeAppearance): RemoteShellColorScheme {
+  if (theme === 'system') return 'system'
+  if (LIGHT_THEMES.has(theme)) return 'light'
+  if (DARK_THEMES.has(theme)) return 'dark'
+  return 'system'
 }
 
 export function buildRemoteTaskCard(
