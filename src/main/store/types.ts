@@ -2401,6 +2401,8 @@ export type ChildAgentKind =
   | 'claude-task'
   | 'codex-background'
   | 'kimi-swarm'
+  | 'grok-agent'
+  | 'cursor-agent'
   | 'gemini-subagent'
   | 'manual'
 export type ChildAgentInteractivity = 'interactive' | 'oneshot' | 'observe-only'

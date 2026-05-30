@@ -77,7 +77,49 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
   'kimi-latest': 'Kimi (Latest)',
   'kimi-k2-turbo-preview': 'Kimi K2 Turbo Preview',
   'kimi-k2-0711-preview': 'Kimi K2 (0711 Preview)',
-  'kimi-k2-0905-preview': 'Kimi K2 (0905 Preview)'
+  'kimi-k2-0905-preview': 'Kimi K2 (0905 Preview)',
+
+  // ── Grok ─────────────────────────────────────────────────
+  'grok-build': 'Grok Build 0.1',
+  'grok-build-0.1': 'Grok Build 0.1',
+
+  // ── Cursor ────────────────────────────────────────────────
+  'composer-2.5': 'Composer 2.5',
+  'composer-2.5-fast': 'Composer 2.5 Fast'
+}
+
+const STALE_GEMINI_PLACEHOLDER_MODEL_IDS = new Set([
+  'flash-lite',
+  'gemini-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.1-flash-lite-preview'
+])
+
+/**
+ * Normalise provider/model pairs before grouping usage rows.
+ *
+ * During the 1.0.6 Grok/Cursor bring-up, a few usage records were
+ * persisted with the right provider but Gemini's default `flash-lite`
+ * model id. Without this provider-aware repair the dashboard shows
+ * black/yellow duplicate "Gemini Flash Lite" rows. Collapse those
+ * placeholders to each provider's real default so historical samples
+ * merge into the correct model row.
+ */
+export function canonicalModelIdForProvider(
+  provider: ProviderId | undefined,
+  modelId: string | undefined | null
+): string {
+  const trimmed = String(modelId || '').trim()
+  if (!trimmed) return ''
+  const key = trimmed.toLowerCase()
+  if (provider === 'grok' && STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) {
+    return 'grok-build'
+  }
+  if (provider === 'cursor' && STALE_GEMINI_PLACEHOLDER_MODEL_IDS.has(key)) {
+    return 'composer-2.5-fast'
+  }
+  return trimmed
 }
 
 /**
@@ -86,20 +128,18 @@ const KNOWN_MODEL_LABELS: Record<string, string> = {
  * models stay readable (vs. returning a placeholder like
  * "Unknown model" which would lose information).
  *
- * The `provider` argument is currently unused but kept in the
- * signature for future ambiguous-id disambiguation (e.g. if a
- * generic id like `default` appears, the provider tells us
- * which "Default" to show). For now it's documentation-only;
- * mappings key on the full id so collisions across providers
- * don't happen in the known set.
+ * The `provider` argument is used for ambiguous legacy ids such as
+ * `flash-lite`, which can be a real Gemini short id or stale
+ * Grok/Cursor bootstrap metadata.
  */
 export function humaniseModelId(
-  _provider: ProviderId | undefined,
+  provider: ProviderId | undefined,
   modelId: string | undefined | null
 ): string {
-  if (!modelId) return ''
-  const key = modelId.trim().toLowerCase()
-  return KNOWN_MODEL_LABELS[key] || modelId
+  const canonical = canonicalModelIdForProvider(provider, modelId)
+  if (!canonical) return ''
+  const key = canonical.trim().toLowerCase()
+  return KNOWN_MODEL_LABELS[key] || canonical
 }
 
 /**

@@ -509,6 +509,22 @@ export function ProviderBadgeIcon({ provider }: { provider?: ProviderId }) {
               strokeLinecap="round"
             />
           </>
+        ) : providerKey === 'cursor' ? (
+          <>
+            <path
+              d="M4.1 4.1 11.9 8 4.1 11.9 5.5 8 4.1 4.1Z"
+              stroke="currentColor"
+              strokeWidth="1.1"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M5.5 8h3.9M7.6 6.2 9.4 8l-1.8 1.8"
+              stroke="currentColor"
+              strokeWidth="1.1"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
         ) : (
           <>
             <path

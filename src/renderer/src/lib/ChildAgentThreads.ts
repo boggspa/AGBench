@@ -50,6 +50,10 @@ function inferKindFromProvider(provider: ProviderId): ChildAgentKind {
       return 'codex-background'
     case 'kimi':
       return 'kimi-swarm'
+    case 'grok':
+      return 'grok-agent'
+    case 'cursor':
+      return 'cursor-agent'
     default:
       return 'gemini-subagent'
   }
@@ -58,9 +62,11 @@ function inferKindFromProvider(provider: ProviderId): ChildAgentKind {
 function inferInteractivity(kind: ChildAgentKind): ChildAgentInteractivity {
   switch (kind) {
     case 'codex-background':
+    case 'cursor-agent':
       return 'interactive'
     case 'kimi-swarm':
       return 'observe-only'
+    case 'grok-agent':
     case 'claude-task':
     case 'gemini-subagent':
     case 'manual':

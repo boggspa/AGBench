@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { getKnownModelLabels, humaniseModelId } from './modelDisplayName'
+import {
+  canonicalModelIdForProvider,
+  getKnownModelLabels,
+  humaniseModelId
+} from './modelDisplayName'
 
 // 1.0.5-EW50 — Shared model-id humaniser. Covers the four
 // provider families + the fallback contract. Verifies that:
@@ -71,6 +75,20 @@ describe('humaniseModelId', () => {
     })
   })
 
+  describe('Grok', () => {
+    it('maps Grok CLI ids to the product model name', () => {
+      expect(humaniseModelId('grok', 'grok-build')).toBe('Grok Build 0.1')
+      expect(humaniseModelId('grok', 'grok-build-0.1')).toBe('Grok Build 0.1')
+    })
+  })
+
+  describe('Cursor', () => {
+    it('maps Composer CLI ids to human-readable names', () => {
+      expect(humaniseModelId('cursor', 'composer-2.5')).toBe('Composer 2.5')
+      expect(humaniseModelId('cursor', 'composer-2.5-fast')).toBe('Composer 2.5 Fast')
+    })
+  })
+
   describe('Lookup behaviour', () => {
     it('is case-insensitive on the input id', () => {
       expect(humaniseModelId('gemini', 'GEMINI-3-FLASH-PREVIEW')).toBe('Gemini 3 Flash Preview')
@@ -92,14 +110,18 @@ describe('humaniseModelId', () => {
       expect(humaniseModelId('gemini', undefined)).toBe('')
     })
 
-    it('does not require a known provider — provider is documentation-only today', () => {
-      // The provider argument is currently unused (mappings key
-      // on full id so collisions don't happen in the known set),
-      // but should still resolve correctly regardless of what is
-      // passed.
+    it('does not require a known provider for unambiguous ids', () => {
       expect(humaniseModelId(undefined, 'gemini-3-flash-preview')).toBe('Gemini 3 Flash Preview')
       // @ts-expect-error — intentional bad provider for runtime guard
       expect(humaniseModelId('not-a-provider', 'gpt-5.5')).toBe('GPT-5.5')
+    })
+
+    it('uses provider context to repair stale Gemini placeholder ids for Grok and Cursor', () => {
+      expect(canonicalModelIdForProvider('grok', 'flash-lite')).toBe('grok-build')
+      expect(canonicalModelIdForProvider('cursor', 'flash-lite')).toBe('composer-2.5-fast')
+      expect(humaniseModelId('grok', 'flash-lite')).toBe('Grok Build 0.1')
+      expect(humaniseModelId('cursor', 'gemini-3.1-flash-lite')).toBe('Composer 2.5 Fast')
+      expect(humaniseModelId('gemini', 'flash-lite')).toBe('Gemini Flash Lite')
     })
   })
 
@@ -120,6 +142,8 @@ describe('humaniseModelId', () => {
       expect(labels['gpt-5.5']).toBeDefined()
       expect(labels['kimi-k2.6']).toBeDefined()
       expect(labels['kimi-k2.6-thinking']).toBeDefined()
+      expect(labels['grok-build']).toBeDefined()
+      expect(labels['composer-2.5-fast']).toBeDefined()
       // CLI Default is a non-canonical Gemini composer id but is
       // surfaced in the comparison list when a user has run with
       // it — must humanise to something readable.

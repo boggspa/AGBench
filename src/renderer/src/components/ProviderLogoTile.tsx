@@ -20,6 +20,9 @@
  *   - Kimi    → extracted from `/Applications/Kimi.app`'s icns.
  *               another-project falls back to an SF symbol here;
  *               we have a real PNG so we wire it directly.
+ *   - Grok    → transparent app logo supplied with the 1.0.6
+ *               provider-onboarding pass.
+ *   - Cursor  → extracted from `/Applications/Cursor.app`'s icns.
  *
  * The component is purely visual — no state, no IPC. The
  * provider→logo mapping is a static map kept here so future
@@ -32,13 +35,17 @@ import { ProviderBadgeIcon } from './Sidebar'
 
 import claudeLogo from '../assets/provider-logos/claude.png'
 import codexLogo from '../assets/provider-logos/codex.png'
+import cursorLogo from '../assets/provider-logos/cursor.png'
 import geminiLogo from '../assets/provider-logos/gemini.png'
+import grokLogo from '../assets/provider-logos/grok.png'
 import kimiLogo from '../assets/provider-logos/kimi.png'
 
 const PROVIDER_LOGO_SOURCES: Partial<Record<ProviderId, string>> = {
   claude: claudeLogo,
   codex: codexLogo,
+  cursor: cursorLogo,
   gemini: geminiLogo,
+  grok: grokLogo,
   kimi: kimiLogo
 }
 
@@ -81,10 +88,10 @@ export function ProviderLogoTile({
           draggable={false}
         />
       ) : (
-        // Kimi (and any future provider without a bundled raster
-        // logo) falls back to AGBench's existing inline SVG. The
-        // outer tile still provides the tinted rounded-rect
-        // container so the visual rhythm matches the other rows.
+        // Any future provider without a bundled raster logo falls
+        // back to AGBench's existing inline SVG. The outer tile still
+        // provides the tinted rounded-rect container so the visual
+        // rhythm matches the other rows.
         <ProviderBadgeIcon provider={provider} />
       )}
     </span>

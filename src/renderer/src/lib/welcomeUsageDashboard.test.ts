@@ -427,6 +427,54 @@ describe('buildWelcomeUsageDashboardData model-breakdown filter (Welcome L8)', (
     expect(data.modelBreakdown.map((m) => m.label)).toEqual(['Kimi K2.6', 'Kimi K2.6 Thinking'])
   })
 
+  it('repairs stale Grok/Cursor Gemini fallback model ids and merges them into provider defaults', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'grok-stale',
+        timestamp: NOW - 60_000,
+        provider: 'grok',
+        model: 'flash-lite',
+        inputTokens: 100,
+        outputTokens: 50,
+        totalTokens: 150
+      }),
+      baseRecord({
+        id: 'grok-real',
+        timestamp: NOW - 90_000,
+        provider: 'grok',
+        model: 'grok-build',
+        inputTokens: 200,
+        outputTokens: 100,
+        totalTokens: 300
+      }),
+      baseRecord({
+        id: 'cursor-stale',
+        timestamp: NOW - 120_000,
+        provider: 'cursor',
+        model: 'gemini-3.1-flash-lite',
+        inputTokens: 1_000,
+        outputTokens: 500,
+        totalTokens: 1_500
+      }),
+      baseRecord({
+        id: 'cursor-real',
+        timestamp: NOW - 150_000,
+        provider: 'cursor',
+        model: 'composer-2.5-fast',
+        inputTokens: 2_000,
+        outputTokens: 1_000,
+        totalTokens: 3_000
+      })
+    ]
+
+    const data = buildWelcomeUsageDashboardData(records, [], 'all', NOW)
+
+    expect(data.modelBreakdown.map((m) => [m.provider, m.model, m.label, m.totalTokens])).toEqual([
+      ['cursor', 'composer-2.5-fast', 'Composer 2.5 Fast', 4_500],
+      ['grok', 'grok-build', 'Grok Build 0.1', 450]
+    ])
+  })
+
   it('percentages are computed against kept-model tokens, not the lifetime aggregate', () => {
     const records: UsageRecord[] = [
       baseRecord({
@@ -1167,6 +1215,28 @@ describe('buildWelcomeUsageDashboardData EW52 provider breakdown + 24H wall time
     // Gemini sees no records this run — still in the roster at 0.
     expect(gemini?.tokens).toBe(0)
     expect(gemini?.costUsd).toBe(0)
+  })
+
+  it('includes Grok and Cursor records in provider breakdown totals', () => {
+    const records: UsageRecord[] = [
+      baseRecord({
+        id: 'grok',
+        provider: 'grok',
+        totalTokens: 1_500,
+        explicitCostUsd: 0.003 as any
+      } as never),
+      baseRecord({
+        id: 'cursor',
+        provider: 'cursor',
+        totalTokens: 2_500,
+        explicitCostUsd: 0.004 as any
+      } as never)
+    ]
+
+    const data = buildWelcomeUsageDashboardData(records, [], '30d', NOW)
+
+    expect(data.providerCostBreakdown.find((p) => p.provider === 'grok')?.tokens).toBe(1_500)
+    expect(data.providerCostBreakdown.find((p) => p.provider === 'cursor')?.tokens).toBe(2_500)
   })
 
   it('sorts provider breakdown DESC by tokens (cost as tiebreaker)', () => {

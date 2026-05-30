@@ -28,6 +28,8 @@ export function providerLabel(provider: ProviderId | undefined): string {
       return 'Kimi'
     case 'grok':
       return 'Grok'
+    case 'cursor':
+      return 'Cursor'
     default:
       return provider
   }

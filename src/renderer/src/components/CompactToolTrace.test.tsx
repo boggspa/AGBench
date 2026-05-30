@@ -45,6 +45,14 @@ describe('CompactToolTrace', () => {
     expect(html).toContain('Codex')
   })
 
+  it('renders Cursor as a first-class provider label', () => {
+    const html = renderToStaticMarkup(
+      <CompactToolTrace activity={makeActivity({ metadata: { provider: 'cursor' } })} />
+    )
+    expect(html).toContain('provider-cursor')
+    expect(html).toContain('Cursor')
+  })
+
   it('lets metadata.ensembleProvider override metadata.provider for cross-provider rounds', () => {
     const html = renderToStaticMarkup(
       <CompactToolTrace

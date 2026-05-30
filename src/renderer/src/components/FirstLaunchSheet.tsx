@@ -17,18 +17,22 @@ import {
 import agbenchGhostMark from '../assets/agbench-ghost-mark.svg'
 import codexLogo from '../assets/provider-logos/codex.png'
 import claudeLogo from '../assets/provider-logos/claude.png'
+import cursorLogo from '../assets/provider-logos/cursor.png'
 import geminiLogo from '../assets/provider-logos/gemini.png'
+import grokLogo from '../assets/provider-logos/grok.png'
 import kimiLogo from '../assets/provider-logos/kimi.png'
 
 /** Onboarding provider-card ids. Cursor + Grok are CLI-login providers
- *  added in 1.0.6; they have no logo PNG yet, so the card falls back to an
- *  accent-coloured monogram tile (auto-upgrades if a logo is dropped in). */
+ *  added in 1.0.6 and now use the same raster-logo path as the
+ *  original four providers. */
 type OnboardingProviderId = 'codex' | 'claude' | 'gemini' | 'kimi' | 'cursor' | 'grok'
 
 const PROVIDER_LOGOS: Partial<Record<OnboardingProviderId, string>> = {
   codex: codexLogo,
   claude: claudeLogo,
+  cursor: cursorLogo,
   gemini: geminiLogo,
+  grok: grokLogo,
   kimi: kimiLogo
 }
 
@@ -883,9 +887,9 @@ function ProviderCard({
             className="first-launch-sheet-provider-card-logo"
           />
         ) : (
-          // Cursor / Grok have no logo PNG yet — accent-coloured monogram
-          // tile (provider-${id} carries the accent token). Auto-upgrades
-          // to the <img> above the moment a logo is added to PROVIDER_LOGOS.
+          // Future providers without logo PNGs fall back to an
+          // accent-coloured monogram tile (provider-${id} carries
+          // the accent token).
           <span
             className={`first-launch-sheet-provider-card-logo first-launch-sheet-provider-card-logo-monogram provider-${row.id}`}
             aria-hidden

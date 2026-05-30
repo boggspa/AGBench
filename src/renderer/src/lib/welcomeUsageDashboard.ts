@@ -4,7 +4,7 @@ import type {
   UsageRecord,
   WorkspaceRecord
 } from '../../../main/store/types'
-import { humaniseModelId } from './modelDisplayName'
+import { canonicalModelIdForProvider, humaniseModelId } from './modelDisplayName'
 
 export type WelcomeUsageTab = 'overview' | 'models' | 'workspaces' | 'providers'
 
@@ -61,14 +61,14 @@ export interface DailyCostBucket {
  * from the same `recordsAfterReset` walk as the existing
  * provider-token totals — but rolled up with cost so the
  * Providers tab can show "tokens · cost · share" parity with
- * the Workspaces tab. Always emits all four canonical providers
+ * the Workspaces tab. Always emits all six canonical providers
  * (zero-filled for any provider the user hasn't run yet) so the
  * tab's card list reads as a stable roster rather than a sparse
  * set that grows over time.
  */
 export interface ProviderCostBreakdownEntry {
   provider: ProviderId
-  /** Human-readable label ("Codex" / "Claude" / "Gemini" / "Kimi"). */
+  /** Human-readable label ("Codex" / "Claude" / "Gemini" / "Kimi" / "Grok" / "Cursor"). */
   displayName: string
   tokens: number
   costUsd: number
@@ -76,7 +76,7 @@ export interface ProviderCostBreakdownEntry {
   shareOfTotalCost: number
   /**
    * 1.0.5-EW52 follow-up — Percentage of post-reset *tokens* across
-   * all four providers. 0–100. Drives the under-card meter on the
+   * all six providers. 0–100. Drives the under-card meter on the
    * Providers tab because token totals are populated for every
    * provider (the cost field is often 0 for Gemini CLI runs, which
    * made the cost-based meter visually misleading). Mirrors the
@@ -259,7 +259,7 @@ export interface WelcomeUsageDashboardData {
    * Per-provider token totals across the selected range. Drives the
    * provider color rails on stat chips and the multi-provider mix
    * ribbon under the tabs — AGBench's structural differentiator from
-   * Claude's single-provider dashboard. Always carries all four
+   * Claude's single-provider dashboard. Always carries all six
    * provider keys (zero-filled when a provider has no activity).
    */
   providerTokenTotals: Record<ProviderId, number>
@@ -565,7 +565,7 @@ export const buildWelcomeUsageDashboardData = (
   const dailyCostCutoff = now - DASHBOARD_COST_CHART_DAY_COUNT * 24 * 60 * 60 * 1000
   const NO_WORKSPACE_KEY = '__no_workspace'
   // 1.0.5-EW52 — Per-provider aggregate (tokens + cost) for the
-  // new "Providers" dashboard tab. Initialised with all four
+  // new "Providers" dashboard tab. Initialised with all six
   // canonical providers so the card list is a stable roster
   // regardless of which providers the user has actually run.
   // Cost source is the same `explicitCostUsd` field the
@@ -629,7 +629,9 @@ export const buildWelcomeUsageDashboardData = (
       recordProvider === 'codex' ||
       recordProvider === 'claude' ||
       recordProvider === 'gemini' ||
-      recordProvider === 'kimi'
+      recordProvider === 'kimi' ||
+      recordProvider === 'grok' ||
+      recordProvider === 'cursor'
     ) {
       providerCostAggregate[recordProvider].tokens += Number(record.totalTokens) || 0
       if (hasCost) providerCostAggregate[recordProvider].costUsd += cost
@@ -664,7 +666,7 @@ export const buildWelcomeUsageDashboardData = (
   // Multi-provider color rail aggregate. Each provider gets a running
   // token total scoped to the displayed range; the chip rail colour
   // is mixed weighted by these totals at render time. Always carries
-  // all four provider keys so consumers don't need to null-check.
+  // all six provider keys so consumers don't need to null-check.
   const providerTokenTotals = emptyProviderTotals()
   const hourlyTotals = new Array(24).fill(0) as number[]
   const dailyTotals = new Map<string, number>()
@@ -697,7 +699,7 @@ export const buildWelcomeUsageDashboardData = (
 
   for (const record of runRecords) {
     const provider = record.provider || inferProviderFromModelName(record.model || '')
-    const model = record.model || 'unknown'
+    const model = canonicalModelIdForProvider(provider, record.model || 'unknown') || 'unknown'
     const totalTokens = Math.max(
       0,
       Number(record.totalTokens || record.inputTokens + record.outputTokens || 0)
@@ -1051,9 +1053,8 @@ export const buildWelcomeUsageDashboardData = (
           ? (providerCostAggregate[provider].tokens / totalProviderTokensForBreakdown) * 100
           : 0
     }))
-    // 1.0.6 — Grok is now a first-class provider, so all five render (even at
-    // zero), same as the core four. Grok's tokens/cost are PROJECTED from its
-    // run estimates (its CLI reports no usage); see estimateProjectedTokenUsage.
+    // 1.0.6 — Grok and Cursor are first-class providers, so all six render
+    // (even at zero) with provider-coloured meters.
     .sort(
       (a, b) =>
         b.tokens - a.tokens || b.costUsd - a.costUsd || a.displayName.localeCompare(b.displayName)

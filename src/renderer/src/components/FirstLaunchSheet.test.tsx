@@ -139,7 +139,7 @@ describe('FirstLaunchSheet', () => {
     expect(html).toContain('Turn / Continuous in the composer')
   })
 
-  it('renders Cursor + Grok cards with monogram fallback (no logo PNG)', () => {
+  it('renders Cursor + Grok cards with raster provider logos', () => {
     const html = renderToStaticMarkup(
       <FirstLaunchSheet
         open={true}
@@ -156,9 +156,13 @@ describe('FirstLaunchSheet', () => {
     // Both CLI-login providers get cards.
     expect(html).toContain('data-provider="cursor"')
     expect(html).toContain('data-provider="grok"')
-    // No PNG logo → accent monogram tile rendered instead of an <img>.
-    expect(html).toMatch(/first-launch-sheet-provider-card-logo-monogram provider-cursor/)
-    expect(html).toMatch(/first-launch-sheet-provider-card-logo-monogram provider-grok/)
+    // Cursor and Grok now have bundled PNG logos, matching the original providers.
+    expect(html).toMatch(
+      /data-provider="cursor"[\s\S]*first-launch-sheet-provider-card-logo/
+    )
+    expect(html).toMatch(/data-provider="grok"[\s\S]*first-launch-sheet-provider-card-logo/)
+    expect(html).not.toMatch(/first-launch-sheet-provider-card-logo-monogram provider-cursor/)
+    expect(html).not.toMatch(/first-launch-sheet-provider-card-logo-monogram provider-grok/)
     // Enabled Cursor → "Available" sign-in state; disabled Grok → "disabled".
     expect(html).toContain('Available · CLI sign-in')
     expect(html).toContain('Grok disabled')
