@@ -411,6 +411,7 @@ public struct RemoteTaskConsoleView: View {
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.bordered)
+            .accessibilityLabel("Back to task list")
             VStack(alignment: .leading, spacing: 3) {
                 Text(detail.task.displayTitle)
                     .font(Theme.Typography.headline)
@@ -642,12 +643,14 @@ public struct RemoteTaskConsoleView: View {
                         Image(systemName: "paperplane.fill")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Submit answer")
                     Button(role: .destructive) {
                         Task { await viewModel.reject(question) }
                     } label: {
                         Image(systemName: "xmark")
                     }
                     .buttonStyle(.bordered)
+                    .accessibilityLabel("Reject question")
                 }
             }
             HStack(spacing: Theme.Spacing.tight) {
@@ -672,6 +675,7 @@ public struct RemoteTaskConsoleView: View {
                         Image(systemName: "arrow.up.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityLabel("Send prompt")
                 }
             }
         }

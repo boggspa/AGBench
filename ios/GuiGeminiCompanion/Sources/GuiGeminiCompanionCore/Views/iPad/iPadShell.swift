@@ -957,8 +957,8 @@ private func stateChip(_ text: String, systemImage: String, tint: Color) -> some
 #if DEBUG
 @available(iOS 17.0, macOS 14.0, *)
 private enum iPadShellPreviewSamples {
-    static func ensembleState() -> RemoteEnsembleProjection {
-        let envelope = try! RemoteProjectionEnvelope.decode(payloadJSON: Data("""
+    static func ensembleState() -> Result<RemoteEnsembleProjection, Error> {
+        let payload = Data("""
         {
           "kind": "ensemble",
           "taskId": "task-preview",
@@ -1000,22 +1000,63 @@ private enum iPadShellPreviewSamples {
             }
           }
         }
-        """.utf8))
-        guard case .ensemble(let state) = envelope.payload else {
-            fatalError("Expected ensemble preview payload")
+        """.utf8)
+        do {
+            let envelope = try RemoteProjectionEnvelope.decode(payloadJSON: payload)
+            guard case .ensemble(let state) = envelope.payload else {
+                return .failure(PreviewDecodeError.unexpectedPayload)
+            }
+            return .success(state)
+        } catch {
+            return .failure(error)
         }
-        return state
+    }
+
+    enum PreviewDecodeError: LocalizedError {
+        case unexpectedPayload
+
+        var errorDescription: String? {
+            "Expected an Ensemble preview payload."
+        }
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct iPadPreviewErrorCard: View {
+    let error: Error
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            Label("Preview unavailable", systemImage: "exclamationmark.triangle")
+                .font(Theme.Typography.sectionTitle)
+                .foregroundStyle(Theme.warning)
+            Text(error.localizedDescription)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(Theme.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
     }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
 #Preview("iPad inspector — ensemble controls disabled") {
-    iPadEnsembleStatePanel(
-        state: iPadShellPreviewSamples.ensembleState(),
-        actions: .disabled
-    )
-    .frame(width: 360)
-    .padding()
-    .background(Theme.windowBase)
+    switch iPadShellPreviewSamples.ensembleState() {
+    case .success(let state):
+        iPadEnsembleStatePanel(
+            state: state,
+            actions: .disabled
+        )
+        .frame(width: 360)
+        .padding()
+        .background(Theme.windowBase)
+    case .failure(let error):
+        iPadPreviewErrorCard(error: error)
+            .frame(width: 360)
+            .padding()
+            .background(Theme.windowBase)
+    }
 }
 #endif

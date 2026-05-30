@@ -53,6 +53,54 @@ final class iPadShellTests: XCTestCase {
         XCTAssertTrue(store.threads.isEmpty)
     }
 
+    func testPreviewSamplesAvoidForcedProjectionDecodeCrashes() throws {
+        let source = try String(contentsOf: ownedSourceURL("Sources/GuiGeminiCompanionCore/Views/iPad/iPadShell.swift"))
+
+        XCTAssertFalse(source.contains("try! RemoteProjectionEnvelope.decode"))
+        XCTAssertFalse(source.contains("fatalError(\"Expected ensemble preview payload\")"))
+        XCTAssertTrue(source.contains("iPadPreviewErrorCard"))
+    }
+
+    func testRemoteTaskConsoleIconOnlyActionsHaveAccessibilityLabels() throws {
+        let source = try String(contentsOf: ownedSourceURL("Sources/GuiGeminiCompanionCore/Views/RemoteTaskConsoleView.swift"))
+
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Back to task list\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Submit answer\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Reject question\")"))
+        XCTAssertTrue(source.contains(".accessibilityLabel(\"Send prompt\")"))
+    }
+
+    func testIPadEnsembleControlsUseVisibleTextLabels() throws {
+        let source = try String(contentsOf: ownedSourceURL("Sources/GuiGeminiCompanionCore/Views/iPad/iPadShell.swift"))
+
+        XCTAssertTrue(source.contains("Label(title, systemImage: systemImage)"))
+        XCTAssertTrue(source.contains("Label(\"Queue\", systemImage: \"tray.and.arrow.down\")"))
+        XCTAssertTrue(source.contains("Label(\"Steer\", systemImage: \"slider.horizontal.3\")"))
+    }
+
+    func testDiffInspectorRemainsReadOnly() throws {
+        let source = try String(contentsOf: ownedSourceURL("Sources/GuiGeminiCompanionCore/Views/iPad/iPadDiffInspector.swift"))
+        let lowercasedSource = source.lowercased()
+
+        XCTAssertTrue(source.contains("Text(\"read-only\")"))
+        XCTAssertFalse(source.contains("Button("))
+        for forbiddenMutation in [
+            "sendaction",
+            "gitstage",
+            "gitcommit",
+            "providerauth",
+            "writefile",
+            "applypatch",
+            "stage(",
+            "commit("
+        ] {
+            XCTAssertFalse(
+                lowercasedSource.contains(forbiddenMutation),
+                "Diff inspector must not expose mutation affordance: \(forbiddenMutation)"
+            )
+        }
+    }
+
     func testSelectionStateSurvivesRerender() {
         let store = iPadSidebarStore(
             workspaces: [
@@ -569,6 +617,14 @@ final class iPadShellTests: XCTestCase {
           }
         }
         """.utf8))
+    }
+
+    private func ownedSourceURL(_ relativePath: String) -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent(relativePath)
     }
 
     // MARK: - Bridge summary application

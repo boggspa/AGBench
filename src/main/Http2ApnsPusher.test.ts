@@ -443,6 +443,20 @@ describe('Http2ApnsPusher — endpoint selection', () => {
 })
 
 describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
+  const forbiddenPushContent = [
+    'PRIVATE_PROMPT_TEXT',
+    'PRIVATE_APPROVAL_BODY',
+    'PRIVATE_COMMAND_TEXT',
+    'PRIVATE_DIFF_HUNK',
+    '/Users/dev/private-project'
+  ]
+
+  function expectNoForbiddenPushContent(serialized: string): void {
+    for (const forbidden of forbiddenPushContent) {
+      expect(serialized).not.toContain(forbidden)
+    }
+  }
+
   it('omits summaries, commands, file paths, and deep links from approval alerts', () => {
     const { dir, path } = writeTestAuthKey()
     try {
@@ -474,9 +488,14 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         workspaceId: 'w',
         threadId: 't',
         toolCallId: 'tc',
-        summary: 'Run rm -rf /Users/dev/project?',
-        deepLinkPath: '/Users/dev/project/file.ts'
-      })
+        summary: 'PRIVATE_APPROVAL_BODY: approve PRIVATE_COMMAND_TEXT?',
+        deepLinkPath: '/Users/dev/private-project/file.ts',
+        promptText: 'PRIVATE_PROMPT_TEXT',
+        approvalBody: 'PRIVATE_APPROVAL_BODY',
+        commandText: 'PRIVATE_COMMAND_TEXT',
+        filePaths: ['/Users/dev/private-project/file.ts'],
+        diffHunks: ['@@ PRIVATE_DIFF_HUNK @@']
+      } as never)
       return Promise.resolve().then(() => {
         const body = JSON.parse(bodyWrites[0])
         const serialized = JSON.stringify(body)
@@ -492,8 +511,7 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         })
         expect(body.deepLinkPath).toBeUndefined()
         expect(body.expiresAt).toBeUndefined()
-        expect(serialized).not.toContain('rm -rf')
-        expect(serialized).not.toContain('/Users/dev')
+        expectNoForbiddenPushContent(serialized)
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })
@@ -536,8 +554,13 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         taskId: 'task',
         projectionKind: 'RemoteEnsembleState',
         generatedAt: '2026-05-30T12:00:00.000Z',
-        deepLinkPath: '/Users/dev/project/file.ts',
-        summary: 'Open diff for secret-file.ts'
+        deepLinkPath: '/Users/dev/private-project/file.ts',
+        summary: 'PRIVATE_APPROVAL_BODY',
+        promptText: 'PRIVATE_PROMPT_TEXT',
+        approvalBody: 'PRIVATE_APPROVAL_BODY',
+        commandText: 'PRIVATE_COMMAND_TEXT',
+        filePaths: ['/Users/dev/private-project/file.ts'],
+        diffHunks: ['@@ PRIVATE_DIFF_HUNK @@']
       } as never)
       return Promise.resolve().then(() => {
         const body = JSON.parse(bodyWrites[0])
@@ -558,8 +581,77 @@ describe('Http2ApnsPusher — privacy-safe alert bodies', () => {
         })
         expect(body.deepLinkPath).toBeUndefined()
         expect(body.summary).toBeUndefined()
-        expect(serialized).not.toContain('/Users/dev')
-        expect(serialized).not.toContain('secret-file.ts')
+        expectNoForbiddenPushContent(serialized)
+      })
+    } finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  it('sends silent wake/resume pushes with routing identifiers only', () => {
+    const { dir, path } = writeTestAuthKey()
+    try {
+      const bodyWrites: string[] = []
+      const mockConnect = (_authority: string) =>
+        ({
+          closed: false,
+          destroyed: false,
+          on: () => {},
+          request: () => ({
+            on: () => {},
+            setEncoding: () => {},
+            write: (body: string) => {
+              bodyWrites.push(body)
+            },
+            end: () => {}
+          }),
+          close: () => {}
+        }) as never
+      const pusher = new Http2ApnsPusher({
+        authKeyPath: path,
+        keyId: 'KEYID00000',
+        teamId: 'TEAM00ABCD',
+        bundleId: 'com.example.app',
+        connect: mockConnect
+      })
+      void pusher.pushSilentToToken('a', 'sandbox', {
+        reason: 'resume',
+        workspaceId: 'w',
+        threadId: 't',
+        runId: 'r',
+        approvalId: 'approval',
+        questionId: 'question',
+        wakeupId: 'wake',
+        taskId: 'task',
+        projectionKind: 'RemoteThreadSnapshot',
+        generatedAt: '2026-05-30T12:00:00.000Z',
+        promptText: 'PRIVATE_PROMPT_TEXT',
+        approvalBody: 'PRIVATE_APPROVAL_BODY',
+        commandText: 'PRIVATE_COMMAND_TEXT',
+        filePath: '/Users/dev/private-project/file.ts',
+        diffHunks: ['@@ PRIVATE_DIFF_HUNK @@']
+      } as never)
+      return Promise.resolve().then(() => {
+        const body = JSON.parse(bodyWrites[0])
+        const serialized = JSON.stringify(body)
+        expect(body.aps).toEqual({ 'content-available': 1 })
+        expect(body).toMatchObject({
+          reason: 'resume',
+          workspaceId: 'w',
+          threadId: 't',
+          runId: 'r',
+          approvalId: 'approval',
+          questionId: 'question',
+          wakeupId: 'wake',
+          taskId: 'task',
+          projectionKind: 'RemoteThreadSnapshot'
+        })
+        expect(body.promptText).toBeUndefined()
+        expect(body.approvalBody).toBeUndefined()
+        expect(body.commandText).toBeUndefined()
+        expect(body.filePath).toBeUndefined()
+        expect(body.diffHunks).toBeUndefined()
+        expectNoForbiddenPushContent(serialized)
       })
     } finally {
       rmSync(dir, { recursive: true, force: true })

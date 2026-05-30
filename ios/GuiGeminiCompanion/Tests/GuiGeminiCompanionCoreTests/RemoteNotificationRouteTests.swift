@@ -60,6 +60,67 @@ final class RemoteNotificationRouteTests: XCTestCase {
         XCTAssertFalse(encoded.contains("/Users/example/private"))
     }
 
+    func testIgnoresForbiddenPrivateFieldsAcrossSupportedContainers() throws {
+        let forbiddenValues = [
+            "PRIVATE_PROMPT_TEXT",
+            "PRIVATE_APPROVAL_BODY",
+            "PRIVATE_COMMAND_TEXT",
+            "PRIVATE_DIFF_HUNK",
+            "/Users/example/private-project"
+        ]
+        let route = try XCTUnwrap(RemoteNotificationRoute(userInfo: [
+            "aps": [
+                "alert": [
+                    "title": "AGBench",
+                    "body": "PRIVATE_PROMPT_TEXT"
+                ]
+            ],
+            "workspaceId": "ws-safe",
+            "promptText": "PRIVATE_PROMPT_TEXT",
+            "approvalBody": "PRIVATE_APPROVAL_BODY",
+            "commandText": "PRIVATE_COMMAND_TEXT",
+            "filePath": "/Users/example/private-project/file.ts",
+            "diffHunks": ["@@ PRIVATE_DIFF_HUNK @@"],
+            "route": [
+                "threadId": "thread-safe",
+                "summary": "PRIVATE_APPROVAL_BODY",
+                "command": "PRIVATE_COMMAND_TEXT"
+            ],
+            "payload": [
+                "runId": "run-safe",
+                "body": "PRIVATE_PROMPT_TEXT",
+                "filePaths": ["/Users/example/private-project/secret.swift"],
+                "diff": "@@ PRIVATE_DIFF_HUNK @@"
+            ]
+        ]))
+
+        XCTAssertEqual(route.workspaceId, "ws-safe")
+        XCTAssertEqual(route.threadId, "thread-safe")
+        XCTAssertEqual(route.runId, "run-safe")
+        let encoded = String(data: try JSONEncoder().encode(route), encoding: .utf8) ?? ""
+        for forbidden in forbiddenValues {
+            XCTAssertFalse(encoded.contains(forbidden), "Route leaked private APNs content: \(forbidden)")
+        }
+    }
+
+    func testReturnsNilForPrivateTextOnlyPayloadWithoutRoutingIdentifiers() {
+        XCTAssertNil(RemoteNotificationRoute(userInfo: [
+            "aps": [
+                "alert": [
+                    "title": "AGBench",
+                    "body": "PRIVATE_PROMPT_TEXT"
+                ]
+            ],
+            "payload": [
+                "promptText": "PRIVATE_PROMPT_TEXT",
+                "approvalBody": "PRIVATE_APPROVAL_BODY",
+                "commandText": "PRIVATE_COMMAND_TEXT",
+                "filePath": "/Users/example/private-project/file.ts",
+                "diffHunks": ["@@ PRIVATE_DIFF_HUNK @@"]
+            ]
+        ]))
+    }
+
     func testReturnsNilWhenPayloadHasNoRoutingIdentifiers() {
         XCTAssertNil(RemoteNotificationRoute(userInfo: [
             "aps": [
