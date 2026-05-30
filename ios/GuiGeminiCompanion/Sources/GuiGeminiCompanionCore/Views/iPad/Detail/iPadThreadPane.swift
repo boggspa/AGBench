@@ -19,6 +19,7 @@ public struct iPadThreadPane: View {
     public let thread: iPadThreadSummary?
     public let events: [BridgeRunEvent]
     public let transcriptStore: TranscriptStore?
+    public let composerViewModel: ComposerViewModel?
     public let taskDetail: RemoteTaskDetail?
     public let mocked: Bool
 
@@ -50,6 +51,7 @@ public struct iPadThreadPane: View {
         thread: iPadThreadSummary?,
         events: [BridgeRunEvent],
         transcriptStore: TranscriptStore? = nil,
+        composerViewModel: ComposerViewModel? = nil,
         taskDetail: RemoteTaskDetail? = nil,
         mocked: Bool
     ) {
@@ -57,6 +59,7 @@ public struct iPadThreadPane: View {
         self.thread = thread
         self.events = events
         self.transcriptStore = transcriptStore
+        self.composerViewModel = composerViewModel
         self.taskDetail = taskDetail
         self.mocked = mocked
     }
@@ -70,6 +73,17 @@ public struct iPadThreadPane: View {
                 transcriptCard
             case .timeline:
                 timelineCard
+            }
+            if let composerViewModel {
+                iPadRemoteComposerDock(
+                    viewModel: composerViewModel,
+                    target: iPadRemoteComposerTarget(
+                        threadID: threadID,
+                        thread: thread,
+                        taskDetail: taskDetail,
+                        fallbackProvider: composerViewModel.provider
+                    )
+                )
             }
         }
         .padding(Theme.Spacing.screen)

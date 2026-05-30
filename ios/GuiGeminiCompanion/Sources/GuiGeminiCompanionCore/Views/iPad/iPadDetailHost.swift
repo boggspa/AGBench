@@ -84,6 +84,7 @@ public struct iPadDetailHost: View {
             threadID: threadID,
             thread: store.thread(id: threadID),
             events: transcriptViewModel?.events ?? [],
+            composerViewModel: composerViewModel,
             taskDetail: remoteTaskStore?.detail(threadID: threadID),
             mocked: mocked
         )

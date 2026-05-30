@@ -79,6 +79,70 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual(selection.selectedThreadID, "thread-1")
     }
 
+    func testRemoteComposerTargetResolvesSelectedThreadContext() {
+        let thread = iPadThreadSummary(
+            id: "thread-1",
+            workspaceID: "workspace-1",
+            title: "Remote iPad shell",
+            subtitle: "running",
+            provider: "codex"
+        )
+
+        let target = iPadRemoteComposerTarget(
+            threadID: thread.id,
+            thread: thread,
+            taskDetail: nil,
+            fallbackProvider: "gemini"
+        )
+
+        XCTAssertEqual(target.workspaceId, "workspace-1")
+        XCTAssertEqual(target.threadId, "thread-1")
+        XCTAssertEqual(target.provider, "codex")
+        XCTAssertEqual(target.title, "Remote iPad shell")
+        XCTAssertTrue(target.capabilityAllowsStartTurn)
+        XCTAssertNil(target.unavailableReason)
+    }
+
+    func testRemoteComposerTargetUsesTaskCapabilityGate() {
+        let task = RemoteTaskCard(
+            id: "task-1",
+            workspaceId: "workspace-projected",
+            workspaceDisplayName: "GUIGemini",
+            threadId: "thread-projected",
+            threadTitle: "Projected task",
+            provider: "claude",
+            status: .running,
+            capabilities: RemoteTaskCapabilities(startTurn: false)
+        )
+        let detail = RemoteTaskDetail(
+            task: task,
+            approvals: [],
+            questions: [],
+            threadSnapshot: nil,
+            diffSummary: nil,
+            ensemble: nil,
+            actionState: nil
+        )
+
+        let target = iPadRemoteComposerTarget(
+            threadID: "thread-fallback",
+            thread: iPadThreadSummary(
+                id: "thread-fallback",
+                workspaceID: "workspace-fallback",
+                title: "Fallback",
+                provider: "gemini"
+            ),
+            taskDetail: detail,
+            fallbackProvider: "gemini"
+        )
+
+        XCTAssertEqual(target.workspaceId, "workspace-projected")
+        XCTAssertEqual(target.threadId, "thread-projected")
+        XCTAssertEqual(target.provider, "claude")
+        XCTAssertFalse(target.capabilityAllowsStartTurn)
+        XCTAssertEqual(target.unavailableReason, "Start turn is unavailable for this task.")
+    }
+
     func testSidebarStoreDerivesWorkspaceAndThreadRowsFromSeeds() {
         let store = iPadSidebarStore()
         store.refresh(
