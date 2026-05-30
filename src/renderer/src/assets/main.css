@@ -2686,6 +2686,13 @@ button.sidebar-item {
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+  /* 1.0.6 — right-align the % for ALL providers. Rows WITH a reset time get a
+   * `.model-usage-window-reset { flex: 1 }` spacer that already pushes the %
+   * right; rows WITHOUT one (e.g. Claude's Session/Weekly/Sonnet, which carry no
+   * reset timestamp) had the % sitting flush after the label. `margin-left: auto`
+   * pushes it right in the no-reset case and is a harmless no-op when the flex
+   * spacer is present — so every provider's % now aligns to the right edge. */
+  margin-left: auto;
 }
 
 .model-usage-window-meta {
