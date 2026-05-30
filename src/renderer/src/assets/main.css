@@ -6748,6 +6748,27 @@ button.sidebar-item {
     0 0 46px rgba(40, 55, 14, 0.18);
 }
 
+/* 1.0.6 — Grok = silver (xAI is monochrome black/white; a neutral silver reads
+ * on BOTH light and dark, so no per-mode explicits needed). */
+.app-transcript.provider-grok .composer-surface:focus-within {
+  border-color: rgba(176, 182, 194, 0.52);
+  box-shadow:
+    var(--composer-shadow),
+    0 0 0 1px rgba(150, 157, 170, 0.24),
+    0 0 24px rgba(140, 147, 160, 0.22),
+    0 0 46px rgba(90, 96, 108, 0.18);
+}
+
+/* 1.0.6 — Cursor = mustard (#D2A60C, matching its heatmap/provider colour). */
+.app-transcript.provider-cursor .composer-surface:focus-within {
+  border-color: rgba(210, 166, 12, 0.5);
+  box-shadow:
+    var(--composer-shadow),
+    0 0 0 1px rgba(200, 158, 16, 0.24),
+    0 0 24px rgba(190, 150, 18, 0.24),
+    0 0 46px rgba(120, 94, 12, 0.2);
+}
+
 .composer-surface::before {
   content: "";
   position: absolute;
@@ -6786,6 +6807,22 @@ button.sidebar-item {
   box-shadow:
     inset 42px 0 52px -30px rgba(36, 51, 14, 0.32),
     inset -42px 0 52px -30px rgba(91, 114, 32, 0.26);
+}
+
+/* 1.0.6 — Grok resting tint: neutral silver, persists across light + dark. */
+.app-transcript.provider-grok .composer-surface::before {
+  background: linear-gradient(90deg, rgba(18, 20, 24, 0.32), rgba(150, 157, 170, 0.18) 18%, transparent 36%, transparent 64%, rgba(150, 157, 170, 0.18) 82%, rgba(14, 16, 20, 0.32));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(120, 126, 140, 0.3),
+    inset -42px 0 52px -30px rgba(150, 157, 170, 0.28);
+}
+
+/* 1.0.6 — Cursor resting tint: mustard (#D2A60C). */
+.app-transcript.provider-cursor .composer-surface::before {
+  background: linear-gradient(90deg, rgba(34, 26, 4, 0.32), rgba(210, 166, 12, 0.18) 18%, transparent 36%, transparent 64%, rgba(210, 166, 12, 0.18) 82%, rgba(28, 21, 3, 0.32));
+  box-shadow:
+    inset 42px 0 52px -30px rgba(120, 92, 12, 0.32),
+    inset -42px 0 52px -30px rgba(200, 158, 16, 0.28);
 }
 
 [data-prompt-surface="liquid_glass"] .composer-surface,
@@ -26122,11 +26159,35 @@ input:disabled, select:disabled, textarea:disabled {
  * light-green textarea + above-bar text (the reported light-mode issue); match
  * the base dark-mode surface so light mode reads exactly like dark mode. */
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-surface {
-  background: color-mix(in srgb, #0a0e0a 92%, #00ff88 8%);
-  border-color: color-mix(in srgb, #00ff88 24%, transparent);
+  /* 1.0.6 — THE actual "terminal still light" bug. Provider rules
+   * (.app-transcript.provider-grok / -cursor / … .composer-surface — 3 classes)
+   * OUT-SPECIFY the shell rule ([data-composer-style="terminal"] .composer-surface
+   * — 1 attr + 1 class), so in a Grok/Cursor/etc. thread the provider's LIGHT
+   * surface beat the terminal's dark surface in light mode (dark mode looked fine
+   * only because the provider's dark-theme surface is also dark). Selecting the
+   * terminal shell is a deliberate dark identity, so force it to win regardless of
+   * provider with !important — this also covers the case where the surface is
+   * transparent and a light parent shows through. */
+  background: color-mix(in srgb, #0a0e0a 92%, #00ff88 8%) !important;
+  border-color: color-mix(in srgb, #00ff88 24%, transparent) !important;
+  /* Render native controls inside (date <input>, runtime <select> popup) as
+   * light-on-dark so they read on the dark terminal surface in light mode. */
+  color-scheme: dark;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar {
-  background: color-mix(in srgb, #0a0e0a 78%, transparent);
+  background: color-mix(in srgb, #0a0e0a 78%, transparent) !important;
+}
+/* Keep the terminal text + caret terminal-green over any provider override, so
+ * nothing ends up dark-on-dark or faint-on-light once the surface is dark. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-textarea {
+  background: transparent !important;
+  color: color-mix(in srgb, #ccffe4 92%, #ffffff) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-textarea::placeholder {
+  color: color-mix(in srgb, #ccffe4 36%, transparent) !important;
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-surface::before {
+  color: color-mix(in srgb, #00ff88 86%, #ffffff) !important;
 }
 
 /* 1.0.6 — THE light-mode terminal bug: the above-row text/chips sit on the dark
@@ -26144,10 +26205,33 @@ input:disabled, select:disabled, textarea:disabled {
   color: #ccffe4;
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-action {
+  /* Create PR etc. — generic light rule gives it a light pill + dark text, so on
+   * the dark terminal above-bar my earlier green text was light-on-light. Make it
+   * a transparent green-bordered terminal chip instead. */
   color: color-mix(in srgb, #ccffe4 80%, transparent);
+  background: transparent;
+  border-color: color-mix(in srgb, #00ff88 22%, transparent);
 }
 :is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-above-bar-action:hover:not(:disabled) {
   color: #ccffe4;
+  background: color-mix(in srgb, #00ff88 8%, transparent);
+  border-color: color-mix(in srgb, #00ff88 32%, transparent);
+}
+/* Runtime + schedule pickers — the chip is green (base terminal rule) but the
+ * VALUES (the <select> + date <input>) were forced dark by generic light rules,
+ * so they read black-on-dark. Keep the whole control terminal-green in light
+ * mode, exactly like dark mode. */
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-runtime-profile,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-schedule-label {
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
+  background: transparent;
+  border-color: color-mix(in srgb, #00ff88 14%, transparent);
+}
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-runtime-profile select,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-schedule-input,
+:is([data-theme="light"], [data-theme="mist"], [data-theme="sage"])[data-composer-style="terminal"] .composer-schedule-label input {
+  color: color-mix(in srgb, #ccffe4 84%, transparent);
+  background: transparent;
 }
 
 /* 1.0.6 — THE other light-mode terminal bug: this toggle was a WHITE pill
