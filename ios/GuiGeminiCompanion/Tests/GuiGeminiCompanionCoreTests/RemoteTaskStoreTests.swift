@@ -97,6 +97,52 @@ final class RemoteTaskStoreTests: XCTestCase {
         XCTAssertEqual(store.selectedTaskDetail?.task.capabilities.answer, true)
     }
 
+    @available(iOS 17.0, macOS 14.0, *)
+    func testRemoteTaskConsoleViewComposesListAndDetailStates() {
+        let store = RemoteTaskStore()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        store.apply(RemoteProjectionEnvelope(
+            kind: .task,
+            taskId: "task-1",
+            publishedAt: now,
+            payload: .task(RemoteTaskCard(
+                id: "task-1",
+                workspaceId: "workspace-1",
+                workspaceDisplayName: "GUIGemini",
+                threadId: "chat-1",
+                runId: "run-1",
+                provider: "codex",
+                status: .awaitingApproval,
+                attentionReason: "Shell command needs approval",
+                updatedAt: now,
+                capabilities: RemoteTaskCapabilities(approve: true, cancel: true, startTurn: true)
+            ))
+        ))
+        store.apply(RemoteProjectionEnvelope(
+            kind: .approval,
+            taskId: "task-1",
+            publishedAt: now,
+            payload: .approval(MobileApprovalCard(
+                id: "approval-1",
+                taskId: "task-1",
+                workspaceId: "workspace-1",
+                threadId: "chat-1",
+                runId: "run-1",
+                provider: "codex",
+                title: "Run tests",
+                summary: "swift test",
+                expiresAt: now.addingTimeInterval(300)
+            ))
+        ))
+        let viewModel = RemoteTaskConsoleViewModel(store: store)
+        let listView = RemoteTaskConsoleView(viewModel: viewModel)
+        store.selectTask("task-1")
+        let detailView = RemoteTaskConsoleView(viewModel: viewModel)
+
+        XCTAssertEqual([Any](arrayLiteral: listView, detailView).count, 2)
+        XCTAssertEqual(viewModel.selectedTaskDetail?.approvals.first?.id, "approval-1")
+    }
+
     func testRefreshStaleActionStatesMarksExpiredSendingAction() {
         let store = RemoteTaskStore(actionStaleAfter: 10)
         let started = Date(timeIntervalSince1970: 1_800_000_000)

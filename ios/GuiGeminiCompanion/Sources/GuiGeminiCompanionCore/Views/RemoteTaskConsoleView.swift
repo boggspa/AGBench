@@ -27,6 +27,9 @@ public struct RemoteTaskConsoleView: View {
             VStack(alignment: .leading, spacing: Theme.Spacing.section) {
                 header
                 let buckets = viewModel.buckets
+                if hasTasks(buckets) {
+                    focusStrip(buckets)
+                }
                 bucketSection(
                     title: "Needs Attention",
                     systemImage: "exclamationmark.bubble.fill",
@@ -54,13 +57,17 @@ public struct RemoteTaskConsoleView: View {
         .scrollIndicators(.hidden)
     }
 
+    private func hasTasks(_ buckets: RemoteTaskBuckets) -> Bool {
+        !buckets.needsAttention.isEmpty || !buckets.active.isEmpty || !buckets.recent.isEmpty
+    }
+
     private var header: some View {
         HStack(alignment: .center, spacing: Theme.Spacing.control) {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Tasks")
                     .font(Theme.Typography.screenTitle)
                     .foregroundStyle(Theme.Text.primary)
-                Text("Remote projections from your paired Mac.")
+                Text(headerSubtitle)
                     .font(Theme.Typography.caption)
                     .foregroundStyle(Theme.Text.secondary)
             }
@@ -77,6 +84,112 @@ public struct RemoteTaskConsoleView: View {
         }
         .padding(Theme.Spacing.section)
         .companionCardBackground(cornerRadius: Theme.Radius.panel)
+    }
+
+    private var headerSubtitle: String {
+        let buckets = viewModel.buckets
+        if buckets.needsAttention.count == 1 {
+            return "1 item needs attention"
+        }
+        if buckets.needsAttention.count > 1 {
+            return "\(buckets.needsAttention.count) items need attention"
+        }
+        if buckets.active.count == 1 {
+            return "1 active remote run"
+        }
+        if buckets.active.count > 1 {
+            return "\(buckets.active.count) active remote runs"
+        }
+        return "Remote state from your paired Mac"
+    }
+
+    private func focusStrip(_ buckets: RemoteTaskBuckets) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            HStack(spacing: Theme.Spacing.tight) {
+                focusMetric(
+                    value: buckets.needsAttention.count,
+                    label: "attention",
+                    systemImage: "exclamationmark.bubble.fill",
+                    tint: palette.warning
+                )
+                focusMetric(
+                    value: buckets.active.count,
+                    label: "active",
+                    systemImage: "dot.radiowaves.left.and.right",
+                    tint: palette.accent
+                )
+                focusMetric(
+                    value: buckets.recent.count,
+                    label: "recent",
+                    systemImage: "clock.arrow.circlepath",
+                    tint: palette.secondaryAccent
+                )
+            }
+            if let task = buckets.needsAttention.first ?? buckets.active.first {
+                priorityTaskButton(task)
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .companionCardBackground(cornerRadius: Theme.Radius.panel)
+    }
+
+    private func focusMetric(
+        value: Int,
+        label: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(Theme.Typography.smallCaption)
+                Text("\(value)")
+                    .font(Theme.Typography.sectionTitle)
+                    .monospacedDigit()
+            }
+            .foregroundStyle(tint)
+            Text(label)
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.Text.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+
+    private func priorityTaskButton(_ task: RemoteTaskCard) -> some View {
+        Button {
+            withAnimation(Theme.Motion.handoff) {
+                viewModel.selectTask(task.id)
+            }
+        } label: {
+            HStack(alignment: .center, spacing: Theme.Spacing.tight) {
+                Image(systemName: icon(for: task.status))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(tint(for: task.status))
+                    .frame(width: 30, height: 30)
+                    .background(tint(for: task.status).opacity(0.14), in: Circle())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(priorityLabel(for: task))
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(tint(for: task.status))
+                    Text(task.displayTitle)
+                        .font(Theme.Typography.callout)
+                        .foregroundStyle(Theme.Text.primary)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: Theme.Spacing.tight)
+                Image(systemName: "chevron.right")
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.Text.tertiary)
+            }
+            .padding(Theme.Spacing.control)
+            .background(palette.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Open \(task.displayTitle)")
     }
 
     private func bucketSection(
@@ -157,6 +270,9 @@ public struct RemoteTaskConsoleView: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                 }
+                if let reason = task.attentionReason, !reason.isEmpty {
+                    attentionReason(reason)
+                }
                 let approvals = viewModel.store.pendingApprovalCount(for: task.id)
                 let questions = viewModel.store.pendingQuestionCount(for: task.id)
                 if approvals > 0 || questions > 0 || task.capabilities.cancel || task.capabilities.startTurn {
@@ -168,6 +284,19 @@ public struct RemoteTaskConsoleView: View {
                     }
                     .lineLimit(1)
                 }
+                HStack(spacing: 6) {
+                    Image(systemName: "clock")
+                        .font(Theme.Typography.smallCaption)
+                    Text(task.updatedAt, style: .relative)
+                        .monospacedDigit()
+                    if let runId = task.runId, !runId.isEmpty {
+                        Text(runId)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.Text.tertiary)
             }
             .padding(Theme.Spacing.control)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -175,6 +304,22 @@ public struct RemoteTaskConsoleView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(task.displayTitle)
+    }
+
+    private func attentionReason(_ reason: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Image(systemName: "exclamationmark.circle.fill")
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(palette.warning)
+            Text(reason)
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.Text.secondary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(palette.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
     }
 
     private func countChip(_ text: String, color: Color) -> some View {
@@ -213,6 +358,7 @@ public struct RemoteTaskConsoleView: View {
                 .padding(.top, Theme.Spacing.screen)
             ScrollView {
                 VStack(alignment: .leading, spacing: Theme.Spacing.section) {
+                    taskContext(detail)
                     transcriptPreview(detail)
                     approvalsPreview(detail)
                     questionsPreview(detail)
@@ -255,6 +401,24 @@ public struct RemoteTaskConsoleView: View {
         }
         .padding(Theme.Spacing.section)
         .companionCardBackground(cornerRadius: Theme.Radius.panel)
+    }
+
+    private func taskContext(_ detail: RemoteTaskDetail) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            HStack(spacing: Theme.Spacing.tight) {
+                countChip(statusLabel(detail.task.status), color: tint(for: detail.task.status))
+                countChip(detail.task.providerLabel, color: palette.accent)
+                if let workspace = detail.task.workspaceDisplayName ?? detail.task.workspaceId,
+                   !workspace.isEmpty {
+                    countChip(workspace, color: palette.secondaryAccent)
+                }
+            }
+            .lineLimit(1)
+            if let reason = detail.task.attentionReason, !reason.isEmpty {
+                attentionReason(reason)
+            }
+        }
+        .modifier(DetailCardModifier())
     }
 
     private func transcriptPreview(_ detail: RemoteTaskDetail) -> some View {
@@ -394,6 +558,17 @@ public struct RemoteTaskConsoleView: View {
 
     private func stickyActions(_ detail: RemoteTaskDetail) -> some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            HStack(spacing: Theme.Spacing.tight) {
+                Image(systemName: stickyActionIcon(detail))
+                    .foregroundStyle(stickyActionTint(detail))
+                Text(stickyActionTitle(detail))
+                    .font(Theme.Typography.sectionTitle)
+                    .foregroundStyle(Theme.Text.primary)
+                Spacer(minLength: Theme.Spacing.tight)
+                if let state = detail.actionState {
+                    actionStateChip(state)
+                }
+            }
             if let approval = detail.approvals.first, detail.task.capabilities.approve {
                 HStack(spacing: Theme.Spacing.tight) {
                     Button {
@@ -411,6 +586,13 @@ public struct RemoteTaskConsoleView: View {
                     }
                     .buttonStyle(.bordered)
                 }
+            }
+            if !hasStickyActions(detail) {
+                Text("No actions available")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.Text.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
             }
             if let question = detail.questions.first, detail.task.capabilities.answer {
                 if !question.options.isEmpty {
@@ -470,6 +652,97 @@ public struct RemoteTaskConsoleView: View {
                 }
             }
         }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(palette.cardFill, in: RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.panel, style: .continuous)
+                .stroke(palette.cardStroke, lineWidth: 1)
+        )
+    }
+
+    private func hasStickyActions(_ detail: RemoteTaskDetail) -> Bool {
+        (detail.approvals.first != nil && detail.task.capabilities.approve)
+            || (detail.questions.first != nil && detail.task.capabilities.answer)
+            || (detail.task.capabilities.cancel && detail.task.runId?.isEmpty == false)
+            || detail.task.capabilities.startTurn
+    }
+
+    private func stickyActionTitle(_ detail: RemoteTaskDetail) -> String {
+        if detail.approvals.first != nil, detail.task.capabilities.approve {
+            return "Approval needed"
+        }
+        if detail.questions.first != nil, detail.task.capabilities.answer {
+            return "Question waiting"
+        }
+        if detail.task.capabilities.cancel || detail.task.capabilities.startTurn {
+            return "Controls"
+        }
+        return "Task state"
+    }
+
+    private func stickyActionIcon(_ detail: RemoteTaskDetail) -> String {
+        if detail.approvals.first != nil, detail.task.capabilities.approve {
+            return "checkmark.shield.fill"
+        }
+        if detail.questions.first != nil, detail.task.capabilities.answer {
+            return "questionmark.bubble.fill"
+        }
+        if detail.task.capabilities.cancel || detail.task.capabilities.startTurn {
+            return "slider.horizontal.3"
+        }
+        return "info.circle"
+    }
+
+    private func stickyActionTint(_ detail: RemoteTaskDetail) -> Color {
+        if detail.approvals.first != nil, detail.task.capabilities.approve {
+            return palette.warning
+        }
+        if detail.questions.first != nil, detail.task.capabilities.answer {
+            return palette.secondaryAccent
+        }
+        if detail.task.capabilities.cancel || detail.task.capabilities.startTurn {
+            return palette.accent
+        }
+        return Theme.Text.tertiary
+    }
+
+    private func actionStateChip(_ state: RemoteTaskActionState) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: actionStateIcon(state))
+            Text(actionStateLabel(state))
+        }
+        .font(Theme.Typography.smallCaption)
+        .foregroundStyle(actionStateTint(state))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(actionStateTint(state).opacity(0.12), in: Capsule())
+    }
+
+    private func actionStateIcon(_ state: RemoteTaskActionState) -> String {
+        switch state {
+        case .sending:
+            return "paperplane"
+        case .acknowledged:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "exclamationmark.triangle.fill"
+        case .stale:
+            return "clock.badge.exclamationmark"
+        }
+    }
+
+    private func actionStateLabel(_ state: RemoteTaskActionState) -> String {
+        switch state {
+        case .sending:
+            return "sending"
+        case .acknowledged:
+            return "sent"
+        case .failed:
+            return "failed"
+        case .stale:
+            return "stale"
+        }
     }
 
     private func statusBanner(_ text: String, color: Color) -> some View {
@@ -494,6 +767,19 @@ public struct RemoteTaskConsoleView: View {
         case .sleeping: return "sleeping"
         case .unknown: return "status unknown"
         }
+    }
+
+    private func priorityLabel(for task: RemoteTaskCard) -> String {
+        if viewModel.store.pendingApprovalCount(for: task.id) > 0 {
+            return "Approval needed"
+        }
+        if viewModel.store.pendingQuestionCount(for: task.id) > 0 {
+            return "Question waiting"
+        }
+        if task.status.isActive {
+            return statusLabel(task.status)
+        }
+        return "Recent"
     }
 
     private func icon(for status: RemoteTaskStatus) -> String {
