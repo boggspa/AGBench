@@ -80,6 +80,21 @@ struct MainTabs: View {
     var body: some View {
         TabView {
             NavigationStack {
+                if let viewModel = appState.remoteTaskConsoleViewModel {
+                    RemoteTaskConsoleView(viewModel: viewModel)
+                        .navigationTitle("Tasks")
+                } else {
+                    ConnectionEmptyState(
+                        icon: "rectangle.stack.badge.person.crop",
+                        title: "Task console warming up",
+                        message: "Remote task cards, approvals, questions, and diffs will appear here when the bridge starts streaming."
+                    )
+                    .navigationTitle("Tasks")
+                }
+            }
+            .tabItem { Label("Tasks", systemImage: "rectangle.stack.badge.person.crop") }
+
+            NavigationStack {
                 if let viewModel = appState.transcriptViewModel {
                     TranscriptView(
                         viewModel: viewModel,

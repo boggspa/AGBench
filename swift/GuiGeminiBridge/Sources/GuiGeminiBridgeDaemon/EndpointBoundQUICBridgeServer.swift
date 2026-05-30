@@ -72,6 +72,10 @@ actor EndpointBoundQUICBridgeServer {
         trustedControllers = controllers
     }
 
+    func activeSessionCount() -> Int {
+        sessions.count
+    }
+
     func broadcast(_ envelope: BridgeInboundEnvelope, toPairIDs: Set<PairID>? = nil) async {
         var failedSessions: [LANSession] = []
         for session in sessions {

@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 

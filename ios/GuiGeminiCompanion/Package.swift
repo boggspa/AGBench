@@ -27,6 +27,7 @@ let package = Package(
             dependencies: [
                 "AGBenchRunActivityShared",
                 .product(name: "BridgeCore", package: "CodexBridge"),
+                .product(name: "BridgeCryptoPrimitives", package: "CodexBridge"),
                 .product(name: "BridgeCryptoPairing", package: "CodexBridge"),
                 .product(name: "BridgeLANTransport", package: "CodexBridge")
             ]
@@ -35,7 +36,8 @@ let package = Package(
             name: "GuiGeminiCompanionCoreTests",
             dependencies: [
                 "GuiGeminiCompanionCore",
-                "AGBenchRunActivityShared"
+                "AGBenchRunActivityShared",
+                .product(name: "BridgeCryptoPrimitives", package: "CodexBridge")
             ]
         )
     ]

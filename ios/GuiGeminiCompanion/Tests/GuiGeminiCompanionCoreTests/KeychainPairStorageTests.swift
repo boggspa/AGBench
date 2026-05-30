@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 
@@ -86,16 +87,16 @@ final class KeychainPairStorageTests: XCTestCase {
         XCTAssertEqual(loaded?.record, record)
         XCTAssertEqual(loaded?.record.tailscaleEndpointHint, "100.64.10.20:38747")
         XCTAssertEqual(
-            loaded?.derivedKeys.pairRootKey.withUnsafeBytes { Data($0) },
-            derived.pairRootKey.withUnsafeBytes { Data($0) }
+            loaded?.derivedKeys.pairRootKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            derived.pairRootKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
         XCTAssertEqual(
-            loaded?.derivedKeys.macToControllerKey.withUnsafeBytes { Data($0) },
-            derived.macToControllerKey.withUnsafeBytes { Data($0) }
+            loaded?.derivedKeys.macToControllerKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            derived.macToControllerKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
         XCTAssertEqual(
-            loaded?.derivedKeys.controllerToMacKey.withUnsafeBytes { Data($0) },
-            derived.controllerToMacKey.withUnsafeBytes { Data($0) }
+            loaded?.derivedKeys.controllerToMacKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            derived.controllerToMacKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
     }
 

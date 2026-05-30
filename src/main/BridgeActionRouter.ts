@@ -1,8 +1,12 @@
-import type { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
+import type {
+  RemoteWorkspaceAllowlist,
+  RemoteWorkspaceCapability
+} from './RemoteWorkspaceAllowlist'
 import {
   BridgeActionPayloadDecodeError,
+  actionIdFromPayload,
   decodeBridgeActionPayload,
-  payloadIsMutating,
+  expiresAtFromPayload,
   payloadRequiresWorkspaceGating,
   workspaceIdFromPayload,
   type BridgeActionPayload
@@ -26,23 +30,20 @@ import {
  * no daemon restart.
  *
  * Known methods:
- *   - `bridge.requestActionAck`         → opaque iOS-side action; expects
- *                                          `{accepted, scope?, message?}`
+ *   - `bridge.requestActionAck`         → typed iOS-side action; returns
+ *                                          `BridgeActionAckV1` while keeping
+ *                                          `{accepted, message?, executed?}`
  *   - `bridge.requestPrepareStartTurnAck`→ iOS wants to start a turn against
- *                                          a workspace/thread; expects
- *                                          `{accepted, message?}`
+ *                                          a workspace/thread; returns a
+ *                                          v1 ack with legacy `accepted`.
  *
  * Default policy (Phase C4 v1):
  *   - **`requestPrepareStartTurnAck`**: deny unless the allowlist holds an
- *     entry for the requested workspace AND (if provided) the provider /
- *     approval-mode are in its allowed set AND the entry has not expired.
- *   - **`requestActionAck`**: still deny-by-default. Action payloads are
- *     opaque base64 bytes today; without a typed payload schema we can't
- *     route them to a specific workspace, so the allowlist can't gate
- *     them. Phase C-late will introduce a typed `BridgeActionPayload`
- *     schema with embedded workspaceId; at that point actionAck will
- *     evaluate against the allowlist the same way prepareStartTurnAck
- *     does today.
+ *     entry for the requested workspace, provider / approval-mode are allowed,
+ *     the `startTurn` capability is present, and the entry has not expired.
+ *   - **`requestActionAck`**: decode the typed `BridgeActionPayload`, reject
+ *     stale/replayed actionIds, then evaluate the payload's required
+ *     capability against the workspace allowlist before execution.
  *
  * Dev-mode opt-in: setting `AGBENCH_BRIDGE_PERMISSIVE=1` (or `true`) flips
  * the policy to accept-all. This bypasses the allowlist entirely — useful
@@ -50,28 +51,98 @@ import {
  * entries are configured. **Never** enable in production. The console
  * logs a one-time WARN at construction so it's obvious when active.
  *
- * Three-state approval (per Lunel observation): `scope?: 'once' | 'session'`
- * is reserved in the actionAck response shape so we can express the
- * `acceptForSession` tier later. Today only `'once'` is emitted. The daemon-
- * side Swift `BridgeActionAck` only carries the boolean today, so any `scope`
- * is dropped at the BridgeActionAck construction — but the wire format
- * already supports it, so adding scope-aware Swift types is purely additive.
+ * Three-state approval: `scope?: 'once' | 'session' | 'workspace'` is emitted
+ * for approval replies. The daemon-side Swift types can ignore it and keep
+ * reading `accepted`, so the contract is additive.
  */
 
-export interface BridgeActionAckResult {
+export type BridgeActionAckScope = 'once' | 'session' | 'workspace'
+
+export type BridgeActionAckReasonCode =
+  | 'accepted'
+  | 'permissiveDev'
+  | 'malformedPayload'
+  | 'payloadDecodeFailed'
+  | 'unknownAction'
+  | 'missingWorkspaceId'
+  | 'allowlistUnavailable'
+  | 'workspaceDenied'
+  | 'capabilityDenied'
+  | 'ownershipDenied'
+  | 'actionExpired'
+  | 'actionReplayed'
+
+export type BridgeActionAckActionKind = BridgeActionPayload['kind'] | 'prepareStartTurn'
+
+export interface BridgeActionAckV1 {
+  v: 1
+  schemaVersion: 1
   accepted: boolean
-  /** Phase C3.6 reserves this for future "accept for session" semantics
-   * (Lunel's `acceptForSession` pattern). Today only `'once'` is emitted;
-   * the daemon-side `BridgeActionAck` ignores it. */
-  scope?: 'once' | 'session'
+  /** Stable machine-readable reason. Existing Swift keeps reading only
+   * `accepted`; newer clients can branch without parsing `message`. */
+  reasonCode: BridgeActionAckReasonCode
+  actionKind?: BridgeActionAckActionKind
+  actionId?: string
+  workspaceId?: string
+  threadId?: string
+  runId?: string
+  appRunId?: string
+  providerRunId?: string
+  approvalId?: string
+  questionId?: string
+  pairId?: string
+  correlationId?: string
+  scope?: BridgeActionAckScope
   message?: string
   executed?: boolean
   data?: Record<string, unknown>
 }
 
+export type BridgeActionAckResult = BridgeActionAckV1
+
 export interface BridgePrepareStartTurnAckResult {
+  v: 1
+  schemaVersion: 1
   accepted: boolean
+  reasonCode: BridgeActionAckReasonCode
+  actionKind: 'prepareStartTurn'
+  workspaceId?: string
+  threadId?: string
+  pairId?: string
   message?: string
+}
+
+export type BridgeOwnershipValidationResult =
+  | { allowed: true }
+  | { allowed: false; reason: string; reasonCode?: BridgeActionAckReasonCode }
+
+export interface BridgeActionOwnershipCheck {
+  pairID: string
+  action: BridgeActionPayload
+  actionKind: BridgeActionAckActionKind
+  actionId?: string
+  workspaceId: string
+  threadId?: string
+  runId?: string
+  approvalId?: string
+  questionId?: string
+}
+
+export interface BridgePrepareStartTurnOwnershipCheck {
+  pairID: string
+  workspaceId: string
+  threadId?: string
+  provider?: string
+  approvalMode?: string
+}
+
+export interface BridgeActionOwnershipValidator {
+  validateActionOwnership?: (
+    check: BridgeActionOwnershipCheck
+  ) => BridgeOwnershipValidationResult | Promise<BridgeOwnershipValidationResult>
+  validatePrepareStartTurnOwnership?: (
+    check: BridgePrepareStartTurnOwnershipCheck
+  ) => BridgeOwnershipValidationResult | Promise<BridgeOwnershipValidationResult>
 }
 
 export interface BridgeActionRouterOptions {
@@ -93,6 +164,13 @@ export interface BridgeActionRouterOptions {
    * without an executor wired in (router accepts → executor declines with
    * "not yet wired" → iOS sees a clear message). */
   executor?: BridgeActionExecutor
+  /** Optional seam for verifying that the target thread/run/approval/question
+   * belongs to the named workspace before the store-level integration lands. */
+  ownershipValidator?: BridgeActionOwnershipValidator
+  /** Clock injectable for stale/replay tests. */
+  now?: () => number
+  /** How long actionIds without an explicit expiresAt remain replay-blocked. */
+  replayRetentionMs?: number
 }
 
 /** Error subclass the BridgeDaemonClient knows about — throwing one of these
@@ -108,12 +186,19 @@ export class BridgeActionRouter {
   private readonly log: (line: string) => void
   private readonly allowlist?: RemoteWorkspaceAllowlist
   private readonly executor: BridgeActionExecutor
+  private readonly ownershipValidator?: BridgeActionOwnershipValidator
+  private readonly now: () => number
+  private readonly replayRetentionMs: number
+  private readonly seenActionIds = new Map<string, { seenAt: number; expiresAt: number }>()
 
   constructor(options: BridgeActionRouterOptions = {}) {
     this.permissiveDev = options.permissiveDev ?? false
     this.log = options.log ?? (() => {})
     this.allowlist = options.allowlist
     this.executor = options.executor ?? new NoopActionExecutor()
+    this.ownershipValidator = options.ownershipValidator
+    this.now = options.now ?? (() => Date.now())
+    this.replayRetentionMs = options.replayRetentionMs ?? 24 * 60 * 60 * 1000
     if (this.permissiveDev) {
       this.log(
         '[BridgeActionRouter] WARN: permissive-dev mode is ON — every iOS action ack request will be accepted'
@@ -126,12 +211,13 @@ export class BridgeActionRouter {
   static fromEnvironment(
     log?: (line: string) => void,
     allowlist?: RemoteWorkspaceAllowlist,
-    executor?: BridgeActionExecutor
+    executor?: BridgeActionExecutor,
+    ownershipValidator?: BridgeActionOwnershipValidator
   ): BridgeActionRouter {
     const permissiveDev =
       process.env.AGBENCH_BRIDGE_PERMISSIVE === '1' ||
       process.env.AGBENCH_BRIDGE_PERMISSIVE === 'true'
-    return new BridgeActionRouter({ permissiveDev, log, allowlist, executor })
+    return new BridgeActionRouter({ permissiveDev, log, allowlist, executor, ownershipValidator })
   }
 
   /** Dispatch a daemon→Electron request to the right policy method. Throws
@@ -159,16 +245,15 @@ export class BridgeActionRouter {
       this.log(
         `[BridgeActionRouter] permissive-dev ACCEPT actionAck pairID=${pairID} bytes=${bytes}`
       )
-      return {
+      return this.buildActionAck({
+        pairID,
         accepted: true,
+        reasonCode: 'permissiveDev',
         scope: 'once',
         message: 'permissive-dev: accepted without payload inspection'
-      }
+      })
     }
 
-    // Phase C-late slice 1: decode the typed payload. A malformed payload
-    // (bad base64, bad JSON) gets a tailored deny so iOS UX can show the
-    // user why their action was rejected instead of a generic "denied".
     let payload: BridgeActionPayload
     try {
       payload = decodeBridgeActionPayload(payloadBase64).payload
@@ -177,98 +262,110 @@ export class BridgeActionRouter {
         this.log(
           `[BridgeActionRouter] DENY actionAck pairID=${pairID} malformed payload (stage=${err.stage}): ${err.message}`
         )
-        return {
+        return this.buildActionAck({
+          pairID,
           accepted: false,
+          reasonCode: 'malformedPayload',
           scope: 'once',
           message: `Malformed action payload (${err.stage}): ${err.message}`
-        }
+        })
       }
       this.log(
         `[BridgeActionRouter] DENY actionAck pairID=${pairID} payload decode threw unexpectedly: ${err instanceof Error ? err.message : String(err)}`
       )
-      return {
+      return this.buildActionAck({
+        pairID,
         accepted: false,
+        reasonCode: 'payloadDecodeFailed',
         scope: 'once',
         message: 'Action payload decode failed'
-      }
+      })
     }
 
-    // Unknown action kind → safe deny. We log the rawKind so future iOS
-    // releases sending new actions to an older Electron are observable.
     if (payload.kind === 'unknown') {
       this.log(
         `[BridgeActionRouter] DENY actionAck pairID=${pairID} unknown kind="${payload.rawKind}"`
       )
-      return {
+      return this.buildActionAck({
+        pairID,
         accepted: false,
+        reasonCode: 'unknownAction',
+        actionKind: 'unknown',
         scope: 'once',
         message: `Unrecognized action kind "${payload.rawKind}" — Electron may be older than the iOS client`
-      }
+      })
     }
 
-    // Workspace gating is per-variant. Most actions target a specific
-    // workspace and must pass the allowlist. Paired-device-level system
-    // actions (e.g. `registerApnsToken`) bypass — the pair gate at the
-    // QUIC layer is the only authentication needed.
+    const replayGuard = this.reserveActionId(pairID, payload)
+    if (replayGuard) return replayGuard
+
     if (payloadRequiresWorkspaceGating(payload)) {
       const workspaceId = workspaceIdFromPayload(payload)
       if (workspaceId === null) {
-        // Shouldn't reach here for known kinds — but defensively deny.
         this.log(
           `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} missing workspaceId`
         )
-        return {
+        return this.buildActionAck({
+          pairID,
           accepted: false,
+          reasonCode: 'missingWorkspaceId',
+          payload,
           scope: 'once',
           message: 'Action payload is missing workspaceId'
-        }
+        })
       }
       if (this.allowlist) {
-        const provider =
-          'provider' in payload && typeof payload.provider === 'string'
-            ? payload.provider
-            : undefined
-        const approvalMode =
-          'approvalMode' in payload && typeof payload.approvalMode === 'string'
-            ? payload.approvalMode
-            : undefined
-        const decision = this.allowlist.evaluate({ workspaceId, provider, approvalMode })
+        const capability = capabilityForPayload(payload)
+        const decision = this.allowlist.evaluate({
+          workspaceId,
+          provider: providerFromPayload(payload),
+          approvalMode: approvalModeFromPayload(payload),
+          capability: capability ?? undefined
+        })
         if (!decision.allowed) {
+          const reasonCode =
+            capability !== null && decision.reason.includes(`Capability "${capability}"`)
+              ? 'capabilityDenied'
+              : 'workspaceDenied'
           this.log(
             `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${decision.reason}"`
           )
-          return {
+          return this.buildActionAck({
+            pairID,
             accepted: false,
+            reasonCode,
+            payload,
             scope: 'once',
             message: decision.reason
-          }
+          })
         }
-        // Read-only enforcement: when the workspace allowlist entry says
-        // `mode: 'read-only'`, mutating actions are denied. Non-mutating
-        // actions (approvalReply, questionReject) pass through — the
-        // intent is "iPhone can respond to desktop-initiated prompts but
-        // can't initiate or mutate work themselves". See
-        // `payloadIsMutating` for per-variant classification + rationale.
-        if (decision.entry.mode === 'read-only' && payloadIsMutating(payload)) {
-          const reason = `Workspace "${workspaceId}" is read-only; action "${payload.kind}" requires read-write access`
+
+        const ownershipDecision = await this.validateActionOwnership(pairID, payload, workspaceId)
+        if (!ownershipDecision.allowed) {
           this.log(
-            `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} reason="${reason}"`
+            `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} ownership="${ownershipDecision.reason}"`
           )
-          return {
+          return this.buildActionAck({
+            pairID,
             accepted: false,
+            reasonCode: ownershipDecision.reasonCode ?? 'ownershipDenied',
+            payload,
             scope: 'once',
-            message: reason
-          }
+            message: ownershipDecision.reason
+          })
         }
       } else {
         this.log(
           `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceId} — no allowlist configured`
         )
-        return {
+        return this.buildActionAck({
+          pairID,
           accepted: false,
+          reasonCode: 'allowlistUnavailable',
+          payload,
           scope: 'once',
           message: 'iOS action routing not yet enabled — no workspace allowlist configured'
-        }
+        })
       }
     } else {
       this.log(
@@ -276,27 +373,20 @@ export class BridgeActionRouter {
       )
     }
 
-    // Policy cleared the action. Hand off to the executor for the real
-    // dispatch. The executor's `executed` flag distinguishes two cases
-    // from the iOS user's perspective:
-    //   - executed: true  → "your action did the thing"
-    //   - executed: false → "policy allowed it, but the wiring isn't done"
-    // Both surface as `accepted: true` since the router's policy decision
-    // was positive — the executor result just refines the message.
     const dispatch = await this.dispatch(payload)
-    // workspaceIdFromPayload may legitimately be null for non-workspace-bound
-    // variants (e.g. registerApnsToken); the log shows "ws=null" in that case.
     const workspaceIdForLog = workspaceIdFromPayload(payload) ?? 'null'
     this.log(
       `[BridgeActionRouter] ACCEPT actionAck pairID=${pairID} kind=${payload.kind} ws=${workspaceIdForLog} executed=${dispatch.executed}`
     )
-    return {
+    return this.buildActionAck({
+      pairID,
       accepted: true,
-      scope: 'once',
+      reasonCode: 'accepted',
+      payload,
       message: dispatch.message,
       executed: dispatch.executed,
       data: dispatch.data
-    }
+    })
   }
 
   /** Dispatch a policy-cleared action through the executor. The big
@@ -331,10 +421,13 @@ export class BridgeActionRouter {
     }
   }
 
-  private handlePrepareStartTurnAck(rawParams: unknown): BridgePrepareStartTurnAckResult {
+  private async handlePrepareStartTurnAck(
+    rawParams: unknown
+  ): Promise<BridgePrepareStartTurnAckResult> {
     const dict = isRecord(rawParams) ? rawParams : {}
     const pairID = String(dict.pairID ?? '?')
     const workspaceID = String(dict.workspaceID ?? '?')
+    const threadID = typeof dict.threadID === 'string' ? dict.threadID : undefined
     const provider = typeof dict.provider === 'string' ? dict.provider : undefined
     const approvalMode = typeof dict.approvalMode === 'string' ? dict.approvalMode : undefined
 
@@ -343,7 +436,14 @@ export class BridgeActionRouter {
         `[BridgeActionRouter] permissive-dev ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID}`
       )
       return {
+        v: 1,
+        schemaVersion: 1,
         accepted: true,
+        reasonCode: 'permissiveDev',
+        actionKind: 'prepareStartTurn',
+        workspaceId: workspaceID,
+        threadId: threadID,
+        pairId: pairID,
         message: 'permissive-dev: accepted without allowlist check'
       }
     }
@@ -353,7 +453,14 @@ export class BridgeActionRouter {
         `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} — no allowlist configured`
       )
       return {
+        v: 1,
+        schemaVersion: 1,
         accepted: false,
+        reasonCode: 'allowlistUnavailable',
+        actionKind: 'prepareStartTurn',
+        workspaceId: workspaceID,
+        threadId: threadID,
+        pairId: pairID,
         message: 'iOS-initiated turns not yet enabled — no workspace allowlist configured'
       }
     }
@@ -361,14 +468,54 @@ export class BridgeActionRouter {
     const decision = this.allowlist.evaluate({
       workspaceId: workspaceID,
       provider,
-      approvalMode
+      approvalMode,
+      capability: 'startTurn'
     })
     if (decision.allowed) {
+      let ownershipDecision: BridgeOwnershipValidationResult | undefined
+      try {
+        ownershipDecision = await this.ownershipValidator?.validatePrepareStartTurnOwnership?.({
+          pairID,
+          workspaceId: workspaceID,
+          threadId: threadID,
+          provider,
+          approvalMode
+        })
+      } catch (err) {
+        ownershipDecision = {
+          allowed: false,
+          reason: `Ownership validation failed: ${err instanceof Error ? err.message : String(err)}`,
+          reasonCode: 'ownershipDenied'
+        }
+      }
+      if (ownershipDecision && !ownershipDecision.allowed) {
+        this.log(
+          `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} ownership="${ownershipDecision.reason}"`
+        )
+        return {
+          v: 1,
+          schemaVersion: 1,
+          accepted: false,
+          reasonCode: ownershipDecision.reasonCode ?? 'ownershipDenied',
+          actionKind: 'prepareStartTurn',
+          workspaceId: workspaceID,
+          threadId: threadID,
+          pairId: pairID,
+          message: ownershipDecision.reason
+        }
+      }
       this.log(
         `[BridgeActionRouter] ACCEPT prepareStartTurn pairID=${pairID} ws=${workspaceID} mode=${decision.entry.mode}`
       )
       return {
+        v: 1,
+        schemaVersion: 1,
         accepted: true,
+        reasonCode: 'accepted',
+        actionKind: 'prepareStartTurn',
+        workspaceId: workspaceID,
+        threadId: threadID,
+        pairId: pairID,
         message: `Workspace "${workspaceID}" allowed (${decision.entry.mode})`
       }
     }
@@ -376,12 +523,247 @@ export class BridgeActionRouter {
       `[BridgeActionRouter] DENY prepareStartTurn pairID=${pairID} ws=${workspaceID} reason="${decision.reason}"`
     )
     return {
+      v: 1,
+      schemaVersion: 1,
       accepted: false,
+      reasonCode: decision.reason.includes('Capability "startTurn"')
+        ? 'capabilityDenied'
+        : 'workspaceDenied',
+      actionKind: 'prepareStartTurn',
+      workspaceId: workspaceID,
+      threadId: threadID,
+      pairId: pairID,
       message: decision.reason
+    }
+  }
+
+  private buildActionAck(input: {
+    accepted: boolean
+    reasonCode: BridgeActionAckReasonCode
+    pairID?: string
+    payload?: BridgeActionPayload
+    actionKind?: BridgeActionAckActionKind
+    scope?: BridgeActionAckScope
+    message?: string
+    executed?: boolean
+    data?: Record<string, unknown>
+  }): BridgeActionAckResult {
+    const descriptor = input.payload
+      ? actionAckDescriptorFromPayload(input.payload, input.data)
+      : undefined
+    return {
+      v: 1,
+      schemaVersion: 1,
+      accepted: input.accepted,
+      reasonCode: input.reasonCode,
+      actionKind: input.actionKind ?? descriptor?.actionKind,
+      actionId: descriptor?.actionId,
+      workspaceId: descriptor?.workspaceId,
+      threadId: descriptor?.threadId,
+      runId: descriptor?.runId,
+      appRunId: descriptor?.appRunId,
+      providerRunId: descriptor?.providerRunId,
+      approvalId: descriptor?.approvalId,
+      questionId: descriptor?.questionId,
+      pairId: input.pairID,
+      correlationId: descriptor?.actionId,
+      scope: input.scope ?? (input.payload ? scopeForPayload(input.payload) : undefined),
+      message: input.message,
+      executed: input.executed,
+      data: input.data
+    }
+  }
+
+  private reserveActionId(
+    pairID: string,
+    payload: BridgeActionPayload
+  ): BridgeActionAckResult | null {
+    const actionId = actionIdFromPayload(payload)
+    if (!actionId) return null
+
+    const now = this.now()
+    const expiresAt = expiresAtFromPayload(payload)
+    if (expiresAt !== null && expiresAt <= now) {
+      const message = `Action "${actionId}" expired at ${formatTimestamp(expiresAt)}`
+      this.log(
+        `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} actionId=${actionId} reason="${message}"`
+      )
+      return this.buildActionAck({
+        pairID,
+        accepted: false,
+        reasonCode: 'actionExpired',
+        payload,
+        scope: 'once',
+        message
+      })
+    }
+
+    this.pruneReplayCache(now)
+    const replayKey = `${pairID}\u0000${actionId}`
+    if (this.seenActionIds.has(replayKey)) {
+      const message = `Action "${actionId}" has already been processed for this paired device`
+      this.log(
+        `[BridgeActionRouter] DENY actionAck pairID=${pairID} kind=${payload.kind} actionId=${actionId} reason="${message}"`
+      )
+      return this.buildActionAck({
+        pairID,
+        accepted: false,
+        reasonCode: 'actionReplayed',
+        payload,
+        scope: 'once',
+        message
+      })
+    }
+
+    this.seenActionIds.set(replayKey, {
+      seenAt: now,
+      expiresAt: expiresAt ?? now + this.replayRetentionMs
+    })
+    return null
+  }
+
+  private pruneReplayCache(now: number): void {
+    for (const [key, record] of this.seenActionIds) {
+      if (record.expiresAt <= now) this.seenActionIds.delete(key)
+    }
+  }
+
+  private async validateActionOwnership(
+    pairID: string,
+    payload: BridgeActionPayload,
+    workspaceId: string
+  ): Promise<BridgeOwnershipValidationResult> {
+    const validator = this.ownershipValidator?.validateActionOwnership
+    if (!validator) return { allowed: true }
+    const descriptor = actionAckDescriptorFromPayload(payload)
+    try {
+      return await validator({
+        pairID,
+        action: payload,
+        actionKind: payload.kind,
+        actionId: descriptor.actionId,
+        workspaceId,
+        threadId: descriptor.threadId,
+        runId: descriptor.runId,
+        approvalId: descriptor.approvalId,
+        questionId: descriptor.questionId
+      })
+    } catch (err) {
+      return {
+        allowed: false,
+        reason: `Ownership validation failed: ${err instanceof Error ? err.message : String(err)}`,
+        reasonCode: 'ownershipDenied'
+      }
     }
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+}
+
+function providerFromPayload(payload: BridgeActionPayload): string | undefined {
+  return 'provider' in payload && typeof payload.provider === 'string'
+    ? payload.provider
+    : undefined
+}
+
+function approvalModeFromPayload(payload: BridgeActionPayload): string | undefined {
+  return 'approvalMode' in payload && typeof payload.approvalMode === 'string'
+    ? payload.approvalMode
+    : undefined
+}
+
+function capabilityForPayload(payload: BridgeActionPayload): RemoteWorkspaceCapability | null {
+  switch (payload.kind) {
+    case 'approvalReply':
+    case 'questionReject':
+      return 'approve'
+    case 'questionReply':
+      return 'answer'
+    case 'composerPrompt':
+      return 'startTurn'
+    case 'cancelRun':
+      return 'cancel'
+    case 'setYoloMode':
+      return 'yolo'
+    case 'togglePinChat':
+    case 'togglePinWorkspace':
+      return 'pin'
+    case 'registerApnsToken':
+    case 'unknown':
+      return null
+  }
+}
+
+function scopeForPayload(payload: BridgeActionPayload): BridgeActionAckScope {
+  if (payload.kind === 'approvalReply') {
+    if (payload.decision === 'acceptForSession') return 'session'
+    if (payload.decision === 'acceptForWorkspace') return 'workspace'
+  }
+  return 'once'
+}
+
+function actionAckDescriptorFromPayload(
+  payload: BridgeActionPayload,
+  data?: Record<string, unknown>
+): Pick<
+  BridgeActionAckV1,
+  | 'actionKind'
+  | 'actionId'
+  | 'workspaceId'
+  | 'threadId'
+  | 'runId'
+  | 'appRunId'
+  | 'providerRunId'
+  | 'approvalId'
+  | 'questionId'
+> {
+  const descriptor: Pick<
+    BridgeActionAckV1,
+    | 'actionKind'
+    | 'actionId'
+    | 'workspaceId'
+    | 'threadId'
+    | 'runId'
+    | 'appRunId'
+    | 'providerRunId'
+    | 'approvalId'
+    | 'questionId'
+  > = {
+    actionKind: payload.kind,
+    actionId: actionIdFromPayload(payload) ?? undefined,
+    workspaceId: workspaceIdFromPayload(payload) ?? undefined
+  }
+
+  if ('threadId' in payload && typeof payload.threadId === 'string') {
+    descriptor.threadId = payload.threadId
+  }
+  if (payload.kind === 'approvalReply') {
+    descriptor.approvalId = payload.toolCallId
+  }
+  if (payload.kind === 'questionReply' || payload.kind === 'questionReject') {
+    descriptor.questionId = payload.promptId
+  }
+  if (payload.kind === 'cancelRun') {
+    descriptor.runId = payload.runId
+  } else if (typeof data?.runId === 'string') {
+    descriptor.runId = data.runId
+  }
+  if (typeof data?.appRunId === 'string') {
+    descriptor.appRunId = data.appRunId
+  }
+  if (typeof data?.providerRunId === 'string') {
+    descriptor.providerRunId = data.providerRunId
+  }
+
+  return descriptor
+}
+
+function formatTimestamp(value: number): string {
+  try {
+    return new Date(value).toISOString()
+  } catch {
+    return String(value)
+  }
 }

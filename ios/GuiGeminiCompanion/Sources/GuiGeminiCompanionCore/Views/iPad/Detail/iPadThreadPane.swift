@@ -19,6 +19,7 @@ public struct iPadThreadPane: View {
     public let thread: iPadThreadSummary?
     public let events: [BridgeRunEvent]
     public let transcriptStore: TranscriptStore?
+    public let taskDetail: RemoteTaskDetail?
     public let mocked: Bool
 
     @State private var selectedTab: BodyTab = .transcript
@@ -49,12 +50,14 @@ public struct iPadThreadPane: View {
         thread: iPadThreadSummary?,
         events: [BridgeRunEvent],
         transcriptStore: TranscriptStore? = nil,
+        taskDetail: RemoteTaskDetail? = nil,
         mocked: Bool
     ) {
         self.threadID = threadID
         self.thread = thread
         self.events = events
         self.transcriptStore = transcriptStore
+        self.taskDetail = taskDetail
         self.mocked = mocked
     }
 
@@ -175,12 +178,18 @@ public struct iPadThreadPane: View {
     // MARK: - Resolved values
 
     private var resolvedTitle: String {
+        if let projected = taskDetail?.task.displayTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+           !projected.isEmpty {
+            return projected
+        }
         let actual = thread?.title.trimmingCharacters(in: .whitespacesAndNewlines)
         if let actual, !actual.isEmpty { return actual }
         return mocked ? iPadDetailSampleData.sampleThread().title : "Thread"
     }
 
     private var resolvedSubtitle: String {
+        let projectedStatus = taskDetail?.task.status.rawValue
+        if let projectedStatus, !projectedStatus.isEmpty { return projectedStatus }
         let actual = thread?.subtitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if let actual, !actual.isEmpty { return actual }
         if mocked {
@@ -190,15 +199,15 @@ public struct iPadThreadPane: View {
     }
 
     private var resolvedProvider: String? {
-        thread?.provider ?? (mocked ? iPadDetailSampleData.sampleThread().provider : nil)
+        taskDetail?.task.provider ?? thread?.provider ?? (mocked ? iPadDetailSampleData.sampleThread().provider : nil)
     }
 
     private var resolvedLastActivity: Date {
-        thread?.lastActivityAt ?? (mocked ? iPadDetailSampleData.referenceDate : Date())
+        taskDetail?.task.updatedAt ?? thread?.lastActivityAt ?? (mocked ? iPadDetailSampleData.referenceDate : Date())
     }
 
     private var resolvedIsActive: Bool {
-        thread?.isActive ?? (mocked ? true : false)
+        taskDetail?.task.status.isActive ?? thread?.isActive ?? (mocked ? true : false)
     }
 
     private var providerTint: Color {

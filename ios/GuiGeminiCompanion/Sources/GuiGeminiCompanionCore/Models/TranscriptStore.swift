@@ -87,7 +87,7 @@ public final class TranscriptStore {
                 payload: payload,
                 at: event.publishedAt
             )
-        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated, .remoteProjection:
             // Summary channels are sidebar data; never enter the transcript.
             // Mirrors the filter in `TranscriptViewModel.append(_:)` so
             // callers can pass any event without pre-filtering.

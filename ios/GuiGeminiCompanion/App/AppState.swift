@@ -24,6 +24,7 @@ final class AppState {
     private(set) var transcriptViewModel: TranscriptViewModel?
     private(set) var approvalViewModel: ApprovalViewModel?
     private(set) var composerViewModel: ComposerViewModel?
+    private(set) var remoteTaskConsoleViewModel: RemoteTaskConsoleViewModel?
     private(set) var pushRegistrar: PushNotificationRegistrar?
     /// Sidebar data store consumed by the iPad shell. Populated by the
     /// workspace/thread summary broadcasts the desktop emits over the
@@ -77,6 +78,7 @@ final class AppState {
         self.transcriptViewModel = transcript
         self.approvalViewModel = ApprovalViewModel(client: client)
         self.composerViewModel = ComposerViewModel(client: client)
+        self.remoteTaskConsoleViewModel = RemoteTaskConsoleViewModel(client: client)
         // APNs environment picked at compile time. DEBUG builds (Xcode
         // local + TestFlight) register with Apple's sandbox APNs gateway
         // (api.sandbox.push.apple.com); release builds use production.
@@ -97,6 +99,7 @@ final class AppState {
                 guard let self else { continue }
                 transcript.ingest(event)
                 self.composerViewModel?.observeRunEvent(event)
+                self.remoteTaskConsoleViewModel?.ingest(event)
 
                 if let decoded = try? BridgeWorkspaceSummariesDecoder.decode(event: event) {
                     switch decoded {
@@ -155,6 +158,7 @@ final class AppState {
         transcriptViewModel = nil
         approvalViewModel = nil
         composerViewModel = nil
+        remoteTaskConsoleViewModel = nil
         pushRegistrar = nil
         pairingViewModel = PairingViewModel(
             controllerDisplayName: friendlyDeviceName(),

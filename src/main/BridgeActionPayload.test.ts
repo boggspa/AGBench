@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   BridgeActionPayloadDecodeError,
+  actionIdFromPayload,
   decodeBridgeActionPayload,
+  expiresAtFromPayload,
   payloadIsMutating,
   payloadRequiresWorkspaceGating,
   workspaceIdFromPayload,
@@ -219,6 +221,61 @@ describe('decodeBridgeActionPayload', () => {
       expect(payload.kind).toBe('registerApnsToken')
     })
 
+    it('decodes optional action metadata on known variants', () => {
+      const metadata = { actionId: 'action-1', issuedAt: 1000, expiresAt: 2000 }
+      const variants: Array<Record<string, unknown>> = [
+        {
+          kind: 'approvalReply',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          toolCallId: 'tc-1',
+          decision: 'accept'
+        },
+        {
+          kind: 'questionReply',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          promptId: 'q-1',
+          answer: 'yes'
+        },
+        { kind: 'questionReject', workspaceId: 'ws-1', threadId: 't-1', promptId: 'q-1' },
+        {
+          kind: 'composerPrompt',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          text: 'hi',
+          provider: 'gemini'
+        },
+        {
+          kind: 'cancelRun',
+          workspaceId: 'ws-1',
+          threadId: 't-1',
+          provider: 'gemini',
+          runId: 'run-1'
+        },
+        { kind: 'setYoloMode', workspaceId: 'ws-1', enabled: true },
+        { kind: 'togglePinChat', workspaceId: 'ws-1', appChatId: 'chat-1', pinned: true },
+        { kind: 'togglePinWorkspace', workspaceId: 'ws-1', pinned: true },
+        {
+          kind: 'registerApnsToken',
+          pairID: 'pair-1',
+          deviceToken: 'tok',
+          env: 'production'
+        }
+      ]
+
+      for (const variant of variants) {
+        const { payload } = decodeBridgeActionPayload(encode({ ...variant, ...metadata }))
+        expect(payload.kind).toBe(variant.kind)
+        if (payload.kind === 'unknown') throw new Error('expected known variant')
+        expect(payload.actionId).toBe('action-1')
+        expect(payload.issuedAt).toBe(1000)
+        expect(payload.expiresAt).toBe(2000)
+        expect(actionIdFromPayload(payload)).toBe('action-1')
+        expect(expiresAtFromPayload(payload)).toBe(2000)
+      }
+    })
+
     it('treats registerApnsToken missing pairID as unknown', () => {
       const wire = encode({
         kind: 'registerApnsToken',
@@ -316,6 +373,38 @@ describe('decodeBridgeActionPayload', () => {
       })
       const { payload } = decodeBridgeActionPayload(wire)
       expect(payload.kind).toBe('unknown')
+    })
+
+    it('treats empty actionId metadata as unknown', () => {
+      const wire = encode({
+        kind: 'approvalReply',
+        workspaceId: 'ws-1',
+        threadId: 't-1',
+        toolCallId: 'tc-1',
+        decision: 'accept',
+        actionId: ''
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('unknown')
+      if (payload.kind === 'unknown') {
+        expect(payload.rawKind).toBe('approvalReply')
+      }
+    })
+
+    it('treats non-number expiry metadata as unknown', () => {
+      const wire = encode({
+        kind: 'composerPrompt',
+        workspaceId: 'ws-1',
+        threadId: 't-1',
+        text: 'hi',
+        provider: 'gemini',
+        expiresAt: 'soon'
+      })
+      const { payload } = decodeBridgeActionPayload(wire)
+      expect(payload.kind).toBe('unknown')
+      if (payload.kind === 'unknown') {
+        expect(payload.rawKind).toBe('composerPrompt')
+      }
     })
 
     it('treats composerPrompt with negative contextTurns as unknown', () => {

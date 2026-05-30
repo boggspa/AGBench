@@ -167,6 +167,51 @@ describe('ApprovalService — registries', () => {
     })
   })
 
+  it('listProjectionCards exposes pending approvals for remote task snapshots', () => {
+    const { deps } = makeDeps()
+    const svc = new ApprovalService(deps)
+    svc.registerCodex('c-1', {
+      rpcId: 1,
+      method: 'item/permissions/requestApproval',
+      params: { command: 'npm test' },
+      workspacePath: '/ws',
+      runId: 'r-1'
+    })
+    svc.registerHostCommand('h-1', {
+      sender: {} as never,
+      provider: 'codex',
+      command: 'ls',
+      commandText: 'ls -la',
+      cwd: '/ws',
+      workspacePath: '/ws',
+      threadId: 't-host',
+      appChatId: 'chat-host',
+      appRunId: 'run-host',
+      model: 'm-1',
+      reason: 'sandbox failure',
+      output: 'permission denied'
+    })
+
+    expect(svc.listProjectionCards()).toEqual([
+      expect.objectContaining({
+        toolCallId: 'c-1',
+        threadId: 'c-1',
+        workspaceId: '/ws',
+        runId: 'r-1',
+        provider: 'codex',
+        title: 'item/permissions/requestApproval'
+      }),
+      expect.objectContaining({
+        toolCallId: 'h-1',
+        threadId: 'chat-host',
+        workspaceId: '/ws',
+        runId: 'run-host',
+        provider: 'codex',
+        title: 'Run host command'
+      })
+    ])
+  })
+
   it('getHostCommand returns the registered approval; deleteHostCommand removes it', () => {
     const { deps } = makeDeps()
     const svc = new ApprovalService(deps)

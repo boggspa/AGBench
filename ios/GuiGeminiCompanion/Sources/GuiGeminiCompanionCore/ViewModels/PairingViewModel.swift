@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// PairingViewModel — observable state machine for the iOS pairing flow.

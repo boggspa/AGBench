@@ -2,6 +2,7 @@ import XCTest
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 
@@ -137,12 +138,12 @@ final class PairingFlowTests: XCTestCase {
             controllerNonce: result.response.controllerNonce
         )
         XCTAssertEqual(
-            result.derivedKeys.pairRootKey.withUnsafeBytes { Data($0) },
-            macDerived.pairRootKey.withUnsafeBytes { Data($0) }
+            result.derivedKeys.pairRootKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            macDerived.pairRootKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
         XCTAssertEqual(
-            result.derivedKeys.macToControllerKey.withUnsafeBytes { Data($0) },
-            macDerived.macToControllerKey.withUnsafeBytes { Data($0) }
+            result.derivedKeys.macToControllerKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            macDerived.macToControllerKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
     }
 

@@ -184,7 +184,8 @@ public enum BridgeWorkspaceSummariesDecoder {
             let payload = try decoder.decode(ThreadUpdatedPayload.self, from: event.payloadJSON)
             return .threadUpdated(payload)
         case .agentOutput, .agentError, .agentExit,
-             .geminiOutput, .geminiError, .geminiExit:
+             .geminiOutput, .geminiError, .geminiExit,
+             .remoteProjection:
             return nil
         }
     }

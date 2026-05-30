@@ -3,6 +3,7 @@ import Foundation
 @preconcurrency import Network
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 import BridgeLANTransport
 @testable import GuiGeminiCompanionCore
@@ -86,8 +87,8 @@ final class GuiGeminiBridgeClientTests: XCTestCase {
         // The two directional keys must be distinct (different HKDF
         // contexts derive different bytes).
         XCTAssertNotEqual(
-            pair.macToControllerKey.withUnsafeBytes { Data($0) },
-            pair.controllerToMacKey.withUnsafeBytes { Data($0) }
+            pair.macToControllerKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) },
+            pair.controllerToMacKey.withUnsafeBytes { Data($0.bindMemory(to: UInt8.self)) }
         )
     }
 

@@ -32,24 +32,51 @@ import BridgeCore
 ///     `pairsWatching(threadID:)` lookups. Kept in sync with the
 ///     source-of-truth map.
 ///
-/// Lifecycle: an iOS device disconnecting (TCP closed) is the daemon's
-/// signal to drop its subscriptions. Today's wiring doesn't propagate
-/// the disconnect event, so stale entries linger until the pair sends
-/// a fresh empty set or reconnects with new threads. Acceptable for
-/// v1 — stale entries leak bandwidth (events sent to dead sessions
-/// fail at the transport layer and get pruned automatically by
-/// `LANBridgeServer.broadcast`).
+/// Lifecycle: the shared BridgeCore server still does not expose every
+/// disconnect event to GUIGemini, so this store also records per-pair
+/// `lastSeenAt` timestamps. The listener can prune very old subscriptions
+/// opportunistically without requiring a BridgeCore API change.
 public actor WatchedThreadsStore {
+    public struct UpdateResult: Sendable, Equatable {
+        public let pairID: PairID
+        public let threadIDs: [String]
+        public let previousThreadIDs: [String]
+        public let changed: Bool
+        public let isFirstSeen: Bool
+        public let revision: UInt64
+        public let lastSeenAt: Date
+        public let pairsWithSubscriptions: Int
+        public let seenPairCount: Int
+        public let totalSubscriptions: Int
+    }
+
+    public struct Snapshot: Sendable, Equatable {
+        public let pairsWithSubscriptions: Int
+        public let seenPairCount: Int
+        public let totalSubscriptions: Int
+        public let lastSeenAt: Date?
+        public let revision: UInt64
+    }
+
     private var threadsByPair: [PairID: Set<String>] = [:]
     private var pairsByThread: [String: Set<PairID>] = [:]
+    private var lastSeenByPair: [PairID: Date] = [:]
+    private var revision: UInt64 = 0
+    private let now: @Sendable () -> Date
 
-    public init() {}
+    public init(now: @escaping @Sendable () -> Date = Date.init) {
+        self.now = now
+    }
 
     /// Replace the watched-thread set for a pair. The previous set is
     /// fully overwritten. Empty array means "no longer watching anything".
-    public func update(pairID: PairID, threadIDs: [String]) {
+    @discardableResult
+    public func update(pairID: PairID, threadIDs: [String]) -> UpdateResult {
+        let seenAt = now()
         let nextSet = Set(threadIDs)
         let previous = threadsByPair[pairID] ?? []
+        let wasSeen = lastSeenByPair[pairID] != nil
+        let changed = previous != nextSet
 
         // Remove pair from threads it no longer watches.
         for stale in previous.subtracting(nextSet) {
@@ -68,18 +95,50 @@ public actor WatchedThreadsStore {
         } else {
             threadsByPair[pairID] = nextSet
         }
+        lastSeenByPair[pairID] = seenAt
+        revision &+= 1
+
+        let snapshot = snapshotValues()
+        return UpdateResult(
+            pairID: pairID,
+            threadIDs: nextSet.sorted(),
+            previousThreadIDs: previous.sorted(),
+            changed: changed,
+            isFirstSeen: !wasSeen,
+            revision: revision,
+            lastSeenAt: seenAt,
+            pairsWithSubscriptions: snapshot.pairsWithSubscriptions,
+            seenPairCount: snapshot.seenPairCount,
+            totalSubscriptions: snapshot.totalSubscriptions
+        )
     }
 
     /// Drop ALL subscriptions for a pair. Used when the daemon learns
     /// a pair has disconnected (future wiring).
     public func remove(pairID: PairID) {
-        guard let threads = threadsByPair.removeValue(forKey: pairID) else { return }
+        let threads = threadsByPair.removeValue(forKey: pairID) ?? []
         for thread in threads {
             pairsByThread[thread]?.remove(pairID)
             if pairsByThread[thread]?.isEmpty == true {
                 pairsByThread.removeValue(forKey: thread)
             }
         }
+        guard lastSeenByPair.removeValue(forKey: pairID) != nil || !threads.isEmpty else { return }
+        revision &+= 1
+    }
+
+    /// Drop subscriptions whose pair has not sent any watched-thread state
+    /// since `cutoff`. This is intentionally opportunistic; active clients
+    /// should refresh on reconnect/subscribe and restore their filters.
+    @discardableResult
+    public func removeStalePairs(lastSeenBefore cutoff: Date) -> Int {
+        let stalePairs = lastSeenByPair.compactMap { pairID, lastSeenAt in
+            lastSeenAt < cutoff ? pairID : nil
+        }
+        for pairID in stalePairs {
+            remove(pairID: pairID)
+        }
+        return stalePairs.count
     }
 
     /// Returns the set of pairs that have explicitly opted in to events
@@ -98,11 +157,19 @@ public actor WatchedThreadsStore {
     }
 
     /// Diagnostic snapshot.
-    public func snapshot() -> (
-        pairsWithSubscriptions: Int,
-        totalSubscriptions: Int
-    ) {
+    public func snapshot() -> Snapshot {
+        snapshotValues()
+    }
+
+    private func snapshotValues() -> Snapshot {
         let total = threadsByPair.values.reduce(0) { $0 + $1.count }
-        return (threadsByPair.count, total)
+        let lastSeenAt = lastSeenByPair.values.max()
+        return Snapshot(
+            pairsWithSubscriptions: threadsByPair.count,
+            seenPairCount: lastSeenByPair.count,
+            totalSubscriptions: total,
+            lastSeenAt: lastSeenAt,
+            revision: revision
+        )
     }
 }

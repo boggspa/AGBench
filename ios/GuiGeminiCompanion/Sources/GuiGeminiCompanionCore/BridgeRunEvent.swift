@@ -43,6 +43,7 @@ public struct BridgeRunEvent: Sendable, Equatable {
         case workspaceUpdated = "workspace-updated"
         case threadList = "thread-list"
         case threadUpdated = "thread-updated"
+        case remoteProjection = "remote-projection"
     }
 
     public let channel: Channel

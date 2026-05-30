@@ -3,6 +3,7 @@ import Foundation
 @preconcurrency import Network
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 

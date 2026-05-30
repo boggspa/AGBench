@@ -116,7 +116,7 @@ public struct AGBenchRunActivityEventReducer: Sendable {
             return .failed
         case .agentOutput, .geminiOutput:
             break
-        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated, .remoteProjection:
             // Sidebar-summary channels never reach the reducer in practice
             // (TranscriptViewModel filters them upstream). Kept here for
             // switch exhaustivity so future channel additions surface
@@ -230,7 +230,7 @@ public struct AGBenchRunActivityEventReducer: Sendable {
             return "Provider error"
         case .agentExit, .geminiExit:
             return "Provider exited"
-        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated, .remoteProjection:
             // Unreachable — TranscriptViewModel filters summary events
             // before the reducer ever sees them. See terminalStatus(...)
             // above for the matching defensive default.

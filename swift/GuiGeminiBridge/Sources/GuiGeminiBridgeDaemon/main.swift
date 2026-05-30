@@ -420,11 +420,12 @@ func registerSummaryBroadcast(_ method: String, kind: SummaryBroadcastKind) {
                 params: rawParams,
                 publishedAt: Date()
             )
-            Task.detached { @Sendable [summaryBroadcaster, eventJSON] in
-                await summaryBroadcaster.broadcast(eventJSON)
+            let threadID = SummaryBroadcaster.threadID(kind: kind, params: rawParams)
+            Task.detached { @Sendable [summaryBroadcaster, eventJSON, threadID] in
+                await summaryBroadcaster.broadcast(eventJSON, threadID: threadID)
             }
             FileHandle.standardError.write(Data(
-                "[\(method)] broadcast channel=\(kind.channel) bytes=\(eventJSON.count)\n".utf8
+                "[\(method)] broadcast channel=\(RemoteProjectionEnvelope.channel) kind=\(kind.projectionKind) bytes=\(eventJSON.count) threadID=\(threadID ?? "nil")\n".utf8
             ))
         } catch {
             FileHandle.standardError.write(Data(
@@ -1604,6 +1605,30 @@ registerSummaryBroadcast("bridge.broadcastWorkspaceList", kind: .workspaceList)
 registerSummaryBroadcast("bridge.broadcastThreadList", kind: .threadList)
 registerSummaryBroadcast("bridge.broadcastWorkspaceUpdated", kind: .workspaceUpdated)
 registerSummaryBroadcast("bridge.broadcastThreadUpdated", kind: .threadUpdated)
+
+/// `bridge.remoteProjection` — generic typed Remote Task Console projection.
+/// Electron can send `{kind, payload, threadId?}` and the daemon forwards it
+/// over the same direct event path as run events using one
+/// `{channel:"remote-projection", kind, payload}` envelope.
+dispatcher.register("bridge.remoteProjection") { rawParams in
+    do {
+        let projection = try SummaryBroadcaster.makeRemoteProjectionEventJSON(
+            params: rawParams,
+            publishedAt: Date()
+        )
+        Task.detached { @Sendable [summaryBroadcaster, projection] in
+            await summaryBroadcaster.broadcast(projection.data, threadID: projection.threadID)
+        }
+        FileHandle.standardError.write(Data(
+            "[bridge.remoteProjection] broadcast bytes=\(projection.data.count) threadID=\(projection.threadID ?? "nil")\n".utf8
+        ))
+    } catch {
+        FileHandle.standardError.write(Data(
+            "[bridge.remoteProjection] WARN: \(String(describing: error))\n".utf8
+        ))
+    }
+    return [String: Any]()
+}
 
 /// `bridge.runEvent` — inbound notification (no id). Electron forwards every
 /// run-bus event here via `BridgeRunEventSink`. For each event the daemon

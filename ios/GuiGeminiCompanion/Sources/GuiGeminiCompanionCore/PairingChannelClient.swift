@@ -1,5 +1,6 @@
 import Foundation
 @preconcurrency import Network
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// PairingChannelClient — iOS-side TCP transport for the QR pairing

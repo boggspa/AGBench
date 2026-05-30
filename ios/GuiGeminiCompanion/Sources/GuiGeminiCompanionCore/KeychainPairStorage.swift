@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// KeychainPairStorage — persistence layer for iOS pairing state.
@@ -153,7 +154,7 @@ public actor KeychainPairStorage {
             macToControllerKey: derivedKeys.macToControllerKey.base64,
             controllerToMacKey: derivedKeys.controllerToMacKey.base64,
             attachmentWrapKey: derivedKeys.attachmentWrapKey.base64,
-            cloudKitPayloadKey: derivedKeys.cloudKitPayloadKey.base64
+            recordPayloadKey: derivedKeys.recordPayloadKey.base64
         )
         let blob = try JSONEncoder().encode(entry)
         try await secretStore.save(blob, account: Self.pairEntryAccount(for: record.pairID))
@@ -169,7 +170,7 @@ public actor KeychainPairStorage {
             let macToCtl = SymmetricKey(base64: entry.macToControllerKey),
             let ctlToMac = SymmetricKey(base64: entry.controllerToMacKey),
             let attachWrap = SymmetricKey(base64: entry.attachmentWrapKey),
-            let cloudKitPayload = SymmetricKey(base64: entry.cloudKitPayloadKey)
+            let recordPayload = SymmetricKey(base64: entry.recordPayloadKey)
         else {
             throw KeychainPairStorageError.malformedPairEntry(pairID: pairID.rawValue)
         }
@@ -178,7 +179,7 @@ public actor KeychainPairStorage {
             macToControllerKey: macToCtl,
             controllerToMacKey: ctlToMac,
             attachmentWrapKey: attachWrap,
-            cloudKitPayloadKey: cloudKitPayload
+            recordPayloadKey: recordPayload
         )
         return (record: entry.record, derivedKeys: derived)
     }
@@ -256,7 +257,7 @@ private struct PersistedPairEntry: Codable {
     let macToControllerKey: String
     let controllerToMacKey: String
     let attachmentWrapKey: String
-    let cloudKitPayloadKey: String
+    let recordPayloadKey: String
 }
 
 private struct IndexEnvelope: Codable {

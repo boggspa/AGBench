@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
-import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
+import {
+  READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES,
+  READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES,
+  RemoteWorkspaceAllowlist,
+  capabilitiesForRemoteWorkspaceEntry,
+  capabilitiesForRemoteWorkspaceMode
+} from './RemoteWorkspaceAllowlist'
 
 describe('RemoteWorkspaceAllowlist', () => {
   describe('CRUD', () => {
@@ -143,6 +149,58 @@ describe('RemoteWorkspaceAllowlist', () => {
       }
     })
 
+    it('maps legacy read-only mode to monitor + approve capabilities', () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-readonly',
+        path: '/a',
+        mode: 'read-only',
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      expect(capabilitiesForRemoteWorkspaceMode('read-only')).toEqual(
+        READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES
+      )
+      expect(
+        allowlist.evaluate({ workspaceId: 'ws-readonly', capability: 'approve' }).allowed
+      ).toBe(true)
+      const decision = allowlist.evaluate({ workspaceId: 'ws-readonly', capability: 'startTurn' })
+      expect(decision.allowed).toBe(false)
+      if (!decision.allowed) {
+        expect(decision.reason).toMatch(/capability "startTurn"/i)
+      }
+    })
+
+    it('maps legacy read-write mode to the default task-console capability set', () => {
+      const allowlist = seed()
+      expect(capabilitiesForRemoteWorkspaceMode('read-write')).toEqual(
+        READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES
+      )
+      expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'startTurn' }).allowed).toBe(
+        true
+      )
+      expect(allowlist.evaluate({ workspaceId: 'ws-1', capability: 'yolo' }).allowed).toBe(false)
+    })
+
+    it('uses explicit capabilities when present instead of mode defaults', () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      const entry = allowlist.upsert({
+        workspaceId: 'ws-custom',
+        path: '/a',
+        mode: 'read-write',
+        capabilities: ['monitor', 'approve'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      expect(capabilitiesForRemoteWorkspaceEntry(entry)).toEqual(['monitor', 'approve'])
+      expect(allowlist.evaluate({ workspaceId: 'ws-custom', capability: 'approve' }).allowed).toBe(
+        true
+      )
+      expect(allowlist.evaluate({ workspaceId: 'ws-custom', capability: 'yolo' }).allowed).toBe(
+        false
+      )
+    })
+
     it('treats an expired entry as denied', () => {
       let clock = 1000
       const allowlist = new RemoteWorkspaceAllowlist({ now: () => clock })
@@ -198,6 +256,7 @@ describe('RemoteWorkspaceAllowlist', () => {
         workspaceId: 'ws-2',
         path: '/b',
         mode: 'read-only',
+        capabilities: ['monitor', 'approve'],
         allowedProviders: ['claude'],
         allowedApprovalModes: ['default']
       })
@@ -208,6 +267,7 @@ describe('RemoteWorkspaceAllowlist', () => {
       expect(b.get('ws-1')?.mode).toBe('read-write')
       expect(b.get('ws-1')?.expiresAt).toBe(9999)
       expect(b.get('ws-2')?.mode).toBe('read-only')
+      expect(b.get('ws-2')?.capabilities).toEqual(['monitor', 'approve'])
     })
 
     it('creates intermediate directories', () => {

@@ -99,7 +99,7 @@ public final class ComposerViewModel {
         do {
             let ack = try await client.sendAction(action)
             if ack?.accepted == true,
-               let appRunId = Self.extractAppRunId(from: ack?.message) {
+               let appRunId = Self.extractAppRunId(from: ack) {
                 currentRunId = appRunId
                 prompt = ""  // clear the input after a successful send
                 status = .sent(message: ack?.message ?? "Run dispatched")
@@ -159,12 +159,19 @@ public final class ComposerViewModel {
             if currentRunId == runId { currentRunId = nil }
         case .agentOutput, .geminiOutput:
             currentRunId = runId
-        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated, .remoteProjection:
             break
         }
     }
 
-    private static func extractAppRunId(from message: String?) -> String? {
+    nonisolated static func extractAppRunId(from ack: BridgeActionAck?) -> String? {
+        if let structured = ack?.structuredAppRunId {
+            return structured
+        }
+        return extractAppRunId(fromLegacyMessage: ack?.message)
+    }
+
+    nonisolated private static func extractAppRunId(fromLegacyMessage message: String?) -> String? {
         guard let message else { return nil }
         guard let range = message.range(of: "appRunId=") else { return nil }
         let suffix = message[range.upperBound...]

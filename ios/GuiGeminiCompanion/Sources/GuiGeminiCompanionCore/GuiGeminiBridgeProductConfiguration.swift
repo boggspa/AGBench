@@ -27,7 +27,6 @@ public enum GuiGeminiBridgeProductConfiguration {
         macBundleIdentifier: "com.example.AGBench.mac",
         iosBundleIdentifier: "com.example.AGBench.ios",
         appGroupIdentifier: "group.com.example.AGBench",
-        cloudKitContainerIdentifier: "iCloud.com.example.AGBench",
         keychainServiceIdentifier: "com.example.AGBench",
         bonjourServiceType: "_guigemini._tcp",
         bonjourQUICServiceType: "_guigemini-quic._udp",

@@ -24,16 +24,25 @@ public struct iPadDiffPayload: Hashable, Sendable {
 
 @available(iOS 17.0, macOS 14.0, *)
 public struct iPadDiffInspector: View {
+    public let summary: MobileDiffSummary?
     public let event: BridgeRunEvent?
 
+    public init(summary: MobileDiffSummary?, fallbackEvent event: BridgeRunEvent? = nil) {
+        self.summary = summary
+        self.event = event
+    }
+
     public init(event: BridgeRunEvent?) {
+        self.summary = nil
         self.event = event
     }
 
     public var body: some View {
         VStack(alignment: .leading, spacing: Theme.Spacing.control) {
             header
-            if let event,
+            if let summary {
+                diffSummaryContent(summary.clamped())
+            } else if let event,
                let payload = Self.diffPayload(from: event) {
                 diffContent(payload)
             } else {
@@ -63,6 +72,24 @@ public struct iPadDiffInspector: View {
     public static func diffPayload(from event: BridgeRunEvent) -> iPadDiffPayload? {
         guard let payload = event.payloadDictionary() else { return nil }
         return diffPayload(from: payload)
+    }
+
+    public static func diffPayload(from summary: MobileDiffSummary) -> iPadDiffPayload? {
+        let file = summary.files.first ?? MobileDiffFile(
+            path: "Run diff",
+            additions: summary.additions,
+            deletions: summary.deletions,
+            hunks: summary.hunks,
+            truncated: summary.truncated
+        )
+        guard !file.hunks.isEmpty || !summary.files.isEmpty else { return nil }
+        return iPadDiffPayload(
+            title: summaryTitle(summary),
+            path: file.path,
+            unifiedDiff: unifiedDiffText(file: file),
+            before: nil,
+            after: nil
+        )
     }
 
     private static func diffPayload(from payload: [String: Any]) -> iPadDiffPayload? {
@@ -104,7 +131,7 @@ public struct iPadDiffInspector: View {
                 .font(Theme.Typography.sectionTitle)
                 .foregroundStyle(Theme.primaryText)
             Spacer(minLength: Theme.Spacing.tight)
-            if event != nil {
+            if summary != nil || event != nil {
                 Text("read-only")
                     .font(Theme.Typography.smallCaption)
                     .foregroundStyle(Theme.secondaryText)
@@ -113,6 +140,205 @@ public struct iPadDiffInspector: View {
                     .background(Theme.inputSurface, in: Capsule(style: .continuous))
             }
         }
+    }
+
+    @ViewBuilder
+    private func diffSummaryContent(_ summary: MobileDiffSummary) -> some View {
+        let files = typedFiles(summary)
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            typedSummaryHeader(summary)
+            if files.isEmpty {
+                emptyStateCard
+            } else {
+                ForEach(files) { file in
+                    typedFileCard(file)
+                }
+                if summary.filesChanged > files.count {
+                    Text("+\(summary.filesChanged - files.count) more file\(summary.filesChanged - files.count == 1 ? "" : "s") hidden for mobile review")
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+    }
+
+    private func typedSummaryHeader(_ summary: MobileDiffSummary) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: Theme.Spacing.tight) {
+                Text(Self.summaryTitle(summary))
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.primaryText)
+                    .lineLimit(2)
+                Spacer(minLength: Theme.Spacing.tight)
+                Text("\(summary.filesChanged) file\(summary.filesChanged == 1 ? "" : "s")")
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Theme.inputSurface, in: Capsule(style: .continuous))
+            }
+            if summary.truncated || summary.sensitiveFileCount > 0 || summary.binaryFileCount > 0 {
+                HStack(spacing: 6) {
+                    if summary.truncated {
+                        stateChip("clamped", systemImage: "scissors", tint: Theme.warning)
+                    }
+                    if summary.sensitiveFileCount > 0 {
+                        stateChip("\(summary.sensitiveFileCount) sensitive", systemImage: "eye.slash", tint: Theme.warning)
+                    }
+                    if summary.binaryFileCount > 0 {
+                        stateChip("\(summary.binaryFileCount) binary", systemImage: "doc.fill", tint: Theme.secondaryAccent)
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func typedFileCard(_ file: MobileDiffFile) -> some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            HStack(alignment: .firstTextBaseline, spacing: Theme.Spacing.tight) {
+                Image(systemName: file.binary ? "doc.fill" : "doc.text")
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(file.sensitive ? Theme.warning : Theme.accent)
+                    .accessibilityHidden(true)
+                Text(file.path)
+                    .font(Theme.Typography.code)
+                    .foregroundStyle(Theme.primaryText)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
+                Spacer(minLength: Theme.Spacing.tight)
+                if let status = file.status {
+                    stateChip(status, systemImage: "arrow.triangle.2.circlepath", tint: Theme.secondaryAccent)
+                }
+            }
+            if file.additions > 0 || file.deletions > 0 || file.truncated {
+                HStack(spacing: 6) {
+                    if file.additions > 0 {
+                        stateChip("+\(file.additions)", systemImage: "plus", tint: Theme.success)
+                    }
+                    if file.deletions > 0 {
+                        stateChip("-\(file.deletions)", systemImage: "minus", tint: Theme.destructive)
+                    }
+                    if file.truncated {
+                        stateChip("clamped", systemImage: "scissors", tint: Theme.warning)
+                    }
+                }
+            }
+            if file.sensitive {
+                fileStateCard(
+                    title: "Sensitive diff redacted",
+                    message: file.sensitiveReason ?? "The desktop marked this path as sensitive, so mobile review only shows metadata.",
+                    systemImage: "eye.slash",
+                    tint: Theme.warning
+                )
+            } else if file.binary {
+                fileStateCard(
+                    title: "Binary file",
+                    message: "Binary contents are not rendered in the iPad read-only diff inspector.",
+                    systemImage: "doc.fill",
+                    tint: Theme.secondaryAccent
+                )
+            } else if let unifiedDiff = Self.unifiedDiffText(file: file), !unifiedDiff.isEmpty {
+                unifiedDiffView(unifiedDiff)
+            } else {
+                fileStateCard(
+                    title: "No textual diff",
+                    message: "This file has metadata but no text patch in the mobile projection.",
+                    systemImage: "text.badge.xmark",
+                    tint: Theme.tertiaryText
+                )
+            }
+        }
+        .padding(Theme.Spacing.control)
+        .background(Theme.inputSurface.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous)
+                .stroke(Theme.separator.opacity(0.65), lineWidth: 1)
+        )
+    }
+
+    private static func summaryTitle(_ summary: MobileDiffSummary) -> String {
+        if !summary.runId.isEmpty {
+            return "Run \(summary.runId) diff"
+        }
+        return "Run Diff"
+    }
+
+    private func typedFiles(_ summary: MobileDiffSummary) -> [MobileDiffFile] {
+        if !summary.files.isEmpty {
+            return summary.files
+        }
+        guard !summary.hunks.isEmpty else { return [] }
+        return [
+            MobileDiffFile(
+                path: "Run diff",
+                additions: summary.additions,
+                deletions: summary.deletions,
+                hunks: summary.hunks,
+                truncated: summary.truncated
+            )
+        ]
+    }
+
+    private static func unifiedDiffText(file: MobileDiffFile) -> String? {
+        guard !file.hunks.isEmpty else { return nil }
+        let chunks = file.hunks.map { hunk -> String in
+            var lines: [String] = []
+            if let header = hunk.header, !header.isEmpty {
+                lines.append(header)
+            }
+            lines.append(contentsOf: hunk.previewLines)
+            if hunk.truncated {
+                lines.append("... diff truncated for mobile review ...")
+            }
+            return lines.joined(separator: "\n")
+        }
+        return chunks.joined(separator: "\n")
+    }
+
+    private func stateChip(_ text: String, systemImage: String, tint: Color) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(Theme.Typography.smallCaption)
+                .accessibilityHidden(true)
+            Text(text)
+                .font(Theme.Typography.smallCaption)
+                .lineLimit(1)
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(tint.opacity(0.13), in: Capsule(style: .continuous))
+    }
+
+    private func fileStateCard(
+        title: String,
+        message: String,
+        systemImage: String,
+        tint: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: Theme.Spacing.tight) {
+            Image(systemName: systemImage)
+                .font(Theme.Typography.caption)
+                .foregroundStyle(tint)
+                .frame(width: 26, height: 26)
+                .background(tint.opacity(0.14), in: Circle())
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(Theme.Typography.caption)
+                    .foregroundStyle(Theme.primaryText)
+                Text(message)
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(Theme.Spacing.tight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.cardFill.opacity(0.55), in: RoundedRectangle(cornerRadius: Theme.Radius.small, style: .continuous))
     }
 
     @ViewBuilder
@@ -432,6 +658,58 @@ private enum iPadDiffInspectorPreviewSamples {
         """
         return try? BridgeRunEvent.decode(eventRecordBytes: Data(json.utf8))
     }
+
+    static func typedMultiFileSummary() -> MobileDiffSummary {
+        MobileDiffSummary(
+            runId: "run-preview",
+            filesChanged: 4,
+            files: [
+                MobileDiffFile(
+                    path: "Sources/GuiGeminiCompanionCore/Views/iPad/iPadShell.swift",
+                    status: "modified",
+                    additions: 18,
+                    deletions: 4,
+                    hunks: [
+                        MobileDiffHunk(
+                            filePath: "Sources/GuiGeminiCompanionCore/Views/iPad/iPadShell.swift",
+                            header: "@@ -120,6 +120,12 @@",
+                            previewLines: [
+                                " struct iPadShell: View {",
+                                "+    public let remoteTaskStore: RemoteTaskStore?",
+                                "+    public let ensembleControlActions: iPadEnsembleControlActions",
+                                "     public let seededWorkspaces: [iPadWorkspaceSummary]",
+                                "-    public let seededThreads: [iPadThreadSummary]",
+                                "+    public let seededThreads: [iPadThreadSummary]"
+                            ]
+                        )
+                    ]
+                ),
+                MobileDiffFile(
+                    path: "Assets/Preview/logo.png",
+                    status: "modified",
+                    binary: true
+                ),
+                MobileDiffFile(
+                    path: "Secrets/.env",
+                    status: "modified",
+                    sensitive: true,
+                    sensitiveReason: "redacted by desktop policy"
+                ),
+                MobileDiffFile(
+                    path: "Sources/LongFile.swift",
+                    status: "modified",
+                    additions: 200,
+                    hunks: [
+                        MobileDiffHunk(
+                            filePath: "Sources/LongFile.swift",
+                            header: "@@ -1,120 +1,120 @@",
+                            previewLines: (0..<120).map { "+preview line \($0)" }
+                        )
+                    ]
+                )
+            ]
+        ).clamped(maxFiles: 4, maxHunksPerFile: 1, maxPreviewLinesPerHunk: 8)
+    }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -446,6 +724,14 @@ private enum iPadDiffInspectorPreviewSamples {
 #Preview("Diff Inspector — populated diff") {
     iPadDiffInspector(event: iPadDiffInspectorPreviewSamples.populatedEvent())
         .frame(width: 420, height: 460)
+        .padding()
+        .background(Theme.background)
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("Diff Inspector — typed multi-file states") {
+    iPadDiffInspector(summary: iPadDiffInspectorPreviewSamples.typedMultiFileSummary())
+        .frame(width: 420, height: 620)
         .padding()
         .background(Theme.background)
 }

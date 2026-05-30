@@ -29,9 +29,23 @@ import icon from '../../resources/icon.png?asset'
 import { CodexAppServerClient } from './CodexAppServerClient'
 import { BridgeDaemonClient, BridgeDaemonError } from './BridgeDaemonClient'
 import { BridgeBroadcaster } from './BridgeBroadcaster'
+import { RemoteQuestionRegistry, type RemoteQuestionResolution } from './RemoteQuestionRegistry'
+import {
+  buildMobileQuestionCard,
+  buildRemoteEnsembleState,
+  buildRemoteProjectionEnvelope,
+  buildRemoteTaskCard,
+  type RemoteTaskCapabilities,
+  type RemoteProjectionEnvelope
+} from './RemoteTaskProjection'
+import { projectRemoteThread } from './RemoteThreadProjection'
 import { resolveDaemonShouldRun } from './BridgeDaemonSettings'
 import { BridgeActionRouter } from './BridgeActionRouter'
-import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
+import {
+  capabilitiesForRemoteWorkspaceEntry,
+  RemoteWorkspaceAllowlist,
+  type RemoteWorkspaceCapability
+} from './RemoteWorkspaceAllowlist'
 import { createBridgeApnsPusher, type BridgeApnsPusher } from './BridgeApnsPusher'
 import { BridgeApnsTokenStore } from './BridgeApnsTokenStore'
 import { isUserAtDesktop as pureIsUserAtDesktop } from './ApnsIdleGate'
@@ -50,10 +64,7 @@ import {
 } from './services/ApprovalService'
 import { ChatService } from './services/ChatService'
 import { ComposerService, type ComposerInput } from './services/ComposerService'
-import {
-  EnsembleOrchestrator,
-  type ParticipantProbeResult
-} from './services/EnsembleOrchestrator'
+import { EnsembleOrchestrator, type ParticipantProbeResult } from './services/EnsembleOrchestrator'
 import { WakeupTimerService, classifyWakeupRecovery } from './WakeupTimerService'
 import { SoloChatWakeupService } from './SoloChatWakeupService'
 import {
@@ -64,11 +75,7 @@ import { RunCoordinator } from './services/RunCoordinator'
 import { RunQueueService } from './services/RunQueueService'
 import { SettingsService } from './services/SettingsService'
 import { WorkspaceService } from './services/WorkspaceService'
-import {
-  getCurrentFxRates,
-  refreshFxRates,
-  startFxRateScheduler
-} from './services/FxRateService'
+import { getCurrentFxRates, refreshFxRates, startFxRateScheduler } from './services/FxRateService'
 import {
   getCurrentProviderRates,
   loadPersistedProbeResults,
@@ -86,10 +93,7 @@ import {
   redactAccountId,
   type NormalizedProviderUsageSnapshot
 } from './ProviderQuotaSnapshots'
-import {
-  summarizeProviderUsage,
-  type ProviderUsageSummary
-} from './ProviderUsageStatus'
+import { summarizeProviderUsage, type ProviderUsageSummary } from './ProviderUsageStatus'
 import {
   canonicalizeExternalPathGrantMetadata,
   coalesceExternalPathGrants,
@@ -302,29 +306,17 @@ const rendererConsoleBuffer: Array<{
  * 10-minute timeout falls back to `cancelled: true` so a stale
  * question can't pin a run forever.
  *
- * Indexed by `questionId` (uuid-ish), keyed for quick lookup. The
- * `appRunId` lets us bulk-cancel a run's outstanding questions when
- * the run itself is cancelled (otherwise the agent never sees the
- * answer and the orchestrator hangs).
+ * `RemoteQuestionRegistry` owns the pending-question metadata and
+ * resolution callbacks. The same registry feeds renderer modals and
+ * remote/iOS projection cards, so desktop and mobile answers resolve
+ * the same parked tool call.
  */
-interface PendingAgentQuestion {
-  questionId: string
-  appRunId: string
-  appChatId: string
-  startedAt: number
-  resolve: (result: AgentQuestionResult) => void
-  timeoutHandle: ReturnType<typeof setTimeout>
-}
-
-interface AgentQuestionResult {
-  answer: string
-  is_custom: boolean
-  cancelled?: boolean
-  cancellation_reason?: string
-}
-
-const pendingAgentQuestions = new Map<string, PendingAgentQuestion>()
 const AGENT_QUESTION_TIMEOUT_MS = 10 * 60 * 1000
+type AgentQuestionResult = RemoteQuestionResolution
+const remoteQuestionRegistry = new RemoteQuestionRegistry({
+  defaultTtlMs: AGENT_QUESTION_TIMEOUT_MS
+})
+let bridgeBroadcasterRef: BridgeBroadcaster | null = null
 
 /**
  * Cancel every outstanding question tied to a run. Called when the
@@ -334,24 +326,46 @@ const AGENT_QUESTION_TIMEOUT_MS = 10 * 60 * 1000
  */
 function cancelPendingAgentQuestionsForRun(appRunId: string, reason: string): void {
   if (!appRunId) return
-  for (const [id, pending] of pendingAgentQuestions.entries()) {
-    if (pending.appRunId !== appRunId) continue
-    clearTimeout(pending.timeoutHandle)
-    pendingAgentQuestions.delete(id)
-    pending.resolve({ answer: '', is_custom: false, cancelled: true, cancellation_reason: reason })
-    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-      // appChatId carried back so the renderer can clear the per-chat
-      // pending-question state without having to maintain its own
-      // questionId → chatId map. Keeps the renderer cancel listener
-      // dumb: just clear the slot for this chat.
-      mainWindow.webContents.send('agent-question-cancelled', {
-        questionId: id,
-        appChatId: pending.appChatId,
-        reason
-      })
-    }
-  }
+  remoteQuestionRegistry.cancelForRun(appRunId, reason)
 }
+
+remoteQuestionRegistry.subscribe((event) => {
+  const record = event.record
+  const questionCard = buildMobileQuestionCard(record)
+  const envelope = buildRemoteProjectionEnvelope({
+    kind: 'questionCard',
+    payload: questionCard,
+    generatedAt: record.resolvedAt || new Date().toISOString(),
+    workspaceId: record.workspaceId,
+    workspacePath: record.workspacePath,
+    threadId: record.threadId,
+    runId: record.runId,
+    envelopeId: `remote-question:${record.questionId}:${record.status}`
+  })
+  try {
+    bridgeBroadcasterRef?.broadcastRemoteProjection(envelope)
+    bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
+  } catch (err) {
+    console.error('[BridgeBroadcaster] question projection failed:', err)
+  }
+  if (
+    event.type !== 'registered' &&
+    mainWindow &&
+    !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isDestroyed()
+  ) {
+    mainWindow.webContents.send('agent-question-cancelled', {
+      questionId: record.questionId,
+      appChatId: record.threadId || '',
+      reason:
+        event.type === 'answered'
+          ? 'answered'
+          : 'reason' in event
+            ? event.reason
+            : record.cancellationReason
+    })
+  }
+})
 
 async function openSafeShellTarget(hrefRaw: unknown): Promise<{ ok: boolean; error?: string }> {
   const decision = classifyShellOpenTarget(hrefRaw)
@@ -1237,9 +1251,7 @@ function imageAttachmentSnapshots(
       const path = typeof record.path === 'string' ? record.path.trim() : ''
       if (!path) return null
       return {
-        ...(typeof record.id === 'string' && record.id.trim()
-          ? { id: record.id.trim() }
-          : {}),
+        ...(typeof record.id === 'string' && record.id.trim() ? { id: record.id.trim() } : {}),
         path,
         ...(typeof record.name === 'string' && record.name.trim()
           ? { name: record.name.trim() }
@@ -2620,16 +2632,12 @@ function handleEnsembleWakeupTimerFired(wakeupId: string): void {
  */
 async function handleSoloWakeupTimerFired(wakeupId: string): Promise<void> {
   if (!soloChatWakeupServiceRef) {
-    console.warn(
-      `Wakeup fired but solo wakeup service is not initialised yet: ${wakeupId}`
-    )
+    console.warn(`Wakeup fired but solo wakeup service is not initialised yet: ${wakeupId}`)
     return
   }
   const handled = await soloChatWakeupServiceRef.handleWakeupFired(wakeupId)
   if (!handled) {
-    console.warn(
-      `Wakeup fired with no matching persisted record (ensemble or solo): ${wakeupId}`
-    )
+    console.warn(`Wakeup fired with no matching persisted record (ensemble or solo): ${wakeupId}`)
   }
 }
 
@@ -4453,7 +4461,12 @@ async function getAgentStatusSnapshotDirect(provider: ProviderId): Promise<any> 
       error: accountStatus?.error
     }
   }
-  if (provider === 'claude' || provider === 'kimi' || provider === 'grok' || provider === 'cursor') {
+  if (
+    provider === 'claude' ||
+    provider === 'kimi' ||
+    provider === 'grok' ||
+    provider === 'cursor'
+  ) {
     // Grok (gated, G3) is a local CLI provider — route to the generic CLI
     // status (binary/version probe) instead of falling through to the
     // hardcoded gemini snapshot below, which would mislabel it as Gemini.
@@ -6669,7 +6682,8 @@ function estimateProjectedTokenUsage(
   promptText: string | undefined,
   responseText: string | undefined
 ): { input_tokens: number; output_tokens: number; total_tokens: number; total_cost_usd: number } {
-  const estimate = (text: string | undefined): number => Math.max(0, Math.ceil((text || '').length / 4))
+  const estimate = (text: string | undefined): number =>
+    Math.max(0, Math.ceil((text || '').length / 4))
   const input_tokens = estimate(promptText)
   const output_tokens = estimate(responseText)
   const total_cost_usd =
@@ -6931,8 +6945,7 @@ function runCliProviderProcess(
   // parked for 1.0.6. This is the small defensive note Chris
   // approved for 1.0.5.
   let kimiContentFilterWarned = false
-  const kimiContentFilterPattern =
-    /Error code: 400[\s\S]*content_filter|considered high risk/i
+  const kimiContentFilterPattern = /Error code: 400[\s\S]*content_filter|considered high risk/i
   child.stderr?.on('data', (chunk) => {
     const text = chunk.toString()
     if (provider === 'kimi' && !kimiContentFilterWarned && kimiContentFilterPattern.test(text)) {
@@ -7845,7 +7858,12 @@ async function runGrokAcpProvider(event: Electron.IpcMainInvokeEvent, payload: A
   const resolved = await resolveCliProviderBinary('grok', payload.runtimeProfile)
   if (!resolved.binaryPath) {
     runManager.finish(route.appRunId, 'failed')
-    sendAgentCompatError(event.sender, 'grok', resolved.error || 'Grok CLI is not configured.', route)
+    sendAgentCompatError(
+      event.sender,
+      'grok',
+      resolved.error || 'Grok CLI is not configured.',
+      route
+    )
     sendAgentCompatLine(
       event.sender,
       'grok',
@@ -8774,8 +8792,7 @@ async function probeCliParticipant(
   return {
     reachable: false,
     reason:
-      resolved.error ||
-      `${providerDisplayName(participant.provider)} CLI binary not found on PATH`,
+      resolved.error || `${providerDisplayName(participant.provider)} CLI binary not found on PATH`,
     underlyingCode: 'ENOENT'
   }
 }
@@ -10959,7 +10976,12 @@ async function cancelProviderRun(
     return false
   }
 
-  if (provider === 'claude' || provider === 'kimi' || provider === 'grok' || provider === 'cursor') {
+  if (
+    provider === 'claude' ||
+    provider === 'kimi' ||
+    provider === 'grok' ||
+    provider === 'cursor'
+  ) {
     const child = cliProviderProcesses.get(provider)
     if (child) {
       child.kill()
@@ -11535,10 +11557,7 @@ async function runGeminiProvider(
     // (sendAgentCompatExit, ~line 7929) does this correctly for
     // every other provider; legacy Gemini PTY was the only path
     // missing the call.
-    ensembleOrchestratorRef?.markRunExited(
-      route.appRunId,
-      typeof code === 'number' ? code : -1
-    )
+    ensembleOrchestratorRef?.markRunExited(route.appRunId, typeof code === 'number' ? code : -1)
     publishRunEvent('gemini-exit', 'gemini', { provider: 'gemini', code, ...route }, event.sender)
     if (geminiProcess === child) {
       geminiProcess = null
@@ -16027,10 +16046,10 @@ async function executeGeminiMcpTool(
       } else {
         const callingChat = context.appChatId ? AppStore.getChat(context.appChatId) : undefined
         if (callingChat?.chatKind === 'ensemble') {
-          result = ensembleOrchestratorRef?.scheduleWakeupForRun(
-            context.appRunId,
-            wakeupInput
-          ) || { ok: false, error: 'Ensemble orchestrator is not available.' }
+          result = ensembleOrchestratorRef?.scheduleWakeupForRun(context.appRunId, wakeupInput) || {
+            ok: false,
+            error: 'Ensemble orchestrator is not available.'
+          }
         } else if (callingChat && soloChatWakeupServiceRef) {
           result = soloChatWakeupServiceRef.scheduleWakeup(
             callingChat.appChatId,
@@ -16146,11 +16165,13 @@ async function executeGeminiMcpTool(
         {
           findings: optionalString(args.findings),
           confidence: args.confidence as ScoutBriefConfidence | undefined,
-          blockers: Array.isArray(args.blockers) ? (args.blockers as unknown[]) as string[] : undefined,
-          recommendations: Array.isArray(args.recommendations)
-            ? (args.recommendations as unknown[]) as string[]
+          blockers: Array.isArray(args.blockers)
+            ? (args.blockers as unknown[] as string[])
             : undefined,
-          tags: Array.isArray(args.tags) ? (args.tags as unknown[]) as string[] : undefined
+          recommendations: Array.isArray(args.recommendations)
+            ? (args.recommendations as unknown[] as string[])
+            : undefined,
+          tags: Array.isArray(args.tags) ? (args.tags as unknown[] as string[]) : undefined
         },
         {
           getParticipantIdForRun: (id: string) =>
@@ -16178,10 +16199,9 @@ async function executeGeminiMcpTool(
     } else if (toolName === 'ask_user_question') {
       // QMOD (1.0.3) — pause the agent on a modal question and resume
       // it with the user's answer as the tool result. The renderer
-      // owns the surface; main just bridges via `pendingAgentQuestions`
+      // owns the desktop surface; main bridges via RemoteQuestionRegistry
       // and the `agent-question-requested` / `answer-agent-question`
-      // IPC pair. See `pendingAgentQuestions` declaration up top for
-      // the lifecycle + cancellation contract.
+      // IPC pair while also projecting the card to paired iOS devices.
       const question = String(args.question || '').trim()
       if (!question) {
         text = mcpJson({
@@ -16199,32 +16219,20 @@ async function executeGeminiMcpTool(
           .toString(36)
           .slice(2, 8)}`
         const result = await new Promise<AgentQuestionResult>((resolve) => {
-          const timeoutHandle = setTimeout(() => {
-            const pending = pendingAgentQuestions.get(questionId)
-            if (!pending) return
-            pendingAgentQuestions.delete(questionId)
-            pending.resolve({
-              answer: '',
-              is_custom: false,
-              cancelled: true,
-              cancellation_reason: 'timeout'
-            })
-            if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
-              mainWindow.webContents.send('agent-question-cancelled', {
-                questionId,
-                appChatId: context.appChatId || '',
-                reason: 'timeout'
-              })
-            }
-          }, AGENT_QUESTION_TIMEOUT_MS)
-
-          pendingAgentQuestions.set(questionId, {
+          const workspaceId =
+            context.scope === 'workspace' ? workspaceIdForApprovalPush(context.workspacePath) : null
+          const record = remoteQuestionRegistry.register({
             questionId,
-            appRunId: context.appRunId || '',
-            appChatId: context.appChatId || '',
-            startedAt: Date.now(),
-            resolve,
-            timeoutHandle
+            question,
+            options,
+            context: contextNote,
+            provider: parentProvider,
+            workspaceId,
+            workspacePath: context.workspacePath,
+            threadId: context.appChatId || '',
+            runId: context.appRunId || '',
+            ttlMs: AGENT_QUESTION_TIMEOUT_MS,
+            resolve
           })
 
           // Emit the request to the renderer. The renderer modal
@@ -16239,19 +16247,11 @@ async function executeGeminiMcpTool(
               options: options.length > 0 ? options : undefined,
               context: contextNote
             })
-          } else {
-            // No renderer to display the question — resolve immediately
-            // with cancellation so the agent isn't pinned waiting for a
-            // surface that doesn't exist (headless runs / window-closed
-            // edge case).
-            clearTimeout(timeoutHandle)
-            pendingAgentQuestions.delete(questionId)
-            resolve({
-              answer: '',
-              is_custom: false,
-              cancelled: true,
-              cancellation_reason: 'no-renderer'
-            })
+          } else if (!bridgeBroadcasterRef) {
+            // No renderer and no remote projection broadcaster means
+            // no user surface can answer this prompt. Preserve the old
+            // headless behavior and resolve immediately.
+            remoteQuestionRegistry.cancel(record.questionId, 'no-renderer')
           }
         })
 
@@ -17469,8 +17469,7 @@ function mcpToolDefinitions() {
           provider: {
             type: 'string',
             enum: availableProviderIds(),
-            description:
-              'Optional provider override. Defaults to the calling agent\'s provider.'
+            description: "Optional provider override. Defaults to the calling agent's provider."
           },
           service: {
             type: 'string',
@@ -17485,7 +17484,7 @@ function mcpToolDefinitions() {
             type: 'string',
             description:
               'Filter to a specific run id. Always honored; setting this overrides the ' +
-              "default current-run scope. Pairs with `all: true` to keep `runId` narrow while " +
+              'default current-run scope. Pairs with `all: true` to keep `runId` narrow while ' +
               'widening the chat scope.'
           },
           chatId: {
@@ -17517,9 +17516,9 @@ function mcpToolDefinitions() {
           all: {
             type: 'boolean',
             description:
-              'Widen the query past the calling agent\'s current run+chat. When true, the ' +
-              "default run/chat narrowing is skipped — every approval matching the other " +
-              "filters across all runs and chats is returned (still scoped to the calling " +
+              "Widen the query past the calling agent's current run+chat. When true, the " +
+              'default run/chat narrowing is skipped — every approval matching the other ' +
+              'filters across all runs and chats is returned (still scoped to the calling ' +
               "agent's provider unless `provider` is overridden). Defaults to false."
           },
           limit: {
@@ -17567,8 +17566,7 @@ function mcpToolDefinitions() {
           provider: {
             type: 'string',
             enum: availableProviderIds(),
-            description:
-              'Optional provider to filter to. Omit to return all four providers.'
+            description: 'Optional provider to filter to. Omit to return all four providers.'
           }
         }
       }
@@ -20041,10 +20039,7 @@ if (isGeminiMcpBridgeProcess) {
      */
     void loadPersistedProbeResults().then(() => {
       void probeAllProviderRates().catch((error) => {
-        console.warn(
-          'Provider rate probe failed:',
-          error instanceof Error ? error.message : error
-        )
+        console.warn('Provider rate probe failed:', error instanceof Error ? error.message : error)
       })
     })
 
@@ -20278,6 +20273,7 @@ if (isGeminiMcpBridgeProcess) {
       if (!chatId || !bridgeBroadcaster) return
       try {
         bridgeBroadcaster.broadcastThreadUpdated(chatId)
+        bridgeBroadcaster.broadcastRemoteProjectionSnapshot()
       } catch (err) {
         console.error('[BridgeBroadcaster] thread update failed:', err)
       }
@@ -20294,19 +20290,205 @@ if (isGeminiMcpBridgeProcess) {
       if (!bridgeBroadcaster) return
       try {
         bridgeBroadcaster.broadcastThreadList()
+        bridgeBroadcaster.broadcastRemoteProjectionSnapshot()
       } catch (err) {
         console.error('[BridgeBroadcaster] thread list failed:', err)
       }
     }
 
+    const remoteTaskCapabilitiesForWorkspace = (
+      workspaceId: string | null | undefined
+    ): RemoteTaskCapabilities => {
+      const empty: RemoteTaskCapabilities = {
+        monitor: false,
+        approve: false,
+        answer: false,
+        cancel: false,
+        startTurn: false,
+        diffReview: false,
+        steer: false,
+        pin: false,
+        yolo: false,
+        cancelRound: false,
+        skipActiveParticipant: false,
+        wakeNow: false,
+        cancelWakeup: false,
+        queuePrompt: false
+      }
+      if (!workspaceId) return empty
+      const decision = bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' })
+      if (!decision.allowed) return empty
+      const capabilities = new Set<RemoteWorkspaceCapability>(
+        capabilitiesForRemoteWorkspaceEntry(decision.entry)
+      )
+      return {
+        monitor: capabilities.has('monitor'),
+        approve: capabilities.has('approve'),
+        answer: capabilities.has('answer'),
+        cancel: capabilities.has('cancel'),
+        startTurn: capabilities.has('startTurn'),
+        diffReview: capabilities.has('diffReview'),
+        steer: capabilities.has('steer'),
+        pin: capabilities.has('pin'),
+        yolo: capabilities.has('yolo'),
+        cancelRound: capabilities.has('steer') || capabilities.has('cancel'),
+        skipActiveParticipant: capabilities.has('steer'),
+        wakeNow: capabilities.has('steer'),
+        cancelWakeup: capabilities.has('steer') || capabilities.has('cancel'),
+        queuePrompt: capabilities.has('steer') || capabilities.has('startTurn')
+      }
+    }
+
+    const remoteWorkspaceIsVisible = (workspaceId: string | null | undefined): boolean => {
+      if (!workspaceId) return false
+      return bridgeAllowlist.evaluate({ workspaceId, capability: 'monitor' }).allowed
+    }
+
+    const listRemoteProjectionEnvelopes = (): RemoteProjectionEnvelope[] => {
+      const chats = AppStore.getChats().filter((chat) => remoteWorkspaceIsVisible(chat.workspaceId))
+      const approvalCards = (approvalService?.listProjectionCards() ?? []).filter((approval) =>
+        remoteWorkspaceIsVisible(approval.workspaceId)
+      )
+      const questionCards = remoteQuestionRegistry
+        .listProjectionCards()
+        .filter((question) => remoteWorkspaceIsVisible(question.workspaceId))
+      const generatedAt = new Date().toISOString()
+      const questionCounts = new Map<string, number>()
+      for (const question of questionCards) {
+        if (!question.threadId) continue
+        questionCounts.set(question.threadId, (questionCounts.get(question.threadId) ?? 0) + 1)
+      }
+      const approvalCounts = new Map<string, number>()
+      for (const approval of approvalCards) {
+        if (!approval.threadId) continue
+        approvalCounts.set(approval.threadId, (approvalCounts.get(approval.threadId) ?? 0) + 1)
+      }
+      const envelopes: RemoteProjectionEnvelope[] = []
+      const sortedChats = [...chats].sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      for (const chat of sortedChats) {
+        const capabilities = remoteTaskCapabilitiesForWorkspace(chat.workspaceId)
+        const taskCard = buildRemoteTaskCard(chat, {
+          generatedAt,
+          pendingQuestionCount: questionCounts.get(chat.appChatId) ?? 0,
+          pendingApprovalCount: approvalCounts.get(chat.appChatId) ?? 0,
+          capabilities
+        })
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'taskCard',
+            payload: taskCard,
+            generatedAt,
+            workspaceId: chat.workspaceId ?? null,
+            workspacePath: chat.workspacePath,
+            threadId: chat.appChatId,
+            runId: taskCard.runId,
+            envelopeId: `remote-task:${chat.appChatId}:${taskCard.runId || 'no-run'}`
+          })
+        )
+
+        const threadSnapshot = projectRemoteThread(chat.messages ?? [], chat.runs ?? [], {
+          threadId: chat.appChatId,
+          mode: { kind: 'latestN', n: 24 },
+          previewMaxChars: 320,
+          generatedAt
+        })
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'threadSnapshot',
+            payload: {
+              ...threadSnapshot,
+              taskId: chat.appChatId,
+              workspaceId: chat.workspaceId ?? null,
+              provider: chat.provider
+            },
+            generatedAt,
+            workspaceId: chat.workspaceId ?? null,
+            workspacePath: chat.workspacePath,
+            threadId: chat.appChatId,
+            runId: threadSnapshot.runSummary?.runId,
+            envelopeId: `remote-thread:${chat.appChatId}:${threadSnapshot.runSummary?.runId || 'no-run'}`
+          })
+        )
+
+        if (taskCard.diffSummary) {
+          envelopes.push(
+            buildRemoteProjectionEnvelope({
+              kind: 'diffSummary',
+              payload: taskCard.diffSummary,
+              generatedAt,
+              workspaceId: chat.workspaceId ?? null,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: taskCard.diffSummary.runId,
+              envelopeId: `remote-diff:${chat.appChatId}:${taskCard.diffSummary.runId}`
+            })
+          )
+        }
+
+        const ensembleState = taskCard.ensembleState ?? buildRemoteEnsembleState(chat)
+        if (ensembleState) {
+          envelopes.push(
+            buildRemoteProjectionEnvelope({
+              kind: 'ensembleState',
+              payload: {
+                ...ensembleState,
+                taskId: chat.appChatId,
+                workspaceId: chat.workspaceId ?? null,
+                capabilities
+              },
+              generatedAt,
+              workspaceId: chat.workspaceId ?? null,
+              workspacePath: chat.workspacePath,
+              threadId: chat.appChatId,
+              runId: taskCard.runId,
+              envelopeId: `remote-ensemble:${chat.appChatId}:${ensembleState.roundId || 'idle'}`
+            })
+          )
+        }
+      }
+
+      for (const approval of approvalCards) {
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'approvalCard',
+            payload: {
+              ...approval,
+              taskId: approval.threadId
+            },
+            generatedAt,
+            workspaceId: approval.workspaceId,
+            workspacePath: approval.workspacePath,
+            threadId: approval.threadId,
+            runId: approval.runId,
+            envelopeId: `remote-approval:${approval.toolCallId}:pending`
+          })
+        )
+      }
+
+      for (const question of questionCards) {
+        envelopes.push(
+          buildRemoteProjectionEnvelope({
+            kind: 'questionCard',
+            payload: {
+              ...question,
+              taskId: question.threadId
+            },
+            generatedAt,
+            workspaceId: question.workspaceId,
+            workspacePath: question.workspacePath,
+            threadId: question.threadId,
+            runId: question.runId,
+            envelopeId: `remote-question:${question.questionId}:${question.status}`
+          })
+        )
+      }
+      return envelopes
+    }
+
     const createBridgeActionExecutor = (): MainProcessActionExecutor => {
       // Phase C-late: action executor wires policy-cleared actions to real
       // main-process services. Wired today: `cancelRun`, `approvalReply`,
-      // `composerPrompt`. The remaining two variants (`questionReply` /
-      // `questionReject`) return "scaffolded, not wired" — they need the
-      // underlying typed-answer plumbing in `processAgentApprovalResponse`
-      // (which currently discards typed user input) before iOS can wire
-      // through meaningfully.
+      // `questionReply`, `questionReject`, and `composerPrompt`.
       //
       // composerPrompt builds an AgentRunPayload from the iOS-side action
       // and dispatches via `dispatchAgentRun` with `mainWindow.webContents`
@@ -20318,8 +20500,14 @@ if (isGeminiMcpBridgeProcess) {
         cancelRunFn: async (provider, runId) => {
           return providerAdapters.require(assertProviderId(provider)).cancel(runId)
         },
-        respondApprovalFn: async (requestId, action) => {
-          return approvalService?.resolve(requestId, action) ?? false
+        respondApprovalFn: async (requestId, action, options) => {
+          if (remoteQuestionRegistry.has(requestId)) {
+            if (action === 'accept') {
+              return remoteQuestionRegistry.answer(requestId, options?.userInput ?? '', true).ok
+            }
+            return remoteQuestionRegistry.reject(requestId, action).ok
+          }
+          return approvalService?.resolve(requestId, action, options) ?? false
         },
         registerApnsTokenFn: async (action) => {
           // Light validation beyond what the decoder did — same shape the
@@ -20489,6 +20677,7 @@ if (isGeminiMcpBridgeProcess) {
           if (wasActiveDaemon) {
             bridgeDaemon = null
             bridgeBroadcaster = null
+            bridgeBroadcasterRef = null
           }
           if (bridgeDaemonRef === daemon) {
             bridgeDaemonRef = null
@@ -20552,10 +20741,14 @@ if (isGeminiMcpBridgeProcess) {
         daemon: { notify: (m, p) => daemon.notify(m, p) },
         appStore: AppStore,
         allowlist: bridgeAllowlist,
+        projectionSource: {
+          listRemoteProjectionEnvelopes
+        },
         log: (line) => {
           console.log(line)
         }
       })
+      bridgeBroadcasterRef = bridgeBroadcaster
       const startPromise = daemon
         .start()
         .then(() => {
@@ -20574,6 +20767,7 @@ if (isGeminiMcpBridgeProcess) {
           if (bridgeDaemon === daemon) {
             bridgeDaemon = null
             bridgeBroadcaster = null
+            bridgeBroadcasterRef = null
           }
           if (bridgeDaemonRef === daemon) {
             bridgeDaemonRef = null
@@ -20592,6 +20786,7 @@ if (isGeminiMcpBridgeProcess) {
       const daemon = bridgeDaemon
       bridgeDaemon = null
       bridgeBroadcaster = null
+      bridgeBroadcasterRef = null
       bridgeDaemonStartPromise = null
       if (bridgeDaemonRef === daemon) {
         bridgeDaemonRef = null
@@ -20916,14 +21111,12 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'answer-agent-question',
       (_event, payload: { questionId: string; answer: string; isCustom?: boolean }) => {
-        const pending = pendingAgentQuestions.get(payload.questionId)
-        if (!pending) return { ok: false, error: 'no-such-question' }
-        clearTimeout(pending.timeoutHandle)
-        pendingAgentQuestions.delete(payload.questionId)
-        pending.resolve({
-          answer: String(payload.answer || ''),
-          is_custom: Boolean(payload.isCustom)
-        })
+        const result = remoteQuestionRegistry.answer(
+          payload.questionId,
+          String(payload.answer || ''),
+          Boolean(payload.isCustom)
+        )
+        if (!result.ok) return { ok: false, error: 'no-such-question' }
         return { ok: true }
       }
     )
@@ -20934,16 +21127,11 @@ if (isGeminiMcpBridgeProcess) {
     ipcMain.handle(
       'cancel-agent-question',
       (_event, payload: { questionId: string; reason?: string }) => {
-        const pending = pendingAgentQuestions.get(payload.questionId)
-        if (!pending) return { ok: false, error: 'no-such-question' }
-        clearTimeout(pending.timeoutHandle)
-        pendingAgentQuestions.delete(payload.questionId)
-        pending.resolve({
-          answer: '',
-          is_custom: false,
-          cancelled: true,
-          cancellation_reason: payload.reason || 'user-dismissed'
-        })
+        const result = remoteQuestionRegistry.reject(
+          payload.questionId,
+          payload.reason || 'user-dismissed'
+        )
+        if (!result.ok) return { ok: false, error: 'no-such-question' }
         return { ok: true }
       }
     )
@@ -22650,9 +22838,9 @@ if (isGeminiMcpBridgeProcess) {
               (grant): grant is ExternalPathGrant =>
                 Boolean(
                   grant &&
-                    typeof grant.path === 'string' &&
-                    grant.path.length > 0 &&
-                    typeof grant.provider === 'string'
+                  typeof grant.path === 'string' &&
+                  grant.path.length > 0 &&
+                  typeof grant.provider === 'string'
                 )
             )
           : []
@@ -22756,6 +22944,7 @@ if (isGeminiMcpBridgeProcess) {
       workspaceIdForPath: workspaceIdForApprovalPush,
       publishApprovalRunEvent: (approvalEvent) => {
         publishRunEvent('agent-output', approvalEvent.provider, approvalEvent)
+        bridgeBroadcasterRef?.broadcastRemoteProjectionSnapshot()
       },
       getApprovalTimeoutSettings: () => {
         // Phase K1 — when session YOLO is on, every approval is

@@ -2,6 +2,7 @@ import SwiftUI
 import XCTest
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 @testable import GuiGeminiCompanionCore
 

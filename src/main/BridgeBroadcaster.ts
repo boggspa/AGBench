@@ -1,5 +1,6 @@
 import type { ChatRecord, ProviderId, WorkspaceRecord } from './store/types'
 import type { AllowlistDecision, PrepareStartTurnEvaluation } from './RemoteWorkspaceAllowlist'
+import type { RemoteProjectionEnvelope } from './RemoteTaskProjection'
 
 /**
  * BridgeBroadcaster — pushes workspace + thread summaries from the
@@ -87,10 +88,15 @@ export interface BridgeBroadcasterAllowlist {
   evaluate(check: PrepareStartTurnEvaluation): AllowlistDecision
 }
 
+export interface BridgeBroadcasterProjectionSource {
+  listRemoteProjectionEnvelopes(): RemoteProjectionEnvelope[]
+}
+
 export interface BridgeBroadcasterOptions {
   daemon: BridgeBroadcasterDaemon
   appStore: BridgeBroadcasterAppStore
   allowlist?: BridgeBroadcasterAllowlist
+  projectionSource?: BridgeBroadcasterProjectionSource
   log?: (line: string) => void
   /** Throttle: at most one broadcast per method-name within this window.
    * Per-id updates throttle separately (method + ":" + id). Default 1000ms. */
@@ -103,7 +109,9 @@ export const BRIDGE_BROADCAST_METHODS = {
   workspaceList: 'bridge.broadcastWorkspaceList',
   threadList: 'bridge.broadcastThreadList',
   workspaceUpdated: 'bridge.broadcastWorkspaceUpdated',
-  threadUpdated: 'bridge.broadcastThreadUpdated'
+  threadUpdated: 'bridge.broadcastThreadUpdated',
+  remoteProjection: 'bridge.broadcastRemoteProjection',
+  remoteProjectionSnapshot: 'bridge.broadcastRemoteProjectionSnapshot'
 } as const
 
 /** Convert a `WorkspaceRecord` plus the chats living inside it to the
@@ -235,6 +243,7 @@ export class BridgeBroadcaster {
   private readonly daemon: BridgeBroadcasterDaemon
   private readonly appStore: BridgeBroadcasterAppStore
   private readonly allowlist?: BridgeBroadcasterAllowlist
+  private readonly projectionSource?: BridgeBroadcasterProjectionSource
   private readonly log?: (line: string) => void
   private readonly throttleMs: number
   private readonly now: () => number
@@ -247,6 +256,7 @@ export class BridgeBroadcaster {
     this.daemon = options.daemon
     this.appStore = options.appStore
     this.allowlist = options.allowlist
+    this.projectionSource = options.projectionSource
     this.log = options.log
     this.throttleMs = options.throttleMs ?? 1000
     this.now = options.now ?? Date.now
@@ -343,12 +353,39 @@ export class BridgeBroadcaster {
     this.sendNotify(method, { thread: summary })
   }
 
+  /** Emit one Mac-authored remote projection envelope. This is used for
+   * low-latency question/approval card changes without requiring the
+   * daemon to infer state from raw run events. */
+  broadcastRemoteProjection(envelope: RemoteProjectionEnvelope): void {
+    this.sendNotify(BRIDGE_BROADCAST_METHODS.remoteProjection, { envelope })
+  }
+
+  /** Emit a current set of remote projection envelopes. Called on
+   * subscribe so a new iOS client receives task-feed/question state
+   * immediately, and by main-process hooks after task-affecting
+   * mutations. */
+  broadcastRemoteProjectionSnapshot(): void {
+    const method = BRIDGE_BROADCAST_METHODS.remoteProjectionSnapshot
+    if (!this.projectionSource) return
+    if (!this.shouldEmit(method)) return
+    let projections: RemoteProjectionEnvelope[]
+    try {
+      projections = this.projectionSource.listRemoteProjectionEnvelopes()
+    } catch (err) {
+      this.logErr(`failed to load remote projections for ${method}`, err)
+      return
+    }
+    this.sendNotify(method, { projections })
+  }
+
   /** Fire both full-list broadcasts. Called when a new iOS client
    * subscribes (so it sees the current world rather than waiting for
    * the next mutation). */
   broadcastSnapshot(): void {
+    this.resetThrottle()
     this.broadcastWorkspaceList()
     this.broadcastThreadList()
+    this.broadcastRemoteProjectionSnapshot()
   }
 
   /** Reset throttle state. Useful for tests or when the daemon

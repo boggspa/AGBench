@@ -7,6 +7,7 @@ public struct iPadDetailHost: View {
     public let pairingViewModel: PairingViewModel?
     public let transcriptViewModel: TranscriptViewModel?
     public let composerViewModel: ComposerViewModel?
+    public let remoteTaskStore: RemoteTaskStore?
     /// When true the workspace + thread + empty panes backfill missing
     /// data with deterministic mocks (see `iPadDetailSampleData`). The
     /// production app passes `false` so the real (potentially empty)
@@ -31,6 +32,7 @@ public struct iPadDetailHost: View {
         pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
         composerViewModel: ComposerViewModel? = nil,
+        remoteTaskStore: RemoteTaskStore? = nil,
         mocked: Bool = false,
         pairedMacName: String? = nil,
         pushStatusMessage: String? = nil,
@@ -44,6 +46,7 @@ public struct iPadDetailHost: View {
         self.pairingViewModel = pairingViewModel
         self.transcriptViewModel = transcriptViewModel
         self.composerViewModel = composerViewModel
+        self.remoteTaskStore = remoteTaskStore
         self.mocked = mocked
         self.pairedMacName = pairedMacName
         self.pushStatusMessage = pushStatusMessage
@@ -80,6 +83,7 @@ public struct iPadDetailHost: View {
             threadID: threadID,
             thread: store.thread(id: threadID),
             events: transcriptViewModel?.events ?? [],
+            taskDetail: remoteTaskStore?.detail(threadID: threadID),
             mocked: mocked
         )
     }

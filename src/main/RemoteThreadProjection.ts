@@ -29,7 +29,7 @@
  * a row's identity is consistent across desktop and remote.
  */
 
-import type { ChatMessage, ChatRun } from './store/types'
+import type { ChatMessage, ChatRun, DiffFileSummary } from './store/types'
 
 export type RemoteProjectionMode =
   | { kind: 'latestN'; n: number }
@@ -84,11 +84,30 @@ export interface RemoteRunSummary {
   /** Best-effort token tally pulled from `run.stats` when present. */
   totalTokens?: number
   /** File-change counts pulled from `run.runDiff` when present. */
-  fileChanges?: {
-    filesChanged: number
-    additions: number
-    deletions: number
-  }
+  fileChanges?: RemoteRunFileChangeCounts
+}
+
+export interface RemoteRunFileChangeCounts {
+  filesChanged: number
+  additions: number
+  deletions: number
+  createdFiles?: number
+  modifiedFiles?: number
+  deletedFiles?: number
+  preExistingFiles?: number
+  workspaceCount?: number
+  workspaces?: RemoteRunWorkspaceFileChanges[]
+}
+
+export interface RemoteRunWorkspaceFileChanges {
+  workspacePath?: string
+  filesChanged: number
+  additions: number
+  deletions: number
+  createdFiles?: number
+  modifiedFiles?: number
+  deletedFiles?: number
+  preExistingFiles?: number
 }
 
 export interface RemoteThreadSnapshot {
@@ -150,7 +169,7 @@ export function sanitizePreview(
   const collapsed = cleaned.replace(/\s+/g, ' ').trim()
   const limit = Number.isFinite(max) && max > 0 ? Math.floor(max) : DEFAULT_PREVIEW_MAX
   if (collapsed.length <= limit) return { preview: collapsed, truncated: false }
-  return { preview: `${collapsed.slice(0, Math.max(0, limit - 1)).trimEnd()}…`, truncated: true }
+  return { preview: `${collapsed.slice(0, Math.max(0, limit - 3)).trimEnd()}...`, truncated: true }
 }
 
 /**
@@ -262,23 +281,139 @@ export function buildRunSummary(runs: ChatRun[] | undefined): RemoteRunSummary |
       }
     }
   }
-  const diff = run.runDiff as
+  const fileChanges = summarizeRunFileChanges(run)
+  if (fileChanges) summary.fileChanges = fileChanges
+  return summary
+}
+
+function summarizeRunFileChanges(run: ChatRun): RemoteRunSummary['fileChanges'] | undefined {
+  const workspaces: RemoteRunWorkspaceFileChanges[] = []
+  const primaryPath = primaryRunDiffWorkspacePath(run)
+  if (isRunDiffResult(run.runDiff)) {
+    workspaces.push(summarizeRunDiffFiles(run.runDiff, primaryPath))
+  }
+  const byPath = run.runDiffByPath ?? {}
+  for (const [workspacePath, files] of Object.entries(byPath)) {
+    if (!Array.isArray(files)) continue
+    if (primaryPath && workspacePath === primaryPath) continue
+    workspaces.push(summarizeDiffFileList(files, workspacePath))
+  }
+  if (workspaces.length > 0) {
+    const total = workspaces.reduce<RemoteRunFileChangeCounts>(
+      (acc, workspace) => {
+        acc.filesChanged += workspace.filesChanged
+        acc.additions += workspace.additions
+        acc.deletions += workspace.deletions
+        acc.createdFiles = (acc.createdFiles ?? 0) + (workspace.createdFiles ?? 0)
+        acc.modifiedFiles = (acc.modifiedFiles ?? 0) + (workspace.modifiedFiles ?? 0)
+        acc.deletedFiles = (acc.deletedFiles ?? 0) + (workspace.deletedFiles ?? 0)
+        acc.preExistingFiles = (acc.preExistingFiles ?? 0) + (workspace.preExistingFiles ?? 0)
+        return acc
+      },
+      {
+        filesChanged: 0,
+        additions: 0,
+        deletions: 0,
+        createdFiles: 0,
+        modifiedFiles: 0,
+        deletedFiles: 0,
+        preExistingFiles: 0
+      } satisfies RemoteRunFileChangeCounts
+    )
+    total.workspaceCount = workspaces.length
+    total.workspaces = workspaces
+    return total
+  }
+
+  // Legacy records from before RunDiffResult used aggregate fields.
+  const legacy = run.runDiff as
     | { filesChanged?: number; additions?: number; deletions?: number; files?: unknown[] }
     | undefined
-  if (diff) {
-    const filesChanged =
-      typeof diff.filesChanged === 'number'
-        ? diff.filesChanged
-        : Array.isArray(diff.files)
-          ? diff.files.length
-          : 0
-    summary.fileChanges = {
-      filesChanged,
-      additions: typeof diff.additions === 'number' ? diff.additions : 0,
-      deletions: typeof diff.deletions === 'number' ? diff.deletions : 0
-    }
+  if (!legacy) return undefined
+  const filesChanged =
+    typeof legacy.filesChanged === 'number'
+      ? legacy.filesChanged
+      : Array.isArray(legacy.files)
+        ? legacy.files.length
+        : 0
+  return {
+    filesChanged,
+    additions: typeof legacy.additions === 'number' ? legacy.additions : 0,
+    deletions: typeof legacy.deletions === 'number' ? legacy.deletions : 0
   }
+}
+
+function isRunDiffResult(value: ChatRun['runDiff']): value is NonNullable<ChatRun['runDiff']> {
+  return Boolean(
+    value &&
+    Array.isArray(value.createdFiles) &&
+    Array.isArray(value.modifiedFiles) &&
+    Array.isArray(value.deletedFiles) &&
+    Array.isArray(value.preExistingFiles)
+  )
+}
+
+function summarizeRunDiffFiles(
+  runDiff: NonNullable<ChatRun['runDiff']>,
+  workspacePath: string | undefined
+): RemoteRunWorkspaceFileChanges {
+  const changedFiles = [
+    ...safeDiffList(runDiff.createdFiles),
+    ...safeDiffList(runDiff.modifiedFiles),
+    ...safeDiffList(runDiff.deletedFiles)
+  ]
+  const summary: RemoteRunWorkspaceFileChanges = {
+    filesChanged: changedFiles.length,
+    additions: sumDiffFiles(changedFiles, 'additions'),
+    deletions: sumDiffFiles(changedFiles, 'deletions'),
+    createdFiles: safeDiffList(runDiff.createdFiles).length,
+    modifiedFiles: safeDiffList(runDiff.modifiedFiles).length,
+    deletedFiles: safeDiffList(runDiff.deletedFiles).length,
+    preExistingFiles: safeDiffList(runDiff.preExistingFiles).length
+  }
+  if (workspacePath) summary.workspacePath = workspacePath
   return summary
+}
+
+function summarizeDiffFileList(
+  files: DiffFileSummary[],
+  workspacePath: string
+): RemoteRunWorkspaceFileChanges {
+  let createdFiles = 0
+  let modifiedFiles = 0
+  let deletedFiles = 0
+  for (const file of files) {
+    if (file.status === 'created' || file.status === 'untracked') createdFiles++
+    else if (file.status === 'deleted') deletedFiles++
+    else modifiedFiles++
+  }
+  const summary: RemoteRunWorkspaceFileChanges = {
+    filesChanged: files.length,
+    additions: sumDiffFiles(files, 'additions'),
+    deletions: sumDiffFiles(files, 'deletions'),
+    createdFiles,
+    modifiedFiles,
+    deletedFiles,
+    preExistingFiles: 0
+  }
+  if (workspacePath) summary.workspacePath = workspacePath
+  return summary
+}
+
+function safeDiffList(files: DiffFileSummary[] | undefined): DiffFileSummary[] {
+  return Array.isArray(files) ? files : []
+}
+
+function sumDiffFiles(files: DiffFileSummary[], key: 'additions' | 'deletions'): number {
+  return files.reduce((total, file) => total + (file[key] ?? 0), 0)
+}
+
+function primaryRunDiffWorkspacePath(run: ChatRun): string | undefined {
+  return (
+    run.runDiff?.postSnapshot?.workspacePath ||
+    run.runDiff?.preSnapshot?.workspacePath ||
+    run.effectiveWorkspacePath
+  )
 }
 
 function clampIndex(value: number, lo: number, hi: number): number {

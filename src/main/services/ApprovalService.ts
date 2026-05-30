@@ -16,6 +16,7 @@ import type {
   BridgeApnsPushResult
 } from '../BridgeApnsPusher'
 import type { BridgeApnsTokenStore } from '../BridgeApnsTokenStore'
+import { buildMobileApprovalCard, type MobileApprovalCard } from '../RemoteTaskProjection'
 
 /**
  * ApprovalService — Phase B3 extraction.
@@ -346,6 +347,61 @@ export class ApprovalService {
     )
   }
 
+  listProjectionCards(): MobileApprovalCard[] {
+    const cards: MobileApprovalCard[] = []
+    for (const [approvalId, info] of this.pendingMain.entries()) {
+      cards.push(
+        this.projectApprovalCard(approvalId, info.provider, {
+          workspacePath: info.workspacePath,
+          runId: info.runId,
+          title: 'Approval requested',
+          body: 'Main-process approval is waiting for a decision.'
+        })
+      )
+    }
+    for (const [approvalId, info] of this.pendingGeminiTool.entries()) {
+      cards.push(
+        this.projectApprovalCard(approvalId, info.provider, {
+          workspacePath: info.workspacePath,
+          runId: info.runId,
+          title: `${info.service} approval requested`,
+          body: 'Gemini requested a gated tool or workspace action.'
+        })
+      )
+    }
+    for (const [approvalId, info] of this.pendingCodex.entries()) {
+      cards.push(
+        this.projectApprovalCard(approvalId, 'codex', {
+          workspacePath: info.workspacePath,
+          runId: info.runId,
+          title: String(info.method || info.service || 'Codex approval requested'),
+          body: compactJSON(info.params)
+        })
+      )
+    }
+    for (const [approvalId, info] of this.pendingKimi.entries()) {
+      cards.push(
+        this.projectApprovalCard(approvalId, 'kimi', {
+          runId: info.runId,
+          title: 'Kimi approval requested',
+          body: compactJSON(info.params)
+        })
+      )
+    }
+    for (const [approvalId, info] of this.pendingHostCommand.entries()) {
+      cards.push(
+        this.projectApprovalCard(approvalId, info.provider, {
+          workspacePath: info.workspacePath,
+          runId: info.appRunId,
+          threadId: info.appChatId || info.threadId,
+          title: 'Run host command',
+          body: `${info.commandText}\n${info.cwd}`
+        })
+      )
+    }
+    return cards
+  }
+
   // ──── route lookup ─────────────────────────────────────────────
 
   /** Phase E1.2: find which provider's registry holds an approval
@@ -376,6 +432,31 @@ export class ApprovalService {
       return { provider: 'codex', appRunId: codex.runId, appChatId: session?.appChatId }
     }
     return null
+  }
+
+  private projectApprovalCard(
+    approvalId: string,
+    provider: ProviderId,
+    input: {
+      workspacePath?: string
+      runId?: string
+      threadId?: string
+      title: string
+      body?: string
+    }
+  ): MobileApprovalCard {
+    const session = input.runId ? this.deps.runManager.get(input.runId) : undefined
+    return buildMobileApprovalCard({
+      toolCallId: approvalId,
+      threadId: input.threadId || session?.appChatId || input.runId,
+      workspaceId: input.workspacePath ? this.deps.workspaceIdForPath(input.workspacePath) : undefined,
+      workspacePath: input.workspacePath,
+      runId: input.runId,
+      provider,
+      title: input.title,
+      body: input.body,
+      actions: ['accept', 'decline']
+    })
   }
 
   // ──── scheduling ───────────────────────────────────────────────
@@ -826,6 +907,17 @@ export class ApprovalService {
         `[ApprovalService] approval run-event publish failed for ${approvalId}: ${err instanceof Error ? err.message : String(err)}`
       )
     }
+  }
+}
+
+function compactJSON(value: unknown): string {
+  if (value === undefined) return ''
+  try {
+    const text = JSON.stringify(value)
+    if (!text) return ''
+    return text.length <= 400 ? text : `${text.slice(0, 397)}...`
+  } catch {
+    return String(value)
   }
 }
 

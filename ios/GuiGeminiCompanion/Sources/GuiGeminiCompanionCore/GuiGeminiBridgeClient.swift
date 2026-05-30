@@ -2,6 +2,7 @@ import Foundation
 import CryptoKit
 @preconcurrency import Network
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 import BridgeLANTransport
 
@@ -389,7 +390,7 @@ public actor GuiGeminiBridgeClient {
             return .tailnet
         case .quicBonjour, .lanBonjour:
             return .lan
-        case .cloudKit:
+        case .directJournal:
             return nil
         }
     }

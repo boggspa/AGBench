@@ -259,7 +259,7 @@ describe('BridgeActionRouter', () => {
       allowlist.upsert({
         workspaceId: 'ws-late-add',
         path: '/Users/test/a',
-        mode: 'read-only',
+        mode: 'read-write',
         allowedProviders: ['gemini'],
         allowedApprovalModes: ['default']
       })
@@ -319,8 +319,22 @@ describe('BridgeActionRouter', () => {
         pairID: 'pair-1',
         payloadBytes: 10,
         payloadBase64: wire
-      })) as { accepted: boolean; scope?: string; message?: string }
+      })) as {
+        accepted: boolean
+        scope?: string
+        message?: string
+        v?: number
+        reasonCode?: string
+        actionKind?: string
+        workspaceId?: string
+        threadId?: string
+      }
       expect(result.accepted).toBe(true)
+      expect(result.v).toBe(1)
+      expect(result.reasonCode).toBe('accepted')
+      expect(result.actionKind).toBe('composerPrompt')
+      expect(result.workspaceId).toBe('ws-allowed')
+      expect(result.threadId).toBe('t-1')
       expect(result.scope).toBe('once')
       expect(result.message).toMatch(/composerPrompt|execution wiring pending/i)
     })
@@ -417,8 +431,10 @@ describe('BridgeActionRouter', () => {
       ).toString('base64')
       const result = (await router.route('bridge.requestActionAck', {
         payloadBase64: wire
-      })) as { accepted: boolean; message?: string }
+      })) as { accepted: boolean; message?: string; scope?: string; approvalId?: string }
       expect(result.accepted).toBe(true)
+      expect(result.scope).toBe('session')
+      expect(result.approvalId).toBe('tc-1')
     })
 
     it('permissive-dev still bypasses payload decoding entirely', async () => {
@@ -433,6 +449,104 @@ describe('BridgeActionRouter', () => {
     })
   })
 
+  describe('action ack v1 stale and replay guards', () => {
+    const seedAllowlist = () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-allowed',
+        path: '/a',
+        mode: 'read-write',
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      return allowlist
+    }
+
+    const encodeAction = (overrides: Record<string, unknown> = {}) =>
+      Buffer.from(
+        JSON.stringify({
+          kind: 'composerPrompt',
+          workspaceId: 'ws-allowed',
+          threadId: 't-1',
+          provider: 'gemini',
+          text: 'hi',
+          ...overrides
+        }),
+        'utf-8'
+      ).toString('base64')
+
+    it('denies expired actions before allowlist or executor dispatch', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(),
+        executor,
+        now: () => 10_000
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-1',
+        payloadBase64: encodeAction({ actionId: 'a-expired', expiresAt: 9999 })
+      })) as { accepted: boolean; reasonCode?: string; actionId?: string; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('actionExpired')
+      expect(result.actionId).toBe('a-expired')
+      expect(result.message).toMatch(/expired/i)
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies replayed actionIds for the same pairID', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(),
+        executor,
+        now: () => 10_000
+      })
+      const params = {
+        pairID: 'pair-1',
+        payloadBase64: encodeAction({ actionId: 'a-1', expiresAt: 20_000 })
+      }
+
+      const first = (await router.route('bridge.requestActionAck', params)) as {
+        accepted: boolean
+        reasonCode?: string
+      }
+      const second = (await router.route('bridge.requestActionAck', params)) as {
+        accepted: boolean
+        reasonCode?: string
+        actionId?: string
+      }
+
+      expect(first.accepted).toBe(true)
+      expect(first.reasonCode).toBe('accepted')
+      expect(second.accepted).toBe(false)
+      expect(second.reasonCode).toBe('actionReplayed')
+      expect(second.actionId).toBe('a-1')
+      expect(calls).toHaveLength(1)
+    })
+
+    it('scopes replay protection by pairID', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(),
+        executor,
+        now: () => 10_000
+      })
+      const payloadBase64 = encodeAction({ actionId: 'shared-action', expiresAt: 20_000 })
+
+      const first = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-a',
+        payloadBase64
+      })) as { accepted: boolean }
+      const second = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-b',
+        payloadBase64
+      })) as { accepted: boolean }
+
+      expect(first.accepted).toBe(true)
+      expect(second.accepted).toBe(true)
+      expect(calls).toHaveLength(2)
+    })
+  })
+
   describe('executor dispatch on accept (Phase C-late)', () => {
     const seedAllowlist = () => {
       const allowlist = new RemoteWorkspaceAllowlist()
@@ -440,6 +554,17 @@ describe('BridgeActionRouter', () => {
         workspaceId: 'ws-allowed',
         path: '/a',
         mode: 'read-write',
+        capabilities: [
+          'monitor',
+          'approve',
+          'answer',
+          'cancel',
+          'startTurn',
+          'diffReview',
+          'steer',
+          'pin',
+          'yolo'
+        ],
         allowedProviders: ['gemini', 'codex'],
         allowedApprovalModes: ['default', 'plan']
       })
@@ -470,6 +595,35 @@ describe('BridgeActionRouter', () => {
       expect(result.message).toBe('composerPrompt done')
       expect(calls).toHaveLength(1)
       expect(calls[0].method).toBe('executeComposerPrompt')
+    })
+
+    it('surfaces run ids from executor data in the structured ack', async () => {
+      const { executor } = makeStubExecutor({
+        executeComposerPrompt: async () => ({
+          executed: true,
+          message: 'run dispatched',
+          data: { appRunId: 'app-run-1', providerRunId: 'provider-run-1' }
+        })
+      })
+      const router = new BridgeActionRouter({ allowlist: seedAllowlist(), executor })
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'p',
+        payloadBase64: composerPromptWire({ actionId: 'compose-1' })
+      })) as {
+        accepted: boolean
+        actionId?: string
+        appRunId?: string
+        providerRunId?: string
+        data?: Record<string, unknown>
+      }
+      expect(result.accepted).toBe(true)
+      expect(result.actionId).toBe('compose-1')
+      expect(result.appRunId).toBe('app-run-1')
+      expect(result.providerRunId).toBe('provider-run-1')
+      expect(result.data).toMatchObject({
+        appRunId: 'app-run-1',
+        providerRunId: 'provider-run-1'
+      })
     })
 
     it('dispatches cancelRun to executor.executeCancelRun', async () => {
@@ -712,6 +866,28 @@ describe('BridgeActionRouter', () => {
     const encodeAction = (action: Record<string, unknown>) =>
       Buffer.from(JSON.stringify(action), 'utf-8').toString('base64')
 
+    it('denies prepareStartTurn against read-only workspace via startTurn capability', async () => {
+      const router = new BridgeActionRouter({ allowlist: seedReadOnly() })
+      const result = (await router.route('bridge.requestPrepareStartTurnAck', {
+        pairID: 'pair-1',
+        workspaceID: 'ws-readonly',
+        threadID: 't-1'
+      })) as {
+        accepted: boolean
+        reasonCode?: string
+        actionKind?: string
+        workspaceId?: string
+        threadId?: string
+        message?: string
+      }
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(result.actionKind).toBe('prepareStartTurn')
+      expect(result.workspaceId).toBe('ws-readonly')
+      expect(result.threadId).toBe('t-1')
+      expect(result.message).toMatch(/capability "startTurn"/i)
+    })
+
     it('denies composerPrompt against read-only workspace', async () => {
       const { executor, calls } = makeStubExecutor()
       const router = new BridgeActionRouter({ allowlist: seedReadOnly(), executor })
@@ -724,10 +900,10 @@ describe('BridgeActionRouter', () => {
       })
       const result = (await router.route('bridge.requestActionAck', {
         payloadBase64: wire
-      })) as { accepted: boolean; message?: string }
+      })) as { accepted: boolean; message?: string; reasonCode?: string }
       expect(result.accepted).toBe(false)
-      expect(result.message).toMatch(/read-only/i)
-      expect(result.message).toMatch(/composerPrompt/)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(result.message).toMatch(/capability "startTurn"/i)
       // Executor must NOT be invoked when policy denies.
       expect(calls).toHaveLength(0)
     })
@@ -745,7 +921,7 @@ describe('BridgeActionRouter', () => {
         payloadBase64: wire
       })) as { accepted: boolean; message?: string }
       expect(result.accepted).toBe(false)
-      expect(result.message).toMatch(/read-only/i)
+      expect(result.message).toMatch(/capability "cancel"/i)
     })
 
     it('denies questionReply against read-only workspace', async () => {
@@ -761,7 +937,7 @@ describe('BridgeActionRouter', () => {
         payloadBase64: wire
       })) as { accepted: boolean; message?: string }
       expect(result.accepted).toBe(false)
-      expect(result.message).toMatch(/read-only/i)
+      expect(result.message).toMatch(/capability "answer"/i)
     })
 
     it('denies pin changes against read-only workspace', async () => {
@@ -776,7 +952,31 @@ describe('BridgeActionRouter', () => {
         payloadBase64: wire
       })) as { accepted: boolean; message?: string }
       expect(result.accepted).toBe(false)
-      expect(result.message).toMatch(/read-only/i)
+      expect(result.message).toMatch(/capability "pin"/i)
+    })
+
+    it('denies yolo changes when explicit capabilities omit yolo', async () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-custom',
+        path: '/c',
+        mode: 'read-write',
+        capabilities: ['monitor', 'approve', 'startTurn'],
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      const router = new BridgeActionRouter({ allowlist })
+      const wire = encodeAction({
+        kind: 'setYoloMode',
+        workspaceId: 'ws-custom',
+        enabled: true
+      })
+      const result = (await router.route('bridge.requestActionAck', {
+        payloadBase64: wire
+      })) as { accepted: boolean; reasonCode?: string; message?: string }
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('capabilityDenied')
+      expect(result.message).toMatch(/capability "yolo"/i)
     })
 
     it('accepts approvalReply against read-only workspace (responding to desktop-initiated prompt)', async () => {
@@ -857,6 +1057,97 @@ describe('BridgeActionRouter', () => {
         payloadBase64: wire
       })) as { accepted: boolean }
       expect(result.accepted).toBe(true)
+    })
+  })
+
+  describe('ownership validation seams', () => {
+    const seedAllowlist = () => {
+      const allowlist = new RemoteWorkspaceAllowlist()
+      allowlist.upsert({
+        workspaceId: 'ws-allowed',
+        path: '/a',
+        mode: 'read-write',
+        allowedProviders: ['gemini'],
+        allowedApprovalModes: ['default']
+      })
+      return allowlist
+    }
+
+    const encodeAction = (action: Record<string, unknown>) =>
+      Buffer.from(JSON.stringify(action), 'utf-8').toString('base64')
+
+    it('denies action execution when ownership validator rejects target ids', async () => {
+      const { executor, calls } = makeStubExecutor()
+      const validateActionOwnership = vi.fn(() => ({
+        allowed: false as const,
+        reason: 'thread does not belong to workspace'
+      }))
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(),
+        executor,
+        ownershipValidator: { validateActionOwnership }
+      })
+      const wire = encodeAction({
+        kind: 'cancelRun',
+        workspaceId: 'ws-allowed',
+        threadId: 't-wrong',
+        provider: 'gemini',
+        runId: 'run-1',
+        actionId: 'cancel-1'
+      })
+
+      const result = (await router.route('bridge.requestActionAck', {
+        pairID: 'pair-1',
+        payloadBase64: wire
+      })) as { accepted: boolean; reasonCode?: string; runId?: string; actionId?: string }
+
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('ownershipDenied')
+      expect(result.runId).toBe('run-1')
+      expect(result.actionId).toBe('cancel-1')
+      expect(validateActionOwnership).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pairID: 'pair-1',
+          workspaceId: 'ws-allowed',
+          threadId: 't-wrong',
+          runId: 'run-1',
+          actionId: 'cancel-1'
+        })
+      )
+      expect(calls).toHaveLength(0)
+    })
+
+    it('denies prepareStartTurn when ownership validator rejects the thread', async () => {
+      const validatePrepareStartTurnOwnership = vi.fn(() => ({
+        allowed: false as const,
+        reason: 'thread is archived'
+      }))
+      const router = new BridgeActionRouter({
+        allowlist: seedAllowlist(),
+        ownershipValidator: { validatePrepareStartTurnOwnership }
+      })
+
+      const result = (await router.route('bridge.requestPrepareStartTurnAck', {
+        pairID: 'pair-1',
+        workspaceID: 'ws-allowed',
+        threadID: 'thread-archived',
+        provider: 'gemini',
+        approvalMode: 'default'
+      })) as { accepted: boolean; reasonCode?: string; message?: string; threadId?: string }
+
+      expect(result.accepted).toBe(false)
+      expect(result.reasonCode).toBe('ownershipDenied')
+      expect(result.threadId).toBe('thread-archived')
+      expect(result.message).toMatch(/thread is archived/i)
+      expect(validatePrepareStartTurnOwnership).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pairID: 'pair-1',
+          workspaceId: 'ws-allowed',
+          threadId: 'thread-archived',
+          provider: 'gemini',
+          approvalMode: 'default'
+        })
+      )
     })
   })
 

@@ -122,6 +122,157 @@ final class iPadShellTests: XCTestCase {
         XCTAssertEqual([Any](arrayLiteral: inspector).count, 1)
     }
 
+    func testMobileDiffSummaryClampLimitsFilesHunksAndLines() {
+        let longHunk = MobileDiffHunk(
+            filePath: "Sources/App.swift",
+            header: "@@ -1,120 +1,120 @@",
+            previewLines: (0..<120).map { "+line \($0)" }
+        )
+        let files = (0..<10).map { index in
+            MobileDiffFile(
+                path: "Sources/File\(index).swift",
+                additions: 120,
+                deletions: 0,
+                hunks: [longHunk]
+            )
+        }
+        let summary = MobileDiffSummary(
+            runId: "run-clamp",
+            filesChanged: 10,
+            files: files
+        )
+
+        let clamped = summary.clamped(maxFiles: 2, maxHunksPerFile: 1, maxPreviewLinesPerHunk: 3)
+
+        XCTAssertEqual(clamped.files.count, 2)
+        XCTAssertEqual(clamped.files.first?.hunks.count, 1)
+        XCTAssertEqual(clamped.files.first?.hunks.first?.previewLines.count, 3)
+        XCTAssertTrue(clamped.files.first?.hunks.first?.truncated ?? false)
+        XCTAssertTrue(clamped.truncated)
+    }
+
+    func testMobileDiffSummaryDecodesBinarySensitiveAndMultiFileStates() throws {
+        let envelope = try RemoteProjectionEnvelope.decode(payloadJSON: Data("""
+        {
+          "kind": "diff",
+          "taskId": "task-1",
+          "workspaceId": "workspace-1",
+          "threadId": "thread-1",
+          "payload": {
+            "runId": "run-1",
+            "filesChanged": 3,
+            "files": [
+              {
+                "path": "Sources/App.swift",
+                "status": "modified",
+                "additions": 2,
+                "deletions": 1,
+                "hunks": [
+                  {
+                    "header": "@@ -1,1 +1,2 @@",
+                    "previewLines": ["-old", "+new", "+more"]
+                  }
+                ]
+              },
+              {
+                "path": "Assets/logo.png",
+                "status": "modified",
+                "binary": true
+              },
+              {
+                "path": "Secrets/.env",
+                "status": "modified",
+                "sensitive": true,
+                "sensitiveReason": "redacted by desktop policy"
+              }
+            ]
+          }
+        }
+        """.utf8))
+
+        guard case .diff(let summary) = envelope.payload else {
+            return XCTFail("Expected diff projection")
+        }
+        let inspector = iPadDiffInspector(summary: summary)
+
+        XCTAssertEqual(summary.filesChanged, 3)
+        XCTAssertEqual(summary.files.count, 3)
+        XCTAssertEqual(summary.binaryFileCount, 1)
+        XCTAssertEqual(summary.sensitiveFileCount, 1)
+        XCTAssertEqual(iPadDiffInspector.diffPayload(from: summary)?.path, "Sources/App.swift")
+        XCTAssertEqual([Any](arrayLiteral: inspector).count, 1)
+    }
+
+    func testRemoteTaskStoreProjectsEnsembleStatusForSelectedThread() throws {
+        let event = try BridgeRunEvent.decode(eventRecordBytes: Data("""
+        {
+          "channel": "remote-projection",
+          "provider": "ensemble",
+          "publishedAt": "2026-05-20T12:00:00.000Z",
+          "payload": {
+            "kind": "ensemble",
+            "taskId": "task-ensemble",
+            "workspaceId": "workspace-1",
+            "threadId": "thread-ensemble",
+            "payload": {
+              "threadId": "thread-ensemble",
+              "runId": "run-ensemble",
+              "status": "running",
+              "roundStatus": "turn-bound",
+              "activeParticipantId": "planner",
+              "participants": [
+                {
+                  "id": "planner",
+                  "provider": "gemini",
+                  "role": "Planner",
+                  "status": "running",
+                  "isActive": true
+                },
+                {
+                  "id": "reviewer",
+                  "provider": "codex",
+                  "role": "Reviewer",
+                  "status": "idle"
+                }
+              ],
+              "queue": [
+                { "id": "queued-1", "label": "Follow-up", "participantId": "reviewer" }
+              ],
+              "capabilities": {
+                "cancelRound": true,
+                "skipActiveParticipant": true,
+                "wakeNow": true,
+                "cancelWakeup": false,
+                "queuePrompt": true,
+                "steer": true,
+                "queueLimit": 2
+              }
+            }
+          }
+        }
+        """.utf8))
+        let store = RemoteTaskStore()
+
+        store.ingest(event)
+        let detail = store.detail(threadID: "thread-ensemble")
+        let shell = iPadShell(
+            remoteTaskStore: store,
+            selectionState: iPadSelectionState(initialSelection: .thread("thread-ensemble")),
+            sidebarStore: iPadSidebarStore(
+                threads: [
+                    iPadThreadSummary(id: "thread-ensemble", title: "Ensemble run")
+                ]
+            )
+        )
+
+        XCTAssertEqual(detail?.ensemble?.participants.count, 2)
+        XCTAssertEqual(detail?.ensemble?.activeParticipantId, "planner")
+        XCTAssertEqual(detail?.ensemble?.queue.count, 1)
+        XCTAssertEqual(detail?.ensemble?.capabilities.queueLimit, 2)
+        XCTAssertTrue(detail?.ensemble?.capabilities.cancelRound ?? false)
+        XCTAssertEqual([Any](arrayLiteral: shell).count, 1)
+    }
+
     // MARK: - Bridge summary application
 
     func testApplyWorkspaceListReplacesEntireWorkspaceArray() {

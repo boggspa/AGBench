@@ -121,7 +121,7 @@ public final class TranscriptViewModel {
         // focused on agent output / error / exit. The dedicated subscriber
         // in AppState routes them via BridgeWorkspaceSummariesDecoder.
         switch event.channel {
-        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+        case .workspaceList, .workspaceUpdated, .threadList, .threadUpdated, .remoteProjection:
             return
         case .agentOutput, .agentError, .agentExit,
              .geminiOutput, .geminiError, .geminiExit:

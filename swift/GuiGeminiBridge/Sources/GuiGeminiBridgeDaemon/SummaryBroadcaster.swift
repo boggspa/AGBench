@@ -6,6 +6,15 @@ enum SummaryBroadcastKind: Sendable, CaseIterable {
     case workspaceUpdated
     case threadUpdated
 
+    var projectionKind: String {
+        switch self {
+        case .workspaceList: return "workspaceList"
+        case .threadList: return "threadList"
+        case .workspaceUpdated: return "workspaceUpdated"
+        case .threadUpdated: return "threadUpdated"
+        }
+    }
+
     var channel: String {
         switch self {
         case .workspaceList: return "workspace-list"
@@ -23,6 +32,15 @@ enum SummaryBroadcastKind: Sendable, CaseIterable {
         case .threadUpdated: return "thread"
         }
     }
+}
+
+struct RemoteProjectionEvent: Sendable {
+    let data: Data
+    let threadID: String?
+}
+
+enum RemoteProjectionEnvelope {
+    static let channel = "remote-projection"
 }
 
 enum SummaryBroadcasterError: Error, Equatable, CustomStringConvertible {
@@ -49,8 +67,8 @@ actor SummaryBroadcaster {
         self.now = now
     }
 
-    func broadcast(_ eventJSON: Data) async {
-        await transportListener.broadcastRunEvent(eventJSON)
+    func broadcast(_ eventJSON: Data, threadID: String? = nil) async {
+        await transportListener.broadcastRunEvent(eventJSON, threadID: threadID)
     }
 
     func makeEventJSON(kind: SummaryBroadcastKind, params: Any) throws -> Data {
@@ -68,17 +86,70 @@ actor SummaryBroadcaster {
         guard payload[kind.rootKey] != nil else {
             throw SummaryBroadcasterError.invalidParams("Summary broadcast params missing root key \"\(kind.rootKey)\"")
         }
-        let event: [String: Any] = [
-            "channel": kind.channel,
+        var event: [String: Any] = [
+            "channel": RemoteProjectionEnvelope.channel,
+            "kind": kind.projectionKind,
+            "legacyChannel": kind.channel,
             "provider": "system",
             "payload": payload,
             "publishedAt": iso8601String(from: publishedAt)
         ]
+        if let threadID = Self.threadID(kind: kind, params: params) {
+            event["threadId"] = threadID
+        }
         do {
             return try JSONSerialization.data(withJSONObject: event, options: [.sortedKeys])
         } catch {
             throw SummaryBroadcasterError.encodingFailed("Failed to encode summary broadcast: \(error.localizedDescription)")
         }
+    }
+
+    static func makeRemoteProjectionEventJSON(
+        params: Any,
+        publishedAt: Date
+    ) throws -> RemoteProjectionEvent {
+        guard let dict = params as? [String: Any] else {
+            throw SummaryBroadcasterError.invalidParams("Remote projection params must be a JSON object")
+        }
+        guard let kind = dict["kind"] as? String, !kind.isEmpty else {
+            throw SummaryBroadcasterError.invalidParams("Remote projection params missing kind")
+        }
+        guard let payload = (
+            dict["payload"] as? [String: Any]
+                ?? dict["snapshot"] as? [String: Any]
+                ?? dict["projection"] as? [String: Any]
+        ) else {
+            throw SummaryBroadcasterError.invalidParams("Remote projection params missing payload object")
+        }
+
+        var event: [String: Any] = [
+            "channel": RemoteProjectionEnvelope.channel,
+            "kind": kind,
+            "provider": (dict["provider"] as? String) ?? "system",
+            "payload": payload,
+            "publishedAt": (dict["publishedAt"] as? String) ?? iso8601String(from: publishedAt)
+        ]
+        let threadID = dict["threadId"] as? String
+        if let threadID {
+            event["threadId"] = threadID
+        }
+        do {
+            return RemoteProjectionEvent(
+                data: try JSONSerialization.data(withJSONObject: event, options: [.sortedKeys]),
+                threadID: threadID
+            )
+        } catch {
+            throw SummaryBroadcasterError.encodingFailed("Failed to encode remote projection broadcast: \(error.localizedDescription)")
+        }
+    }
+
+    static func threadID(kind: SummaryBroadcastKind, params: Any) -> String? {
+        guard kind == .threadUpdated,
+              let payload = params as? [String: Any],
+              let thread = payload["thread"] as? [String: Any] else {
+            return nil
+        }
+        return thread["chatId"] as? String ?? thread["threadId"] as? String
     }
 
     private static func iso8601String(from date: Date) -> String {

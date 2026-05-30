@@ -6,6 +6,7 @@ import {
   workspaceRecordToSummary,
   type BridgeBroadcasterAppStore
 } from './BridgeBroadcaster'
+import { buildRemoteProjectionEnvelope } from './RemoteTaskProjection'
 import { RemoteWorkspaceAllowlist } from './RemoteWorkspaceAllowlist'
 import type { ChatRecord, WorkspaceRecord } from './store/types'
 
@@ -403,6 +404,56 @@ describe('BridgeBroadcaster', () => {
       BRIDGE_BROADCAST_METHODS.workspaceList,
       BRIDGE_BROADCAST_METHODS.threadList
     ])
+  })
+
+  it('broadcastRemoteProjection emits a single projection envelope', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [makeChat()])
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      now: () => 1000
+    })
+    const envelope = buildRemoteProjectionEnvelope({
+      kind: 'questionCard',
+      payload: { promptId: 'q1' },
+      generatedAt: '2026-05-30T12:00:00.000Z',
+      envelopeId: 'env-q1'
+    })
+
+    broadcaster.broadcastRemoteProjection(envelope)
+
+    expect(notify).toHaveBeenCalledWith(BRIDGE_BROADCAST_METHODS.remoteProjection, { envelope })
+  })
+
+  it('broadcastSnapshot includes remote projection snapshots when a source is configured', () => {
+    const notify = vi.fn()
+    const store = makeFakeStore([makeWorkspace()], [makeChat()])
+    const envelope = buildRemoteProjectionEnvelope({
+      kind: 'taskFeedSnapshot',
+      payload: { tasks: [] },
+      generatedAt: '2026-05-30T12:00:00.000Z',
+      envelopeId: 'env-feed'
+    })
+    const broadcaster = new BridgeBroadcaster({
+      daemon: { notify },
+      appStore: store,
+      projectionSource: {
+        listRemoteProjectionEnvelopes: () => [envelope]
+      },
+      now: () => 1000
+    })
+
+    broadcaster.broadcastSnapshot()
+
+    expect(notify.mock.calls.map((call) => call[0])).toEqual([
+      BRIDGE_BROADCAST_METHODS.workspaceList,
+      BRIDGE_BROADCAST_METHODS.threadList,
+      BRIDGE_BROADCAST_METHODS.remoteProjectionSnapshot
+    ])
+    expect(notify).toHaveBeenLastCalledWith(BRIDGE_BROADCAST_METHODS.remoteProjectionSnapshot, {
+      projections: [envelope]
+    })
   })
 
   it('filters workspace and thread lists through the remote allowlist', () => {

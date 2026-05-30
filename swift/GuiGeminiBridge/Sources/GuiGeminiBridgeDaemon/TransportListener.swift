@@ -27,7 +27,23 @@ public actor TransportListener {
         public let tailnetIPv4: String?
         public let tailnetEndpoint: String?
         public let tailnetListenerRunning: Bool
+        public let activeRouteCount: Int
+        public let routeHints: [String]
+        public let tailnetSessionCount: Int
         public let trustedControllerCount: Int
+        public let watchedPairCount: Int
+        public let watchedSeenPairCount: Int
+        public let watchedThreadSubscriptionCount: Int
+        public let lastWatchedThreadSeenAt: Date?
+        public let lastSnapshotRequestedAt: Date?
+        public let snapshotRequestCount: Int
+        public let lastRunEventBroadcastAt: Date?
+        public let runEventBroadcastCount: Int
+        public let lastRunEventThreadID: String?
+        public let lastActionAckLatencyMs: Double?
+        public let lastActionAckAccepted: Bool?
+        public let lastPrepareAckLatencyMs: Double?
+        public let lastPrepareAckAccepted: Bool?
         public let lastError: String?
     }
 
@@ -54,6 +70,7 @@ public actor TransportListener {
     private let requester: BridgeRequester
     private let watchedThreadsStore: WatchedThreadsStore
     private let ackTimeoutSeconds: TimeInterval
+    private let watchedThreadStaleInterval: TimeInterval
     private let tailscaleEndpointProvider: @Sendable () -> TailscaleEndpoint
 
     private var server: QUICBridgeServer?
@@ -61,6 +78,15 @@ public actor TransportListener {
     private var activeTailnetEndpoint: TailscaleEndpoint?
     private var lastErrorMessage: String?
     private var trustedControllerCount: Int = 0
+    private var lastSnapshotRequestedAt: Date?
+    private var snapshotRequestCount: Int = 0
+    private var lastRunEventBroadcastAt: Date?
+    private var runEventBroadcastCount: Int = 0
+    private var lastRunEventThreadID: String?
+    private var lastActionAckLatencyMs: Double?
+    private var lastActionAckAccepted: Bool?
+    private var lastPrepareAckLatencyMs: Double?
+    private var lastPrepareAckAccepted: Bool?
 
     public init(
         deviceStore: TrustedDeviceStore,
@@ -70,7 +96,8 @@ public actor TransportListener {
         requester: BridgeRequester,
         watchedThreadsStore: WatchedThreadsStore = WatchedThreadsStore(),
         tailscaleEndpointProvider: @escaping @Sendable () -> TailscaleEndpoint = { TailscaleEndpoint() },
-        ackTimeoutSeconds: TimeInterval = 10.0
+        ackTimeoutSeconds: TimeInterval = 10.0,
+        watchedThreadStaleInterval: TimeInterval = 6 * 60 * 60
     ) {
         self.deviceStore = deviceStore
         self.secretStore = secretStore
@@ -80,6 +107,7 @@ public actor TransportListener {
         self.watchedThreadsStore = watchedThreadsStore
         self.tailscaleEndpointProvider = tailscaleEndpointProvider
         self.ackTimeoutSeconds = ackTimeoutSeconds
+        self.watchedThreadStaleInterval = watchedThreadStaleInterval
     }
 
     public func start() async throws {
@@ -140,13 +168,11 @@ public actor TransportListener {
                     "payloadBytes": payloadBytes,
                     "payloadBase64": payloadBase64
                 ])
-                // Phase C3.5.7: ask Electron via JSON-RPC request for a real
-                // ack. The Electron-side `onRequest` handler (when wired)
-                // should route to RunService/ApprovalService and respond
-                // with `{accepted: Bool, message: String?}`. If no handler is
-                // registered yet, Electron returns `-32601 methodNotFound` and
-                // we fall back to a denial — preserving the Phase C3
-                // behavior so the iOS side gets a stable contract.
+                // Ask Electron via JSON-RPC request for a real semantic ack.
+                // Preserve BridgeCore-backed fields when Electron sends them
+                // (`actionID`, `state`, `executed`, `scope`, `data`, etc.)
+                // instead of collapsing the response to accepted/message.
+                let ackRequestedAt = Date()
                 let ackParams: [String: Any] = [
                     "pairID": pairIDString,
                     "payloadBytes": payloadBytes,
@@ -156,9 +182,9 @@ public actor TransportListener {
                     withJSONObject: ackParams,
                     options: [.sortedKeys]
                 ) else {
-                    return BridgeActionAck(
-                        accepted: false,
-                        message: "Phase C3.5 fallback — failed to encode ack request"
+                    return await self.actionAckFallback(
+                        message: "Phase C3.5 fallback — failed to encode ack request",
+                        requestedAt: ackRequestedAt
                     )
                 }
                 do {
@@ -167,18 +193,27 @@ public actor TransportListener {
                         paramsJSON: ackParamsJSON,
                         timeoutSeconds: ackTimeout
                     )
-                    if let obj = try JSONSerialization.jsonObject(
-                        with: resultData,
-                        options: [.fragmentsAllowed]
-                    ) as? [String: Any],
-                       let accepted = obj["accepted"] as? Bool {
-                        let message = (obj["message"] as? String)
-                            ?? (accepted ? "Accepted" : "Rejected")
-                        return BridgeActionAck(accepted: accepted, message: message)
+                    let decodedAt = Date()
+                    let ack = try BridgeAckDecoding.actionAck(
+                        from: resultData,
+                        payloadData: payloadData,
+                        pairID: pairIDString,
+                        receivedAt: decodedAt
+                    )
+                    await self.recordActionAckStatus(
+                        accepted: ack.accepted,
+                        latencySeconds: decodedAt.timeIntervalSince(ackRequestedAt)
+                    )
+                    let unknown = BridgeAckDecoding.unknownActionAckFields(in: resultData)
+                    if !unknown.isEmpty {
+                        FileHandle.standardError.write(Data(
+                            "[TransportListener] WARN: action ack carried unknown fields: \(unknown.sorted().joined(separator: ","))\n".utf8
+                        ))
                     }
-                    // Result shape wrong — fall through to denial.
+                    return ack
+                } catch let err as BridgeAckDecoding.AckDecodeError {
                     FileHandle.standardError.write(Data(
-                        "[TransportListener] WARN: onActionRecord ack result missing 'accepted' Bool — denying\n".utf8
+                        "[TransportListener] WARN: onActionRecord ack decode failed: \(err.description) — denying\n".utf8
                     ))
                 } catch let err as BridgeRequester.RequesterError {
                     // -32601 methodNotFound (no Electron handler yet) is the
@@ -193,9 +228,9 @@ public actor TransportListener {
                         "[TransportListener] onActionRecord ack request error: \(error.localizedDescription)\n".utf8
                     ))
                 }
-                return BridgeActionAck(
-                    accepted: false,
-                    message: "Phase C3.5 fallback — Electron handler not yet wired"
+                return await self.actionAckFallback(
+                    message: "Phase C3.5 fallback — Electron handler not yet wired",
+                    requestedAt: ackRequestedAt
                 )
             },
             onPrepareStartTurn: { [self] request, pairID in
@@ -214,22 +249,19 @@ public actor TransportListener {
                     prepareParams["threadID"] = threadID.rawValue
                 }
                 notifier.publish(method: "bridge.didReceivePrepareStartTurn", params: prepareParams)
-                // Phase C3.5.8: ask Electron via JSON-RPC request for a real
-                // ack. Same fallback contract as onActionRecord — when no
-                // handler is wired or the request fails, return the Phase C3
-                // denial. The result schema is just `{accepted, message?}`:
-                // prepareID/workspaceID/threadID stay anchored to the request
-                // (Electron doesn't get to retarget them).
+                // Ask Electron via JSON-RPC request for a real ack. The route
+                // identifiers stay anchored to the request, but BridgeCore's
+                // typed timing/error fields are preserved when Electron sends
+                // them.
+                let ackRequestedAt = Date()
                 guard let prepareParamsJSON = try? JSONSerialization.data(
                     withJSONObject: prepareParams,
                     options: [.sortedKeys]
                 ) else {
-                    return BridgePrepareStartTurnAck(
-                        prepareID: request.prepareID,
-                        workspaceID: request.workspaceID,
-                        threadID: request.threadID,
-                        accepted: false,
-                        message: "Phase C3.5 fallback — failed to encode ack request"
+                    return await self.prepareStartTurnAckFallback(
+                        request: request,
+                        message: "Phase C3.5 fallback — failed to encode ack request",
+                        requestedAt: ackRequestedAt
                     )
                 }
                 do {
@@ -238,23 +270,20 @@ public actor TransportListener {
                         paramsJSON: prepareParamsJSON,
                         timeoutSeconds: ackTimeout
                     )
-                    if let obj = try JSONSerialization.jsonObject(
-                        with: resultData,
-                        options: [.fragmentsAllowed]
-                    ) as? [String: Any],
-                       let accepted = obj["accepted"] as? Bool {
-                        let message = (obj["message"] as? String)
-                            ?? (accepted ? "Accepted" : "Rejected")
-                        return BridgePrepareStartTurnAck(
-                            prepareID: request.prepareID,
-                            workspaceID: request.workspaceID,
-                            threadID: request.threadID,
-                            accepted: accepted,
-                            message: message
-                        )
-                    }
+                    let decodedAt = Date()
+                    let ack = try BridgeAckDecoding.prepareStartTurnAck(
+                        from: resultData,
+                        request: request,
+                        receivedAt: decodedAt
+                    )
+                    await self.recordPrepareAckStatus(
+                        accepted: ack.accepted,
+                        latencySeconds: decodedAt.timeIntervalSince(ackRequestedAt)
+                    )
+                    return ack
+                } catch let err as BridgeAckDecoding.AckDecodeError {
                     FileHandle.standardError.write(Data(
-                        "[TransportListener] WARN: onPrepareStartTurn ack result missing 'accepted' Bool — denying\n".utf8
+                        "[TransportListener] WARN: onPrepareStartTurn ack decode failed: \(err.description) — denying\n".utf8
                     ))
                 } catch let err as BridgeRequester.RequesterError {
                     FileHandle.standardError.write(Data(
@@ -265,12 +294,10 @@ public actor TransportListener {
                         "[TransportListener] onPrepareStartTurn ack request error: \(error.localizedDescription)\n".utf8
                     ))
                 }
-                return BridgePrepareStartTurnAck(
-                    prepareID: request.prepareID,
-                    workspaceID: request.workspaceID,
-                    threadID: request.threadID,
-                    accepted: false,
-                    message: "Phase C3.5 fallback — Electron handler not yet wired"
+                return await self.prepareStartTurnAckFallback(
+                    request: request,
+                    message: "Phase C3.5 fallback — Electron handler not yet wired",
+                    requestedAt: ackRequestedAt
                 )
             },
             onWatchedThreads: { [self] threadIDs, pairID in
@@ -281,13 +308,28 @@ public actor TransportListener {
                 // Update the daemon-side per-pair subscription store so
                 // future `broadcastRunEvent(payloadJSON:threadID:)` calls
                 // can filter delivery via toPairIDs.
-                await watchedThreadsStore.update(pairID: pairID, threadIDs: threadIDs)
+                let update = await watchedThreadsStore.update(pairID: pairID, threadIDs: threadIDs)
+                await self.recordSnapshotRequest(at: update.lastSeenAt)
+                let snapshotReason = update.isFirstSeen ? "subscribe" : "resubscribe"
                 notifier.publish(method: "bridge.didReceiveWatchedThreads", params: [
                     "pairID": pairID.rawValue,
-                    "threadIDs": threadIDs
+                    "threadIDs": update.threadIDs,
+                    "previousThreadIDs": update.previousThreadIDs,
+                    "changed": update.changed,
+                    "lastSeenAt": Self.iso8601String(from: update.lastSeenAt),
+                    "subscriptionRevision": Int(update.revision)
                 ])
                 notifier.publish(method: "bridge.iosClientSubscribed", params: [
-                    "pairID": pairID.rawValue
+                    "pairID": pairID.rawValue,
+                    "threadIDs": update.threadIDs,
+                    "snapshotReason": snapshotReason,
+                    "snapshotOnSubscribe": true,
+                    "resetThrottle": true,
+                    "lastSeenAt": Self.iso8601String(from: update.lastSeenAt),
+                    "subscriptionRevision": Int(update.revision),
+                    "watchedPairCount": update.pairsWithSubscriptions,
+                    "watchedSeenPairCount": update.seenPairCount,
+                    "watchedThreadSubscriptionCount": update.totalSubscriptions
                 ])
             },
             onReplay: nil,
@@ -356,6 +398,20 @@ public actor TransportListener {
     public func status() async -> Status {
         let cfg = BridgeProductConfiguration.current
         let tailnetEndpointHint = activeTailnetEndpoint?.quicEndpointHint(port: cfg.directQUICPort)
+        let watchedSnapshot = await watchedThreadsStore.snapshot()
+        let tailnetSessionCount: Int
+        if let tailnetServer {
+            tailnetSessionCount = await tailnetServer.activeSessionCount()
+        } else {
+            tailnetSessionCount = 0
+        }
+        var routeHints: [String] = []
+        if server != nil {
+            routeHints.append("bonjour")
+        }
+        if tailnetServer != nil {
+            routeHints.append("tailnet")
+        }
         return Status(
             running: server != nil,
             bonjourServiceType: cfg.bonjourQUICServiceType,
@@ -363,7 +419,23 @@ public actor TransportListener {
             tailnetIPv4: activeTailnetEndpoint?.ipv4,
             tailnetEndpoint: tailnetEndpointHint,
             tailnetListenerRunning: tailnetServer != nil,
+            activeRouteCount: routeHints.count,
+            routeHints: routeHints,
+            tailnetSessionCount: tailnetSessionCount,
             trustedControllerCount: trustedControllerCount,
+            watchedPairCount: watchedSnapshot.pairsWithSubscriptions,
+            watchedSeenPairCount: watchedSnapshot.seenPairCount,
+            watchedThreadSubscriptionCount: watchedSnapshot.totalSubscriptions,
+            lastWatchedThreadSeenAt: watchedSnapshot.lastSeenAt,
+            lastSnapshotRequestedAt: lastSnapshotRequestedAt,
+            snapshotRequestCount: snapshotRequestCount,
+            lastRunEventBroadcastAt: lastRunEventBroadcastAt,
+            runEventBroadcastCount: runEventBroadcastCount,
+            lastRunEventThreadID: lastRunEventThreadID,
+            lastActionAckLatencyMs: lastActionAckLatencyMs,
+            lastActionAckAccepted: lastActionAckAccepted,
+            lastPrepareAckLatencyMs: lastPrepareAckLatencyMs,
+            lastPrepareAckAccepted: lastPrepareAckAccepted,
             lastError: lastErrorMessage
         )
     }
@@ -425,6 +497,15 @@ public actor TransportListener {
             logQUICPipeline("broadcast skipped reason=listener-not-running bytes=\(payloadJSON.count) threadID=\(threadID ?? "nil")")
             return
         }
+        let now = Date()
+        lastRunEventBroadcastAt = now
+        runEventBroadcastCount += 1
+        lastRunEventThreadID = threadID
+        let staleCutoff = now.addingTimeInterval(-watchedThreadStaleInterval)
+        let removedStalePairs = await watchedThreadsStore.removeStalePairs(lastSeenBefore: staleCutoff)
+        if removedStalePairs > 0 {
+            logQUICPipeline("watched-thread cleanup removedPairs=\(removedStalePairs)")
+        }
         let envelope = BridgeInboundEnvelope(payload: .eventRecord(payloadJSON))
         // Per-pair filtering: consult the subscription store. nil result
         // means "no subscriber has spoken" → broadcast to all (preserves
@@ -479,6 +560,79 @@ public actor TransportListener {
             }
         }
         return controllers
+    }
+
+    private func actionAckFallback(
+        message: String,
+        requestedAt: Date
+    ) -> BridgeActionAck {
+        let deliveredAt = Date()
+        recordActionAckStatus(
+            accepted: false,
+            latencySeconds: deliveredAt.timeIntervalSince(requestedAt)
+        )
+        return BridgeActionAck(
+            schemaVersion: 1,
+            state: .rejected,
+            deliveredAt: deliveredAt,
+            accepted: false,
+            executed: false,
+            reasonCode: "daemonFallback",
+            message: message,
+            error: BridgeErrorReport(
+                code: "daemonFallback",
+                message: message,
+                severity: .warning,
+                occurredAt: deliveredAt
+            )
+        )
+    }
+
+    private func prepareStartTurnAckFallback(
+        request: BridgePrepareStartTurnRequest,
+        message: String,
+        requestedAt: Date
+    ) -> BridgePrepareStartTurnAck {
+        let readyAt = Date()
+        recordPrepareAckStatus(
+            accepted: false,
+            latencySeconds: readyAt.timeIntervalSince(requestedAt)
+        )
+        return BridgePrepareStartTurnAck(
+            prepareID: request.prepareID,
+            workspaceID: request.workspaceID,
+            threadID: request.threadID,
+            readyAt: readyAt,
+            accepted: false,
+            message: message,
+            error: BridgeErrorReport(
+                code: "daemonFallback",
+                message: message,
+                severity: .warning,
+                occurredAt: readyAt
+            )
+        )
+    }
+
+    private func recordActionAckStatus(accepted: Bool, latencySeconds: TimeInterval) {
+        lastActionAckAccepted = accepted
+        lastActionAckLatencyMs = max(0, latencySeconds * 1000.0)
+    }
+
+    private func recordPrepareAckStatus(accepted: Bool, latencySeconds: TimeInterval) {
+        lastPrepareAckAccepted = accepted
+        lastPrepareAckLatencyMs = max(0, latencySeconds * 1000.0)
+    }
+
+    private func recordSnapshotRequest(at date: Date) {
+        lastSnapshotRequestedAt = date
+        snapshotRequestCount += 1
+    }
+
+    private static func iso8601String(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.string(from: date)
     }
 
     private func logHandler(_ message: String) async {

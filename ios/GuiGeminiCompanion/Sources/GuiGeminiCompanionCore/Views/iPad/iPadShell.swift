@@ -116,6 +116,34 @@ public enum iPadSidebarSelection: Hashable, Sendable {
 }
 
 @available(iOS 17.0, macOS 14.0, *)
+public struct iPadEnsembleControlActions: Sendable {
+    public let cancelRound: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)?
+    public let skipActiveParticipant: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)?
+    public let wakeNow: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)?
+    public let cancelWakeup: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)?
+    public let queuePrompt: (@MainActor @Sendable (RemoteEnsembleProjection, String) async -> Void)?
+    public let steer: (@MainActor @Sendable (RemoteEnsembleProjection, String) async -> Void)?
+
+    public init(
+        cancelRound: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)? = nil,
+        skipActiveParticipant: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)? = nil,
+        wakeNow: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)? = nil,
+        cancelWakeup: (@MainActor @Sendable (RemoteEnsembleProjection) async -> Void)? = nil,
+        queuePrompt: (@MainActor @Sendable (RemoteEnsembleProjection, String) async -> Void)? = nil,
+        steer: (@MainActor @Sendable (RemoteEnsembleProjection, String) async -> Void)? = nil
+    ) {
+        self.cancelRound = cancelRound
+        self.skipActiveParticipant = skipActiveParticipant
+        self.wakeNow = wakeNow
+        self.cancelWakeup = cancelWakeup
+        self.queuePrompt = queuePrompt
+        self.steer = steer
+    }
+
+    public static let disabled = iPadEnsembleControlActions()
+}
+
+@available(iOS 17.0, macOS 14.0, *)
 @MainActor
 @Observable
 public final class iPadSelectionState {
@@ -158,6 +186,8 @@ public struct iPadShell: View {
     public let transcriptViewModel: TranscriptViewModel?
     public let approvalViewModel: ApprovalViewModel?
     public let composerViewModel: ComposerViewModel?
+    public let remoteTaskStore: RemoteTaskStore?
+    public let ensembleControlActions: iPadEnsembleControlActions
     public let seededWorkspaces: [iPadWorkspaceSummary]
     public let seededThreads: [iPadThreadSummary]
     public let pushStatusMessage: String?
@@ -168,12 +198,15 @@ public struct iPadShell: View {
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var selectionState: iPadSelectionState
     @State private var sidebarStore: iPadSidebarStore
+    @State private var remoteTaskIngestedEventCount = 0
 
     public init(
         pairingViewModel: PairingViewModel? = nil,
         transcriptViewModel: TranscriptViewModel? = nil,
         approvalViewModel: ApprovalViewModel? = nil,
         composerViewModel: ComposerViewModel? = nil,
+        remoteTaskStore: RemoteTaskStore? = nil,
+        ensembleControlActions: iPadEnsembleControlActions = .disabled,
         workspaces: [iPadWorkspaceSummary] = [],
         threads: [iPadThreadSummary] = [],
         pushStatusMessage: String? = nil,
@@ -187,6 +220,8 @@ public struct iPadShell: View {
         self.transcriptViewModel = transcriptViewModel
         self.approvalViewModel = approvalViewModel
         self.composerViewModel = composerViewModel
+        self.remoteTaskStore = remoteTaskStore
+        self.ensembleControlActions = ensembleControlActions
         self.seededWorkspaces = workspaces
         self.seededThreads = threads
         self.pushStatusMessage = pushStatusMessage
@@ -214,6 +249,7 @@ public struct iPadShell: View {
                 pairingViewModel: pairingViewModel,
                 transcriptViewModel: transcriptViewModel,
                 composerViewModel: composerViewModel,
+                remoteTaskStore: remoteTaskStore,
                 pairedMacName: pairingViewModel?.confirmedPair?.macDisplayName,
                 pushStatusMessage: pushStatusMessage,
                 yoloModeEnabled: yoloModeEnabled,
@@ -226,18 +262,24 @@ public struct iPadShell: View {
                 selection: selectionState.selection,
                 store: sidebarStore,
                 transcriptViewModel: transcriptViewModel,
-                approvalViewModel: approvalViewModel
+                approvalViewModel: approvalViewModel,
+                remoteTaskStore: remoteTaskStore,
+                ensembleControlActions: ensembleControlActions
             )
             .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 420)
         }
         .navigationSplitViewStyle(.balanced)
         .tint(Theme.accent)
-        .onAppear(perform: synchronizeSidebarStore)
+        .onAppear {
+            synchronizeSidebarStore()
+            synchronizeRemoteTaskStore()
+        }
         .onChange(of: viewModelIdentityKey) { _, _ in
             synchronizeSidebarStore()
         }
         .onChange(of: transcriptViewModel?.events.count ?? 0) { _, _ in
             synchronizeSidebarStore()
+            synchronizeRemoteTaskStore()
         }
         .onChange(of: approvalViewModel?.pending.count ?? 0) { _, _ in
             synchronizeSidebarStore()
@@ -254,7 +296,8 @@ public struct iPadShell: View {
         [
             transcriptViewModel.map { "\(ObjectIdentifier($0).hashValue)" } ?? "nil",
             approvalViewModel.map { "\(ObjectIdentifier($0).hashValue)" } ?? "nil",
-            composerViewModel.map { "\(ObjectIdentifier($0).hashValue)" } ?? "nil"
+            composerViewModel.map { "\(ObjectIdentifier($0).hashValue)" } ?? "nil",
+            remoteTaskStore.map { "\(ObjectIdentifier($0).hashValue)" } ?? "nil"
         ].joined(separator: "|")
     }
 
@@ -284,6 +327,17 @@ public struct iPadShell: View {
             }
         }
     }
+
+    private func synchronizeRemoteTaskStore() {
+        guard let remoteTaskStore else { return }
+        let events = transcriptViewModel?.events ?? []
+        if events.count < remoteTaskIngestedEventCount {
+            remoteTaskIngestedEventCount = 0
+        }
+        guard events.count > remoteTaskIngestedEventCount else { return }
+        remoteTaskStore.ingest(Array(events[remoteTaskIngestedEventCount...]))
+        remoteTaskIngestedEventCount = events.count
+    }
 }
 
 @available(iOS 17.0, macOS 14.0, *)
@@ -292,12 +346,18 @@ private struct iPadInspectorHost: View {
     public let store: iPadSidebarStore
     public let transcriptViewModel: TranscriptViewModel?
     public let approvalViewModel: ApprovalViewModel?
+    public let remoteTaskStore: RemoteTaskStore?
+    public let ensembleControlActions: iPadEnsembleControlActions
 
     private var selectedThreadID: String? {
         if case .thread(let id) = selection {
             return id
         }
         return nil
+    }
+
+    private var selectedTaskDetail: RemoteTaskDetail? {
+        remoteTaskStore?.detail(threadID: selectedThreadID)
     }
 
     private var latestDiffEvent: BridgeRunEvent? {
@@ -324,7 +384,22 @@ private struct iPadInspectorHost: View {
                             systemImage: "checkmark.shield"
                         )
                     }
-                    iPadDiffInspector(event: latestDiffEvent)
+                    if let approvals = selectedTaskDetail?.approvals, !approvals.isEmpty {
+                        iPadTypedApprovalPanel(approvals: approvals)
+                    }
+                    if let questions = selectedTaskDetail?.questions, !questions.isEmpty {
+                        iPadQuestionCardsPanel(questions: questions)
+                    }
+                    if let ensembleState = selectedTaskDetail?.ensemble {
+                        iPadEnsembleStatePanel(
+                            state: ensembleState,
+                            actions: ensembleControlActions
+                        )
+                    }
+                    iPadDiffInspector(
+                        summary: selectedTaskDetail?.diffSummary,
+                        fallbackEvent: latestDiffEvent
+                    )
                 }
                 .padding(Theme.Spacing.screen)
             }
@@ -351,7 +426,11 @@ private struct iPadInspectorHost: View {
         guard let selectedThreadID,
               let thread = store.thread(id: selectedThreadID)
         else {
-            return "Approvals and read-only diffs for the selected run."
+            return selectedTaskDetail?.task.status.rawValue ?? "Approvals and read-only diffs for the selected run."
+        }
+        let status = selectedTaskDetail?.task.status.rawValue
+        if let status, !status.isEmpty {
+            return status
         }
         return thread.subtitle.isEmpty ? thread.title : thread.subtitle
     }
@@ -379,3 +458,446 @@ private struct iPadInspectorHost: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct iPadTypedApprovalPanel: View {
+    let approvals: [MobileApprovalCard]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            panelHeader(
+                title: "Typed Approvals",
+                count: approvals.count,
+                systemImage: "shield.lefthalf.filled",
+                tint: Theme.warning
+            )
+            ForEach(approvals) { approval in
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(approval.title)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let body = approval.body ?? approval.summary, !body.isEmpty {
+                        Text(body)
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    HStack(spacing: 6) {
+                        stateChip(approval.workspaceId ?? "workspace", systemImage: "folder", tint: Theme.secondaryAccent)
+                        stateChip(approval.threadId, systemImage: "bubble.left", tint: Theme.accent)
+                    }
+                }
+                .padding(Theme.Spacing.control)
+                .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct iPadQuestionCardsPanel: View {
+    let questions: [MobileQuestionCard]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            panelHeader(
+                title: "Questions",
+                count: questions.count,
+                systemImage: "questionmark.bubble.fill",
+                tint: Theme.secondaryAccent
+            )
+            ForEach(questions) { question in
+                VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+                    Text(question.prompt)
+                        .font(Theme.Typography.caption)
+                        .foregroundStyle(Theme.primaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let body = question.context, !body.isEmpty {
+                        Text(body)
+                            .font(Theme.Typography.smallCaption)
+                            .foregroundStyle(Theme.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if !question.options.isEmpty {
+                        WrappingQuestionOptions(options: question.options.map(\.label))
+                    }
+                }
+                .padding(Theme.Spacing.control)
+                .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct WrappingQuestionOptions: View {
+    let options: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) {
+                optionChips
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                optionChips
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var optionChips: some View {
+        ForEach(Array(options.prefix(4).enumerated()), id: \.offset) { _, option in
+            Text(option)
+                .font(Theme.Typography.smallCaption)
+                .foregroundStyle(Theme.secondaryAccent)
+                .lineLimit(1)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Theme.secondaryAccent.opacity(0.13), in: Capsule(style: .continuous))
+        }
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private struct iPadEnsembleStatePanel: View {
+    let state: RemoteEnsembleProjection
+    let actions: iPadEnsembleControlActions
+
+    @State private var queuedPromptText = ""
+    @State private var steerText = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.control) {
+            panelHeader(
+                title: "Ensemble",
+                count: state.participants.count,
+                systemImage: "person.3.sequence.fill",
+                tint: Theme.secondaryAccent
+            )
+            statusGrid
+            participantList
+            controlGrid
+            queueAndSteerControls
+            if hasAnyCapability && !hasAnyActionHandler {
+                integrationNote("Ensemble action payloads are not wired in this build; controls remain disabled until the bridge exposes safe action handlers.")
+            }
+        }
+        .padding(Theme.Spacing.section)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardGlassBackground(cornerRadius: Theme.Radius.panel)
+    }
+
+    private var statusGrid: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                stateChip(state.status ?? state.roundStatus ?? "idle", systemImage: "dot.radiowaves.left.and.right", tint: Theme.secondaryAccent)
+                if let runId = state.runId {
+                    stateChip(runId, systemImage: "number", tint: Theme.accent)
+                }
+            }
+            if let active = activeParticipant {
+                let role = active.role ?? active.id
+                let provider = active.provider ?? "provider"
+                Text("Active: \(role) · \(provider)")
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+            }
+            if let wakeupDescription {
+                Text(wakeupDescription)
+                    .font(Theme.Typography.smallCaption)
+                    .foregroundStyle(Theme.secondaryText)
+                    .lineLimit(2)
+            }
+        }
+    }
+
+    private var participantList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(state.participants) { participant in
+                HStack(spacing: 6) {
+                    Image(systemName: participant.id == state.activeParticipantId ? "circle.fill" : "circle")
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(participant.id == state.activeParticipantId ? Theme.success : Theme.tertiaryText)
+                    Text(participant.role ?? participant.id)
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.primaryText)
+                    Text(participant.provider ?? "provider")
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.secondaryText)
+                    Spacer(minLength: 0)
+                    Text(participant.status ?? (participant.isActive ? "active" : "idle"))
+                        .font(Theme.Typography.smallCaption)
+                        .foregroundStyle(Theme.tertiaryText)
+                }
+            }
+        }
+        .padding(Theme.Spacing.tight)
+        .background(Theme.inputSurface, in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+
+    private var controlGrid: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            HStack(spacing: Theme.Spacing.tight) {
+                controlButton(
+                    title: "Cancel round",
+                    systemImage: "stop.circle",
+                    isCapable: state.capabilities.cancelRound,
+                    handlerAvailable: actions.cancelRound != nil
+                ) {
+                    guard let cancelRound = actions.cancelRound else { return }
+                    await cancelRound(state)
+                }
+                controlButton(
+                    title: "Skip active",
+                    systemImage: "forward.end",
+                    isCapable: state.capabilities.skipActiveParticipant,
+                    handlerAvailable: actions.skipActiveParticipant != nil
+                ) {
+                    guard let skipActiveParticipant = actions.skipActiveParticipant else { return }
+                    await skipActiveParticipant(state)
+                }
+            }
+            HStack(spacing: Theme.Spacing.tight) {
+                controlButton(
+                    title: "Wake now",
+                    systemImage: "alarm",
+                    isCapable: state.capabilities.wakeNow,
+                    handlerAvailable: actions.wakeNow != nil
+                ) {
+                    guard let wakeNow = actions.wakeNow else { return }
+                    await wakeNow(state)
+                }
+                controlButton(
+                    title: "Cancel wakeup",
+                    systemImage: "alarm.waves.left.and.right",
+                    isCapable: state.capabilities.cancelWakeup,
+                    handlerAvailable: actions.cancelWakeup != nil
+                ) {
+                    guard let cancelWakeup = actions.cancelWakeup else { return }
+                    await cancelWakeup(state)
+                }
+            }
+        }
+    }
+
+    private var queueAndSteerControls: some View {
+        VStack(alignment: .leading, spacing: Theme.Spacing.tight) {
+            if state.capabilities.queuePrompt {
+                HStack(spacing: 6) {
+                    TextField("Queue prompt", text: $queuedPromptText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...3)
+                    Button {
+                        Task {
+                            guard let queuePrompt = actions.queuePrompt else { return }
+                            let text = queuedPromptText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !text.isEmpty, queueWithinLimit else { return }
+                            await queuePrompt(state, text)
+                            queuedPromptText = ""
+                        }
+                    } label: {
+                        Label("Queue", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(actions.queuePrompt == nil || !queueWithinLimit || queuedPromptText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+                queueStatusLine
+            }
+            if state.capabilities.steer {
+                HStack(spacing: 6) {
+                    TextField("Steer round", text: $steerText, axis: .vertical)
+                        .textFieldStyle(.roundedBorder)
+                        .lineLimit(1...3)
+                    Button {
+                        Task {
+                            guard let steer = actions.steer else { return }
+                            let text = steerText.trimmingCharacters(in: .whitespacesAndNewlines)
+                            guard !text.isEmpty else { return }
+                            await steer(state, text)
+                            steerText = ""
+                        }
+                    } label: {
+                        Label("Steer", systemImage: "slider.horizontal.3")
+                    }
+                    .disabled(actions.steer == nil || steerText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+    }
+
+    private var queueStatusLine: some View {
+        let limitText = state.capabilities.queueLimit.map { " / \($0)" } ?? ""
+        return Text("Queued \(state.queue.count)\(limitText)")
+            .font(Theme.Typography.smallCaption)
+            .foregroundStyle(queueWithinLimit ? Theme.secondaryText : Theme.warning)
+    }
+
+    private var queueWithinLimit: Bool {
+        guard let limit = state.capabilities.queueLimit else { return true }
+        return state.queue.count < limit
+    }
+
+    private var activeParticipant: RemoteEnsembleParticipant? {
+        guard let activeParticipantId = state.activeParticipantId else { return nil }
+        return state.participants.first { $0.id == activeParticipantId }
+    }
+
+    private var wakeupDescription: String? {
+        let sleeping = state.participants.compactMap { participant -> String? in
+            guard let sleepingUntil = participant.sleepingUntil else { return nil }
+            let label = participant.role ?? participant.provider ?? participant.id
+            return "\(label) wakes \(sleepingUntil.formatted(date: .omitted, time: .shortened))"
+        }
+        return sleeping.isEmpty ? nil : sleeping.joined(separator: " · ")
+    }
+
+    private var hasAnyCapability: Bool {
+        state.capabilities.cancelRound
+            || state.capabilities.skipActiveParticipant
+            || state.capabilities.wakeNow
+            || state.capabilities.cancelWakeup
+            || state.capabilities.queuePrompt
+            || state.capabilities.steer
+    }
+
+    private var hasAnyActionHandler: Bool {
+        actions.cancelRound != nil
+            || actions.skipActiveParticipant != nil
+            || actions.wakeNow != nil
+            || actions.cancelWakeup != nil
+            || actions.queuePrompt != nil
+            || actions.steer != nil
+    }
+
+    private func controlButton(
+        title: String,
+        systemImage: String,
+        isCapable: Bool,
+        handlerAvailable: Bool,
+        action: @escaping @MainActor @Sendable () async -> Void
+    ) -> some View {
+        Button {
+            Task { await action() }
+        } label: {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.bordered)
+        .disabled(!isCapable || !handlerAvailable)
+    }
+
+    private func integrationNote(_ text: String) -> some View {
+        Text(text)
+            .font(Theme.Typography.smallCaption)
+            .foregroundStyle(Theme.secondaryText)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(Theme.Spacing.tight)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.warning.opacity(0.10), in: RoundedRectangle(cornerRadius: Theme.Radius.control, style: .continuous))
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private func panelHeader(title: String, count: Int, systemImage: String, tint: Color) -> some View {
+    HStack(spacing: Theme.Spacing.tight) {
+        Label(title, systemImage: systemImage)
+            .font(Theme.Typography.sectionTitle)
+            .foregroundStyle(Theme.primaryText)
+        Spacer(minLength: Theme.Spacing.tight)
+        Text("\(count)")
+            .font(Theme.Typography.smallCaption)
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.13), in: Capsule(style: .continuous))
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+private func stateChip(_ text: String, systemImage: String, tint: Color) -> some View {
+    HStack(spacing: 4) {
+        Image(systemName: systemImage)
+            .font(Theme.Typography.smallCaption)
+            .accessibilityHidden(true)
+        Text(text)
+            .font(Theme.Typography.smallCaption)
+            .lineLimit(1)
+            .truncationMode(.middle)
+    }
+    .foregroundStyle(tint)
+    .padding(.horizontal, 7)
+    .padding(.vertical, 3)
+    .background(tint.opacity(0.13), in: Capsule(style: .continuous))
+}
+
+#if DEBUG
+@available(iOS 17.0, macOS 14.0, *)
+private enum iPadShellPreviewSamples {
+    static func ensembleState() -> RemoteEnsembleProjection {
+        let envelope = try! RemoteProjectionEnvelope.decode(payloadJSON: Data("""
+        {
+          "kind": "ensemble",
+          "taskId": "task-preview",
+          "workspaceId": "workspace-preview",
+          "threadId": "thread-preview",
+          "payload": {
+            "threadId": "thread-preview",
+            "runId": "run-preview",
+            "status": "running",
+            "roundStatus": "turn-bound",
+            "activeParticipantId": "planner",
+            "participants": [
+              {
+                "id": "planner",
+                "provider": "gemini",
+                "role": "Planner",
+                "status": "running",
+                "isActive": true
+              },
+              {
+                "id": "reviewer",
+                "provider": "codex",
+                "role": "Reviewer",
+                "status": "sleeping",
+                "sleepingUntil": "2026-05-20T13:00:00.000Z"
+              }
+            ],
+            "queue": [
+              { "id": "queued-1", "label": "Sanity-check diff", "participantId": "reviewer" }
+            ],
+            "capabilities": {
+              "cancelRound": true,
+              "skipActiveParticipant": true,
+              "wakeNow": true,
+              "cancelWakeup": true,
+              "queuePrompt": true,
+              "steer": true,
+              "queueLimit": 3
+            }
+          }
+        }
+        """.utf8))
+        guard case .ensemble(let state) = envelope.payload else {
+            fatalError("Expected ensemble preview payload")
+        }
+        return state
+    }
+}
+
+@available(iOS 17.0, macOS 14.0, *)
+#Preview("iPad inspector — ensemble controls disabled") {
+    iPadEnsembleStatePanel(
+        state: iPadShellPreviewSamples.ensembleState(),
+        actions: .disabled
+    )
+    .frame(width: 360)
+    .padding()
+    .background(Theme.windowBase)
+}
+#endif

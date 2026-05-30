@@ -32,9 +32,10 @@
  *                          via the iOS composer.
  *   - `cancelRun`        — user tapped "cancel" on an in-flight run.
  *
- * All payloads MUST carry `workspaceId`. The router relies on this for
- * allowlist evaluation; a payload missing it decodes as
- * `BridgeUnknownAction` (deny).
+ * Workspace-bound payloads MUST carry `workspaceId`. The router relies on
+ * this for allowlist evaluation; a workspace-bound payload missing it decodes
+ * as `BridgeUnknownAction` (deny). Device-level system payloads such as
+ * `registerApnsToken` are pair-scoped instead.
  */
 
 export type BridgeApprovalDecision =
@@ -44,7 +45,17 @@ export type BridgeApprovalDecision =
   | 'decline'
   | 'cancel'
 
-export interface BridgeApprovalReplyAction {
+export interface BridgeActionMetadata {
+  /** Client-generated id for stale/replay protection. Optional so older
+   * companion builds keep working; when present it must be unique per pair. */
+  actionId?: string
+  /** Client issuance timestamp (ms since epoch). Informational for now. */
+  issuedAt?: number
+  /** Client expiry timestamp (ms since epoch). Router denies when stale. */
+  expiresAt?: number
+}
+
+export interface BridgeApprovalReplyAction extends BridgeActionMetadata {
   kind: 'approvalReply'
   workspaceId: string
   threadId: string
@@ -54,7 +65,7 @@ export interface BridgeApprovalReplyAction {
   message?: string
 }
 
-export interface BridgeQuestionReplyAction {
+export interface BridgeQuestionReplyAction extends BridgeActionMetadata {
   kind: 'questionReply'
   workspaceId: string
   threadId: string
@@ -62,7 +73,7 @@ export interface BridgeQuestionReplyAction {
   answer: string
 }
 
-export interface BridgeQuestionRejectAction {
+export interface BridgeQuestionRejectAction extends BridgeActionMetadata {
   kind: 'questionReject'
   workspaceId: string
   threadId: string
@@ -71,7 +82,7 @@ export interface BridgeQuestionRejectAction {
   message?: string
 }
 
-export interface BridgeComposerPromptAction {
+export interface BridgeComposerPromptAction extends BridgeActionMetadata {
   kind: 'composerPrompt'
   workspaceId: string
   threadId: string
@@ -88,7 +99,7 @@ export interface BridgeComposerPromptAction {
   contextTurns?: number
 }
 
-export interface BridgeRegisterApnsTokenAction {
+export interface BridgeRegisterApnsTokenAction extends BridgeActionMetadata {
   kind: 'registerApnsToken'
   /** Pair identifier this device token belongs to. iOS knows it from the
    * completed pairing exchange. */
@@ -102,7 +113,7 @@ export interface BridgeRegisterApnsTokenAction {
   env: 'production' | 'sandbox'
 }
 
-export interface BridgeCancelRunAction {
+export interface BridgeCancelRunAction extends BridgeActionMetadata {
   kind: 'cancelRun'
   workspaceId: string
   threadId: string
@@ -116,7 +127,7 @@ export interface BridgeCancelRunAction {
   message?: string
 }
 
-export interface BridgeSetYoloModeAction {
+export interface BridgeSetYoloModeAction extends BridgeActionMetadata {
   kind: 'setYoloMode'
   /** Used to gate this process-wide escalation through the remote
    * workspace allowlist. */
@@ -124,14 +135,14 @@ export interface BridgeSetYoloModeAction {
   enabled: boolean
 }
 
-export interface BridgeTogglePinChatAction {
+export interface BridgeTogglePinChatAction extends BridgeActionMetadata {
   kind: 'togglePinChat'
   workspaceId: string
   appChatId: string
   pinned: boolean
 }
 
-export interface BridgeTogglePinWorkspaceAction {
+export interface BridgeTogglePinWorkspaceAction extends BridgeActionMetadata {
   kind: 'togglePinWorkspace'
   workspaceId: string
   pinned: boolean
@@ -254,6 +265,16 @@ export function workspaceIdFromPayload(payload: BridgeActionPayload): string | n
   }
 }
 
+export function actionIdFromPayload(payload: BridgeActionPayload): string | null {
+  if (payload.kind === 'unknown') return null
+  return payload.actionId ?? null
+}
+
+export function expiresAtFromPayload(payload: BridgeActionPayload): number | null {
+  if (payload.kind === 'unknown') return null
+  return payload.expiresAt ?? null
+}
+
 /** Whether a payload variant must pass the workspace-allowlist gate.
  * Most action kinds are workspace-bound; `registerApnsToken` is a
  * paired-device-level system action and bypasses (the pair gate at the
@@ -279,13 +300,12 @@ export function payloadRequiresWorkspaceGating(payload: BridgeActionPayload): bo
   }
 }
 
-/** Whether a payload mutates desktop-side state (kicks off a new run,
- * cancels an in-flight one, injects input into an agent). Used by the
- * router's read-only mode enforcement: when a workspace allowlist entry
- * has `mode: 'read-only'`, mutating payloads are denied. The
- * non-mutating set — approvalReply, questionReject — is iOS responding
- * to desktop-initiated prompts. Per the original plan: "iPhone can
- * watch + approve, never mutate" in read-only mode.
+/** Legacy coarse classification for compatibility tests and older call sites.
+ * The router now uses fine-grained allowlist capabilities, but this remains
+ * useful for documenting which payloads mutate desktop-side state (kick off a
+ * new run, cancel an in-flight one, inject input into an agent). The
+ * non-mutating set — approvalReply, questionReject — is iOS responding to
+ * desktop-initiated prompts.
  *
  * Notes on individual variants:
  *   - `approvalReply`: responding to an approval prompt the DESKTOP
@@ -379,6 +399,7 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 function isApprovalReply(v: Record<string, unknown>): boolean {
   const decision = v.decision
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.toolCallId === 'string' &&
@@ -399,6 +420,7 @@ function isBridgeApprovalDecision(value: unknown): value is BridgeApprovalDecisi
 
 function isQuestionReply(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.promptId === 'string' &&
@@ -408,6 +430,7 @@ function isQuestionReply(v: Record<string, unknown>): boolean {
 
 function isQuestionReject(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.promptId === 'string' &&
@@ -417,6 +440,7 @@ function isQuestionReject(v: Record<string, unknown>): boolean {
 
 function isComposerPrompt(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.text === 'string' &&
@@ -432,6 +456,7 @@ function isComposerPrompt(v: Record<string, unknown>): boolean {
 
 function isCancelRun(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.threadId === 'string' &&
     typeof v.provider === 'string' &&
@@ -441,11 +466,14 @@ function isCancelRun(v: Record<string, unknown>): boolean {
 }
 
 function isSetYoloMode(v: Record<string, unknown>): boolean {
-  return typeof v.workspaceId === 'string' && typeof v.enabled === 'boolean'
+  return (
+    hasValidActionMetadata(v) && typeof v.workspaceId === 'string' && typeof v.enabled === 'boolean'
+  )
 }
 
 function isTogglePinChat(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.workspaceId === 'string' &&
     typeof v.appChatId === 'string' &&
     typeof v.pinned === 'boolean'
@@ -453,15 +481,26 @@ function isTogglePinChat(v: Record<string, unknown>): boolean {
 }
 
 function isTogglePinWorkspace(v: Record<string, unknown>): boolean {
-  return typeof v.workspaceId === 'string' && typeof v.pinned === 'boolean'
+  return (
+    hasValidActionMetadata(v) && typeof v.workspaceId === 'string' && typeof v.pinned === 'boolean'
+  )
 }
 
 function isRegisterApnsToken(v: Record<string, unknown>): boolean {
   return (
+    hasValidActionMetadata(v) &&
     typeof v.pairID === 'string' &&
     v.pairID.length > 0 &&
     typeof v.deviceToken === 'string' &&
     v.deviceToken.length > 0 &&
     (v.env === 'production' || v.env === 'sandbox')
+  )
+}
+
+function hasValidActionMetadata(v: Record<string, unknown>): boolean {
+  return (
+    (v.actionId === undefined || (typeof v.actionId === 'string' && v.actionId.length > 0)) &&
+    (v.issuedAt === undefined || (typeof v.issuedAt === 'number' && Number.isFinite(v.issuedAt))) &&
+    (v.expiresAt === undefined || (typeof v.expiresAt === 'number' && Number.isFinite(v.expiresAt)))
   )
 }

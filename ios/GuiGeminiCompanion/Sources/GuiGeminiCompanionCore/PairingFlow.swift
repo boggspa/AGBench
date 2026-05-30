@@ -1,6 +1,7 @@
 import Foundation
 import CryptoKit
 import BridgeCore
+import BridgeCryptoPrimitives
 import BridgeCryptoPairing
 
 /// PairingFlow — controller-side (iOS) state machine for the QR-based

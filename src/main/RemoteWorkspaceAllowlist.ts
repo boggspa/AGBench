@@ -33,6 +33,32 @@ import { dirname } from 'path'
 
 export type RemoteWorkspaceMode = 'read-only' | 'read-write'
 
+export type RemoteWorkspaceCapability =
+  | 'monitor'
+  | 'approve'
+  | 'answer'
+  | 'cancel'
+  | 'startTurn'
+  | 'diffReview'
+  | 'steer'
+  | 'pin'
+  | 'yolo'
+
+export const READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] = [
+  'monitor',
+  'approve'
+]
+
+export const READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES: readonly RemoteWorkspaceCapability[] = [
+  'monitor',
+  'approve',
+  'answer',
+  'cancel',
+  'startTurn',
+  'diffReview',
+  'steer'
+]
+
 export interface RemoteWorkspaceEntry {
   /** Stable id used by GUIGemini's internal workspace registry. */
   workspaceId: string
@@ -42,6 +68,10 @@ export interface RemoteWorkspaceEntry {
    * can compose, run, and approve. The router uses this to gate actions
    * that mutate state (Phase C-late, when typed action payloads land). */
   mode: RemoteWorkspaceMode
+  /** Optional future policy shape. When omitted, `mode` maps to the default
+   * capability sets above so existing allowlist entries keep working until
+   * the persisted store and renderer grow first-class capability controls. */
+  capabilities?: RemoteWorkspaceCapability[]
   /** Provider IDs (e.g. `'gemini'`, `'codex'`, `'claude'`, `'kimi'`) that the
    * iOS client may select for this workspace. Empty array = no providers
    * allowed (the workspace is read-only-watch in practice). */
@@ -65,6 +95,8 @@ export interface PrepareStartTurnEvaluation {
   provider?: string
   /** Same caveat as `provider`. */
   approvalMode?: string
+  /** Optional fine-grained capability required by the action being evaluated. */
+  capability?: RemoteWorkspaceCapability
 }
 
 export type AllowlistDecision =
@@ -185,6 +217,15 @@ export class RemoteWorkspaceAllowlist {
         reason: `Approval mode "${check.approvalMode}" is not allowed for workspace "${check.workspaceId}"`
       }
     }
+    if (
+      check.capability !== undefined &&
+      !capabilitiesForRemoteWorkspaceEntry(entry).includes(check.capability)
+    ) {
+      return {
+        allowed: false,
+        reason: `Capability "${check.capability}" is not allowed for workspace "${check.workspaceId}"`
+      }
+    }
     return { allowed: true, entry }
   }
 
@@ -243,6 +284,34 @@ export class RemoteWorkspaceAllowlist {
   }
 }
 
+export function capabilitiesForRemoteWorkspaceMode(
+  mode: RemoteWorkspaceMode
+): readonly RemoteWorkspaceCapability[] {
+  return mode === 'read-only'
+    ? READ_ONLY_REMOTE_WORKSPACE_CAPABILITIES
+    : READ_WRITE_REMOTE_WORKSPACE_CAPABILITIES
+}
+
+export function capabilitiesForRemoteWorkspaceEntry(
+  entry: RemoteWorkspaceEntry
+): readonly RemoteWorkspaceCapability[] {
+  return entry.capabilities ?? capabilitiesForRemoteWorkspaceMode(entry.mode)
+}
+
+export function isRemoteWorkspaceCapability(value: unknown): value is RemoteWorkspaceCapability {
+  return (
+    value === 'monitor' ||
+    value === 'approve' ||
+    value === 'answer' ||
+    value === 'cancel' ||
+    value === 'startTurn' ||
+    value === 'diffReview' ||
+    value === 'steer' ||
+    value === 'pin' ||
+    value === 'yolo'
+  )
+}
+
 function isPersistedShape(value: unknown): value is PersistedShape {
   if (!value || typeof value !== 'object') return false
   const v = value as Record<string, unknown>
@@ -256,6 +325,9 @@ function isValidEntry(value: unknown): value is RemoteWorkspaceEntry {
     typeof v.workspaceId === 'string' &&
     typeof v.path === 'string' &&
     (v.mode === 'read-only' || v.mode === 'read-write') &&
+    (v.capabilities === undefined ||
+      (Array.isArray(v.capabilities) &&
+        (v.capabilities as unknown[]).every(isRemoteWorkspaceCapability))) &&
     Array.isArray(v.allowedProviders) &&
     (v.allowedProviders as unknown[]).every((p) => typeof p === 'string') &&
     Array.isArray(v.allowedApprovalModes) &&

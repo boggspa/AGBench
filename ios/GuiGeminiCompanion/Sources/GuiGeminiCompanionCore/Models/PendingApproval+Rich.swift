@@ -132,7 +132,8 @@ public enum BridgeApprovalEventDecoder {
         switch channel {
         case .agentOutput, .geminiOutput: return true
         case .agentError, .agentExit, .geminiError, .geminiExit,
-             .workspaceList, .workspaceUpdated, .threadList, .threadUpdated:
+             .workspaceList, .workspaceUpdated, .threadList, .threadUpdated,
+             .remoteProjection:
             return false
         }
     }
